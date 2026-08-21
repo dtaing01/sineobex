@@ -196,9 +196,13 @@ Secrets are listed in [`MOBILE_RELEASE.md`](MOBILE_RELEASE.md) §3, plus
 `FLUTTER_CONFIG_PROD` — the contents of a `config/prod.json` matching
 `app/config/example.env.json`.
 
-Both jobs refuse to build if `SINEOBEX_DEMO_SEED` is true in that config. The
-Android job additionally inspects the signed bundle and fails if it carries
-the Android debug certificate.
+Both jobs refuse to build if `SINEOBEX_DEMO_SEED` is true in that config, and
+both refuse to build unless `SINEOBEX_TILE_URL` names a tile server you
+control — unset, or pointing at a public CDN, fails the job. Left to its
+fallback the app would send patient-centred map viewports to a third party
+with no BAA; the reasoning is in [`SETUP.md`](SETUP.md) §6. The Android job
+additionally inspects the signed bundle and fails if it carries the Android
+debug certificate.
 
 Neither store's **production** track is reachable from CI. The Play service
 account is scoped to testing tracks, and the iOS job stops at TestFlight.

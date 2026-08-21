@@ -10,9 +10,9 @@ const detroitCenter = LatLng(42.3314, -83.0458);
 
 /// The shared OpenStreetMap tile layer.
 ///
-/// Tiles are CARTO Positron, rendered from OpenStreetMap data — the same
-/// basemap the React prototype used, so the map reads identically.
-/// The attribution is a licence condition of both OSM and CARTO; it stays.
+/// The endpoint comes from `SINEOBEX_TILE_URL`. Unset, it falls back to a
+/// public CARTO CDN, which leaks the map viewport — and therefore approximate
+/// patient locations — to a third party. See [AppConfig.tileUrlTemplate].
 class OsmTileLayer extends StatelessWidget {
   const OsmTileLayer({super.key});
 
@@ -33,9 +33,9 @@ class MapAttribution extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
     color: AppColors.white.withValues(alpha: 0.7),
-    child: const Text(
+    child: Text(
       AppConfig.tileAttribution,
-      style: TextStyle(fontSize: AppText.xxxs, color: AppColors.slate500),
+      style: const TextStyle(fontSize: AppText.xxxs, color: AppColors.slate500),
     ),
   );
 }

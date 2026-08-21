@@ -12,6 +12,95 @@ Mobile store setup is long enough to live on its own — see
 
 ---
 
+## 0. Accounts and registrations
+
+Everything this system depends on, what it costs, and where to sign up. Only
+the AWS account is needed to run the backend; the store accounts are needed
+only when you ship to devices.
+
+### 0.1 AWS
+
+One account covers every service below — there is no per-service signup. What
+matters is *which* account, and what you enable on it before deploying.
+
+| Step | Where |
+|---|---|
+| Create the account (use a dedicated one, not a shared sandbox) | https://portal.aws.amazon.com/billing/signup |
+| Put it under an Organization so an SCP can protect CloudTrail | https://console.aws.amazon.com/organizations/ |
+| **Accept the Business Associate Addendum** in AWS Artifact | https://console.aws.amazon.com/artifact/ → Agreements → AWS BAA |
+| Confirm each service is in scope for the BAA | https://aws.amazon.com/compliance/hipaa-eligible-services-reference/ |
+| Enable GuardDuty | https://console.aws.amazon.com/guardduty/ |
+| Enable Security Hub | https://console.aws.amazon.com/securityhub/ |
+| Enable AWS Config + the HIPAA conformance pack | https://console.aws.amazon.com/config/ |
+
+Background reading: [AWS HIPAA compliance](https://aws.amazon.com/compliance/hipaa-compliance/)
+and the [Architecting for HIPAA whitepaper](https://docs.aws.amazon.com/whitepapers/latest/architecting-hipaa-security-and-compliance-on-aws/welcome.html).
+
+The BAA is the gate. Every service used here is HIPAA-*eligible*, which means
+AWS **will** cover it once you sign — not that it is covered now.
+
+### 0.2 Services the stacks create
+
+Deployed by `infra/`, all in one region (`us-east-1` by default):
+
+| Stack | Service | Purpose |
+|---|---|---|
+| Network | VPC, NAT Gateway, security groups, VPC Flow Logs | Private network; the database has no internet route |
+| Data | **Aurora Serverless v2, PostgreSQL 16.4** + PostGIS | The PHI database |
+| Data | **KMS** customer-managed key | Encrypts Aurora, S3, Performance Insights |
+| Data | **Secrets Manager** ×2 | Master credential, plus the `sineobex_api` credential RLS depends on |
+| Data | **S3** ×3 | Attachments; audit archive (Object Lock, compliance mode); access logs |
+| Auth | **Cognito** user pool + groups | Sign-in; MFA required, TOTP only |
+| Api | **API Gateway** HTTP API + JWT authorizer | The only entry point |
+| Api | **Lambda** (Node.js 22) | API handlers and the scheduled-refresh handler |
+| Api | **CloudWatch Logs** | One-year retention |
+| Observability | **CloudTrail** | Includes S3 data events — attachment reads are logged |
+| Observability | **CloudWatch** alarms + dashboard, **SNS** | Alerting |
+| All | **IAM** | Roles and least-privilege policies |
+
+**Cost is dominated by two always-on items that do not scale down with use:**
+the NAT Gateways (two in prod, one in dev) and the Aurora ACU floor (prod
+never drops below 1 ACU on the writer plus 1 on the reader). Expect a few
+hundred dollars a month for a prod stack sitting idle. Both levers are behind
+the `isProd` flag in `network-stack.ts` and `data-stack.ts`. Check current
+rates at https://calculator.aws/ rather than trusting an estimate here.
+
+### 0.3 Mobile stores
+
+Needed only to distribute to devices. Full walkthrough in
+[`MOBILE_RELEASE.md`](MOBILE_RELEASE.md).
+
+| What | Cost | Where |
+|---|---|---|
+| Apple Developer Program (Organization) | $99/yr | https://developer.apple.com/programs/enroll/ |
+| Apple D-U-N-S lookup (required for Organization enrolment) | Free | https://developer.apple.com/enroll/duns-lookup/ |
+| App Store Connect (builds, TestFlight, App Privacy) | Included | https://appstoreconnect.apple.com/ |
+| Apple Business Manager — private distribution to your own staff | Free | https://business.apple.com/ |
+| Google Play Console (Organization) | $25 once | https://play.google.com/console/signup |
+| D-U-N-S number, if you do not have one | Free | https://www.dnb.com/duns/get-a-duns.html |
+
+**Start the D-U-N-S request first.** It takes one to three weeks and is the
+usual cause of a launch date slipping. Both stores require it for organization
+accounts, and both put PHI-handling apps in their strictest review category.
+
+For a tool used only by your own clinical staff, Apple Business Manager custom
+app distribution is usually a better fit than a public App Store listing — no
+public listing, no consumer review surface.
+
+### 0.4 Everything else
+
+| What | Cost | Where | Notes |
+|---|---|---|---|
+| cron-job.org | Free | https://console.cron-job.org/signup | Scheduled refresh. **No PHI passes through it** — it holds an HMAC secret and fires a URL |
+| GitHub Actions | Existing | https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services | Needs an OIDC role in AWS; secrets listed in [`CI.md`](CI.md) |
+| Map tiles | See §6 | — | **Not yet resolved. Read §6 before clinical use.** |
+
+Deliberately not used: no analytics SDK, no crash reporter, no third-party
+logging. Each would be another business associate agreement to negotiate and
+another place PHI could land.
+
+---
+
 ## 1. Local development
 
 ### 1.1 Toolchain
@@ -398,3 +487,93 @@ lost data.
 **Migrations fail on `CREATE EXTENSION postgis`**
 Aurora PostgreSQL supports PostGIS but the extension must be creatable by your
 role. Run 001 as the master user, not as `sineobex_api`.
+
+---
+
+## 6. Map tiles
+
+**Status: unresolved. The default configuration is not safe for real patient
+data.** This section explains why, and what to do about it.
+
+### 6.1 What went wrong
+
+The requirement was that OpenStreetMap power the maps. The app renders
+OpenStreetMap *data*, but by default it fetches the rendered tiles from a
+public CARTO CDN (`basemaps.cartocdn.com`). That was carried over from the
+React prototype for visual parity and never revisited. Parity with a prototype
+is not a good enough reason, and this should have been flagged during the
+conversion rather than after it.
+
+### 6.2 Why it matters more than it looks
+
+`flutter_map` requests tiles for whatever viewport is on screen. On the patient
+detail screen, that viewport is centred on a patient's recorded location. The
+tile request — its `{z}/{x}/{y}` coordinates, source IP, and timing — therefore
+discloses roughly where an identified individual is, to whoever serves it.
+
+CARTO has not signed a BAA with you. Under §164.514(b)(2) geographic detail
+finer than a state is an identifier, so those coordinates are PHI, and sending
+them to an uncovered third party is an impermissible disclosure under §164.502.
+
+### 6.3 Why plain OSM tiles are not the fix
+
+Switching to `tile.openstreetmap.org` is the intuitive correction and it does
+**not** work:
+
+1. It changes *which* third party receives the patient coordinates. It does
+   not stop the disclosure. The OSM Foundation has not signed a BAA either.
+2. The [OSMF tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+   does not permit an application like this one. Their tile servers are donated
+   infrastructure for casual and non-commercial use, with heavy or systematic
+   use explicitly out of scope.
+
+"Use OpenStreetMap" is right. "Use OpenStreetMap's servers" is not the same
+statement, and only the first one is achievable here.
+
+### 6.4 The resolution: self-hosted OSM tiles
+
+Serve OpenStreetMap tiles from infrastructure inside your BAA-covered AWS
+account. No third party sees a coordinate, OSM data still powers the map — and
+this is *more* faithful to the original requirement than the CDN was, not less.
+
+The app already reads the endpoint from build configuration, so this needs no
+code change:
+
+```sh
+flutter build apk --release \
+  --dart-define=SINEOBEX_TILE_URL=https://tiles.internal.example/{z}/{x}/{y}.png \
+  --dart-define=SINEOBEX_TILE_ATTRIBUTION='© OpenStreetMap contributors'
+```
+
+Attribution is a condition of OpenStreetMap's ODbL and survives self-hosting —
+the data is still theirs. See https://www.openstreetmap.org/copyright.
+
+Three practical routes, cheapest first:
+
+| Option | How | Trade-off |
+|---|---|---|
+| **[Protomaps](https://protomaps.com/)** | A single `.pmtiles` archive in S3, served through CloudFront. No servers to run | Simplest and cheapest. Vector tiles, so the client renders differently than raster |
+| **[tileserver-gl](https://github.com/maptiler/tileserver-gl)** + [OpenMapTiles](https://openmaptiles.org/) | Container on ECS/Fargate in the VPC | Familiar raster output; you run and patch a service |
+| **Pre-rendered raster in S3** | Render your service area offline, sync to a private bucket | No compute at all; only works for a bounded geography, which street medicine usually is |
+
+Region extracts come from [Geofabrik](https://download.geofabrik.de/); the full
+planet from [planet.openstreetmap.org](https://planet.openstreetmap.org/).
+
+Because coverage is a metropolitan area rather than the planet, any of these is
+small. This is a bounded piece of work, not a project.
+
+### 6.5 Until then
+
+`AppConfig.usesThirdPartyTiles` is true whenever the fallback endpoint is in
+use. Options while a tile server is stood up, in order of preference:
+
+1. **Stand up the tile server.** It is the only option that actually closes the
+   gap, and §6.4 makes it a small job.
+2. **Disable the map layers** in builds that hold real PHI. Clinical value is
+   lost; legal exposure goes to zero.
+3. **Coarsen the coordinates** before requesting tiles — round the map centre
+   to a neighbourhood before the viewport is derived. This reduces precision
+   but does not eliminate the disclosure, and it degrades exactly the
+   field-navigation utility the map exists for. A stopgap, not a fix.
+
+Do not ship the default to clinicians working with real patients.
