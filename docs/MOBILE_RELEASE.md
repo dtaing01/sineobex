@@ -80,7 +80,12 @@ Manual route, if you prefer it:
   `dio`/`connectivity_plus` respectively.
 
 **The file must be in the Runner target's Copy Bundle Resources build phase**,
-or it ships without a manifest and is rejected. It is not added automatically:
+or it ships without a manifest and is rejected at submission. Xcode does not
+add it automatically when the file merely exists on disk — so it is registered
+in `Runner.xcodeproj/project.pbxproj` and committed, and CI fails the build if
+it is ever missing from the produced bundle.
+
+Nothing to do by hand. If you regenerate the iOS project, re-add it:
 
 1. `open ios/Runner.xcworkspace`
 2. Drag `PrivacyInfo.xcprivacy` into the **Runner** group in the navigator.

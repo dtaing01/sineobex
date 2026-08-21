@@ -43,9 +43,10 @@ a real guarantee rather than a convention.
 **`android-build` / `ios-build`** — compile for each mobile target. Both are
 unsigned; they answer "does it build", not "is it releasable". The iOS job
 additionally asserts that `PrivacyInfo.xcprivacy` made it into the bundle.
-That file is not added to Copy Bundle Resources automatically, and without it
-the App Store rejects the upload — days later, at submission, rather than
-here.
+Merely having the file on disk is not enough — it has to be registered in the
+Xcode project's Copy Bundle Resources phase, which it now is. Without it the
+App Store rejects the upload days later at submission rather than here. This
+check caught exactly that on its first run.
 
 **`infra`** — `tsc --noEmit`, then `cdk synth` with `CDK_DEFAULT_ACCOUNT`
 unset, so the stacks synthesize environment-agnostically and need no AWS
