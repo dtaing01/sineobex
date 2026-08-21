@@ -216,13 +216,19 @@ jobs:
           ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
         working-directory: app
         run: |
-          mkdir -p ~/private_keys
-          echo "$ASC_KEY_P8" | base64 -d \
-            > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          # $HOME rather than ~ so the path can be quoted; tilde does not
+          # expand inside double quotes, and an unquoted path containing a
+          # secret-derived value is a word-splitting hazard.
+          KEY_DIR="$HOME/private_keys"
+          mkdir -p "$KEY_DIR"
+          echo "$ASC_KEY_P8" | base64 -d > "$KEY_DIR/AuthKey_$ASC_KEY_ID.p8"
+
+          IPA="$(find build/ios/ipa -name '*.ipa' | head -1)"
           xcrun altool --upload-app --type ios \
-            -f "$(find build/ios/ipa -name '*.ipa' | head -1)" \
+            -f "$IPA" \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-          rm -rf ~/private_keys
+
+          rm -rf "$KEY_DIR"
 
       - name: Clean up keychain
         if: always()

@@ -132,8 +132,11 @@ npx tsc --noEmit         # typecheck the stacks and Lambda handlers
 npm run synth            # render CloudFormation
 ```
 
-`npm run synth` needs AWS credentials only to look up the VPC's availability
-zones. Everything else renders offline.
+`npm run synth` needs no AWS credentials. With `CDK_DEFAULT_ACCOUNT` unset
+the stacks synthesize environment-agnostically and the VPC resolves its
+availability zones at deploy time via `Fn::GetAZs`. Set `CDK_DEFAULT_ACCOUNT`
+when you actually deploy and CDK will look up concrete zones for that
+account.
 
 ---
 
@@ -368,9 +371,12 @@ they do fail here, `flutter clean && flutter pub get` usually resolves a stale
 plugin registrant.
 
 **`cdk synth` says it needs credentials**
-Only to resolve the VPC's availability zones, because the stacks name a
-concrete account and region. Any valid read-only credential for the target
-account is enough.
+`CDK_DEFAULT_ACCOUNT` is set, which makes the stacks environment-specific and
+triggers an availability-zone lookup. Unset it to synthesize
+environment-agnostically, or supply a read-only credential for that account.
+Note that `cdk synth` still writes templates when this lookup fails — it exits
+non-zero without saying much, so check the exit code rather than the output
+directory.
 
 **`cdk deploy` fails with a dependency cycle**
 Cross-stack `grant*` calls write into the *resource's* policy in its owning

@@ -192,16 +192,19 @@ jobs:
         working-directory: infra
         run: npx tsc --noEmit
 
-      # Synth with fabricated context so no AWS credentials are needed. The
-      # only lookup the stacks perform is the VPC's availability zones.
+      # Synthesized environment-agnostically: CDK_DEFAULT_ACCOUNT is
+      # deliberately NOT set, so bin/sineobex.ts leaves `account` undefined and
+      # the VPC resolves its availability zones with Fn::GetAZs at deploy time
+      # instead of looking them up now. No credentials, no context priming, and
+      # no fabricated account id that could drift from reality.
+      #
+      # A real deploy sets CDK_DEFAULT_ACCOUNT and gets concrete AZs, which is
+      # what you want there — pinning them is a deploy-time concern.
       - name: Synthesize CloudFormation
         working-directory: infra
         env:
-          CDK_DEFAULT_ACCOUNT: '111122223333'
           CDK_DEFAULT_REGION: us-east-1
-        run: |
-          npx cdk synth --quiet \
-            -c 'availability-zones:account=111122223333:region=us-east-1=["us-east-1a","us-east-1b"]'
+        run: npx cdk synth --quiet
 
       - name: Assert every stack rendered
         working-directory: infra

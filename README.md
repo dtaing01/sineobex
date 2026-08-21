@@ -93,8 +93,8 @@ Then apply the migrations in order against the cluster
 `003_seed_reference_data.sql`) and configure the cron jobs per
 [`cron/README.md`](cron/README.md).
 
-`npm run synth` needs AWS credentials only to resolve the VPC's availability
-zones; everything else renders offline.
+`npm run synth` needs no AWS credentials — with `CDK_DEFAULT_ACCOUNT` unset
+the stacks synthesize environment-agnostically.
 
 ## Maps
 

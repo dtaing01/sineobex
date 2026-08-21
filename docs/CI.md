@@ -47,8 +47,9 @@ That file is not added to Copy Bundle Resources automatically, and without it
 the App Store rejects the upload — days later, at submission, rather than
 here.
 
-**`infra`** — `tsc --noEmit`, then `cdk synth` with fabricated
-availability-zone context so no AWS credentials are needed. Asserts all five
+**`infra`** — `tsc --noEmit`, then `cdk synth` with `CDK_DEFAULT_ACCOUNT`
+unset, so the stacks synthesize environment-agnostically and need no AWS
+credentials at all. Asserts all five
 stacks rendered, and that `ApiStack` is not wired to the master database
 credential. That last check exists because a master-credential connection is a
 superuser, a superuser bypasses row-level security entirely, and nothing else
