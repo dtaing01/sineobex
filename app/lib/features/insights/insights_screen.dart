@@ -209,7 +209,7 @@ class _SeasonalDemandSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final thisMonth =
         data.where((d) => d.month == currentMonth).firstOrNull?.items ??
-            const <String>[];
+        const <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,10 +271,8 @@ class _SeasonalDemandSection extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               color: AppColors.white,
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.md),
-                              border:
-                                  Border.all(color: AppColors.orange100),
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              border: Border.all(color: AppColors.orange100),
                               boxShadow: AppShadows.sm,
                             ),
                             child: Row(
@@ -417,27 +415,27 @@ class _ChartLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: AppSpace.x1_5),
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontSize: AppText.tiny,
-              fontWeight: AppText.bold,
-              color: AppColors.slate500,
-            ),
-          ),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(width: AppSpace.x1_5),
+      Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          fontSize: AppText.tiny,
+          fontWeight: AppText.bold,
+          color: AppColors.slate500,
+        ),
+      ),
+    ],
+  );
 }
 
 class _ContinuitySection extends StatelessWidget {
@@ -1136,13 +1134,13 @@ class _OutcomeRow extends StatelessWidget {
     final trendColor = outcome.isUp
         ? AppColors.emerald500
         : outcome.isDown
-            ? AppColors.rose500
-            : AppColors.slate400;
+        ? AppColors.rose500
+        : AppColors.slate400;
     final trendIcon = outcome.isUp
         ? LucideIcons.trendingUp
         : outcome.isDown
-            ? LucideIcons.trendingDown
-            : LucideIcons.minus;
+        ? LucideIcons.trendingDown
+        : LucideIcons.minus;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,

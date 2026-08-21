@@ -61,15 +61,17 @@ void main() {
 
     test('parses a PM movement time correctly', () {
       final john = seed.demoPatients().firstWhere((p) => p.id == '1');
-      final church = john.commonLocations
-          .firstWhere((l) => l.name == 'St. Peter Church');
+      final church = john.commonLocations.firstWhere(
+        (l) => l.name == 'St. Peter Church',
+      );
       expect(church.observedAt.hour, 14);
       expect(church.time, '02:30 PM');
     });
 
     test('preserves on-order inventory metadata', () {
-      final tamiflu =
-          seed.demoInventory().firstWhere((i) => i.name == 'Tamiflu');
+      final tamiflu = seed.demoInventory().firstWhere(
+        (i) => i.name == 'Tamiflu',
+      );
       expect(tamiflu.isOnOrder, isTrue);
       expect(tamiflu.orderedBy, 'Sarah Chen, RN');
       expect(tamiflu.orderedAtLabel, '2026-04-11 09:00');

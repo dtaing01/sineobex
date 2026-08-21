@@ -29,10 +29,10 @@ class MapPin extends StatelessWidget {
   final double borderWidth;
 
   static Color colorForRisk(RiskLevel risk) => switch (risk) {
-        RiskLevel.high => AppColors.red500,
-        RiskLevel.moderate => AppColors.amber500,
-        RiskLevel.low => AppColors.blue500,
-      };
+    RiskLevel.high => AppColors.red500,
+    RiskLevel.moderate => AppColors.amber500,
+    RiskLevel.low => AppColors.blue500,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +66,8 @@ class _PinPainter extends CustomPainter {
 
     // Circle plus a triangle down to the tip, tangent to the circle so the
     // silhouette reads as one continuous teardrop.
-    final path = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
 
     final dx = tip.dx - center.dx;
     final dy = tip.dy - center.dy;
@@ -131,13 +132,13 @@ class ResourcePin extends StatelessWidget {
   /// else is blue (services to use).
   static Color colorFor(ResourceType t) =>
       (t == ResourceType.shelter || t == ResourceType.hospital)
-          ? AppColors.emerald500
-          : AppColors.blue500;
+      ? AppColors.emerald500
+      : AppColors.blue500;
 
   static Color fillFor(ResourceType t) =>
       (t == ResourceType.shelter || t == ResourceType.hospital)
-          ? AppColors.green100
-          : AppColors.blue100;
+      ? AppColors.green100
+      : AppColors.blue100;
 
   @override
   Widget build(BuildContext context) {
@@ -166,12 +167,10 @@ class MapLegend extends StatelessWidget {
     this.minWidth = 160,
   });
 
-  const MapLegend.compact({
-    super.key,
-    required this.entries,
-  })  : title = null,
-        padding = const EdgeInsets.all(AppSpace.x2),
-        minWidth = 0;
+  const MapLegend.compact({super.key, required this.entries})
+    : title = null,
+      padding = const EdgeInsets.all(AppSpace.x2),
+      minWidth = 0;
 
   final String? title;
   final List<MapLegendEntry> entries;

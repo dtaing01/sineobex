@@ -6,24 +6,15 @@ void main() {
     // The prototype computed `new Date().getFullYear() - birthYear`, which is
     // wrong for anyone who hasn't had this year's birthday yet (defect D10).
     test('is one lower before the birthday', () {
-      expect(
-        Fmt.age(DateTime(1990, 12, 31), asOf: DateTime(2026, 1, 1)),
-        35,
-      );
+      expect(Fmt.age(DateTime(1990, 12, 31), asOf: DateTime(2026, 1, 1)), 35);
     });
 
     test('ticks over on the birthday itself', () {
-      expect(
-        Fmt.age(DateTime(1990, 6, 15), asOf: DateTime(2026, 6, 15)),
-        36,
-      );
+      expect(Fmt.age(DateTime(1990, 6, 15), asOf: DateTime(2026, 6, 15)), 36);
     });
 
     test('is correct after the birthday', () {
-      expect(
-        Fmt.age(DateTime(1990, 1, 1), asOf: DateTime(2026, 6, 15)),
-        36,
-      );
+      expect(Fmt.age(DateTime(1990, 1, 1), asOf: DateTime(2026, 6, 15)), 36);
     });
 
     test('never returns a negative age', () {
@@ -37,10 +28,7 @@ void main() {
     });
 
     test('orderStamp matches handleOrder', () {
-      expect(
-        Fmt.orderStamp(DateTime(2026, 4, 11, 9, 5)),
-        '2026-04-11 09:05',
-      );
+      expect(Fmt.orderStamp(DateTime(2026, 4, 11, 9, 5)), '2026-04-11 09:05');
     });
 
     test('weekday matches Intl weekday:long', () {

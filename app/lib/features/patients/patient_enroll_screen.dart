@@ -78,8 +78,10 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        setState(() => _error =
-            'Location permission denied. The typed location will be used.');
+        setState(
+          () => _error =
+              'Location permission denied. The typed location will be used.',
+        );
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
@@ -93,8 +95,11 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
         _lng = pos.longitude;
       });
     } catch (e) {
-      setState(() => _error = 'Could not read GPS. The typed location '
-          'will be used instead.');
+      setState(
+        () => _error =
+            'Could not read GPS. The typed location '
+            'will be used instead.',
+      );
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -116,7 +121,9 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
     if (!_canSave || _saving) return;
     setState(() => _saving = true);
     try {
-      final patient = await ref.read(patientRepositoryProvider).enroll(
+      final patient = await ref
+          .read(patientRepositoryProvider)
+          .enroll(
             firstName: _firstName.text,
             lastName: _lastName.text,
             dob: _dob ?? DateTime(1990),
@@ -148,8 +155,9 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: AppSpace.maxContentWidth),
+            constraints: const BoxConstraints(
+              maxWidth: AppSpace.maxContentWidth,
+            ),
             child: ListView(
               padding: const EdgeInsets.all(AppSpace.x4),
               children: [
@@ -249,8 +257,8 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
                                     label: _locating
                                         ? 'Reading GPS…'
                                         : _lat == null
-                                            ? 'Use my location'
-                                            : 'Location captured',
+                                        ? 'Use my location'
+                                        : 'Location captured',
                                     icon: _lat == null
                                         ? LucideIcons.navigation
                                         : LucideIcons.check,
@@ -262,16 +270,18 @@ class _PatientEnrollScreenState extends ConsumerState<PatientEnrollScreen> {
                                     borderColor: _lat == null
                                         ? AppColors.blue200
                                         : AppColors.emerald100,
-                                    onPressed:
-                                        _locating ? null : _captureLocation,
+                                    onPressed: _locating
+                                        ? null
+                                        : _captureLocation,
                                   ),
                                 ),
                               ],
                             ),
                             if (_lat != null)
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(top: AppSpace.x1),
+                                padding: const EdgeInsets.only(
+                                  top: AppSpace.x1,
+                                ),
                                 child: Text(
                                   '${_lat!.toStringAsFixed(5)}, '
                                   '${_lng!.toStringAsFixed(5)}',

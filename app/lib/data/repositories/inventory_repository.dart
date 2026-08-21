@@ -16,22 +16,23 @@ class InventoryRepository {
   final Outbox _outbox;
 
   Stream<List<InventoryItem>> watchAll() =>
-      (_db.select(_db.inventoryRows)..orderBy([(t) => OrderingTerm.asc(t.name)]))
-          .watch()
-          .map((rows) =>
-              rows.map((r) => _decode(r.payload)).toList(growable: false));
+      (_db.select(
+        _db.inventoryRows,
+      )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch().map(
+        (rows) => rows.map((r) => _decode(r.payload)).toList(growable: false),
+      );
 
   Future<List<InventoryItem>> all() async {
-    final rows = await (_db.select(_db.inventoryRows)
-          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
-        .get();
+    final rows = await (_db.select(
+      _db.inventoryRows,
+    )..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
     return rows.map((r) => _decode(r.payload)).toList(growable: false);
   }
 
   Future<InventoryItem?> byId(String id) async {
-    final row =
-        await (_db.select(_db.inventoryRows)..where((t) => t.id.equals(id)))
-            .getSingleOrNull();
+    final row = await (_db.select(
+      _db.inventoryRows,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     return row == null ? null : _decode(row.payload);
   }
 
@@ -89,7 +90,9 @@ class InventoryRepository {
         final updated = match.copyWith(stock: match.stock - 1, updatedAt: ts);
         await _persist(updated, SyncOp.update);
       }
-      await _db.into(_db.supplyLogRows).insertOnConflictUpdate(
+      await _db
+          .into(_db.supplyLogRows)
+          .insertOnConflictUpdate(
             SupplyLogRowsCompanion.insert(
               id: _uuid.v4(),
               payload: jsonEncode(
@@ -112,10 +115,15 @@ class InventoryRepository {
             ..orderBy([(t) => OrderingTerm.desc(t.at)])
             ..limit(limit))
           .watch()
-          .map((rows) => rows
-              .map((r) => SupplyUsageLog.fromJson(
-                  jsonDecode(r.payload) as Map<String, dynamic>))
-              .toList(growable: false));
+          .map(
+            (rows) => rows
+                .map(
+                  (r) => SupplyUsageLog.fromJson(
+                    jsonDecode(r.payload) as Map<String, dynamic>,
+                  ),
+                )
+                .toList(growable: false),
+          );
 
   Future<void> replaceAll(List<InventoryItem> items) async {
     await _db.transaction(() async {
@@ -128,8 +136,9 @@ class InventoryRepository {
 
   Future<bool> get isEmpty async {
     final count = _db.inventoryRows.id.count();
-    final row =
-        await (_db.selectOnly(_db.inventoryRows)..addColumns([count])).getSingle();
+    final row = await (_db.selectOnly(
+      _db.inventoryRows,
+    )..addColumns([count])).getSingle();
     return (row.read(count) ?? 0) == 0;
   }
 
@@ -164,19 +173,20 @@ class InventoryRepository {
     );
   }
 
-  Future<void> _write(InventoryItem i, {required bool dirty}) =>
-      _db.into(_db.inventoryRows).insertOnConflictUpdate(
-            InventoryRowsCompanion.insert(
-              id: i.id,
-              payload: jsonEncode(i.toJson()),
-              name: i.name,
-              category: i.category.label,
-              stock: i.stock,
-              minLevel: i.min,
-              updatedAt: i.updatedAt ?? DateTime.now(),
-              dirty: Value(dirty),
-            ),
-          );
+  Future<void> _write(InventoryItem i, {required bool dirty}) => _db
+      .into(_db.inventoryRows)
+      .insertOnConflictUpdate(
+        InventoryRowsCompanion.insert(
+          id: i.id,
+          payload: jsonEncode(i.toJson()),
+          name: i.name,
+          category: i.category.label,
+          stock: i.stock,
+          minLevel: i.min,
+          updatedAt: i.updatedAt ?? DateTime.now(),
+          dirty: Value(dirty),
+        ),
+      );
 
   InventoryItem _decode(String payload) =>
       InventoryItem.fromJson(jsonDecode(payload) as Map<String, dynamic>);

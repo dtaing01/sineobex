@@ -4,7 +4,6 @@ import 'package:drift/drift.dart';
 
 import 'connection/connection.dart';
 
-
 part 'database.g.dart';
 
 /// Records are stored as typed columns for anything queried or sorted, and as
@@ -143,14 +142,15 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 1;
 
-  Future<void> putKeyValue(String key, Object? value) =>
-      into(keyValueRows).insertOnConflictUpdate(
+  Future<void> putKeyValue(String key, Object? value) => into(keyValueRows)
+      .insertOnConflictUpdate(
         KeyValueRowsCompanion.insert(key: key, value: jsonEncode(value)),
       );
 
   Future<T?> getKeyValue<T>(String key) async {
-    final row = await (select(keyValueRows)..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (select(
+      keyValueRows,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     if (row == null) return null;
     return jsonDecode(row.value) as T?;
   }
@@ -158,10 +158,10 @@ class AppDatabase extends _$AppDatabase {
   /// Removes every row holding PHI. Called on sign-out and after repeated
   /// failed unlock attempts.
   Future<void> wipePhi() => transaction(() async {
-        await delete(patientRows).go();
-        await delete(encounterRows).go();
-        await delete(supplyLogRows).go();
-        await delete(outboxRows).go();
-        await delete(auditRows).go();
-      });
+    await delete(patientRows).go();
+    await delete(encounterRows).go();
+    await delete(supplyLogRows).go();
+    await delete(outboxRows).go();
+    await delete(auditRows).go();
+  });
 }

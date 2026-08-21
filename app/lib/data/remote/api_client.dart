@@ -26,7 +26,7 @@ class ApiException implements Exception {
 /// because those land in access logs.
 class ApiClient {
   ApiClient({Dio? dio, TokenProvider? tokenProvider})
-      : _dio = dio ?? _build(tokenProvider);
+    : _dio = dio ?? _build(tokenProvider);
 
   final Dio _dio;
 
@@ -56,12 +56,15 @@ class ApiClient {
   }) async {
     if (!isConfigured) return;
     try {
-      await _dio.post<dynamic>('/sync/mutations', data: {
-        'entity': entity,
-        'entityId': entityId,
-        'op': op,
-        'payload': payload,
-      });
+      await _dio.post<dynamic>(
+        '/sync/mutations',
+        data: {
+          'entity': entity,
+          'entityId': entityId,
+          'op': op,
+          'payload': payload,
+        },
+      );
     } on DioException catch (e) {
       throw ApiException(
         e.message ?? 'Request failed',

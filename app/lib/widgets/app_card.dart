@@ -98,12 +98,7 @@ class _AppCardState extends State<AppCard> {
 /// A left-aligned uppercase section heading with wide tracking, optionally
 /// prefixed by an icon — the prototype's most repeated element.
 class SectionHeader extends StatelessWidget {
-  const SectionHeader(
-    this.label, {
-    super.key,
-    this.icon,
-    this.trailing,
-  });
+  const SectionHeader(this.label, {super.key, this.icon, this.trailing});
 
   final String label;
   final IconData? icon;
@@ -137,7 +132,10 @@ class SectionHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
-      children: [Flexible(child: heading), trailing!],
+      children: [
+        Flexible(child: heading),
+        trailing!,
+      ],
     );
   }
 }
@@ -151,12 +149,12 @@ class FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          fontSize: AppText.micro,
-          fontWeight: AppText.bold,
-          color: color,
-          letterSpacing: 0.4,
-        ),
-      );
+    text.toUpperCase(),
+    style: TextStyle(
+      fontSize: AppText.micro,
+      fontWeight: AppText.bold,
+      color: color,
+      letterSpacing: 0.4,
+    ),
+  );
 }

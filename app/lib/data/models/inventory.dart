@@ -58,42 +58,41 @@ class InventoryItem {
     String? orderedBy,
     bool clearOrder = false,
     DateTime? updatedAt,
-  }) =>
-      InventoryItem(
-        id: id,
-        name: name ?? this.name,
-        stock: stock ?? this.stock,
-        min: min ?? this.min,
-        unit: unit ?? this.unit,
-        category: category ?? this.category,
-        orderedAt: clearOrder ? null : (orderedAt ?? this.orderedAt),
-        orderedBy: clearOrder ? null : (orderedBy ?? this.orderedBy),
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => InventoryItem(
+    id: id,
+    name: name ?? this.name,
+    stock: stock ?? this.stock,
+    min: min ?? this.min,
+    unit: unit ?? this.unit,
+    category: category ?? this.category,
+    orderedAt: clearOrder ? null : (orderedAt ?? this.orderedAt),
+    orderedBy: clearOrder ? null : (orderedBy ?? this.orderedBy),
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'stock': stock,
-        'min': min,
-        'unit': unit,
-        'category': category.label,
-        'orderedAt': orderedAt?.toIso8601String(),
-        'orderedBy': orderedBy,
-        'updatedAt': updatedAt?.toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'stock': stock,
+    'min': min,
+    'unit': unit,
+    'category': category.label,
+    'orderedAt': orderedAt?.toIso8601String(),
+    'orderedBy': orderedBy,
+    'updatedAt': updatedAt?.toIso8601String(),
+  };
 
   factory InventoryItem.fromJson(Map<String, dynamic> j) => InventoryItem(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        stock: (j['stock'] as num).toInt(),
-        min: (j['min'] as num).toInt(),
-        unit: j['unit'] as String,
-        category: SupplyCategory.fromLabel(j['category'] as String?),
-        orderedAt: Fmt.tryParseIso(j['orderedAt'] as String?),
-        orderedBy: j['orderedBy'] as String?,
-        updatedAt: Fmt.tryParseIso(j['updatedAt'] as String?),
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    stock: (j['stock'] as num).toInt(),
+    min: (j['min'] as num).toInt(),
+    unit: j['unit'] as String,
+    category: SupplyCategory.fromLabel(j['category'] as String?),
+    orderedAt: Fmt.tryParseIso(j['orderedAt'] as String?),
+    orderedBy: j['orderedBy'] as String?,
+    updatedAt: Fmt.tryParseIso(j['updatedAt'] as String?),
+  );
 }
 
 /// One line of the Field Usage Log. In the prototype this was three hardcoded
@@ -126,18 +125,18 @@ class SupplyUsageLog {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'item': item,
-        'quantityLabel': quantityLabel,
-        'location': location,
-        'at': at.toIso8601String(),
-      };
+    'id': id,
+    'item': item,
+    'quantityLabel': quantityLabel,
+    'location': location,
+    'at': at.toIso8601String(),
+  };
 
   factory SupplyUsageLog.fromJson(Map<String, dynamic> j) => SupplyUsageLog(
-        id: j['id'] as String,
-        item: j['item'] as String,
-        quantityLabel: j['quantityLabel'] as String,
-        location: j['location'] as String,
-        at: DateTime.parse(j['at'] as String),
-      );
+    id: j['id'] as String,
+    item: j['item'] as String,
+    quantityLabel: j['quantityLabel'] as String,
+    location: j['location'] as String,
+    at: DateTime.parse(j['at'] as String),
+  );
 }

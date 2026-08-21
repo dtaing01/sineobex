@@ -38,9 +38,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     try {
       final supported = await _auth.isDeviceSupported();
       if (!supported) {
-        setState(() => _error =
-            'This device has no screen lock configured. Set one up to '
-            'protect patient data.');
+        setState(
+          () => _error =
+              'This device has no screen lock configured. Set one up to '
+              'protect patient data.',
+        );
         return;
       }
 

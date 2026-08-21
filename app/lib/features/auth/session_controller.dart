@@ -55,7 +55,7 @@ class Session {
 /// but the sign-in screen states plainly that authentication is not enforced.
 class SessionController extends StateNotifier<Session> {
   SessionController(this._ref)
-      : super(const Session(state: SessionState.restoring)) {
+    : super(const Session(state: SessionState.restoring)) {
     unawaited(_restore());
   }
 
@@ -79,9 +79,9 @@ class SessionController extends StateNotifier<Session> {
       AppConfig.cognitoClientId.isNotEmpty;
 
   CognitoUserPool get _userPool => _pool ??= CognitoUserPool(
-        AppConfig.cognitoUserPoolId,
-        AppConfig.cognitoClientId,
-      );
+    AppConfig.cognitoUserPoolId,
+    AppConfig.cognitoClientId,
+  );
 
   Future<void> _restore() async {
     if (!isConfigured) {
@@ -182,8 +182,9 @@ class SessionController extends StateNotifier<Session> {
       return session.getAccessToken().getJwtToken();
     }
     try {
-      final refreshed =
-          await _cognitoUser?.refreshSession(session.getRefreshToken()!);
+      final refreshed = await _cognitoUser?.refreshSession(
+        session.getRefreshToken()!,
+      );
       if (refreshed == null) return null;
       _cognitoSession = refreshed;
       return refreshed.getAccessToken().getJwtToken();
@@ -205,11 +206,9 @@ class SessionController extends StateNotifier<Session> {
     if (state.state != SessionState.locked) return;
     final user = state.user;
     if (user != null) {
-      _ref.read(auditLogProvider).record(
-            AuditAction.unlock,
-            entity: 'session',
-            entityId: user.id,
-          );
+      _ref
+          .read(auditLogProvider)
+          .record(AuditAction.unlock, entity: 'session', entityId: user.id);
     }
     state = state.copyWith(state: SessionState.active);
     _resetInactivityTimer();
@@ -235,11 +234,9 @@ class SessionController extends StateNotifier<Session> {
 
     final user = state.user;
     if (user != null) {
-      await _ref.read(auditLogProvider).record(
-            AuditAction.signOut,
-            entity: 'session',
-            entityId: user.id,
-          );
+      await _ref
+          .read(auditLogProvider)
+          .record(AuditAction.signOut, entity: 'session', entityId: user.id);
     }
 
     try {
@@ -267,8 +264,8 @@ class SessionController extends StateNotifier<Session> {
     final access = groups.contains('full-admin')
         ? AccessTier.fullAdmin
         : groups.contains('standard')
-            ? AccessTier.standard
-            : AccessTier.viewOnly;
+        ? AccessTier.standard
+        : AccessTier.viewOnly;
 
     return AppUser(
       id: claims['sub'] as String? ?? 'unknown',
@@ -289,6 +286,4 @@ class SessionController extends StateNotifier<Session> {
 }
 
 final sessionControllerProvider =
-    StateNotifierProvider<SessionController, Session>(
-  SessionController.new,
-);
+    StateNotifierProvider<SessionController, Session>(SessionController.new);

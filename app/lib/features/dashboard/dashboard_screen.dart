@@ -231,16 +231,28 @@ class _ModuleShortcuts extends StatelessWidget {
 
     return Row(
       children: [
-        tile(LucideIcons.map, AppColors.blue500, 'Map',
-            () => context.go(AppRoutes.map)),
+        tile(
+          LucideIcons.map,
+          AppColors.blue500,
+          'Map',
+          () => context.go(AppRoutes.map),
+        ),
         const SizedBox(width: AppSpace.x2),
-        tile(LucideIcons.chartColumn, AppColors.purple500, 'Insights',
-            () => context.go(AppRoutes.insights)),
+        tile(
+          LucideIcons.chartColumn,
+          AppColors.purple500,
+          'Insights',
+          () => context.go(AppRoutes.insights),
+        ),
         const SizedBox(width: AppSpace.x2),
         // The prototype labelled this "Alerts" but routed to the patient list.
         // It now opens the follow-up alerts screen it always named.
-        tile(LucideIcons.calendar, AppColors.green500, 'Alerts',
-            () => context.push(AppRoutes.followUps)),
+        tile(
+          LucideIcons.calendar,
+          AppColors.green500,
+          'Alerts',
+          () => context.push(AppRoutes.followUps),
+        ),
       ],
     );
   }
@@ -676,10 +688,7 @@ class _PendingFollowUps extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: AppSpace.x2),
-                      const AppBadge(
-                        'Routine',
-                        fontSize: AppText.xxs,
-                      ),
+                      const AppBadge('Routine', fontSize: AppText.xxs),
                     ],
                   ),
                 ),

@@ -30,15 +30,15 @@ class ProgressBar extends StatelessWidget {
     final clamped = value.clamp(0.0, 1.0);
 
     Widget fill(double fraction) => FractionallySizedBox(
-          alignment: Alignment.centerLeft,
-          widthFactor: fraction,
-          child: Container(
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(height),
-            ),
-          ),
-        );
+      alignment: Alignment.centerLeft,
+      widthFactor: fraction,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(height),
+        ),
+      ),
+    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(height),

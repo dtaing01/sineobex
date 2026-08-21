@@ -49,7 +49,8 @@ class AppButton extends StatelessWidget {
       AppButtonSize.lg => 48.0,
       AppButtonSize.xl => 56.0,
     };
-    final textSize = fontSize ??
+    final textSize =
+        fontSize ??
         switch (size) {
           AppButtonSize.sm => AppText.micro,
           AppButtonSize.md => AppText.xs,
@@ -116,7 +117,9 @@ class AppButton extends StatelessWidget {
 
     return Opacity(
       opacity: onPressed == null ? 0.5 : 1,
-      child: expanded ? SizedBox(width: double.infinity, child: button) : button,
+      child: expanded
+          ? SizedBox(width: double.infinity, child: button)
+          : button,
     );
   }
 
@@ -130,30 +133,30 @@ class AppButton extends StatelessWidget {
     }
     return switch (variant) {
       AppButtonVariant.primary => (
-          AppColors.blue600,
-          AppColors.white,
-          borderColor,
-        ),
+        AppColors.blue600,
+        AppColors.white,
+        borderColor,
+      ),
       AppButtonVariant.outline => (
-          AppColors.white,
-          AppColors.slate700,
-          borderColor ?? AppColors.slate200,
-        ),
+        AppColors.white,
+        AppColors.slate700,
+        borderColor ?? AppColors.slate200,
+      ),
       AppButtonVariant.ghost => (
-          AppColors.transparent,
-          AppColors.slate600,
-          null,
-        ),
+        AppColors.transparent,
+        AppColors.slate600,
+        null,
+      ),
       AppButtonVariant.secondary => (
-          AppColors.slate100,
-          AppColors.slate900,
-          borderColor,
-        ),
+        AppColors.slate100,
+        AppColors.slate900,
+        borderColor,
+      ),
       AppButtonVariant.white => (
-          AppColors.white,
-          AppColors.slate900,
-          borderColor ?? AppColors.slate200,
-        ),
+        AppColors.white,
+        AppColors.slate900,
+        borderColor ?? AppColors.slate200,
+      ),
     };
   }
 }

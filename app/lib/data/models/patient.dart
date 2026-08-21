@@ -29,20 +29,20 @@ class CommonLocation {
   String get time => Fmt.time12(observedAt);
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'lat': lat,
-        'lng': lng,
-        'observedAt': observedAt.toIso8601String(),
-        'verified': verified,
-      };
+    'name': name,
+    'lat': lat,
+    'lng': lng,
+    'observedAt': observedAt.toIso8601String(),
+    'verified': verified,
+  };
 
   factory CommonLocation.fromJson(Map<String, dynamic> j) => CommonLocation(
-        name: j['name'] as String,
-        lat: (j['lat'] as num).toDouble(),
-        lng: (j['lng'] as num).toDouble(),
-        observedAt: DateTime.parse(j['observedAt'] as String),
-        verified: j['verified'] as bool? ?? true,
-      );
+    name: j['name'] as String,
+    lat: (j['lat'] as num).toDouble(),
+    lng: (j['lng'] as num).toDouble(),
+    observedAt: DateTime.parse(j['observedAt'] as String),
+    verified: j['verified'] as bool? ?? true,
+  );
 
   CommonLocation copyWith({
     String? name,
@@ -50,14 +50,13 @@ class CommonLocation {
     double? lng,
     DateTime? observedAt,
     bool? verified,
-  }) =>
-      CommonLocation(
-        name: name ?? this.name,
-        lat: lat ?? this.lat,
-        lng: lng ?? this.lng,
-        observedAt: observedAt ?? this.observedAt,
-        verified: verified ?? this.verified,
-      );
+  }) => CommonLocation(
+    name: name ?? this.name,
+    lat: lat ?? this.lat,
+    lng: lng ?? this.lng,
+    observedAt: observedAt ?? this.observedAt,
+    verified: verified ?? this.verified,
+  );
 }
 
 /// A documented field encounter. Append-only: an encounter is never
@@ -97,40 +96,41 @@ class Encounter {
   final double? lat;
   final double? lng;
 
-  LatLng? get position => (lat == null || lng == null) ? null : LatLng(lat!, lng!);
+  LatLng? get position =>
+      (lat == null || lng == null) ? null : LatLng(lat!, lng!);
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'patientId': patientId,
-        'date': date.toIso8601String(),
-        'provider': provider,
-        'needs': needs,
-        'encounterLoc': encounterLoc,
-        'notes': notes,
-        'supplies': supplies,
-        'followUpSet': followUpSet,
-        'followUpDate': followUpDate?.toIso8601String(),
-        'followUpLoc': followUpLoc,
-        'lat': lat,
-        'lng': lng,
-      };
+    'id': id,
+    'patientId': patientId,
+    'date': date.toIso8601String(),
+    'provider': provider,
+    'needs': needs,
+    'encounterLoc': encounterLoc,
+    'notes': notes,
+    'supplies': supplies,
+    'followUpSet': followUpSet,
+    'followUpDate': followUpDate?.toIso8601String(),
+    'followUpLoc': followUpLoc,
+    'lat': lat,
+    'lng': lng,
+  };
 
   factory Encounter.fromJson(Map<String, dynamic> j) => Encounter(
-        id: j['id'] as String,
-        patientId: j['patientId'] as String,
-        date: DateTime.parse(j['date'] as String),
-        provider: j['provider'] as String,
-        needs: j['needs'] as String? ?? '',
-        encounterLoc: j['encounterLoc'] as String? ?? 'Field Location',
-        notes: j['notes'] as String? ?? '',
-        supplies:
-            (j['supplies'] as List?)?.map((e) => e as String).toList() ?? const [],
-        followUpSet: j['followUpSet'] as bool? ?? false,
-        followUpDate: Fmt.tryParseIso(j['followUpDate'] as String?),
-        followUpLoc: j['followUpLoc'] as String?,
-        lat: (j['lat'] as num?)?.toDouble(),
-        lng: (j['lng'] as num?)?.toDouble(),
-      );
+    id: j['id'] as String,
+    patientId: j['patientId'] as String,
+    date: DateTime.parse(j['date'] as String),
+    provider: j['provider'] as String,
+    needs: j['needs'] as String? ?? '',
+    encounterLoc: j['encounterLoc'] as String? ?? 'Field Location',
+    notes: j['notes'] as String? ?? '',
+    supplies:
+        (j['supplies'] as List?)?.map((e) => e as String).toList() ?? const [],
+    followUpSet: j['followUpSet'] as bool? ?? false,
+    followUpDate: Fmt.tryParseIso(j['followUpDate'] as String?),
+    followUpLoc: j['followUpLoc'] as String?,
+    lat: (j['lat'] as num?)?.toDouble(),
+    lng: (j['lng'] as num?)?.toDouble(),
+  );
 }
 
 class Patient {
@@ -215,81 +215,84 @@ class Patient {
     String? memberId,
     String? primaryDoctor,
     DateTime? updatedAt,
-  }) =>
-      Patient(
-        id: id,
-        firstName: firstName ?? this.firstName,
-        lastName: lastName ?? this.lastName,
-        dob: dob ?? this.dob,
-        risk: risk ?? this.risk,
-        loc: loc ?? this.loc,
-        lat: lat ?? this.lat,
-        lng: lng ?? this.lng,
-        tags: tags ?? this.tags,
-        flags: flags ?? this.flags,
-        followUp: followUp ?? this.followUp,
-        nextFollowUp:
-            clearNextFollowUp ? null : (nextFollowUp ?? this.nextFollowUp),
-        commonLocations: commonLocations ?? this.commonLocations,
-        history: history ?? this.history,
-        phone: phone ?? this.phone,
-        insuranceName: insuranceName ?? this.insuranceName,
-        memberId: memberId ?? this.memberId,
-        primaryDoctor: primaryDoctor ?? this.primaryDoctor,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => Patient(
+    id: id,
+    firstName: firstName ?? this.firstName,
+    lastName: lastName ?? this.lastName,
+    dob: dob ?? this.dob,
+    risk: risk ?? this.risk,
+    loc: loc ?? this.loc,
+    lat: lat ?? this.lat,
+    lng: lng ?? this.lng,
+    tags: tags ?? this.tags,
+    flags: flags ?? this.flags,
+    followUp: followUp ?? this.followUp,
+    nextFollowUp: clearNextFollowUp
+        ? null
+        : (nextFollowUp ?? this.nextFollowUp),
+    commonLocations: commonLocations ?? this.commonLocations,
+    history: history ?? this.history,
+    phone: phone ?? this.phone,
+    insuranceName: insuranceName ?? this.insuranceName,
+    memberId: memberId ?? this.memberId,
+    primaryDoctor: primaryDoctor ?? this.primaryDoctor,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'firstName': firstName,
-        'lastName': lastName,
-        'dob': Fmt.isoDate(dob),
-        'risk': risk.label,
-        'loc': loc,
-        'lat': lat,
-        'lng': lng,
-        'tags': tags,
-        'flags': flags.map((f) => f.label).toList(),
-        'followUp': followUp,
-        'nextFollowUp': nextFollowUp == null ? null : Fmt.isoDate(nextFollowUp!),
-        'commonLocations': commonLocations.map((c) => c.toJson()).toList(),
-        'history': history.map((h) => h.toJson()).toList(),
-        'phone': phone,
-        'insuranceName': insuranceName,
-        'memberId': memberId,
-        'primaryDoctor': primaryDoctor,
-        'updatedAt': updatedAt?.toIso8601String(),
-      };
+    'id': id,
+    'firstName': firstName,
+    'lastName': lastName,
+    'dob': Fmt.isoDate(dob),
+    'risk': risk.label,
+    'loc': loc,
+    'lat': lat,
+    'lng': lng,
+    'tags': tags,
+    'flags': flags.map((f) => f.label).toList(),
+    'followUp': followUp,
+    'nextFollowUp': nextFollowUp == null ? null : Fmt.isoDate(nextFollowUp!),
+    'commonLocations': commonLocations.map((c) => c.toJson()).toList(),
+    'history': history.map((h) => h.toJson()).toList(),
+    'phone': phone,
+    'insuranceName': insuranceName,
+    'memberId': memberId,
+    'primaryDoctor': primaryDoctor,
+    'updatedAt': updatedAt?.toIso8601String(),
+  };
 
   factory Patient.fromJson(Map<String, dynamic> j) => Patient(
-        id: j['id'] as String,
-        firstName: j['firstName'] as String,
-        lastName: j['lastName'] as String,
-        dob: DateTime.parse(j['dob'] as String),
-        risk: RiskLevel.fromLabel(j['risk'] as String?),
-        loc: j['loc'] as String? ?? '',
-        lat: (j['lat'] as num).toDouble(),
-        lng: (j['lng'] as num).toDouble(),
-        tags: (j['tags'] as List?)?.map((e) => e as String).toList() ?? const [],
-        flags: (j['flags'] as List?)
-                ?.map((e) => PatientFlag.fromLabel(e as String))
-                .whereType<PatientFlag>()
-                .toList() ??
-            const [],
-        followUp: j['followUp'] as bool? ?? false,
-        nextFollowUp: Fmt.tryParseIso(j['nextFollowUp'] as String?),
-        commonLocations: (j['commonLocations'] as List?)
-                ?.map((e) => CommonLocation.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
-        history: (j['history'] as List?)
-                ?.map((e) => Encounter.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
-        phone: j['phone'] as String?,
-        insuranceName: j['insuranceName'] as String?,
-        memberId: j['memberId'] as String?,
-        primaryDoctor: j['primaryDoctor'] as String?,
-        updatedAt: Fmt.tryParseIso(j['updatedAt'] as String?),
-      );
+    id: j['id'] as String,
+    firstName: j['firstName'] as String,
+    lastName: j['lastName'] as String,
+    dob: DateTime.parse(j['dob'] as String),
+    risk: RiskLevel.fromLabel(j['risk'] as String?),
+    loc: j['loc'] as String? ?? '',
+    lat: (j['lat'] as num).toDouble(),
+    lng: (j['lng'] as num).toDouble(),
+    tags: (j['tags'] as List?)?.map((e) => e as String).toList() ?? const [],
+    flags:
+        (j['flags'] as List?)
+            ?.map((e) => PatientFlag.fromLabel(e as String))
+            .whereType<PatientFlag>()
+            .toList() ??
+        const [],
+    followUp: j['followUp'] as bool? ?? false,
+    nextFollowUp: Fmt.tryParseIso(j['nextFollowUp'] as String?),
+    commonLocations:
+        (j['commonLocations'] as List?)
+            ?.map((e) => CommonLocation.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    history:
+        (j['history'] as List?)
+            ?.map((e) => Encounter.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    phone: j['phone'] as String?,
+    insuranceName: j['insuranceName'] as String?,
+    memberId: j['memberId'] as String?,
+    primaryDoctor: j['primaryDoctor'] as String?,
+    updatedAt: Fmt.tryParseIso(j['updatedAt'] as String?),
+  );
 }

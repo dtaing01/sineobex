@@ -4767,12 +4767,11 @@ class $$KeyValueRowsTableTableManager
               $$KeyValueRowsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$KeyValueRowsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> key = const Value.absent(),
-                Value<String> value = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => KeyValueRowsCompanion(key: key, value: value, rowid: rowid),
+          updateCompanionCallback: ({
+            Value<String> key = const Value.absent(),
+            Value<String> value = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) => KeyValueRowsCompanion(key: key, value: value, rowid: rowid),
           createCompanionCallback:
               ({
                 required String key,
@@ -4808,28 +4807,26 @@ typedef $$KeyValueRowsTableProcessedTableManager =
       KeyValueRow,
       PrefetchHooks Function()
     >;
-typedef $$OutboxRowsTableCreateCompanionBuilder =
-    OutboxRowsCompanion Function({
-      Value<int> seq,
-      required String entity,
-      required String entityId,
-      required String op,
-      required String payload,
-      required DateTime queuedAt,
-      Value<int> attempts,
-      Value<String?> lastError,
-    });
-typedef $$OutboxRowsTableUpdateCompanionBuilder =
-    OutboxRowsCompanion Function({
-      Value<int> seq,
-      Value<String> entity,
-      Value<String> entityId,
-      Value<String> op,
-      Value<String> payload,
-      Value<DateTime> queuedAt,
-      Value<int> attempts,
-      Value<String?> lastError,
-    });
+typedef $$OutboxRowsTableCreateCompanionBuilder = OutboxRowsCompanion Function({
+  Value<int> seq,
+  required String entity,
+  required String entityId,
+  required String op,
+  required String payload,
+  required DateTime queuedAt,
+  Value<int> attempts,
+  Value<String?> lastError,
+});
+typedef $$OutboxRowsTableUpdateCompanionBuilder = OutboxRowsCompanion Function({
+  Value<int> seq,
+  Value<String> entity,
+  Value<String> entityId,
+  Value<String> op,
+  Value<String> payload,
+  Value<DateTime> queuedAt,
+  Value<int> attempts,
+  Value<String?> lastError,
+});
 
 class $$OutboxRowsTableFilterComposer
     extends Composer<_$AppDatabase, $OutboxRowsTable> {
@@ -5056,26 +5053,24 @@ typedef $$OutboxRowsTableProcessedTableManager =
       OutboxRow,
       PrefetchHooks Function()
     >;
-typedef $$AuditRowsTableCreateCompanionBuilder =
-    AuditRowsCompanion Function({
-      Value<int> seq,
-      required String actor,
-      required String action,
-      required String entity,
-      required String entityId,
-      required DateTime at,
-      Value<bool> synced,
-    });
-typedef $$AuditRowsTableUpdateCompanionBuilder =
-    AuditRowsCompanion Function({
-      Value<int> seq,
-      Value<String> actor,
-      Value<String> action,
-      Value<String> entity,
-      Value<String> entityId,
-      Value<DateTime> at,
-      Value<bool> synced,
-    });
+typedef $$AuditRowsTableCreateCompanionBuilder = AuditRowsCompanion Function({
+  Value<int> seq,
+  required String actor,
+  required String action,
+  required String entity,
+  required String entityId,
+  required DateTime at,
+  Value<bool> synced,
+});
+typedef $$AuditRowsTableUpdateCompanionBuilder = AuditRowsCompanion Function({
+  Value<int> seq,
+  Value<String> actor,
+  Value<String> action,
+  Value<String> entity,
+  Value<String> entityId,
+  Value<DateTime> at,
+  Value<bool> synced,
+});
 
 class $$AuditRowsTableFilterComposer
     extends Composer<_$AppDatabase, $AuditRowsTable> {

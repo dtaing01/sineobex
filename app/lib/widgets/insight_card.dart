@@ -27,11 +27,11 @@ class InsightCard extends StatelessWidget {
     required this.title,
     required this.body,
     required this.icon,
-  })  : accent = AppColors.blue600,
-        background = AppColors.blue50,
-        borderColor = AppColors.blue100,
-        titleColor = AppColors.blue900,
-        bodyColor = AppColors.blue700;
+  }) : accent = AppColors.blue600,
+       background = AppColors.blue50,
+       borderColor = AppColors.blue100,
+       titleColor = AppColors.blue900,
+       bodyColor = AppColors.blue700;
 
   /// Green — resource insight.
   const InsightCard.green({
@@ -39,11 +39,11 @@ class InsightCard extends StatelessWidget {
     required this.title,
     required this.body,
     required this.icon,
-  })  : accent = AppColors.green600,
-        background = AppColors.green50,
-        borderColor = AppColors.green100,
-        titleColor = AppColors.green900,
-        bodyColor = AppColors.green700;
+  }) : accent = AppColors.green600,
+       background = AppColors.green50,
+       borderColor = AppColors.green100,
+       titleColor = AppColors.green900,
+       bodyColor = AppColors.green700;
 
   /// Orange — strategic insight.
   const InsightCard.orange({
@@ -51,11 +51,11 @@ class InsightCard extends StatelessWidget {
     required this.title,
     required this.body,
     required this.icon,
-  })  : accent = AppColors.orange600,
-        background = AppColors.orange50,
-        borderColor = AppColors.orange100,
-        titleColor = AppColors.orange900,
-        bodyColor = AppColors.orange700;
+  }) : accent = AppColors.orange600,
+       background = AppColors.orange50,
+       borderColor = AppColors.orange100,
+       titleColor = AppColors.orange900,
+       bodyColor = AppColors.orange700;
 
   /// Purple — inventory insight.
   const InsightCard.purple({
@@ -63,11 +63,11 @@ class InsightCard extends StatelessWidget {
     required this.title,
     required this.body,
     required this.icon,
-  })  : accent = AppColors.purple600,
-        background = AppColors.purple50,
-        borderColor = AppColors.purple100,
-        titleColor = AppColors.purple900,
-        bodyColor = AppColors.purple700;
+  }) : accent = AppColors.purple600,
+       background = AppColors.purple50,
+       borderColor = AppColors.purple100,
+       titleColor = AppColors.purple900,
+       bodyColor = AppColors.purple700;
 
   final String title;
   final String body;
@@ -141,10 +141,12 @@ class InsightCard extends StatelessWidget {
       if (match.start > cursor) {
         spans.add(TextSpan(text: source.substring(cursor, match.start)));
       }
-      spans.add(TextSpan(
-        text: match.group(1),
-        style: const TextStyle(fontWeight: AppText.bold),
-      ));
+      spans.add(
+        TextSpan(
+          text: match.group(1),
+          style: const TextStyle(fontWeight: AppText.bold),
+        ),
+      );
       cursor = match.end;
     }
 

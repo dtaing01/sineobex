@@ -23,11 +23,13 @@ final databaseProvider = Provider<AppDatabase>(
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
-final outboxProvider =
-    Provider<Outbox>((ref) => Outbox(ref.watch(databaseProvider)));
+final outboxProvider = Provider<Outbox>(
+  (ref) => Outbox(ref.watch(databaseProvider)),
+);
 
-final auditLogProvider =
-    Provider<AuditLog>((ref) => AuditLog(ref.watch(databaseProvider)));
+final auditLogProvider = Provider<AuditLog>(
+  (ref) => AuditLog(ref.watch(databaseProvider)),
+);
 
 final syncServiceProvider = Provider<SyncService>((ref) {
   final service = SyncService(
@@ -117,13 +119,11 @@ final teamMembersProvider = FutureProvider<List<TeamMember>>(
   (ref) => ref.watch(teamRepositoryProvider).members(),
 );
 
-final insightsProvider = FutureProvider<InsightsBundle>(
-  (ref) {
-    // Recompute whenever the encounter record changes.
-    ref.watch(patientsProvider);
-    return ref.watch(insightsRepositoryProvider).load();
-  },
-);
+final insightsProvider = FutureProvider<InsightsBundle>((ref) {
+  // Recompute whenever the encounter record changes.
+  ref.watch(patientsProvider);
+  return ref.watch(insightsRepositoryProvider).load();
+});
 
 /// Signed-in user. Replaced by the Cognito ID token claims once a backend is
 /// configured; falls back to the demo identity otherwise.
@@ -146,9 +146,7 @@ final highRiskPatientsProvider = Provider<List<Patient>>((ref) {
 /// Urgent Attention section above it.
 final routineFollowUpsProvider = Provider<List<Patient>>((ref) {
   final patients = ref.watch(patientsProvider).valueOrNull ?? const [];
-  return patients
-      .where((p) => p.followUp && p.risk != RiskLevel.high)
-      .toList();
+  return patients.where((p) => p.followUp && p.risk != RiskLevel.high).toList();
 });
 
 /// Every patient flagged for follow-up, high-risk included.

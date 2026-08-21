@@ -57,8 +57,11 @@ void main() {
 
   group('order lifecycle', () {
     test('markOrdered stamps the time and the actor', () async {
-      await repo.markOrdered('s1', 'Sarah Chen, RN',
-          now: DateTime(2026, 4, 11, 9));
+      await repo.markOrdered(
+        's1',
+        'Sarah Chen, RN',
+        now: DateTime(2026, 4, 11, 9),
+      );
 
       final item = await repo.byId('s1');
       expect(item!.isOnOrder, isTrue);
@@ -76,13 +79,15 @@ void main() {
       expect(item.orderedBy, isNull);
     });
 
-    test('markReceived without a quantity keeps the prototype default',
-        () async {
-      // The prototype set stock = max(stock, min + 10) with no input (D7).
-      await repo.markOrdered('s1', 'RN');
-      await repo.markReceived('s1');
-      expect((await repo.byId('s1'))!.stock, 30);
-    });
+    test(
+      'markReceived without a quantity keeps the prototype default',
+      () async {
+        // The prototype set stock = max(stock, min + 10) with no input (D7).
+        await repo.markOrdered('s1', 'RN');
+        await repo.markReceived('s1');
+        expect((await repo.byId('s1'))!.stock, 30);
+      },
+    );
 
     test('markReceived never lowers stock in the default case', () async {
       await repo.markReceived('s3');

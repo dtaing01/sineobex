@@ -4,7 +4,7 @@ import 'package:drift/drift.dart';
 /// Flutter targets where this is reached; it exists so the conditional import
 /// has a default.
 QueryExecutor openConnection() => throw UnsupportedError(
-      'No database implementation is available for this platform.',
-    );
+  'No database implementation is available for this platform.',
+);
 
 bool get supportsOfflinePhi => false;

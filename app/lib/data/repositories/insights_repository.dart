@@ -37,15 +37,16 @@ class InsightsRepository {
 
     final monthly = _monthlyImpact(patients, encounters, ts);
     final current = monthly.isEmpty ? null : monthly.last;
-    final previous =
-        monthly.length >= 2 ? monthly[monthly.length - 2] : null;
+    final previous = monthly.length >= 2 ? monthly[monthly.length - 2] : null;
 
     final momGrowth = (previous == null || previous.encounters == 0)
         ? '—'
-        : _signed(((current!.encounters - previous.encounters) /
-                previous.encounters *
-                100)
-            .round());
+        : _signed(
+            ((current!.encounters - previous.encounters) /
+                    previous.encounters *
+                    100)
+                .round(),
+          );
 
     final wounds = encounters
         .where((e) => e.needs.toLowerCase().contains('wound'))
@@ -54,21 +55,33 @@ class InsightsRepository {
         .where((e) => e.notes.toLowerCase().contains('referr'))
         .length;
     final hygiene = encounters
-        .where((e) => e.supplies.any((s) => s.toLowerCase().contains('hygiene')))
+        .where(
+          (e) => e.supplies.any((s) => s.toLowerCase().contains('hygiene')),
+        )
         .length;
 
     return InsightsBundle(
       impactMetrics: [
         ImpactMetric(
-            label: 'Wounds Treated', value: _fmt(wounds), trend: momGrowth),
+          label: 'Wounds Treated',
+          value: _fmt(wounds),
+          trend: momGrowth,
+        ),
         ImpactMetric(
-            label: 'Referrals Made', value: _fmt(referrals), trend: momGrowth),
+          label: 'Referrals Made',
+          value: _fmt(referrals),
+          trend: momGrowth,
+        ),
         ImpactMetric(
-            label: 'Hygiene Kits', value: _fmt(hygiene), trend: momGrowth),
+          label: 'Hygiene Kits',
+          value: _fmt(hygiene),
+          trend: momGrowth,
+        ),
         ImpactMetric(
-            label: 'Lives Impacted',
-            value: _fmt(patients.length),
-            trend: momGrowth),
+          label: 'Lives Impacted',
+          value: _fmt(patients.length),
+          trend: momGrowth,
+        ),
       ],
       monthlyImpact: monthly,
       seasonalDemand: seed.demoSeasonalDemand(),
@@ -82,8 +95,7 @@ class InsightsRepository {
       weeklyAverage: ((current?.encounters ?? 0) / 4).round(),
       uniquePatients: current?.uniquePatients ?? 0,
       newPatients: current?.newPatients ?? 0,
-      continuityCallout:
-          'PCP connection up 12% over last quarter due to Midtown clinic partnership.',
+      continuityCallout: 'PCP connection up 12% over last quarter due to Midtown clinic partnership.',
       risingNeedAlert:
           'Encounters in **Cass Corridor** have increased by 35% this month. '
           'Recommend shifting 20% of inventory to Van 2 for this route.',
@@ -150,13 +162,8 @@ class InsightsRepository {
       final top = entry.value.entries
           .reduce((a, b) => a.value >= b.value ? a : b)
           .key;
-      return RegionSupplyUsage(
-        region: entry.key,
-        supply: top,
-        usage: total,
-      );
-    }).toList()
-      ..sort((a, b) => b.usage.compareTo(a.usage));
+      return RegionSupplyUsage(region: entry.key, supply: top, usage: total);
+    }).toList()..sort((a, b) => b.usage.compareTo(a.usage));
 
     // The prototype's chart shows five bars; keep the shape stable.
     return rows.take(5).toList(growable: false);
@@ -165,8 +172,9 @@ class InsightsRepository {
   static List<ContinuityDatum> _continuity(List<Patient> patients) {
     final total = patients.length;
     if (total == 0) return seed.demoContinuity();
-    final connected =
-        patients.where((p) => (p.primaryDoctor ?? '').isNotEmpty).length;
+    final connected = patients
+        .where((p) => (p.primaryDoctor ?? '').isNotEmpty)
+        .length;
     return [
       ContinuityDatum(
         metric: ContinuityMetric.primaryCareConnected,
@@ -182,36 +190,36 @@ class InsightsRepository {
   }
 
   InsightsBundle _parse(Map<String, dynamic> j) => InsightsBundle(
-        impactMetrics: (j['impactMetrics'] as List? ?? [])
-            .map((e) => ImpactMetric.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        monthlyImpact: (j['monthlyImpact'] as List? ?? [])
-            .map((e) => MonthlyImpact.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        seasonalDemand: (j['seasonalDemand'] as List? ?? [])
-            .map((e) => SeasonalDemand.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        regionUsage: (j['regionUsage'] as List? ?? [])
-            .map((e) => RegionSupplyUsage.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        continuity: (j['continuity'] as List? ?? [])
-            .map((e) => ContinuityDatum.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        journeys: (j['journeys'] as List? ?? [])
-            .map((e) => ProgressJourney.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        outcomes: (j['outcomes'] as List? ?? [])
-            .map((e) => KeyOutcome.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        grant: seed.demoGrantSummary(),
-        momGrowth: j['momGrowth'] as String? ?? '—',
-        encountersThisMonth: (j['encountersThisMonth'] as num?)?.toInt() ?? 0,
-        weeklyAverage: (j['weeklyAverage'] as num?)?.toInt() ?? 0,
-        uniquePatients: (j['uniquePatients'] as num?)?.toInt() ?? 0,
-        newPatients: (j['newPatients'] as num?)?.toInt() ?? 0,
-        continuityCallout: j['continuityCallout'] as String? ?? '',
-        risingNeedAlert: j['risingNeedAlert'] as String? ?? '',
-      );
+    impactMetrics: (j['impactMetrics'] as List? ?? [])
+        .map((e) => ImpactMetric.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    monthlyImpact: (j['monthlyImpact'] as List? ?? [])
+        .map((e) => MonthlyImpact.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    seasonalDemand: (j['seasonalDemand'] as List? ?? [])
+        .map((e) => SeasonalDemand.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    regionUsage: (j['regionUsage'] as List? ?? [])
+        .map((e) => RegionSupplyUsage.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    continuity: (j['continuity'] as List? ?? [])
+        .map((e) => ContinuityDatum.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    journeys: (j['journeys'] as List? ?? [])
+        .map((e) => ProgressJourney.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    outcomes: (j['outcomes'] as List? ?? [])
+        .map((e) => KeyOutcome.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    grant: seed.demoGrantSummary(),
+    momGrowth: j['momGrowth'] as String? ?? '—',
+    encountersThisMonth: (j['encountersThisMonth'] as num?)?.toInt() ?? 0,
+    weeklyAverage: (j['weeklyAverage'] as num?)?.toInt() ?? 0,
+    uniquePatients: (j['uniquePatients'] as num?)?.toInt() ?? 0,
+    newPatients: (j['newPatients'] as num?)?.toInt() ?? 0,
+    continuityCallout: j['continuityCallout'] as String? ?? '',
+    risingNeedAlert: j['risingNeedAlert'] as String? ?? '',
+  );
 
   static String _fmt(int v) => NumberFormat.decimalPattern('en_US').format(v);
 

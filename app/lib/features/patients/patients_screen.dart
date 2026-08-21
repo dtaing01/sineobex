@@ -26,14 +26,14 @@ enum PatientFilter {
   final String label;
 
   bool matches(Patient p) => switch (this) {
-        PatientFilter.all => true,
-        PatientFilter.highRisk => p.risk == RiskLevel.high,
-        PatientFilter.moderateRisk => p.risk == RiskLevel.moderate,
-        PatientFilter.lowRisk => p.risk == RiskLevel.low,
-        PatientFilter.pregnancy => p.hasFlag(PatientFlag.pregnancy),
-        PatientFilter.mentalHealth => p.hasFlag(PatientFlag.mentalHealth),
-        PatientFilter.chronic => p.hasFlag(PatientFlag.chronicDisease),
-      };
+    PatientFilter.all => true,
+    PatientFilter.highRisk => p.risk == RiskLevel.high,
+    PatientFilter.moderateRisk => p.risk == RiskLevel.moderate,
+    PatientFilter.lowRisk => p.risk == RiskLevel.low,
+    PatientFilter.pregnancy => p.hasFlag(PatientFlag.pregnancy),
+    PatientFilter.mentalHealth => p.hasFlag(PatientFlag.mentalHealth),
+    PatientFilter.chronic => p.hasFlag(PatientFlag.chronicDisease),
+  };
 }
 
 /// Ports `PatientsView`.

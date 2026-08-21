@@ -8,22 +8,30 @@
 class AppConfig {
   const AppConfig._();
 
-  static const bool demoSeed =
-      bool.fromEnvironment('SINEOBEX_DEMO_SEED', defaultValue: false);
+  static const bool demoSeed = bool.fromEnvironment(
+    'SINEOBEX_DEMO_SEED',
+    defaultValue: false,
+  );
 
   static const String apiBaseUrl = String.fromEnvironment(
     'SINEOBEX_API_URL',
     defaultValue: '',
   );
 
-  static const String cognitoUserPoolId =
-      String.fromEnvironment('SINEOBEX_COGNITO_POOL_ID', defaultValue: '');
+  static const String cognitoUserPoolId = String.fromEnvironment(
+    'SINEOBEX_COGNITO_POOL_ID',
+    defaultValue: '',
+  );
 
-  static const String cognitoClientId =
-      String.fromEnvironment('SINEOBEX_COGNITO_CLIENT_ID', defaultValue: '');
+  static const String cognitoClientId = String.fromEnvironment(
+    'SINEOBEX_COGNITO_CLIENT_ID',
+    defaultValue: '',
+  );
 
-  static const String awsRegion =
-      String.fromEnvironment('SINEOBEX_AWS_REGION', defaultValue: 'us-east-1');
+  static const String awsRegion = String.fromEnvironment(
+    'SINEOBEX_AWS_REGION',
+    defaultValue: 'us-east-1',
+  );
 
   /// OpenStreetMap tile endpoint. CARTO Positron matches the prototype's
   /// light basemap and is OSM-derived.
@@ -31,8 +39,7 @@ class AppConfig {
       'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
   /// Required by both the OSM and CARTO tile licences. Do not remove.
-  static const String tileAttribution =
-      '© OpenStreetMap contributors © CARTO';
+  static const String tileAttribution = '© OpenStreetMap contributors © CARTO';
 
   static const String userAgentPackageName = 'org.streetmed.sineobex';
 

@@ -36,11 +36,11 @@ enum StockFilter {
   final String label;
 
   bool matches(InventoryItem i) => switch (this) {
-        StockFilter.all => true,
-        StockFilter.low => i.stock > 0 && i.stock < i.min,
-        StockFilter.out => i.stock == 0,
-        StockFilter.inStock => i.stock >= i.min,
-      };
+    StockFilter.all => true,
+    StockFilter.low => i.stock > 0 && i.stock < i.min,
+    StockFilter.out => i.stock == 0,
+    StockFilter.inStock => i.stock >= i.min,
+  };
 }
 
 /// Ports `InventoryView`.
@@ -66,9 +66,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   static String _monthAbbrev(int month) => const [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-      ][month - 1];
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ][month - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -182,9 +192,10 @@ class _InventoryCard extends ConsumerWidget {
     final (border, background) = switch (item.status) {
       StockStatus.out => (AppColors.red200, AppColors.red50),
       StockStatus.low => (AppColors.orange200, AppColors.orange50),
-      StockStatus.inStock => isSeasonalPriority
-          ? (AppColors.blue200, AppColors.blue50)
-          : (AppColors.slate100, AppColors.white),
+      StockStatus.inStock =>
+        isSeasonalPriority
+            ? (AppColors.blue200, AppColors.blue50)
+            : (AppColors.slate100, AppColors.white),
     };
 
     final stockColor = switch (item.status) {
@@ -275,10 +286,7 @@ class _InventoryCard extends ConsumerWidget {
           const SizedBox(height: AppSpace.x1),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const FieldLabel('0'),
-              FieldLabel('Min: ${item.min}'),
-            ],
+            children: [const FieldLabel('0'), FieldLabel('Min: ${item.min}')],
           ),
           if (item.isLow) ...[
             const SizedBox(height: AppSpace.x3),
@@ -403,9 +411,9 @@ class _InventoryCard extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(
-              int.tryParse(controller.text.trim()) ?? -1,
-            ),
+            onPressed: () =>
+                Navigator.of(dialogContext)
+                    .pop(int.tryParse(controller.text.trim()) ?? -1),
             child: const Text('Confirm'),
           ),
         ],
@@ -425,22 +433,22 @@ class _KeyValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RichText(
-        overflow: TextOverflow.ellipsis,
-        text: TextSpan(
-          style: const TextStyle(
-            fontSize: AppText.micro,
-            color: AppColors.slate600,
-            fontFamily: AppText.family,
-          ),
-          children: [
-            TextSpan(text: label),
-            TextSpan(
-              text: value,
-              style: const TextStyle(fontWeight: AppText.bold),
-            ),
-          ],
+    overflow: TextOverflow.ellipsis,
+    text: TextSpan(
+      style: const TextStyle(
+        fontSize: AppText.micro,
+        color: AppColors.slate600,
+        fontFamily: AppText.family,
+      ),
+      children: [
+        TextSpan(text: label),
+        TextSpan(
+          text: value,
+          style: const TextStyle(fontWeight: AppText.bold),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _FieldUsageLog extends StatelessWidget {
@@ -481,8 +489,9 @@ class _FieldUsageLog extends StatelessWidget {
                               ? null
                               : Border(
                                   bottom: BorderSide(
-                                    color:
-                                        AppColors.white.withValues(alpha: 0.1),
+                                    color: AppColors.white.withValues(
+                                      alpha: 0.1,
+                                    ),
                                   ),
                                 ),
                         ),
@@ -505,8 +514,9 @@ class _FieldUsageLog extends StatelessWidget {
                                     entries[i].location,
                                     style: TextStyle(
                                       fontSize: AppText.micro,
-                                      color: AppColors.white
-                                          .withValues(alpha: 0.5),
+                                      color: AppColors.white.withValues(
+                                        alpha: 0.5,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -516,8 +526,7 @@ class _FieldUsageLog extends StatelessWidget {
                               entries[i].relativeLabel(),
                               style: TextStyle(
                                 fontSize: AppText.micro,
-                                color:
-                                    AppColors.white.withValues(alpha: 0.5),
+                                color: AppColors.white.withValues(alpha: 0.5),
                               ),
                             ),
                           ],

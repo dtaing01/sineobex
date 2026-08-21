@@ -14,10 +14,10 @@ enum RiskLevel {
   final String label;
 
   static RiskLevel fromLabel(String? s) => switch (s) {
-        'High' => RiskLevel.high,
-        'Moderate' => RiskLevel.moderate,
-        _ => RiskLevel.low,
-      };
+    'High' => RiskLevel.high,
+    'Moderate' => RiskLevel.moderate,
+    _ => RiskLevel.low,
+  };
 }
 
 enum PatientFlag {
@@ -46,10 +46,10 @@ enum SupplyCategory {
   final String label;
 
   static SupplyCategory fromLabel(String? s) => switch (s) {
-        'Essentials' => SupplyCategory.essentials,
-        'Clothing' => SupplyCategory.clothing,
-        _ => SupplyCategory.medical,
-      };
+    'Essentials' => SupplyCategory.essentials,
+    'Clothing' => SupplyCategory.clothing,
+    _ => SupplyCategory.medical,
+  };
 }
 
 enum StockStatus { inStock, low, out }
@@ -116,10 +116,10 @@ enum Intensity {
   final String label;
 
   static Intensity fromLabel(String? s) => switch (s) {
-        'High' => Intensity.high,
-        'Moderate' => Intensity.moderate,
-        _ => Intensity.low,
-      };
+    'High' => Intensity.high,
+    'Moderate' => Intensity.moderate,
+    _ => Intensity.low,
+  };
 
   /// `h.intensity === 'High' ? 700 : 400`
   double get baseRadiusMeters => this == Intensity.high ? 700 : 400;
@@ -134,10 +134,10 @@ enum TaskPriority {
   final String label;
 
   static TaskPriority fromLabel(String? s) => switch (s) {
-        'High' => TaskPriority.high,
-        'Moderate' => TaskPriority.moderate,
-        _ => TaskPriority.low,
-      };
+    'High' => TaskPriority.high,
+    'Moderate' => TaskPriority.moderate,
+    _ => TaskPriority.low,
+  };
 }
 
 enum TaskStatus { pending, completed }
@@ -211,10 +211,10 @@ enum OutcomeStatus {
   final String label;
 
   static OutcomeStatus fromLabel(String? s) => switch (s) {
-        'Needs Attention' => OutcomeStatus.needsAttention,
-        'At Risk' => OutcomeStatus.atRisk,
-        _ => OutcomeStatus.onTrack,
-      };
+    'Needs Attention' => OutcomeStatus.needsAttention,
+    'At Risk' => OutcomeStatus.atRisk,
+    _ => OutcomeStatus.onTrack,
+  };
 }
 
 /// Distinguishes the two continuity rows without matching on display text —

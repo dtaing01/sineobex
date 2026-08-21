@@ -69,7 +69,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget build(BuildContext context) {
     final patients = ref.watch(patientsProvider).valueOrNull ?? const [];
     final resources = ref.watch(resourcesProvider).valueOrNull ?? const [];
-    final clinical = ref.watch(clinicalHotspotsProvider).valueOrNull ?? const [];
+    final clinical =
+        ref.watch(clinicalHotspotsProvider).valueOrNull ?? const [];
     final supply = ref.watch(supplyHotspotsProvider).valueOrNull ?? const [];
 
     return ListView(
@@ -407,23 +408,23 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Icon(icon, size: 12, color: AppColors.slate400),
-            const SizedBox(width: AppSpace.x1),
-            Flexible(
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: AppText.xs,
-                  color: AppColors.slate600,
-                ),
-              ),
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Icon(icon, size: 12, color: AppColors.slate400),
+        const SizedBox(width: AppSpace.x1),
+        Flexible(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: AppText.xs,
+              color: AppColors.slate600,
             ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 /// An invisible tap target at the centre of a heat cloud, giving the circles

@@ -13,8 +13,10 @@ class AppBadge extends StatelessWidget {
     this.borderColor,
     this.fontSize = AppText.tiny,
     this.uppercase = true,
-    this.padding =
-        const EdgeInsets.symmetric(horizontal: AppSpace.x2, vertical: 2),
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: AppSpace.x2,
+      vertical: 2,
+    ),
     this.leading,
   });
 
@@ -27,12 +29,14 @@ class AppBadge extends StatelessWidget {
     Color? fill,
     this.fontSize = AppText.tiny,
     this.uppercase = true,
-    this.padding =
-        const EdgeInsets.symmetric(horizontal: AppSpace.x2, vertical: 2),
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: AppSpace.x2,
+      vertical: 2,
+    ),
     this.leading,
-  })  : background = fill ?? AppColors.transparent,
-        foreground = color,
-        borderColor = border ?? color;
+  }) : background = fill ?? AppColors.transparent,
+       foreground = color,
+       borderColor = border ?? color;
 
   final String label;
   final Color background;

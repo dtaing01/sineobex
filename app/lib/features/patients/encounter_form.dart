@@ -91,7 +91,9 @@ class _EncounterFormState extends ConsumerState<EncounterForm> {
         : _location.text.trim();
 
     try {
-      await ref.read(patientRepositoryProvider).logEncounter(
+      await ref
+          .read(patientRepositoryProvider)
+          .logEncounter(
             patientId: widget.patient.id,
             provider: user.name,
             notes: _notes.text,
@@ -103,7 +105,7 @@ class _EncounterFormState extends ConsumerState<EncounterForm> {
             // didn't pick a date, rather than losing the flag.
             followUpDate: _followUp
                 ? (_followUpDate ??
-                    DateTime.now().add(const Duration(days: 14)))
+                      DateTime.now().add(const Duration(days: 14)))
                 : null,
             followUpLoc: location,
           );
@@ -114,16 +116,15 @@ class _EncounterFormState extends ConsumerState<EncounterForm> {
           .consume(supplies: supplies, location: location);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Encounter saved.')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Encounter saved.')));
       _reset();
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save encounter: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not save encounter: $e')));
     }
   }
 
@@ -147,9 +148,11 @@ class _EncounterFormState extends ConsumerState<EncounterForm> {
     // The prototype hardcoded `inventory.slice(0, 4)` — the first four items
     // only (plan defect D9). The full catalogue is searchable here.
     final available = inventory
-        .where((i) =>
-            _supplyQuery.isEmpty ||
-            i.name.toLowerCase().contains(_supplyQuery.toLowerCase()))
+        .where(
+          (i) =>
+              _supplyQuery.isEmpty ||
+              i.name.toLowerCase().contains(_supplyQuery.toLowerCase()),
+        )
         .take(_supplyQuery.isEmpty ? 8 : 20)
         .toList();
 

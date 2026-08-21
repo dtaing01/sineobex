@@ -21,14 +21,15 @@ class PatientRepository {
     final query = _db.select(_db.patientRows)
       ..orderBy([(t) => OrderingTerm.asc(t.searchName)]);
     return query.watch().map(
-        (rows) => rows.map((r) => _decode(r.payload)).toList(growable: false));
+      (rows) => rows.map((r) => _decode(r.payload)).toList(growable: false),
+    );
   }
 
   Future<List<Patient>> all() async {
     await _audit.record(AuditAction.listPatients, entity: 'patient');
-    final rows = await (_db.select(_db.patientRows)
-          ..orderBy([(t) => OrderingTerm.asc(t.searchName)]))
-        .get();
+    final rows = await (_db.select(
+      _db.patientRows,
+    )..orderBy([(t) => OrderingTerm.asc(t.searchName)])).get();
     return rows.map((r) => _decode(r.payload)).toList(growable: false);
   }
 
@@ -38,10 +39,15 @@ class PatientRepository {
           .map((r) => r == null ? null : _decode(r.payload));
 
   Future<Patient?> byId(String id) async {
-    final row = await (_db.select(_db.patientRows)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.patientRows,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     if (row == null) return null;
-    await _audit.record(AuditAction.viewPatient, entity: 'patient', entityId: id);
+    await _audit.record(
+      AuditAction.viewPatient,
+      entity: 'patient',
+      entityId: id,
+    );
     return _decode(row.payload);
   }
 
@@ -92,8 +98,11 @@ class PatientRepository {
       op: SyncOp.create,
       payload: patient.toJson(),
     );
-    await _audit.record(AuditAction.createPatient,
-        entity: 'patient', entityId: patient.id);
+    await _audit.record(
+      AuditAction.createPatient,
+      entity: 'patient',
+      entityId: patient.id,
+    );
     return patient;
   }
 
@@ -106,8 +115,11 @@ class PatientRepository {
       op: SyncOp.update,
       payload: updated.toJson(),
     );
-    await _audit.record(AuditAction.updatePatient,
-        entity: 'patient', entityId: updated.id);
+    await _audit.record(
+      AuditAction.updatePatient,
+      entity: 'patient',
+      entityId: updated.id,
+    );
   }
 
   /// Appends an encounter and folds its consequences into the patient record:
@@ -132,7 +144,9 @@ class PatientRepository {
     final ts = now ?? DateTime.now();
     final patient = await byId(patientId);
     if (patient == null) {
-      throw StateError('Cannot log an encounter for unknown patient $patientId');
+      throw StateError(
+        'Cannot log an encounter for unknown patient $patientId',
+      );
     }
 
     final encounter = Encounter(
@@ -141,8 +155,9 @@ class PatientRepository {
       date: ts,
       provider: provider,
       needs: needs.trim().isEmpty ? 'Field Encounter' : needs.trim(),
-      encounterLoc:
-          encounterLoc.trim().isEmpty ? patient.loc : encounterLoc.trim(),
+      encounterLoc: encounterLoc.trim().isEmpty
+          ? patient.loc
+          : encounterLoc.trim(),
       notes: notes.trim(),
       supplies: supplies,
       followUpSet: followUpSet,
@@ -163,9 +178,10 @@ class PatientRepository {
       lng: encounter.lng ?? patient.lng,
       observedAt: ts,
     );
-    final locations = [observation, ...patient.commonLocations]
-        .take(8)
-        .toList(growable: false);
+    final locations = [
+      observation,
+      ...patient.commonLocations,
+    ].take(8).toList(growable: false);
 
     final updated = patient.copyWith(
       history: history,
@@ -178,7 +194,9 @@ class PatientRepository {
 
     await _db.transaction(() async {
       await _upsert(updated, dirty: true);
-      await _db.into(_db.encounterRows).insertOnConflictUpdate(
+      await _db
+          .into(_db.encounterRows)
+          .insertOnConflictUpdate(
             EncounterRowsCompanion.insert(
               id: encounter.id,
               patientId: patientId,
@@ -196,8 +214,11 @@ class PatientRepository {
       op: SyncOp.create,
       payload: encounter.toJson(),
     );
-    await _audit.record(AuditAction.logEncounter,
-        entity: 'encounter', entityId: encounter.id);
+    await _audit.record(
+      AuditAction.logEncounter,
+      entity: 'encounter',
+      entityId: encounter.id,
+    );
 
     return encounter;
   }
@@ -212,26 +233,27 @@ class PatientRepository {
   }
 
   Future<bool> get isEmpty async {
-    final row = await (_db.selectOnly(_db.patientRows)
-          ..addColumns([_db.patientRows.id.count()]))
-        .getSingle();
+    final row = await (_db.selectOnly(
+      _db.patientRows,
+    )..addColumns([_db.patientRows.id.count()])).getSingle();
     return (row.read(_db.patientRows.id.count()) ?? 0) == 0;
   }
 
-  Future<void> _upsert(Patient p, {required bool dirty}) =>
-      _db.into(_db.patientRows).insertOnConflictUpdate(
-            PatientRowsCompanion.insert(
-              id: p.id,
-              payload: jsonEncode(p.toJson()),
-              searchName: p.name.toLowerCase(),
-              dob: p.dobIso,
-              risk: p.risk.label,
-              followUp: Value(p.followUp),
-              nextFollowUp: Value(p.nextFollowUp),
-              updatedAt: p.updatedAt ?? DateTime.now(),
-              dirty: Value(dirty),
-            ),
-          );
+  Future<void> _upsert(Patient p, {required bool dirty}) => _db
+      .into(_db.patientRows)
+      .insertOnConflictUpdate(
+        PatientRowsCompanion.insert(
+          id: p.id,
+          payload: jsonEncode(p.toJson()),
+          searchName: p.name.toLowerCase(),
+          dob: p.dobIso,
+          risk: p.risk.label,
+          followUp: Value(p.followUp),
+          nextFollowUp: Value(p.nextFollowUp),
+          updatedAt: p.updatedAt ?? DateTime.now(),
+          dirty: Value(dirty),
+        ),
+      );
 
   Patient _decode(String payload) =>
       Patient.fromJson(jsonDecode(payload) as Map<String, dynamic>);

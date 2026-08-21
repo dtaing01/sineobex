@@ -23,15 +23,15 @@ void main() {
   tearDown(() => db.close());
 
   Future<Patient> enrollJane() => repo.enroll(
-        firstName: 'Jane',
-        lastName: 'Doe',
-        dob: DateTime(1992, 8, 24),
-        risk: RiskLevel.moderate,
-        loc: 'Cass Corridor',
-        lat: 42.345,
-        lng: -83.06,
-        primaryDoctor: 'Dr. Smith',
-      );
+    firstName: 'Jane',
+    lastName: 'Doe',
+    dob: DateTime(1992, 8, 24),
+    risk: RiskLevel.moderate,
+    loc: 'Cass Corridor',
+    lat: 42.345,
+    lng: -83.06,
+    primaryDoctor: 'Dr. Smith',
+  );
 
   group('enroll', () {
     test('persists the patient', () async {
@@ -57,13 +57,15 @@ void main() {
       );
     });
 
-    test('seeds a first movement observation at the enrollment location',
-        () async {
-      final created = await enrollJane();
-      expect(created.commonLocations, hasLength(1));
-      expect(created.commonLocations.first.name, 'Cass Corridor');
-      expect(created.commonLocations.first.lat, 42.345);
-    });
+    test(
+      'seeds a first movement observation at the enrollment location',
+      () async {
+        final created = await enrollJane();
+        expect(created.commonLocations, hasLength(1));
+        expect(created.commonLocations.first.name, 'Cass Corridor');
+        expect(created.commonLocations.first.lat, 42.345);
+      },
+    );
 
     test('normalises blank optional fields to null', () async {
       final created = await repo.enroll(
@@ -263,7 +265,10 @@ void main() {
       );
 
       final pending = await outbox.pending();
-      expect(pending.map((r) => r.entity), containsAll(['patient', 'encounter']));
+      expect(
+        pending.map((r) => r.entity),
+        containsAll(['patient', 'encounter']),
+      );
     });
   });
 

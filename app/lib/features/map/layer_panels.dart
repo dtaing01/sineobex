@@ -34,7 +34,8 @@ class PatientsLayerPanel extends StatelessWidget {
         const SizedBox(height: AppSpace.x3),
         ActionBanner(
           title: 'Patient Outreach Route',
-          subtitle: '${route.length} Stops • '
+          subtitle:
+              '${route.length} Stops • '
               '${miles.toStringAsFixed(1)} miles • '
               '${hours.toStringAsFixed(1)}h est.',
           icon: LucideIcons.navigation,
@@ -64,7 +65,8 @@ class PatientsLayerPanel extends StatelessWidget {
         const SizedBox(height: AppSpace.x4),
         const InsightCard.blue(
           title: 'Clinical Insight',
-          body: 'High concentration of wound care needs in **Cass Corridor**. '
+          body:
+              'High concentration of wound care needs in **Cass Corridor**. '
               'Ensure Van 1 is stocked with extra silver sulfadiazine.',
           icon: LucideIcons.circleAlert,
         ),
@@ -73,9 +75,9 @@ class PatientsLayerPanel extends StatelessWidget {
   }
 
   static Color _riskDotColor(RiskLevel risk) => switch (risk) {
-        RiskLevel.high => AppColors.red500,
-        _ => AppColors.orange500,
-      };
+    RiskLevel.high => AppColors.red500,
+    _ => AppColors.orange500,
+  };
 }
 
 class ResourcesLayerPanel extends StatelessWidget {
@@ -85,8 +87,9 @@ class ResourcesLayerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shelters =
-        resources.where((r) => r.type == ResourceType.shelter).length;
+    final shelters = resources
+        .where((r) => r.type == ResourceType.shelter)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,7 +138,8 @@ class ResourcesLayerPanel extends StatelessWidget {
         const SizedBox(height: AppSpace.x4),
         const InsightCard.green(
           title: 'Resource Insight',
-          body: 'Pharmacy desert identified in **Delray**; nearest partner is '
+          body:
+              'Pharmacy desert identified in **Delray**; nearest partner is '
               '1.2 miles away. Consider mobile pharmacy stop on Tuesday.',
           icon: LucideIcons.info,
         ),
@@ -151,8 +155,9 @@ class HeatmapLayerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final clusters =
-        hotspots.where((h) => h.intensity == Intensity.high).length;
+    final clusters = hotspots
+        .where((h) => h.intensity == Intensity.high)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,7 +195,8 @@ class HeatmapLayerPanel extends StatelessWidget {
         const SizedBox(height: AppSpace.x4),
         const InsightCard.orange(
           title: 'Strategic Insight',
-          body: 'Rising cluster detected near **Michigan & Trumbull**. No '
+          body:
+              'Rising cluster detected near **Michigan & Trumbull**. No '
               'partner services within 0.5 miles. Recommend adding a water '
               'drop-off point.',
           icon: LucideIcons.circleAlert,
@@ -239,7 +245,8 @@ class InventoryLayerPanel extends StatelessWidget {
         const SizedBox(height: AppSpace.x4),
         const InsightCard.purple(
           title: 'Inventory Insight',
-          body: 'Narcan usage is 40% higher than average in **Hart Plaza** '
+          body:
+              'Narcan usage is 40% higher than average in **Hart Plaza** '
               'this week. Recommend shifting 20% of inventory to Van 2 for '
               'this route.',
           icon: LucideIcons.trendingUp,
@@ -256,10 +263,10 @@ class _Dot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
+    width: 8,
+    height: 8,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 }
 
 /// The white pill row shared by every layer panel's list.

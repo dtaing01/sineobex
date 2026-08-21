@@ -31,10 +31,15 @@ class TeamRepository {
   Future<List<TeamMember>> toggleStatus(String id) async {
     final current = await members();
     final updated = current
-        .map((m) => (m.id == id && !m.isSelf)
-            ? m.copyWith(
-                status: m.isActive ? MemberStatus.inactive : MemberStatus.active)
-            : m)
+        .map(
+          (m) => (m.id == id && !m.isSelf)
+              ? m.copyWith(
+                  status: m.isActive
+                      ? MemberStatus.inactive
+                      : MemberStatus.active,
+                )
+              : m,
+        )
         .toList(growable: false);
     await saveMembers(updated);
     return updated;
@@ -54,11 +59,15 @@ class TeamRepository {
   Future<List<TeamTask>> toggleTask(String id) async {
     final current = await tasks();
     final updated = current
-        .map((t) => t.id == id
-            ? t.copyWith(
-                status:
-                    t.isPending ? TaskStatus.completed : TaskStatus.pending)
-            : t)
+        .map(
+          (t) => t.id == id
+              ? t.copyWith(
+                  status: t.isPending
+                      ? TaskStatus.completed
+                      : TaskStatus.pending,
+                )
+              : t,
+        )
         .toList(growable: false);
     await saveTasks(updated);
     return updated;

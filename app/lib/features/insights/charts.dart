@@ -128,8 +128,10 @@ class EncounterMixChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxEncounters = data.isEmpty
         ? 10.0
-        : data.map((d) => d.encounters).reduce((a, b) => a > b ? a : b)
-            .toDouble();
+        : data
+              .map((d) => d.encounters)
+              .reduce((a, b) => a > b ? a : b)
+              .toDouble();
 
     return BarChart(
       BarChartData(
@@ -289,7 +291,8 @@ class _RegionUsageChartState extends State<RegionUsageChart> {
               fraction: maxUsage == 0 ? 0 : widget.data[i].usage / maxUsage,
               color: chartPalette[i % chartPalette.length],
               showTooltip: _selected == i,
-              onTap: () => setState(() => _selected = _selected == i ? null : i),
+              onTap: () =>
+                  setState(() => _selected = _selected == i ? null : i),
             ),
           ),
       ],

@@ -24,7 +24,9 @@ class Outbox {
     required SyncOp op,
     required Map<String, dynamic> payload,
   }) async {
-    await _db.into(_db.outboxRows).insert(
+    await _db
+        .into(_db.outboxRows)
+        .insert(
           OutboxRowsCompanion.insert(
             entity: entity.name,
             entityId: entityId,
@@ -43,16 +45,17 @@ class Outbox {
 
   Future<int> pendingCount() async {
     final count = _db.outboxRows.seq.count();
-    final row = await (_db.selectOnly(_db.outboxRows)..addColumns([count]))
-        .getSingle();
+    final row = await (_db.selectOnly(
+      _db.outboxRows,
+    )..addColumns([count])).getSingle();
     return row.read(count) ?? 0;
   }
 
   Stream<int> watchPendingCount() {
     final count = _db.outboxRows.seq.count();
-    return (_db.selectOnly(_db.outboxRows)..addColumns([count]))
-        .watchSingle()
-        .map((row) => row.read(count) ?? 0);
+    return (_db.selectOnly(
+      _db.outboxRows,
+    )..addColumns([count])).watchSingle().map((row) => row.read(count) ?? 0);
   }
 
   Future<void> markDone(int seq) =>
@@ -64,10 +67,7 @@ class Outbox {
     await _db.customUpdate(
       'UPDATE outbox_rows SET attempts = attempts + 1, last_error = ? '
       'WHERE seq = ?',
-      variables: [
-        Variable<String>(error.toString()),
-        Variable<int>(seq),
-      ],
+      variables: [Variable<String>(error.toString()), Variable<int>(seq)],
       updates: {_db.outboxRows},
     );
   }

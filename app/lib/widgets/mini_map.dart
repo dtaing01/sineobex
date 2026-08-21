@@ -18,11 +18,11 @@ class OsmTileLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TileLayer(
-        urlTemplate: AppConfig.tileUrlTemplate,
-        userAgentPackageName: AppConfig.userAgentPackageName,
-        retinaMode: RetinaMode.isHighDensity(context),
-        maxNativeZoom: 20,
-      );
+    urlTemplate: AppConfig.tileUrlTemplate,
+    userAgentPackageName: AppConfig.userAgentPackageName,
+    retinaMode: RetinaMode.isHighDensity(context),
+    maxNativeZoom: 20,
+  );
 }
 
 /// The small print required by the tile licence.
@@ -31,13 +31,13 @@ class MapAttribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        color: AppColors.white.withValues(alpha: 0.7),
-        child: const Text(
-          AppConfig.tileAttribution,
-          style: TextStyle(fontSize: AppText.xxxs, color: AppColors.slate500),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+    color: AppColors.white.withValues(alpha: 0.7),
+    child: const Text(
+      AppConfig.tileAttribution,
+      style: TextStyle(fontSize: AppText.xxxs, color: AppColors.slate500),
+    ),
+  );
 }
 
 /// Dashed route polyline. Colour varies by map layer, matching the
@@ -48,13 +48,12 @@ Polyline dashedRoute(
   double strokeWidth = 3,
   List<double> pattern = const [10, 10],
   double opacity = 0.6,
-}) =>
-    Polyline(
-      points: points,
-      color: color.withValues(alpha: opacity),
-      strokeWidth: strokeWidth,
-      pattern: StrokePattern.dashed(segments: pattern),
-    );
+}) => Polyline(
+  points: points,
+  color: color.withValues(alpha: opacity),
+  strokeWidth: strokeWidth,
+  pattern: StrokePattern.dashed(segments: pattern),
+);
 
 /// Great-circle length of a route, in miles. Replaces the prototype's
 /// hardcoded "1.4 miles" (plan defect D13).

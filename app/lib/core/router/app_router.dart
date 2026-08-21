@@ -38,90 +38,90 @@ class AppRoutes {
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 GoRouter buildRouter() => GoRouter(
-      navigatorKey: rootNavigatorKey,
-      initialLocation: AppRoutes.dashboard,
-      routes: [
-        StatefulShellRoute.indexedStack(
-          builder: (context, state, shell) => AppShell(shell: shell),
-          branches: [
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: AppRoutes.dashboard,
-                  builder: (_, __) => const DashboardScreen(),
-                ),
-              ],
+  navigatorKey: rootNavigatorKey,
+  initialLocation: AppRoutes.dashboard,
+  routes: [
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, shell) => AppShell(shell: shell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.dashboard,
+              builder: (_, __) => const DashboardScreen(),
             ),
-            StatefulShellBranch(
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.patients,
+              builder: (_, __) => const PatientsScreen(),
               routes: [
                 GoRoute(
-                  path: AppRoutes.patients,
-                  builder: (_, __) => const PatientsScreen(),
-                  routes: [
-                    GoRoute(
-                      path: 'enroll',
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, __) => const PatientEnrollScreen(),
-                    ),
-                    GoRoute(
-                      path: ':id',
-                      builder: (_, state) => PatientDetailScreen(
-                        patientId: state.pathParameters['id']!,
-                      ),
-                    ),
-                  ],
+                  path: 'enroll',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, __) => const PatientEnrollScreen(),
                 ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
                 GoRoute(
-                  path: AppRoutes.map,
-                  builder: (_, state) => MapScreen(
-                    initialLayer: MapLayer.fromLabel(
-                      state.uri.queryParameters['layer'],
-                    ),
+                  path: ':id',
+                  builder: (_, state) => PatientDetailScreen(
+                    patientId: state.pathParameters['id']!,
                   ),
                 ),
               ],
             ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: AppRoutes.inventory,
-                  builder: (_, __) => const InventoryScreen(),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: AppRoutes.insights,
-                  builder: (_, __) => const InsightsScreen(),
-                ),
-              ],
-            ),
           ],
         ),
-        GoRoute(
-          path: AppRoutes.profile,
-          parentNavigatorKey: rootNavigatorKey,
-          builder: (_, __) => const ProfileScreen(),
+        StatefulShellBranch(
           routes: [
             GoRoute(
-              path: 'team',
-              parentNavigatorKey: rootNavigatorKey,
-              builder: (_, __) => const TeamAccessScreen(),
+              path: AppRoutes.map,
+              builder: (_, state) => MapScreen(
+                initialLayer: MapLayer.fromLabel(
+                  state.uri.queryParameters['layer'],
+                ),
+              ),
             ),
           ],
         ),
-        GoRoute(
-          path: AppRoutes.followUps,
-          parentNavigatorKey: rootNavigatorKey,
-          builder: (_, __) => const FollowUpsScreen(),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.inventory,
+              builder: (_, __) => const InventoryScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.insights,
+              builder: (_, __) => const InsightsScreen(),
+            ),
+          ],
         ),
       ],
-    );
+    ),
+    GoRoute(
+      path: AppRoutes.profile,
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (_, __) => const ProfileScreen(),
+      routes: [
+        GoRoute(
+          path: 'team',
+          parentNavigatorKey: rootNavigatorKey,
+          builder: (_, __) => const TeamAccessScreen(),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: AppRoutes.followUps,
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (_, __) => const FollowUpsScreen(),
+    ),
+  ],
+);
 
 /// Opens the map on a specific layer, matching the prototype's
 /// `onNavigate('map', 'Inventory')`.

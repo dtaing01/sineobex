@@ -34,12 +34,8 @@ class SyncStatus {
 ///    never overwritten or dropped by a concurrent edit; the server keeps
 ///    both and flags the pair for review.
 class SyncService {
-  SyncService(
-    this._db,
-    this._outbox,
-    this._api, {
-    Connectivity? connectivity,
-  }) : _connectivity = connectivity ?? Connectivity();
+  SyncService(this._db, this._outbox, this._api, {Connectivity? connectivity})
+    : _connectivity = connectivity ?? Connectivity();
 
   final AppDatabase _db;
   final Outbox _outbox;
@@ -134,8 +130,10 @@ class SyncService {
   Future<void> _pullReferenceData() async {
     final refreshed = await _api.fetchReferenceData();
     if (refreshed == null) return;
-    await _db.putKeyValue('reference.refreshedAt',
-        DateTime.now().toUtc().toIso8601String());
+    await _db.putKeyValue(
+      'reference.refreshedAt',
+      DateTime.now().toUtc().toIso8601String(),
+    );
   }
 
   void _scheduleRetry(int attempts) {
@@ -145,14 +143,18 @@ class SyncService {
 
   void _emit(SyncState state, {String? message}) {
     if (_controller.isClosed) return;
-    unawaited(_outbox.pendingCount().then((pending) {
-      if (_controller.isClosed) return;
-      _controller.add(SyncStatus(
-        state: state,
-        pending: pending,
-        lastSyncedAt: _lastSyncedAt,
-        message: message,
-      ));
-    }));
+    unawaited(
+      _outbox.pendingCount().then((pending) {
+        if (_controller.isClosed) return;
+        _controller.add(
+          SyncStatus(
+            state: state,
+            pending: pending,
+            lastSyncedAt: _lastSyncedAt,
+            message: message,
+          ),
+        );
+      }),
+    );
   }
 }

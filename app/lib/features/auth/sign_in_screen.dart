@@ -39,7 +39,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionControllerProvider);
-    final configured = ref.read(sessionControllerProvider.notifier).isConfigured;
+    final configured = ref
+        .read(sessionControllerProvider.notifier)
+        .isConfigured;
 
     return Scaffold(
       backgroundColor: AppColors.slate50,
@@ -140,8 +142,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 filled: true,
                                 fillColor: AppColors.white,
                                 border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.xl),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.xl,
+                                  ),
                                 ),
                               ),
                             ),
@@ -164,8 +167,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     label: _submitting
                         ? 'Signing in…'
                         : configured
-                            ? 'Sign in'
-                            : 'Continue',
+                        ? 'Sign in'
+                        : 'Continue',
                     size: AppButtonSize.lg,
                     expanded: true,
                     radius: AppRadius.xl,

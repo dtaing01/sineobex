@@ -70,8 +70,7 @@ class _SineobexAppState extends ConsumerState<SineobexApp>
 
     // Wire token refresh into the API client once a session exists.
     ref.listen(sessionControllerProvider, (previous, next) {
-      if (previous?.state != next.state &&
-          next.state == SessionState.active) {
+      if (previous?.state != next.state && next.state == SessionState.active) {
         ref.invalidate(apiClientProvider);
       }
     });
@@ -83,8 +82,7 @@ class _SineobexAppState extends ConsumerState<SineobexApp>
       home: switch (session.state) {
         SessionState.restoring => const _SplashScreen(),
         SessionState.signedOut ||
-        SessionState.newPasswordRequired =>
-          const SignInScreen(),
+        SessionState.newPasswordRequired => const SignInScreen(),
         SessionState.locked => const LockScreen(),
         SessionState.active => _AuthenticatedApp(router: _router),
       },
@@ -125,9 +123,9 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Scaffold(
-        backgroundColor: AppColors.slate50,
-        body: Center(child: CircularProgressIndicator()),
-      );
+    backgroundColor: AppColors.slate50,
+    body: Center(child: CircularProgressIndicator()),
+  );
 }
 
 class _ErrorScreen extends StatelessWidget {
@@ -137,33 +135,33 @@ class _ErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.slate50,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpace.x6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Could not start',
-                  style: TextStyle(
-                    fontSize: AppText.lg,
-                    fontWeight: AppText.bold,
-                    color: AppColors.slate900,
-                  ),
-                ),
-                const SizedBox(height: AppSpace.x2),
-                Text(
-                  '$error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: AppText.xs,
-                    color: AppColors.slate500,
-                  ),
-                ),
-              ],
+    backgroundColor: AppColors.slate50,
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.x6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Could not start',
+              style: TextStyle(
+                fontSize: AppText.lg,
+                fontWeight: AppText.bold,
+                color: AppColors.slate900,
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpace.x2),
+            Text(
+              '$error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: AppText.xs,
+                color: AppColors.slate500,
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }

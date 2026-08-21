@@ -13,10 +13,7 @@ import 'package:flutter/foundation.dart';
 QueryExecutor openConnection() {
   return LazyDatabase(() async {
     final sqlite3 = await WasmSqlite3.loadFromUrl(Uri.parse('sqlite3.wasm'));
-    sqlite3.registerVirtualFileSystem(
-      InMemoryFileSystem(),
-      makeDefault: true,
-    );
+    sqlite3.registerVirtualFileSystem(InMemoryFileSystem(), makeDefault: true);
     if (kDebugMode) {
       debugPrint('Web build: in-memory database, no PHI stored at rest.');
     }

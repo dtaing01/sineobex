@@ -86,9 +86,7 @@ class _AppHeader extends ConsumerWidget {
           ),
           decoration: BoxDecoration(
             color: AppColors.white.withValues(alpha: 0.8),
-            border: const Border(
-              bottom: BorderSide(color: AppColors.slate200),
-            ),
+            border: const Border(bottom: BorderSide(color: AppColors.slate200)),
           ),
           child: Row(
             children: [
@@ -208,8 +206,8 @@ class _AvatarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isActive =
-        GoRouterState.of(context).uri.path.startsWith(AppRoutes.profile);
+    final isActive = GoRouterState.of(context).uri.path
+        .startsWith(AppRoutes.profile);
 
     return GestureDetector(
       onTap: () => context.push(AppRoutes.profile),

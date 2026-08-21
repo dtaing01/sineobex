@@ -12,13 +12,16 @@ class ImpactMetric {
   final String trend;
 
   factory ImpactMetric.fromJson(Map<String, dynamic> j) => ImpactMetric(
-        label: j['label'] as String,
-        value: j['value'] as String,
-        trend: j['trend'] as String,
-      );
+    label: j['label'] as String,
+    value: j['value'] as String,
+    trend: j['trend'] as String,
+  );
 
-  Map<String, dynamic> toJson() =>
-      {'label': label, 'value': value, 'trend': trend};
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    'value': value,
+    'trend': trend,
+  };
 }
 
 class MonthlyImpact {
@@ -37,20 +40,20 @@ class MonthlyImpact {
   final int repeatPatients;
 
   factory MonthlyImpact.fromJson(Map<String, dynamic> j) => MonthlyImpact(
-        month: j['month'] as String,
-        encounters: (j['encounters'] as num).toInt(),
-        uniquePatients: (j['uniquePatients'] as num).toInt(),
-        newPatients: (j['newPatients'] as num).toInt(),
-        repeatPatients: (j['repeatPatients'] as num).toInt(),
-      );
+    month: j['month'] as String,
+    encounters: (j['encounters'] as num).toInt(),
+    uniquePatients: (j['uniquePatients'] as num).toInt(),
+    newPatients: (j['newPatients'] as num).toInt(),
+    repeatPatients: (j['repeatPatients'] as num).toInt(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'month': month,
-        'encounters': encounters,
-        'uniquePatients': uniquePatients,
-        'newPatients': newPatients,
-        'repeatPatients': repeatPatients,
-      };
+    'month': month,
+    'encounters': encounters,
+    'uniquePatients': uniquePatients,
+    'newPatients': newPatients,
+    'repeatPatients': repeatPatients,
+  };
 }
 
 class SeasonalDemand {
@@ -65,13 +68,16 @@ class SeasonalDemand {
   final int intensity;
 
   factory SeasonalDemand.fromJson(Map<String, dynamic> j) => SeasonalDemand(
-        month: j['month'] as String,
-        items: (j['items'] as List).map((e) => e as String).toList(),
-        intensity: (j['intensity'] as num).toInt(),
-      );
+    month: j['month'] as String,
+    items: (j['items'] as List).map((e) => e as String).toList(),
+    intensity: (j['intensity'] as num).toInt(),
+  );
 
-  Map<String, dynamic> toJson() =>
-      {'month': month, 'items': items, 'intensity': intensity};
+  Map<String, dynamic> toJson() => {
+    'month': month,
+    'items': items,
+    'intensity': intensity,
+  };
 }
 
 class RegionSupplyUsage {
@@ -92,8 +98,11 @@ class RegionSupplyUsage {
         usage: (j['usage'] as num).toInt(),
       );
 
-  Map<String, dynamic> toJson() =>
-      {'region': region, 'supply': supply, 'usage': usage};
+  Map<String, dynamic> toJson() => {
+    'region': region,
+    'supply': supply,
+    'usage': usage,
+  };
 }
 
 class ContinuityDatum {
@@ -116,14 +125,18 @@ class ContinuityDatum {
   double get fraction => total == 0 ? 0 : value / total;
 
   factory ContinuityDatum.fromJson(Map<String, dynamic> j) => ContinuityDatum(
-        metric: ContinuityMetric.values
-            .firstWhere((m) => m.name == j['metric'] as String),
-        value: (j['value'] as num).toInt(),
-        total: (j['total'] as num).toInt(),
-      );
+    metric: ContinuityMetric.values.firstWhere(
+      (m) => m.name == j['metric'] as String,
+    ),
+    value: (j['value'] as num).toInt(),
+    total: (j['total'] as num).toInt(),
+  );
 
-  Map<String, dynamic> toJson() =>
-      {'metric': metric.name, 'value': value, 'total': total};
+  Map<String, dynamic> toJson() => {
+    'metric': metric.name,
+    'value': value,
+    'total': total,
+  };
 }
 
 class ProgressJourney {
@@ -140,18 +153,18 @@ class ProgressJourney {
   final String goal;
 
   factory ProgressJourney.fromJson(Map<String, dynamic> j) => ProgressJourney(
-        metric: j['metric'] as String,
-        baseline: j['baseline'] as String,
-        current: j['current'] as String,
-        goal: j['goal'] as String,
-      );
+    metric: j['metric'] as String,
+    baseline: j['baseline'] as String,
+    current: j['current'] as String,
+    goal: j['goal'] as String,
+  );
 
   Map<String, dynamic> toJson() => {
-        'metric': metric,
-        'baseline': baseline,
-        'current': current,
-        'goal': goal,
-      };
+    'metric': metric,
+    'baseline': baseline,
+    'current': current,
+    'goal': goal,
+  };
 }
 
 class KeyOutcome {
@@ -171,18 +184,18 @@ class KeyOutcome {
   bool get isDown => trend.startsWith('-');
 
   factory KeyOutcome.fromJson(Map<String, dynamic> j) => KeyOutcome(
-        category: j['category'] as String,
-        insight: j['insight'] as String,
-        status: OutcomeStatus.fromLabel(j['status'] as String?),
-        trend: j['trend'] as String,
-      );
+    category: j['category'] as String,
+    insight: j['insight'] as String,
+    status: OutcomeStatus.fromLabel(j['status'] as String?),
+    trend: j['trend'] as String,
+  );
 
   Map<String, dynamic> toJson() => {
-        'category': category,
-        'insight': insight,
-        'status': status.label,
-        'trend': trend,
-      };
+    'category': category,
+    'insight': insight,
+    'status': status.label,
+    'trend': trend,
+  };
 }
 
 class GrantSummary {

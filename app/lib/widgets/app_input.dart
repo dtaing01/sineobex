@@ -44,10 +44,7 @@ class AppInput extends StatelessWidget {
         onTap: onTap,
         inputFormatters: inputFormatters,
         textCapitalization: textCapitalization,
-        style: const TextStyle(
-          fontSize: AppText.sm,
-          color: AppColors.slate900,
-        ),
+        style: const TextStyle(fontSize: AppText.sm, color: AppColors.slate900),
         decoration: InputDecoration(
           hintText: placeholder,
           hintStyle: const TextStyle(

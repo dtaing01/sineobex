@@ -35,7 +35,9 @@ class AuditLog {
     required String entity,
     String entityId = '',
   }) async {
-    await _db.into(_db.auditRows).insert(
+    await _db
+        .into(_db.auditRows)
+        .insert(
           AuditRowsCompanion.insert(
             actor: _actor,
             action: action.name,
@@ -55,7 +57,8 @@ class AuditLog {
 
   Future<void> markSynced(List<int> seqs) async {
     if (seqs.isEmpty) return;
-    await (_db.update(_db.auditRows)..where((t) => t.seq.isIn(seqs)))
-        .write(const AuditRowsCompanion(synced: Value(true)));
+    await (_db.update(_db.auditRows)..where((t) => t.seq.isIn(seqs))).write(
+      const AuditRowsCompanion(synced: Value(true)),
+    );
   }
 }

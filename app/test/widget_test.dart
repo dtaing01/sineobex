@@ -32,7 +32,9 @@ void main() {
     await container
         .read(inventoryRepositoryProvider)
         .replaceAll(seed.demoInventory());
-    await container.read(teamRepositoryProvider).saveMembers(seed.demoMembers());
+    await container
+        .read(teamRepositoryProvider)
+        .saveMembers(seed.demoMembers());
   });
 
   tearDown(() async {
@@ -91,7 +93,10 @@ void main() {
         await tester.scrollUntilVisible(
           find.descendant(of: row, matching: find.text(f.label.toUpperCase())),
           200,
-          scrollable: find.descendant(of: row, matching: find.byType(Scrollable)),
+          scrollable: find.descendant(
+            of: row,
+            matching: find.byType(Scrollable),
+          ),
         );
         expect(
           find.descendant(of: row, matching: find.text(f.label.toUpperCase())),
@@ -119,8 +124,9 @@ void main() {
       expect(find.text('Jane Smith'), findsNothing);
     });
 
-    testWidgets('the High Risk filter excludes lower-risk patients',
-        (tester) async {
+    testWidgets('the High Risk filter excludes lower-risk patients', (
+      tester,
+    ) async {
       await pump(tester, const PatientsScreen());
       final row = find.byType(FilterChipRow<PatientFilter>);
       await tester.tap(
@@ -166,8 +172,7 @@ void main() {
       expect(find.text('LOW STOCK'), findsWidgets);
     });
 
-    testWidgets('the Out of Stock filter hides in-stock items',
-        (tester) async {
+    testWidgets('the Out of Stock filter hides in-stock items', (tester) async {
       await pump(tester, const InventoryScreen());
       final row = find.byType(FilterChipRow<StockFilter>);
       await tester.scrollUntilVisible(
@@ -185,8 +190,9 @@ void main() {
       expect(find.text('Tetanus Vaccines'), findsWidgets);
     });
 
-    testWidgets('the Clothing category filter narrows the list',
-        (tester) async {
+    testWidgets('the Clothing category filter narrows the list', (
+      tester,
+    ) async {
       await pump(tester, const InventoryScreen());
       final row = find.byType(FilterChipRow<CategoryFilter>);
       await tester.scrollUntilVisible(
@@ -203,8 +209,9 @@ void main() {
       expect(find.text('Socks'), findsWidgets);
     });
 
-    testWidgets('an empty usage log says so rather than showing nothing',
-        (tester) async {
+    testWidgets('an empty usage log says so rather than showing nothing', (
+      tester,
+    ) async {
       await pump(tester, const InventoryScreen());
       await tester.dragUntilVisible(
         find.textContaining('No supplies logged yet'),
@@ -219,16 +226,18 @@ void main() {
   });
 
   group('TeamAccessScreen', () {
-    testWidgets('lists the roster and marks the signed-in user',
-        (tester) async {
+    testWidgets('lists the roster and marks the signed-in user', (
+      tester,
+    ) async {
       await pump(tester, const TeamAccessScreen());
       expect(find.text('Team Access'), findsOneWidget);
       expect(find.text('Marcus Miller'), findsOneWidget);
       expect(find.text('YOU'), findsOneWidget);
     });
 
-    testWidgets('offers no deactivate control for the signed-in user',
-        (tester) async {
+    testWidgets('offers no deactivate control for the signed-in user', (
+      tester,
+    ) async {
       await pump(tester, const TeamAccessScreen());
       // Three others in the roster, none of them self.
       expect(find.text('DEACTIVATE'), findsNWidgets(2));
@@ -254,8 +263,9 @@ void main() {
       expect(find.text('Patient Continuity Metrics'), findsOneWidget);
     });
 
-    testWidgets('gives the two continuity rows different captions',
-        (tester) async {
+    testWidgets('gives the two continuity rows different captions', (
+      tester,
+    ) async {
       await pump(tester, const InsightsScreen(), settle: false);
       await tester.dragUntilVisible(
         find.text(ContinuityMetric.primaryCareConnected.caption),
@@ -298,8 +308,7 @@ void main() {
     });
 
     test('handles multiple emphasised runs', () {
-      final spans =
-          InsightCard.emphasisSpans('**One** and **two** and three.');
+      final spans = InsightCard.emphasisSpans('**One** and **two** and three.');
       final bold = spans.where((s) => s.style?.fontWeight == FontWeight.w700);
       expect(bold.map((s) => s.text), ['One', 'two']);
     });

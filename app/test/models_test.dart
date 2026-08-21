@@ -7,18 +7,17 @@ void main() {
     String last = 'Doe',
     RiskLevel risk = RiskLevel.high,
     List<PatientFlag> flags = const [],
-  }) =>
-      Patient(
-        id: '1',
-        firstName: first,
-        lastName: last,
-        dob: DateTime(1979, 5, 12),
-        risk: risk,
-        loc: 'Cass Park',
-        lat: 42.34,
-        lng: -83.058,
-        flags: flags,
-      );
+  }) => Patient(
+    id: '1',
+    firstName: first,
+    lastName: last,
+    dob: DateTime(1979, 5, 12),
+    risk: risk,
+    loc: 'Cass Park',
+    lat: 42.34,
+    lng: -83.058,
+    flags: flags,
+  );
 
   group('Patient.matchesSearch', () {
     test('matches on name, case-insensitively', () {
@@ -42,13 +41,13 @@ void main() {
 
   group('InventoryItem', () {
     InventoryItem item(int stock, int min) => InventoryItem(
-          id: 's1',
-          name: 'Gauze',
-          stock: stock,
-          min: min,
-          unit: 'packs',
-          category: SupplyCategory.medical,
-        );
+      id: 's1',
+      name: 'Gauze',
+      stock: stock,
+      min: min,
+      unit: 'packs',
+      category: SupplyCategory.medical,
+    );
 
     test('classifies stock status', () {
       expect(item(0, 20).status, StockStatus.out);

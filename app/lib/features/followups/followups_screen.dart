@@ -27,8 +27,9 @@ class FollowUpsScreen extends ConsumerWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: AppSpace.maxContentWidth),
+            constraints: const BoxConstraints(
+              maxWidth: AppSpace.maxContentWidth,
+            ),
             child: ListView(
               padding: const EdgeInsets.all(AppSpace.x4),
               children: [

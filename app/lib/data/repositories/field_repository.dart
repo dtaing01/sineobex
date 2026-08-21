@@ -12,24 +12,42 @@ class FieldRepository {
 
   final AppDatabase _db;
 
-  Stream<List<FieldResource>> watchResources() =>
-      _db.select(_db.resourceRows).watch().map((rows) => rows
-          .map((r) =>
-              FieldResource.fromJson(jsonDecode(r.payload) as Map<String, dynamic>))
-          .toList(growable: false));
+  Stream<List<FieldResource>> watchResources() => _db
+      .select(_db.resourceRows)
+      .watch()
+      .map(
+        (rows) => rows
+            .map(
+              (r) => FieldResource.fromJson(
+                jsonDecode(r.payload) as Map<String, dynamic>,
+              ),
+            )
+            .toList(growable: false),
+      );
 
   Future<List<FieldResource>> resources() async {
     final rows = await _db.select(_db.resourceRows).get();
     return rows
-        .map((r) =>
-            FieldResource.fromJson(jsonDecode(r.payload) as Map<String, dynamic>))
+        .map(
+          (r) => FieldResource.fromJson(
+            jsonDecode(r.payload) as Map<String, dynamic>,
+          ),
+        )
         .toList(growable: false);
   }
 
-  Stream<List<Hotspot>> watchHotspots() =>
-      _db.select(_db.hotspotRows).watch().map((rows) => rows
-          .map((r) => Hotspot.fromJson(jsonDecode(r.payload) as Map<String, dynamic>))
-          .toList(growable: false));
+  Stream<List<Hotspot>> watchHotspots() => _db
+      .select(_db.hotspotRows)
+      .watch()
+      .map(
+        (rows) => rows
+            .map(
+              (r) => Hotspot.fromJson(
+                jsonDecode(r.payload) as Map<String, dynamic>,
+              ),
+            )
+            .toList(growable: false),
+      );
 
   /// The heatmap layer shows clinical and unmet-need clusters; the inventory
   /// layer shows supply draw. They are disjoint.
@@ -43,7 +61,9 @@ class FieldRepository {
     await _db.transaction(() async {
       await _db.delete(_db.resourceRows).go();
       for (final r in items) {
-        await _db.into(_db.resourceRows).insertOnConflictUpdate(
+        await _db
+            .into(_db.resourceRows)
+            .insertOnConflictUpdate(
               ResourceRowsCompanion.insert(
                 id: r.id,
                 payload: jsonEncode(r.toJson()),
@@ -58,7 +78,9 @@ class FieldRepository {
     await _db.transaction(() async {
       await _db.delete(_db.hotspotRows).go();
       for (final h in items) {
-        await _db.into(_db.hotspotRows).insertOnConflictUpdate(
+        await _db
+            .into(_db.hotspotRows)
+            .insertOnConflictUpdate(
               HotspotRowsCompanion.insert(
                 id: h.id,
                 payload: jsonEncode(h.toJson()),
@@ -71,8 +93,9 @@ class FieldRepository {
 
   Future<bool> get isEmpty async {
     final count = _db.resourceRows.id.count();
-    final row =
-        await (_db.selectOnly(_db.resourceRows)..addColumns([count])).getSingle();
+    final row = await (_db.selectOnly(
+      _db.resourceRows,
+    )..addColumns([count])).getSingle();
     return (row.read(count) ?? 0) == 0;
   }
 }

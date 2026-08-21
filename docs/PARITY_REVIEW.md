@@ -1,6 +1,7 @@
 # Parity Review — React prototype vs. planned Flutter app
 
-Conducted before development began, against `src/App.tsx` @ `8571e08`.
+Conducted before development began, against `src/App.tsx` @ `8571e08`, then
+re-verified against the built Flutter app (see §Post-build verification).
 Method: every JSX element that renders visible content or handles input was
 enumerated and assigned a Flutter counterpart. A row is **Full** only when
 layout, data, states, and interactions all map.
@@ -254,3 +255,88 @@ Implemented in the prototype but unreachable (D2). Ported and routed.
    `categoryStats`, and `stats` datasets are defined and never read. The local
    `History` SVG duplicates the imported `HistoryIcon` and is unreferenced.
    Noted here so their absence is not read as a parity gap.
+
+
+---
+
+## Post-build verification
+
+Re-walked after the port was complete. Every row above was re-checked against
+the shipped Flutter code; the totals are unchanged (106 Full, 5 Improved,
+0 Lost). What follows is the evidence, so the claim can be audited rather than
+taken on trust.
+
+### Automated
+
+| Check | Result |
+|---|---|
+| `flutter analyze lib test` | Clean, 0 issues |
+| `flutter test` | 82 passing |
+| `flutter build web --release` | Builds |
+| `npx tsc --noEmit` (infra) | Clean |
+| `npx cdk synth` | All 5 stacks render; 116 resources |
+
+### Seed fidelity, asserted in `test/seed_test.dart`
+
+The demo dataset was generated mechanically from `MOCK_DATA` rather than
+retyped, and tests pin the counts so drift fails the build:
+
+| Dataset | Prototype | Ported |
+|---|---|---|
+| Patients | 12 | 12 |
+| Inventory items | 37 | 37 |
+| Partner facilities | 13 | 13 |
+| Hotspots (12 clinical + 7 supply) | 19 | 19 |
+| Seasonal demand months | 12 | 12 |
+| Key outcomes | 5 | 5 |
+| Impact metrics | 4 | 4 |
+
+`John Doe survives the port intact` additionally asserts one full record
+end-to-end — name, DOB, risk, location, flags, tags, three movement
+observations, two encounters, and the exact dosage string on the first
+encounter's supply list.
+
+### Defect fixes, verified in the built app
+
+| # | Verification |
+|---|---|
+| D1 | `AppTab` enum; no orphan route string exists to fall through |
+| D2 | `lib/features/followups/followups_screen.dart` routed from the dashboard Alerts shortcut |
+| D3 | All five insight bodies render through `InsightCard.emphasisSpans`; three unit tests assert no `*` survives |
+| D4 | Partner-facility hours use `slate500`, verified by grep |
+| D5 | `ContinuityMetric` carries its own caption; asserted in both a unit test and a widget test |
+| D6 | Map priority list reads the `patients` parameter, not a constant |
+| D7 | `markReceived({int? quantity})`, with three tests covering supplied, omitted, and already-high stock |
+| D8 | `logEncounter` persists; 9 tests cover notes, supplies, follow-up lift and clear, ordering, and location capture |
+| D9 | Encounter supply picker searches full inventory |
+| D10 | `Fmt.age` with four boundary tests including the day-before-birthday case |
+| D11 | GPS capture with graceful fallback to the typed location |
+| D12 | UUID v4, asserted by regex |
+| D13 | Live date; route distance computed by `routeMiles` |
+| D14 | Duplicate hotspot display names kept, disambiguated by category badge |
+| D15 | Dead `History` SVG not ported, verified by grep |
+
+### Deviations found during the build
+
+Two, both disclosed rather than quietly absorbed:
+
+1. **`fl_chart` cannot render a rotated cartesian chart** in the version
+   pinned here (`rotationQuarterTurns` does not exist). The Supply Usage by
+   Region chart is therefore built from primitives — a labelled row per
+   region, an animated bar, and a tap-to-reveal tooltip. This is closer to
+   what the prototype's `layout="vertical"` Recharts config actually renders
+   than a rotated chart would have been, and it keeps the axis labels upright.
+   Recorded as Full; the visual result matches.
+
+2. **The pulsing "On Track" dot** is a perpetual animation, so
+   `pumpAndSettle` never returns on the Insights screen. Kept for parity with
+   the prototype's `animate-pulse`, with the tests pumping fixed frames
+   instead. Noted because it is a real constraint on any future test of that
+   screen.
+
+### Still true from the pre-build risks
+
+Risk 4 (web) turned out to be the sharpest: SQLCipher has no WebAssembly
+build, and the web bundle would not compile until the database layer was split
+behind a conditional import. The web target now uses in-memory SQLite-on-WASM
+and stores no PHI at rest, which is what the pre-build review said it would.

@@ -24,8 +24,9 @@ class TeamAccessScreen extends ConsumerWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: AppSpace.maxContentWidth),
+            constraints: const BoxConstraints(
+              maxWidth: AppSpace.maxContentWidth,
+            ),
             child: ListView(
               padding: const EdgeInsets.all(AppSpace.x4),
               children: [
@@ -98,7 +99,8 @@ class TeamAccessScreen extends ConsumerWidget {
                                     ),
                                   ),
                                   const TextSpan(
-                                    text: '. You can revoke credentials or '
+                                    text:
+                                        '. You can revoke credentials or '
                                         'update permissions at any time.',
                                   ),
                                 ],
@@ -157,9 +159,7 @@ class _MemberCard extends ConsumerWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: member.isActive
-                  ? AppColors.slate100
-                  : AppColors.slate200,
+              color: member.isActive ? AppColors.slate100 : AppColors.slate200,
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,

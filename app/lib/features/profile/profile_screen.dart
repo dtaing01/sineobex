@@ -25,8 +25,9 @@ class ProfileScreen extends ConsumerWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: AppSpace.maxContentWidth),
+            constraints: const BoxConstraints(
+              maxWidth: AppSpace.maxContentWidth,
+            ),
             child: ListView(
               padding: const EdgeInsets.all(AppSpace.x4),
               children: [
@@ -138,8 +139,7 @@ class ProfileScreen extends ConsumerWidget {
                           padding: const EdgeInsets.all(AppSpace.x2),
                           decoration: BoxDecoration(
                             color: AppColors.white.withValues(alpha: 0.2),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
                           child: const Icon(
                             LucideIcons.users,
@@ -165,8 +165,9 @@ class ProfileScreen extends ConsumerWidget {
                                 style: TextStyle(
                                   fontSize: AppText.micro,
                                   fontStyle: FontStyle.italic,
-                                  color: AppColors.blue100
-                                      .withValues(alpha: 0.9),
+                                  color: AppColors.blue100.withValues(
+                                    alpha: 0.9,
+                                  ),
                                 ),
                               ),
                             ],
@@ -258,7 +259,7 @@ class ProfileScreen extends ConsumerWidget {
                       sync?.lastSyncedAt == null
                           ? 'Not yet synced'
                           : 'Last Sync: Today at '
-                              '${Fmt.time12(sync!.lastSyncedAt!)}',
+                                '${Fmt.time12(sync!.lastSyncedAt!)}',
                       style: const TextStyle(
                         fontSize: AppText.tiny,
                         color: AppColors.slate300,
@@ -296,7 +297,9 @@ class ProfileScreen extends ConsumerWidget {
       context: context,
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.xxl),
+        ),
       ),
       builder: (_) => SafeArea(
         child: Padding(
@@ -316,23 +319,27 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: AppSpace.x3),
               _SecurityFact(
                 icon: LucideIcons.lock,
-                text: 'Patient data on this device is encrypted with '
+                text:
+                    'Patient data on this device is encrypted with '
                     'SQLCipher. The key lives in the secure enclave.',
               ),
               _SecurityFact(
                 icon: LucideIcons.clock,
-                text: 'The app locks automatically after '
+                text:
+                    'The app locks automatically after '
                     '${AppConfig.inactivityLockTimeout.inMinutes} minutes of '
                     'inactivity.',
               ),
               _SecurityFact(
                 icon: LucideIcons.fileText,
-                text: 'Every chart you open and every note you write is '
+                text:
+                    'Every chart you open and every note you write is '
                     'recorded in the audit log.',
               ),
               _SecurityFact(
                 icon: LucideIcons.trash2,
-                text: 'Signing out erases all patient data stored on this '
+                text:
+                    'Signing out erases all patient data stored on this '
                     'device.',
               ),
             ],
@@ -346,8 +353,7 @@ class ProfileScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final pending =
-        ref.read(syncStatusProvider).valueOrNull?.pending ?? 0;
+    final pending = ref.read(syncStatusProvider).valueOrNull?.pending ?? 0;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -356,10 +362,10 @@ class ProfileScreen extends ConsumerWidget {
         content: Text(
           pending > 0
               ? 'You have $pending unsynced change(s). Logging out erases all '
-                  'patient data on this device, and those changes will be '
-                  'lost. Connect to a network and sync first.'
+                    'patient data on this device, and those changes will be '
+                    'lost. Connect to a network and sync first.'
               : 'Logging out erases all patient data stored on this device. '
-                  'Your synced records are unaffected.',
+                    'Your synced records are unaffected.',
         ),
         actions: [
           TextButton(
@@ -367,9 +373,7 @@ class ProfileScreen extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.red600,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red600),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Log out'),
           ),
@@ -390,25 +394,25 @@ class _SecurityFact extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: AppSpace.x3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 16, color: AppColors.slate400),
-            const SizedBox(width: AppSpace.x3),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: AppText.xs,
-                  color: AppColors.slate600,
-                  height: 1.5,
-                ),
-              ),
+    padding: const EdgeInsets.only(bottom: AppSpace.x3),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.slate400),
+        const SizedBox(width: AppSpace.x3),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: AppText.xs,
+              color: AppColors.slate600,
+              height: 1.5,
             ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _IdentityRow extends StatelessWidget {

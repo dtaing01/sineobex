@@ -175,10 +175,7 @@ class _FieldIntelligenceMap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(
-          'Field Intelligence Map',
-          icon: LucideIcons.map,
-        ),
+        const SectionHeader('Field Intelligence Map', icon: LucideIcons.map),
         const SizedBox(height: AppSpace.x3),
         AppCard(
           padding: EdgeInsets.zero,
@@ -234,10 +231,7 @@ class _FieldIntelligenceMap extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _LegendPill(
-                        color: riskColor,
-                        label: 'Current Location',
-                      ),
+                      _LegendPill(color: riskColor, label: 'Current Location'),
                       const SizedBox(height: AppSpace.x1),
                       const _LegendPill(
                         color: AppColors.slate500,
@@ -266,8 +260,7 @@ class _FieldIntelligenceMap extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: AppColors.white.withValues(alpha: 0.9),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             border: Border.all(color: AppColors.slate200),
                             boxShadow: AppShadows.sm,
                           ),
@@ -449,20 +442,20 @@ class _DemographicsAndBilling extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget cell(String label, String value) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FieldLabel(label),
-            const SizedBox(height: AppSpace.x1),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: AppText.sm,
-                fontWeight: AppText.medium,
-                color: AppColors.slate900,
-              ),
-            ),
-          ],
-        );
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FieldLabel(label),
+        const SizedBox(height: AppSpace.x1),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: AppText.sm,
+            fontWeight: AppText.medium,
+            color: AppColors.slate900,
+          ),
+        ),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
