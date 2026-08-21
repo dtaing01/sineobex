@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Excludes the app entirely from Android backup and device-to-device transfer.
+
+  The local database holds PHI. Even though it is SQLCipher-encrypted, its key
+  lives in the Android Keystore and does not transfer with the backup, so a
+  restored copy would be unreadable ciphertext at best — and at worst a copy of
+  patient data sitting in someone's Google Drive. Neither is acceptable.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
