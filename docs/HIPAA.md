@@ -233,9 +233,18 @@ Stated plainly rather than left for an assessor to find:
 - **RLS is enforced on `patients`, `patient_locations`, and `encounters`
   only.** Inventory and reference data are not patient-identifying, but if
   inventory ever gains per-patient attribution, it needs a policy too.
-- **The Android and iOS builds are unverified** in the environment this was
-  developed in — no platform SDK was available. They must be built and tested
-  on real devices before any clinical use.
+- **The Android and iOS builds compile, but have never been run.** CI builds
+  both on every pull request, so the app is known to compile and link — which
+  it did not until `547d1ec`, where a dependency conflict that had made both
+  platforms unbuildable since the initial port was found and fixed by exactly
+  these jobs.
+
+  Compiling is not working. Nothing here has been exercised on a physical
+  device, and the parts most likely to fail there are the parts that matter
+  most: SQLCipher opening an encrypted database against the real Keychain and
+  Android Keystore, biometric unlock, GPS capture, and behaviour on a genuinely
+  intermittent connection. **All of that must be tested on real hardware before
+  any clinical use.**
 - **The `sineobex_api` password is not on an automatic rotation schedule.**
   The master credential rotates every 30 days; the application role's password
   is set by migration 002 and must be rotated by re-running that migration with

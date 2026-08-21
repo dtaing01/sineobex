@@ -41,7 +41,13 @@ patient dataset defaults to *off*, which is a compile-time gate and therefore
 a real guarantee rather than a convention.
 
 **`android-build` / `ios-build`** — compile for each mobile target. Both are
-unsigned; they answer "does it build", not "is it releasable". The iOS job
+unsigned; they answer "does it build", not "is it releasable", and certainly
+not "does it work on a phone".
+
+These earned their place immediately. On their first run they found that the
+app had never been buildable on either platform: `sqlcipher_flutter_libs` and
+`sqlite3_flutter_libs` were both declared, and they ship native libraries
+claiming the same Android namespace and the same Objective-C plugin class. The iOS job
 additionally asserts that `PrivacyInfo.xcprivacy` made it into the bundle.
 Merely having the file on disk is not enough — it has to be registered in the
 Xcode project's Copy Bundle Resources phase, which it now is. Without it the
