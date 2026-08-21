@@ -187,10 +187,18 @@ const analyticsRollup: Job = () =>
  */
 const hotspotRecompute: Job = () =>
   withTransaction(async (client) => {
+    // Retire the previous generation first. DBSCAN renumbers its clusters on
+    // every run, so yesterday's `auto-3` is not today's `auto-3`; without
+    // this, dissolved clusters would linger on the map forever as ghosts.
+    // Only `computed` rows are touched — coordinator-entered hotspots are
+    // human knowledge and are never machine-deleted.
+    await client.query(`DELETE FROM hotspots WHERE computed`);
+
     const { rowCount } = await client.query(`
       WITH clustered AS (
         SELECT
           location,
+          patient_id,
           ST_ClusterDBSCAN(location::geometry, eps := 0.004, minpoints := 3)
             OVER () AS cluster_id
         FROM encounters
@@ -201,32 +209,56 @@ const hotspotRecompute: Job = () =>
         SELECT
           cluster_id,
           ST_Centroid(ST_Collect(location::geometry)) AS centre,
-          count(*) AS encounter_count
+          count(*) AS encounter_count,
+          count(DISTINCT patient_id) AS patient_count
         FROM clustered
         WHERE cluster_id IS NOT NULL
         GROUP BY cluster_id
+      ),
+      identified AS (
+        SELECT
+          -- Derived from the cluster's own geography rather than DBSCAN's
+          -- ordinal, so the same physical cluster keeps the same id run to
+          -- run and a client can correlate it across refreshes.
+          'auto-' || encode(
+            sha256(ST_AsBinary(ST_SnapToGrid(centre, 0.002))), 'hex'
+          ) AS id,
+          centre,
+          encounter_count,
+          patient_count
+        FROM centroids
       )
       INSERT INTO hotspots (id, name, type, intensity, patient_count, location,
                             computed)
-      SELECT
-        'auto-' || cluster_id,
-        'Cluster ' || cluster_id,
+      -- DISTINCT ON because two nearby centroids can snap to the same grid
+      -- cell and collide on id. Postgres rejects an ON CONFLICT that would
+      -- touch one row twice in a single statement, so the duplicate has to be
+      -- resolved here; the denser cluster is the one worth showing.
+      SELECT DISTINCT ON (id)
+        id,
+        'Cluster near ' || round(ST_Y(centre)::numeric, 3) || ', '
+                        || round(ST_X(centre)::numeric, 3),
         'Rising Need',
         CASE
           WHEN encounter_count >= 20 THEN 'High'
           WHEN encounter_count >= 8 THEN 'Moderate'
           ELSE 'Low'
         END,
-        encounter_count,
+        patient_count,
         centre::geography,
         true
-      FROM centroids
+      FROM identified
+      ORDER BY id, encounter_count DESC
       ON CONFLICT (id) DO UPDATE SET
         intensity = EXCLUDED.intensity,
         patient_count = EXCLUDED.patient_count,
         location = EXCLUDED.location,
         updated_at = now()
     `);
+
+    // A DELETE followed by an INSERT is safe here only because both run
+    // inside the same transaction: readers see either the old generation or
+    // the new one, never an empty map.
 
     return { clusters: rowCount };
   });
@@ -237,14 +269,18 @@ const seasonalDemand: Job = () =>
     const { rowCount } = await client.query(`
       INSERT INTO seasonal_demand (month, items, intensity, computed_at)
       SELECT
-        to_char(date_trunc('month', occurred_at), 'Mon') AS month,
+        to_char(occurred_at, 'Mon') AS month,
         (array_agg(DISTINCT supply ORDER BY supply))[1:5] AS items,
         least(100, count(*) * 2) AS intensity,
         now()
       FROM encounters e,
            jsonb_array_elements_text(e.supplies) AS supply
       WHERE occurred_at > now() - interval '2 years'
-      GROUP BY date_trunc('month', occurred_at)
+      -- Grouped by calendar month name, matching the primary key. Grouping by
+      -- date_trunc instead produced one row per month *instance*, so two
+      -- years of data hit the same 'Mar' key twice and Postgres raised
+      -- "ON CONFLICT DO UPDATE command cannot affect row a second time".
+      GROUP BY to_char(occurred_at, 'Mon')
       ON CONFLICT (month) DO UPDATE SET
         items = EXCLUDED.items,
         intensity = EXCLUDED.intensity,
@@ -267,17 +303,22 @@ const followUpDue: Job = () =>
     const { rows } = await client.query(`
       INSERT INTO notification_queue (recipient_sub, kind, subject_id,
                                       scheduled_for)
-      SELECT DISTINCT tm.cognito_sub, 'followup-due', p.id, now()
+      SELECT DISTINCT tm.cognito_sub, 'followup-due', p.id::text, now()
       FROM patients p
       JOIN team_members tm ON tm.team_id = p.team_id
       WHERE p.follow_up
-        AND p.next_follow_up::date <= (now() + interval '1 day')::date
+        AND p.next_follow_up IS NOT NULL
+        AND p.next_follow_up <= (now() + interval '1 day')::date
         AND NOT p.deleted
         AND tm.active
         AND NOT EXISTS (
           SELECT 1 FROM notification_queue q
-          WHERE q.subject_id = p.id
+          -- subject_id is text and p.id is uuid; without the cast Postgres
+          -- raises "operator does not exist: text = uuid" and this job fails
+          -- on every run.
+          WHERE q.subject_id = p.id::text
             AND q.kind = 'followup-due'
+            AND q.recipient_sub = tm.cognito_sub
             AND q.scheduled_for > now() - interval '20 hours'
         )
       RETURNING id
@@ -292,17 +333,20 @@ const lowStockAlert: Job = () =>
     const { rows } = await client.query(`
       INSERT INTO notification_queue (recipient_sub, kind, subject_id,
                                       scheduled_for)
-      SELECT tm.cognito_sub, 'low-stock', i.id, now()
+      SELECT tm.cognito_sub, 'low-stock', i.id::text, now()
       FROM inventory_items i
-      CROSS JOIN team_members tm
+      -- Joined on team_id, not CROSS JOINed. A cross join alerted every admin
+      -- in every agency about every other team's van.
+      JOIN team_members tm ON tm.team_id = i.team_id
       WHERE i.stock < i.min_level
         AND i.ordered_at IS NULL
         AND tm.active
         AND tm.access_tier = 'full-admin'
         AND NOT EXISTS (
           SELECT 1 FROM notification_queue q
-          WHERE q.subject_id = i.id
+          WHERE q.subject_id = i.id::text
             AND q.kind = 'low-stock'
+            AND q.recipient_sub = tm.cognito_sub
             AND q.scheduled_for > now() - interval '24 hours'
         )
       RETURNING id

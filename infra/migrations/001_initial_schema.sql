@@ -71,7 +71,15 @@ CREATE TABLE patients (
   primary_doctor  text,
   deleted         boolean NOT NULL DEFAULT false,
   created_at      timestamptz NOT NULL DEFAULT now(),
+  -- Server clock. Authoritative, trigger-maintained, and the only column the
+  -- sync cursor pages on — a device with a skewed clock must not be able to
+  -- make its own writes invisible to the next page.
   updated_at      timestamptz NOT NULL DEFAULT now(),
+  -- Device clock at the moment of the edit. Used *only* to resolve
+  -- last-writer-wins between two offline edits. Kept separate from
+  -- updated_at because comparing a device clock against server now() means
+  -- the incoming row is always "newer", which silently defeats the guard.
+  client_updated_at timestamptz NOT NULL DEFAULT now(),
   created_by      text,
   updated_by      text
 );
@@ -152,6 +160,7 @@ CREATE TABLE inventory_items (
   ordered_at  timestamptz,
   ordered_by  text,
   updated_at  timestamptz NOT NULL DEFAULT now(),
+  client_updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (team_id, name)
 );
 
@@ -305,6 +314,7 @@ CREATE RULE audit_log_no_delete AS
 -- actor. The API sets `sineobex.actor` per transaction via set_config().
 CREATE OR REPLACE FUNCTION set_row_actor() RETURNS trigger AS $$
 BEGIN
+  -- Always the server clock: this drives the sync cursor.
   NEW.updated_at := now();
   NEW.updated_by := coalesce(
     nullif(current_setting('sineobex.actor', true), ''), 'system');

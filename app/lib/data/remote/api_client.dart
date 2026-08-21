@@ -9,13 +9,27 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
 
-  /// 4xx other than 408/429 will never succeed on retry.
+  /// True only when retrying this exact request can never succeed.
+  ///
+  /// Deliberately narrow, because the sync loop *discards* permanent
+  /// failures. 401 and 403 are excluded: an expired or not-yet-refreshed
+  /// token is a transient condition, and treating it as permanent would
+  /// silently delete field encounters that never reached the server. 408 and
+  /// 429 are timeouts and rate limits, both retryable. 409 is a conflict the
+  /// server may resolve differently later.
+  ///
+  /// What is left is genuine client error — a malformed or rejected payload,
+  /// which will be just as malformed on the tenth attempt.
   bool get isPermanent {
     final code = statusCode;
     if (code == null) return false;
-    if (code == 408 || code == 429) return false;
+    const retryable = {401, 403, 408, 409, 425, 429};
+    if (retryable.contains(code)) return false;
     return code >= 400 && code < 500;
   }
+
+  /// An authentication failure: the token needs refreshing, not the payload.
+  bool get isAuthFailure => statusCode == 401 || statusCode == 403;
 
   @override
   String toString() => 'ApiException($statusCode): $message';

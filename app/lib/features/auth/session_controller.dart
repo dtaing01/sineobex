@@ -26,6 +26,10 @@ enum SessionState {
 
   /// Cognito requires a new password before the account can be used.
   newPasswordRequired,
+
+  /// Cognito issued an MFA challenge. The pool is `Mfa.REQUIRED`, so this is
+  /// the normal path for every sign-in, not an edge case.
+  mfaRequired,
 }
 
 class Session {
@@ -73,6 +77,12 @@ class SessionController extends StateNotifier<Session> {
   CognitoUser? _cognitoUser;
   CognitoUserSession? _cognitoSession;
   Timer? _inactivityTimer;
+
+  /// Held between `signIn` and `confirmMfa` / `completeNewPassword` so the
+  /// challenge is answered on the same CognitoUser that received it — a fresh
+  /// CognitoUser has no challenge session and the answer would be rejected.
+  CognitoUser? _pendingUser;
+  String? _pendingUsername;
 
   bool get isConfigured =>
       AppConfig.cognitoUserPoolId.isNotEmpty &&
@@ -127,8 +137,10 @@ class SessionController extends StateNotifier<Session> {
     }
 
     state = state.copyWith(state: SessionState.restoring);
+    final user = CognitoUser(username, _userPool);
+    _pendingUser = user;
+    _pendingUsername = username;
     try {
-      final user = CognitoUser(username, _userPool);
       final details = AuthenticationDetails(
         username: username,
         password: password,
@@ -142,21 +154,26 @@ class SessionController extends StateNotifier<Session> {
         return false;
       }
 
-      _cognitoUser = user;
-      _cognitoSession = session;
-      await _storage.write(key: _sessionKey, value: username);
-
-      final appUser = _userFrom(session);
-      _ref.read(currentUserProvider.notifier).state = appUser;
-      _ref.read(auditLogProvider)
-        ..setActor(appUser.id)
-        ..record(AuditAction.signIn, entity: 'session', entityId: appUser.id);
-
-      state = Session(state: SessionState.active, user: appUser);
-      _resetInactivityTimer();
+      await _establish(user, session, username);
       return true;
     } on CognitoUserNewPasswordRequiredException {
       state = const Session(state: SessionState.newPasswordRequired);
+      return false;
+    } on CognitoUserMfaRequiredException {
+      // The pool requires MFA, so this fires on every normal sign-in.
+      state = const Session(state: SessionState.mfaRequired);
+      return false;
+    } on CognitoUserSelectMfaTypeException {
+      state = const Session(state: SessionState.mfaRequired);
+      return false;
+    } on CognitoUserTotpRequiredException {
+      state = const Session(state: SessionState.mfaRequired);
+      return false;
+    } on CognitoUserConfirmationNecessaryException {
+      state = const Session(
+        state: SessionState.signedOut,
+        error: 'This account is not confirmed yet. Contact your administrator.',
+      );
       return false;
     } on CognitoClientException catch (e) {
       state = Session(
@@ -171,6 +188,106 @@ class SessionController extends StateNotifier<Session> {
       );
       return false;
     }
+  }
+
+  /// Answers a Cognito MFA challenge with the user's TOTP code.
+  Future<bool> confirmMfa(String code) async {
+    final user = _pendingUser;
+    if (user == null) {
+      state = const Session(
+        state: SessionState.signedOut,
+        error: 'That sign-in attempt expired. Please start again.',
+      );
+      return false;
+    }
+
+    state = state.copyWith(state: SessionState.restoring);
+    try {
+      final session = await user.sendMFACode(code.trim(), 'SOFTWARE_TOKEN_MFA');
+      if (session == null) {
+        state = const Session(
+          state: SessionState.mfaRequired,
+          error: 'That code was not accepted.',
+        );
+        return false;
+      }
+      await _establish(user, session, _pendingUsername ?? '');
+      return true;
+    } on CognitoClientException catch (e) {
+      state = Session(
+        state: SessionState.mfaRequired,
+        error: e.message ?? 'That code was not accepted.',
+      );
+      return false;
+    } catch (e) {
+      state = Session(
+        state: SessionState.mfaRequired,
+        error: 'Could not verify that code: $e',
+      );
+      return false;
+    }
+  }
+
+  /// Sets the permanent password when Cognito issues a NEW_PASSWORD_REQUIRED
+  /// challenge — the path every freshly provisioned clinician takes on first
+  /// sign-in.
+  Future<bool> completeNewPassword(String newPassword) async {
+    final user = _pendingUser;
+    if (user == null) {
+      state = const Session(
+        state: SessionState.signedOut,
+        error: 'That sign-in attempt expired. Please start again.',
+      );
+      return false;
+    }
+
+    state = state.copyWith(state: SessionState.restoring);
+    try {
+      final session = await user.sendNewPasswordRequiredAnswer(newPassword);
+      if (session == null) {
+        state = const Session(
+          state: SessionState.newPasswordRequired,
+          error: 'Could not set that password.',
+        );
+        return false;
+      }
+      await _establish(user, session, _pendingUsername ?? '');
+      return true;
+    } on CognitoUserMfaRequiredException {
+      state = const Session(state: SessionState.mfaRequired);
+      return false;
+    } on CognitoClientException catch (e) {
+      state = Session(
+        state: SessionState.newPasswordRequired,
+        error: e.message ?? 'Could not set that password.',
+      );
+      return false;
+    }
+  }
+
+  /// Shared tail of every successful authentication path.
+  Future<void> _establish(
+    CognitoUser user,
+    CognitoUserSession session,
+    String username,
+  ) async {
+    _cognitoUser = user;
+    _cognitoSession = session;
+    _pendingUser = null;
+    _pendingUsername = null;
+
+    if (username.isNotEmpty) {
+      await _storage.write(key: _sessionKey, value: username);
+    }
+
+    final appUser = _userFrom(session);
+    _ref.read(currentUserProvider.notifier).state = appUser;
+    _ref.read(auditLogProvider)
+      ..setActor(appUser.id)
+      ..record(AuditAction.signIn, entity: 'session', entityId: appUser.id);
+
+    state = Session(state: SessionState.active, user: appUser);
+    _resetInactivityTimer();
   }
 
   /// Called by the auth interceptor when a request comes back 401.

@@ -14,6 +14,7 @@ import '../data/repositories/team_repository.dart';
 import '../data/seed/demo_seed.dart' as seed;
 import '../data/sync/outbox.dart';
 import '../data/sync/sync_service.dart';
+import '../features/auth/session_controller.dart';
 
 /// Overridden in `main()` with the encrypted instance, and in tests with an
 /// in-memory one.
@@ -21,7 +22,20 @@ final databaseProvider = Provider<AppDatabase>(
   (ref) => throw UnimplementedError('databaseProvider must be overridden'),
 );
 
-final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+/// The API client, wired to the session so every request carries a bearer
+/// token and a 401 triggers exactly one refresh-and-retry.
+///
+/// The token provider is a closure rather than a direct dependency because
+/// SessionController itself reads repositories that are built from this graph;
+/// resolving it lazily at request time breaks what would otherwise be a
+/// circular provider dependency.
+final apiClientProvider = Provider<ApiClient>((ref) {
+  return ApiClient(
+    tokenProvider: ({bool forceRefresh = false}) => ref
+        .read(sessionControllerProvider.notifier)
+        .accessToken(forceRefresh: forceRefresh),
+  );
+});
 
 final outboxProvider = Provider<Outbox>(
   (ref) => Outbox(ref.watch(databaseProvider)),

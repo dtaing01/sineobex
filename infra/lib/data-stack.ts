@@ -26,6 +26,11 @@ export class DataStack extends cdk.Stack {
   public readonly cluster: rds.DatabaseCluster;
   public readonly securityGroup: ec2.SecurityGroup;
   public readonly credentials: secretsmanager.ISecret;
+  /**
+   * Credentials for the least-privilege application role. This is what the
+   * API connects with — never the master credential.
+   */
+  public readonly apiCredentials: secretsmanager.Secret;
   public readonly attachments: s3.Bucket;
   public readonly auditArchive: s3.Bucket;
   public readonly encryptionKey: kms.Key;
@@ -66,6 +71,26 @@ export class DataStack extends cdk.Stack {
       encryptionKey: this.encryptionKey,
       generateSecretString: {
         secretStringTemplate: JSON.stringify({ username: 'sineobex_admin' }),
+        generateStringKey: 'password',
+        excludeCharacters: '"@/\\\'',
+        passwordLength: 32,
+      },
+    });
+
+    // The application role's password.
+    //
+    // The API must NOT connect as the master user: master is a superuser, and
+    // a superuser bypasses row-level security entirely, which would make
+    // every policy in 002_row_level_security.sql decorative. This secret is
+    // consumed by that migration (to set the role's password) and by the
+    // Lambdas (to connect as it).
+    this.apiCredentials = new secretsmanager.Secret(this, 'ApiDbCredentials', {
+      description:
+        'Sineobex application database role (sineobex_api) — least ' +
+        'privilege, subject to row-level security',
+      encryptionKey: this.encryptionKey,
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ username: 'sineobex_api' }),
         generateStringKey: 'password',
         excludeCharacters: '"@/\\\'',
         passwordLength: 32,
@@ -196,6 +221,14 @@ export class DataStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'DatabaseSecretArn', {
       value: this.credentials.secretArn,
+      description:
+        'Master credential. Use for migrations only — never for the API.',
+    });
+    new cdk.CfnOutput(this, 'ApiDbSecretArn', {
+      value: this.apiCredentials.secretArn,
+      description:
+        'Application role credential. Pass its password to migration 002 as '
+        + '-v api_password=..., and it is what the API Lambdas connect with.',
     });
   }
 }

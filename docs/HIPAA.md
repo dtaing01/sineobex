@@ -33,11 +33,21 @@ this deployment before it holds a single real record.
 | Emergency access | Admin group retains full read across their agency's teams |
 | Password policy | 14 characters, four character classes, `auth-stack.ts` |
 | Short token lifetime | 60-minute access and ID tokens, 7-day refresh, revocation enabled |
+| Bearer token on every request | `AuthInterceptor`, wired in `providers.dart`, with one refresh-and-retry on 401 |
+| MFA challenge handled end to end | `SessionController.confirmMfa`; TOTP entry in `SignInScreen` |
 
 The API connects to Postgres as `sineobex_api`, **not** as the master user.
-This matters: a superuser bypasses row-level security entirely, so using the
-master credential for application queries would silently disable the isolation
-policies.
+This matters more than it looks: a superuser bypasses row-level security
+entirely, so using the master credential for application queries would
+silently disable every isolation policy while leaving them visibly present in
+the schema.
+
+The first draft of this system got that wrong — the role was created
+`NOLOGIN` and the Lambdas connected as master, which made all three policies
+inert. It is now enforced three ways rather than trusted: the role is created
+`LOGIN NOBYPASSRLS NOSUPERUSER`, migration 002 raises an exception and aborts
+if the role could ever bypass RLS, and the API's patient upsert carries an
+explicit `team_id` check of its own so isolation does not rest on RLS alone.
 
 ### Audit controls — §164.312(b)
 
@@ -91,6 +101,11 @@ every table.
   (`data_extraction_rules.xml`).
 - Sign-out deletes the local rows **and** destroys the SQLCipher key, so any
   residual file blocks are unrecoverable ciphertext.
+- That erasure is deliberately hard to trigger by accident. Only an explicitly
+  rejected refresh token (`NotAuthorizedException`, `UserNotFoundException`,
+  `UserNotConfirmedException`) signs the user out; a network failure keeps the
+  session, because wiping the database on a dead-zone timeout would destroy
+  unsynced field encounters.
 
 ### Minimum necessary — §164.502(b)
 
@@ -103,6 +118,10 @@ every table.
   error, because a Postgres error can quote the offending row.
 - Push notifications carry a subject id only. "Follow-up due: Jane Smith,
   prenatal" rendered on a lock screen in a shared van is a disclosure.
+- The sync queue never discards a clinical record on an authentication
+  failure. 401 and 403 are classified retryable precisely because the drain
+  loop deletes permanent failures, and an expired session must not be able to
+  erase an encounter that never reached the server.
 - Not-found and not-authorised are deliberately indistinguishable on patient
   lookup: "this patient exists but isn't yours" is itself a disclosure.
 
@@ -196,3 +215,14 @@ Stated plainly rather than left for an assessor to find:
 - **The Android and iOS builds are unverified** in the environment this was
   developed in — no platform SDK was available. They must be built and tested
   on real devices before any clinical use.
+- **The `sineobex_api` password is not on an automatic rotation schedule.**
+  The master credential rotates every 30 days; the application role's password
+  is set by migration 002 and must be rotated by re-running that migration with
+  a new value. The Lambdas detect a rotated password (SQLSTATE 28P01/28000),
+  rebuild their connection pool, and retry once, so rotation does not require a
+  deploy — but scheduling it is currently a manual task.
+- **No SQL-level test coverage.** The migrations and cron queries are reviewed
+  and type-checked but not executed against a live PostGIS instance in CI. Two
+  type errors and two upsert-collision bugs in this file's first draft were
+  found by review rather than by a test, which is not a repeatable control.
+  A containerised Postgres+PostGIS in CI would be the right fix.

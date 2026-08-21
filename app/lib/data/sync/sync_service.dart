@@ -48,6 +48,12 @@ class SyncService {
   bool _draining = false;
   DateTime? _lastSyncedAt;
 
+  /// Entity ids the server rejected outright. Surfaced so a coordinator can
+  /// see that a record did not make it, rather than it vanishing quietly.
+  final _rejected = <String>{};
+
+  Set<String> get rejectedIds => Set.unmodifiable(_rejected);
+
   Stream<SyncStatus> get status => _controller.stream;
 
   void start() {
@@ -87,17 +93,39 @@ class SyncService {
             await _push(row);
             await _outbox.markDone(row.seq);
           } on ApiException catch (e) {
+            if (e.isAuthFailure) {
+              // The token needs refreshing, not the payload. Stop the pass and
+              // let the next one retry with a fresh token — never discard a
+              // clinical record because a session expired mid-shift.
+              await _outbox.markFailed(row.seq, e);
+              _scheduleRetry(row.attempts + 1);
+              _emit(SyncState.error, message: 'Sign-in required to sync');
+              return;
+            }
             if (e.isPermanent) {
-              // A rejected write will never succeed on retry. Drop it from the
-              // queue rather than blocking every later write behind it.
-              debugPrint('Dropping unsyncable ${row.entity}/${row.entityId}');
+              // The server rejected this payload and always will. Dropping it
+              // is a real data loss, so it is surfaced rather than silent.
+              debugPrint(
+                'Server permanently rejected ${row.entity}/${row.entityId}: '
+                '${e.statusCode}',
+              );
               await _outbox.markDone(row.seq);
+              _rejected.add(row.entityId);
             } else {
               await _outbox.markFailed(row.seq, e);
               _scheduleRetry(row.attempts + 1);
               _emit(SyncState.error, message: e.message);
               return;
             }
+          } catch (e) {
+            // Anything else — a socket dying mid-write, a JSON error — is
+            // treated as transient, but the attempt counter must still grow or
+            // the retry timer spins at its floor forever with this row
+            // blocking every write behind it.
+            await _outbox.markFailed(row.seq, e);
+            _scheduleRetry(row.attempts + 1);
+            _emit(SyncState.error, message: e.toString());
+            return;
           }
         }
         batch = await _outbox.pending();

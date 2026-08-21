@@ -21,7 +21,11 @@ class InsightsRepository {
     if (_api.isConfigured) {
       try {
         final remote = await _api.fetchInsights();
-        if (remote != null) return _parse(remote);
+        // The server deliberately answers `{}` when no rollup has been
+        // computed yet, so "non-null" is not the same as "has data". Falling
+        // through on an empty payload is what makes the local computation the
+        // real fallback rather than a blank screen.
+        if (remote != null && remote.isNotEmpty) return _parse(remote);
       } on ApiException {
         // Fall through to the local computation rather than showing an error
         // screen — stale analytics beat no analytics in the field.

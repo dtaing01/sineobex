@@ -19,6 +19,7 @@ import {
 type Handler = (
   caller: Caller,
   body: Record<string, unknown>,
+  query: Record<string, string | undefined>,
 ) => Promise<APIGatewayProxyResultV2>;
 
 export const handler = async (
@@ -47,7 +48,7 @@ export const handler = async (
     const fn = routes[route] ?? routes[event.routeKey];
     if (!fn) return notFound();
 
-    return await fn(caller, body);
+    return await fn(caller, body, event.queryStringParameters ?? {});
   } catch (error) {
     if (error instanceof SyntaxError) return badRequest('Malformed JSON body');
     return serverError(requestId, error);
@@ -104,13 +105,20 @@ const getInsights: Handler = async () =>
     return ok(rows[0].payload);
   });
 
-/** The caseload for the caller's team, as of a sync cursor. */
-const listPatients: Handler = async (caller, body) =>
+/**
+ * The caseload for the caller's team, as of a sync cursor.
+ *
+ * The cursor is a query parameter, not a body field: this is a GET, and a GET
+ * body is not sent by most clients and not readable here. It is a timestamp,
+ * not an identifier, so it is safe in a URL.
+ */
+const listPatients: Handler = async (caller, _body, query) =>
   withTransaction(async (client) => {
     await setActor(client, caller.sub);
 
+    const parsed = query.since ? new Date(query.since) : null;
     const since =
-      typeof body.since === 'string' ? new Date(body.since) : new Date(0);
+      parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date(0);
 
     const { rows } = await client.query(
       `SELECT p.id, p.first_name, p.last_name, p.dob, p.risk,
@@ -123,6 +131,7 @@ const listPatients: Handler = async (caller, body) =>
        FROM patients p
        JOIN team_members tm ON tm.team_id = p.team_id
        WHERE tm.cognito_sub = $1
+         AND tm.active
          AND p.updated_at > $2
          AND NOT p.deleted
        ORDER BY p.updated_at ASC
@@ -159,7 +168,8 @@ const lookupPatient: Handler = async (caller, body) => {
               ST_X(p.location::geometry) AS lng
        FROM patients p
        JOIN team_members tm ON tm.team_id = p.team_id
-       WHERE p.id = $1 AND tm.cognito_sub = $2 AND NOT p.deleted`,
+       WHERE p.id = $1 AND tm.cognito_sub = $2 AND tm.active
+         AND NOT p.deleted`,
       [id, caller.sub],
     );
 
@@ -223,14 +233,16 @@ const applyMutation: Handler = async (caller, body) => {
           `INSERT INTO patients (
              id, team_id, first_name, last_name, dob, risk, location_label,
              location, tags, flags, follow_up, next_follow_up,
-             phone, insurance_name, member_id, primary_doctor, updated_at
+             phone, insurance_name, member_id, primary_doctor,
+             client_updated_at
            )
            VALUES (
              $1,
-             (SELECT team_id FROM team_members WHERE cognito_sub = $2),
+             (SELECT team_id FROM team_members
+              WHERE cognito_sub = $2 AND active),
              $3, $4, $5, $6, $7,
              ST_SetSRID(ST_MakePoint($9, $8), 4326)::geography,
-             $10, $11, $12, $13, $14, $15, $16, $17, now()
+             $10, $11, $12, $13, $14, $15, $16, $17, $18
            )
            ON CONFLICT (id) DO UPDATE SET
              first_name = EXCLUDED.first_name,
@@ -247,8 +259,15 @@ const applyMutation: Handler = async (caller, body) => {
              insurance_name = EXCLUDED.insurance_name,
              member_id = EXCLUDED.member_id,
              primary_doctor = EXCLUDED.primary_doctor,
-             updated_at = now()
-           WHERE patients.updated_at < EXCLUDED.updated_at`,
+             client_updated_at = EXCLUDED.client_updated_at
+           WHERE patients.client_updated_at < EXCLUDED.client_updated_at
+             -- Team check as well as RLS. A standard-tier user must not be
+             -- able to overwrite a record belonging to another team, and this
+             -- holds even if the connection role is ever misconfigured.
+             AND patients.team_id = (
+               SELECT team_id FROM team_members
+               WHERE cognito_sub = $2 AND active
+             )`,
           [
             entityId,
             caller.sub,
@@ -267,6 +286,10 @@ const applyMutation: Handler = async (caller, body) => {
             payload.insuranceName ?? null,
             payload.memberId ?? null,
             payload.primaryDoctor ?? null,
+            // The device's own timestamp, not now(). Using now() made the
+            // last-writer-wins guard compare a row against the current clock,
+            // which is always newer — so a week-old offline edit always won.
+            payload.updatedAt ?? new Date().toISOString(),
           ],
         );
         break;
@@ -310,8 +333,9 @@ const applyMutation: Handler = async (caller, body) => {
            SET stock = $2,
                ordered_at = $3,
                ordered_by = $4,
-               updated_at = now()
-           WHERE id = $1 AND updated_at < $5`,
+               updated_at = now(),
+               client_updated_at = $5
+           WHERE id = $1 AND client_updated_at < $5`,
           [
             entityId,
             payload.stock,

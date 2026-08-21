@@ -10,16 +10,40 @@
 
 BEGIN;
 
--- The role the Lambdas connect as. It deliberately cannot create or drop
--- anything, and RLS applies to it (unlike a superuser, which bypasses RLS
--- entirely — the reason the API must never use the master credential).
+-- The role the Lambdas connect as.
+--
+-- It MUST have LOGIN and the API MUST actually connect as it. A NOLOGIN role
+-- cannot be connected as, so the API would silently fall back to the master
+-- credential — and the master user is a superuser, which bypasses RLS
+-- entirely. Every policy below would then be decorative.
+--
+-- The password is supplied by the deployer from the ApiDbSecret created in
+-- DataStack:
+--
+--   psql -v api_password="$(aws secretsmanager get-secret-value \
+--     --secret-id <ApiDbSecretArn> --query SecretString --output text \
+--     | jq -r .password)" -f 002_row_level_security.sql
+\if :{?api_password}
+\else
+\echo 'ERROR: run with -v api_password=... (see the comment above)'
+\quit
+\endif
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sineobex_api') THEN
-    CREATE ROLE sineobex_api NOLOGIN;
+    CREATE ROLE sineobex_api LOGIN;
+  ELSE
+    ALTER ROLE sineobex_api LOGIN;
   END IF;
 END
 $$;
+
+ALTER ROLE sineobex_api WITH PASSWORD :'api_password';
+
+-- Belt and braces: NOBYPASSRLS means that even if this role is later granted
+-- something broader by mistake, the policies still apply to it.
+ALTER ROLE sineobex_api NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
 
 GRANT USAGE ON SCHEMA public TO sineobex_api;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO sineobex_api;
@@ -64,5 +88,20 @@ CREATE POLICY encounters_team_isolation ON encounters
         AND tm.active
     )
   );
+
+-- Fails the migration loudly if the policies could never bite, rather than
+-- leaving a deployment that looks isolated and is not.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+    WHERE rolname = 'sineobex_api' AND (rolsuper OR rolbypassrls OR NOT rolcanlogin)
+  ) THEN
+    RAISE EXCEPTION
+      'sineobex_api must be a LOGIN role without SUPERUSER or BYPASSRLS, '
+      'otherwise row-level security does not apply to the API.';
+  END IF;
+END
+$$;
 
 COMMIT;

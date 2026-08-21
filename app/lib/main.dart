@@ -68,10 +68,15 @@ class _SineobexAppState extends ConsumerState<SineobexApp>
   Widget build(BuildContext context) {
     final session = ref.watch(sessionControllerProvider);
 
-    // Wire token refresh into the API client once a session exists.
+    // Kick the sync loop when a session becomes active.
+    //
+    // Invalidating the API client here would rebuild SyncService without
+    // anything calling start() again, leaving sync permanently stopped after
+    // sign-in. The client resolves its token lazily per request, so it does
+    // not need rebuilding — the drain just needs restarting.
     ref.listen(sessionControllerProvider, (previous, next) {
       if (previous?.state != next.state && next.state == SessionState.active) {
-        ref.invalidate(apiClientProvider);
+        ref.read(syncServiceProvider).start();
       }
     });
 
@@ -82,6 +87,7 @@ class _SineobexAppState extends ConsumerState<SineobexApp>
       home: switch (session.state) {
         SessionState.restoring => const _SplashScreen(),
         SessionState.signedOut ||
+        SessionState.mfaRequired ||
         SessionState.newPasswordRequired => const SignInScreen(),
         SessionState.locked => const LockScreen(),
         SessionState.active => _AuthenticatedApp(router: _router),

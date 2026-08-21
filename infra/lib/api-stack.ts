@@ -68,6 +68,8 @@ export class ApiStack extends cdk.Stack {
 
     const commonEnvironment = {
       NODE_OPTIONS: '--enable-source-maps',
+      // The least-privilege application role, not the master credential.
+      // Connecting as master would bypass row-level security.
       DB_SECRET_ARN: props.databaseSecret.secretArn,
       DB_HOST: props.database.clusterEndpoint.hostname,
       DB_NAME: 'sineobex',

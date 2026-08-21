@@ -19,22 +19,41 @@ class SignInScreen extends ConsumerStatefulWidget {
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _mfaCode = TextEditingController();
+  final _newPassword = TextEditingController();
   bool _submitting = false;
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
+    _mfaCode.dispose();
+    _newPassword.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _run(Future<bool> Function() action) async {
     setState(() => _submitting = true);
-    await ref
-        .read(sessionControllerProvider.notifier)
-        .signIn(_username.text.trim(), _password.text);
+    await action();
     if (mounted) setState(() => _submitting = false);
   }
+
+  Future<void> _submit() => _run(
+    () => ref
+        .read(sessionControllerProvider.notifier)
+        .signIn(_username.text.trim(), _password.text),
+  );
+
+  Future<void> _submitMfa() => _run(
+    () =>
+        ref.read(sessionControllerProvider.notifier).confirmMfa(_mfaCode.text),
+  );
+
+  Future<void> _submitNewPassword() => _run(
+    () => ref
+        .read(sessionControllerProvider.notifier)
+        .completeNewPassword(_newPassword.text),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +136,68 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ],
                       ),
                     )
+                  else if (session.state == SessionState.mfaRequired)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Enter the 6-digit code from your authenticator app.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: AppText.sm,
+                            color: AppColors.slate600,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.x4),
+                        LabelledField(
+                          label: 'Verification code',
+                          child: AppInput(
+                            controller: _mfaCode,
+                            placeholder: '123456',
+                            keyboardType: TextInputType.number,
+                            height: 48,
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (session.state == SessionState.newPasswordRequired)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Choose a permanent password to finish setting up '
+                          'your account.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: AppText.sm,
+                            color: AppColors.slate600,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.x4),
+                        LabelledField(
+                          label: 'New password',
+                          child: SizedBox(
+                            height: 48,
+                            child: TextField(
+                              controller: _newPassword,
+                              obscureText: true,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: AppColors.white,
+                                helperText:
+                                    'At least 14 characters, with upper, '
+                                    'lower, a digit and a symbol.',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.xl,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
                   else
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -165,15 +246,24 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   const SizedBox(height: AppSpace.x6),
                   AppButton(
                     label: _submitting
-                        ? 'Signing in…'
-                        : configured
-                        ? 'Sign in'
-                        : 'Continue',
+                        ? 'Working…'
+                        : switch (session.state) {
+                            SessionState.mfaRequired => 'Verify',
+                            SessionState.newPasswordRequired => 'Set password',
+                            _ => configured ? 'Sign in' : 'Continue',
+                          },
                     size: AppButtonSize.lg,
                     expanded: true,
                     radius: AppRadius.xl,
                     shadows: AppShadows.blueGlow,
-                    onPressed: _submitting ? null : _submit,
+                    onPressed: _submitting
+                        ? null
+                        : switch (session.state) {
+                            SessionState.mfaRequired => _submitMfa,
+                            SessionState.newPasswordRequired =>
+                              _submitNewPassword,
+                            _ => _submit,
+                          },
                   ),
                   const SizedBox(height: AppSpace.x6),
                   Text(

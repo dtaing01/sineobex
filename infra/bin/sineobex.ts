@@ -42,7 +42,9 @@ const api = new ApiStack(app, `${prefix}-Api`, {
   vpc: network.vpc,
   lambdaSecurityGroup: network.lambdaSecurityGroup,
   database: data.cluster,
-  databaseSecret: data.credentials,
+  // The application role, deliberately not `data.credentials` (the master
+  // superuser, which would bypass row-level security).
+  databaseSecret: data.apiCredentials,
   attachmentsBucket: data.attachments,
   userPool: auth.userPool,
   encryptionKey: data.encryptionKey,
