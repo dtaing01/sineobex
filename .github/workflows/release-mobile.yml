@@ -93,6 +93,21 @@ jobs:
             echo "::error::Demo seed is enabled in the production config."
             exit 1
           fi
+          # Map tiles are fetched for the viewport on screen, and on the
+          # patient detail screen that viewport is centred on a patient. A
+          # public tile CDN therefore receives approximate patient locations,
+          # with no BAA covering them. See docs/SETUP.md section 6.
+          TILE_URL=$(jq -r '.SINEOBEX_TILE_URL // ""' config/prod.json)
+          if [ -z "$TILE_URL" ]; then
+            echo "::error::SINEOBEX_TILE_URL is unset; the build would fall back to a public tile CDN."
+            exit 1
+          fi
+          case "$TILE_URL" in
+            *cartocdn.com*|*tile.openstreetmap.org*|*tile.osm.org*)
+              echo "::error::SINEOBEX_TILE_URL points at a public tile CDN."
+              exit 1
+              ;;
+          esac
 
       - name: Build app bundle
         working-directory: app
@@ -190,6 +205,21 @@ jobs:
             echo "::error::Demo seed is enabled in the production config."
             exit 1
           fi
+          # Map tiles are fetched for the viewport on screen, and on the
+          # patient detail screen that viewport is centred on a patient. A
+          # public tile CDN therefore receives approximate patient locations,
+          # with no BAA covering them. See docs/SETUP.md section 6.
+          TILE_URL=$(jq -r '.SINEOBEX_TILE_URL // ""' config/prod.json)
+          if [ -z "$TILE_URL" ]; then
+            echo "::error::SINEOBEX_TILE_URL is unset; the build would fall back to a public tile CDN."
+            exit 1
+          fi
+          case "$TILE_URL" in
+            *cartocdn.com*|*tile.openstreetmap.org*|*tile.osm.org*)
+              echo "::error::SINEOBEX_TILE_URL points at a public tile CDN."
+              exit 1
+              ;;
+          esac
 
       - name: Build IPA
         working-directory: app

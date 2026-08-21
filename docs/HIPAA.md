@@ -190,7 +190,11 @@ These are not optional, and none of them can be done from this repository.
 9. **Turn off the demo seed.** `SINEOBEX_DEMO_SEED` must be absent or false in
    any build that will hold real records. It defaults to false; keep it that
    way.
-10. **Penetration test** before go-live, and after significant changes.
+10. **Point `SINEOBEX_TILE_URL` at a tile server you control.** Left unset,
+    the app fetches map tiles from a public CDN, which discloses approximate
+    patient locations to a third party with no BAA. See `docs/SETUP.md` §6 and
+    the map-tile entry in §4 below.
+11. **Penetration test** before go-live, and after significant changes.
 
 ---
 
@@ -222,6 +226,32 @@ The code in this repository supports these. It cannot substitute for them.
 
 Stated plainly rather than left for an assessor to find:
 
+- **Map tiles are fetched from a third party, and that discloses patient
+  location.** This is the most serious gap in this list, and it was mine to
+  catch earlier than I did.
+
+  `flutter_map` requests raster tiles for whatever viewport is on screen. On
+  the patient detail screen that viewport is centred on a patient's recorded
+  location, so the tile request itself — its `{z}/{x}/{y}` path, its source IP,
+  its timing — reveals roughly where an identified individual is, to whoever
+  serves it. The default endpoint is a public CARTO CDN. CARTO has not signed
+  a BAA with you and has no obligation to protect that. Under §164.514(b)(2)
+  geographic detail finer than a state is an identifier, so this is PHI, and
+  routing it to an uncovered third party is an impermissible disclosure under
+  §164.502 — reportable under §164.400 if it is ever examined seriously.
+
+  Switching to `tile.openstreetmap.org` does **not** resolve it. The OSMF tile
+  servers are equally a third party receiving the same coordinates, and their
+  tile usage policy does not permit an application of this kind regardless.
+
+  The resolution is to serve OpenStreetMap tiles from infrastructure inside
+  your BAA-covered account and point `SINEOBEX_TILE_URL` at it. The app now
+  reads that endpoint from build configuration (`AppConfig.tileUrlTemplate`),
+  so no code change is needed — but the default is still the third-party CDN,
+  and **that default must not be shipped to clinicians handling real
+  patients.** `docs/SETUP.md` §6 has the options and the migration path.
+
+  Until that is done, treat map display as a demonstration feature.
 - **Attachment upload is scaffolded, not finished.** The presign route exists
   and the bucket is configured; the client-side capture flow is not built.
 - **Notification delivery is queued, not sent.** `notification_queue` is
