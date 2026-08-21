@@ -22,9 +22,18 @@ dependencies:
   # Charts
   fl_chart: ^0.69.2
 
-  # Local encrypted persistence
+  # Local encrypted persistence.
+  #
+  # sqlcipher_flutter_libs REPLACES sqlite3_flutter_libs — it is not a
+  # companion to it. Both ship a native library declaring the Android
+  # namespace `eu.simonbinder.sqlite3_flutter_libs` and the Objective-C class
+  # `Sqlite3FlutterLibsPlugin`, so declaring both makes the app fail to build
+  # on Android (manifest merger) and iOS (duplicate interface). The SQLCipher
+  # build is vanilla SQLite plus encryption, so nothing is lost by dropping
+  # the plain one.
+  #
+  # `sqlite3` is the Dart binding and is still required by both.
   drift: ^2.22.1
-  sqlite3_flutter_libs: ^0.5.26
   sqlite3: ^2.4.6
   sqlcipher_flutter_libs: ^0.6.4
   path_provider: ^2.1.5

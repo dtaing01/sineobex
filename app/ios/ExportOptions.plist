@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for `flutter build ipa`.
+
+  Replace teamID with your Apple Developer Team ID before the first signed
+  build — it is on the Membership page in the developer portal.
+
+  `method` is app-store-connect, which covers both TestFlight and App Store
+  submission. If you distribute internally through Apple Business Manager
+  instead (often the better fit for a clinical tool used only by your own
+  staff — see docs/MOBILE_RELEASE.md §1.8), change this to `enterprise` or
+  use a custom-app configuration.
+-->
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+
+  <key>teamID</key>
+  <string>REPLACE_WITH_TEAM_ID</string>
+
+  <!-- Xcode manages certificates and profiles from the App Store Connect API
+       key supplied at upload time. Manual signing means storing and rotating
+       profiles by hand, which rots quickly on a shared runner. -->
+  <key>signingStyle</key>
+  <string>automatic</string>
+
+  <!-- Bitcode has been removed from Xcode; leaving this true fails the
+       export on current toolchains. -->
+  <key>uploadBitcode</key>
+  <false/>
+
+  <!-- Symbols go to App Store Connect so crash reports are readable.
+       They contain no patient data — only function names and addresses. -->
+  <key>uploadSymbols</key>
+  <true/>
+
+  <key>stripSwiftSymbols</key>
+  <true/>
+
+  <!-- Thin the payload per device rather than shipping every architecture. -->
+  <key>thinning</key>
+  <string>&lt;thin-for-all-variants&gt;</string>
+</dict>
+</plist>

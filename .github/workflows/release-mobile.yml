@@ -1,0 +1,237 @@
+name: Release mobile
+
+# Builds signed artefacts and ships them to the internal/TestFlight tracks.
+#
+# Neither store's production track is reachable from here, by design. The Play
+# service account is scoped to testing tracks only, and the iOS job stops at
+# TestFlight. Promoting a build to people who use it on real patients should
+# take a person deciding to.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to release
+        required: true
+        default: both
+        type: choice
+        options: [both, android, ios]
+
+concurrency:
+  group: release-mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.1'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  android:
+    name: Android → Play internal
+    if: >-
+      github.event_name == 'push' ||
+      contains(fromJSON('["both","android"]'), inputs.platform)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Write signing material
+        working-directory: app/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. See docs/MOBILE_RELEASE.md §3."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
+          cat > key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=$(pwd)/upload-keystore.jks
+          EOF
+
+      - name: Write app configuration
+        working-directory: app
+        env:
+          CONFIG_JSON: ${{ secrets.FLUTTER_CONFIG_PROD }}
+        run: |
+          if [ -z "$CONFIG_JSON" ]; then
+            echo "::error::FLUTTER_CONFIG_PROD is not set."
+            exit 1
+          fi
+          printf '%s' "$CONFIG_JSON" > config/prod.json
+          # A production build must not ship the synthetic patient dataset.
+          if grep -qi '"SINEOBEX_DEMO_SEED"[[:space:]]*:[[:space:]]*"\?true' config/prod.json; then
+            echo "::error::Demo seed is enabled in the production config."
+            exit 1
+          fi
+
+      - name: Build app bundle
+        working-directory: app
+        run: |
+          flutter build appbundle --release \
+            --dart-define-from-file=config/prod.json
+
+      - name: Verify it is not debug-signed
+        working-directory: app
+        run: |
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          if unzip -p "$AAB" META-INF/*.RSA 2>/dev/null \
+             | keytool -printcert 2>/dev/null | grep -qi 'CN=Android Debug'; then
+            echo "::error::Bundle is debug-signed and cannot be published."
+            exit 1
+          fi
+          echo "Release-signed."
+
+      - name: Upload to Play internal track
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: org.streetmed.sineobex
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+
+      - name: Clean up signing material
+        if: always()
+        working-directory: app/android
+        run: rm -f upload-keystore.jks key.properties
+
+  # ---------------------------------------------------------------------------
+  ios:
+    name: iOS → TestFlight
+    if: >-
+      github.event_name == 'push' ||
+      contains(fromJSON('["both","ios"]'), inputs.platform)
+    runs-on: macos-14
+    timeout-minutes: 60
+    environment: prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # A dedicated keychain, deleted at the end of the job. Importing into
+      # the login keychain leaves the certificate on a shared runner.
+      - name: Install signing certificate and profile
+        env:
+          CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "::error::IOS_DIST_CERT_P12 is not set. See docs/MOBILE_RELEASE.md §3."
+            exit 1
+          fi
+          KEYCHAIN=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(uuidgen)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$CERT_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE" | base64 -d \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/sineobex.mobileprovision
+
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Write app configuration
+        working-directory: app
+        env:
+          CONFIG_JSON: ${{ secrets.FLUTTER_CONFIG_PROD }}
+        run: |
+          printf '%s' "$CONFIG_JSON" > config/prod.json
+          if grep -qi '"SINEOBEX_DEMO_SEED"[[:space:]]*:[[:space:]]*"\?true' config/prod.json; then
+            echo "::error::Demo seed is enabled in the production config."
+            exit 1
+          fi
+
+      - name: Build IPA
+        working-directory: app
+        run: |
+          flutter build ipa --release \
+            --dart-define-from-file=config/prod.json \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Assert privacy manifest is bundled
+        working-directory: app
+        run: |
+          IPA=$(find build/ios/ipa -name '*.ipa' | head -1)
+          if ! unzip -l "$IPA" | grep -q PrivacyInfo.xcprivacy; then
+            echo "::error::PrivacyInfo.xcprivacy is missing from the IPA."
+            echo "See docs/MOBILE_RELEASE.md §1.4."
+            exit 1
+          fi
+          echo "Privacy manifest present."
+
+      - name: Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+        working-directory: app
+        run: |
+          # $HOME rather than ~ so the path can be quoted; tilde does not
+          # expand inside double quotes, and an unquoted path containing a
+          # secret-derived value is a word-splitting hazard.
+          KEY_DIR="$HOME/private_keys"
+          mkdir -p "$KEY_DIR"
+          echo "$ASC_KEY_P8" | base64 -d > "$KEY_DIR/AuthKey_$ASC_KEY_ID.p8"
+
+          IPA="$(find build/ios/ipa -name '*.ipa' | head -1)"
+          xcrun altool --upload-app --type ios \
+            -f "$IPA" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+          rm -rf "$KEY_DIR"
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/sineobex.mobileprovision

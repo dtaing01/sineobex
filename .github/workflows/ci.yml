@@ -1,0 +1,299 @@
+name: CI
+
+# Every job here is something a contributor can run locally with one command.
+# CI that tests something you cannot reproduce on your own machine is a
+# guessing game when it fails.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.1'
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # actionlint validates GitHub's actual workflow schema and expression
+      # grammar. A generic YAML parser does not: it happily accepts
+      # `join(needs.*.result, " ")`, which GitHub rejects because expressions
+      # have no double-quoted string literal. That failure mode is nasty —
+      # the run reports zero jobs and a bare "startup failure", with no line
+      # number and nothing in the logs. Catching it here costs six seconds.
+      - name: Lint workflows
+        run: |
+          curl -sSLo actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar xzf actionlint.tar.gz actionlint
+          ./actionlint -no-color .github/workflows/*.yml
+
+  # ---------------------------------------------------------------------------
+  app:
+    name: Flutter app
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Verify formatting
+        working-directory: app
+        run: dart format --set-exit-if-changed lib test
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze lib test
+
+      - name: Test
+        working-directory: app
+        run: flutter test --reporter expanded --coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: app/coverage/lcov.info
+          if-no-files-found: warn
+
+      # Proves the Dart compiles for a real target. The mobile builds live in
+      # a separate job because they need an Android SDK and a macOS runner.
+      - name: Build web
+        working-directory: app
+        run: flutter build web --release --no-wasm-dry-run
+
+      # The demo dataset must never be reachable in a default build. This is a
+      # compile-time gate, so a passing assertion here is a real guarantee.
+      - name: Assert demo seed is off by default
+        working-directory: app
+        run: |
+          if grep -rq "demoSeed.*defaultValue: true" lib/core/env/app_config.dart; then
+            echo "::error::SINEOBEX_DEMO_SEED defaults to true. It must default to false."
+            exit 1
+          fi
+          echo "Demo seed defaults to false."
+
+  # ---------------------------------------------------------------------------
+  android-build:
+    name: Android build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # Debug-signed and unpublishable, which is the point: this job answers
+      # "does it compile for Android", not "is it releasable".
+      - name: Build debug APK
+        working-directory: app
+        run: flutter build apk --debug
+
+  # ---------------------------------------------------------------------------
+  ios-build:
+    name: iOS build
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # --no-codesign so this runs without any signing secrets. Signed builds
+      # happen in release-mobile.yml.
+      - name: Build iOS (unsigned)
+        working-directory: app
+        run: flutter build ios --release --no-codesign
+
+      # The privacy manifest is not added to Copy Bundle Resources
+      # automatically. Without it the App Store rejects the upload, and the
+      # failure arrives days later at submission rather than here.
+      - name: Assert privacy manifest is bundled
+        working-directory: app
+        run: |
+          APP=$(find build/ios/iphoneos -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::No .app produced."
+            exit 1
+          fi
+          if [ ! -f "$APP/PrivacyInfo.xcprivacy" ]; then
+            echo "::error::PrivacyInfo.xcprivacy is missing from the bundle."
+            echo "Add it to Runner → Build Phases → Copy Bundle Resources."
+            echo "See docs/MOBILE_RELEASE.md §1.4."
+            exit 1
+          fi
+          echo "Privacy manifest present."
+
+  # ---------------------------------------------------------------------------
+  infra:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: infra
+        run: npx tsc --noEmit
+
+      # Synthesized environment-agnostically: CDK_DEFAULT_ACCOUNT is
+      # deliberately NOT set, so bin/sineobex.ts leaves `account` undefined and
+      # the VPC resolves its availability zones with Fn::GetAZs at deploy time
+      # instead of looking them up now. No credentials, no context priming, and
+      # no fabricated account id that could drift from reality.
+      #
+      # A real deploy sets CDK_DEFAULT_ACCOUNT and gets concrete AZs, which is
+      # what you want there — pinning them is a deploy-time concern.
+      - name: Synthesize CloudFormation
+        working-directory: infra
+        env:
+          CDK_DEFAULT_REGION: us-east-1
+        run: npx cdk synth --quiet
+
+      - name: Assert every stack rendered
+        working-directory: infra
+        run: |
+          expected="Network Data Auth Api Observability"
+          for s in $expected; do
+            f="cdk.out/Sineobex-dev-$s.template.json"
+            if [ ! -s "$f" ]; then
+              echo "::error::$f missing or empty"
+              exit 1
+            fi
+          done
+          echo "All five stacks rendered."
+
+      # The API must connect as the least-privilege role. If someone points it
+      # back at the master credential, row-level security silently stops
+      # applying and nothing else in this pipeline would notice.
+      - name: Assert the API does not use the master credential
+        run: |
+          if grep -q 'databaseSecret: data.credentials' infra/bin/sineobex.ts; then
+            echo "::error::ApiStack is wired to the master DB credential."
+            echo "A superuser bypasses row-level security entirely."
+            echo "It must use data.apiCredentials."
+            exit 1
+          fi
+          echo "API uses the application role."
+
+  # ---------------------------------------------------------------------------
+  database:
+    name: Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      # Applies all three migrations from scratch, then asserts 41 properties:
+      # RLS isolates teams and fails closed with no actor, encounters are
+      # append-only, the audit trigger fires without the application's help,
+      # and every scheduled-job query executes and is idempotent.
+      #
+      # This suite exists because four SQL bugs shipped past code review here.
+      # None of them were visible to a typechecker.
+      - name: Run database tests
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          API_PASSWORD: ci_only_password
+          PGPASSWORD: postgres
+        run: infra/test/run.sh
+
+  # ---------------------------------------------------------------------------
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [workflows, app, android-build, ios-build, infra, database]
+    runs-on: ubuntu-latest
+    steps:
+      # A single required check to protect the branch with, so adding a job
+      # above does not mean editing the branch protection rule.
+      - name: Check results
+        run: |
+          # Single quotes: GitHub expressions have no double-quoted string
+          # literal, and using one is a workflow-level parse error that
+          # produces a zero-job "startup failure" rather than a clear message.
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "Job results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::A required job did not succeed."
+              exit 1
+            fi
+          done
+          echo "All jobs passed."
