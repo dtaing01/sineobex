@@ -49,6 +49,27 @@ inert. It is now enforced three ways rather than trusted: the role is created
 if the role could ever bypass RLS, and the API's patient upsert carries an
 explicit `team_id` check of its own so isolation does not rest on RLS alone.
 
+### Verification of these controls
+
+Claims in this section are asserted by tests rather than left as intent, and
+those tests run on every pull request:
+
+| Control | Where it is proven |
+|---|---|
+| RLS isolates teams; cross-team read and write both refused | `infra/test/10_rls.sql` |
+| RLS fails closed when the actor is unset | `infra/test/10_rls.sql` |
+| A deactivated member loses data access | `infra/test/10_rls.sql` |
+| The API role cannot bypass RLS or delete | `infra/test/10_rls.sql`, migration 002 |
+| Encounters and audit rows are immutable | `infra/test/20_integrity.sql` |
+| The audit trigger fires without the application | `infra/test/20_integrity.sql` |
+| Server clock cannot be overridden by a client | `infra/test/20_integrity.sql` |
+| Scheduled jobs emit no patient identifiers | `infra/test/30_cron_queries.sql` |
+| Auth failures never discard queued records | `app/test/sync_test.dart` |
+| Demo data cannot ship in a default build | `.github/workflows/ci.yml` |
+
+This is not a substitute for a risk analysis or a penetration test. It means
+these specific controls cannot silently regress.
+
 ### Audit controls — §164.312(b)
 
 Two independent layers, answering different questions:
@@ -221,8 +242,11 @@ Stated plainly rather than left for an assessor to find:
   a new value. The Lambdas detect a rotated password (SQLSTATE 28P01/28000),
   rebuild their connection pool, and retry once, so rotation does not require a
   deploy — but scheduling it is currently a manual task.
-- **No SQL-level test coverage.** The migrations and cron queries are reviewed
-  and type-checked but not executed against a live PostGIS instance in CI. Two
-  type errors and two upsert-collision bugs in this file's first draft were
-  found by review rather than by a test, which is not a repeatable control.
-  A containerised Postgres+PostGIS in CI would be the right fix.
+- ~~**No SQL-level test coverage.**~~ **Closed.** `infra/test/` applies all
+  three migrations from scratch against a real PostgreSQL 16 + PostGIS and
+  asserts 41 properties, including that row-level security isolates teams and
+  fails closed when no actor is set, that encounters and audit rows cannot be
+  removed, and that every scheduled-job query executes and is idempotent. It
+  runs on every pull request (`.github/workflows/ci.yml`) and locally via
+  `infra/test/run.sh`. The four SQL bugs that originally motivated this entry
+  are now covered by regression assertions.

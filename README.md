@@ -17,6 +17,17 @@ puts the field map, the caseload, and the van's inventory one tap apart.
 | `docs/` | Conversion plan, parity review, and HIPAA notes |
 | `src/`, `components/`, `lib/` | The original React prototype, retained as the parity reference |
 
+## Setup
+
+Full instructions are in [`docs/SETUP.md`](docs/SETUP.md) — local toolchain,
+AWS account prerequisites and deployment, migrations, Cognito user
+provisioning, and scheduled jobs. Apple and Google Play setup, including the
+store compliance declarations a health app hits, is in
+[`docs/MOBILE_RELEASE.md`](docs/MOBILE_RELEASE.md). CI/CD is documented in
+[`docs/CI.md`](docs/CI.md).
+
+The quick version follows.
+
 ## Running the app
 
 ```sh
@@ -51,9 +62,22 @@ flutter run \
 
 ```sh
 cd app
-flutter analyze
-flutter test
+flutter analyze          # static analysis
+flutter test             # 101 unit and widget tests
+
+cd ../infra
+npx tsc --noEmit         # typecheck stacks and Lambda handlers
+npm run synth            # render CloudFormation
+
+cd .. && infra/test/run.sh   # 41 database assertions, needs Postgres + PostGIS
 ```
+
+The database suite applies every migration from scratch and proves the things
+that matter most here: that row-level security isolates teams and fails closed
+when no actor is set, that clinical records cannot be edited or deleted, and
+that each scheduled job actually runs. It exists because four SQL bugs once
+shipped past code review in this repository, none of them visible to a
+typechecker.
 
 ## Deploying the backend
 

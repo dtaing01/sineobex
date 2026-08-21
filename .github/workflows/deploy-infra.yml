@@ -1,0 +1,103 @@
+name: Deploy infrastructure
+
+# Deploys the CDK stacks.
+#
+# Authentication is OIDC — GitHub exchanges a short-lived token for an AWS
+# role. There are no AWS access keys in this repository's secrets, and there
+# should never be: a long-lived key in CI is a credential that cannot be
+# rotated quickly and does not appear in CloudTrail as a distinct identity.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage to deploy
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+      confirm:
+        description: Type the stage name again to confirm
+        required: true
+        type: string
+
+concurrency:
+  # Never two deploys into one stage at once. CloudFormation would reject the
+  # second, but only after it has started changing things.
+  group: deploy-${{ inputs.stage }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+jobs:
+  guard:
+    name: Confirm target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the confirmation matches
+        run: |
+          if [ "${{ inputs.stage }}" != "${{ inputs.confirm }}" ]; then
+            echo "::error::Confirmation '${{ inputs.confirm }}' does not match stage '${{ inputs.stage }}'."
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy ${{ inputs.stage }}
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    # Point this at a GitHub Environment with required reviewers for prod.
+    # That approval gate is the thing standing between a workflow_dispatch and
+    # a production database.
+    environment: ${{ inputs.stage }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-session-name: gha-deploy-${{ inputs.stage }}-${{ github.run_id }}
+
+      - name: Show what will change
+        working-directory: infra
+        run: npx cdk diff --all -c stage=${{ inputs.stage }} || true
+
+      - name: Deploy
+        working-directory: infra
+        run: |
+          npx cdk deploy --all \
+            -c stage=${{ inputs.stage }} \
+            --require-approval never \
+            --outputs-file cdk-outputs.json
+
+      # Migrations are deliberately NOT run here. The database has no route
+      # from the internet, and a schema change against a system holding PHI
+      # should be a decision someone makes at a terminal with the runbook
+      # open — not something a workflow does on their behalf.
+      - name: Remind about migrations
+        run: |
+          echo "::notice::Stacks deployed. Migrations are NOT applied by CI."
+          echo "::notice::See docs/SETUP.md §2.3 to apply them."
+
+      - name: Publish stack outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-outputs-${{ inputs.stage }}
+          path: infra/cdk-outputs.json
+          retention-days: 30
