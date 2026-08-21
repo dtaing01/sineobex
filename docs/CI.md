@@ -15,9 +15,24 @@ machine is a guessing game when it fails.
 
 ## 1. `ci.yml`
 
-Six jobs. `ci-passed` aggregates the rest, so branch protection has one
+Seven jobs. `ci-passed` aggregates the rest, so branch protection has one
 required check to point at and adding a job later does not mean editing the
 protection rule.
+
+**`workflows`** — runs `actionlint` over `.github/workflows/`. This is first
+because a malformed workflow fails in the least helpful way GitHub has: the
+run reports **zero jobs** and a bare "startup failure", with no line number
+and nothing in the logs. A generic YAML parser will not catch it — GitHub
+expressions have no double-quoted string literal, so `join(needs.*.result,
+" ")` is valid YAML and an invalid workflow. That exact mistake cost a red
+run on the pull request that introduced these pipelines.
+
+Run it yourself before pushing a workflow change:
+
+```sh
+curl -sSLo - https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
+  | tar xz actionlint && ./actionlint .github/workflows/*.yml
+```
 
 **`app`** — `dart format --set-exit-if-changed`, `flutter analyze`,
 `flutter test` (101 tests, with coverage), and a release web build to prove

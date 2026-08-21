@@ -23,6 +23,27 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # actionlint validates GitHub's actual workflow schema and expression
+      # grammar. A generic YAML parser does not: it happily accepts
+      # `join(needs.*.result, " ")`, which GitHub rejects because expressions
+      # have no double-quoted string literal. That failure mode is nasty —
+      # the run reports zero jobs and a bare "startup failure", with no line
+      # number and nothing in the logs. Catching it here costs six seconds.
+      - name: Lint workflows
+        run: |
+          curl -sSLo actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar xzf actionlint.tar.gz actionlint
+          ./actionlint -no-color .github/workflows/*.yml
+
+  # ---------------------------------------------------------------------------
   app:
     name: Flutter app
     runs-on: ubuntu-latest
@@ -254,14 +275,17 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [app, android-build, ios-build, infra, database]
+    needs: [workflows, app, android-build, ios-build, infra, database]
     runs-on: ubuntu-latest
     steps:
       # A single required check to protect the branch with, so adding a job
       # above does not mean editing the branch protection rule.
       - name: Check results
         run: |
-          results='${{ join(needs.*.result, " ") }}'
+          # Single quotes: GitHub expressions have no double-quoted string
+          # literal, and using one is a workflow-level parse error that
+          # produces a zero-job "startup failure" rather than a clear message.
+          results='${{ join(needs.*.result, ' ') }}'
           echo "Job results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
