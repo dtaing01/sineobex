@@ -6,3 +6,21 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Flutter
+app/build/
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/ios/Pods/
+app/ios/.symlinks/
+app/android/.gradle/
+app/android/local.properties
+app/.idea/
+
+# Infrastructure
+infra/node_modules/
+infra/cdk.out/
+infra/*.js
+infra/*.d.ts
+
+infra/cdk.context.json
