@@ -43,6 +43,16 @@ jobs:
           tar xzf actionlint.tar.gz actionlint
           ./actionlint -no-color .github/workflows/*.yml
 
+      # ARCHITECTURE.md is meant to describe the system as it exists rather
+      # than as it was designed. Names are what rot first — a route renamed in
+      # code and not in the doc is a silent lie — so they are checked in both
+      # directions. Whether a diagram still describes reality is a reviewer's
+      # call, not something this can decide.
+      - name: Check ARCHITECTURE.md against the source
+        run: |
+          shellcheck docs/check-architecture.sh
+          docs/check-architecture.sh
+
   # ---------------------------------------------------------------------------
   app:
     name: Flutter app
