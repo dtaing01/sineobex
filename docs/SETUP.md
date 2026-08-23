@@ -24,15 +24,15 @@ only when you ship to devices.
 One account covers every service below — there is no per-service signup. What
 matters is *which* account, and what you enable on it before deploying.
 
-| Step | Where |
-|---|---|
-| Create the account (use a dedicated one, not a shared sandbox) | https://portal.aws.amazon.com/billing/signup |
-| Put it under an Organization so an SCP can protect CloudTrail | https://console.aws.amazon.com/organizations/ |
-| **Accept the Business Associate Addendum** in AWS Artifact | https://console.aws.amazon.com/artifact/ → Agreements → AWS BAA |
-| Confirm each service is in scope for the BAA | https://aws.amazon.com/compliance/hipaa-eligible-services-reference/ |
-| Enable GuardDuty | https://console.aws.amazon.com/guardduty/ |
-| Enable Security Hub | https://console.aws.amazon.com/securityhub/ |
-| Enable AWS Config + the HIPAA conformance pack | https://console.aws.amazon.com/config/ |
+| Step | Where | Current Status |
+|---|---|---|
+| ~~Create the account (use a dedicated one, not a shared sandbox)~~ | https://portal.aws.amazon.com/billing/signup | Completed 8/23/26 - All non-US regions disabled | 
+| ~~Put it under an Organization so an SCP can protect CloudTrail~~ | https://console.aws.amazon.com/organizations/ | Completed 8/23/26 - Organization Created & IAM Setup; Account david-taing was granted AdmnistratorAccess role | 
+| ~~**Accept the Business Associate Addendum** in AWS Artifact~~ | https://console.aws.amazon.com/artifact/ → Agreements → AWS BAA | Completed 8/23/26 - Signed and added to the doc folder | 
+| ~~Confirm each service is in scope for the BAA~~ | https://aws.amazon.com/compliance/hipaa-eligible-services-reference/ | Completed 8/23/26 - VPC, Aurora, KMS, Secrets Manager, S3, Cognito, API Gateway, Lambda, CloudWatch logs, CloudTrail, CloudWatch, and IAM have been verified against URL list | 
+| Enable GuardDuty | https://console.aws.amazon.com/guardduty/ | NOT ENABLED - Additional cost required to activate/run |
+| Enable Security Hub | https://console.aws.amazon.com/securityhub/ | NOT ENABLED - Additional cost required to activate/run |
+| Enable AWS Config + the HIPAA conformance pack | https://console.aws.amazon.com/config/ | NOT ENABLED - Additional cost required to activate/run |
 
 Background reading: [AWS HIPAA compliance](https://aws.amazon.com/compliance/hipaa-compliance/)
 and the [Architecting for HIPAA whitepaper](https://docs.aws.amazon.com/whitepapers/latest/architecting-hipaa-security-and-compliance-on-aws/welcome.html).
