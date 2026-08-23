@@ -4,7 +4,8 @@ Everything needed to go from a fresh clone to a running system. Read the
 section you need; they are ordered by how soon you will need them.
 
 Mobile store setup is long enough to live on its own — see
-[`MOBILE_RELEASE.md`](MOBILE_RELEASE.md).
+[`MOBILE_RELEASE.md`](MOBILE_RELEASE.md). For how the pieces fit together and
+how data moves between them, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 > **Before anything touches real patient data**, read
 > [`HIPAA.md`](HIPAA.md) in full, including its Known Gaps section. A signed
