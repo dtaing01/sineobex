@@ -1,5 +1,0 @@
-{
-  "name": "Sineobex",
-  "description": "A mobile-first street medicine outreach and patient management platform.",
-  "requestFramePermissions": ["geolocation"]
-}
