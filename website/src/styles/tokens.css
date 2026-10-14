@@ -1,0 +1,40 @@
+/* Sineobex Field tokens, copied unchanged from the design system artifact (https://claude.ai/artifact/5HMw4MtUiGeuP21s91i21V), Oct 14 install.
+   Update by re-copying; never edit values here. Theme selection for the website lives in globals.css. */
+:root, [data-theme="day"] {
+  --ground: #EEF1EF; --surface: #FFFFFF; --surface-sunken: #E3E8E6;
+  --ink: #121A19; --ink-muted: #4A5755; --line: #C9D1CE; --line-strong: #7B8784;
+  --accent: #0A6B66; --on-accent: #FFFFFF; --accent-soft: #D6ECE9;
+  --hivis: #E8590C; --ink-on-hivis: #121A19;
+  --critical: #B42318; --critical-soft: #FBE4E1; --warning: #8A5300; --warning-soft: #FCEFD3;
+  --good: #1E6B35; --good-soft: #DDF0E2; --info: #2251A3; --info-soft: #E1EAF8;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 -4px 24px rgba(18,26,25,0.16);
+}
+[data-theme="night"] {
+  --ground: #0F1514; --surface: #18201F; --surface-sunken: #0A0F0E;
+  --ink: #EEF2F1; --ink-muted: #A5B1AE; --line: #2C3634; --line-strong: #6E7B78;
+  --accent: #4FC2B8; --on-accent: #06201E; --accent-soft: #10302D;
+  --hivis: #FF7A2E; --ink-on-hivis: #121A19;
+  --critical: #FF8A80; --critical-soft: #3A1512; --warning: #F5B83D; --warning-soft: #33250A;
+  --good: #6FD08C; --good-soft: #12301B; --info: #8DB4F5; --info-soft: #132440;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 -4px 24px rgba(0,0,0,0.6);
+}
+[data-theme="contrast"] {
+  --ground: #FFFFFF; --surface: #FFFFFF; --surface-sunken: #ECEFEE;
+  --ink: #000000; --ink-muted: #28302F; --line: #8E9896; --line-strong: #3D4645;
+  --accent: #00504B; --on-accent: #FFFFFF; --accent-soft: #D3EBE8;
+  --hivis: #E8590C; --ink-on-hivis: #000000;
+  --critical: #8A1208; --critical-soft: #FBE1DD; --warning: #5A3600; --warning-soft: #FBEBC8;
+  --good: #0E4620; --good-soft: #D6EEDC; --info: #123A7C; --info-soft: #DCE6F7;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 0 0 2px #000000;
+}
+:root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-pill: 999px;
+  --tap-min: 48px; --tap-lg: 56px; --screen-phone: 390px;
+  --font-sans: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-label: "Barlow Condensed", "Arial Narrow", sans-serif-condensed, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
