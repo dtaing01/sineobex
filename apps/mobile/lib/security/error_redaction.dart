@@ -1,14 +1,15 @@
 import 'package:flutter/foundation.dart';
 
 /// An exception's text can carry patient data: a database error prints the values it was
-/// writing, a format error the text it couldn't read. Release builds log only the error's type
-/// ("No PHI in logs"); debug builds keep Flutter's full report for developers on demo data.
-void redactErrors({bool release = kReleaseMode, void Function(String)? log}) {
+/// writing, a format error the text it couldn't read. Release builds write nothing to the device
+/// log ("No PHI in logs"; device logs reach bug reports and other apps); [report], when given
+/// (a future crash reporter), gets the error's type and nothing else. Debug builds keep Flutter's
+/// full report for developers working on demo data.
+void redactErrors({bool release = kReleaseMode, void Function(String type)? report}) {
   if (!release) return;
-  final write = log ?? (String line) => debugPrint(line);
-  FlutterError.onError = (details) => write('Unhandled ${details.exception.runtimeType}');
+  FlutterError.onError = (details) => report?.call(details.exception.runtimeType.toString());
   PlatformDispatcher.instance.onError = (error, stack) {
-    write('Unhandled ${error.runtimeType}');
+    report?.call(error.runtimeType.toString());
     return true;
   };
 }
