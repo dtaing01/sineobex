@@ -101,8 +101,10 @@ export async function decideQuarantine(
         ...(typeof d.correctedTime === 'string' ? { correctedTime: d.correctedTime } : {}),
         clockVerified: d.clockVerified === true,
       };
+      // Rejected or conflicted at push is no reason to refuse it now: the admin decides on the
+      // value as it stands, and applyChange checks it against the chart again.
       const existing = await findReceipt(tx, item.changeId);
-      if (existing && existing.details?.quarantined !== true) {
+      if (existing?.status === 'accepted') {
         throw conflict('already_applied', 'This change already reached the chart.');
       }
       const actor: ApplyActor = {

@@ -52,7 +52,7 @@ class SyncStatusCard extends StatelessWidget {
     final String title;
     final String detail;
     if (waiting == 0) {
-      title = 'All saved to the server';
+      title = snapshot.elsewhere == 0 ? 'All saved to the server' : 'This team is all saved';
       detail = snapshot.lastSyncedAt == null
           ? 'Nothing is waiting on this phone.'
           : 'Last synced at ${timeOfDay(context, snapshot.lastSyncedAt!)}.';
@@ -85,6 +85,10 @@ class SyncStatusCard extends StatelessWidget {
         if (snapshot.clock.state == ClockState.unverified && !done) ...[
           const SizedBox(height: FieldSpace.s1),
           Text('Times are checked against the server at the next sync.', style: text.bodyMedium),
+        ],
+        if (snapshot.elsewhere != 0) ...[
+          const SizedBox(height: FieldSpace.s2),
+          Text(elsewhereText(snapshot.elsewhere), style: text.bodyMedium),
         ],
         if (snapshot.inReview > 0) ...[
           const SizedBox(height: FieldSpace.s2),

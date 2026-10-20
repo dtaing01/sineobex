@@ -277,7 +277,8 @@ async function storeReceipt(tx: Tx, actor: ApplyActor, c: SyncChangeInput, hash:
   const reason = o.status === 'rejected' ? o.reason : null;
   const details =
     o.status === 'rejected' ? { ...o.details, ...(o.quarantined ? { quarantined: true } : {}) } : null;
-  // An admin accepting a change that was quarantined at push replaces that push's receipt.
+  // An admin accepting a quarantined change replaces the receipt its push got (quarantined,
+  // rejected or in conflict). An accepted receipt is final.
   await tx`
     insert into sineobex.sync_changes
       (change_id, team_id, device_id, user_id, device_seq, entity, record_id, op, field, value_hash,
@@ -291,7 +292,7 @@ async function storeReceipt(tx: Tx, actor: ApplyActor, c: SyncChangeInput, hash:
     on conflict (change_id) do update
       set status = excluded.status, server_version = excluded.server_version,
           reason = excluded.reason, details = excluded.details
-      where sineobex.sync_changes.details ->> 'quarantined' = 'true'`;
+      where sineobex.sync_changes.status <> 'accepted'`;
 }
 
 async function decide(
@@ -399,10 +400,14 @@ async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput
   if (isLocked(record)) return rejected('record_locked');
   const current = fieldState(record, field);
   const decider = actor.approvedBy ?? actor.authorId;
+  const sawCurrent =
+    c.baseVersion === current.version || (await followsCurrent(tx, actor, c, record, field, current.version));
 
   if (c.resolution === 'keep_server') {
     // The user looked at both and kept the server's value. Their own value is kept in history,
     // never lost, and the note's author is told when the kept value came from someone else.
+    // Only the value they saw can be kept: if it changed again since, they choose again.
+    if (!sawCurrent) return { status: 'conflict', server: current };
     await appendHistory(tx, {
       ...history(actor, c, entity, field, current.version, value, current.value, 'kept_both'),
       approvedBy: decider,
@@ -432,8 +437,6 @@ async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput
   // Already the server's value: nothing to write, and the phone now holds the current version.
   if (sameValue(current.value, value)) return { status: 'accepted', serverVersion: current.version };
 
-  const sawCurrent =
-    c.baseVersion === current.version || (await followsCurrent(tx, actor, c, record, field, current.version));
   let kind: HistoryEntry['kind'];
   if (c.resolution === 'replace') {
     if (!sawCurrent) return { status: 'conflict', server: current };

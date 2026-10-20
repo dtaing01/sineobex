@@ -219,6 +219,10 @@ final _uuidPattern = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0
 final _dataPath = RegExp(r'^[a-z][a-zA-Z0-9_]{0,60}(\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$');
 final _noteTypeKey = RegExp(r'^[a-z][a-z0-9_]{1,60}$');
 const _auditActions = {'patient.viewed', 'patient.searched', 'encounter.viewed', 'note.viewed'};
+final _auditEntity = RegExp(r'^[a-z_]{1,40}$');
+
+/// SyncChange.field's limit in the API. A longer field fails the whole push.
+const maxFieldLength = 200;
 
 String _category(String entity) => switch (entity) {
   entityEncounter => 'encounters',
@@ -266,6 +270,16 @@ class LocalStore {
     }
   }
 
+  String? _frozen;
+
+  /// Stops every new change, audit entries included: the team's data is being handed to a
+  /// Program Admin and wiped, so nothing written after the hand-over snapshot may be lost.
+  void freeze(String message) => _frozen = message;
+  bool get frozen => _frozen != null;
+
+  /// The file this store writes to.
+  String get path => _local.path;
+
   // ---- key-value ----
 
   String? kv(String key) => _local.kvGet(key);
@@ -295,6 +309,7 @@ class LocalStore {
     String? conflictOf,
     String? resolution,
   }) {
+    if (_frozen != null) throw ChartingPaused(_frozen!);
     final problem = storableProblem(value);
     if (problem != null) throw LocalValidationError('This value can’t be saved: $problem.');
     final stamp = _stamp();
@@ -364,7 +379,7 @@ class LocalStore {
     _guardCharting();
     if (!_noteTypeKey.hasMatch(noteTypeKey)) throw const LocalValidationError('Unknown note type.');
     for (final key in data.keys) {
-      if (!_dataPath.hasMatch(key)) throw LocalValidationError('Unknown field $key.');
+      if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
     }
     final encounter = record(encounterId);
     if (encounter != null && encounter.status == 'signed') throw const RecordLocked();
@@ -399,18 +414,25 @@ class LocalStore {
     );
   }
 
+  /// The API's Location schema (services/api/src/sync/records.ts): lat, lng and an optional
+  /// non-negative accuracy, nothing else.
   void _checkLocation(Map<String, Object?>? location) {
     if (location == null) return;
     final lat = location['lat'];
     final lng = location['lng'];
+    final accuracy = location['accuracyM'];
     final ok =
         lat is num &&
         lng is num &&
         lat.abs() <= 90 &&
         lng.abs() <= 180 &&
+        (!location.containsKey('accuracyM') || (accuracy is num && accuracy >= 0 && accuracy <= 100000)) &&
         location.keys.every((k) => k == 'lat' || k == 'lng' || k == 'accuracyM');
     if (!ok) throw const LocalValidationError('That location isn’t valid.');
   }
+
+  /// A note field name the API accepts: a data path, and at most [maxFieldLength] characters.
+  static bool _dataFieldOk(String path) => _dataPath.hasMatch(path) && 'data.$path'.length <= maxFieldLength;
 
   void _checkField(String entity, String field, Object? value) {
     if (field == 'status') {
@@ -432,7 +454,7 @@ class LocalStore {
       _checkLocation(value as Map<String, Object?>?);
       return;
     }
-    if (entity == entityNote && field.startsWith('data.') && _dataPath.hasMatch(field.substring(5))) return;
+    if (entity == entityNote && field.startsWith('data.') && _dataFieldOk(field.substring(5))) return;
     throw LocalValidationError('Unknown field $field.');
   }
 
@@ -458,8 +480,14 @@ class LocalStore {
       );
       _putField(recordId, field, value, serverVersion: current?.serverVersion ?? 0, pending: changeId);
       _touch(recordId, status: field == 'status' ? value! as String : null);
+      _workedOn(recordId);
     });
   }
+
+  /// A server copy the person edits is their work now: it follows the Save & Close purge rule,
+  /// not the 24-hour expiry of read-only copies.
+  void _workedOn(String recordId) =>
+      _db.execute("UPDATE records SET origin = 'local' WHERE id = ? AND origin = 'server'", [recordId]);
 
   void _touch(String recordId, {String? status}) {
     _db.execute('UPDATE records SET updated_at = ?, status = coalesce(?, status) WHERE id = ?', [
@@ -470,9 +498,17 @@ class LocalStore {
   }
 
   /// Reads and searches made offline join the server audit chain on sync (module 9). Logging
-  /// never pauses, even when charting does.
+  /// doesn't pause for the clock check. During a removal hand-over ([freeze]) it throws like
+  /// everything else, and the read must not happen: what can't be logged can't be shown.
   void appendAudit(String action, {String? entity, String? entityId, String? patientId, int? resultCount}) {
+    // The API's AuditAppend rules, so an entry the server would refuse never enters the outbox:
+    // a refused audit entry could never be fixed or leave the phone.
     if (!_auditActions.contains(action)) throw ArgumentError('unknown audit action $action');
+    if (entity != null && !_auditEntity.hasMatch(entity)) throw ArgumentError('bad audit entity');
+    for (final id in [entityId, patientId].nonNulls) {
+      if (!_uuidPattern.hasMatch(id)) throw ArgumentError('audit IDs must be UUIDs');
+    }
+    if (resultCount != null && (resultCount < 0 || resultCount > 100000)) throw ArgumentError('bad result count');
     _tx(() {
       _append(
         entity: entityAudit,
@@ -533,31 +569,80 @@ class LocalStore {
 
   List<OutboxEntry> outbox() => _db.select('SELECT * FROM outbox ORDER BY seq').map(OutboxEntry.fromRow).toList();
 
-  /// The oldest changes that may go now, in order. A change waits ("held") while an earlier change
-  /// it depends on is rejected or in conflict: any earlier one on the same field, or a rejected
-  /// create of its record (module 9: "Later changes that depend on a rejected one are held").
-  List<OutboxEntry> sendable({int limit = 100}) => _db
-      .select(
-        "SELECT o.* FROM outbox o WHERE o.state = 'pending' AND NOT EXISTS ($_heldClause) ORDER BY o.seq LIMIT ?",
-        [limit],
-      )
-      .map(OutboxEntry.fromRow)
-      .toList();
+  /// The oldest changes that may go now, in order. A change waits ("held") while something it
+  /// depends on is rejected or in conflict (module 9: "Later changes that depend on a rejected
+  /// one are held, not sent"): an earlier change to the same field; any change to a record whose
+  /// create is rejected; and a note, and everything on it, whose encounter's create is rejected.
+  List<OutboxEntry> sendable({int limit = 100}) => _classify().sendable.take(limit).toList();
 
-  static const _heldClause =
-      "SELECT 1 FROM outbox b WHERE b.state IN ('rejected', 'conflict') AND b.record_id = o.record_id "
-      "AND b.seq < o.seq AND (b.op = 'create' OR b.field IS o.field)";
+  /// Pending changes that wait on an unresolved earlier one.
+  int heldCount() => _classify().held;
+
+  ({List<OutboxEntry> sendable, int held}) _classify() {
+    final blockedRecords = <String>{};
+    final blockedFields = <String>{};
+    final sendable = <OutboxEntry>[];
+    var held = 0;
+    for (final e
+        in _db.select("SELECT * FROM outbox WHERE state <> 'superseded' ORDER BY seq").map(OutboxEntry.fromRow)) {
+      final fieldKey = '${e.recordId}|${e.field}';
+      if (e.state == ChangeState.rejected || e.state == ChangeState.conflict) {
+        if (e.op == 'create') {
+          blockedRecords.add(e.recordId);
+        } else {
+          blockedFields.add(fieldKey);
+        }
+        continue;
+      }
+      final value = e.value;
+      final parent = e.op == 'create' && e.entity == entityNote && value is Map<String, Object?>
+          ? value['encounterId']
+          : null;
+      final waits =
+          blockedRecords.contains(e.recordId) ||
+          (e.op == 'set' && blockedFields.contains(fieldKey)) ||
+          (parent is String && blockedRecords.contains(parent));
+      if (waits) {
+        held++;
+        // What waits on a held create waits too.
+        if (e.op == 'create') blockedRecords.add(e.recordId);
+      } else {
+        sendable.add(e);
+      }
+    }
+    return (sendable: sendable, held: held);
+  }
 
   int _count(String sql, [List<Object?> args = const []]) => _db.select(sql, args).first['n']! as int;
 
-  /// Pending changes that wait on an unresolved earlier one.
-  int heldCount() => _count("SELECT count(*) AS n FROM outbox o WHERE o.state = 'pending' AND EXISTS ($_heldClause)");
-
   /// The Needs attention list: rejections the person can fix and conflicts they must choose on.
-  List<OutboxEntry> needsAttention() => _db
-      .select("SELECT * FROM outbox WHERE state IN ('rejected', 'conflict') ORDER BY seq")
-      .map(OutboxEntry.fromRow)
-      .toList();
+  ///
+  /// A field with several conflicts (edited twice before syncing) shows once, with the server's
+  /// latest value: the person makes one choice for the field.
+  List<OutboxEntry> needsAttention() {
+    final all = _db
+        .select("SELECT * FROM outbox WHERE state IN ('rejected', 'conflict') ORDER BY seq")
+        .map(OutboxEntry.fromRow)
+        .toList();
+    final latestConflict = <String, int>{
+      for (final e in all)
+        if (e.state == ChangeState.conflict) '${e.recordId}|${e.field}': e.seq,
+    };
+    return [
+      for (final e in all)
+        if (e.state == ChangeState.rejected || latestConflict['${e.recordId}|${e.field}'] == e.seq) e,
+    ];
+  }
+
+  /// "Your value" on a conflict card: what the person has in the field now (cleared counts as a
+  /// value), which is exactly what "Use my value" sends and what "Keep theirs" keeps in history.
+  Object? myValue(OutboxEntry conflict) {
+    final row = _db.select('SELECT value_json FROM fields WHERE record_id = ? AND field = ?', [
+      conflict.recordId,
+      conflict.field,
+    ]).firstOrNull;
+    return row == null ? conflict.value : jsonDecode(row['value_json'] as String);
+  }
 
   int inReviewCount() => _count('SELECT count(*) AS n FROM in_review');
 
@@ -572,6 +657,10 @@ class LocalStore {
   }
 
   bool get hasUnsynced => unsynced().total > 0;
+
+  /// What [unsynced] totals, for a database no store has open (another team's).
+  static int unsyncedIn(LocalDatabase local) =>
+      local.db.select("SELECT count(*) AS n FROM outbox WHERE state <> 'superseded'").first['n']! as int;
 
   // ---- receipts ----
 
@@ -614,15 +703,7 @@ class LocalStore {
           [e.recordId, e.field, e.changeId],
         );
       }
-      // The conflict or rejection this change resolved is settled with it.
-      for (final settled in [e.conflictOf, e.supersedes].nonNulls) {
-        _db.execute("DELETE FROM outbox WHERE change_id = ? AND state = 'superseded'", [settled]);
-      }
-      // Changes this one replaced (later edits folded into a resolution) go with it.
-      _db.execute("DELETE FROM outbox WHERE state = 'superseded' AND (conflict_of = ? OR supersedes = ?)", [
-        e.changeId,
-        e.changeId,
-      ]);
+      _deleteSettled(e);
       if (inReview) {
         _db.execute('INSERT OR IGNORE INTO in_review (change_id, entity, record_id, received_at) VALUES (?, ?, ?, ?)', [
           e.changeId,
@@ -634,6 +715,32 @@ class LocalStore {
       _db.execute('DELETE FROM outbox WHERE change_id = ?', [e.changeId]);
       _purge();
     });
+  }
+
+  /// Deletes every superseded entry this confirmed change covers, following the links both ways
+  /// and through chains (a resolution that was itself superseded by a later one, a fix of a fix):
+  /// their values are in [e], which the server now holds. Without following chains, the first
+  /// entry of a chain stayed forever and kept its record from being purged.
+  void _deleteSettled(OutboxEntry e) {
+    final queue = <String>[e.changeId];
+    final seen = <String>{};
+    while (queue.isNotEmpty) {
+      final id = queue.removeLast();
+      if (!seen.add(id)) continue;
+      final linked = _db.select(
+        "SELECT change_id, conflict_of, supersedes FROM outbox WHERE state = 'superseded' AND "
+        '(conflict_of = ? OR supersedes = ? OR change_id IN (SELECT conflict_of FROM outbox WHERE change_id = ?) '
+        'OR change_id IN (SELECT supersedes FROM outbox WHERE change_id = ?))',
+        [id, id, id, id],
+      );
+      for (final r in linked) {
+        queue.add(r['change_id'] as String);
+      }
+    }
+    seen.remove(e.changeId);
+    for (final id in seen) {
+      _db.execute("DELETE FROM outbox WHERE change_id = ? AND state = 'superseded'", [id]);
+    }
   }
 
   /// The fields a create sets on the server (see insertEncounter and insertNote in the API).
@@ -662,47 +769,70 @@ class LocalStore {
 
   /// The person chose between their value and the server's (Oct 19 reconciliation rule).
   ///
-  /// Either way one new change goes to the server naming the conflict: `replace` puts their
-  /// latest value on the chart (the replaced value and who approved it are logged), and
-  /// `keep_server` keeps the server's value while their own is kept in history. Edits they made
-  /// to the field after the conflict are folded into this one choice.
-  void resolveConflict(String changeId, {required bool keepMine}) {
-    final x = entry(changeId);
-    if (x == null || x.state != ChangeState.conflict || x.server == null) throw StateError('not a conflict');
-    final rec = record(x.recordId);
-    final field = x.field!;
-    final mine = rec?.fields[field]?.value ?? x.value;
+  /// One new change goes to the server for the field: `replace` puts the person's value on the
+  /// chart (the replaced value and who approved it are logged), and `keep_server` keeps the
+  /// server's value while theirs is kept in history. "Their value" is [myValue], exactly what the
+  /// card shows. Every other open conflict and waiting edit on the field is folded into this one
+  /// choice. Returns false, changing nothing, when [changeId] is no longer the field's latest
+  /// conflict: the server's value moved on since the card was drawn, so the person must look again.
+  bool resolveConflict(String changeId, {required bool keepMine}) {
+    final shown = entry(changeId);
+    if (shown == null || shown.state != ChangeState.conflict || shown.server == null) {
+      throw StateError('not a conflict');
+    }
+    final field = shown.field!;
+    final latest = _db.select(
+      "SELECT change_id FROM outbox WHERE state = 'conflict' AND record_id = ? AND field = ? ORDER BY seq DESC LIMIT 1",
+      [shown.recordId, field],
+    ).first;
+    if (latest['change_id'] != changeId) return false;
+    final server = shown.server!;
+    final mine = myValue(shown);
     _tx(() {
       final resolution = _append(
-        entity: x.entity,
-        recordId: x.recordId,
+        entity: shown.entity,
+        recordId: shown.recordId,
         op: 'set',
         field: field,
         value: mine,
-        baseVersion: x.server!.version,
-        conflictOf: x.changeId,
+        baseVersion: server.version,
+        conflictOf: shown.changeId,
         resolution: keepMine ? 'replace' : 'keep_server',
       );
-      _supersedeAfter(x, resolution);
+      _foldField(shown.recordId, field, resolution);
       _putField(
-        x.recordId,
+        shown.recordId,
         field,
-        keepMine ? mine : x.server!.value,
-        serverVersion: x.server!.version,
+        keepMine ? mine : server.value,
+        serverVersion: server.version,
         pending: resolution,
       );
+      _workedOn(shown.recordId);
     });
+    return true;
   }
 
-  /// A fix for a rejected change, sent as a new change linked to it (module 9 "Rejections"). For a
-  /// rejected set, [value] is the corrected field value. For a rejected create, it is the corrected
-  /// create value; the record's later edits are folded into it.
+  /// Every unresolved entry on one field before [by] is now covered by it.
+  void _foldField(String recordId, String field, String by) {
+    _db.execute(
+      "UPDATE outbox SET state = 'superseded', supersedes = ? WHERE state IN ('pending', 'rejected', 'conflict') "
+      'AND record_id = ? AND field = ? AND change_id <> ?',
+      [by, recordId, field, by],
+    );
+  }
+
+  /// A fix for a rejected change, sent as a new change linked to it (module 9 "Rejections").
+  ///
+  /// For a rejected set, [value] is the corrected field value; later edits waiting on the field
+  /// are folded into it. For a rejected create, [value] is the corrected create value. The
+  /// record's other fields, as the person has them now (cleared ones included), fill in what
+  /// [value] leaves out, and the record's waiting or refused-with-it edits are folded in.
   void fixRejected(String changeId, Object? value) {
     final x = entry(changeId);
     if (x == null || x.state != ChangeState.rejected) throw StateError('not a rejection');
-    final rec = record(x.recordId);
     if (x.op == 'set') {
       _checkField(x.entity, x.field!, value);
+      final base = record(x.recordId)?.fields[x.field]?.serverVersion ?? 0;
       _tx(() {
         final fix = _append(
           entity: x.entity,
@@ -710,72 +840,84 @@ class LocalStore {
           op: 'set',
           field: x.field,
           value: value,
-          baseVersion: rec?.fields[x.field]?.serverVersion ?? 0,
+          baseVersion: base,
           supersedes: x.changeId,
         );
-        _supersedeAfter(x, fix);
-        _putField(x.recordId, x.field!, value, serverVersion: rec?.fields[x.field]?.serverVersion ?? 0, pending: fix);
+        _foldField(x.recordId, x.field!, fix);
+        _putField(x.recordId, x.field!, value, serverVersion: base, pending: fix);
+        _workedOn(x.recordId);
       });
-    } else if (x.op == 'create') {
-      final created = value is Map<String, Object?> ? value : throw const LocalValidationError('Fix the record.');
-      _tx(() {
-        // Everything the person has in the record now goes with the fixed create.
-        final merged = {...created};
-        if (x.entity == entityNote && rec != null) {
-          final data = <String, Object?>{
-            for (final MapEntry(:key, :value) in rec.fields.entries)
-              if (key.startsWith('data.')) key.substring(5): value.value,
-          };
-          if (data.isNotEmpty) merged['data'] = data;
-        } else if (x.entity == entityEncounter && rec != null) {
-          for (final name in ['patientId', 'location']) {
-            final v = rec.fields[name]?.value;
-            if (v != null) merged[name] = v;
-          }
-        }
-        final fix = _append(
+      return;
+    }
+    if (x.op != 'create') throw StateError('audit entries are refused only for app faults; they can’t be fixed');
+    final created = value is Map<String, Object?> ? value : throw const LocalValidationError('Fix the record.');
+    final rec = record(x.recordId);
+    final fields = rec?.fields ?? const <String, LocalField>{};
+    final Map<String, Object?> merged;
+    final Map<String, Object?> localUpdates;
+    if (x.entity == entityEncounter) {
+      final kind = created['kind'];
+      if (kind != 'medical' && kind != 'non_medical') {
+        throw const LocalValidationError('Choose medical or non-medical.');
+      }
+      merged = {
+        for (final name in ['patientId', 'location'])
+          if (fields.containsKey(name)) name: fields[name]!.value,
+        ...created,
+      };
+      _checkField(entityEncounter, 'patientId', merged['patientId']);
+      _checkField(entityEncounter, 'location', merged['location']);
+      localUpdates = {
+        for (final name in ['patientId', 'location']) name: merged[name],
+      };
+    } else {
+      final createdData = (created['data'] as Map<String, Object?>?) ?? const {};
+      final data = <String, Object?>{
+        for (final MapEntry(:key, :value) in fields.entries)
+          if (key.startsWith('data.')) key.substring(5): value.value,
+        ...createdData,
+      };
+      for (final key in data.keys) {
+        if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
+      }
+      merged = {...created, if (data.isNotEmpty) 'data': data};
+      localUpdates = {for (final MapEntry(:key, :value) in data.entries) 'data.$key': value};
+    }
+    _tx(() {
+      final fix = _append(
+        entity: x.entity,
+        recordId: x.recordId,
+        op: 'create',
+        value: merged,
+        baseVersion: 0,
+        supersedes: x.changeId,
+      );
+      // Everything unresolved on the record is in the fixed create now.
+      _db.execute(
+        "UPDATE outbox SET state = 'superseded', supersedes = ? WHERE state IN ('pending', 'rejected', 'conflict') "
+        'AND record_id = ? AND change_id <> ?',
+        [fix, x.recordId, fix],
+      );
+      for (final MapEntry(:key, :value) in localUpdates.entries) {
+        _putField(x.recordId, key, value, serverVersion: 0, pending: fix);
+      }
+      _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
+      final status = fields['status']?.value;
+      if (status != null && status != 'draft') {
+        // The create always starts as a draft; a later Complete goes as its own change.
+        final followUp = _append(
           entity: x.entity,
           recordId: x.recordId,
-          op: 'create',
-          value: merged,
+          op: 'set',
+          field: 'status',
+          value: status,
           baseVersion: 0,
-          supersedes: x.changeId,
+          follows: fix,
         );
-        _supersedeAfter(x, fix, wholeRecord: true);
-        _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
-        final status = rec?.fields['status']?.value;
-        if (status != null && status != 'draft') {
-          // The create always starts as a draft; a later Complete goes as its own change.
-          final followUp = _append(
-            entity: x.entity,
-            recordId: x.recordId,
-            op: 'set',
-            field: 'status',
-            value: status,
-            baseVersion: 0,
-            follows: fix,
-          );
-          _putField(x.recordId, 'status', status, serverVersion: 0, pending: followUp);
-        }
-      });
-    } else {
-      throw StateError('audit entries are never rejected for the person to fix');
-    }
-  }
-
-  /// Marks [x] and every later unconfirmed change that depended on it as superseded by [by].
-  /// For a whole record (a fixed create) that includes later changes the server rejected only
-  /// because the record didn't exist yet: their values are in the fixed create.
-  void _supersedeAfter(OutboxEntry x, String by, {bool wholeRecord = false}) {
-    _db.execute("UPDATE outbox SET state = 'superseded' WHERE change_id = ?", [x.changeId]);
-    _db.execute(
-      // They point at [by], so they are deleted when [by] is confirmed.
-      "UPDATE outbox SET state = 'superseded', supersedes = ? WHERE state IN ('pending', 'rejected') "
-      "AND (state = 'pending' OR ? = 1) "
-      'AND record_id = ? AND seq > ? AND seq < (SELECT seq FROM outbox WHERE change_id = ?) '
-      'AND (? = 1 OR field IS ?)',
-      [by, wholeRecord ? 1 : 0, x.recordId, x.seq, by, wholeRecord ? 1 : 0, x.field],
-    );
+        _putField(x.recordId, 'status', status, serverVersion: 0, pending: followUp);
+      }
+      _workedOn(x.recordId);
+    });
   }
 
   /// Opens the server's copy of a record here (someone else's draft, or a refresh of one this

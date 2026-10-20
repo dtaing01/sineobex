@@ -590,6 +590,42 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       ).toBe(404);
     });
 
+    it('keeping a server value that changed again since is a new conflict, and nothing is logged as kept', async () => {
+      // Review finding: keep_server was accepted against any version, so a value the person never
+      // saw was recorded as the one they approved, and their next edit overwrote it silently.
+      const { noteId } = await syncedDraft({ temp_c: 38.2 });
+      const mine = await phoneB.change({
+        entity: 'encounter_note',
+        recordId: noteId,
+        op: 'set',
+        field: 'data.temp_c',
+        value: 39.1,
+      });
+      await push(h, phoneB, t.bToken, t.teamId, [mine]);
+      const aAgain = await phoneA.change({
+        entity: 'encounter_note',
+        recordId: noteId,
+        op: 'set',
+        field: 'data.temp_c',
+        value: 38.8,
+        baseVersion: 1,
+      });
+      await push(h, phoneA, t.aToken, t.teamId, [aAgain]);
+      const keep = await phoneB.change({
+        entity: 'encounter_note',
+        recordId: noteId,
+        op: 'set',
+        field: 'data.temp_c',
+        value: 39.1,
+        baseVersion: 1,
+        conflictOf: mine.changeId,
+        resolution: 'keep_server',
+      });
+      const r = await push(h, phoneB, t.bToken, t.teamId, [keep]);
+      expect(results(r.body)[0]).toMatchObject({ status: 'conflict', server: { value: 38.8, version: 2 } });
+      expect(await count('field_history', `record_id = '${noteId}' and kind = 'kept_both'`)).toBe(0);
+    });
+
     it('a second offline edit to the same field builds on the first instead of conflicting with it', async () => {
       const { noteId } = await syncedDraft();
       const first = await phoneA.change({
@@ -859,6 +895,30 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     it('removed while offline: the phone hands its unsynced work to quarantine, then confirms its wipe', async () => {
       // Runs last in this file: it removes clinician A.
       const pending = await phoneA.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      // A note rejected at push (its encounter was refused, then fixed) is quarantined unfixed.
+      const badEncounter = await phoneA.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', location: { lat: 42.3, lng: -83, accuracyM: -1 } },
+      });
+      const orphan = await phoneA.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: badEncounter.recordId, noteTypeKey: 'vitals', data: { temp_c: 38.4 } },
+      });
+      const first = await push(h, phoneA, t.aToken, t.teamId, [badEncounter, orphan]);
+      expect(results(first.body).map((x) => x.reason)).toEqual(['validation', 'stale_reference']);
+      const fixedEncounter = await phoneA.change({
+        entity: 'encounter',
+        recordId: badEncounter.recordId,
+        op: 'create',
+        value: { kind: 'medical', location: { lat: 42.3, lng: -83 } },
+        supersedes: badEncounter.changeId,
+      });
+      expect(results((await push(h, phoneA, t.aToken, t.teamId, [fixedEncounter])).body)[0]!.status).toBe(
+        'accepted',
+      );
+
       const removed = await call(h, `/v1/team/members/${t.aMembershipId}/remove`, {
         method: 'POST',
         token: t.adminToken,
@@ -881,11 +941,16 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
 
       const uploaded = await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
         method: 'POST',
-        json: await phoneA.signed({ purpose: 'quarantine', deviceId: phoneA.deviceId, changes: [pending] }),
+        json: await phoneA.signed({
+          purpose: 'quarantine',
+          deviceId: phoneA.deviceId,
+          changes: [pending, orphan],
+        }),
       });
       expect(uploaded.status).toBe(200);
       expect(uploaded.body.results).toEqual([
         { changeId: pending.changeId, status: 'quarantined', hash: pending.valueHash },
+        { changeId: orphan.changeId, status: 'quarantined', hash: orphan.valueHash },
       ]);
       // Sending it twice stores it once.
       await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
@@ -907,6 +972,21 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         json: { decision: 'reject', reason: 'Duplicate of the clinic note' },
       });
       expect(rejected.status).toBe(200);
+
+      // Review finding: its rejection at push used to block the accept ("already reached the
+      // chart"), so the admin could only throw the note away.
+      const orphanItem = (queue.body as unknown as { id: string; changeId: string }[]).find(
+        (i) => i.changeId === orphan.changeId,
+      )!;
+      const accepted = await call(h, `/v1/team/quarantine/${orphanItem.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Vitals confirmed with Alex' },
+      });
+      expect(accepted.status).toBe(200);
+      expect(await count('encounter_notes', `id = '${orphan.recordId}'`)).toBe(1);
+      expect(await count('sync_changes', `change_id = '${orphan.changeId}' and status = 'accepted'`)).toBe(1);
 
       const wiped = await call(h, `/v1/devices/${phoneA.deviceId}/wiped`, {
         method: 'POST',

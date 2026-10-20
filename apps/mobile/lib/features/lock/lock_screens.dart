@@ -150,7 +150,10 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sign out on this phone?'),
-        content: const Text('You’ll need your password and authenticator code to sign in again.'),
+        content: const Text(
+          'You’ll need your password and authenticator code to sign in again. Anything that hasn’t synced '
+          'stays encrypted on this phone and finishes syncing when you sign in again.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),

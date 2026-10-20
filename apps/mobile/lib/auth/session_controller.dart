@@ -125,6 +125,37 @@ class Unlocked extends SessionState {
 /// Loads the signed-in person and their teams with a fresh access token.
 typedef FetchMe = Future<LocalUser> Function(String accessToken);
 
+/// The encrypted records this phone holds for a user, in one database per team (module 9). The
+/// session asks before it forgets anyone, because only a remote wipe may delete what the server
+/// hasn't confirmed: "Log out anyway never deletes the unsynced data."
+abstract interface class LocalData {
+  /// Whether any of the user's team databases is on this phone.
+  Future<bool> hasAny(String userId);
+
+  /// Changes the server hasn't confirmed, across every team database the user has here, read
+  /// with [key]. Null when a database can't be read, which must count as unsynced.
+  Future<int?> unsynced(String userId, Uint8List key);
+
+  /// Deletes every database the user has here.
+  Future<void> erase(String userId);
+}
+
+/// [LocalData] found when first used, for an owner created after the session (the sync
+/// controller, which itself listens to the session).
+class DeferredLocalData implements LocalData {
+  DeferredLocalData(this._find);
+  final LocalData Function() _find;
+
+  @override
+  Future<bool> hasAny(String userId) => _find().hasAny(userId);
+
+  @override
+  Future<int?> unsynced(String userId, Uint8List key) => _find().unsynced(userId, key);
+
+  @override
+  Future<void> erase(String userId) => _find().erase(userId);
+}
+
 /// Sign-in, PIN setup, lock and unlock (module 1 "Offline sign-in", module 9 "Device security").
 ///
 /// Cognito and Supabase access tokens last about an hour, so the phone unlocks locally with a PIN
@@ -137,7 +168,7 @@ class SessionController extends ChangeNotifier {
     required this.vault,
     required this.store,
     required this.fetchMe,
-    this.eraseLocalData,
+    this.localData,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -146,9 +177,9 @@ class SessionController extends ChangeNotifier {
   final SecureStore store;
   final FetchMe fetchMe;
 
-  /// Deletes the user's local databases. Runs whenever the user is forgotten on this phone: a
-  /// sign-out with nothing left to sync, a remote wipe, or the tenth wrong PIN.
-  final Future<void> Function(String userId)? eraseLocalData;
+  /// The user's databases on this phone. Erased when the user is forgotten here: a sign-out or
+  /// wipe that leaves nothing unsynced behind, or the tenth wrong PIN (whose key is gone).
+  final LocalData? localData;
   final DateTime Function() _now;
 
   SessionState _state = const Starting();
@@ -367,11 +398,14 @@ class SessionController extends ChangeNotifier {
     return refreshed.accessToken;
   }
 
-  /// Signs out of the provider. With nothing left to sync the user is forgotten on this phone and
-  /// their local data erased. With [keepUnsynced] (module 9: "Log out anyway never deletes the
-  /// unsynced data"), the PIN-wrapped key and the encrypted database stay, locked to this user:
-  /// signing in again on this phone asks for the same PIN and syncing finishes. Nobody else who
-  /// signs in here can read it; they get their own key.
+  /// Signs out of the provider. The user is forgotten on this phone, and their local data
+  /// erased, only when every team database is known to hold nothing unsynced. Otherwise, or with
+  /// [keepUnsynced] (module 9: "Log out anyway never deletes the unsynced data"), the PIN-wrapped
+  /// key and the encrypted databases stay, locked to this user: signing in again here asks for
+  /// the same PIN and syncing finishes. Nobody else who signs in here can read them.
+  ///
+  /// From the lock screen the databases can't be read (the key is not in memory), so whatever
+  /// is on the phone stays.
   Future<void> signOut({bool keepUnsynced = false}) async {
     final s = _state;
     final tokens = _tokens;
@@ -380,32 +414,52 @@ class SessionController extends ChangeNotifier {
       Unlocked(:final user) || Locked(:final user) => user.userId,
       _ => await store.read(_current),
     };
+    var kept = false;
     if (userId != null) {
-      if (keepUnsynced) {
-        await _forgetSession(userId);
-      } else {
+      if (!keepUnsynced && await _nothingUnsynced(userId)) {
         await _forget(userId);
+      } else {
+        await _forgetSession(userId);
+        kept = await localData?.hasAny(userId) ?? false;
       }
     }
     _clearMemory();
     _set(
       SignedOut(
-        notice: keepUnsynced
-            ? 'You have signed out. Unsynced records stay encrypted on this phone and finish syncing when you sign in again.'
+        notice: kept
+            ? 'You have signed out. Records that haven’t synced stay encrypted on this phone and finish syncing when you sign in again.'
             : 'You have signed out.',
       ),
     );
   }
 
-  /// After a remote wipe or removal from the last team: everything for this user goes.
+  /// After a remote wipe or removal from the last team. The wiped team's database is already
+  /// gone; the user is forgotten here unless another database of theirs still holds unsynced
+  /// work (a team dropped while offline), which keeps its key like a sign-out would.
   Future<void> endAfterWipe(String notice) async {
     final userId = switch (_state) {
       Unlocked(:final user) || Locked(:final user) => user.userId,
       _ => await store.read(_current),
     };
-    if (userId != null) await _forget(userId);
+    if (userId != null) {
+      if (await _nothingUnsynced(userId)) {
+        await _forget(userId);
+      } else {
+        await _forgetSession(userId);
+      }
+    }
     _clearMemory();
     _set(SignedOut(notice: notice));
+  }
+
+  /// True only when nothing on this phone could be lost by erasing the user's data: no database
+  /// at all, or every one read with the key in memory and fully synced.
+  Future<bool> _nothingUnsynced(String userId) async {
+    final data = localData;
+    if (data == null || !await data.hasAny(userId)) return true;
+    final key = _dbKey;
+    if (key == null) return false;
+    return await data.unsynced(userId, key) == 0;
   }
 
   void _clearMemory() {
@@ -417,7 +471,7 @@ class SessionController extends ChangeNotifier {
 
   Future<void> _forget(String userId) async {
     await vault.destroy(userId);
-    await eraseLocalData?.call(userId);
+    await localData?.erase(userId);
     await _forgetSession(userId);
   }
 

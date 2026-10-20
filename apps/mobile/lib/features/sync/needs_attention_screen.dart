@@ -44,16 +44,21 @@ class NeedsAttentionScreen extends ConsumerWidget {
                       );
                     }
                     final e = items[i];
-                    return e.state == ChangeState.conflict
-                        ? _ConflictCard(
-                            entry: e,
-                            me: me,
-                            onChoose: (keepMine) async {
-                              sync.store?.resolveConflict(e.changeId, keepMine: keepMine);
-                              await sync.syncNow();
-                            },
-                          )
-                        : _RejectionCard(entry: e);
+                    final store = sync.store;
+                    if (e.state != ChangeState.conflict || store == null) return _RejectionCard(entry: e);
+                    return _ConflictCard(
+                      entry: e,
+                      mine: store.myValue(e),
+                      me: me,
+                      onChoose: (keepMine) async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        if (!await sync.resolveConflict(e.changeId, keepMine: keepMine)) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('The other value changed. Check both values again.')),
+                          );
+                        }
+                      },
+                    );
                   },
                 ),
         );
@@ -63,8 +68,11 @@ class NeedsAttentionScreen extends ConsumerWidget {
 }
 
 class _ConflictCard extends StatelessWidget {
-  const _ConflictCard({required this.entry, required this.me, required this.onChoose});
+  const _ConflictCard({required this.entry, required this.mine, required this.me, required this.onChoose});
   final OutboxEntry entry;
+
+  /// What the person has in the field now: exactly what "Use my value" sends.
+  final Object? mine;
   final String? me;
   final Future<void> Function(bool keepMine) onChoose;
 
@@ -113,7 +121,7 @@ class _ConflictCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                side('Your value', entry.value),
+                side('Your value', mine),
                 const SizedBox(width: FieldSpace.s3),
                 side('$who$when', server.value),
               ],

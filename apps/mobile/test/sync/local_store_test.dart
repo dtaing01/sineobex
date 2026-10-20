@@ -160,9 +160,10 @@ void main() {
     store.setField(note, 'data.temp_c', 39.3);
     expect(store.sendable(), isEmpty);
     final shown = store.needsAttention().single;
-    expect([shown.value, shown.server!.value], [39.1, 38.2]);
+    // The card shows what the person has now, which is what "Use my value" sends.
+    expect([store.myValue(shown), shown.server!.value], [39.3, 38.2]);
 
-    store.resolveConflict(mine.changeId, keepMine: true);
+    expect(store.resolveConflict(mine.changeId, keepMine: true), isTrue);
     final choice = store.sendable().single;
     expect(choice.resolution, 'replace');
     expect(choice.conflictOf, mine.changeId);
@@ -281,9 +282,203 @@ void main() {
 
     paused = true;
     expect(() => store.createEncounter(kind: 'medical'), throwsA(isA<ChartingPaused>()));
-    expect(() => store.setField(enc, 'patientId', null), throwsA(isA<ChartingPaused>()));
+    expect(
+      () => store.setField(enc, 'patientId', 'c0000000-0000-4000-8000-00000000000c'),
+      throwsA(isA<ChartingPaused>()),
+    );
     // Logging what the person looked at never pauses.
     store.appendAudit('patient.viewed', entity: 'patient', entityId: enc);
     expect(store.unsynced().counts['activity'], 1);
+  });
+
+  // ---- review findings ----
+
+  void confirmAll() {
+    for (final e in store.outbox()) {
+      store.confirm(e, serverVersion: 1);
+    }
+  }
+
+  test('a field cleared while its conflict is open sends the clear, not the older value', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'plan': 'a'});
+    confirmAll();
+    store.setField(note, 'data.plan', 'c');
+    store.conflict(only(pendingOf(note, 'data.plan')), const ServerField(value: 'b', version: 2));
+    store.setField(note, 'data.plan', null);
+    final shown = store.needsAttention().single;
+    expect(store.myValue(shown), isNull);
+    store.resolveConflict(shown.changeId, keepMine: true);
+    final choice = store.sendable().single;
+    expect([choice.value, choice.resolution, choice.baseVersion], [null, 'replace', 2]);
+    expect(store.record(note)!.fields['data.plan']!.value, isNull);
+  });
+
+  test('a choice made on an out-of-date card changes nothing', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals');
+    confirmAll();
+    store.setField(note, 'data.temp_c', 39.1);
+    final first = only(pendingOf(note, 'data.temp_c'));
+    store.conflict(first, const ServerField(value: 38.2, version: 1));
+    store.setField(note, 'data.temp_c', 39.3);
+    // A later answer: the server's value moved on again.
+    store.conflict(only(pendingOf(note, 'data.temp_c')), const ServerField(value: 38.5, version: 2));
+    final shown = store.needsAttention().single;
+    expect(shown.server!.value, 38.5);
+    final before = store.outbox().length;
+    expect(store.resolveConflict(first.changeId, keepMine: false), isFalse);
+    expect(store.outbox(), hasLength(before));
+    expect(store.resolveConflict(shown.changeId, keepMine: false), isTrue);
+    final choice = store.sendable().single;
+    expect([choice.value, choice.resolution, choice.baseVersion], [39.3, 'keep_server', 2]);
+    expect(store.record(note)!.fields['data.temp_c']!.value, 38.5);
+  });
+
+  test('chains of conflicts and fixes leave nothing behind once confirmed, so the record is purged', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 38});
+    confirmAll();
+    // A resolution that itself conflicts, resolved again.
+    store.setField(note, 'data.temp_c', 39.1);
+    store.conflict(only(pendingOf(note, 'data.temp_c')), const ServerField(value: 38.2, version: 2));
+    store.resolveConflict(store.needsAttention().single.changeId, keepMine: true);
+    store.conflict(store.sendable().single, const ServerField(value: 38.5, version: 3));
+    store.resolveConflict(store.needsAttention().single.changeId, keepMine: true);
+    store.confirm(store.sendable().single, serverVersion: 4);
+    expect(store.outbox(), isEmpty);
+    // Two conflicting edits from one push, resolved as one choice.
+    store.setField(note, 'data.pulse', 90);
+    store.setField(note, 'data.pulse', 92);
+    for (final e in store.sendable()) {
+      store.conflict(e, const ServerField(value: 88, version: 1));
+    }
+    store.resolveConflict(store.needsAttention().single.changeId, keepMine: false);
+    store.confirm(store.sendable().single, serverVersion: 1);
+    expect(store.outbox(), isEmpty);
+    // A fix that is refused and fixed again.
+    final enc2 = store.createEncounter(kind: 'medical');
+    store.reject(store.sendable().single, reason: 'validation');
+    store.fixRejected(store.needsAttention().single.changeId, {'kind': 'medical'});
+    store.reject(store.sendable().single, reason: 'validation');
+    store.fixRejected(store.needsAttention().single.changeId, {'kind': 'non_medical'});
+    store.confirm(store.sendable().single, serverVersion: 1);
+    expect(store.outbox(), isEmpty);
+
+    for (final id in [note, enc, enc2]) {
+      store.closeRecord(id);
+    }
+    expect(store.recordIds(), isEmpty);
+  });
+
+  test('a fixed encounter create keeps fields cleared since, and the caller’s corrections win', () {
+    const patient = 'c0000000-0000-4000-8000-00000000000c';
+    final enc = store.createEncounter(kind: 'medical', patientId: patient, location: {'lat': 42.0, 'lng': -83.0});
+    final create = store.outbox().single;
+    store.reject(create, reason: 'validation');
+    store.setField(enc, 'patientId', null);
+    expect(store.sendable(), isEmpty);
+    store.fixRejected(create.changeId, {
+      'kind': 'medical',
+      'location': {'lat': 42.5, 'lng': -83.5},
+    });
+    final fix = store.sendable().single;
+    expect(fix.value, {
+      'kind': 'medical',
+      'patientId': null,
+      'location': {'lat': 42.5, 'lng': -83.5},
+    });
+    final fields = store.record(enc)!.fields;
+    expect(
+      [fields['patientId']!.value, fields['location']!.value],
+      [
+        null,
+        {'lat': 42.5, 'lng': -83.5},
+      ],
+    );
+    // The API's Location rules hold here too.
+    expect(
+      () => store.createEncounter(kind: 'medical', location: {'lat': 1, 'lng': 1, 'accuracyM': -1}),
+      throwsA(isA<LocalValidationError>()),
+    );
+    expect(
+      () => store.createEncounter(kind: 'medical', location: {'lat': 1, 'lng': 1, 'accuracyM': null}),
+      throwsA(isA<LocalValidationError>()),
+    );
+  });
+
+  test('a fixed note create takes the corrected data over the refused value', () {
+    final enc = store.createEncounter(kind: 'medical');
+    confirmAll();
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 380, 'pulse': 90});
+    final refused = store.sendable().single;
+    store.reject(refused, reason: 'validation');
+    store.fixRejected(refused.changeId, {
+      'encounterId': enc,
+      'noteTypeKey': 'vitals',
+      'data': {'temp_c': 38},
+    });
+    expect((store.sendable().single.value! as Map<String, Object?>)['data'], {'temp_c': 38, 'pulse': 90});
+    expect(store.record(note)!.fields['data.temp_c']!.value, 38);
+  });
+
+  test('a note waits while its encounter’s create is refused, and so does everything on it', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals');
+    store.setField(note, 'data.temp_c', 38.4);
+    store.reject(store.outbox().first, reason: 'validation');
+    expect(store.sendable(), isEmpty);
+    expect(store.heldCount(), 2);
+  });
+
+  test('a teammate’s draft edited here is the person’s work: it doesn’t expire while open', () {
+    const id = '0b6a0a76-55a1-4a3e-9f0e-6f0b5e1c2d40';
+    store.importServerRecord(
+      const ServerRecord(
+        entity: entityNote,
+        id: id,
+        status: 'draft',
+        authorUserId: 'author-a',
+        attributes: {},
+        fields: {'data.temp_c': ServerField(value: 38.2, version: 1)},
+      ),
+    );
+    store.setField(id, 'data.plan', 'rest');
+    store.confirm(store.outbox().single, serverVersion: 1);
+    now = now.add(const Duration(hours: 25));
+    store.purge();
+    expect(store.record(id)!.fields.keys, containsAll(['data.temp_c', 'data.plan']));
+    store.closeRecord(id);
+    expect(store.record(id), isNull);
+  });
+
+  test('what the API would refuse never enters the outbox: long field names and bad audit entries', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals');
+    final before = store.outbox().length;
+    final segment = 'a' * 61;
+    expect(
+      () => store.setField(note, 'data.$segment.$segment.$segment.$segment', 1),
+      throwsA(isA<LocalValidationError>()),
+    );
+    store.setField(note, 'data.$segment.$segment.$segment.${'a' * 9}', 1); // 200 characters exactly
+    expect(store.outbox(), hasLength(before + 1));
+    expect(() => store.appendAudit('patient.viewed', entity: 'patient', entityId: 'MRN-0042'), throwsArgumentError);
+    expect(() => store.appendAudit('patient.viewed', entity: 'Patient1'), throwsArgumentError);
+    expect(() => store.appendAudit('patient.searched', resultCount: 100001), throwsArgumentError);
+    expect(store.outbox(), hasLength(before + 1));
+  });
+
+  test('a frozen store refuses every new change, audit entries included', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final before = store.outbox().length;
+    store.freeze('Your access to this team ended.');
+    expect(() => store.createEncounter(kind: 'medical'), throwsA(isA<ChartingPaused>()));
+    expect(
+      () => store.setField(enc, 'patientId', 'c0000000-0000-4000-8000-00000000000c'),
+      throwsA(isA<ChartingPaused>()),
+    );
+    expect(() => store.appendAudit('patient.viewed'), throwsA(isA<ChartingPaused>()));
+    expect(store.outbox(), hasLength(before));
   });
 }

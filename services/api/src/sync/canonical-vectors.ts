@@ -29,6 +29,11 @@ const inputs: unknown[] = [
   1.0000000000000002,
   123456789012,
   9007199254740991,
+  // Integral doubles above 2^53 (the phone sends these as doubles): JavaScript prints the
+  // shortest digits padded with zeros.
+  2 ** 60,
+  123456789012345680000,
+  2 ** 54,
   '',
   'Cough for 3 days',
   'quote " backslash \\ slash /',

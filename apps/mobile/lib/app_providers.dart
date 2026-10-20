@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, Platform;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -69,7 +69,7 @@ final Provider<SessionController> sessionProvider = Provider<SessionController>(
       return localUserFromMe(await api.getMe());
     },
     // Read when called, not now: the sync controller itself listens to this session.
-    eraseLocalData: (userId) => ref.read(syncControllerProvider).eraseUser(userId),
+    localData: DeferredLocalData(() => ref.read(syncControllerProvider)),
   );
   ref.onDispose(controller.dispose);
   return controller;
@@ -93,9 +93,10 @@ final apiProvider = Provider<SineobexApi>((ref) {
 });
 
 /// Where the encrypted databases live: application support (not caches, which the system may
-/// empty), kept out of device backups.
-Future<String> databaseDirectory() async {
-  final dir = p.join((await getApplicationSupportDirectory()).path, 'sync');
+/// empty), kept out of device backups. The folder must exist before iOS can exclude it.
+Future<String> databaseDirectory({Future<Directory> Function() base = getApplicationSupportDirectory}) async {
+  final dir = p.join((await base()).path, 'sync');
+  Directory(dir).createSync(recursive: true);
   await excludeFromBackup(dir);
   return dir;
 }

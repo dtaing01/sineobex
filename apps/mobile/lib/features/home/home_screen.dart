@@ -38,7 +38,7 @@ class HomeScreen extends ConsumerWidget {
               if (team != null) Text('${team.name} · ${team.roleName}', style: text.bodyLarge),
               const SizedBox(height: FieldSpace.s5),
               if (snapshot.clock.paused) ...[
-                ClockPausedCard(status: snapshot.clock, onCheckAgain: () => unawaited(sync.checkClock())),
+                ClockPausedCard(status: snapshot.clock, onCheckAgain: () => unawaited(sync.checkClock(fresh: true))),
                 const SizedBox(height: FieldSpace.s4),
               ],
               if (snapshot.attention.isNotEmpty) ...[

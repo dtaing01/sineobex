@@ -27,6 +27,7 @@ class SyncSnapshot {
     this.offline = false,
     this.lastSyncedAt,
     this.nextAttempt,
+    this.elsewhere = 0,
   });
 
   /// A team's database is open (the app is unlocked with a team chosen).
@@ -40,6 +41,10 @@ class SyncSnapshot {
   final bool offline;
   final DateTime? lastSyncedAt;
   final DateTime? nextAttempt;
+
+  /// Unsynced changes in this person's other team databases on the phone, which sync only when
+  /// that team is open. Null when one of them couldn't be read.
+  final int? elsewhere;
 }
 
 /// Opens the person's encrypted database while the app is unlocked, keeps it syncing, and acts on
@@ -48,7 +53,7 @@ class SyncSnapshot {
 /// The database closes when the app locks, so the key leaves memory with the lock. A remote wipe
 /// or removal from the team is acted on only after the server confirms it to this phone's device
 /// key; a refused sign-in alone never deletes anything.
-class SyncController extends ChangeNotifier {
+class SyncController extends ChangeNotifier implements LocalData {
   SyncController({
     required this.session,
     required this.databaseDirectory,
@@ -61,6 +66,7 @@ class SyncController extends ChangeNotifier {
     this.autoSync = true,
     this.interval = const Duration(seconds: 20),
     DateTime Function()? now,
+    this.monotonic,
   }) : _now = now ?? DateTime.now {
     session.addListener(_onSession);
   }
@@ -83,6 +89,9 @@ class SyncController extends ChangeNotifier {
   final Duration interval;
   final DateTime Function() _now;
 
+  /// For the clock check between syncs (tests drive it; the app uses a Stopwatch).
+  final Duration Function()? monotonic;
+
   LocalDatabase? _db;
   LocalStore? _store;
   SyncEngine? _engine;
@@ -94,6 +103,7 @@ class SyncController extends ChangeNotifier {
   bool _offline = false;
   DateTime? _lastSyncedAt;
   Future<void>? _opening;
+  int? _elsewhere = 0;
 
   LocalStore? get store => _store;
   SyncEngine? get engine => _engine;
@@ -112,6 +122,7 @@ class SyncController extends ChangeNotifier {
       offline: _offline,
       lastSyncedAt: _lastSyncedAt,
       nextAttempt: _engine?.nextAttempt,
+      elsewhere: _elsewhere,
     );
   }
 
@@ -170,7 +181,7 @@ class SyncController extends ChangeNotifier {
     // The session may have locked while we waited.
     if (session.state is! Unlocked || session.databaseKey == null) return;
     final db = LocalDatabase.open(LocalDatabase.fileFor(dir, userId, teamId), key);
-    final clock = ClockSync(boot: boot, references: DatabaseClockReferences(db), wallNow: _now);
+    final clock = ClockSync(boot: boot, references: DatabaseClockReferences(db), wallNow: _now, monotonic: monotonic);
     final store = LocalStore(
       db,
       userId: userId,
@@ -183,6 +194,7 @@ class SyncController extends ChangeNotifier {
     _store = store;
     _userId = userId;
     _teamId = teamId;
+    _elsewhere = _count(LocalDatabase.filesForUser(dir, userId).where((f) => f != db.path), key);
     _engine = SyncEngine(
       store: store,
       api: teamApi(teamId),
@@ -213,6 +225,7 @@ class SyncController extends ChangeNotifier {
     _userId = null;
     _teamId = null;
     _opening = null;
+    _elsewhere = 0;
     notifyListeners();
   }
 
@@ -223,11 +236,27 @@ class SyncController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Rechecks the clock ("Check again", and when the app comes back to the foreground).
-  Future<ClockStatus?> checkClock() async {
-    final status = await _clock?.check();
+  /// Rechecks the clock when the app comes back to the foreground. [fresh] ("Check again") asks
+  /// the server for its time first, so a clock the person just fixed is seen right away.
+  Future<ClockStatus?> checkClock({bool fresh = false}) async {
+    final engine = _engine;
+    final status = fresh && engine != null ? await engine.refreshClock() : await _clock?.check();
     notifyListeners();
     return status;
+  }
+
+  /// The app went to the background (see [ClockSync.suspend]).
+  void suspendClock() => _clock?.suspend();
+
+  /// The person's choice on a conflict card, sent at once. False when the card was out of date
+  /// (a newer conflict arrived for the field); the screen redraws with the current values.
+  Future<bool> resolveConflict(String changeId, {required bool keepMine}) async {
+    final store = _store;
+    if (store == null) return false;
+    final done = store.resolveConflict(changeId, keepMine: keepMine);
+    notifyListeners();
+    if (done) await syncNow();
+    return done;
   }
 
   /// Sends what is waiting. [force] ignores the backoff ("Sync now", the sign-out progress).
@@ -259,6 +288,9 @@ class SyncController extends ChangeNotifier {
   }
 
   /// The server refused the sign-in. Ask with the device key what happened before acting.
+  ///
+  /// Every await here can outlast the team being open (the app locks, or the person switches
+  /// team), so each step checks [engine] is still the open one before acting on its database.
   Future<void> _checkAccess(SyncEngine engine) async {
     final DeviceStatusResult? status;
     try {
@@ -266,18 +298,27 @@ class SyncController extends ChangeNotifier {
     } on Exception {
       return; // Offline or unknown: keep everything and try again later.
     }
-    if (status == null) return;
+    if (status == null || !identical(engine, _engine)) return;
     if (status.status != DeviceStatus.active) {
       await _wipeTeam(engine, 'An administrator erased this team’s data on this phone.');
     } else if (status.access == DeviceStatusResultAccess.removed) {
-      // Hand over what never synced, so no care record is lost, then wipe.
-      final handedOver = await _signedEngine(engine).uploadToQuarantine().catchError((Object _) => false);
-      if (handedOver) {
-        await _wipeTeam(
-          engine,
-          'Your access to this team ended. Records that hadn’t synced were sent to a Program Admin to review.',
-        );
+      // Hand over what never synced, so no care record is lost, then wipe. Nothing new may be
+      // written from now on: a change saved during the upload would miss it and be wiped.
+      engine.store.freeze('Your access to this team ended. Saved records are being sent to a Program Admin.');
+      final Set<String>? held;
+      try {
+        held = await _signedEngine(engine).uploadToQuarantine();
+      } on Exception {
+        return; // Tried again at the next sync.
       }
+      if (!identical(engine, _engine)) return; // Closed mid-upload: the next open starts over.
+      final waiting = engine.store.outbox().where((e) => e.state != ChangeState.superseded).map((e) => e.changeId);
+      // Without a device key nothing can be handed over, so unsynced work stays (encrypted).
+      if (!(held ?? const <String>{}).containsAll(waiting)) return;
+      await _wipeTeam(
+        engine,
+        'Your access to this team ended. Records that hadn’t synced were sent to a Program Admin to review.',
+      );
     }
   }
 
@@ -295,14 +336,16 @@ class SyncController extends ChangeNotifier {
 
   /// Remote wipe: the one time unconfirmed data is deleted (module 9), and only on the server's
   /// word to this device key. The wipe is confirmed to the server when it can be reached.
+  ///
+  /// Everything comes from [engine], never from what is open now: the person may have switched
+  /// team while the device-key requests were in flight, and the open team is not the one wiped.
   Future<void> _wipeTeam(SyncEngine engine, String notice) async {
-    final userId = _userId;
-    final teamId = _teamId;
-    if (userId == null || teamId == null) return;
+    final userId = engine.store.userId;
+    final teamId = engine.teamId;
+    final path = engine.store.path;
+    if (_db?.path == path) _close();
+    LocalDatabase.deleteFiles(path);
     final deviceId = await engine.device.existingDeviceId(teamId);
-    final path = _db?.path;
-    _close();
-    if (path != null) LocalDatabase.deleteFiles(path);
     if (deviceId != null) {
       try {
         await _signedEngine(engine).confirmWiped(deviceId);
@@ -311,9 +354,12 @@ class SyncController extends ChangeNotifier {
       }
     }
     await engine.device.forgetTeam(teamId);
-    final s = session.state;
-    final otherTeams = s is Unlocked ? s.user.teams.where((t) => t.id != teamId).toList() : const <TeamRef>[];
-    if (otherTeams.isEmpty) {
+    final user = switch (session.state) {
+      Unlocked(:final user) || Locked(:final user) => user,
+      _ => null,
+    };
+    if (user == null || user.userId != userId) return;
+    if (user.teams.every((t) => t.id == teamId)) {
       await session.endAfterWipe(notice);
     } else {
       await session.dropTeam(teamId);
@@ -328,6 +374,39 @@ class SyncController extends ChangeNotifier {
     for (final path in LocalDatabase.filesForUser(dir, userId)) {
       LocalDatabase.deleteFiles(path);
     }
+  }
+
+  @override
+  Future<bool> hasAny(String userId) async => LocalDatabase.filesForUser(await databaseDirectory(), userId).isNotEmpty;
+
+  @override
+  Future<int?> unsynced(String userId, Uint8List key) async =>
+      _count(LocalDatabase.filesForUser(await databaseDirectory(), userId), key);
+
+  @override
+  Future<void> erase(String userId) => eraseUser(userId);
+
+  /// Unsynced changes across [paths]; null if any of them can't be read with [key].
+  int? _count(Iterable<String> paths, Uint8List key) {
+    var total = 0;
+    for (final path in paths) {
+      final open = _store;
+      if (open != null && open.path == path) {
+        total += open.unsynced().total;
+        continue;
+      }
+      try {
+        final db = LocalDatabase.open(path, key);
+        try {
+          total += LocalStore.unsyncedIn(db);
+        } finally {
+          db.close();
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return total;
   }
 
   @override

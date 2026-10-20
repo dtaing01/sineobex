@@ -40,6 +40,9 @@ class FakeSyncServer {
 
   int pushes = 0;
 
+  /// Change IDs the request schema refuses (an app fault), failing the whole push with 422.
+  final malformed = <String>{};
+
   ApiTransport transportFor(String userId, String teamId) => _Transport(this, userId, teamId);
 
   /// Someone else changes a field on the server.
@@ -68,6 +71,7 @@ class FakeSyncServer {
         ('POST', '/v1/sync/push') => _push(userId, teamId, body!),
         ('POST', '/v1/sync/records') => _fetch(body!),
         ('GET', '/v1/team/notices') => <Object?>[],
+        ('GET', '/v1/time') => {'epochMs': now().millisecondsSinceEpoch, 'serverTime': now().toUtc().toIso8601String()},
         _ => throw ApiException(404, 'not_found', 'no route $method $path'),
       };
     }
@@ -103,14 +107,32 @@ class FakeSyncServer {
       'device': {'status': device.status},
     };
     if (device.status != 'active') return {...base, 'results': <Object?>[]};
-    final changes = (b['changes']! as List<Object?>).cast<Map<String, Object?>>()
-      ..sort((x, y) => (x['seq']! as int).compareTo(y['seq']! as int));
+    final changes = (b['changes']! as List<Object?>).cast<Map<String, Object?>>();
+    _validatePush(changes);
+    changes.sort((x, y) => (x['seq']! as int).compareTo(y['seq']! as int));
     final results = <Map<String, Object?>>[];
     for (final c in changes) {
       if (stopAfter != null && results.length >= stopAfter!) break;
       results.add(_one(userId, b['deviceId']! as String, c));
     }
     return {...base, 'results': results};
+  }
+
+  /// SyncChange's request schema: one bad change fails the whole push with 422, as the API does.
+  void _validatePush(List<Map<String, Object?>> changes) {
+    final problems = <Object?>[
+      for (final (i, c) in changes.indexed)
+        if (malformed.contains(c['changeId']) || (c['field'] is String && (c['field']! as String).length > 200))
+          {'path': 'changes.$i.field', 'problem': 'too_big'},
+    ];
+    if (problems.isNotEmpty) {
+      throw ApiException(
+        422,
+        'validation_failed',
+        'Some fields are missing or invalid.',
+        details: {'fields': problems},
+      );
+    }
   }
 
   Map<String, Object?> _one(String userId, String deviceId, Map<String, Object?> c) {
@@ -121,6 +143,7 @@ class FakeSyncServer {
     final existing = receipts[id];
     if (existing != null) return existing.result(this);
     if (c['entity'] == 'audit') {
+      if (!_auditOk(c['value'])) return _store(userId, deviceId, c, hash, _rejected('validation'));
       audit.add({
         'action': (c['value']! as Map<String, Object?>)['action'],
         'deviceTime': c['deviceTime'],
@@ -191,12 +214,28 @@ class FakeSyncServer {
     void put(String name, Object? v) => fields[name] = _Field(v, 1, userId, at, c['changeId']! as String);
     if (c['entity'] == 'encounter') {
       if (value['kind'] != 'medical' && value['kind'] != 'non_medical') return _rejected('validation');
+      if (!value.keys.every({'kind', 'patientId', 'location'}.contains) ||
+          !_nullOr(value['patientId'], _isUuid) ||
+          !_nullOr(value['location'], _isLocation)) {
+        return _rejected('validation');
+      }
       put('patientId', value['patientId']);
       put('location', value['location']);
       put('status', 'draft');
     } else {
+      final data = value['data'];
+      final version = value['noteTypeVersion'];
+      if (!value.keys.every({'encounterId', 'noteTypeKey', 'noteTypeVersion', 'data'}.contains) ||
+          !_isUuid(value['encounterId']) ||
+          value['noteTypeKey'] is! String ||
+          !_noteTypeKey.hasMatch(value['noteTypeKey']! as String) ||
+          !(version == null || (version is int && version >= 1)) ||
+          !(data == null || (data is Map<String, Object?> && data.keys.every(_dataPath.hasMatch)))) {
+        return _rejected('validation');
+      }
       final encounter = records[value['encounterId']];
       if (encounter == null) return _rejected('stale_reference', {'problem': 'encounter_missing'});
+      if (encounter.fields['status']?.value == 'signed') return _rejected('record_locked');
       put('status', 'draft');
       for (final MapEntry(:key, :value) in ((value['data'] as Map<String, Object?>?) ?? {}).entries) {
         put('data.$key', value);
@@ -217,7 +256,15 @@ class FakeSyncServer {
     if (record.fields['status']?.value == 'signed') return _rejected('record_locked');
     final name = c['field']! as String;
     final value = c['value'];
-    if (name == 'status' && value != 'draft' && value != 'completed') return _rejected('validation');
+    final valid = switch ((record.entity, name)) {
+      (_, 'status') => value == 'draft' || value == 'completed',
+      ('encounter', 'patientId') => _nullOr(value, _isUuid),
+      ('encounter', 'location') => _nullOr(value, _isLocation),
+      ('encounter_note', _) when name.startsWith('data.') => _dataPath.hasMatch(name.substring(5)),
+      _ => null,
+    };
+    if (valid == null) return _rejected('validation', {'problem': 'unknown_field'});
+    if (!valid) return _rejected('validation');
     final current = record.fields[name] ?? _Field(null, 0, null, null, null);
     final serverState = {
       'value': current.value,
@@ -225,13 +272,6 @@ class FakeSyncServer {
       'changedBy': current.by,
       'changedAt': current.at,
     };
-    if (c['resolution'] == 'keep_server') {
-      history.add({'field': name, 'kind': 'kept_both', 'value': value, 'previous': current.value});
-      return {'status': 'accepted', 'serverVersion': current.version};
-    }
-    if (canonicalJson(current.value) == canonicalJson(value)) {
-      return {'status': 'accepted', 'serverVersion': current.version};
-    }
     final follows = c['follows'] as String?;
     final prev = follows == null ? null : receipts[follows];
     final sawCurrent =
@@ -240,17 +280,24 @@ class FakeSyncServer {
         (prev != null &&
             prev.status == 'accepted' &&
             prev.userId == userId &&
+            prev.recordId == c['recordId'] &&
             prev.field == name &&
             prev.serverVersion == current.version);
+    if (c['resolution'] == 'keep_server') {
+      if (!sawCurrent) return {'status': 'conflict', 'serverVersion': current.version, 'server': serverState};
+      history.add({'field': name, 'kind': 'kept_both', 'value': value, 'previous': current.value});
+      return {'status': 'accepted', 'serverVersion': current.version};
+    }
+    if (canonicalJson(current.value) == canonicalJson(value)) {
+      return {'status': 'accepted', 'serverVersion': current.version};
+    }
     String kind;
     if (c['resolution'] == 'replace') {
       if (!sawCurrent) return {'status': 'conflict', 'serverVersion': current.version, 'server': serverState};
       kind = 'replaced_after_review';
     } else if (sawCurrent) {
       kind = 'set';
-    } else if (current.value == null ||
-        current.value == '' ||
-        (current.value is List && (current.value! as List).isEmpty)) {
+    } else if (_isBlank(current.value)) {
       kind = 'filled_blank';
     } else {
       return {'status': 'conflict', 'serverVersion': current.version, 'server': serverState};
@@ -334,6 +381,39 @@ class FakeSyncServer {
     }
   }
 }
+
+final _uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+final _noteTypeKey = RegExp(r'^[a-z][a-z0-9_]{1,60}$');
+final _dataPath = RegExp(r'^[a-z][a-zA-Z0-9_]{0,60}(\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$');
+const _auditActions = {'patient.viewed', 'patient.searched', 'encounter.viewed', 'note.viewed'};
+
+bool _isUuid(Object? v) => v is String && _uuid.hasMatch(v);
+bool _nullOr(Object? v, bool Function(Object?) ok) => v == null || ok(v);
+
+/// records.ts Location: strict, lat and lng in range, accuracyM optional but never null.
+bool _isLocation(Object? v) {
+  if (v is! Map<String, Object?> || !v.keys.every({'lat', 'lng', 'accuracyM'}.contains)) return false;
+  final lat = v['lat'], lng = v['lng'], accuracy = v['accuracyM'];
+  return lat is num &&
+      lng is num &&
+      lat.abs() <= 90 &&
+      lng.abs() <= 180 &&
+      (!v.containsKey('accuracyM') || (accuracy is num && accuracy >= 0 && accuracy <= 100000));
+}
+
+/// apply.ts AuditAppend.
+bool _auditOk(Object? v) {
+  if (v is! Map<String, Object?> || !_auditActions.contains(v['action'])) return false;
+  if (!v.keys.every({'action', 'entity', 'entityId', 'patientId', 'resultCount'}.contains)) return false;
+  final entity = v['entity'], count = v['resultCount'];
+  return (entity == null || (entity is String && RegExp(r'^[a-z_]{1,40}$').hasMatch(entity))) &&
+      _nullOr(v['entityId'], _isUuid) &&
+      _nullOr(v['patientId'], _isUuid) &&
+      (count == null || (count is int && count >= 0 && count <= 100000));
+}
+
+/// records.ts isBlank: an empty object is blank too.
+bool _isBlank(Object? v) => v == null || v == '' || (v is List && v.isEmpty) || (v is Map && v.isEmpty);
 
 class _Transport implements ApiTransport {
   _Transport(this.server, this.userId, this.teamId);

@@ -173,6 +173,40 @@ void main() {
   });
 
   group('a 7-minute clock offset', () {
+    test('a clock that jumps between checks pauses charting at once, and times stay the server’s', () async {
+      // Review finding: the offset cached at the last check was trusted until the next one.
+      final p = phone(alex);
+      await p.engine.syncAll();
+      expect(p.clock.status.state, ClockState.verified);
+      p.wall = p.wall.add(const Duration(minutes: 10));
+      expect(p.clock.status.paused, isTrue);
+      expect(() => p.store.createEncounter(kind: 'medical'), throwsA(isA<ChartingPaused>()));
+      p.store.appendAudit('patient.viewed', entity: 'patient', entityId: alex);
+      final logged = p.store.outbox().last;
+      expect([logged.deviceTime, logged.correctedTime, logged.clockVerified], [p.wall, start, true]);
+    });
+
+    test('a reply that takes minutes to arrive doesn’t set the clock; Check again asks afresh', () async {
+      // Review finding: the midpoint of an 11-minute round trip paused a phone whose clock was right.
+      final p = phone(alex);
+      await p.engine.syncAll();
+      p.store.createEncounter(kind: 'medical');
+      server.onRequest = (path) {
+        if (path == '/v1/sync/push') p.advance(const Duration(minutes: 11));
+      };
+      await p.engine.syncAll(force: true);
+      server.onRequest = null;
+      serverTime = serverTime.add(const Duration(minutes: 11));
+      expect(p.store.outbox(), isEmpty);
+      expect(p.clock.status.state, ClockState.verified);
+      expect(p.clock.status.offset!.inSeconds.abs(), lessThan(1));
+
+      final fresh = phone(blair)..wall = serverTime;
+      expect(fresh.clock.status.state, ClockState.unverified);
+      final status = await fresh.engine.refreshClock();
+      expect(status.state, ClockState.verified);
+    });
+
     test('charting pauses, saved data and syncing go on, and it resumes once the clock is fixed', () async {
       final p = phone(alex);
       final visit = chartVisit(p);
@@ -343,11 +377,25 @@ void main() {
       expect((outcome as SyncAccessLost).code, 'not_a_member');
       final status = await p.engine.signedStatus();
       expect(status!.access.wire, 'removed');
-      expect(await p.engine.uploadToQuarantine(), isTrue);
+      final waiting = p.store.outbox().map((e) => e.changeId).toSet();
+      expect(await p.engine.uploadToQuarantine(), waiting);
       expect(server.quarantine, hasLength(5));
       final deviceId = (await p.device.existingDeviceId(team))!;
       await p.engine.confirmWiped(deviceId);
       expect(server.devices[deviceId]!.status, 'wiped');
+    });
+
+    test('a change the server can’t read becomes a rejection instead of stopping every sync', () async {
+      final p = phone(alex);
+      p.store.createEncounter(kind: 'medical');
+      p.store.createEncounter(kind: 'non_medical');
+      final bad = p.store.outbox().last;
+      server.malformed.add(bad.changeId);
+      final first = await p.engine.syncAll() as SyncDone;
+      expect([first.rejected, first.confirmed], [1, 0]);
+      expect(p.store.needsAttention().single.changeId, bad.changeId);
+      await p.engine.syncAll(force: true);
+      expect(p.store.outbox().map((e) => e.changeId), [bad.changeId]);
     });
 
     test('a remote wipe stops the phone from sending anything more', () async {

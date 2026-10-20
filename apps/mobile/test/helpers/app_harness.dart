@@ -34,7 +34,7 @@ class AppHarness {
       vault: KeyVault(store: store, biometricStore: bio, pbkdf2Iterations: 1000),
       store: store,
       fetchMe: (_) async => demoUser(teams: teams),
-      eraseLocalData: (userId) => sync.eraseUser(userId),
+      localData: DeferredLocalData(() => sync),
     );
     sync = SyncController(
       session: session,
@@ -47,6 +47,7 @@ class AppHarness {
       appVersion: '0.2.0-test',
       autoSync: false,
       now: () => wall,
+      monotonic: () => boot.elapsed,
     );
     addTearDown(dispose);
   }

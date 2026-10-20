@@ -78,7 +78,12 @@ class TestPhone {
 
   void _launch() {
     db = LocalDatabase.open(path, key);
-    clock = ClockSync(boot: boot, references: DatabaseClockReferences(db), wallNow: () => wall);
+    clock = ClockSync(
+      boot: boot,
+      references: DatabaseClockReferences(db),
+      wallNow: () => wall,
+      monotonic: () => boot.elapsed,
+    );
     store = LocalStore(
       db,
       userId: userId,

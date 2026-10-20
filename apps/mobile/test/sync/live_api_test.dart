@@ -139,7 +139,7 @@ void main() {
     expect(res.conflicts, 1);
     final shown = b.store.needsAttention().single;
     expect([shown.field, shown.value, shown.server!.value], ['data.temp_c', 39.0, 38.6]);
-    b.store.resolveConflict(shown.changeId, keepMine: true);
+    expect(b.store.resolveConflict(shown.changeId, keepMine: true), isTrue);
     await b.engine.syncAll(force: true);
     expect(b.store.outbox(), isEmpty);
     await a.engine.syncAll(force: true);
@@ -161,6 +161,72 @@ void main() {
     expect((await p.clock.check()).state, ClockState.verified);
     p.store.setField(visit.note, 'data.pulse', 100);
     await p.engine.syncAll(force: true);
+    expect(p.store.outbox(), isEmpty);
+  }, skip: skip);
+
+  test('a rejection waits with what depends on it, and the fix confirms both', () async {
+    final (p, _) = await phone('clinician@example.com');
+    // A note for an encounter the server doesn't have (deleted elsewhere, or a bad reference).
+    final note = p.store.createNote(
+      encounterId: '0d3e6f00-0000-4000-8000-0000000000ff',
+      noteTypeKey: 'vitals',
+      data: {'temp_c': 38.1},
+    );
+    p.store.setField(note, 'data.pulse', 88);
+    // Sent in one batch, the edit is refused with its create; a later one would be held.
+    final first = await p.engine.syncAll(force: true) as SyncDone;
+    expect(first.rejected, 2);
+    expect(p.store.needsAttention().map((e) => e.reason), everyElement('stale_reference'));
+    p.store.setField(note, 'data.plan', 'fluids');
+    expect(p.store.heldCount(), 1);
+    final encounter = p.store.createEncounter(kind: 'medical');
+    await p.engine.syncAll(force: true);
+    final create = p.store.needsAttention().firstWhere((e) => e.op == 'create');
+    p.store.fixRejected(create.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+    expect(p.store.needsAttention(), isEmpty);
+    await p.engine.syncAll(force: true);
+    expect(p.store.outbox(), isEmpty);
+    final (reader, _) = await phone('resident@example.com');
+    expect(
+      await serverFields(reader, note),
+      allOf(containsPair('data.temp_c', 38.1), containsPair('data.pulse', 88), containsPair('data.plan', 'fluids')),
+    );
+  }, skip: skip);
+
+  test('keeping the server’s value: a value that changed again since must be chosen again', () async {
+    final (a, _) = await phone('clinician@example.com');
+    final (b, _) = await phone('resident@example.com');
+    final visit = chartVisit(a);
+    await a.engine.syncAll();
+    await b.engine.openServerRecord(entityNote, visit.note);
+    a.store.setField(visit.note, 'data.temp_c', 38.6);
+    await a.engine.syncAll(force: true);
+    b.store.setField(visit.note, 'data.temp_c', 39.0);
+    await b.engine.syncAll(force: true);
+    final first = b.store.needsAttention().single;
+    a.store.setField(visit.note, 'data.temp_c', 38.8);
+    await a.engine.syncAll(force: true);
+    // B keeps the 38.6 they saw; the server holds 38.8 now, so B is asked again.
+    expect(b.store.resolveConflict(first.changeId, keepMine: false), isTrue);
+    await b.engine.syncAll(force: true);
+    final again = b.store.needsAttention().single;
+    expect(again.server!.value, 38.8);
+    expect(b.store.resolveConflict(again.changeId, keepMine: false), isTrue);
+    await b.engine.syncAll(force: true);
+    expect(b.store.outbox(), isEmpty);
+    expect(b.store.record(visit.note)!.fields['data.temp_c']!.value, 38.8);
+  }, skip: skip);
+
+  test('numbers past 2^53 hash alike in Dart and TypeScript, so they are confirmed', () async {
+    final (p, _) = await phone('clinician@example.com');
+    final encounter = p.store.createEncounter(kind: 'medical');
+    p.store.createNote(
+      encounterId: encounter,
+      noteTypeKey: 'vitals',
+      data: {'big': 1152921504606846976.0, 'bigger': 123456789012345680000.0, 'tiny': 5e-324},
+    );
+    final done = await p.engine.syncAll(force: true) as SyncDone;
+    expect([done.confirmed, done.unanswered], [2, 0]);
     expect(p.store.outbox(), isEmpty);
   }, skip: skip);
 

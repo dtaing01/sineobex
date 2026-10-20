@@ -33,6 +33,8 @@ enum DeviceChannel {
         }
         do {
           var url = URL(fileURLWithPath: path, isDirectory: true)
+          // Setting a resource value on a folder that doesn't exist yet fails.
+          try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
           var values = URLResourceValues()
           values.isExcludedFromBackup = true
           try url.setResourceValues(values)

@@ -27,6 +27,11 @@ void main() {
     expect(canonicalJson(1e21), '1e+21');
     expect(canonicalJson(0.1 + 0.2), '0.30000000000000004');
     expect(canonicalJson({'t': 38.0}), canonicalJson({'t': 38}));
+    // Above 2^53 JavaScript prints the shortest digits padded with zeros, not the exact integer
+    // (review finding: these used to hash differently and could never be confirmed).
+    expect(canonicalJson(1152921504606846976.0), '1152921504606847000');
+    expect(canonicalJson(123456789012345680000.0), '123456789012345680000');
+    expect(canonicalJson(18014398509481984.0), '18014398509481984');
   });
 
   test('a value the server can’t store exactly is caught before it enters the outbox', () {

@@ -9,8 +9,12 @@ import 'sync_labels.dart';
 
 /// Signing out with unsynced work (module 9, revised Oct 7): progress by category, then Wait or
 /// Sign out anyway. Signing out anyway never deletes the unsynced data.
+///
+/// The session makes the final call: it erases nothing unless every team database on the phone
+/// is fully synced, so this dialog only decides whether the person waits for the open team.
 Future<void> signOutWithSync(BuildContext context, SessionController session, SyncController sync) async {
-  if (!sync.snapshot.unsynced.counts.values.any((n) => n > 0)) {
+  final snapshot = sync.snapshot;
+  if (!snapshot.open || snapshot.unsynced.total == 0) {
     await session.signOut();
     return;
   }
@@ -50,8 +54,9 @@ class _SignOutDialogState extends State<_SignOutDialog> {
 
   bool _finished = false;
 
-  /// Closes the dialog exactly once: both the sync finishing and the listener can end it.
-  void _finish(bool synced) {
+  /// Closes the dialog exactly once: both the sync finishing and the listener can end it. Null
+  /// cancels the sign-out.
+  void _finish(bool? synced) {
     if (_finished || !mounted) return;
     _finished = true;
     Navigator.of(context).pop(synced);
@@ -59,7 +64,14 @@ class _SignOutDialogState extends State<_SignOutDialog> {
 
   void _changed() {
     if (_finished || !mounted) return;
-    if (_waiting && widget.sync.snapshot.unsynced.total == 0) {
+    final snapshot = widget.sync.snapshot;
+    // The app locked and closed the database: what's left can't be known, so nothing is
+    // decided. (Read as "0 left", this used to sign out and erase everything unsynced.)
+    if (!snapshot.open) {
+      _finish(null);
+      return;
+    }
+    if (_waiting && snapshot.unsynced.total == 0) {
       _finish(true);
       return;
     }
@@ -69,7 +81,8 @@ class _SignOutDialogState extends State<_SignOutDialog> {
   Future<void> _wait() async {
     setState(() => _waiting = true);
     await widget.sync.syncNow();
-    if (widget.sync.snapshot.unsynced.total == 0) _finish(true);
+    final snapshot = widget.sync.snapshot;
+    if (snapshot.open && snapshot.unsynced.total == 0) _finish(true);
   }
 
   @override
@@ -100,6 +113,10 @@ class _SignOutDialogState extends State<_SignOutDialog> {
                 '${plural(snapshot.attention.length, 'item needs', 'items need')} attention before it can sync.',
                 style: text.bodyMedium,
               ),
+            if (snapshot.elsewhere != 0) ...[
+              const SizedBox(height: FieldSpace.s2),
+              Text(elsewhereText(snapshot.elsewhere), style: text.bodyMedium),
+            ],
           ],
         ),
       ),

@@ -182,14 +182,37 @@ class SyncEngine {
     final before = await clock.boot.read();
     final wallBefore = _now().toUtc();
     if (batch.isNotEmpty) store.recordAttempt(batch);
-    final res = await api.syncPush(
-      body: SyncPush(
-        deviceId: deviceId,
-        clock: SyncPushClock(deviceTime: wallBefore),
-        unsynced: SyncPushUnsynced(counts: unsynced.counts, oldest: unsynced.oldest),
-        changes: batch.map(_wire).toList(),
-      ),
-    );
+    final SyncPushResult res;
+    try {
+      res = await api.syncPush(
+        body: SyncPush(
+          deviceId: deviceId,
+          clock: SyncPushClock(deviceTime: wallBefore),
+          unsynced: SyncPushUnsynced(counts: unsynced.counts, oldest: unsynced.oldest),
+          changes: batch.map(_wire).toList(),
+        ),
+      );
+    } on ApiException catch (e) {
+      final malformed = _malformed(e, batch.length);
+      if (malformed.isEmpty) rethrow;
+      // The server read none of the batch because of these, and would refuse it the same way
+      // every time: they become rejections the person can see, and the rest goes again.
+      for (final i in malformed) {
+        store.reject(
+          batch[i],
+          reason: 'validation',
+          message: 'This change can’t be read by the server.',
+          details: const {'problem': 'malformed'},
+        );
+      }
+      return SyncDone(
+        sent: batch.length,
+        confirmed: 0,
+        rejected: malformed.length,
+        conflicts: 0,
+        unanswered: batch.length - malformed.length,
+      );
+    }
     final after = await clock.boot.read();
     await clock.recordServerTime(
       serverTime: res.serverTime,
@@ -256,6 +279,22 @@ class SyncEngine {
     return done;
   }
 
+  /// The batch positions a 422 names (`changes.3.field`), or none if it names something else.
+  static Set<int> _malformed(ApiException e, int batchLength) {
+    if (e.status != 422) return const {};
+    final fields = e.details?['fields'];
+    if (fields is! List<Object?>) return const {};
+    final out = <int>{};
+    for (final f in fields) {
+      final path = f is Map<String, Object?> ? f['path'] : null;
+      final m = path is String ? RegExp(r'^changes\.(\d+)(\.|$)').firstMatch(path) : null;
+      final i = m == null ? null : int.parse(m.group(1)!);
+      if (i == null || i >= batchLength) return const {};
+      out.add(i);
+    }
+    return out;
+  }
+
   SyncChange _wire(OutboxEntry e) => SyncChange(
     changeId: e.changeId,
     seq: e.seq,
@@ -311,13 +350,35 @@ class SyncEngine {
     return true;
   }
 
+  /// Asks the server for its time ("Check again"), so a clock the person just fixed is seen
+  /// without waiting for something to sync. Offline, the stored reference is checked again.
+  Future<ClockStatus> refreshClock() async {
+    try {
+      final before = await clock.boot.read();
+      final wallBefore = _now().toUtc();
+      final res = await api.getServerTime();
+      final after = await clock.boot.read();
+      return await clock.recordServerTime(
+        serverTime: res.serverTime,
+        before: before,
+        after: after,
+        wallBefore: wallBefore,
+        wallAfter: _now().toUtc(),
+      );
+    } on Exception {
+      return clock.check();
+    }
+  }
+
   /// Hands a removed user's unsynced work to quarantine, signed with the device key (module 9:
   /// "It is sent to a quarantine queue for a Program Admin to review, so no care record is
-  /// lost"). Returns true when every change was received with a matching hash.
-  Future<bool> uploadToQuarantine() async {
+  /// lost"). Returns the change IDs the server now holds with a matching hash, or null when the
+  /// phone has no device key to sign with.
+  Future<Set<String>?> uploadToQuarantine() async {
     final deviceId = await device.existingDeviceId(teamId);
-    if (deviceId == null) return store.outbox().isEmpty;
+    if (deviceId == null) return null;
     final entries = store.outbox().where((e) => e.state != ChangeState.superseded).toList();
+    final held = <String>{};
     for (var i = 0; i < entries.length; i += batchSize) {
       final chunk = entries.sublist(i, min(i + batchSize, entries.length));
       final payload = SignedQuarantinePayload(
@@ -332,12 +393,12 @@ class SyncEngine {
       final byId = {for (final r in res.results) r.changeId: r};
       for (final e in chunk) {
         final r = byId[e.changeId];
-        if (r == null || r.status != QuarantineReceiptResultsItemStatus.quarantined || r.hash != e.valueHash) {
-          return false;
+        if (r != null && r.status == QuarantineReceiptResultsItemStatus.quarantined && r.hash == e.valueHash) {
+          held.add(e.changeId);
         }
       }
     }
-    return true;
+    return held;
   }
 
   /// Asks, with the device key, whether this phone must wipe or its user lost access.

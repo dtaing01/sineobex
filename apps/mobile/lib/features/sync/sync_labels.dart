@@ -44,6 +44,12 @@ String timeOfDay(BuildContext context, DateTime t) =>
 
 String plural(int n, String one, [String? many]) => '$n ${n == 1 ? one : (many ?? '${one}s')}';
 
+/// Another team's unsynced work on this phone (null: a database that couldn't be read).
+String elsewhereText(int? n) => n == null
+    ? 'Records from another team are on this phone and couldn’t be checked. They stay until they sync.'
+    : '${plural(n, 'change')} for another team ${n == 1 ? 'is' : 'are'} waiting on this phone. '
+          '${n == 1 ? 'It syncs' : 'They sync'} when you work in that team.';
+
 /// "7 minutes behind" / "3 minutes ahead".
 String offsetText(Duration offset) {
   final minutes = offset.inMinutes.abs();

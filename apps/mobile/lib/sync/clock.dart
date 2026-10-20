@@ -81,17 +81,58 @@ class DatabaseClockReferences implements ClockReferenceStore {
 /// The clock check (module 9, decided Oct 12): "The phone compares its clock with the server time
 /// from its last sync plus its own uptime since then, so the check works offline."
 class ClockSync {
-  ClockSync({required this.boot, required this.references, DateTime Function()? wallNow})
-    : _wall = wallNow ?? DateTime.now;
+  ClockSync({
+    required this.boot,
+    required this.references,
+    DateTime Function()? wallNow,
+    Duration Function()? monotonic,
+  }) : _wall = wallNow ?? DateTime.now,
+       _monotonic = monotonic ?? _stopwatch();
 
   static const limit = Duration(minutes: 5);
+
+  /// A server time whose round trip took longer than this is not used: the midpoint could be off
+  /// by half of it (a response body that trickles in on weak signal).
+  static const maxRoundTrip = Duration(seconds: 30);
 
   final BootClock boot;
   final ClockReferenceStore references;
   final DateTime Function() _wall;
-  ClockStatus _status = const ClockStatus(ClockState.unverified, null);
 
-  ClockStatus get status => _status;
+  /// Runs only while the app does (Dart's Stopwatch). Between checks it carries the server time
+  /// forward, so a phone clock that jumps is caught at once instead of at the next check.
+  final Duration Function() _monotonic;
+  ClockStatus _status = const ClockStatus(ClockState.unverified, null);
+  int? _baseServerMs;
+  Duration? _baseAt;
+
+  static Duration Function() _stopwatch() {
+    final watch = Stopwatch()..start();
+    return () => watch.elapsed;
+  }
+
+  /// The clock check as of now: the server time worked out at the last [check], carried forward,
+  /// against the phone's clock this moment.
+  ClockStatus get status {
+    final serverNow = _serverNow();
+    if (serverNow == null) return _status;
+    final offset = Duration(milliseconds: serverNow - _wall().toUtc().millisecondsSinceEpoch);
+    return ClockStatus(offset.abs() > limit ? ClockState.off : ClockState.verified, offset);
+  }
+
+  int? _serverNow() {
+    final base = _baseServerMs;
+    final at = _baseAt;
+    if (base == null || at == null) return null;
+    return base + (_monotonic() - at).inMilliseconds;
+  }
+
+  /// The app went to the background, where the phone may sleep and the monotonic clock with it.
+  /// Until the next [check] (on resume) the last result stands.
+  void suspend() {
+    _baseServerMs = null;
+    _baseAt = null;
+  }
 
   /// Called by sync with the server's time, measured at the midpoint of the request so a slow
   /// network halves its own error.
@@ -103,6 +144,8 @@ class ClockSync {
     required DateTime wallAfter,
   }) async {
     if (before == null || after == null || before.bootId != after.bootId) return check();
+    // Too slow to say when the server stamped it: keep the reference there is.
+    if (after.elapsed - before.elapsed > maxRoundTrip) return check();
     final midElapsed = (before.elapsed + after.elapsed) ~/ 2;
     references.writeClockReference(
       jsonEncode({
@@ -119,6 +162,7 @@ class ClockSync {
   Future<ClockStatus> check() async {
     final raw = references.readClockReference();
     final now = await boot.read();
+    suspend();
     if (raw == null || now == null) return _status = const ClockStatus(ClockState.unverified, null);
     final ref = jsonDecode(raw) as Map<String, Object?>;
     final elapsedMs = (ref['elapsedMs']! as num).toInt();
@@ -127,19 +171,21 @@ class ClockSync {
       return _status = const ClockStatus(ClockState.unverified, null);
     }
     final serverNow = (ref['serverMs']! as num).toInt() + now.elapsed.inMilliseconds - elapsedMs;
+    _baseServerMs = serverNow;
+    _baseAt = _monotonic();
     final offset = Duration(milliseconds: serverNow - _wall().toUtc().millisecondsSinceEpoch);
     return _status = ClockStatus(offset.abs() > limit ? ClockState.off : ClockState.verified, offset);
   }
 
-  /// The time stamped on a change: the phone's own clock, and corrected by the last offset when
-  /// there is a reference. Both are stored; the server keeps both too.
+  /// The time stamped on a change: the phone's own clock, and the server's time when there is a
+  /// reference. Both are stored; the server keeps both too.
   ClockStamp stamp() {
     final device = _wall().toUtc();
+    final serverNow = _serverNow();
     final offset = _status.offset;
-    return ClockStamp(
-      deviceTime: device,
-      correctedTime: offset == null ? null : device.add(offset),
-      verified: offset != null,
-    );
+    final corrected = serverNow != null
+        ? DateTime.fromMillisecondsSinceEpoch(serverNow, isUtc: true)
+        : (offset == null ? null : device.add(offset));
+    return ClockStamp(deviceTime: device, correctedTime: corrected, verified: corrected != null);
   }
 }

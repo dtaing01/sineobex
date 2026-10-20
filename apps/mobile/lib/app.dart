@@ -81,6 +81,7 @@ class _SineobexAppState extends ConsumerState<SineobexApp> {
   // Coming back to the foreground: the phone may have slept, or someone may have changed its clock.
   late final _lifecycle = AppLifecycleListener(
     onResume: () => unawaited(ref.read(syncControllerProvider).checkClock()),
+    onPause: () => ref.read(syncControllerProvider).suspendClock(),
   );
 
   @override

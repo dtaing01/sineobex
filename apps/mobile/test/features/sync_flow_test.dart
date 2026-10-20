@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/design/tokens.dart';
@@ -11,9 +15,9 @@ import '../helpers/app_harness.dart';
 /// signing out with unsynced work, remote wipe and removal. Every screen is checked against the
 /// guidelines in all three themes.
 void main() {
-  Future<AppHarness> signedIn(WidgetTester tester, {FieldTheme? theme}) async {
+  Future<AppHarness> signedIn(WidgetTester tester, {FieldTheme? theme, int teams = 1}) async {
     usePhoneSize(tester);
-    final h = AppHarness(theme: theme);
+    final h = AppHarness(theme: theme, teams: teams);
     await tester.pumpWidget(h.build());
     await tester.pumpAndSettle();
     await enter(tester, 'Email', 'clinician@example.com');
@@ -30,6 +34,20 @@ void main() {
   }
 
   LocalStore storeOf(AppHarness h) => h.sync.store!;
+  final userId = demoUser().userId;
+  List<String> filesOf(AppHarness h) => LocalDatabase.filesForUser(h.dir.path, userId);
+  bool teamFile(AppHarness h, String teamId) => File(LocalDatabase.fileFor(h.dir.path, userId, teamId)).existsSync();
+
+  Future<void> openTeam(WidgetTester tester, AppHarness h, String teamId) async {
+    await tester.runAsync(() => h.session.selectTeam(teamId));
+    await tester.runAsync(h.sync.ready);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> settle(WidgetTester tester) async {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+  }
 
   Future<void> syncNow(WidgetTester tester, AppHarness h) async {
     await tester.runAsync(() => h.sync.syncNow());
@@ -134,7 +152,7 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pumpAndSettle();
       expect(h.session.state, isA<SignedOut>());
-      expect(find.textContaining('Unsynced records stay encrypted on this phone'), findsOneWidget);
+      expect(find.textContaining('haven’t synced stay encrypted on this phone'), findsOneWidget);
       expect(LocalDatabase.filesForUser(h.dir.path, demoUser().userId), hasLength(1));
 
       // Signing in again on this phone asks for the same PIN, and the records are still there.
@@ -199,6 +217,126 @@ void main() {
     expect(h.session.state, isA<SignedOut>());
     expect(find.textContaining('sent to a Program Admin to review'), findsOneWidget);
     expect(LocalDatabase.filesForUser(h.dir.path, demoUser().userId), isEmpty);
+  });
+
+  // Review findings: each of these erased unsynced records before the sign-out guard.
+
+  testWidgets('signing out from the lock screen keeps what hasn’t synced, for anyone holding the phone', (
+    tester,
+  ) async {
+    final h = await signedIn(tester);
+    storeOf(h).createEncounter(kind: 'medical');
+    await tester.runAsync(h.session.lock);
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Sign out');
+    expect(find.textContaining('stays encrypted on this phone'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
+    await settle(tester);
+    expect(h.session.state, isA<SignedOut>());
+    expect(filesOf(h), hasLength(1));
+    expect(find.textContaining('haven’t synced stay encrypted on this phone'), findsOneWidget);
+  });
+
+  testWidgets('waiting in the sign-out dialog and then locking erases nothing', (tester) async {
+    final h = await signedIn(tester);
+    h.server.offline = true;
+    storeOf(h).createEncounter(kind: 'medical');
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Sign out');
+    await tapText(tester, 'Wait');
+    await settle(tester);
+    await tester.runAsync(h.session.lock);
+    await settle(tester);
+    expect(h.session.state, isA<Locked>());
+    expect(find.text('Some records haven’t synced'), findsNothing);
+    expect(filesOf(h), hasLength(1));
+  });
+
+  testWidgets('signing out of a synced team keeps another team’s unsynced work, and Home says it is there', (
+    tester,
+  ) async {
+    final h = await signedIn(tester, teams: 2);
+    await openTeam(tester, h, 'team-1');
+    storeOf(h).createEncounter(kind: 'medical');
+    await openTeam(tester, h, 'team-0');
+    expect(storeOf(h).unsynced().total, 0);
+    expect(find.text('This team is all saved'), findsOneWidget);
+    expect(find.textContaining('1 change for another team is waiting on this phone'), findsOneWidget);
+    await expectGuidelines(tester);
+
+    await tapText(tester, 'Sign out');
+    await settle(tester);
+    expect(h.session.state, isA<SignedOut>());
+    expect(find.textContaining('haven’t synced stay encrypted on this phone'), findsOneWidget);
+    expect(teamFile(h, 'team-1'), isTrue);
+  });
+
+  testWidgets('removed from the team: nothing can be saved during the hand-over, so nothing is wiped unsent', (
+    tester,
+  ) async {
+    final h = await signedIn(tester);
+    await syncNow(tester, h);
+    final store = storeOf(h);
+    store.createEncounter(kind: 'medical');
+    h.server.removedUsers.add(userId);
+    Object? refused;
+    h.server.onRequest = (path) {
+      if (!path.endsWith('/quarantine')) return;
+      try {
+        store.createEncounter(kind: 'non_medical');
+      } on ChartingPaused catch (e) {
+        refused = e;
+      }
+    };
+    await syncNow(tester, h);
+    await settle(tester);
+    expect(refused, isA<ChartingPaused>());
+    expect(h.server.quarantine, hasLength(1));
+    expect(h.session.state, isA<SignedOut>());
+    expect(filesOf(h), isEmpty);
+  });
+
+  testWidgets('switching team during the removal check never wipes the team switched to', (tester) async {
+    final h = await signedIn(tester, teams: 2);
+    await openTeam(tester, h, 'team-1');
+    storeOf(h).createEncounter(kind: 'medical');
+    await openTeam(tester, h, 'team-0');
+    await syncNow(tester, h);
+    storeOf(h).createEncounter(kind: 'medical');
+    h.server.removedUsers.add(userId);
+    h.server.onRequest = (path) {
+      if (path.endsWith('/quarantine')) unawaited(h.session.selectTeam('team-1'));
+    };
+    await syncNow(tester, h);
+    await tester.runAsync(h.sync.ready);
+    await settle(tester);
+    expect(h.session.state, isA<Unlocked>());
+    expect(teamFile(h, 'team-1'), isTrue);
+    expect(storeOf(h).unsynced().total, 1);
+    // Team 0 is wiped only once its hand-over is checked again with team 0 open.
+    expect(teamFile(h, 'team-0'), isTrue);
+  });
+
+  testWidgets('a field edited twice shows one conflict card with the latest value, and that is what is sent', (
+    tester,
+  ) async {
+    final h = await signedIn(tester);
+    final store = storeOf(h);
+    final encounter = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    await syncNow(tester, h);
+    h.server.serverEdit(note, 'data.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
+    store.setField(note, 'data.temp_c', 39.0);
+    store.setField(note, 'data.temp_c', 39.4);
+    await syncNow(tester, h);
+    await tapText(tester, 'Needs attention');
+    expect(find.text('Your value'), findsOneWidget);
+    expect(find.text('39.4'), findsOneWidget);
+    expect(find.text('39.0'), findsNothing);
+    await tapText(tester, 'Use my value');
+    await settle(tester);
+    expect(h.server.records[note]!.fields['data.temp_c']!.value, 39.4);
+    expect(store.outbox(), isEmpty);
   });
 
   testWidgets('a refused sign-in alone never deletes anything', (tester) async {

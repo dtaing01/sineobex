@@ -111,13 +111,15 @@ void _write(StringBuffer out, Object? v) {
   }
 }
 
-/// JavaScript's Number.prototype.toString for the values that reach here.
+/// JavaScript's Number.prototype.toString. Dart's double.toString uses the same shortest
+/// round-trip algorithm and the same switch to exponents at 1e21; it only adds ".0" to integral
+/// values. (Printing the exact integer instead would differ from JavaScript above 2^53, where
+/// JavaScript pads the shortest digits with zeros: 2^60 is "1152921504606847000".)
 String _number(double d) {
   if (!d.isFinite) throw ArgumentError('canonical JSON cannot encode NaN or Infinity');
-  // JavaScript prints integral values below 1e21 without a fraction or exponent; Dart adds ".0".
-  if (d == d.truncateToDouble() && d.abs() < 1e21) return BigInt.from(d).toString();
-  // Otherwise both languages print the shortest round-trip digits with the same exponent rules.
-  return d.toString();
+  if (d == 0) return '0'; // -0 as well
+  final s = d.toString();
+  return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
 }
 
 const _short = {0x22: r'\"', 0x5c: r'\\', 0x08: r'\b', 0x0c: r'\f', 0x0a: r'\n', 0x0d: r'\r', 0x09: r'\t'};
