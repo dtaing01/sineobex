@@ -150,8 +150,9 @@ test('a record from someone whose role no longer allows it is reviewed and accep
   const decide = item.getByRole('form');
   // Pressing Enter with no choice made accepts nothing (review finding: Enter used to submit the
   // first button, Accept).
-  await decide.getByLabel('Reason').fill('Confirmed with Riley: a supply drop-off');
-  await decide.getByLabel('Reason').press('Enter');
+  const reason = decide.getByRole('textbox', { name: 'Reason' });
+  await reason.fill('Confirmed with Riley: a supply drop-off');
+  await reason.press('Enter');
   await expect(decide.getByRole('alert')).toContainText('Choose whether to accept or reject it');
   await expect(page).toHaveURL(/\/team\/quarantine$/);
   await expectAccessible(page, '/team/quarantine (no decision)', { inPlace: true });

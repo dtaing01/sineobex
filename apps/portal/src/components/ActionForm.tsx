@@ -228,8 +228,10 @@ export function ChoiceField({
         </p>
       )}
       {options.map((o) => (
-        <label key={o.value} className="px-check">
+        // The hint is outside the label: inside, it would be read twice, as name and description.
+        <div key={o.value} className="px-check">
           <input
+            id={`${id}-${o.value}`}
             type="radio"
             name={name}
             value={o.value}
@@ -237,13 +239,13 @@ export function ChoiceField({
             aria-describedby={o.hint ? `${id}-${o.value}-hint` : undefined}
             defaultChecked={state.values?.[name] === o.value}
           />
-          <span>{o.label}</span>
+          <label htmlFor={`${id}-${o.value}`}>{o.label}</label>
           {o.hint && (
             <span id={`${id}-${o.value}-hint`} className="sx-help">
               {o.hint}
             </span>
           )}
-        </label>
+        </div>
       ))}
     </fieldset>
   );
