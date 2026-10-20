@@ -21,6 +21,7 @@ import {
   writeField,
   type CreateInput,
   type HistoryEntry,
+  type StoredRecord,
 } from './records.ts';
 import type {
   FieldStateValue,
@@ -214,17 +215,25 @@ export async function applyChange(
 
   if (outcome.status === 'accepted') {
     if (change.supersedes) {
-      const fixed = await tx`
+      // A fixed create also settles the record's other rejections by this person: edits sent
+      // with the failed create were refused only because the record didn't exist, and the phone
+      // folds their values into the fix.
+      const fixed = await tx<{ changeId: string }[]>`
         update sineobex.sync_changes set resolved_by_change = ${change.changeId}
-        where change_id = ${change.supersedes} and user_id = ${actor.authorId}
-          and status = 'rejected' and resolved_by_change is null
+        where user_id = ${actor.authorId} and status = 'rejected' and resolved_by_change is null
+          and (change_id = ${change.supersedes}
+               or (${change.op === 'create'} and record_id = ${change.recordId}))
         returning change_id`;
       if (fixed.length > 0) {
         await audit({
           action: 'sync.rejection_fixed',
           entity: change.entity,
           entityId: change.recordId,
-          details: { ...actor.auditDetails, changeId: change.supersedes, fixedBy: change.changeId },
+          details: {
+            ...actor.auditDetails,
+            changeIds: fixed.map((f) => f.changeId),
+            fixedBy: change.changeId,
+          },
         });
       }
     }
@@ -424,7 +433,7 @@ async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput
   if (sameValue(current.value, value)) return { status: 'accepted', serverVersion: current.version };
 
   const sawCurrent =
-    c.baseVersion === current.version || (await followsCurrent(tx, actor, c, current.version));
+    c.baseVersion === current.version || (await followsCurrent(tx, actor, c, record, field, current.version));
   let kind: HistoryEntry['kind'];
   if (c.resolution === 'replace') {
     if (!sawCurrent) return { status: 'conflict', server: current };
@@ -461,23 +470,28 @@ async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput
 
 /**
  * A second edit to the same field made before the first was confirmed carries the first one's ID.
- * If the server's current version is the one that first edit produced (or already held), the
- * user was looking at the current value.
+ * The person was looking at the current value if that change, by them, is what last wrote the
+ * field (a set, or the create that filled it), or if its receipt shows it left the field at the
+ * current version (it matched the value already there).
  */
 async function followsCurrent(
   tx: Tx,
   actor: ApplyActor,
   c: SyncChangeInput,
+  record: StoredRecord,
+  field: string,
   version: number,
 ): Promise<boolean> {
   if (!c.follows) return false;
+  const meta = record.fieldMeta[field];
+  if (meta?.changeId === c.follows && meta.by === actor.authorId) return true;
   const prev = await findReceipt(tx, c.follows);
   return (
     prev !== null &&
     prev.status === 'accepted' &&
     prev.userId === actor.authorId &&
     prev.recordId === c.recordId &&
-    prev.field === (c.field ?? null) &&
+    prev.field === field &&
     prev.serverVersion === version
   );
 }

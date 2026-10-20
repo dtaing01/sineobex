@@ -137,6 +137,7 @@ class SessionController extends ChangeNotifier {
     required this.vault,
     required this.store,
     required this.fetchMe,
+    this.eraseLocalData,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -144,6 +145,10 @@ class SessionController extends ChangeNotifier {
   final KeyVault vault;
   final SecureStore store;
   final FetchMe fetchMe;
+
+  /// Deletes the user's local databases. Runs whenever the user is forgotten on this phone: a
+  /// sign-out with nothing left to sync, a remote wipe, or the tenth wrong PIN.
+  final Future<void> Function(String userId)? eraseLocalData;
   final DateTime Function() _now;
 
   SessionState _state = const Starting();
@@ -311,6 +316,31 @@ class SessionController extends ChangeNotifier {
     _set(Unlocked(user, biometric: s.biometric));
   }
 
+  /// Forgets a team this person no longer has access to (removed while offline, or wiped), so
+  /// the team picker stops offering it.
+  Future<void> dropTeam(String teamId) async {
+    final s = _state;
+    final user = switch (s) {
+      Unlocked(:final user) || Locked(:final user) => user,
+      _ => null,
+    };
+    if (user == null) return;
+    final remaining = user.teams.where((t) => t.id != teamId).toList();
+    final next = LocalUser(
+      userId: user.userId,
+      email: user.email,
+      displayName: user.displayName,
+      teams: remaining,
+      teamId: user.teamId == teamId ? (remaining.length == 1 ? remaining.first.id : null) : user.teamId,
+    );
+    await store.write(_k(user.userId, 'profile'), jsonEncode(next.toJson()));
+    _set(switch (s) {
+      Unlocked(:final biometric) => Unlocked(next, biometric: biometric),
+      Locked(:final attemptsLeft, :final biometric) => Locked(next, attemptsLeft: attemptsLeft, biometric: biometric),
+      _ => s,
+    });
+  }
+
   /// Drops the database key and tokens from memory. Idle timeout and backgrounding call this.
   Future<void> lock() async {
     final s = _state;
@@ -337,9 +367,12 @@ class SessionController extends ChangeNotifier {
     return refreshed.accessToken;
   }
 
-  /// Signs out of the provider and forgets the user on this phone. Phase 2 keeps unsynced
-  /// records encrypted and locked to this user instead of deleting them (module 9).
-  Future<void> signOut() async {
+  /// Signs out of the provider. With nothing left to sync the user is forgotten on this phone and
+  /// their local data erased. With [keepUnsynced] (module 9: "Log out anyway never deletes the
+  /// unsynced data"), the PIN-wrapped key and the encrypted database stay, locked to this user:
+  /// signing in again on this phone asks for the same PIN and syncing finishes. Nobody else who
+  /// signs in here can read it; they get their own key.
+  Future<void> signOut({bool keepUnsynced = false}) async {
     final s = _state;
     final tokens = _tokens;
     if (tokens != null) await auth.signOut(tokens);
@@ -347,16 +380,49 @@ class SessionController extends ChangeNotifier {
       Unlocked(:final user) || Locked(:final user) => user.userId,
       _ => await store.read(_current),
     };
+    if (userId != null) {
+      if (keepUnsynced) {
+        await _forgetSession(userId);
+      } else {
+        await _forget(userId);
+      }
+    }
+    _clearMemory();
+    _set(
+      SignedOut(
+        notice: keepUnsynced
+            ? 'You have signed out. Unsynced records stay encrypted on this phone and finish syncing when you sign in again.'
+            : 'You have signed out.',
+      ),
+    );
+  }
+
+  /// After a remote wipe or removal from the last team: everything for this user goes.
+  Future<void> endAfterWipe(String notice) async {
+    final userId = switch (_state) {
+      Unlocked(:final user) || Locked(:final user) => user.userId,
+      _ => await store.read(_current),
+    };
     if (userId != null) await _forget(userId);
+    _clearMemory();
+    _set(SignedOut(notice: notice));
+  }
+
+  void _clearMemory() {
     _dbKey = null;
     _tokens = null;
     _pendingTokens = null;
     _pendingUser = null;
-    _set(const SignedOut(notice: 'You have signed out.'));
   }
 
   Future<void> _forget(String userId) async {
     await vault.destroy(userId);
+    await eraseLocalData?.call(userId);
+    await _forgetSession(userId);
+  }
+
+  /// Forgets the sign-in (tokens, profile) but not the key or the data.
+  Future<void> _forgetSession(String userId) async {
     for (final name in ['profile', 'refresh', 'factor']) {
       await store.delete(_k(userId, name));
     }

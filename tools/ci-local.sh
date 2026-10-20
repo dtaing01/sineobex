@@ -25,6 +25,7 @@ pnpm -s contract:generate >/dev/null
 git diff --exit-code -- packages/contract/openapi.json packages/contract/src/generated apps/mobile/lib/api/generated
 step "Flutter";                  (cd apps/mobile && flutter pub get --enforce-lockfile >/dev/null && tool/format_check.sh && flutter analyze --fatal-infos && flutter test)
 step "Portal end-to-end";        ADMIN_URL="$ADMIN_URL" tools/e2e-db.sh >/dev/null && pnpm -s --filter @sineobex/portal build >/dev/null && (cd apps/portal && CI=1 pnpm -s test:a11y)
+step "Phone sync, real API";     ADMIN_URL="$ADMIN_URL" tools/live-sync.sh
 step "Website";                  pnpm -s --filter @sineobex/website typecheck && pnpm -s --filter @sineobex/website build >/dev/null
 step "Workflows and scripts";    actionlint && git ls-files '*.sh' | xargs shellcheck
 printf '\n\033[1;32mAll local CI checks passed.\033[0m\n'

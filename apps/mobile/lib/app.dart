@@ -12,6 +12,7 @@ import 'design/widgets/demo_banner.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/lock_screens.dart';
 import 'features/sign_in/sign_in_screens.dart';
+import 'features/sync/needs_attention_screen.dart';
 import 'security/idle_lock.dart';
 
 export 'app_providers.dart' show appConfigProvider;
@@ -63,6 +64,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/unlock', builder: (_, _) => const UnlockScreen()),
       GoRoute(path: '/team', builder: (_, _) => const TeamPickerScreen()),
       GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+      GoRoute(path: '/attention', builder: (_, _) => const NeedsAttentionScreen()),
     ],
   );
   ref.onDispose(router.dispose);
@@ -76,9 +78,24 @@ class SineobexApp extends ConsumerStatefulWidget {
 }
 
 class _SineobexAppState extends ConsumerState<SineobexApp> {
+  // Coming back to the foreground: the phone may have slept, or someone may have changed its clock.
+  late final _lifecycle = AppLifecycleListener(
+    onResume: () => unawaited(ref.read(syncControllerProvider).checkClock()),
+  );
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    _lifecycle;
+    // The sync controller follows the session from the first state on (it checks for a remote
+    // wipe while the app sits at the lock screen).
+    ref.read(syncControllerProvider);
     unawaited(ref.read(sessionProvider).start());
   }
 

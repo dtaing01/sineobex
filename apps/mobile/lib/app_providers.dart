@@ -1,5 +1,9 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'api/generated/api.dart';
 import 'api/transport.dart';
@@ -8,6 +12,9 @@ import 'auth/session_controller.dart';
 import 'config/env.dart';
 import 'security/key_vault.dart';
 import 'security/secure_store.dart';
+import 'sync/clock.dart';
+import 'sync/device_channel.dart';
+import 'sync/sync_controller.dart';
 
 final appConfigProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment());
 
@@ -50,7 +57,7 @@ LocalUser localUserFromMe(Me me) => LocalUser(
   ],
 );
 
-final sessionProvider = Provider<SessionController>((ref) {
+final Provider<SessionController> sessionProvider = Provider<SessionController>((ref) {
   final config = ref.watch(appConfigProvider);
   final client = ref.watch(httpClientProvider);
   final controller = SessionController(
@@ -61,6 +68,8 @@ final sessionProvider = Provider<SessionController>((ref) {
       final api = SineobexApi(HttpTransport(baseUrl: config.apiBaseUrl, client: client, accessToken: () => token));
       return localUserFromMe(await api.getMe());
     },
+    // Read when called, not now: the sync controller itself listens to this session.
+    eraseLocalData: (userId) => ref.read(syncControllerProvider).eraseUser(userId),
   );
   ref.onDispose(controller.dispose);
   return controller;
@@ -81,4 +90,34 @@ final apiProvider = Provider<SineobexApi>((ref) {
       },
     ),
   );
+});
+
+/// Where the encrypted databases live: application support (not caches, which the system may
+/// empty), kept out of device backups.
+Future<String> databaseDirectory() async {
+  final dir = p.join((await getApplicationSupportDirectory()).path, 'sync');
+  await excludeFromBackup(dir);
+  return dir;
+}
+
+const appVersion = String.fromEnvironment('SINEOBEX_APP_VERSION', defaultValue: '0.2.0');
+
+final Provider<SyncController> syncControllerProvider = Provider<SyncController>((ref) {
+  final config = ref.watch(appConfigProvider);
+  final client = ref.watch(httpClientProvider);
+  final session = ref.watch(sessionProvider);
+  final controller = SyncController(
+    session: session,
+    databaseDirectory: databaseDirectory,
+    deviceStore: ref.watch(deviceStoreProvider),
+    teamApi: (teamId) => SineobexApi(
+      HttpTransport(baseUrl: config.apiBaseUrl, client: client, accessToken: session.accessToken, teamId: () => teamId),
+    ),
+    deviceApi: SineobexApi(HttpTransport(baseUrl: config.apiBaseUrl, client: client)),
+    boot: PlatformBootClock(),
+    platform: Platform.isIOS ? RegisterDevicePlatform.ios : RegisterDevicePlatform.android,
+    appVersion: appVersion,
+  );
+  ref.onDispose(controller.dispose);
+  return controller;
 });

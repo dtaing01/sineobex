@@ -280,6 +280,38 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       ]);
     });
 
+    it('fixing a rejected create also settles the edits that were rejected with it', async () => {
+      const note = await phoneA.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: randomUUID(), noteTypeKey: 'wound_care' },
+      });
+      const edit = await phoneA.change({
+        entity: 'encounter_note',
+        recordId: note.recordId,
+        op: 'set',
+        field: 'data.plan',
+        value: 'rest',
+        follows: note.changeId,
+      });
+      const r = await push(h, phoneA, t.aToken, t.teamId, [note, edit]);
+      expect(results(r.body).map((x) => x.reason)).toEqual(['stale_reference', 'stale_reference']);
+      const { encounterId } = await syncedDraft();
+      const fix = await phoneA.change({
+        entity: 'encounter_note',
+        recordId: note.recordId,
+        op: 'create',
+        value: { encounterId, noteTypeKey: 'wound_care', data: { plan: 'rest' } },
+        supersedes: note.changeId,
+      });
+      expect(results((await push(h, phoneA, t.aToken, t.teamId, [fix])).body)[0]!.status).toBe('accepted');
+      const open = await count(
+        'sync_changes',
+        `record_id = '${note.recordId}' and status = 'rejected' and resolved_by_change is null`,
+      );
+      expect(open).toBe(0);
+    });
+
     it('a note for an encounter the server doesn’t have is a stale reference', async () => {
       const note = await phoneA.change({
         entity: 'encounter_note',
@@ -577,6 +609,29 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       const r = await push(h, phoneA, t.aToken, t.teamId, [first, second]);
       expect(results(r.body).map((x) => [x.status, x.serverVersion])).toEqual([
+        ['accepted', 1],
+        ['accepted', 2],
+      ]);
+      // An edit to a field the create filled, made before the create was confirmed, builds on it.
+      const created = await phoneA.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: {
+          encounterId: (await syncedDraft()).encounterId,
+          noteTypeKey: 'wound_care',
+          data: { temp_c: 38 },
+        },
+      });
+      const edited = await phoneA.change({
+        entity: 'encounter_note',
+        recordId: created.recordId,
+        op: 'set',
+        field: 'data.temp_c',
+        value: 38.4,
+        follows: created.changeId,
+      });
+      const both = await push(h, phoneA, t.aToken, t.teamId, [created, edited]);
+      expect(results(both.body).map((x) => [x.status, x.serverVersion])).toEqual([
         ['accepted', 1],
         ['accepted', 2],
       ]);

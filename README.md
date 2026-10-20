@@ -13,7 +13,7 @@ A field-first medical record for street medicine teams, free clinics and public 
 
 | Path | What it is | Stack |
 |---|---|---|
-| `apps/mobile` | Field app, iOS and Android | Flutter, Drift on SQLCipher |
+| `apps/mobile` | Field app, iOS and Android | Flutter, SQLCipher (plain SQL via `package:sqlite3`) |
 | `apps/portal` | Portal for Logistics, admins and billing | Next.js (App Router), server-side only data access |
 | `apps/website` | Marketing site with the Log in button | Next.js static export |
 | `services/api` | The only API either app uses | TypeScript, Hono; Node (AWS) and Deno (Supabase preview) entries |
