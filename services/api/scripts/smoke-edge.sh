@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../supabase/functions/api"
 test -f bundle.js || { echo "bundle.js missing; run pnpm build first" >&2; exit 1; }
 
-APP_ENV=local MFA_MODE=none \
+APP_ENV=local MFA_MODE=none IDENTITY_ADMIN=memory \
 OIDC_ISSUER=https://idp.example.invalid OIDC_AUDIENCE=smoke OIDC_JWKS_URL=https://idp.example.invalid/jwks \
   deno run --allow-net --allow-env --allow-read --allow-sys bundle.js >deno-smoke.log 2>&1 &
 pid=$!
