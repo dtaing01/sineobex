@@ -38,13 +38,26 @@ export async function createScratchDatabase(options: { migrate?: boolean } = {})
   const admin = postgres(adminUrl(), { max: 1, onnotice: () => {} });
   try {
     await admin.unsafe(`create database ${name}`);
-    await admin.unsafe(`
-      do $$ begin
-        if not exists (select 1 from pg_roles where rolname = '${APP_LOGIN}') then
-          create role ${APP_LOGIN} login password '${APP_PASSWORD}';
-        end if;
-      end $$;
-    `);
+    // Roles are cluster-wide and test files run in parallel, so "create if missing" races
+    // (two workers both see no role, the second create fails). Every worker connects to the
+    // same admin database, where an advisory lock serializes them. Creating sineobex_app here
+    // means migration 0001 always finds it and never races either.
+    await admin.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtext('sineobex_test_roles'))`;
+      await tx.unsafe(`
+        do $$ begin
+          if not exists (select 1 from pg_roles where rolname = 'sineobex_app') then
+            create role sineobex_app nologin;
+          end if;
+          if not exists (select 1 from pg_roles where rolname = '${APP_LOGIN}') then
+            create role ${APP_LOGIN} login password '${APP_PASSWORD}';
+          end if;
+          if not pg_has_role('${APP_LOGIN}', 'sineobex_app', 'member') then
+            grant sineobex_app to ${APP_LOGIN};
+          end if;
+        end $$;
+      `);
+    });
   } finally {
     await admin.end();
   }
@@ -54,7 +67,6 @@ export async function createScratchDatabase(options: { migrate?: boolean } = {})
   if (options.migrate !== false) {
     await migrate(owner);
     await setEnvironment(owner, 'test');
-    await owner.unsafe(`grant sineobex_app to ${APP_LOGIN}`);
     await owner.unsafe(
       `alter role ${APP_LOGIN} in database ${name} set search_path = sineobex, public, extensions`,
     );
