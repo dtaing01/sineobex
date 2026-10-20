@@ -79,12 +79,17 @@ describe('Dart generator', () => {
     expect(out).toContain("'recordedAt': recordedAt.toUtc().toIso8601String(),");
   });
 
+  it('always sends an untyped field, because null is one of its values', () => {
+    expect(out).toContain("        'data': data,");
+    expect(out).not.toContain("if (data != null) 'data'");
+  });
+
   it('builds client methods with path, query and body parameters', () => {
     expect(out).toContain(
       'Future<List<Problem>> listProblems({required String patientId, Status? status}) async {',
     );
     expect(out).toContain("'/v1/patients/${Uri.encodeComponent(patientId)}/problems'");
-    expect(out).toContain("if (status != null) 'status': (status!.toJson()).toString()");
+    expect(out).toContain("if (status != null) 'status': (status.toJson()).toString()");
     expect(out).toContain('Future<void> addProblem({required Problem body}) async {');
   });
 

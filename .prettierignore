@@ -8,6 +8,7 @@ pnpm-lock.yaml
 apps/mobile
 packages/contract/openapi.json
 packages/contract/src/generated
+packages/contract/test-vectors
 apps/website
 *.md
 **/supabase/functions/**/bundle.js

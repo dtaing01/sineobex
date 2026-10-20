@@ -1,5 +1,82 @@
 // GENERATED FILE. Do not edit by hand. Regenerate with `pnpm contract:generate`.
 export interface paths {
+    "/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register this phone’s key for the current team */
+        post: operations["registerDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/{deviceId}/quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand over unsynced changes after the user lost access; a Program Admin reviews them
+         * @description Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.
+         */
+        post: operations["uploadQuarantine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/{deviceId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Whether this phone must wipe, and whether its user still has access
+         * @description Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.
+         */
+        post: operations["deviceStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/{deviceId}/wiped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report that this phone deleted its data and key for the team
+         * @description Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.
+         */
+        post: operations["confirmWiped"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -137,6 +214,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sync/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send change entries; get a receipt for each (accepted with hash, rejected with reason, or conflict)
+         * @description Each change commits in its own transaction with its audit entry. A change ID the server already has gets its stored receipt again, so retries never apply twice. Changes without a result were not processed.
+         */
+        post: operations["syncPush"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sync/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The server’s copy of records, with each field’s version, for drafts a phone holds open */
+        post: operations["fetchRecords"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/team/audit/search": {
         parameters: {
             query?: never;
@@ -165,6 +279,40 @@ export interface paths {
         put?: never;
         /** Recompute every hash in the team's audit chain */
         post: operations["verifyAuditChain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every phone on the team, with sync status, clock flag and unsynced counts */
+        get: operations["listDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/devices/{deviceId}/wipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remotely wipe a lost or stolen phone; its unsynced data is lost */
+        post: operations["wipeDevice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -267,6 +415,73 @@ export interface paths {
         /** Change a role, with a reason that is logged */
         put: operations["changeMemberRole"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Things the signed-in person should look at, without patient details */
+        get: operations["listNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/notices/{noticeId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["markNoticeRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Changes from phones whose user lost access, waiting for review */
+        get: operations["listQuarantine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/quarantine/{itemId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a quarantined change onto the chart, or reject it with a reason */
+        post: operations["decideQuarantine"];
         delete?: never;
         options?: never;
         head?: never;
@@ -413,6 +628,8 @@ export interface components {
             /** @description Why, in a few words. Logged. */
             reason: string;
         };
+        /** @enum {string} */
+        ChangeEntity: "encounter" | "encounter_note" | "audit";
         ChangeRole: {
             /** @description Why, in a few words. Logged. */
             reason: string;
@@ -433,6 +650,31 @@ export interface components {
             supervisingAttending?: string;
             supervisingPhysician?: string;
         };
+        DecideQuarantine: {
+            /** @enum {string} */
+            decision: "accept" | "reject";
+            /** @description Why, in a few words. Logged. */
+            reason: string;
+        };
+        Device: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            registeredAt: string;
+            status: components["schemas"]["DeviceStatus"];
+        };
+        /** @enum {string} */
+        DeviceStatus: "active" | "wipe_requested" | "wiped";
+        DeviceStatusResult: {
+            /**
+             * @description removed: the user lost access to the team; upload unsynced work to quarantine, then wipe
+             * @enum {string}
+             */
+            access: "active" | "removed";
+            /** Format: date-time */
+            serverTime: string;
+            status: components["schemas"]["DeviceStatus"];
+        };
         ErrorResponse: {
             error: {
                 code: string;
@@ -441,6 +683,22 @@ export interface components {
                 };
                 message: string;
             };
+        };
+        FetchRecords: {
+            records: components["schemas"]["RecordRef"][];
+        };
+        FetchRecordsResult: {
+            missing: components["schemas"]["RecordRef"][];
+            records: components["schemas"]["RecordSnapshot"][];
+        };
+        /** @description On conflict: the value the server holds */
+        FieldState: {
+            /** Format: date-time */
+            changedAt: string | null;
+            /** Format: uuid */
+            changedBy: string | null;
+            value?: unknown;
+            version: number;
         };
         Health: {
             demo: boolean;
@@ -518,6 +776,18 @@ export interface components {
             /** @enum {string} */
             teamStatus: "active" | "suspended";
         };
+        Notice: {
+            /** Format: date-time */
+            createdAt: string;
+            entity: string | null;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** Format: date-time */
+            readAt: string | null;
+            /** Format: uuid */
+            recordId: string | null;
+        };
         Ok: {
             /** @enum {boolean} */
             ok: true;
@@ -544,6 +814,82 @@ export interface components {
             description: string;
             key: components["schemas"]["Permission"];
         };
+        QuarantineItem: {
+            /** Format: uuid */
+            changeId: string;
+            /** Format: date-time */
+            decidedAt: string | null;
+            decidedBy: components["schemas"]["UserRef"] & (Record<string, never> | null);
+            decisionReason: string | null;
+            /** Format: uuid */
+            deviceId: string;
+            /** Format: date-time */
+            deviceTime: string;
+            entity: string;
+            field: string | null;
+            /** Format: uuid */
+            id: string;
+            op: string;
+            /** @enum {string} */
+            reason: "access_removed" | "permission";
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: uuid */
+            recordId: string;
+            /** @enum {string} */
+            status: "pending" | "accepted" | "rejected";
+            user: components["schemas"]["UserRef"];
+            value?: unknown;
+        };
+        QuarantineReceipt: {
+            results: {
+                /** Format: uuid */
+                changeId: string;
+                /** @description SHA-256 of the canonical JSON of the value, lowercase hex */
+                hash?: string;
+                reason?: components["schemas"]["RejectReason"];
+                /** @enum {string} */
+                status: "quarantined" | "rejected";
+            }[];
+        };
+        /** @enum {string} */
+        RecordEntity: "encounter" | "encounter_note";
+        RecordRef: {
+            entity: components["schemas"]["RecordEntity"];
+            /** Format: uuid */
+            id: string;
+        };
+        RecordSnapshot: {
+            /** @description Set at creation, never changed */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Format: uuid */
+            authorUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+            entity: components["schemas"]["RecordEntity"];
+            fields: {
+                [key: string]: components["schemas"]["FieldState"];
+            };
+            /** Format: uuid */
+            id: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        RegisterDevice: {
+            appVersion: string;
+            /** Format: uuid */
+            deviceId: string;
+            /** @enum {string} */
+            platform: "ios" | "android" | "other";
+            /** @description Ed25519 public key, raw bytes, unpadded base64url */
+            publicKey: string;
+        };
+        /** @enum {string} */
+        RejectReason: "validation" | "signing_rule" | "stale_reference" | "permission" | "record_locked" | "hash_mismatch";
         RemoveMember: {
             /** @description Why, in a few words. Logged. */
             reason: string;
@@ -576,11 +922,173 @@ export interface components {
             /** Format: date-time */
             serverTime: string;
         };
+        SignedQuarantine: {
+            payload: {
+                changes: components["schemas"]["SyncChange"][];
+                /** Format: uuid */
+                deviceId: string;
+                /** @enum {string} */
+                purpose: "quarantine";
+            };
+            /** @description Ed25519 signature of the canonical JSON of `payload`, unpadded base64url */
+            signature: string;
+        };
+        SignedStatus: {
+            payload: {
+                /** Format: uuid */
+                deviceId: string;
+                /** @enum {string} */
+                purpose: "status";
+                /** Format: date-time */
+                sentAt: string;
+            };
+            /** @description Ed25519 signature of the canonical JSON of `payload`, unpadded base64url */
+            signature: string;
+        };
+        SignedWiped: {
+            payload: {
+                /** Format: uuid */
+                deviceId: string;
+                /** @enum {string} */
+                purpose: "wiped";
+                /** Format: date-time */
+                wipedAt: string;
+            };
+            /** @description Ed25519 signature of the canonical JSON of `payload`, unpadded base64url */
+            signature: string;
+        };
+        SyncChange: {
+            /**
+             * @description The field version the user saw
+             * @default 0
+             */
+            baseVersion: number;
+            /** Format: uuid */
+            changeId: string;
+            /** @default false */
+            clockVerified: boolean;
+            /**
+             * Format: uuid
+             * @description The conflicted change this one resolves
+             */
+            conflictOf?: string;
+            /**
+             * Format: date-time
+             * @description Device time corrected by the last measured offset
+             */
+            correctedTime?: string;
+            /** Format: date-time */
+            deviceTime: string;
+            entity: components["schemas"]["ChangeEntity"];
+            field?: string;
+            /**
+             * Format: uuid
+             * @description An earlier change from this device to the same field that this one builds on
+             */
+            follows?: string;
+            /** @enum {string} */
+            op: "create" | "set" | "append";
+            /** Format: uuid */
+            recordId: string;
+            /** @enum {string} */
+            resolution?: "replace" | "keep_server";
+            /** @description Per-device sequence */
+            seq: number;
+            /**
+             * Format: uuid
+             * @description A rejected change this one fixes
+             */
+            supersedes?: string;
+            /** @description Required; null is a value */
+            value?: unknown;
+            /** @description SHA-256 of the canonical JSON of the value, lowercase hex */
+            valueHash: string;
+        };
+        SyncPush: {
+            changes: components["schemas"]["SyncChange"][];
+            clock: {
+                /** Format: date-time */
+                deviceTime: string;
+            };
+            /** Format: uuid */
+            deviceId: string;
+            unsynced: {
+                counts: {
+                    [key: string]: number;
+                };
+                /** Format: date-time */
+                oldest?: string;
+            };
+        };
+        SyncPushResult: {
+            clock: {
+                flagged: boolean;
+                offsetMs: number;
+            };
+            device: {
+                status: components["schemas"]["DeviceStatus"];
+            };
+            /** @description In the order processed. Changes without a result were not processed; send them again. */
+            results: components["schemas"]["SyncResult"][];
+            /** Format: date-time */
+            serverTime: string;
+        };
+        SyncResult: {
+            /** Format: uuid */
+            changeId: string;
+            details?: {
+                [key: string]: unknown;
+            };
+            /** @description The server’s hash of what it stored; purge only on a match */
+            hash?: string;
+            message?: string;
+            quarantined?: boolean;
+            reason?: components["schemas"]["RejectReason"];
+            server?: components["schemas"]["FieldState"];
+            serverVersion?: number;
+            /** @enum {string} */
+            status: "accepted" | "rejected" | "conflict";
+        };
+        TeamDevice: {
+            appVersion: string;
+            clockFlagged: boolean;
+            clockOffsetMs: number | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            lastSeenAt: string | null;
+            /** Format: date-time */
+            lastSyncAt: string | null;
+            /** Format: date-time */
+            oldestUnsyncedAt: string | null;
+            openRejections: number;
+            platform: string;
+            /** Format: date-time */
+            registeredAt: string;
+            status: components["schemas"]["DeviceStatus"];
+            unsyncedCounts: {
+                [key: string]: number;
+            };
+            user: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            wipedAt: string | null;
+            /** Format: date-time */
+            wipeRequestedAt: string | null;
+        };
         TeamStatusChange: {
             /** @description Why, in a few words. Logged. */
             reason: string;
             /** @enum {string} */
             status: "active" | "suspended";
+        };
+        UserRef: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        WipeDevice: {
+            /** @description Why, in a few words. Logged. */
+            reason: string;
         };
     };
     responses: never;
@@ -591,6 +1099,216 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    registerDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterDevice"];
+            };
+        };
+        responses: {
+            /** @description Already registered with this key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            /** @description Registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadQuarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignedQuarantine"];
+            };
+        };
+        responses: {
+            /** @description Receipts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuarantineReceipt"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deviceStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignedStatus"];
+            };
+        };
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceStatusResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmWiped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignedWiped"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -1035,6 +1753,117 @@ export interface operations {
             };
         };
     };
+    syncPush: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncPush"];
+            };
+        };
+        responses: {
+            /** @description Receipts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncPushResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    fetchRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchRecords"];
+            };
+        };
+        responses: {
+            /** @description Records */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FetchRecordsResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     searchAudit: {
         parameters: {
             query?: never;
@@ -1115,6 +1944,115 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Devices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamDevice"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    wipeDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WipeDevice"];
+            };
+        };
+        responses: {
+            /** @description Wipe requested */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1496,6 +2434,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Member"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notice"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markNoticeRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listQuarantine: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "rejected";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuarantineItem"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    decideQuarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideQuarantine"];
+            };
+        };
+        responses: {
+            /** @description Decided */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
             /** @description Not signed in, or the session expired */

@@ -257,6 +257,14 @@
         ],
         "type": "object"
       },
+      "ChangeEntity": {
+        "enum": [
+          "encounter",
+          "encounter_note",
+          "audit"
+        ],
+        "type": "string"
+      },
       "ChangeRole": {
         "properties": {
           "reason": {
@@ -334,6 +342,82 @@
         },
         "type": "object"
       },
+      "DecideQuarantine": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "Device": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "registeredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "registeredAt"
+        ],
+        "type": "object"
+      },
+      "DeviceStatus": {
+        "enum": [
+          "active",
+          "wipe_requested",
+          "wiped"
+        ],
+        "type": "string"
+      },
+      "DeviceStatusResult": {
+        "properties": {
+          "access": {
+            "description": "removed: the user lost access to the team; upload unsynced work to quarantine, then wipe",
+            "enum": [
+              "active",
+              "removed"
+            ],
+            "type": "string"
+          },
+          "serverTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus"
+          }
+        },
+        "required": [
+          "status",
+          "access",
+          "serverTime"
+        ],
+        "type": "object"
+      },
       "ErrorResponse": {
         "properties": {
           "error": {
@@ -358,6 +442,72 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "FetchRecords": {
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "type": "object"
+      },
+      "FetchRecordsResult": {
+        "properties": {
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "type": "array"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "records",
+          "missing"
+        ],
+        "type": "object"
+      },
+      "FieldState": {
+        "description": "On conflict: the value the server holds",
+        "properties": {
+          "changedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changedBy": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {},
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "changedBy",
+          "changedAt"
         ],
         "type": "object"
       },
@@ -641,6 +791,50 @@
         ],
         "type": "object"
       },
+      "Notice": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "readAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recordId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "entity",
+          "recordId",
+          "createdAt",
+          "readAt"
+        ],
+        "type": "object"
+      },
       "Ok": {
         "properties": {
           "ok": {
@@ -754,6 +948,267 @@
           "description"
         ],
         "type": "object"
+      },
+      "QuarantineItem": {
+        "properties": {
+          "changeId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decidedBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "decisionReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "deviceTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "access_removed",
+              "permission"
+            ],
+            "type": "string"
+          },
+          "receivedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recordId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "value": {}
+        },
+        "required": [
+          "id",
+          "user",
+          "deviceId",
+          "changeId",
+          "entity",
+          "recordId",
+          "op",
+          "field",
+          "deviceTime",
+          "reason",
+          "status",
+          "receivedAt",
+          "decidedAt",
+          "decidedBy",
+          "decisionReason"
+        ],
+        "type": "object"
+      },
+      "QuarantineReceipt": {
+        "properties": {
+          "results": {
+            "items": {
+              "properties": {
+                "changeId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "hash": {
+                  "description": "SHA-256 of the canonical JSON of the value, lowercase hex",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "reason": {
+                  "$ref": "#/components/schemas/RejectReason"
+                },
+                "status": {
+                  "enum": [
+                    "quarantined",
+                    "rejected"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changeId",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "RecordEntity": {
+        "enum": [
+          "encounter",
+          "encounter_note"
+        ],
+        "type": "string"
+      },
+      "RecordRef": {
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/RecordEntity"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "id"
+        ],
+        "type": "object"
+      },
+      "RecordSnapshot": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": {},
+            "description": "Set at creation, never changed",
+            "type": "object"
+          },
+          "authorUserId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/RecordEntity"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldState"
+            },
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entity",
+          "id",
+          "version",
+          "status",
+          "authorUserId",
+          "createdAt",
+          "updatedAt",
+          "attributes",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "RegisterDevice": {
+        "properties": {
+          "appVersion": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "deviceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "ios",
+              "android",
+              "other"
+            ],
+            "type": "string"
+          },
+          "publicKey": {
+            "description": "Ed25519 public key, raw bytes, unpadded base64url",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "platform",
+          "appVersion",
+          "publicKey"
+        ],
+        "type": "object"
+      },
+      "RejectReason": {
+        "enum": [
+          "validation",
+          "signing_rule",
+          "stale_reference",
+          "permission",
+          "record_locked",
+          "hash_mismatch"
+        ],
+        "type": "string"
       },
       "RemoveMember": {
         "properties": {
@@ -881,6 +1336,458 @@
         ],
         "type": "object"
       },
+      "SignedQuarantine": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "changes": {
+                "items": {
+                  "$ref": "#/components/schemas/SyncChange"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              "deviceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "purpose": {
+                "enum": [
+                  "quarantine"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "purpose",
+              "deviceId",
+              "changes"
+            ],
+            "type": "object"
+          },
+          "signature": {
+            "description": "Ed25519 signature of the canonical JSON of `payload`, unpadded base64url",
+            "pattern": "^[A-Za-z0-9_-]{86}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "SignedStatus": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "deviceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "purpose": {
+                "enum": [
+                  "status"
+                ],
+                "type": "string"
+              },
+              "sentAt": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "purpose",
+              "deviceId",
+              "sentAt"
+            ],
+            "type": "object"
+          },
+          "signature": {
+            "description": "Ed25519 signature of the canonical JSON of `payload`, unpadded base64url",
+            "pattern": "^[A-Za-z0-9_-]{86}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "SignedWiped": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "deviceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "purpose": {
+                "enum": [
+                  "wiped"
+                ],
+                "type": "string"
+              },
+              "wipedAt": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "purpose",
+              "deviceId",
+              "wipedAt"
+            ],
+            "type": "object"
+          },
+          "signature": {
+            "description": "Ed25519 signature of the canonical JSON of `payload`, unpadded base64url",
+            "pattern": "^[A-Za-z0-9_-]{86}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "SyncChange": {
+        "properties": {
+          "baseVersion": {
+            "default": 0,
+            "description": "The field version the user saw",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "changeId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "clockVerified": {
+            "default": false,
+            "type": "boolean"
+          },
+          "conflictOf": {
+            "description": "The conflicted change this one resolves",
+            "format": "uuid",
+            "type": "string"
+          },
+          "correctedTime": {
+            "description": "Device time corrected by the last measured offset",
+            "format": "date-time",
+            "type": "string"
+          },
+          "deviceTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/ChangeEntity"
+          },
+          "field": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "follows": {
+            "description": "An earlier change from this device to the same field that this one builds on",
+            "format": "uuid",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "create",
+              "set",
+              "append"
+            ],
+            "type": "string"
+          },
+          "recordId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "replace",
+              "keep_server"
+            ],
+            "type": "string"
+          },
+          "seq": {
+            "description": "Per-device sequence",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "supersedes": {
+            "description": "A rejected change this one fixes",
+            "format": "uuid",
+            "type": "string"
+          },
+          "value": {
+            "description": "Required; null is a value"
+          },
+          "valueHash": {
+            "description": "SHA-256 of the canonical JSON of the value, lowercase hex",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeId",
+          "seq",
+          "entity",
+          "recordId",
+          "op",
+          "valueHash",
+          "deviceTime"
+        ],
+        "type": "object"
+      },
+      "SyncPush": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/SyncChange"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "clock": {
+            "properties": {
+              "deviceTime": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceTime"
+            ],
+            "type": "object"
+          },
+          "deviceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "unsynced": {
+            "properties": {
+              "counts": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "oldest": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "deviceId",
+          "clock",
+          "unsynced",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "SyncPushResult": {
+        "properties": {
+          "clock": {
+            "properties": {
+              "flagged": {
+                "type": "boolean"
+              },
+              "offsetMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "offsetMs",
+              "flagged"
+            ],
+            "type": "object"
+          },
+          "device": {
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/DeviceStatus"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          },
+          "results": {
+            "description": "In the order processed. Changes without a result were not processed; send them again.",
+            "items": {
+              "$ref": "#/components/schemas/SyncResult"
+            },
+            "type": "array"
+          },
+          "serverTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverTime",
+          "results",
+          "device",
+          "clock"
+        ],
+        "type": "object"
+      },
+      "SyncResult": {
+        "properties": {
+          "changeId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "hash": {
+            "description": "The server’s hash of what it stored; purge only on a match",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "quarantined": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RejectReason"
+          },
+          "server": {
+            "$ref": "#/components/schemas/FieldState"
+          },
+          "serverVersion": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "conflict"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "TeamDevice": {
+        "properties": {
+          "appVersion": {
+            "type": "string"
+          },
+          "clockFlagged": {
+            "type": "boolean"
+          },
+          "clockOffsetMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSyncAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "oldestUnsyncedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "openRejections": {
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "registeredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus"
+          },
+          "unsyncedCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "wipeRequestedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wipedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "user",
+          "platform",
+          "appVersion",
+          "status",
+          "registeredAt",
+          "lastSeenAt",
+          "lastSyncAt",
+          "clockOffsetMs",
+          "clockFlagged",
+          "unsyncedCounts",
+          "oldestUnsyncedAt",
+          "openRejections",
+          "wipeRequestedAt",
+          "wipedAt"
+        ],
+        "type": "object"
+      },
       "TeamStatusChange": {
         "properties": {
           "reason": {
@@ -902,6 +1809,36 @@
           "reason"
         ],
         "type": "object"
+      },
+      "UserRef": {
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "userId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "WipeDevice": {
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -920,6 +1857,294 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/devices": {
+      "post": {
+        "operationId": "registerDevice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDevice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Already registered with this key"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Registered"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register this phone’s key for the current team",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/devices/{deviceId}/quarantine": {
+      "post": {
+        "description": "Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.",
+        "operationId": "uploadQuarantine",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignedQuarantine"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineReceipt"
+                }
+              }
+            },
+            "description": "Receipts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [],
+        "summary": "Hand over unsynced changes after the user lost access; a Program Admin reviews them",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/devices/{deviceId}/status": {
+      "post": {
+        "description": "Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.",
+        "operationId": "deviceStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignedStatus"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceStatusResult"
+                }
+              }
+            },
+            "description": "Status"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [],
+        "summary": "Whether this phone must wipe, and whether its user still has access",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/devices/{deviceId}/wiped": {
+      "post": {
+        "description": "Signed with the device key instead of a sign-in, so it works after the user was removed. The signature covers the canonical JSON of `payload`.",
+        "operationId": "confirmWiped",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignedWiped"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            },
+            "description": "Recorded"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [],
+        "summary": "Report that this phone deleted its data and key for the team",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/v1/health": {
       "get": {
         "operationId": "getHealth",
@@ -1516,6 +2741,149 @@
         ]
       }
     },
+    "/v1/sync/push": {
+      "post": {
+        "description": "Each change commits in its own transaction with its audit entry. A change ID the server already has gets its stored receipt again, so retries never apply twice. Changes without a result were not processed.",
+        "operationId": "syncPush",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncPush"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncPushResult"
+                }
+              }
+            },
+            "description": "Receipts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send change entries; get a receipt for each (accepted with hash, rejected with reason, or conflict)",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/sync/records": {
+      "post": {
+        "operationId": "fetchRecords",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchRecords"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FetchRecordsResult"
+                }
+              }
+            },
+            "description": "Records"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The server’s copy of records, with each field’s version, for drafts a phone holds open",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
     "/v1/team/audit/search": {
       "post": {
         "operationId": "searchAudit",
@@ -1625,6 +2993,152 @@
         "summary": "Recompute every hash in the team's audit chain",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/v1/team/devices": {
+      "get": {
+        "operationId": "listDevices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamDevice"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Devices"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every phone on the team, with sync status, clock flag and unsynced counts",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/team/devices/{deviceId}/wipe": {
+      "post": {
+        "operationId": "wipeDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deviceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WipeDevice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            },
+            "description": "Wipe requested"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remotely wipe a lost or stolen phone; its unsynced data is lost",
+        "tags": [
+          "devices"
         ]
       }
     },
@@ -2205,6 +3719,283 @@
         "summary": "Change a role, with a reason that is logged",
         "tags": [
           "team"
+        ]
+      }
+    },
+    "/v1/team/notices": {
+      "get": {
+        "operationId": "listNotices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Notice"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Notices"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Things the signed-in person should look at, without patient details",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/team/notices/{noticeId}/read": {
+      "post": {
+        "operationId": "markNoticeRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "noticeId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            },
+            "description": "Marked read"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/team/quarantine": {
+      "get": {
+        "operationId": "listQuarantine",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "accepted",
+                "rejected"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuarantineItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Items"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Changes from phones whose user lost access, waiting for review",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/team/quarantine/{itemId}/decision": {
+      "post": {
+        "operationId": "decideQuarantine",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideQuarantine"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            },
+            "description": "Decided"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accept a quarantined change onto the chart, or reject it with a reason",
+        "tags": [
+          "devices"
         ]
       }
     },

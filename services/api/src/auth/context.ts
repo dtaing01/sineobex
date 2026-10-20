@@ -291,6 +291,27 @@ export async function teamScope(
   return scope;
 }
 
+/** A phone that proved itself with its device key (no user token: the user may have been removed). */
+export interface DeviceActor {
+  deviceId: string;
+  teamId: string;
+  userId: string;
+}
+
+/** Runs in the device's team, with audit events attributed to the device's user and the device. */
+export function deviceTx<T>(
+  deps: Deps,
+  device: DeviceActor,
+  meta: RequestMeta,
+  fn: (tx: Tx, audit: AuditFn) => Promise<T>,
+): Promise<T> {
+  const actor = { userId: device.userId, roleKey: null, credential: null };
+  const m = { ...meta, deviceId: device.deviceId };
+  return deps.db.tx({ teamId: device.teamId, userId: device.userId }, (tx) =>
+    fn(tx, (e) => writeAudit(tx, device.teamId, actor, m, e)),
+  );
+}
+
 /** Request scope for platform owners: crosses teams, writes to the platform or a team's chain. */
 export class OwnerScope {
   constructor(

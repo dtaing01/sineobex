@@ -344,7 +344,10 @@ class Generator {
           ? resolved.decode
           : (e: string) => `${e} == null ? null : ${resolved.decode(e)}`;
       // Optional fields are left out of the JSON when null, so the server sees "not sent", not "cleared".
-      const optional = !isRequired;
+      // An untyped field (`{}`) is the exception: null is one of its values (a sync change that
+      // clears a field), so it is always sent.
+      const untyped = resolved.type === 'Object?';
+      const optional = !isRequired && !untyped;
       const encode = alreadyNullable
         ? resolved.encode
         : (e: string) => resolved.encode(optional ? `${e}!` : e);
@@ -435,9 +438,9 @@ class Generator {
         queryTypes.length > 0
           ? `query: <String, String>{${queryTypes
               .map(({ p, t }) => {
+                // Inside `if (v != null)` Dart promotes the parameter, so no `!` is needed.
                 const v = camel(p.name);
-                const encoded = t.type.endsWith('?') ? t.encode(v) : t.encode(`${v}!`);
-                return `if (${v} != null) ${dartString(p.name)}: (${encoded}).toString()`;
+                return `if (${v} != null) ${dartString(p.name)}: (${t.encode(v)}).toString()`;
               })
               .join(', ')}}, `
           : '';

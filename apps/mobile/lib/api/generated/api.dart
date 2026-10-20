@@ -21,6 +21,23 @@ enum AcknowledgementKind {
   String toJson() => wire;
 }
 
+enum ChangeEntity {
+  encounter('encounter'),
+  encounterNote('encounter_note'),
+  audit('audit'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const ChangeEntity(this.wire);
+  final String wire;
+
+  static ChangeEntity fromJson(String value) =>
+      ChangeEntity.values.firstWhere((e) => e.wire == value, orElse: () => ChangeEntity.unknown);
+
+  String toJson() => wire;
+}
+
 enum ChangeMemberCredentialResponseDirection {
   up('up'),
   down('down'),
@@ -75,6 +92,56 @@ enum Credential {
   String toJson() => wire;
 }
 
+enum DecideQuarantineDecision {
+  accept('accept'),
+  reject('reject'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const DecideQuarantineDecision(this.wire);
+  final String wire;
+
+  static DecideQuarantineDecision fromJson(String value) =>
+      DecideQuarantineDecision.values.firstWhere((e) => e.wire == value, orElse: () => DecideQuarantineDecision.unknown);
+
+  String toJson() => wire;
+}
+
+enum DeviceStatus {
+  active('active'),
+  wipeRequested('wipe_requested'),
+  wiped('wiped'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const DeviceStatus(this.wire);
+  final String wire;
+
+  static DeviceStatus fromJson(String value) =>
+      DeviceStatus.values.firstWhere((e) => e.wire == value, orElse: () => DeviceStatus.unknown);
+
+  String toJson() => wire;
+}
+
+/// removed: the user lost access to the team; upload unsynced work to quarantine, then wipe
+enum DeviceStatusResultAccess {
+  active('active'),
+  removed('removed'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const DeviceStatusResultAccess(this.wire);
+  final String wire;
+
+  static DeviceStatusResultAccess fromJson(String value) =>
+      DeviceStatusResultAccess.values.firstWhere((e) => e.wire == value, orElse: () => DeviceStatusResultAccess.unknown);
+
+  String toJson() => wire;
+}
+
 enum HealthEnvironment {
   local('local'),
   test('test'),
@@ -90,6 +157,23 @@ enum HealthEnvironment {
 
   static HealthEnvironment fromJson(String value) =>
       HealthEnvironment.values.firstWhere((e) => e.wire == value, orElse: () => HealthEnvironment.unknown);
+
+  String toJson() => wire;
+}
+
+enum ListQuarantineStatus {
+  pending('pending'),
+  accepted('accepted'),
+  rejected('rejected'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const ListQuarantineStatus(this.wire);
+  final String wire;
+
+  static ListQuarantineStatus fromJson(String value) =>
+      ListQuarantineStatus.values.firstWhere((e) => e.wire == value, orElse: () => ListQuarantineStatus.unknown);
 
   String toJson() => wire;
 }
@@ -194,6 +278,158 @@ enum Permission {
 
   static Permission fromJson(String value) =>
       Permission.values.firstWhere((e) => e.wire == value, orElse: () => Permission.unknown);
+
+  String toJson() => wire;
+}
+
+enum QuarantineItemReason {
+  accessRemoved('access_removed'),
+  permission('permission'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const QuarantineItemReason(this.wire);
+  final String wire;
+
+  static QuarantineItemReason fromJson(String value) =>
+      QuarantineItemReason.values.firstWhere((e) => e.wire == value, orElse: () => QuarantineItemReason.unknown);
+
+  String toJson() => wire;
+}
+
+enum QuarantineItemStatus {
+  pending('pending'),
+  accepted('accepted'),
+  rejected('rejected'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const QuarantineItemStatus(this.wire);
+  final String wire;
+
+  static QuarantineItemStatus fromJson(String value) =>
+      QuarantineItemStatus.values.firstWhere((e) => e.wire == value, orElse: () => QuarantineItemStatus.unknown);
+
+  String toJson() => wire;
+}
+
+enum QuarantineReceiptResultsItemStatus {
+  quarantined('quarantined'),
+  rejected('rejected'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const QuarantineReceiptResultsItemStatus(this.wire);
+  final String wire;
+
+  static QuarantineReceiptResultsItemStatus fromJson(String value) =>
+      QuarantineReceiptResultsItemStatus.values.firstWhere((e) => e.wire == value, orElse: () => QuarantineReceiptResultsItemStatus.unknown);
+
+  String toJson() => wire;
+}
+
+enum RecordEntity {
+  encounter('encounter'),
+  encounterNote('encounter_note'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const RecordEntity(this.wire);
+  final String wire;
+
+  static RecordEntity fromJson(String value) =>
+      RecordEntity.values.firstWhere((e) => e.wire == value, orElse: () => RecordEntity.unknown);
+
+  String toJson() => wire;
+}
+
+enum RegisterDevicePlatform {
+  ios('ios'),
+  android('android'),
+  other('other'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const RegisterDevicePlatform(this.wire);
+  final String wire;
+
+  static RegisterDevicePlatform fromJson(String value) =>
+      RegisterDevicePlatform.values.firstWhere((e) => e.wire == value, orElse: () => RegisterDevicePlatform.unknown);
+
+  String toJson() => wire;
+}
+
+enum RejectReason {
+  validation('validation'),
+  signingRule('signing_rule'),
+  staleReference('stale_reference'),
+  permission('permission'),
+  recordLocked('record_locked'),
+  hashMismatch('hash_mismatch'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const RejectReason(this.wire);
+  final String wire;
+
+  static RejectReason fromJson(String value) =>
+      RejectReason.values.firstWhere((e) => e.wire == value, orElse: () => RejectReason.unknown);
+
+  String toJson() => wire;
+}
+
+enum SyncChangeOp {
+  create('create'),
+  setValue('set'),
+  append('append'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SyncChangeOp(this.wire);
+  final String wire;
+
+  static SyncChangeOp fromJson(String value) =>
+      SyncChangeOp.values.firstWhere((e) => e.wire == value, orElse: () => SyncChangeOp.unknown);
+
+  String toJson() => wire;
+}
+
+enum SyncChangeResolution {
+  replace('replace'),
+  keepServer('keep_server'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SyncChangeResolution(this.wire);
+  final String wire;
+
+  static SyncChangeResolution fromJson(String value) =>
+      SyncChangeResolution.values.firstWhere((e) => e.wire == value, orElse: () => SyncChangeResolution.unknown);
+
+  String toJson() => wire;
+}
+
+enum SyncResultStatus {
+  accepted('accepted'),
+  rejected('rejected'),
+  conflict('conflict'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SyncResultStatus(this.wire);
+  final String wire;
+
+  static SyncResultStatus fromJson(String value) =>
+      SyncResultStatus.values.firstWhere((e) => e.wire == value, orElse: () => SyncResultStatus.unknown);
 
   String toJson() => wire;
 }
@@ -592,6 +828,76 @@ class CredentialFields {
       };
 }
 
+class DecideQuarantine {
+  const DecideQuarantine({
+    required this.decision,
+    required this.reason,
+  });
+
+  final DecideQuarantineDecision decision;
+  /// Why, in a few words. Logged.
+  final String reason;
+
+  factory DecideQuarantine.fromJson(Map<String, dynamic> json) => DecideQuarantine(
+        decision: DecideQuarantineDecision.fromJson(json['decision'] as String),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'decision': decision.toJson(),
+        'reason': reason,
+      };
+}
+
+class Device {
+  const Device({
+    required this.id,
+    required this.registeredAt,
+    required this.status,
+  });
+
+  final String id;
+  final DateTime registeredAt;
+  final DeviceStatus status;
+
+  factory Device.fromJson(Map<String, dynamic> json) => Device(
+        id: json['id'] as String,
+        registeredAt: DateTime.parse(json['registeredAt'] as String),
+        status: DeviceStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'registeredAt': registeredAt.toUtc().toIso8601String(),
+        'status': status.toJson(),
+      };
+}
+
+class DeviceStatusResult {
+  const DeviceStatusResult({
+    required this.access,
+    required this.serverTime,
+    required this.status,
+  });
+
+  /// removed: the user lost access to the team; upload unsynced work to quarantine, then wipe
+  final DeviceStatusResultAccess access;
+  final DateTime serverTime;
+  final DeviceStatus status;
+
+  factory DeviceStatusResult.fromJson(Map<String, dynamic> json) => DeviceStatusResult(
+        access: DeviceStatusResultAccess.fromJson(json['access'] as String),
+        serverTime: DateTime.parse(json['serverTime'] as String),
+        status: DeviceStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'access': access.toJson(),
+        'serverTime': serverTime.toUtc().toIso8601String(),
+        'status': status.toJson(),
+      };
+}
+
 class ErrorResponse {
   const ErrorResponse({
     required this.error,
@@ -629,6 +935,71 @@ class ErrorResponseError {
         'code': code,
         if (details != null) 'details': details!,
         'message': message,
+      };
+}
+
+class FetchRecords {
+  const FetchRecords({
+    required this.records,
+  });
+
+  final List<RecordRef> records;
+
+  factory FetchRecords.fromJson(Map<String, dynamic> json) => FetchRecords(
+        records: (json['records'] as List<dynamic>).map((e) => RecordRef.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'records': records.map((e) => e.toJson()).toList(),
+      };
+}
+
+class FetchRecordsResult {
+  const FetchRecordsResult({
+    required this.missing,
+    required this.records,
+  });
+
+  final List<RecordRef> missing;
+  final List<RecordSnapshot> records;
+
+  factory FetchRecordsResult.fromJson(Map<String, dynamic> json) => FetchRecordsResult(
+        missing: (json['missing'] as List<dynamic>).map((e) => RecordRef.fromJson(e as Map<String, dynamic>)).toList(),
+        records: (json['records'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'missing': missing.map((e) => e.toJson()).toList(),
+        'records': records.map((e) => e.toJson()).toList(),
+      };
+}
+
+/// On conflict: the value the server holds
+class FieldState {
+  const FieldState({
+    required this.changedAt,
+    required this.changedBy,
+    this.value,
+    required this.version,
+  });
+
+  final DateTime? changedAt;
+  final String? changedBy;
+  final Object? value;
+  final int version;
+
+  factory FieldState.fromJson(Map<String, dynamic> json) => FieldState(
+        changedAt: json['changedAt'] == null ? null : DateTime.parse(json['changedAt'] as String),
+        changedBy: json['changedBy'] == null ? null : json['changedBy'] as String,
+        value: json['value'],
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changedAt': changedAt == null ? null : changedAt!.toUtc().toIso8601String(),
+        'changedBy': changedBy == null ? null : changedBy!,
+        'value': value,
+        'version': version,
       };
 }
 
@@ -854,8 +1225,8 @@ class MembershipChange {
         'changedBy': changedBy.toJson(),
         'id': id,
         'kind': kind.toJson(),
-        if (newValue != null) 'newValue': newValue,
-        if (oldValue != null) 'oldValue': oldValue,
+        'newValue': newValue,
+        'oldValue': oldValue,
         'reason': reason == null ? null : reason!,
       };
 }
@@ -917,6 +1288,42 @@ class MyTeam {
         'teamId': teamId,
         'teamName': teamName,
         'teamStatus': teamStatus.toJson(),
+      };
+}
+
+class Notice {
+  const Notice({
+    required this.createdAt,
+    required this.entity,
+    required this.id,
+    required this.kind,
+    required this.readAt,
+    required this.recordId,
+  });
+
+  final DateTime createdAt;
+  final String? entity;
+  final String id;
+  final String kind;
+  final DateTime? readAt;
+  final String? recordId;
+
+  factory Notice.fromJson(Map<String, dynamic> json) => Notice(
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        entity: json['entity'] == null ? null : json['entity'] as String,
+        id: json['id'] as String,
+        kind: json['kind'] as String,
+        readAt: json['readAt'] == null ? null : DateTime.parse(json['readAt'] as String),
+        recordId: json['recordId'] == null ? null : json['recordId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'entity': entity == null ? null : entity!,
+        'id': id,
+        'kind': kind,
+        'readAt': readAt == null ? null : readAt!.toUtc().toIso8601String(),
+        'recordId': recordId == null ? null : recordId!,
       };
 }
 
@@ -1030,6 +1437,225 @@ class PermissionInfo {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'description': description,
         'key': key.toJson(),
+      };
+}
+
+class QuarantineItem {
+  const QuarantineItem({
+    required this.changeId,
+    required this.decidedAt,
+    required this.decidedBy,
+    required this.decisionReason,
+    required this.deviceId,
+    required this.deviceTime,
+    required this.entity,
+    required this.field,
+    required this.id,
+    required this.op,
+    required this.reason,
+    required this.receivedAt,
+    required this.recordId,
+    required this.status,
+    required this.user,
+    this.value,
+  });
+
+  final String changeId;
+  final DateTime? decidedAt;
+  final Object? decidedBy;
+  final String? decisionReason;
+  final String deviceId;
+  final DateTime deviceTime;
+  final String entity;
+  final String? field;
+  final String id;
+  final String op;
+  final QuarantineItemReason reason;
+  final DateTime receivedAt;
+  final String recordId;
+  final QuarantineItemStatus status;
+  final UserRef user;
+  final Object? value;
+
+  factory QuarantineItem.fromJson(Map<String, dynamic> json) => QuarantineItem(
+        changeId: json['changeId'] as String,
+        decidedAt: json['decidedAt'] == null ? null : DateTime.parse(json['decidedAt'] as String),
+        decidedBy: json['decidedBy'],
+        decisionReason: json['decisionReason'] == null ? null : json['decisionReason'] as String,
+        deviceId: json['deviceId'] as String,
+        deviceTime: DateTime.parse(json['deviceTime'] as String),
+        entity: json['entity'] as String,
+        field: json['field'] == null ? null : json['field'] as String,
+        id: json['id'] as String,
+        op: json['op'] as String,
+        reason: QuarantineItemReason.fromJson(json['reason'] as String),
+        receivedAt: DateTime.parse(json['receivedAt'] as String),
+        recordId: json['recordId'] as String,
+        status: QuarantineItemStatus.fromJson(json['status'] as String),
+        user: UserRef.fromJson(json['user'] as Map<String, dynamic>),
+        value: json['value'],
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changeId': changeId,
+        'decidedAt': decidedAt == null ? null : decidedAt!.toUtc().toIso8601String(),
+        'decidedBy': decidedBy,
+        'decisionReason': decisionReason == null ? null : decisionReason!,
+        'deviceId': deviceId,
+        'deviceTime': deviceTime.toUtc().toIso8601String(),
+        'entity': entity,
+        'field': field == null ? null : field!,
+        'id': id,
+        'op': op,
+        'reason': reason.toJson(),
+        'receivedAt': receivedAt.toUtc().toIso8601String(),
+        'recordId': recordId,
+        'status': status.toJson(),
+        'user': user.toJson(),
+        'value': value,
+      };
+}
+
+class QuarantineReceipt {
+  const QuarantineReceipt({
+    required this.results,
+  });
+
+  final List<QuarantineReceiptResultsItem> results;
+
+  factory QuarantineReceipt.fromJson(Map<String, dynamic> json) => QuarantineReceipt(
+        results: (json['results'] as List<dynamic>).map((e) => QuarantineReceiptResultsItem.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'results': results.map((e) => e.toJson()).toList(),
+      };
+}
+
+class QuarantineReceiptResultsItem {
+  const QuarantineReceiptResultsItem({
+    required this.changeId,
+    this.hash,
+    this.reason,
+    required this.status,
+  });
+
+  final String changeId;
+  /// SHA-256 of the canonical JSON of the value, lowercase hex
+  final String? hash;
+  final RejectReason? reason;
+  final QuarantineReceiptResultsItemStatus status;
+
+  factory QuarantineReceiptResultsItem.fromJson(Map<String, dynamic> json) => QuarantineReceiptResultsItem(
+        changeId: json['changeId'] as String,
+        hash: json['hash'] == null ? null : json['hash'] as String,
+        reason: json['reason'] == null ? null : RejectReason.fromJson(json['reason'] as String),
+        status: QuarantineReceiptResultsItemStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changeId': changeId,
+        if (hash != null) 'hash': hash!,
+        if (reason != null) 'reason': reason!.toJson(),
+        'status': status.toJson(),
+      };
+}
+
+class RecordRef {
+  const RecordRef({
+    required this.entity,
+    required this.id,
+  });
+
+  final RecordEntity entity;
+  final String id;
+
+  factory RecordRef.fromJson(Map<String, dynamic> json) => RecordRef(
+        entity: RecordEntity.fromJson(json['entity'] as String),
+        id: json['id'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'entity': entity.toJson(),
+        'id': id,
+      };
+}
+
+class RecordSnapshot {
+  const RecordSnapshot({
+    required this.attributes,
+    required this.authorUserId,
+    required this.createdAt,
+    required this.entity,
+    required this.fields,
+    required this.id,
+    required this.status,
+    required this.updatedAt,
+    required this.version,
+  });
+
+  /// Set at creation, never changed
+  final Map<String, Object?> attributes;
+  final String authorUserId;
+  final DateTime createdAt;
+  final RecordEntity entity;
+  final Map<String, FieldState> fields;
+  final String id;
+  final String status;
+  final DateTime updatedAt;
+  final int version;
+
+  factory RecordSnapshot.fromJson(Map<String, dynamic> json) => RecordSnapshot(
+        attributes: Map<String, Object?>.from(json['attributes'] as Map),
+        authorUserId: json['authorUserId'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        entity: RecordEntity.fromJson(json['entity'] as String),
+        fields: (json['fields'] as Map<String, dynamic>).map((k, v) => MapEntry(k, FieldState.fromJson(v as Map<String, dynamic>))),
+        id: json['id'] as String,
+        status: json['status'] as String,
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'attributes': attributes,
+        'authorUserId': authorUserId,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'entity': entity.toJson(),
+        'fields': fields.map((k, v) => MapEntry(k, v.toJson())),
+        'id': id,
+        'status': status,
+        'updatedAt': updatedAt.toUtc().toIso8601String(),
+        'version': version,
+      };
+}
+
+class RegisterDevice {
+  const RegisterDevice({
+    required this.appVersion,
+    required this.deviceId,
+    required this.platform,
+    required this.publicKey,
+  });
+
+  final String appVersion;
+  final String deviceId;
+  final RegisterDevicePlatform platform;
+  /// Ed25519 public key, raw bytes, unpadded base64url
+  final String publicKey;
+
+  factory RegisterDevice.fromJson(Map<String, dynamic> json) => RegisterDevice(
+        appVersion: json['appVersion'] as String,
+        deviceId: json['deviceId'] as String,
+        platform: RegisterDevicePlatform.fromJson(json['platform'] as String),
+        publicKey: json['publicKey'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'appVersion': appVersion,
+        'deviceId': deviceId,
+        'platform': platform.toJson(),
+        'publicKey': publicKey,
       };
 }
 
@@ -1166,6 +1792,475 @@ class ServerTime {
       };
 }
 
+class SignedQuarantine {
+  const SignedQuarantine({
+    required this.payload,
+    required this.signature,
+  });
+
+  final SignedQuarantinePayload payload;
+  /// Ed25519 signature of the canonical JSON of `payload`, unpadded base64url
+  final String signature;
+
+  factory SignedQuarantine.fromJson(Map<String, dynamic> json) => SignedQuarantine(
+        payload: SignedQuarantinePayload.fromJson(json['payload'] as Map<String, dynamic>),
+        signature: json['signature'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'payload': payload.toJson(),
+        'signature': signature,
+      };
+}
+
+class SignedQuarantinePayload {
+  const SignedQuarantinePayload({
+    required this.changes,
+    required this.deviceId,
+    required this.purpose,
+  });
+
+  final List<SyncChange> changes;
+  final String deviceId;
+  final String purpose;
+
+  factory SignedQuarantinePayload.fromJson(Map<String, dynamic> json) => SignedQuarantinePayload(
+        changes: (json['changes'] as List<dynamic>).map((e) => SyncChange.fromJson(e as Map<String, dynamic>)).toList(),
+        deviceId: json['deviceId'] as String,
+        purpose: json['purpose'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changes': changes.map((e) => e.toJson()).toList(),
+        'deviceId': deviceId,
+        'purpose': purpose,
+      };
+}
+
+class SignedStatus {
+  const SignedStatus({
+    required this.payload,
+    required this.signature,
+  });
+
+  final SignedStatusPayload payload;
+  /// Ed25519 signature of the canonical JSON of `payload`, unpadded base64url
+  final String signature;
+
+  factory SignedStatus.fromJson(Map<String, dynamic> json) => SignedStatus(
+        payload: SignedStatusPayload.fromJson(json['payload'] as Map<String, dynamic>),
+        signature: json['signature'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'payload': payload.toJson(),
+        'signature': signature,
+      };
+}
+
+class SignedStatusPayload {
+  const SignedStatusPayload({
+    required this.deviceId,
+    required this.purpose,
+    required this.sentAt,
+  });
+
+  final String deviceId;
+  final String purpose;
+  final DateTime sentAt;
+
+  factory SignedStatusPayload.fromJson(Map<String, dynamic> json) => SignedStatusPayload(
+        deviceId: json['deviceId'] as String,
+        purpose: json['purpose'] as String,
+        sentAt: DateTime.parse(json['sentAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'deviceId': deviceId,
+        'purpose': purpose,
+        'sentAt': sentAt.toUtc().toIso8601String(),
+      };
+}
+
+class SignedWiped {
+  const SignedWiped({
+    required this.payload,
+    required this.signature,
+  });
+
+  final SignedWipedPayload payload;
+  /// Ed25519 signature of the canonical JSON of `payload`, unpadded base64url
+  final String signature;
+
+  factory SignedWiped.fromJson(Map<String, dynamic> json) => SignedWiped(
+        payload: SignedWipedPayload.fromJson(json['payload'] as Map<String, dynamic>),
+        signature: json['signature'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'payload': payload.toJson(),
+        'signature': signature,
+      };
+}
+
+class SignedWipedPayload {
+  const SignedWipedPayload({
+    required this.deviceId,
+    required this.purpose,
+    required this.wipedAt,
+  });
+
+  final String deviceId;
+  final String purpose;
+  final DateTime wipedAt;
+
+  factory SignedWipedPayload.fromJson(Map<String, dynamic> json) => SignedWipedPayload(
+        deviceId: json['deviceId'] as String,
+        purpose: json['purpose'] as String,
+        wipedAt: DateTime.parse(json['wipedAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'deviceId': deviceId,
+        'purpose': purpose,
+        'wipedAt': wipedAt.toUtc().toIso8601String(),
+      };
+}
+
+class SyncChange {
+  const SyncChange({
+    this.baseVersion,
+    required this.changeId,
+    this.clockVerified,
+    this.conflictOf,
+    this.correctedTime,
+    required this.deviceTime,
+    required this.entity,
+    this.field,
+    this.follows,
+    required this.op,
+    required this.recordId,
+    this.resolution,
+    required this.seq,
+    this.supersedes,
+    this.value,
+    required this.valueHash,
+  });
+
+  /// The field version the user saw
+  final int? baseVersion;
+  final String changeId;
+  final bool? clockVerified;
+  /// The conflicted change this one resolves
+  final String? conflictOf;
+  /// Device time corrected by the last measured offset
+  final DateTime? correctedTime;
+  final DateTime deviceTime;
+  final ChangeEntity entity;
+  final String? field;
+  /// An earlier change from this device to the same field that this one builds on
+  final String? follows;
+  final SyncChangeOp op;
+  final String recordId;
+  final SyncChangeResolution? resolution;
+  /// Per-device sequence
+  final int seq;
+  /// A rejected change this one fixes
+  final String? supersedes;
+  /// Required; null is a value
+  final Object? value;
+  /// SHA-256 of the canonical JSON of the value, lowercase hex
+  final String valueHash;
+
+  factory SyncChange.fromJson(Map<String, dynamic> json) => SyncChange(
+        baseVersion: json['baseVersion'] == null ? null : (json['baseVersion'] as num).toInt(),
+        changeId: json['changeId'] as String,
+        clockVerified: json['clockVerified'] == null ? null : json['clockVerified'] as bool,
+        conflictOf: json['conflictOf'] == null ? null : json['conflictOf'] as String,
+        correctedTime: json['correctedTime'] == null ? null : DateTime.parse(json['correctedTime'] as String),
+        deviceTime: DateTime.parse(json['deviceTime'] as String),
+        entity: ChangeEntity.fromJson(json['entity'] as String),
+        field: json['field'] == null ? null : json['field'] as String,
+        follows: json['follows'] == null ? null : json['follows'] as String,
+        op: SyncChangeOp.fromJson(json['op'] as String),
+        recordId: json['recordId'] as String,
+        resolution: json['resolution'] == null ? null : SyncChangeResolution.fromJson(json['resolution'] as String),
+        seq: (json['seq'] as num).toInt(),
+        supersedes: json['supersedes'] == null ? null : json['supersedes'] as String,
+        value: json['value'],
+        valueHash: json['valueHash'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (baseVersion != null) 'baseVersion': baseVersion!,
+        'changeId': changeId,
+        if (clockVerified != null) 'clockVerified': clockVerified!,
+        if (conflictOf != null) 'conflictOf': conflictOf!,
+        if (correctedTime != null) 'correctedTime': correctedTime!.toUtc().toIso8601String(),
+        'deviceTime': deviceTime.toUtc().toIso8601String(),
+        'entity': entity.toJson(),
+        if (field != null) 'field': field!,
+        if (follows != null) 'follows': follows!,
+        'op': op.toJson(),
+        'recordId': recordId,
+        if (resolution != null) 'resolution': resolution!.toJson(),
+        'seq': seq,
+        if (supersedes != null) 'supersedes': supersedes!,
+        'value': value,
+        'valueHash': valueHash,
+      };
+}
+
+class SyncPush {
+  const SyncPush({
+    required this.changes,
+    required this.clock,
+    required this.deviceId,
+    required this.unsynced,
+  });
+
+  final List<SyncChange> changes;
+  final SyncPushClock clock;
+  final String deviceId;
+  final SyncPushUnsynced unsynced;
+
+  factory SyncPush.fromJson(Map<String, dynamic> json) => SyncPush(
+        changes: (json['changes'] as List<dynamic>).map((e) => SyncChange.fromJson(e as Map<String, dynamic>)).toList(),
+        clock: SyncPushClock.fromJson(json['clock'] as Map<String, dynamic>),
+        deviceId: json['deviceId'] as String,
+        unsynced: SyncPushUnsynced.fromJson(json['unsynced'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changes': changes.map((e) => e.toJson()).toList(),
+        'clock': clock.toJson(),
+        'deviceId': deviceId,
+        'unsynced': unsynced.toJson(),
+      };
+}
+
+class SyncPushClock {
+  const SyncPushClock({
+    required this.deviceTime,
+  });
+
+  final DateTime deviceTime;
+
+  factory SyncPushClock.fromJson(Map<String, dynamic> json) => SyncPushClock(
+        deviceTime: DateTime.parse(json['deviceTime'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'deviceTime': deviceTime.toUtc().toIso8601String(),
+      };
+}
+
+class SyncPushResult {
+  const SyncPushResult({
+    required this.clock,
+    required this.device,
+    required this.results,
+    required this.serverTime,
+  });
+
+  final SyncPushResultClock clock;
+  final SyncPushResultDevice device;
+  /// In the order processed. Changes without a result were not processed; send them again.
+  final List<SyncResult> results;
+  final DateTime serverTime;
+
+  factory SyncPushResult.fromJson(Map<String, dynamic> json) => SyncPushResult(
+        clock: SyncPushResultClock.fromJson(json['clock'] as Map<String, dynamic>),
+        device: SyncPushResultDevice.fromJson(json['device'] as Map<String, dynamic>),
+        results: (json['results'] as List<dynamic>).map((e) => SyncResult.fromJson(e as Map<String, dynamic>)).toList(),
+        serverTime: DateTime.parse(json['serverTime'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'clock': clock.toJson(),
+        'device': device.toJson(),
+        'results': results.map((e) => e.toJson()).toList(),
+        'serverTime': serverTime.toUtc().toIso8601String(),
+      };
+}
+
+class SyncPushResultClock {
+  const SyncPushResultClock({
+    required this.flagged,
+    required this.offsetMs,
+  });
+
+  final bool flagged;
+  final int offsetMs;
+
+  factory SyncPushResultClock.fromJson(Map<String, dynamic> json) => SyncPushResultClock(
+        flagged: json['flagged'] as bool,
+        offsetMs: (json['offsetMs'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'flagged': flagged,
+        'offsetMs': offsetMs,
+      };
+}
+
+class SyncPushResultDevice {
+  const SyncPushResultDevice({
+    required this.status,
+  });
+
+  final DeviceStatus status;
+
+  factory SyncPushResultDevice.fromJson(Map<String, dynamic> json) => SyncPushResultDevice(
+        status: DeviceStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'status': status.toJson(),
+      };
+}
+
+class SyncPushUnsynced {
+  const SyncPushUnsynced({
+    required this.counts,
+    this.oldest,
+  });
+
+  final Map<String, int> counts;
+  final DateTime? oldest;
+
+  factory SyncPushUnsynced.fromJson(Map<String, dynamic> json) => SyncPushUnsynced(
+        counts: (json['counts'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
+        oldest: json['oldest'] == null ? null : DateTime.parse(json['oldest'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'counts': counts.map((k, v) => MapEntry(k, v)),
+        if (oldest != null) 'oldest': oldest!.toUtc().toIso8601String(),
+      };
+}
+
+class SyncResult {
+  const SyncResult({
+    required this.changeId,
+    this.details,
+    this.hash,
+    this.message,
+    this.quarantined,
+    this.reason,
+    this.server,
+    this.serverVersion,
+    required this.status,
+  });
+
+  final String changeId;
+  final Map<String, Object?>? details;
+  /// The server’s hash of what it stored; purge only on a match
+  final String? hash;
+  final String? message;
+  final bool? quarantined;
+  final RejectReason? reason;
+  final FieldState? server;
+  final int? serverVersion;
+  final SyncResultStatus status;
+
+  factory SyncResult.fromJson(Map<String, dynamic> json) => SyncResult(
+        changeId: json['changeId'] as String,
+        details: json['details'] == null ? null : Map<String, Object?>.from(json['details'] as Map),
+        hash: json['hash'] == null ? null : json['hash'] as String,
+        message: json['message'] == null ? null : json['message'] as String,
+        quarantined: json['quarantined'] == null ? null : json['quarantined'] as bool,
+        reason: json['reason'] == null ? null : RejectReason.fromJson(json['reason'] as String),
+        server: json['server'] == null ? null : FieldState.fromJson(json['server'] as Map<String, dynamic>),
+        serverVersion: json['serverVersion'] == null ? null : (json['serverVersion'] as num).toInt(),
+        status: SyncResultStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changeId': changeId,
+        if (details != null) 'details': details!,
+        if (hash != null) 'hash': hash!,
+        if (message != null) 'message': message!,
+        if (quarantined != null) 'quarantined': quarantined!,
+        if (reason != null) 'reason': reason!.toJson(),
+        if (server != null) 'server': server!.toJson(),
+        if (serverVersion != null) 'serverVersion': serverVersion!,
+        'status': status.toJson(),
+      };
+}
+
+class TeamDevice {
+  const TeamDevice({
+    required this.appVersion,
+    required this.clockFlagged,
+    required this.clockOffsetMs,
+    required this.id,
+    required this.lastSeenAt,
+    required this.lastSyncAt,
+    required this.oldestUnsyncedAt,
+    required this.openRejections,
+    required this.platform,
+    required this.registeredAt,
+    required this.status,
+    required this.unsyncedCounts,
+    required this.user,
+    required this.wipeRequestedAt,
+    required this.wipedAt,
+  });
+
+  final String appVersion;
+  final bool clockFlagged;
+  final int? clockOffsetMs;
+  final String id;
+  final DateTime? lastSeenAt;
+  final DateTime? lastSyncAt;
+  final DateTime? oldestUnsyncedAt;
+  final int openRejections;
+  final String platform;
+  final DateTime registeredAt;
+  final DeviceStatus status;
+  final Map<String, int> unsyncedCounts;
+  final UserRef user;
+  final DateTime? wipeRequestedAt;
+  final DateTime? wipedAt;
+
+  factory TeamDevice.fromJson(Map<String, dynamic> json) => TeamDevice(
+        appVersion: json['appVersion'] as String,
+        clockFlagged: json['clockFlagged'] as bool,
+        clockOffsetMs: json['clockOffsetMs'] == null ? null : (json['clockOffsetMs'] as num).toInt(),
+        id: json['id'] as String,
+        lastSeenAt: json['lastSeenAt'] == null ? null : DateTime.parse(json['lastSeenAt'] as String),
+        lastSyncAt: json['lastSyncAt'] == null ? null : DateTime.parse(json['lastSyncAt'] as String),
+        oldestUnsyncedAt: json['oldestUnsyncedAt'] == null ? null : DateTime.parse(json['oldestUnsyncedAt'] as String),
+        openRejections: (json['openRejections'] as num).toInt(),
+        platform: json['platform'] as String,
+        registeredAt: DateTime.parse(json['registeredAt'] as String),
+        status: DeviceStatus.fromJson(json['status'] as String),
+        unsyncedCounts: (json['unsyncedCounts'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
+        user: UserRef.fromJson(json['user'] as Map<String, dynamic>),
+        wipeRequestedAt: json['wipeRequestedAt'] == null ? null : DateTime.parse(json['wipeRequestedAt'] as String),
+        wipedAt: json['wipedAt'] == null ? null : DateTime.parse(json['wipedAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'appVersion': appVersion,
+        'clockFlagged': clockFlagged,
+        'clockOffsetMs': clockOffsetMs == null ? null : clockOffsetMs!,
+        'id': id,
+        'lastSeenAt': lastSeenAt == null ? null : lastSeenAt!.toUtc().toIso8601String(),
+        'lastSyncAt': lastSyncAt == null ? null : lastSyncAt!.toUtc().toIso8601String(),
+        'oldestUnsyncedAt': oldestUnsyncedAt == null ? null : oldestUnsyncedAt!.toUtc().toIso8601String(),
+        'openRejections': openRejections,
+        'platform': platform,
+        'registeredAt': registeredAt.toUtc().toIso8601String(),
+        'status': status.toJson(),
+        'unsyncedCounts': unsyncedCounts.map((k, v) => MapEntry(k, v)),
+        'user': user.toJson(),
+        'wipeRequestedAt': wipeRequestedAt == null ? null : wipeRequestedAt!.toUtc().toIso8601String(),
+        'wipedAt': wipedAt == null ? null : wipedAt!.toUtc().toIso8601String(),
+      };
+}
+
 class TeamStatusChange {
   const TeamStatusChange({
     required this.reason,
@@ -1184,6 +2279,43 @@ class TeamStatusChange {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'reason': reason,
         'status': status.toJson(),
+      };
+}
+
+class UserRef {
+  const UserRef({
+    required this.displayName,
+    required this.userId,
+  });
+
+  final String displayName;
+  final String userId;
+
+  factory UserRef.fromJson(Map<String, dynamic> json) => UserRef(
+        displayName: json['displayName'] as String,
+        userId: json['userId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'displayName': displayName,
+        'userId': userId,
+      };
+}
+
+class WipeDevice {
+  const WipeDevice({
+    required this.reason,
+  });
+
+  /// Why, in a few words. Logged.
+  final String reason;
+
+  factory WipeDevice.fromJson(Map<String, dynamic> json) => WipeDevice(
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'reason': reason,
       };
 }
 
@@ -1217,10 +2349,34 @@ class SineobexApi {
     return Member.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Report that this phone deleted its data and key for the team
+  Future<Ok> confirmWiped({required String deviceId, required SignedWiped body}) async {
+    final json = await _transport.send('POST', '/v1/devices/${Uri.encodeComponent(deviceId)}/wiped', body: body.toJson());
+    return Ok.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Create a custom role from existing permissions
   Future<Role> createRole({required RoleInput body}) async {
     final json = await _transport.send('POST', '/v1/team/roles', body: body.toJson());
     return Role.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Accept a quarantined change onto the chart, or reject it with a reason
+  Future<Ok> decideQuarantine({required String itemId, required DecideQuarantine body}) async {
+    final json = await _transport.send('POST', '/v1/team/quarantine/${Uri.encodeComponent(itemId)}/decision', body: body.toJson());
+    return Ok.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Whether this phone must wipe, and whether its user still has access
+  Future<DeviceStatusResult> deviceStatus({required String deviceId, required SignedStatus body}) async {
+    final json = await _transport.send('POST', '/v1/devices/${Uri.encodeComponent(deviceId)}/status', body: body.toJson());
+    return DeviceStatusResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The server’s copy of records, with each field’s version, for drafts a phone holds open
+  Future<FetchRecordsResult> fetchRecords({required FetchRecords body}) async {
+    final json = await _transport.send('POST', '/v1/sync/records', body: body.toJson());
+    return FetchRecordsResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Liveness, database reachability and whether this is a demo deployment
@@ -1258,10 +2414,22 @@ class SineobexApi {
     return Member.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Every phone on the team, with sync status, clock flag and unsynced counts
+  Future<List<TeamDevice>> listDevices() async {
+    final json = await _transport.send('GET', '/v1/team/devices');
+    return (json as List<dynamic>).map((e) => TeamDevice.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// Everyone on the team, active and removed
   Future<List<Member>> listMembers() async {
     final json = await _transport.send('GET', '/v1/team/members');
     return (json as List<dynamic>).map((e) => Member.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Things the signed-in person should look at, without patient details
+  Future<List<Notice>> listNotices() async {
+    final json = await _transport.send('GET', '/v1/team/notices');
+    return (json as List<dynamic>).map((e) => Notice.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// Every permission a role can hold, with a plain description
@@ -1270,10 +2438,21 @@ class SineobexApi {
     return (json as List<dynamic>).map((e) => PermissionInfo.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Changes from phones whose user lost access, waiting for review
+  Future<List<QuarantineItem>> listQuarantine({ListQuarantineStatus? status}) async {
+    final json = await _transport.send('GET', '/v1/team/quarantine', query: <String, String>{if (status != null) 'status': (status.toJson()).toString()}, );
+    return (json as List<dynamic>).map((e) => QuarantineItem.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// Standard roles and this team's custom roles
   Future<List<Role>> listRoles() async {
     final json = await _transport.send('GET', '/v1/team/roles');
     return (json as List<dynamic>).map((e) => Role.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Ok> markNoticeRead({required String noticeId}) async {
+    final json = await _transport.send('POST', '/v1/team/notices/${Uri.encodeComponent(noticeId)}/read');
+    return Ok.fromJson(json as Map<String, dynamic>);
   }
 
   /// Appoint a team's Program Admin
@@ -1306,6 +2485,12 @@ class SineobexApi {
     return OwnerTeam.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Register this phone’s key for the current team
+  Future<Device> registerDevice({required RegisterDevice body}) async {
+    final json = await _transport.send('POST', '/v1/devices', body: body.toJson());
+    return Device.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Remove a person. Their sessions stop working at once; their phone's data is handled at next contact.
   Future<Member> removeMember({required String membershipId, required RemoveMember body}) async {
     final json = await _transport.send('POST', '/v1/team/members/${Uri.encodeComponent(membershipId)}/remove', body: body.toJson());
@@ -1318,15 +2503,33 @@ class SineobexApi {
     return AuditPage.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Send change entries; get a receipt for each (accepted with hash, rejected with reason, or conflict)
+  Future<SyncPushResult> syncPush({required SyncPush body}) async {
+    final json = await _transport.send('POST', '/v1/sync/push', body: body.toJson());
+    return SyncPushResult.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Change a custom role. Standard roles cannot be changed.
   Future<Role> updateRole({required String roleId, required RoleInput body}) async {
     final json = await _transport.send('PUT', '/v1/team/roles/${Uri.encodeComponent(roleId)}', body: body.toJson());
     return Role.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Hand over unsynced changes after the user lost access; a Program Admin reviews them
+  Future<QuarantineReceipt> uploadQuarantine({required String deviceId, required SignedQuarantine body}) async {
+    final json = await _transport.send('POST', '/v1/devices/${Uri.encodeComponent(deviceId)}/quarantine', body: body.toJson());
+    return QuarantineReceipt.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Recompute every hash in the team's audit chain
   Future<ChainCheck> verifyAuditChain() async {
     final json = await _transport.send('POST', '/v1/team/audit/verify');
     return ChainCheck.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Remotely wipe a lost or stolen phone; its unsynced data is lost
+  Future<Ok> wipeDevice({required String deviceId, required WipeDevice body}) async {
+    final json = await _transport.send('POST', '/v1/team/devices/${Uri.encodeComponent(deviceId)}/wipe', body: body.toJson());
+    return Ok.fromJson(json as Map<String, dynamic>);
   }
 }
