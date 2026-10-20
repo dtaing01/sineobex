@@ -14,6 +14,8 @@ export interface VerifiedToken {
   aal: string | null;
   /** Session identifier, used to revoke a session. */
   sessionId: string | null;
+  /** When the person last proved who they are (password or MFA), for re-authentication checks. */
+  authTime: Date | null;
   expiresAt: Date;
 }
 
@@ -37,7 +39,17 @@ function toVerified(payload: JWTPayload, issuer: string): VerifiedToken {
     aal?: unknown;
     session_id?: unknown;
     origin_jti?: unknown;
+    auth_time?: unknown;
+    amr?: unknown;
   };
+  // Cognito: auth_time (seconds). Supabase: amr = [{ method, timestamp }].
+  let authSeconds: number | null = typeof claims.auth_time === 'number' ? claims.auth_time : null;
+  if (Array.isArray(claims.amr)) {
+    for (const entry of claims.amr as unknown[]) {
+      const ts = (entry as { timestamp?: unknown } | null)?.timestamp;
+      if (typeof ts === 'number' && (authSeconds === null || ts > authSeconds)) authSeconds = ts;
+    }
+  }
   return {
     issuer,
     subject: payload.sub,
@@ -50,6 +62,7 @@ function toVerified(payload: JWTPayload, issuer: string): VerifiedToken {
         : typeof claims.origin_jti === 'string'
           ? claims.origin_jti
           : null,
+    authTime: authSeconds === null ? null : new Date(authSeconds * 1000),
     expiresAt: new Date(payload.exp * 1000),
   };
 }

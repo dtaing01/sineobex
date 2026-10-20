@@ -196,6 +196,11 @@ class Generator {
       };
     }
     if (s.allOf && s.allOf.length === 1) return this.resolve(s.allOf[0]!, contextName);
+    if (s.allOf && s.allOf.length > 1) {
+      // `Base.extend({...})` in Zod: merge the object parts into one class.
+      const merged = this.mergeAllOf(s.allOf);
+      if (merged) return this.resolveNonNull(merged, contextName);
+    }
     if (s.anyOf || s.oneOf || s.allOf) {
       // Unions are kept as raw JSON; the API avoids them in request and response bodies.
       return { type: 'Object?', decode: (e) => e, encode: (e) => e };
@@ -271,6 +276,22 @@ class Generator {
       default:
         throw new Error(`Unsupported schema type ${JSON.stringify(s.type)} in ${contextName}`);
     }
+  }
+
+  private mergeAllOf(parts: SchemaObject[]): SchemaObject | null {
+    const properties: Record<string, SchemaObject> = {};
+    const required = new Set<string>();
+    for (const part of parts) {
+      let schema = part;
+      if (part.$ref) {
+        const name = part.$ref.replace('#/components/schemas/', '');
+        schema = this.doc.components?.schemas?.[name] ?? {};
+      }
+      if (!schema.properties) return null;
+      Object.assign(properties, schema.properties);
+      for (const r of schema.required ?? []) required.add(r);
+    }
+    return { type: 'object', properties, required: [...required] };
   }
 
   private primitive(t: 'String' | 'bool'): DartType {

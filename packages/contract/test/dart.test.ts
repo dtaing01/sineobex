@@ -88,6 +88,42 @@ describe('Dart generator', () => {
     expect(out).toContain('Future<void> addProblem({required Problem body}) async {');
   });
 
+  it('merges allOf (Zod extend) into one class', () => {
+    const extended = generateDart({
+      ...doc,
+      paths: {
+        '/x': {
+          put: {
+            operationId: 'changeIt',
+            responses: {
+              '200': {
+                description: 'ok',
+                content: {
+                  'application/json': {
+                    schema: {
+                      allOf: [
+                        { $ref: '#/components/schemas/Problem' },
+                        {
+                          type: 'object',
+                          required: ['direction'],
+                          properties: { direction: { type: 'string', enum: ['up', 'down'] } },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(extended).toContain('Future<ChangeItResponse> changeIt() async {');
+    expect(extended).toMatch(
+      /class ChangeItResponse \{[\s\S]*final ChangeItResponseDirection direction;[\s\S]*final DateTime recordedAt;/,
+    );
+  });
+
   it('is deterministic', () => {
     expect(generateDart(doc)).toBe(out);
   });

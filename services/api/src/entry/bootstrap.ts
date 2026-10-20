@@ -1,5 +1,10 @@
 import type { Sql } from 'postgres';
 import { createApp, type App } from '../app.ts';
+import {
+  createMemoryIdentityAdmin,
+  createSupabaseIdentityAdmin,
+  type IdentityAdmin,
+} from '../auth/identity-admin.ts';
 import { createOidcVerifier } from '../auth/verifier.ts';
 import { DEMO_ENVS, loadConfig, type AppEnv, type Config } from '../config.ts';
 import { createDatabase, createSql } from '../db/database.ts';
@@ -48,6 +53,14 @@ export async function bootstrap(env: Record<string, string | undefined>): Promis
     audience: config.OIDC_AUDIENCE,
     jwksUrl: config.OIDC_JWKS_URL,
   });
-  const app = createApp({ config, db, verifier, log, now: () => new Date() });
+  const identityAdmin: IdentityAdmin =
+    config.IDENTITY_ADMIN === 'supabase'
+      ? createSupabaseIdentityAdmin({
+          url: config.SUPABASE_URL!,
+          serviceRoleKey: config.SUPABASE_SERVICE_ROLE_KEY!,
+          ...(config.INVITE_REDIRECT_URL ? { redirectTo: config.INVITE_REDIRECT_URL } : {}),
+        })
+      : createMemoryIdentityAdmin(config.OIDC_ISSUER);
+  const app = createApp({ config, db, verifier, identityAdmin, log, now: () => new Date() });
   return { app, config, log, close: () => db.close() };
 }

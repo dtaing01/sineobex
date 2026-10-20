@@ -4,6 +4,11 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { TokenError } from './auth/verifier.ts';
 import { ApiError, type ErrorBody } from './lib/errors.ts';
+import { registerAuditRoutes } from './routes/audit-log.ts';
+import { registerMeRoutes } from './routes/me.ts';
+import { registerMemberRoutes } from './routes/members.ts';
+import { registerOwnerRoutes } from './routes/owner.ts';
+import { registerRoleRoutes } from './routes/roles.ts';
 import { registerSystemRoutes } from './routes/system.ts';
 import type { AppEnv, Deps } from './types.ts';
 
@@ -87,6 +92,11 @@ export function createApp(deps: Deps): App {
   app.use('/v1/*', bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json(tooLarge, 413) }));
 
   registerSystemRoutes(app, deps);
+  registerMeRoutes(app, deps);
+  registerOwnerRoutes(app, deps);
+  registerMemberRoutes(app, deps);
+  registerRoleRoutes(app, deps);
+  registerAuditRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {
     app.doc31('/openapi.json', openApiInfo);

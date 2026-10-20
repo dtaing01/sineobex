@@ -37,12 +37,27 @@ const ConfigSchema = z
           .map((s) => s.trim())
           .filter(Boolean),
       ),
+    /** Where invitations create sign-in identities. `memory` is for local and test only. */
+    IDENTITY_ADMIN: z.enum(['supabase', 'memory']).default('supabase'),
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+    /** Where Supabase's invitation email sends people to set a password (the portal). */
+    INVITE_REDIRECT_URL: z.string().url().optional(),
     PORT: z.coerce.number().int().default(8787),
     RELEASE: z.string().default('dev'),
   })
   .superRefine((c, ctx) => {
     if (c.MFA_MODE === 'none' && !['local', 'test'].includes(c.APP_ENV)) {
       ctx.addIssue({ code: 'custom', message: 'MFA_MODE=none is only allowed in local and test' });
+    }
+    if (c.IDENTITY_ADMIN === 'memory' && !['local', 'test'].includes(c.APP_ENV)) {
+      ctx.addIssue({ code: 'custom', message: 'IDENTITY_ADMIN=memory is only allowed in local and test' });
+    }
+    if (c.IDENTITY_ADMIN === 'supabase' && (!c.SUPABASE_URL || !c.SUPABASE_SERVICE_ROLE_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'IDENTITY_ADMIN=supabase needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
+      });
     }
   });
 

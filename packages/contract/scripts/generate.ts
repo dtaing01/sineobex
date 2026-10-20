@@ -38,9 +38,15 @@ const app = createApp({
     OIDC_AUDIENCE: 'contract',
     OIDC_JWKS_URL: 'https://idp.example.invalid/jwks',
     MFA_MODE: 'none',
+    IDENTITY_ADMIN: 'memory',
   }),
   db: unusedDb,
   verifier: { verify: () => Promise.reject(new Error('unused')) },
+  identityAdmin: {
+    inviteOrFind: () => Promise.reject(new Error('unused')),
+    disable: () => Promise.reject(new Error('unused')),
+    enable: () => Promise.reject(new Error('unused')),
+  },
   log: silentLogger,
   now: () => new Date(0),
 });
