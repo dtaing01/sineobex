@@ -4,7 +4,7 @@
   "description": "Sineobex monorepo: field app, portal, API, database, infrastructure.",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "lint": "eslint . --max-warnings=0",
@@ -17,7 +17,8 @@
     "db:seed": "pnpm --filter @sineobex/db seed",
     "contract:generate": "pnpm --filter @sineobex/contract generate",
     "forms:export": "pnpm --filter @sineobex/forms export",
-    "phi-guard": "node tools/phi-guard.mjs"
+    "phi-guard": "node tools/phi-guard.mjs",
+    "dev:idp": "node tools/dev-idp.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

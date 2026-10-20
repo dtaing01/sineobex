@@ -1,586 +1,586 @@
 // GENERATED FILE. Do not edit by hand. Regenerate with `pnpm contract:generate`.
 export interface paths {
-    readonly "/v1/health": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Liveness, database reachability and whether this is a demo deployment */
-        readonly get: operations["getHealth"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/me": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** The signed-in person, their teams, and what they still need to do before using one */
-        readonly get: operations["getMe"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/me/acknowledgements": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/me/acknowledgements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Accept the Terms of Use or the confidentiality acknowledgement */
-        readonly post: operations["acceptAcknowledgement"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["acceptAcknowledgement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/owner/teams": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/owner/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Every team, with its Program Admins (platform owners only) */
-        readonly get: operations["ownerListTeams"];
-        readonly put?: never;
+        get: operations["ownerListTeams"];
+        put?: never;
         /** Create a team. A community health worker preset role is added to it. */
-        readonly post: operations["ownerCreateTeam"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["ownerCreateTeam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/owner/teams/{teamId}/members/{membershipId}/remove": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/owner/teams/{teamId}/members/{membershipId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Remove anyone from a team, including a Program Admin */
-        readonly post: operations["ownerRemoveMember"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["ownerRemoveMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/owner/teams/{teamId}/program-admins": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/owner/teams/{teamId}/program-admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Appoint a team's Program Admin */
-        readonly post: operations["ownerAppointProgramAdmin"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["ownerAppointProgramAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/owner/teams/{teamId}/status": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/owner/teams/{teamId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Suspend or reinstate a team. A suspended team cannot reach any data. */
-        readonly post: operations["ownerSetTeamStatus"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["ownerSetTeamStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/permissions": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Every permission a role can hold, with a plain description */
-        readonly get: operations["listPermissions"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["listPermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/audit/search": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/audit/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Search the audit log by person, patient, action and time. The search itself is logged. */
-        readonly post: operations["searchAudit"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["searchAudit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/audit/verify": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Recompute every hash in the team's audit chain */
-        readonly post: operations["verifyAuditChain"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["verifyAuditChain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Everyone on the team, active and removed */
-        readonly get: operations["listMembers"];
-        readonly put?: never;
+        get: operations["listMembers"];
+        put?: never;
         /** Invite a person with a role and credential (Program Admins can only be appointed by owners) */
-        readonly post: operations["inviteMember"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["inviteMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members/{membershipId}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members/{membershipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get: operations["getMember"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["getMember"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members/{membershipId}/credential": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members/{membershipId}/credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
+        get?: never;
         /** Change a credential. Moving up takes effect only with the new credential's fields filled in. */
-        readonly put: operations["changeMemberCredential"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        put: operations["changeMemberCredential"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members/{membershipId}/history": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members/{membershipId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Every role, credential and status change for one membership, with reasons */
-        readonly get: operations["getMemberHistory"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["getMemberHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members/{membershipId}/remove": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members/{membershipId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Remove a person. Their sessions stop working at once; their phone's data is handled at next contact. */
-        readonly post: operations["removeMember"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["removeMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/members/{membershipId}/role": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/members/{membershipId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
+        get?: never;
         /** Change a role, with a reason that is logged */
-        readonly put: operations["changeMemberRole"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        put: operations["changeMemberRole"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/roles": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Standard roles and this team's custom roles */
-        readonly get: operations["listRoles"];
-        readonly put?: never;
+        get: operations["listRoles"];
+        put?: never;
         /** Create a custom role from existing permissions */
-        readonly post: operations["createRole"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["createRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/roles/{roleId}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/roles/{roleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
+        get?: never;
         /** Change a custom role. Standard roles cannot be changed. */
-        readonly put: operations["updateRole"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        put: operations["updateRole"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/team/roles/{roleId}/archive": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/team/roles/{roleId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
+        get?: never;
+        put?: never;
         /** Archive a custom role nobody holds */
-        readonly post: operations["archiveRole"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        post: operations["archiveRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    readonly "/v1/time": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    "/v1/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
         /** Server time, used by the phone to measure its clock offset (module 9) */
-        readonly get: operations["getServerTime"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
+        get: operations["getServerTime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        readonly Acknowledgement: {
+        Acknowledgement: {
             /** @enum {string} */
-            readonly kind: "terms_of_use" | "confidentiality";
-            readonly version: string;
+            kind: "terms_of_use" | "confidentiality";
+            version: string;
         };
-        readonly AppointAdmin: {
-            readonly credential?: components["schemas"]["Credential"];
-            readonly credentialFields?: components["schemas"]["CredentialFields"];
-            readonly displayName: string;
+        AppointAdmin: {
+            credential?: components["schemas"]["Credential"];
+            credentialFields?: components["schemas"]["CredentialFields"];
+            displayName: string;
             /** Format: email */
-            readonly email: string;
+            email: string;
         };
-        readonly AuditEntry: {
-            readonly action: string;
-            readonly actor: {
-                readonly displayName: string | null;
-                readonly role: string | null;
+        AuditEntry: {
+            action: string;
+            actor: {
+                displayName: string | null;
+                role: string | null;
                 /** Format: uuid */
-                readonly userId: string | null;
+                userId: string | null;
             };
-            readonly details: {
-                readonly [key: string]: unknown;
+            details: {
+                [key: string]: unknown;
             };
             /** Format: uuid */
-            readonly deviceId: string | null;
+            deviceId: string | null;
             /** Format: date-time */
-            readonly deviceTime: string | null;
-            readonly entity: string | null;
-            readonly entityId: string | null;
-            readonly id: string;
-            readonly ip: string | null;
+            deviceTime: string | null;
+            entity: string | null;
+            entityId: string | null;
+            id: string;
+            ip: string | null;
             /** Format: date-time */
-            readonly occurredAt: string;
+            occurredAt: string;
             /** Format: uuid */
-            readonly patientId: string | null;
-            readonly seq: string;
+            patientId: string | null;
+            seq: string;
         };
-        readonly AuditPage: {
-            readonly entries: readonly components["schemas"]["AuditEntry"][];
-            readonly nextBeforeId: string | null;
+        AuditPage: {
+            entries: components["schemas"]["AuditEntry"][];
+            nextBeforeId: string | null;
         };
-        readonly AuditSearch: {
-            readonly actionPrefix?: string;
+        AuditSearch: {
+            actionPrefix?: string;
             /** Format: uuid */
-            readonly actorUserId?: string;
-            readonly beforeId?: string;
+            actorUserId?: string;
+            beforeId?: string;
             /** Format: date-time */
-            readonly from?: string;
+            from?: string;
             /** @default 50 */
-            readonly limit: number;
+            limit: number;
             /** Format: uuid */
-            readonly patientId?: string;
+            patientId?: string;
             /** Format: date-time */
-            readonly to?: string;
+            to?: string;
         };
-        readonly ChainCheck: {
-            readonly checked: number;
-            readonly firstBadSeq: number | null;
-            readonly ok: boolean;
-            readonly problem: string | null;
+        ChainCheck: {
+            checked: number;
+            firstBadSeq: number | null;
+            ok: boolean;
+            problem: string | null;
         };
-        readonly ChangeCredential: {
-            readonly credential: components["schemas"]["Credential"];
-            readonly credentialFields?: components["schemas"]["CredentialFields"];
+        ChangeCredential: {
+            credential: components["schemas"]["Credential"];
+            credentialFields?: components["schemas"]["CredentialFields"];
             /** @description Why, in a few words. Logged. */
-            readonly reason: string;
+            reason: string;
         };
-        readonly ChangeRole: {
+        ChangeRole: {
             /** @description Why, in a few words. Logged. */
-            readonly reason: string;
+            reason: string;
             /** Format: uuid */
-            readonly roleId: string;
+            roleId: string;
         };
-        readonly CreateTeam: {
-            readonly name: string;
+        CreateTeam: {
+            name: string;
         };
         /** @enum {string} */
-        readonly Credential: "attending" | "resident" | "np" | "pa" | "student" | "chw" | "none";
-        readonly CredentialFields: {
-            readonly licenseNumber?: string;
-            readonly licenseState?: string;
-            readonly npi?: string;
-            readonly program?: string;
-            readonly school?: string;
-            readonly supervisingAttending?: string;
-            readonly supervisingPhysician?: string;
+        Credential: "attending" | "resident" | "np" | "pa" | "student" | "chw" | "none";
+        CredentialFields: {
+            licenseNumber?: string;
+            licenseState?: string;
+            npi?: string;
+            program?: string;
+            school?: string;
+            supervisingAttending?: string;
+            supervisingPhysician?: string;
         };
-        readonly ErrorResponse: {
-            readonly error: {
-                readonly code: string;
-                readonly details?: {
-                    readonly [key: string]: unknown;
+        ErrorResponse: {
+            error: {
+                code: string;
+                details?: {
+                    [key: string]: unknown;
                 };
-                readonly message: string;
+                message: string;
             };
         };
-        readonly Health: {
-            readonly demo: boolean;
+        Health: {
+            demo: boolean;
             /** @enum {string} */
-            readonly environment: "local" | "test" | "preview" | "pilot" | "production";
-            readonly release: string;
+            environment: "local" | "test" | "preview" | "pilot" | "production";
+            release: string;
             /** @enum {string} */
-            readonly status: "ok";
+            status: "ok";
         };
-        readonly InviteMember: {
-            readonly credential?: components["schemas"]["Credential"];
-            readonly credentialFields?: components["schemas"]["CredentialFields"];
-            readonly displayName: string;
+        InviteMember: {
+            credential?: components["schemas"]["Credential"];
+            credentialFields?: components["schemas"]["CredentialFields"];
+            displayName: string;
             /** Format: email */
-            readonly email: string;
+            email: string;
             /** Format: uuid */
-            readonly roleId: string;
+            roleId: string;
         };
-        readonly Me: {
-            readonly isOwner: boolean;
-            readonly mfa: {
-                readonly required: boolean;
-                readonly satisfied: boolean;
+        Me: {
+            isOwner: boolean;
+            mfa: {
+                required: boolean;
+                satisfied: boolean;
             };
-            readonly pendingAcknowledgements: readonly components["schemas"]["Acknowledgement"][];
-            readonly teams: readonly components["schemas"]["MyTeam"][];
-            readonly user: {
-                readonly displayName: string;
-                readonly email: string;
+            pendingAcknowledgements: components["schemas"]["Acknowledgement"][];
+            teams: components["schemas"]["MyTeam"][];
+            user: {
+                displayName: string;
+                email: string;
                 /** Format: uuid */
-                readonly id: string;
+                id: string;
             };
         };
-        readonly Member: {
-            readonly credential: components["schemas"]["Credential"];
-            readonly credentialFields: components["schemas"]["CredentialFields"];
-            readonly displayName: string;
-            readonly email: string;
+        Member: {
+            credential: components["schemas"]["Credential"];
+            credentialFields: components["schemas"]["CredentialFields"];
+            displayName: string;
+            email: string;
             /** Format: date-time */
-            readonly invitedAt: string;
+            invitedAt: string;
             /** Format: uuid */
-            readonly membershipId: string;
+            membershipId: string;
             /** Format: date-time */
-            readonly removedAt: string | null;
-            readonly role: components["schemas"]["RoleSummary"];
+            removedAt: string | null;
+            role: components["schemas"]["RoleSummary"];
             /** @enum {string} */
-            readonly status: "active" | "removed";
+            status: "active" | "removed";
             /** Format: uuid */
-            readonly userId: string;
+            userId: string;
         };
-        readonly MembershipChange: {
+        MembershipChange: {
             /** Format: date-time */
-            readonly changedAt: string;
-            readonly changedBy: {
-                readonly displayName: string;
+            changedAt: string;
+            changedBy: {
+                displayName: string;
                 /** Format: uuid */
-                readonly userId: string;
+                userId: string;
             };
             /** Format: uuid */
-            readonly id: string;
+            id: string;
             /** @enum {string} */
-            readonly kind: "invited" | "role" | "credential" | "removed" | "restored";
-            readonly newValue?: unknown;
-            readonly oldValue?: unknown;
-            readonly reason: string | null;
+            kind: "invited" | "role" | "credential" | "removed" | "restored";
+            newValue?: unknown;
+            oldValue?: unknown;
+            reason: string | null;
         };
-        readonly MyTeam: {
-            readonly credential: components["schemas"]["Credential"];
-            readonly permissions: readonly components["schemas"]["Permission"][];
-            readonly roleKey: string;
-            readonly roleName: string;
+        MyTeam: {
+            credential: components["schemas"]["Credential"];
+            permissions: components["schemas"]["Permission"][];
+            roleKey: string;
+            roleName: string;
             /** Format: uuid */
-            readonly teamId: string;
-            readonly teamName: string;
+            teamId: string;
+            teamName: string;
             /** @enum {string} */
-            readonly teamStatus: "active" | "suspended";
+            teamStatus: "active" | "suspended";
         };
-        readonly Ok: {
+        Ok: {
             /** @enum {boolean} */
-            readonly ok: true;
+            ok: true;
         };
-        readonly OwnerTeam: {
-            readonly activeMembers: number;
+        OwnerTeam: {
+            activeMembers: number;
             /** Format: date-time */
-            readonly createdAt: string;
+            createdAt: string;
             /** Format: uuid */
-            readonly id: string;
-            readonly name: string;
-            readonly programAdmins: readonly {
-                readonly displayName: string;
-                readonly email: string;
+            id: string;
+            name: string;
+            programAdmins: {
+                displayName: string;
+                email: string;
                 /** Format: uuid */
-                readonly membershipId: string;
+                membershipId: string;
             }[];
             /** @enum {string} */
-            readonly status: "active" | "suspended";
+            status: "active" | "suspended";
         };
         /** @enum {string} */
-        readonly Permission: "team.manage_users" | "team.manage_presets" | "team.view_audit" | "patients.view" | "patients.edit" | "patients.correct_identity" | "patients.review_duplicates" | "patients.view_sensitive" | "patients.view_sensitive_exams" | "patients.reverse_resolved" | "encounters.chart" | "checkins.create" | "referrals.create" | "routes.view" | "routes.manage" | "inventory.view" | "inventory.manage" | "billing.view_codes" | "exports.billing" | "exports.grant" | "exports.data" | "quarantine.review" | "devices.manage";
-        readonly PermissionInfo: {
-            readonly description: string;
-            readonly key: components["schemas"]["Permission"];
+        Permission: "team.manage_users" | "team.manage_presets" | "team.view_audit" | "patients.view" | "patients.edit" | "patients.correct_identity" | "patients.review_duplicates" | "patients.view_sensitive" | "patients.view_sensitive_exams" | "patients.reverse_resolved" | "encounters.chart" | "checkins.create" | "referrals.create" | "routes.view" | "routes.manage" | "inventory.view" | "inventory.manage" | "billing.view_codes" | "exports.billing" | "exports.grant" | "exports.data" | "quarantine.review" | "devices.manage";
+        PermissionInfo: {
+            description: string;
+            key: components["schemas"]["Permission"];
         };
-        readonly RemoveMember: {
+        RemoveMember: {
             /** @description Why, in a few words. Logged. */
-            readonly reason: string;
+            reason: string;
         };
-        readonly Role: {
-            readonly archived: boolean;
-            readonly description: string | null;
+        Role: {
+            archived: boolean;
+            description: string | null;
             /** Format: uuid */
-            readonly id: string;
-            readonly isStandard: boolean;
-            readonly key: string;
-            readonly memberCount: number;
-            readonly name: string;
-            readonly permissions: readonly components["schemas"]["Permission"][];
+            id: string;
+            isStandard: boolean;
+            key: string;
+            memberCount: number;
+            name: string;
+            permissions: components["schemas"]["Permission"][];
         };
-        readonly RoleInput: {
-            readonly description?: string;
-            readonly name: string;
-            readonly permissions: readonly components["schemas"]["Permission"][];
+        RoleInput: {
+            description?: string;
+            name: string;
+            permissions: components["schemas"]["Permission"][];
         };
-        readonly RoleSummary: {
+        RoleSummary: {
             /** Format: uuid */
-            readonly id: string;
-            readonly isStandard: boolean;
-            readonly key: string;
-            readonly name: string;
+            id: string;
+            isStandard: boolean;
+            key: string;
+            name: string;
         };
-        readonly ServerTime: {
-            readonly epochMs: number;
+        ServerTime: {
+            epochMs: number;
             /** Format: date-time */
-            readonly serverTime: string;
+            serverTime: string;
         };
-        readonly TeamStatusChange: {
+        TeamStatusChange: {
             /** @description Why, in a few words. Logged. */
-            readonly reason: string;
+            reason: string;
             /** @enum {string} */
-            readonly status: "active" | "suspended";
+            status: "active" | "suspended";
         };
     };
     responses: never;
@@ -591,1194 +591,1194 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    readonly getHealth: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Healthy */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Health"];
+                    "application/json": components["schemas"]["Health"];
                 };
             };
         };
     };
-    readonly getMe: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description You */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Me"];
+                    "application/json": components["schemas"]["Me"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly acceptAcknowledgement: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    acceptAcknowledgement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["Acknowledgement"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Acknowledgement"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Recorded */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Ok"];
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly ownerListTeams: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    ownerListTeams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Teams */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["OwnerTeam"][];
+                    "application/json": components["schemas"]["OwnerTeam"][];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly ownerCreateTeam: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    ownerCreateTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CreateTeam"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTeam"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Created */
-            readonly 201: {
+            201: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["OwnerTeam"];
+                    "application/json": components["schemas"]["OwnerTeam"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly ownerRemoveMember: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
-                readonly teamId: string;
+    ownerRemoveMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
+                teamId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": {
+        requestBody: {
+            content: {
+                "application/json": {
                     /** @description Why, in a few words. Logged. */
-                    readonly reason: string;
+                    reason: string;
                 };
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Removed */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly ownerAppointProgramAdmin: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly teamId: string;
+    ownerAppointProgramAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["AppointAdmin"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointAdmin"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Appointed */
-            readonly 201: {
+            201: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly ownerSetTeamStatus: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly teamId: string;
+    ownerSetTeamStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["TeamStatusChange"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamStatusChange"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Updated */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["OwnerTeam"];
+                    "application/json": components["schemas"]["OwnerTeam"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly listPermissions: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    listPermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Catalog */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["PermissionInfo"][];
+                    "application/json": components["schemas"]["PermissionInfo"][];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly searchAudit: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    searchAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["AuditSearch"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditSearch"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Entries, newest first */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["AuditPage"];
+                    "application/json": components["schemas"]["AuditPage"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly verifyAuditChain: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    verifyAuditChain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Result */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ChainCheck"];
+                    "application/json": components["schemas"]["ChainCheck"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly listMembers: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    listMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Members */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["Member"][];
+                    "application/json": components["schemas"]["Member"][];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly inviteMember: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    inviteMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["InviteMember"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteMember"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Invited */
-            readonly 201: {
+            201: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly getMember: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
+    getMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Member */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly changeMemberCredential: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
+    changeMemberCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChangeCredential"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeCredential"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Changed */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"] & {
+                    "application/json": components["schemas"]["Member"] & {
                         /** @enum {string} */
-                        readonly direction: "up" | "down" | "same";
+                        direction: "up" | "down" | "same";
                     };
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly getMemberHistory: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
+    getMemberHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description History */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["MembershipChange"][];
+                    "application/json": components["schemas"]["MembershipChange"][];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly removeMember: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
+    removeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RemoveMember"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveMember"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Removed */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly changeMemberRole: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly membershipId: string;
+    changeMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChangeRole"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRole"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Changed */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Member"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly listRoles: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Roles */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["Role"][];
+                    "application/json": components["schemas"]["Role"][];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly createRole: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    createRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RoleInput"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleInput"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Created */
-            readonly 201: {
+            201: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Role"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly updateRole: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly roleId: string;
+    updateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RoleInput"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleInput"];
             };
         };
-        readonly responses: {
+        responses: {
             /** @description Updated */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Role"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation failed */
-            readonly 422: {
+            422: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly archiveRole: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly roleId: string;
+    archiveRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
             };
-            readonly cookie?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Archived */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Role"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             /** @description Not signed in, or the session expired */
-            readonly 401: {
+            401: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not allowed; the refusal is logged */
-            readonly 403: {
+            403: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not found */
-            readonly 404: {
+            404: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Conflicts with the current state */
-            readonly 409: {
+            409: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    readonly getServerTime: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
+    getServerTime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        readonly requestBody?: never;
-        readonly responses: {
+        requestBody?: never;
+        responses: {
             /** @description Current server time */
-            readonly 200: {
+            200: {
                 headers: {
-                    readonly [name: string]: unknown;
+                    [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ServerTime"];
+                    "application/json": components["schemas"]["ServerTime"];
                 };
             };
         };

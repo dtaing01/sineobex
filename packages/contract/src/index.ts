@@ -13,7 +13,7 @@ export function createApiClient(options: {
   baseUrl: string;
   token?: string;
   teamId?: string;
-  fetch?: typeof fetch;
+  fetch?: (request: Request) => Promise<Response>;
 }): ApiClient {
   const headers: Record<string, string> = {};
   if (options.token) headers.authorization = `Bearer ${options.token}`;

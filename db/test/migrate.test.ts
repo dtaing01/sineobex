@@ -64,6 +64,27 @@ describe('environment marker', () => {
   });
 });
 
+describe('seed', () => {
+  let db: ScratchDatabase;
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+  });
+  afterAll(async () => {
+    await db.drop();
+  });
+
+  it('is idempotent and uses only obviously made-up staff', async () => {
+    await seed(db.owner);
+    await seed(db.owner);
+    const users = await db.owner<{ email: string; displayName: string }[]>`
+      select email, display_name as "displayName" from sineobex.users`;
+    expect(users.length).toBe(6);
+    expect(users.every((u) => u.email.endsWith('@example.com') && u.displayName.endsWith('(demo)'))).toBe(
+      true,
+    );
+  });
+});
+
 describe('application role', () => {
   let db: ScratchDatabase;
   beforeAll(async () => {

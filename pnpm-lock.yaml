@@ -213,6 +213,10 @@ importers:
         version: 4.1.12(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
 
   tools:
+    dependencies:
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
     devDependencies:
       vitest:
         specifier: 4.1.12

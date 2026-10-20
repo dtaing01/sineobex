@@ -5,9 +5,13 @@
   "description": "Repository guards run in CI.",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "echo 'plain JavaScript'"
+    "typecheck": "echo 'plain JavaScript'",
+    "dev:idp": "node dev-idp.mjs"
   },
   "devDependencies": {
     "vitest": "4.1.12"
+  },
+  "dependencies": {
+    "jose": "6.2.12"
   }
 }

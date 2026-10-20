@@ -59,7 +59,6 @@ await writeFile(specPath, specJson);
 
 const ast = await openapiTS(JSON.parse(specJson) as Parameters<typeof openapiTS>[0], {
   alphabetize: true,
-  immutable: true,
 });
 const tsPath = resolve(root, 'packages/contract/src/generated/api.ts');
 await mkdir(dirname(tsPath), { recursive: true });

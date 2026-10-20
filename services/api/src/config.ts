@@ -50,6 +50,9 @@ const ConfigSchema = z
     if (c.MFA_MODE === 'none' && !['local', 'test'].includes(c.APP_ENV)) {
       ctx.addIssue({ code: 'custom', message: 'MFA_MODE=none is only allowed in local and test' });
     }
+    if (!c.OIDC_ISSUER.startsWith('https://') && !['local', 'test'].includes(c.APP_ENV)) {
+      ctx.addIssue({ code: 'custom', message: 'OIDC_ISSUER must use https outside local and test' });
+    }
     if (c.IDENTITY_ADMIN === 'memory' && !['local', 'test'].includes(c.APP_ENV)) {
       ctx.addIssue({ code: 'custom', message: 'IDENTITY_ADMIN=memory is only allowed in local and test' });
     }
