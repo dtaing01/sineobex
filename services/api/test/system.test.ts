@@ -23,7 +23,10 @@ describe('system routes', () => {
 
   it('returns server time from the injected clock', async () => {
     const res = await h.request('/v1/time');
-    expect(await res.json()).toEqual({ serverTime: '2026-10-20T15:00:00.000Z', epochMs: Date.parse('2026-10-20T15:00:00.000Z') });
+    expect(await res.json()).toEqual({
+      serverTime: '2026-10-20T15:00:00.000Z',
+      epochMs: Date.parse('2026-10-20T15:00:00.000Z'),
+    });
   });
 
   it('sends no-store and security headers on every response', async () => {
@@ -62,7 +65,10 @@ describe('logger', () => {
 
   it('writes one JSON line per event', () => {
     const lines: string[] = [];
-    createLogger({ sink: (l) => lines.push(l) }).info('request', { route: '/v1/health', body: '{"secret":1}' });
+    createLogger({ sink: (l) => lines.push(l) }).info('request', {
+      route: '/v1/health',
+      body: '{"secret":1}',
+    });
     const parsed = JSON.parse(lines[0]!) as Record<string, unknown>;
     expect(parsed).toMatchObject({ level: 'info', event: 'request', route: '/v1/health', droppedFields: 1 });
     expect(lines[0]).not.toContain('secret');

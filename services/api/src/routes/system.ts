@@ -46,7 +46,15 @@ export function registerSystemRoutes(app: App, deps: Deps): void {
   app.openapi(healthRoute, async (c) => {
     await deps.db.ping();
     const env = deps.config.APP_ENV;
-    return c.json({ status: 'ok' as const, environment: env, demo: DEMO_ENVS.includes(env), release: deps.config.RELEASE }, 200);
+    return c.json(
+      {
+        status: 'ok' as const,
+        environment: env,
+        demo: DEMO_ENVS.includes(env),
+        release: deps.config.RELEASE,
+      },
+      200,
+    );
   });
 
   app.openapi(timeRoute, (c) => {

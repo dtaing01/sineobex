@@ -1,0 +1,13 @@
+{
+  "name": "@sineobex/tools",
+  "private": true,
+  "type": "module",
+  "description": "Repository guards run in CI.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "echo 'plain JavaScript'"
+  },
+  "devDependencies": {
+    "vitest": "4.1.12"
+  }
+}

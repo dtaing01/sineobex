@@ -55,7 +55,9 @@ export async function createScratchDatabase(options: { migrate?: boolean } = {})
     await migrate(owner);
     await setEnvironment(owner, 'test');
     await owner.unsafe(`grant sineobex_app to ${APP_LOGIN}`);
-    await owner.unsafe(`alter role ${APP_LOGIN} in database ${name} set search_path = sineobex, public, extensions`);
+    await owner.unsafe(
+      `alter role ${APP_LOGIN} in database ${name} set search_path = sineobex, public, extensions`,
+    );
   }
 
   return {

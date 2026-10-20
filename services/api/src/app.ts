@@ -101,7 +101,10 @@ export function createApp(deps: Deps): App {
       return c.json(body, err.status);
     }
     if (err instanceof TokenError) {
-      return c.json<ErrorBody>({ error: { code: 'unauthorized', message: 'Sign in again to continue.' } }, 401);
+      return c.json<ErrorBody>(
+        { error: { code: 'unauthorized', message: 'Sign in again to continue.' } },
+        401,
+      );
     }
     // Unexpected: log the error's class and the request ID only. Messages from database drivers can
     // quote values from the query, so they are never logged or returned.

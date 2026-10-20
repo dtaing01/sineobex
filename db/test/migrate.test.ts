@@ -85,7 +85,9 @@ describe('application role', () => {
   });
 
   it('normalizes names for search', async () => {
-    const rows = await db.owner<{ n: string }[]>`select sineobex.normalize_name(${"  José O'Brien-Smith "}) as n`;
+    const rows = await db.owner<
+      { n: string }[]
+    >`select sineobex.normalize_name(${"  José O'Brien-Smith "}) as n`;
     expect(rows[0]!.n).toBe('jose o brien smith');
   });
 });

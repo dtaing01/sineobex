@@ -16,7 +16,9 @@ export async function assertDatabaseMatches(sql: Sql, appEnv: AppEnv): Promise<v
   const appIsDemo = DEMO_ENVS.includes(appEnv);
   if (!appIsDemo) {
     if (kind !== appEnv) {
-      throw new Error(`APP_ENV is ${appEnv} but the database is marked ${kind ?? 'unset'}; refusing to start`);
+      throw new Error(
+        `APP_ENV is ${appEnv} but the database is marked ${kind ?? 'unset'}; refusing to start`,
+      );
     }
     return;
   }
@@ -35,7 +37,10 @@ export interface Runtime {
 export async function bootstrap(env: Record<string, string | undefined>): Promise<Runtime> {
   const config = loadConfig(env);
   const log = createLogger({ level: config.APP_ENV === 'local' ? 'debug' : 'info' });
-  const sql = createSql(config.DATABASE_URL, { max: config.DATABASE_POOL_MAX, prepare: config.DATABASE_PREPARE });
+  const sql = createSql(config.DATABASE_URL, {
+    max: config.DATABASE_POOL_MAX,
+    prepare: config.DATABASE_PREPARE,
+  });
   await assertDatabaseMatches(sql, config.APP_ENV);
   const db = createDatabase(sql);
   const verifier = createOidcVerifier({

@@ -60,7 +60,10 @@ export function createOidcVerifier(options: {
   jwksUrl: string;
   clockToleranceSeconds?: number;
 }): TokenVerifier {
-  const jwks = createRemoteJWKSet(new URL(options.jwksUrl), { cooldownDuration: 30_000, cacheMaxAge: 600_000 });
+  const jwks = createRemoteJWKSet(new URL(options.jwksUrl), {
+    cooldownDuration: 30_000,
+    cacheMaxAge: 600_000,
+  });
   return {
     async verify(token) {
       try {
@@ -80,7 +83,11 @@ export function createOidcVerifier(options: {
 }
 
 /** For tests and local development: verifies against an in-memory key set. */
-export function createLocalVerifier(options: { issuer: string; audience: string; jwks: JSONWebKeySet }): TokenVerifier {
+export function createLocalVerifier(options: {
+  issuer: string;
+  audience: string;
+  jwks: JSONWebKeySet;
+}): TokenVerifier {
   const keys = createLocalJWKSet(options.jwks);
   return {
     async verify(token) {

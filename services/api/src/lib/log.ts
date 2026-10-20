@@ -50,7 +50,8 @@ export function sanitize(fields: LogFields = {}): Record<string, string | number
       dropped++;
       continue;
     }
-    out[key] = typeof value === 'string' && value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…` : value;
+    out[key] =
+      typeof value === 'string' && value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…` : value;
   }
   if (dropped > 0) out.droppedFields = dropped;
   return out;

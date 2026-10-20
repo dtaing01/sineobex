@@ -11,7 +11,13 @@ export interface Migration {
 }
 
 export type EnvironmentKind = 'local' | 'test' | 'preview' | 'pilot' | 'production';
-export const ENVIRONMENT_KINDS: readonly EnvironmentKind[] = ['local', 'test', 'preview', 'pilot', 'production'];
+export const ENVIRONMENT_KINDS: readonly EnvironmentKind[] = [
+  'local',
+  'test',
+  'preview',
+  'pilot',
+  'production',
+];
 
 /** Environments that may hold only made-up patients. The seed refuses to run anywhere else. */
 export const DEMO_ENVIRONMENTS: readonly EnvironmentKind[] = ['local', 'test', 'preview'];

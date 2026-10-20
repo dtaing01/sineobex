@@ -1,0 +1,41 @@
+name: sineobex_field
+description: "Sineobex field app: offline-first charting for street medicine."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=3.47.6"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: 3.4.3
+  go_router: 18.1.0
+  http: 1.6.0
+  lucide_icons_flutter: 3.1.25
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # Atkinson Hyperlegible Next, Atkinson Hyperlegible Mono and Barlow Condensed, all under the
+    # SIL Open Font License (assets/fonts/OFL.txt). Bundled so the app never fetches fonts at runtime.
+    - family: AtkinsonHyperlegibleNext
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Variable.ttf
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Italic-Variable.ttf
+          style: italic
+    - family: AtkinsonHyperlegibleMono
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-Variable.ttf
+    - family: BarlowCondensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+          weight: 700

@@ -17,7 +17,8 @@ export class ApiError extends Error {
   }
 }
 
-export const unauthorized = (message = 'Sign in again to continue.') => new ApiError(401, 'unauthorized', message);
+export const unauthorized = (message = 'Sign in again to continue.') =>
+  new ApiError(401, 'unauthorized', message);
 
 export const forbidden = (message = 'Your role does not allow this.', code = 'forbidden') =>
   new ApiError(403, code, message);

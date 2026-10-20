@@ -10,7 +10,8 @@ declare const Deno: {
 
 // Supabase routes /functions/v1/api/* to this function with the path starting at /api.
 let runtime: Promise<Runtime> | undefined;
-const getRuntime = () => (runtime ??= bootstrap({ DATABASE_POOL_MAX: '1', DATABASE_PREPARE: 'false', ...Deno.env.toObject() }));
+const getRuntime = () =>
+  (runtime ??= bootstrap({ DATABASE_POOL_MAX: '1', DATABASE_PREPARE: 'false', ...Deno.env.toObject() }));
 
 const outer = new Hono();
 outer.all('/api/*', async (c) => {

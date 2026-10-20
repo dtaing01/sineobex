@@ -6,7 +6,13 @@
 // DATABASE_URL must be the schema owner's connection (migrations create objects). The API itself
 // connects with a different, non-owner login that is a member of sineobex_app.
 import postgres from 'postgres';
-import { ENVIRONMENT_KINDS, getEnvironment, migrate, setEnvironment, type EnvironmentKind } from './migrate.ts';
+import {
+  ENVIRONMENT_KINDS,
+  getEnvironment,
+  migrate,
+  setEnvironment,
+  type EnvironmentKind,
+} from './migrate.ts';
 import { seed } from '../seed/seed.ts';
 
 async function main(): Promise<void> {

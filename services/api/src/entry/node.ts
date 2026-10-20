@@ -4,7 +4,11 @@ import { bootstrap } from './bootstrap.ts';
 
 const runtime = await bootstrap(process.env);
 const server = serve({ fetch: runtime.app.fetch, port: runtime.config.PORT });
-runtime.log.info('listening', { port: runtime.config.PORT, env: runtime.config.APP_ENV, release: runtime.config.RELEASE });
+runtime.log.info('listening', {
+  port: runtime.config.PORT,
+  env: runtime.config.APP_ENV,
+  release: runtime.config.RELEASE,
+});
 
 // ECS sends SIGTERM before stopping a task; finish in-flight requests, then close the pool.
 const shutdown = (signal: string) => {

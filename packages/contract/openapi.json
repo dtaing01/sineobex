@@ -1,0 +1,115 @@
+{
+  "components": {
+    "parameters": {},
+    "schemas": {
+      "Health": {
+        "properties": {
+          "demo": {
+            "type": "boolean"
+          },
+          "environment": {
+            "enum": [
+              "local",
+              "test",
+              "preview",
+              "pilot",
+              "production"
+            ],
+            "type": "string"
+          },
+          "release": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "environment",
+          "demo",
+          "release"
+        ],
+        "type": "object"
+      },
+      "ServerTime": {
+        "properties": {
+          "epochMs": {
+            "type": "integer"
+          },
+          "serverTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverTime",
+          "epochMs"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "description": "An access token from the configured OIDC provider (Supabase Auth or Amazon Cognito).",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The only API the Sineobex field app and portal use. Every call is permission-checked on the server and audit-logged.",
+    "title": "Sineobex API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Healthy"
+          }
+        },
+        "summary": "Liveness, database reachability and whether this is a demo deployment",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/time": {
+      "get": {
+        "operationId": "getServerTime",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerTime"
+                }
+              }
+            },
+            "description": "Current server time"
+          }
+        },
+        "summary": "Server time, used by the phone to measure its clock offset (module 9)",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  },
+  "webhooks": {}
+}

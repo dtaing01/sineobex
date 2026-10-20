@@ -92,10 +92,12 @@ p, li { text-wrap: pretty; }
 .ws-nav a:hover { background: var(--surface-sunken); }
 .ws-nav a[aria-current="page"] { color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); border-radius: 0; }
 .ws-header__cta { display: none; }
+.ws-header__login { display: none; }
 .ws-menu-btn { display: inline-flex; }
 @media (min-width: 900px) {
   .ws-nav { display: flex; }
   .ws-header__cta { display: inline-flex; }
+  .ws-header__login { display: inline-flex; }
   .ws-menu-btn { display: none; }
 }
 .ws-mobile-nav { border-top: 1px solid var(--line); padding: var(--space-2) 0 var(--space-4); }

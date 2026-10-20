@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { NAV } from '@/lib/site';
+import { NAV, SITE } from '@/lib/site';
 import { WaitlistLink } from './WaitlistLink';
 
 export function SiteHeader() {
@@ -30,6 +30,9 @@ export function SiteHeader() {
               <Link key={n.href} href={n.href} aria-current={current(n.href)}>{n.label}</Link>
             ))}
           </nav>
+          <a href={SITE.portalUrl} className="sx-btn sx-btn--secondary ws-header__login">
+            Log in
+          </a>
           <WaitlistLink className="ws-header__cta" />
           <button
             type="button"
@@ -50,6 +53,9 @@ export function SiteHeader() {
                 <li key={n.href}><Link href={n.href} aria-current={current(n.href)}>{n.label}</Link></li>
               ))}
             </ul>
+            <a href={SITE.portalUrl} className="sx-btn sx-btn--secondary sx-btn--lg">
+              Log in
+            </a>
             <WaitlistLink size="lg" className="sx-btn--lg" />
           </nav>
         )}

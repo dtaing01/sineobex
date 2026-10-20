@@ -10,7 +10,9 @@ const common = {
   legalComments: 'none',
   logLevel: 'info',
   // Some dependencies use require() for Node built-ins; give the ESM bundle a require to call.
-  banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" },
+  banner: {
+    js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
+  },
 };
 
 await build({

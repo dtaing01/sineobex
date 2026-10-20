@@ -25,11 +25,16 @@ export interface Harness {
   config: Config;
   clock: { now: Date; advance(ms: number): void; set(d: Date): void };
   token(options: TokenOptions): Promise<string>;
-  request(path: string, init?: RequestInit & { token?: string; teamId?: string; deviceId?: string; json?: unknown }): Promise<Response>;
+  request(
+    path: string,
+    init?: RequestInit & { token?: string; teamId?: string; deviceId?: string; json?: unknown },
+  ): Promise<Response>;
   close(): Promise<void>;
 }
 
-export async function createHarness(options: { configOverrides?: Partial<Record<string, string>>; log?: Logger } = {}): Promise<Harness> {
+export async function createHarness(
+  options: { configOverrides?: Partial<Record<string, string>>; log?: Logger } = {},
+): Promise<Harness> {
   const scratch = await createScratchDatabase();
   const { publicKey, privateKey } = await generateKeyPair('ES256');
   const jwk: JWK = { ...(await exportJWK(publicKey)), kid: 'test-key', alg: 'ES256', use: 'sig' };

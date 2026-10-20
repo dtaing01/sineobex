@@ -19,6 +19,9 @@ export default tseslint.config(
       'apps/website/**',
       'packages/contract/src/generated/**',
       '**/next-env.d.ts',
+      '**/supabase/functions/**/bundle.js',
+      '**/playwright-report/**',
+      '**/test-results/**',
     ],
   },
   js.configs.recommended,
@@ -41,6 +44,7 @@ export default tseslint.config(
     files: ['apps/portal/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'jsx-a11y': jsxA11y, 'react-hooks': reactHooks, '@next/next': nextPlugin },
+    settings: { next: { rootDir: 'apps/portal' } },
     rules: {
       ...jsxA11y.flatConfigs.strict.rules,
       ...reactHooks.configs.recommended.rules,
@@ -51,7 +55,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/test/**/*.ts', 'tools/**/*.mjs', 'db/**/*.ts', 'infra/**/*.ts'],
+    files: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/test/**/*.ts',
+      'tools/**/*.mjs',
+      'db/**/*.ts',
+      'infra/**/*.ts',
+    ],
     rules: { 'no-console': 'off' },
   },
 );

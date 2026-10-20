@@ -10,3 +10,7 @@ packages/contract/openapi.json
 packages/contract/src/generated
 apps/website
 *.md
+**/supabase/functions/**/bundle.js
+**/playwright-report
+**/test-results
+**/.next
