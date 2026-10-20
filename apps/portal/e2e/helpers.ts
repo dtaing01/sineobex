@@ -23,6 +23,9 @@ export async function expectAccessible(page: Page, label: string, options: { inP
       await page.reload();
     }
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    // Buttons fade to the new theme's colours over 120 ms (.sx-btn transitions). axe must measure
+    // where they land, not a frame mid-fade, or contrast fails at random on a fast runner.
+    await page.waitForFunction(() => document.getAnimations().every((a) => !(a instanceof CSSTransition)));
     const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(
       results.violations.map(
