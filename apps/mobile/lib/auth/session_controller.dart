@@ -201,7 +201,34 @@ class SessionController extends ChangeNotifier {
   }
 
   static const _current = 'current.user';
+  static const _kept = 'kept.users';
   String _k(String userId, String name) => 'u:$userId:$name';
+
+  /// People who signed out while their data stayed on this phone. The phone keeps asking, with
+  /// each team's device key, whether an admin asked to wipe it: a lost phone must stay wipeable
+  /// whoever signed out of it.
+  Future<List<String>> keptUsers() async {
+    final raw = await store.read(_kept);
+    return raw == null ? const [] : (jsonDecode(raw) as List<Object?>).cast<String>();
+  }
+
+  Future<void> _setKept(String userId, {required bool kept}) async {
+    final users = {...await keptUsers()};
+    if (!(kept ? users.add(userId) : users.remove(userId))) return;
+    await store.write(_kept, jsonEncode(users.toList()));
+  }
+
+  /// After every kept database of a signed-out person was wiped: their key goes too.
+  Future<void> forgetKeptUser(String userId) async {
+    final active = switch (_state) {
+      Unlocked(:final user) || Locked(:final user) || NeedsPin(:final user) => user.userId,
+      _ => null,
+    };
+    if (active == userId) return;
+    await vault.destroy(userId);
+    await _forgetSession(userId);
+    await _setKept(userId, kept: false);
+  }
 
   Future<void> start() async {
     final userId = await store.read(_current);
@@ -421,6 +448,7 @@ class SessionController extends ChangeNotifier {
       } else {
         await _forgetSession(userId);
         kept = await localData?.hasAny(userId) ?? false;
+        if (kept) await _setKept(userId, kept: true);
       }
     }
     _clearMemory();
@@ -446,6 +474,7 @@ class SessionController extends ChangeNotifier {
         await _forget(userId);
       } else {
         await _forgetSession(userId);
+        await _setKept(userId, kept: true);
       }
     }
     _clearMemory();
@@ -473,6 +502,7 @@ class SessionController extends ChangeNotifier {
     await vault.destroy(userId);
     await localData?.erase(userId);
     await _forgetSession(userId);
+    await _setKept(userId, kept: false);
   }
 
   /// Forgets the sign-in (tokens, profile) but not the key or the data.

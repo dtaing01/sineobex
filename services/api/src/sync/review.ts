@@ -1,5 +1,5 @@
 import type { TeamScope } from '../auth/context.ts';
-import { conflict, notFound } from '../lib/errors.ts';
+import { conflict, forbidden, notFound } from '../lib/errors.ts';
 import { applyChange, findReceipt, type ApplyActor } from './apply.ts';
 import { loadRecord, snapshot } from './records.ts';
 import type { RecordEntityName, RecordSnapshotValue, SyncChangeInput } from './schemas.ts';
@@ -27,20 +27,44 @@ interface QuarantineRow {
   decidedBy: string | null;
   decidedByName: string | null;
   decisionReason: string | null;
+  patientId: string | null;
 }
+
+const UUID_TEXT = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 
 export async function listQuarantine(scope: TeamScope, status: 'pending' | 'accepted' | 'rejected') {
   return scope.tx(async (tx, audit) => {
+    // The patient each item is about: an encounter's own, or a note's encounter's, from the chart
+    // or, for a record the chart doesn't have yet, from the change's value.
     const rows = await tx<QuarantineRow[]>`
-      select q.*, u.display_name as user_name, du.display_name as decided_by_name
+      select q.*, u.display_name as user_name, du.display_name as decided_by_name,
+             coalesce(
+               e.patient_id, ne.patient_id,
+               case when q.value ->> 'patientId' ~ ${UUID_TEXT} then (q.value ->> 'patientId')::uuid end
+             ) as patient_id
       from sineobex.quarantine_items q
       join sineobex.users u on u.id = q.user_id
       left join sineobex.users du on du.id = q.decided_by
+      left join sineobex.encounters e on q.entity = 'encounter' and e.id = q.record_id
+      left join sineobex.encounter_notes n on q.entity = 'encounter_note' and n.id = q.record_id
+      left join sineobex.encounters ne on ne.id = coalesce(
+        n.encounter_id,
+        case when q.value ->> 'encounterId' ~ ${UUID_TEXT} then (q.value ->> 'encounterId')::uuid end)
       where q.status = ${status}
       order by q.received_at
       limit 200`;
-    // The values are chart content, so looking at the queue is itself logged.
+    // The values are chart content, so looking at the queue is itself logged, item by item with
+    // the patient, so a patient's access report shows it.
     await audit({ action: 'quarantine.viewed', details: { status, count: rows.length } });
+    for (const r of rows) {
+      await audit({
+        action: 'quarantine.item_viewed',
+        entity: r.entity === 'audit' ? 'quarantine_item' : r.entity,
+        entityId: r.entity === 'audit' ? r.id : r.recordId,
+        patientId: r.patientId,
+        details: { itemId: r.id },
+      });
+    }
     return rows.map((r) => ({
       id: r.id,
       user: { userId: r.userId, displayName: r.userName },
@@ -73,13 +97,21 @@ export async function decideQuarantine(
   decision: 'accept' | 'reject',
   reason: string,
 ) {
-  return scope.tx(async (tx, audit) => {
+  const outcome = await scope.tx(async (tx, audit) => {
     const rows = await tx<QuarantineRow[]>`
-      select q.*, null as user_name, null as decided_by_name
+      select q.*, null as user_name, null as decided_by_name, null as patient_id
       from sineobex.quarantine_items q where q.id = ${itemId} for update`;
     const item = rows[0];
     if (!item) throw notFound('quarantined record');
     if (item.status !== 'pending') throw conflict('already_decided', 'This record was already reviewed.');
+    // Review means a second person: nobody decides on their own change.
+    if (item.userId === scope.principal.userId) return 'own' as const;
+    if (decision === 'accept' && item.entity === 'audit') {
+      throw conflict(
+        'not_applicable',
+        'Activity log entries are recorded when they arrive; there is nothing to apply.',
+      );
+    }
 
     if (decision === 'accept') {
       const d = item.details;
@@ -104,6 +136,12 @@ export async function decideQuarantine(
       // Rejected or conflicted at push is no reason to refuse it now: the admin decides on the
       // value as it stands, and applyChange checks it against the chart again.
       const existing = await findReceipt(tx, item.changeId);
+      if (existing && (existing.userId !== item.userId || existing.deviceId !== item.deviceId)) {
+        throw conflict(
+          'change_id_taken',
+          'Another change was stored under this one’s ID, so it can’t be applied. Reject it, and ask for it to be charted again.',
+        );
+      }
       if (existing?.status === 'accepted') {
         throw conflict('already_applied', 'This change already reached the chart.');
       }
@@ -136,8 +174,15 @@ export async function decideQuarantine(
       entityId: item.recordId,
       details: { itemId, changeId: item.changeId, reason },
     });
-    return { ok: true as const };
+    return 'decided' as const;
   });
+  if (outcome === 'own') {
+    await scope.tx((_, audit) =>
+      audit({ action: 'access.denied', details: { reason: 'own_quarantined_change', itemId } }),
+    );
+    throw forbidden('Someone else on the team must review your own records.', 'own_change');
+  }
+  return { ok: true as const };
 }
 
 const PREFIX: Record<RecordEntityName, string> = { encounter: 'encounter', encounter_note: 'note' };

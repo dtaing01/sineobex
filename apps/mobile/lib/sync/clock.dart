@@ -76,6 +76,23 @@ class DatabaseClockReferences implements ClockReferenceStore {
   String? readClockReference() => db.kvGet(_key);
   @override
   void writeClockReference(String json) => db.kvSet(_key, json);
+
+  /// The most recent reference measured since [bootId] among [references], or null. Any team's
+  /// sync measures the same phone clock, so a team opened later uses it too: otherwise a clock
+  /// another team just found to be off would chart in this one as merely unverified.
+  static String? newest(Iterable<String?> references, String bootId) {
+    String? best;
+    var bestServerMs = -1;
+    for (final raw in references.nonNulls) {
+      final ref = jsonDecode(raw) as Map<String, Object?>;
+      final serverMs = (ref['serverMs']! as num).toInt();
+      if (ref['bootId'] == bootId && serverMs > bestServerMs) {
+        best = raw;
+        bestServerMs = serverMs;
+      }
+    }
+    return best;
+  }
 }
 
 /// The clock check (module 9, decided Oct 12): "The phone compares its clock with the server time

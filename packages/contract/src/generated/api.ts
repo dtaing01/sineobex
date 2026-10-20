@@ -848,8 +848,11 @@ export interface components {
                 /** @description SHA-256 of the canonical JSON of the value, lowercase hex */
                 hash?: string;
                 reason?: components["schemas"]["RejectReason"];
-                /** @enum {string} */
-                status: "quarantined" | "rejected";
+                /**
+                 * @description quarantined: held for a Program Admin; recorded: an activity log entry, now in the audit chain
+                 * @enum {string}
+                 */
+                status: "quarantined" | "recorded" | "rejected";
             }[];
         };
         /** @enum {string} */

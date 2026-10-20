@@ -180,7 +180,10 @@ export const QuarantineReceipt = z
     results: z.array(
       z.object({
         changeId: Uuid,
-        status: z.enum(['quarantined', 'rejected']),
+        status: z.enum(['quarantined', 'recorded', 'rejected']).openapi({
+          description:
+            'quarantined: held for a Program Admin; recorded: an activity log entry, now in the audit chain',
+        }),
         hash: Hash.optional(),
         reason: RejectReason.optional(),
       }),

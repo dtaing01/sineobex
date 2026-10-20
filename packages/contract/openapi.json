@@ -1067,8 +1067,10 @@
                   "$ref": "#/components/schemas/RejectReason"
                 },
                 "status": {
+                  "description": "quarantined: held for a Program Admin; recorded: an activity log entry, now in the audit chain",
                   "enum": [
                     "quarantined",
+                    "recorded",
                     "rejected"
                   ],
                   "type": "string"

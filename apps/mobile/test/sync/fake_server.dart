@@ -20,6 +20,9 @@ class FakeSyncServer {
   final audit = <Map<String, Object?>>[];
   final history = <Map<String, Object?>>[];
   final removedUsers = <String>{};
+
+  /// 'userId/teamId': removed from one team only.
+  final removedFromTeam = <String>{};
   final cannotChart = <String>{};
 
   /// Network conditions for the next requests.
@@ -55,14 +58,18 @@ class FakeSyncServer {
   Future<Object?> handle(String userId, String teamId, String method, String path, Object? rawBody) async {
     if (offline) throw const NetworkException('offline');
     onRequest?.call(path);
-    // Round-trip through JSON, as HTTP would.
-    final body = rawBody == null ? null : jsonDecode(jsonEncode(rawBody)) as Map<String, Object?>;
+    // Round-trip through JSON, as HTTP would, with the API's body limit (app.ts).
+    final encoded = rawBody == null ? null : jsonEncode(rawBody);
+    if (encoded != null && utf8.encode(encoded).length > 1024 * 1024) {
+      throw const ApiException(413, 'payload_too_large', 'The request is too large.');
+    }
+    final body = encoded == null ? null : jsonDecode(encoded) as Map<String, Object?>;
     final signed = RegExp(r'^/v1/devices/([^/]+)/(status|quarantine|wiped)$').firstMatch(path);
     final Object? result;
     if (signed != null) {
       result = await _signed(signed.group(1)!, signed.group(2)!, body!);
     } else {
-      if (removedUsers.contains(userId)) {
+      if (removedUsers.contains(userId) || removedFromTeam.contains('$userId/$teamId')) {
         throw const ApiException(403, 'not_a_member', 'You are not a member of this team.');
       }
       if (refuseCode != null) throw ApiException(403, refuseCode!, 'Refused.');
@@ -356,19 +363,42 @@ class FakeSyncServer {
       ),
     );
     if (!ok) throw const ApiException(401, 'device_signature_invalid', 'This phone could not be verified.');
-    final access = removedUsers.contains(device.userId) ? 'removed' : 'active';
+    final removed =
+        removedUsers.contains(device.userId) || removedFromTeam.contains('${device.userId}/${device.teamId}');
+    final access = removed ? 'removed' : 'active';
     switch (purpose) {
       case 'status':
         return {'status': device.status, 'access': access, 'serverTime': now().toUtc().toIso8601String()};
       case 'quarantine':
+        if (device.status == 'wipe_requested') throw const ApiException(409, 'wipe_requested', 'Wipe this phone.');
         if (device.status == 'active' && access == 'active') {
           throw const ApiException(409, 'use_sync', 'This phone can still sync normally.');
         }
         final results = <Object?>[];
-        for (final c in (payload['changes']! as List<Object?>).cast<Map<String, Object?>>()) {
+        final changes = (payload['changes']! as List<Object?>).cast<Map<String, Object?>>();
+        // The same SyncChange schema as a push: one unreadable change refuses the whole upload.
+        _validatePush(changes);
+        for (final c in changes) {
           final hash = valueHash(c['value']);
           if (hash != c['valueHash']) {
             results.add({'changeId': c['changeId'], 'status': 'rejected', 'reason': 'hash_mismatch'});
+            continue;
+          }
+          if (c['entity'] == 'audit') {
+            // An offline read joins the audit chain as the person's, not anyone's to approve.
+            if (!_auditOk(c['value'])) {
+              results.add({'changeId': c['changeId'], 'status': 'rejected', 'reason': 'validation'});
+              continue;
+            }
+            if (!audit.any((a) => a['changeId'] == c['changeId'])) {
+              audit.add({
+                'action': (c['value']! as Map<String, Object?>)['action'],
+                'deviceTime': c['deviceTime'],
+                'changeId': c['changeId'],
+                'afterRemoval': true,
+              });
+            }
+            results.add({'changeId': c['changeId'], 'status': 'recorded', 'hash': hash});
             continue;
           }
           quarantine[c['changeId']! as String] = c;

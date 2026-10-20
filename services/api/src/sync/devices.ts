@@ -2,8 +2,9 @@ import type { Context } from 'hono';
 import { deviceTx, requestMeta, type DeviceActor, type TeamScope } from '../auth/context.ts';
 import { ApiError, conflict, notFound } from '../lib/errors.ts';
 import type { AppEnv, Deps } from '../types.ts';
-import { precheck, quarantine } from './apply.ts';
+import { applyChange, findReceipt, precheck, quarantine, type ApplyActor } from './apply.ts';
 import { canonicalJson } from './canonical.ts';
+import { CLOCK_LIMIT_MS } from './push.ts';
 import type { SyncChangeInput } from './schemas.ts';
 
 /**
@@ -97,6 +98,7 @@ export interface SignedBody {
 
 interface SignedDevice extends DeviceActor {
   status: 'active' | 'wipe_requested' | 'wiped';
+  payload: Record<string, unknown>;
 }
 
 /**
@@ -121,7 +123,13 @@ export async function verifySigned(
   );
   const d = rows[0];
   if (!d || !(await verifyEd25519(d.publicKey, canonicalJson(raw.payload), raw.signature))) throw refused;
-  return { deviceId: deviceId.toLowerCase(), teamId: d.teamId, userId: d.userId, status: d.status };
+  return {
+    deviceId: deviceId.toLowerCase(),
+    teamId: d.teamId,
+    userId: d.userId,
+    status: d.status,
+    payload: raw.payload as Record<string, unknown>,
+  };
 }
 
 async function access(deps: Deps, d: SignedDevice): Promise<'active' | 'removed'> {
@@ -139,12 +147,20 @@ async function access(deps: Deps, d: SignedDevice): Promise<'active' | 'removed'
 export async function deviceStatus(c: Context<AppEnv>, deps: Deps, deviceId: string) {
   const d = await verifySigned(c, deps, deviceId, 'status');
   const now = deps.now();
-  await deps.db.tx(
-    { teamId: d.teamId, userId: d.userId },
-    (tx) => tx`update sineobex.devices set last_seen_at = ${now} where id = ${d.deviceId}`,
-  );
+  // An old signed request replayed must not make a lost phone look recently seen. (It is still
+  // answered: a phone whose clock is off must still learn that it has to wipe.)
+  const sentAt = Date.parse(String(d.payload.sentAt ?? ''));
+  if (Math.abs(now.getTime() - sentAt) <= CLOCK_LIMIT_MS) {
+    await deps.db.tx(
+      { teamId: d.teamId, userId: d.userId },
+      (tx) => tx`update sineobex.devices set last_seen_at = ${now} where id = ${d.deviceId}`,
+    );
+  }
   return { status: d.status, access: await access(deps, d), serverTime: now.toISOString() };
 }
+
+/** More than a phone's outbox ever holds; a key used to flood the review queue stops here. */
+export const MAX_PENDING_PER_DEVICE = 5000;
 
 /** A removed user's phone hands over what it never synced. Nothing is applied to a chart. */
 export async function uploadQuarantine(
@@ -155,8 +171,20 @@ export async function uploadQuarantine(
 ) {
   const d = await verifySigned(c, deps, deviceId, 'quarantine');
   if (d.status === 'wiped') throw conflict('device_wiped', 'This phone was wiped.');
+  // An admin asked to wipe it: it wipes on the next answer and hands nothing over. Refusing here
+  // also cuts off a removed person's key at the admin's word.
+  if (d.status === 'wipe_requested') throw conflict('wipe_requested', 'This phone must be wiped.');
   if (d.status === 'active' && (await access(deps, d)) === 'active') {
     throw conflict('use_sync', 'This phone can still sync normally.');
+  }
+  const [{ pending } = { pending: 0 }] = await deps.db.tx(
+    { teamId: d.teamId, userId: d.userId },
+    (tx) => tx<{ pending: number }[]>`
+      select count(*)::int as pending from sineobex.quarantine_items
+      where device_id = ${d.deviceId} and status = 'pending'`,
+  );
+  if (pending + changes.length > MAX_PENDING_PER_DEVICE) {
+    throw conflict('quarantine_full', 'This phone has handed over more than a Program Admin can review.');
   }
   const meta = requestMeta(c);
   const results = [];
@@ -168,6 +196,35 @@ export async function uploadQuarantine(
         status: 'rejected' as const,
         reason: checked.outcome.reason,
       });
+      continue;
+    }
+    if (change.entity === 'audit') {
+      // What the person looked at offline joins the audit chain as theirs, from their phone, at
+      // its device time. It isn't anyone's to approve, and an admin accepting it would log the
+      // read as the admin's.
+      const recorded = await deviceTx(deps, d, meta, async (tx, audit) => {
+        await tx`select pg_advisory_xact_lock(hashtextextended(${change.changeId}, 0))`;
+        const existing = await findReceipt(tx, change.changeId);
+        if (existing)
+          return (
+            existing.userId === d.userId && existing.deviceId === d.deviceId && existing.status === 'accepted'
+          );
+        const actor: ApplyActor = {
+          teamId: d.teamId,
+          authorId: d.userId,
+          approvedBy: null,
+          deviceId: d.deviceId,
+          canChart: false,
+          quarantineOnPermission: false,
+          auditDetails: { afterRemoval: true },
+        };
+        return (await applyChange(tx, audit, actor, change, checked.hash)).status === 'accepted';
+      });
+      results.push(
+        recorded
+          ? { changeId: change.changeId, status: 'recorded' as const, hash: checked.hash }
+          : { changeId: change.changeId, status: 'rejected' as const, reason: 'validation' as const },
+      );
       continue;
     }
     await deviceTx(deps, d, meta, async (tx, audit) => {

@@ -15,6 +15,7 @@ import {
   jsonProblem,
   isLocked,
   loadRecord,
+  MAX_NOTE_FIELDS,
   MAX_VALUE_BYTES,
   NoteCreate,
   sameValue,
@@ -398,6 +399,10 @@ async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput
   const record = await loadRecord(tx, entity, c.recordId, true);
   if (!record) return rejected('stale_reference', { problem: 'record_missing' });
   if (isLocked(record)) return rejected('record_locked');
+  const dataFields = Object.keys(record.fieldVersions).filter((f) => f.startsWith('data.'));
+  if (field.startsWith('data.') && !(field in record.fieldVersions) && dataFields.length >= MAX_NOTE_FIELDS) {
+    return rejected('validation', { problem: 'too_many_fields' });
+  }
   const current = fieldState(record, field);
   const decider = actor.approvedBy ?? actor.authorId;
   const sawCurrent =

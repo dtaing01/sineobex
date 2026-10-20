@@ -80,7 +80,10 @@ export async function push(scope: TeamScope, input: PushInput) {
   const ordered = [...input.changes].sort((a, b) => a.seq - b.seq);
   for (const change of ordered) {
     try {
-      results.push(await processOne(deviceScope, actor, change));
+      // A time the server just measured as more than 5 minutes off is never stored as verified,
+      // whatever the phone claims.
+      const stamped = flagged ? { ...change, clockVerified: false } : change;
+      results.push(await processOne(deviceScope, actor, stamped));
     } catch (err) {
       // Stop here, keeping order: the phone sends this change and everything after it again.
       scope.deps.log.error('sync.change_failed', {
@@ -120,19 +123,28 @@ async function processOne(
     await tx`select pg_advisory_xact_lock(hashtextextended(${change.changeId}, 0))`;
     const existing = await findReceipt(tx, change.changeId);
     if (existing) {
-      if (existing.userId !== actor.authorId || existing.deviceId !== actor.deviceId) {
-        return {
-          changeId: change.changeId,
-          status: 'rejected',
-          reason: 'validation',
-          message: 'This change ID was already used. The app will make a new one.',
-          details: { problem: 'change_id_reused' },
-        } satisfies SyncResultValue;
-      }
+      if (existing.userId !== actor.authorId || existing.deviceId !== actor.deviceId)
+        return reused(change.changeId);
       return resultFromReceipt(tx, existing);
     }
+    // A removed person's change held for review keeps its ID: nobody else may take it, or the
+    // admin could never apply it.
+    const [held] = await tx<{ userId: string; deviceId: string }[]>`
+      select user_id, device_id from sineobex.quarantine_items where change_id = ${change.changeId}`;
+    if (held && (held.userId !== actor.authorId || held.deviceId !== actor.deviceId))
+      return reused(change.changeId);
     return checked.ok
       ? applyChange(tx, audit, actor, change, checked.hash)
       : applyChange(tx, audit, actor, change, change.valueHash, checked.outcome);
   });
+}
+
+function reused(changeId: string): SyncResultValue {
+  return {
+    changeId,
+    status: 'rejected',
+    reason: 'validation',
+    message: 'This change ID was already used. The app will make a new one.',
+    details: { problem: 'change_id_reused' },
+  };
 }

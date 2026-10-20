@@ -242,10 +242,12 @@ export async function teamScope(
     );
   }
 
+  const meta = requestMeta(c);
   const rows = await deps.db.tx(
     { teamId, userId: principal.userId },
     (tx) => tx<
       {
+        knownDevice: string | null;
         membershipId: string;
         status: string;
         credential: string;
@@ -259,7 +261,9 @@ export async function teamScope(
         teamSettings: Record<string, unknown>;
       }[]
     >`
-    select m.id as membership_id, m.status, m.credential, m.credential_fields,
+    select (select d.id from sineobex.devices d
+            where d.id = ${meta.deviceId} and d.user_id = m.user_id and d.team_id = m.team_id) as known_device,
+           m.id as membership_id, m.status, m.credential, m.credential_fields,
            r.id as role_id, r.key as role_key, r.name as role_name, r.permissions,
            t.name as team_name, t.status as team_status, t.settings as team_settings
     from sineobex.team_memberships m
@@ -285,7 +289,9 @@ export async function teamScope(
       : 'none',
     credentialFields: row.credentialFields,
   };
-  const scope = new TeamScope(deps, principal, team, requestMeta(c));
+  // The audit chain names a phone only when it is this person's, registered in this team: a
+  // header naming a teammate's phone would otherwise pin this person's reads on it.
+  const scope = new TeamScope(deps, principal, team, { ...meta, deviceId: row.knownDevice });
   for (const p of options.permissions ?? []) await scope.require(p, c.req.routePath);
   if (options.recentAuth) requireRecentAuth(deps, principal);
   return scope;

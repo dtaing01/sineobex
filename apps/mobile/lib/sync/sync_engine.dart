@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
+
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
 
 import '../api/generated/api.dart';
 import '../api/transport.dart';
@@ -135,7 +138,10 @@ class SyncEngine {
       rejected += outcome.rejected;
       conflicts += outcome.conflicts;
       unanswered += outcome.unanswered;
-      if (outcome.unanswered > 0 || outcome.sent < batchSize) break;
+      // Stop at anything unanswered. Otherwise go on while something is sendable: confirming a
+      // fixed create releases the notes that waited for it, which go in the next batch.
+      if (outcome.unanswered > 0 || outcome.sent == 0) break;
+      if (store.sendable(limit: 1).isEmpty) break;
     }
     await _refreshOpenRecords();
     return SyncDone(sent: sent, confirmed: confirmed, rejected: rejected, conflicts: conflicts, unanswered: unanswered);
@@ -158,7 +164,27 @@ class SyncEngine {
         return _fail(SyncFailed(e.code));
       }
       return _fail(SyncFailed(e.code));
+    } on SqliteException {
+      // A full disk, most likely. The exception's text carries the statement's bound values,
+      // which can be clinical, so it goes no further than this.
+      return _fail(const SyncFailed('storage'));
     }
+  }
+
+  /// The API refuses request bodies over 1 MiB (app.ts). Changes are added in order until the
+  /// next would pass this, leaving room for the rest of the request; one always goes, since a
+  /// single change is at most [maxValueBytes] plus its fields.
+  static const maxBatchBytes = 900 * 1024;
+
+  List<OutboxEntry> _fit(List<OutboxEntry> entries) {
+    var bytes = 0;
+    final out = <OutboxEntry>[];
+    for (final e in entries) {
+      bytes += utf8.encode(jsonEncode(_wire(e).toJson())).length + 1;
+      if (out.isNotEmpty && bytes > maxBatchBytes) break;
+      out.add(e);
+    }
+    return out;
   }
 
   Future<void> _ensureRegistered(String deviceId) async {
@@ -177,7 +203,7 @@ class SyncEngine {
   Future<SyncOutcome> _syncOnce() async {
     final deviceId = await device.deviceId(teamId);
     await _ensureRegistered(deviceId);
-    final batch = store.sendable(limit: batchSize);
+    final batch = _fit(store.sendable(limit: batchSize));
     final unsynced = store.unsynced();
     final before = await clock.boot.read();
     final wallBefore = _now().toUtc();
@@ -221,7 +247,16 @@ class SyncEngine {
       wallBefore: wallBefore,
       wallAfter: _now().toUtc(),
     );
-    if (res.device.status != DeviceStatus.active) return const SyncWipeRequested();
+    switch (res.device.status) {
+      case DeviceStatus.active:
+        break;
+      case DeviceStatus.wipeRequested || DeviceStatus.wiped:
+        return const SyncWipeRequested();
+      case DeviceStatus.unknown:
+        // A state this app version doesn't know: keep everything and stop until an update. The
+        // server keeps what it applied; its receipts come back on the next try.
+        return _fail(const SyncFailed('device_status_unknown'));
+    }
 
     final byId = {for (final r in res.results) r.changeId: r};
     var confirmed = 0, rejected = 0, conflicts = 0, unanswered = 0;
@@ -377,10 +412,11 @@ class SyncEngine {
   Future<Set<String>?> uploadToQuarantine() async {
     final deviceId = await device.existingDeviceId(teamId);
     if (deviceId == null) return null;
-    final entries = store.outbox().where((e) => e.state != ChangeState.superseded).toList();
+    var entries = store.handOver();
     final held = <String>{};
-    for (var i = 0; i < entries.length; i += batchSize) {
-      final chunk = entries.sublist(i, min(i + batchSize, entries.length));
+    while (entries.isNotEmpty) {
+      final chunk = _fit(entries.take(batchSize).toList());
+      entries = entries.sublist(chunk.length);
       final payload = SignedQuarantinePayload(
         deviceId: deviceId,
         purpose: 'quarantine',
@@ -393,9 +429,11 @@ class SyncEngine {
       final byId = {for (final r in res.results) r.changeId: r};
       for (final e in chunk) {
         final r = byId[e.changeId];
-        if (r != null && r.status == QuarantineReceiptResultsItemStatus.quarantined && r.hash == e.valueHash) {
-          held.add(e.changeId);
-        }
+        // Held for a Program Admin, or (an activity log entry) recorded in the audit chain.
+        final kept =
+            r?.status == QuarantineReceiptResultsItemStatus.quarantined ||
+            r?.status == QuarantineReceiptResultsItemStatus.recorded;
+        if (kept && r!.hash == e.valueHash) held.add(e.changeId);
       }
     }
     return held;

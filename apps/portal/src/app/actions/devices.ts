@@ -37,7 +37,15 @@ export async function wipeDevice(_: ActionState, form: FormData): Promise<Action
 /** Accept a quarantined change onto the chart, or reject it; both need a reason. */
 export async function decideQuarantine(_: ActionState, form: FormData): Promise<ActionState> {
   const values = formValues(form, 'itemId', 'decision', 'reason');
-  const decision = values.decision === 'accept' ? 'accept' : 'reject';
+  const decision = values.decision;
+  // Never assumed: accepting writes to a patient's chart and can't be undone.
+  if (decision !== 'accept' && decision !== 'reject') {
+    return {
+      error: 'Choose whether to accept or reject it.',
+      fieldErrors: { decision: 'Choose accept or reject.' },
+      values,
+    };
+  }
   try {
     await unwrap(
       (await api()).POST('/v1/team/quarantine/{itemId}/decision', {

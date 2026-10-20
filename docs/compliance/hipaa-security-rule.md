@@ -25,7 +25,7 @@ Status: **Done** = implemented and tested in this repository. **Partial** = impl
 | Requirement | Implementation | Status |
 |---|---|---|
 | §164.308(a)(1)(ii)(A) Risk analysis | Template in `risk-analysis.md` | People |
-| §164.308(a)(1)(ii)(D) Information system activity review | Audit dashboard with unusual-access flags (charts off-route, bulk exports, off-hours, search bursts). Reads and searches made offline join the audit chain at sync with their device time (phase 2) | Partial |
+| §164.308(a)(1)(ii)(D) Information system activity review | Audit dashboard with unusual-access flags (charts off-route, bulk exports, off-hours, search bursts). Reads and searches made offline join the audit chain at sync with their device time, as the person's, even when they arrive in a removed person's hand-over (phase 2). Opening the quarantine queue logs each item shown with its patient | Partial |
 | §164.308(a)(3) Workforce security, termination | Removing a user rejects their existing tokens at the API at once (every request re-checks membership) and disables their provider identity. At next contact their phone proves itself with its device key, hands unsynced work to quarantine for a Program Admin, and wipes the team's data | **Done** (phases 1–2) |
 | §164.308(a)(4) Information access management | Roles per team from a fixed permission catalog, custom roles only from existing permissions, Program Admins appointed only by owners, Billing/Data view-only, row-level security as a second line | **Done** (phase 1) |
 | §164.308(a)(5)(ii)(C) Log-in monitoring | `session.started` audit event the first time a provider session reaches the API; the provider logs failures | **Done** (phase 1) |

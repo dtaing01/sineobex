@@ -2,7 +2,7 @@ import type { Schemas } from '@sineobex/contract';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { decideQuarantine } from '@/app/actions/devices';
-import { ActionForm, TextField } from '@/components/ActionForm';
+import { ActionForm, ChoiceField, SubmitButton, TextField } from '@/components/ActionForm';
 import { api, unwrap } from '@/lib/api';
 import { formatDateTime, quarantineValue, syncFieldLabel } from '@/lib/labels';
 
@@ -99,14 +99,17 @@ export default async function QuarantinePage({
           {item.status === 'pending' && (
             <ActionForm id={`decide-${item.id}`} action={decideQuarantine} label={`Decide on ${what(item)}`}>
               <input type="hidden" name="itemId" value={item.id} />
+              <ChoiceField
+                name="decision"
+                legend="Decision"
+                options={[
+                  { value: 'accept', label: 'Accept onto the chart', hint: 'It can’t be taken off again.' },
+                  { value: 'reject', label: 'Reject', hint: 'It stays here, with your reason, for good.' },
+                ]}
+              />
               <TextField name="reason" label="Reason" hint="Logged with your decision" required />
               <div className="px-actions">
-                <button type="submit" name="decision" value="accept" className="sx-btn sx-btn--primary">
-                  Accept onto the chart
-                </button>
-                <button type="submit" name="decision" value="reject" className="sx-btn sx-btn--secondary">
-                  Reject
-                </button>
+                <SubmitButton>Record decision</SubmitButton>
               </div>
             </ActionForm>
           )}

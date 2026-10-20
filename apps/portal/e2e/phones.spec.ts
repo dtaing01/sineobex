@@ -148,8 +148,15 @@ test('a record from someone whose role no longer allows it is reviewed and accep
   await expectAccessible(page, '/team/quarantine');
 
   const decide = item.getByRole('form');
+  // Pressing Enter with no choice made accepts nothing (review finding: Enter used to submit the
+  // first button, Accept).
   await decide.getByLabel('Reason').fill('Confirmed with Riley: a supply drop-off');
-  await decide.getByRole('button', { name: 'Accept onto the chart' }).click();
+  await decide.getByLabel('Reason').press('Enter');
+  await expect(decide.getByRole('alert')).toContainText('Choose whether to accept or reject it');
+  await expect(page).toHaveURL(/\/team\/quarantine$/);
+  await expectAccessible(page, '/team/quarantine (no decision)', { inPlace: true });
+  await decide.getByRole('radio', { name: 'Accept onto the chart' }).check();
+  await decide.getByRole('button', { name: 'Record decision' }).click();
   await expect(page).toHaveURL(/\/team\/quarantine\?decided=accepted$/);
   await expect(page.getByRole('status')).toContainText('Accepted. The change is on the chart');
   await expectAccessible(page, '/team/quarantine (accepted)', { inPlace: true });

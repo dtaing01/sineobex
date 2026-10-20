@@ -59,6 +59,12 @@ class LocalDatabase {
     return p.join(directory, 'sx_${who}_$teamId.db');
   }
 
+  /// The team a database file belongs to (see [fileFor]).
+  static String teamOf(String path) {
+    final name = p.basename(path);
+    return name.substring('sx_'.length + 17, name.length - '.db'.length);
+  }
+
   /// Every database file this user has on the phone.
   static List<String> filesForUser(String directory, String userId) {
     final who = sha256.convert(userId.codeUnits).toString().substring(0, 16);

@@ -315,8 +315,10 @@ enum QuarantineItemStatus {
   String toJson() => wire;
 }
 
+/// quarantined: held for a Program Admin; recorded: an activity log entry, now in the audit chain
 enum QuarantineReceiptResultsItemStatus {
   quarantined('quarantined'),
+  recorded('recorded'),
   rejected('rejected'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
@@ -1544,6 +1546,7 @@ class QuarantineReceiptResultsItem {
   /// SHA-256 of the canonical JSON of the value, lowercase hex
   final String? hash;
   final RejectReason? reason;
+  /// quarantined: held for a Program Admin; recorded: an activity log entry, now in the audit chain
   final QuarantineReceiptResultsItemStatus status;
 
   factory QuarantineReceiptResultsItem.fromJson(Map<String, dynamic> json) => QuarantineReceiptResultsItem(

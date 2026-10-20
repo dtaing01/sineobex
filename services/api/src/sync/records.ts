@@ -12,6 +12,12 @@ import type { FieldStateValue, RecordEntityName, RecordSnapshotValue } from './s
 
 /** Largest canonical JSON for one value. Photos travel separately (module 8). */
 export const MAX_VALUE_BYTES = 64 * 1024;
+
+/**
+ * Data fields one note may have. Each field is its own history row, version and meta entry, so
+ * without a bound one 1 MB push could write ~100,000 permanent history rows.
+ */
+export const MAX_NOTE_FIELDS = 300;
 const MAX_DEPTH = 10;
 
 const Location = z
@@ -80,7 +86,10 @@ export const NoteCreate = z
     encounterId: Uuid,
     noteTypeKey: NoteTypeKey,
     noteTypeVersion: z.number().int().min(1).nullable().optional(),
-    data: z.record(DataPath, JsonValue).optional(),
+    data: z
+      .record(DataPath, JsonValue)
+      .refine((d) => Object.keys(d).length <= MAX_NOTE_FIELDS, { message: 'too_many_fields' })
+      .optional(),
   })
   .strict();
 

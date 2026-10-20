@@ -379,7 +379,10 @@ void main() {
       expect(status!.access.wire, 'removed');
       final waiting = p.store.outbox().map((e) => e.changeId).toSet();
       expect(await p.engine.uploadToQuarantine(), waiting);
-      expect(server.quarantine, hasLength(5));
+      // The chart view joins the audit chain as the person's; the four record changes wait for
+      // a Program Admin.
+      expect(server.quarantine, hasLength(4));
+      expect(server.audit.single, containsPair('afterRemoval', true));
       final deviceId = (await p.device.existingDeviceId(team))!;
       await p.engine.confirmWiped(deviceId);
       expect(server.devices[deviceId]!.status, 'wiped');
@@ -396,6 +399,64 @@ void main() {
       expect(p.store.needsAttention().single.changeId, bad.changeId);
       await p.engine.syncAll(force: true);
       expect(p.store.outbox().map((e) => e.changeId), [bad.changeId]);
+    });
+
+    test('fixing a refused encounter sends it first; its note follows in the same sync and is confirmed', () async {
+      final p = phone(alex);
+      final encounter = p.store.createEncounter(kind: 'medical');
+      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.1});
+      final create = p.store.outbox().first;
+      server.malformed.add(create.changeId);
+      await p.engine.syncAll();
+      expect(p.store.heldCount(), 1);
+      p.store.fixRejected(create.changeId, {'kind': 'medical'});
+      final done = await p.engine.syncAll(force: true) as SyncDone;
+      expect([done.confirmed, done.rejected], [2, 0]);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[note], isNotNull);
+    });
+
+    test('batches stay under the API’s 1 MiB body limit, so large notes still sync', () async {
+      // Review finding: 98 edits of an 11 KB narrative made one 1.1 MB push, refused every time.
+      final p = phone(alex);
+      final encounter = p.store.createEncounter(kind: 'medical');
+      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals');
+      for (var i = 0; i < 98; i++) {
+        p.store.setField(note, 'data.narrative', 'Demo narrative $i ${'x' * 11000}');
+      }
+      final done = await p.engine.syncAll() as SyncDone;
+      expect([done.confirmed, done.unanswered], [100, 0]);
+      expect(p.store.outbox(), isEmpty);
+    });
+
+    test('removal hands over everything the server can read; an unreadable change doesn’t block it', () async {
+      final p = phone(alex);
+      p.store.createEncounter(kind: 'medical');
+      p.store.createEncounter(kind: 'non_medical');
+      final bad = p.store.outbox().last;
+      server.malformed.add(bad.changeId);
+      await p.engine.syncAll();
+      server.malformed.clear();
+      p.store.createEncounter(kind: 'medical');
+      server.removedUsers.add(alex);
+      final handed = await p.engine.uploadToQuarantine();
+      expect(handed, p.store.handOverIds());
+      expect(handed, hasLength(2));
+      expect(handed, isNot(contains(bad.changeId)));
+    });
+
+    test('a full disk while recording an answer fails the sync without the value in any message', () async {
+      final p = phone(alex);
+      final encounter = p.store.createEncounter(kind: 'medical');
+      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'plan': 'rest'});
+      await p.engine.syncAll();
+      server.serverEdit(note, 'data.plan', 'Demo teammate plan ${'y' * 30000}', by: blair);
+      p.store.setField(note, 'data.plan', 'fluids');
+      final pages = p.db.db.select('PRAGMA page_count').first.values.first! as int;
+      p.db.db.execute('PRAGMA max_page_count = $pages');
+      final outcome = await p.engine.syncAll(force: true);
+      expect((outcome as SyncFailed).code, 'storage');
+      expect(p.store.sendable().single.state, ChangeState.pending);
     });
 
     test('a remote wipe stops the phone from sending anything more', () async {

@@ -481,4 +481,73 @@ void main() {
     expect(() => store.appendAudit('patient.viewed'), throwsA(isA<ChartingPaused>()));
     expect(store.outbox(), hasLength(before));
   });
+
+  // ---- second review ----
+
+  test('after Keep theirs comes back as a new conflict, the card still shows the person’s own value', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    confirmAll();
+    store.setField(note, 'data.temp_c', 39.0);
+    store.conflict(only(pendingOf(note, 'data.temp_c')), const ServerField(value: 38.6, version: 2));
+    store.resolveConflict(store.needsAttention().single.changeId, keepMine: false);
+    expect(store.record(note)!.fields['data.temp_c']!.value, 38.6);
+    // The teammate changed it again before the choice arrived.
+    store.conflict(store.sendable().single, const ServerField(value: 38.8, version: 3));
+    final again = store.needsAttention().single;
+    expect([store.myValue(again), again.server!.value], [39.0, 38.8]);
+    store.resolveConflict(again.changeId, keepMine: false);
+    final choice = store.sendable().single;
+    expect([choice.value, choice.resolution, choice.baseVersion], [39.0, 'keep_server', 3]);
+    // An edit made after the choice is the person's value from then on.
+    store.setField(note, 'data.temp_c', 39.5);
+    store.conflict(choice, const ServerField(value: 38.9, version: 4));
+    expect(store.myValue(store.needsAttention().single), 39.5);
+  });
+
+  test('a note waits for its encounter’s fixed create to be confirmed, not just fixed', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 38.1});
+    store.setField(note, 'data.pulse', 88);
+    final create = store.outbox().first;
+    store.reject(create, reason: 'validation');
+    store.fixRejected(create.changeId, {'kind': 'medical'});
+    // The fix comes after the note in sequence, so the note would reach the server first.
+    final sendable = store.sendable();
+    expect(sendable.map((e) => e.entity), [entityEncounter]);
+    expect(store.heldCount(), 2);
+    store.confirm(sendable.single, serverVersion: 1);
+    expect(store.sendable().map((e) => e.recordId), [note, note]);
+  });
+
+  test('conflict choices and fixes wait while charting is paused for the clock', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals');
+    confirmAll();
+    store.setField(note, 'data.temp_c', 39.0);
+    store.conflict(only(pendingOf(note, 'data.temp_c')), const ServerField(value: 38.6, version: 1));
+    final enc2 = store.createEncounter(kind: 'medical');
+    final refused = store.sendable().firstWhere((e) => e.recordId == enc2);
+    store.reject(refused, reason: 'validation');
+    paused = true;
+    final before = store.outbox().length;
+    expect(
+      () => store.resolveConflict(store.needsAttention().first.changeId, keepMine: true),
+      throwsA(isA<ChartingPaused>()),
+    );
+    expect(() => store.fixRejected(refused.changeId, {'kind': 'medical'}), throwsA(isA<ChartingPaused>()));
+    expect(store.outbox(), hasLength(before));
+  });
+
+  test('a note has at most $maxNoteFields fields, as the API allows', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final many = {for (var i = 0; i < maxNoteFields; i++) 'f$i': i};
+    expect(
+      () => store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {...many, 'one_more': 1}),
+      throwsA(isA<LocalValidationError>()),
+    );
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: many);
+    store.setField(note, 'data.f0', 'changed');
+    expect(() => store.setField(note, 'data.one_more', 1), throwsA(isA<LocalValidationError>()));
+  });
 }

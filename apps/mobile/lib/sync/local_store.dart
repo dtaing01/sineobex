@@ -224,6 +224,10 @@ final _auditEntity = RegExp(r'^[a-z_]{1,40}$');
 /// SyncChange.field's limit in the API. A longer field fails the whole push.
 const maxFieldLength = 200;
 
+/// The most data fields one note may have (MAX_NOTE_FIELDS in the API).
+const maxNoteFields = 300;
+const _tooManyFields = LocalValidationError('A note can have at most $maxNoteFields fields.');
+
 String _category(String entity) => switch (entity) {
   entityEncounter => 'encounters',
   entityNote => 'notes',
@@ -378,6 +382,7 @@ class LocalStore {
   }) {
     _guardCharting();
     if (!_noteTypeKey.hasMatch(noteTypeKey)) throw const LocalValidationError('Unknown note type.');
+    if (data.length > maxNoteFields) throw _tooManyFields;
     for (final key in data.keys) {
       if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
     }
@@ -468,6 +473,11 @@ class LocalStore {
     _checkField(rec.entity, field, value);
     final current = rec.fields[field];
     if (current != null && canonicalJson(current.value) == canonicalJson(value)) return;
+    if (current == null &&
+        field.startsWith('data.') &&
+        rec.fields.keys.where((k) => k.startsWith('data.')).length >= maxNoteFields) {
+      throw _tooManyFields;
+    }
     _tx(() {
       final changeId = _append(
         entity: rec.entity,
@@ -569,6 +579,16 @@ class LocalStore {
 
   List<OutboxEntry> outbox() => _db.select('SELECT * FROM outbox ORDER BY seq').map(OutboxEntry.fromRow).toList();
 
+  /// What a removal hands to quarantine: every unconfirmed change, except one the server refused
+  /// as unreadable (a 422, see SyncEngine). Quarantine reads changes with the same schema, so one
+  /// such change would block the hand-over, and with it the wipe, for good.
+  List<OutboxEntry> handOver() => [
+    for (final e in outbox())
+      if (e.state != ChangeState.superseded && e.details?['problem'] != 'malformed') e,
+  ];
+
+  Set<String> handOverIds() => {for (final e in handOver()) e.changeId};
+
   /// The oldest changes that may go now, in order. A change waits ("held") while something it
   /// depends on is rejected or in conflict (module 9: "Later changes that depend on a rejected
   /// one are held, not sent"): an earlier change to the same field; any change to a record whose
@@ -583,8 +603,18 @@ class LocalStore {
     final blockedFields = <String>{};
     final sendable = <OutboxEntry>[];
     var held = 0;
-    for (final e
-        in _db.select("SELECT * FROM outbox WHERE state <> 'superseded' ORDER BY seq").map(OutboxEntry.fromRow)) {
+    final entries = _db
+        .select("SELECT * FROM outbox WHERE state <> 'superseded' ORDER BY seq")
+        .map(OutboxEntry.fromRow)
+        .toList();
+    // Where each record's unconfirmed create sits. A fixed create comes after the changes that
+    // waited on the one it replaces; the server applies a batch in order, so those wait for it.
+    final createdAt = {
+      for (final e in entries)
+        if (e.op == 'create') e.recordId: e.seq,
+    };
+    bool createdLater(Object? recordId, int seq) => recordId is String && (createdAt[recordId] ?? 0) > seq;
+    for (final e in entries) {
       final fieldKey = '${e.recordId}|${e.field}';
       if (e.state == ChangeState.rejected || e.state == ChangeState.conflict) {
         if (e.op == 'create') {
@@ -601,7 +631,9 @@ class LocalStore {
       final waits =
           blockedRecords.contains(e.recordId) ||
           (e.op == 'set' && blockedFields.contains(fieldKey)) ||
-          (parent is String && blockedRecords.contains(parent));
+          (parent is String && blockedRecords.contains(parent)) ||
+          createdLater(e.recordId, e.seq) ||
+          createdLater(parent, e.seq);
       if (waits) {
         held++;
         // What waits on a held create waits too.
@@ -636,12 +668,19 @@ class LocalStore {
 
   /// "Your value" on a conflict card: what the person has in the field now (cleared counts as a
   /// value), which is exactly what "Use my value" sends and what "Keep theirs" keeps in history.
+  ///
+  /// After "Keep theirs" the field shows the server's value, while the person's own value travels
+  /// in that choice. If the choice comes back as a new conflict (the value moved on again), the
+  /// card shows the value the choice carried, unless the person edited the field since.
   Object? myValue(OutboxEntry conflict) {
-    final row = _db.select('SELECT value_json FROM fields WHERE record_id = ? AND field = ?', [
+    final row = _db.select('SELECT value_json, pending_change FROM fields WHERE record_id = ? AND field = ?', [
       conflict.recordId,
       conflict.field,
     ]).firstOrNull;
-    return row == null ? conflict.value : jsonDecode(row['value_json'] as String);
+    if (row == null || (conflict.resolution == 'keep_server' && row['pending_change'] == conflict.changeId)) {
+      return conflict.value;
+    }
+    return jsonDecode(row['value_json'] as String);
   }
 
   int inReviewCount() => _count('SELECT count(*) AS n FROM in_review');
@@ -776,6 +815,7 @@ class LocalStore {
   /// choice. Returns false, changing nothing, when [changeId] is no longer the field's latest
   /// conflict: the server's value moved on since the card was drawn, so the person must look again.
   bool resolveConflict(String changeId, {required bool keepMine}) {
+    _guardCharting();
     final shown = entry(changeId);
     if (shown == null || shown.state != ChangeState.conflict || shown.server == null) {
       throw StateError('not a conflict');
@@ -828,6 +868,7 @@ class LocalStore {
   /// record's other fields, as the person has them now (cleared ones included), fill in what
   /// [value] leaves out, and the record's waiting or refused-with-it edits are folded in.
   void fixRejected(String changeId, Object? value) {
+    _guardCharting();
     final x = entry(changeId);
     if (x == null || x.state != ChangeState.rejected) throw StateError('not a rejection');
     if (x.op == 'set') {
@@ -877,6 +918,7 @@ class LocalStore {
           if (key.startsWith('data.')) key.substring(5): value.value,
         ...createdData,
       };
+      if (data.length > maxNoteFields) throw _tooManyFields;
       for (final key in data.keys) {
         if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
       }

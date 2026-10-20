@@ -50,14 +50,17 @@ class NeedsAttentionScreen extends ConsumerWidget {
                       entry: e,
                       mine: store.myValue(e),
                       me: me,
-                      onChoose: (keepMine) async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        if (!await sync.resolveConflict(e.changeId, keepMine: keepMine)) {
-                          messenger.showSnackBar(
-                            const SnackBar(content: Text('The other value changed. Check both values again.')),
-                          );
-                        }
-                      },
+                      // A choice writes to the chart, so it waits like the rest of charting.
+                      onChoose: snapshot.clock.paused
+                          ? null
+                          : (keepMine) async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              if (!await sync.resolveConflict(e.changeId, keepMine: keepMine)) {
+                                messenger.showSnackBar(
+                                  const SnackBar(content: Text('The other value changed. Check both values again.')),
+                                );
+                              }
+                            },
                     );
                   },
                 ),
@@ -74,13 +77,16 @@ class _ConflictCard extends StatelessWidget {
   /// What the person has in the field now: exactly what "Use my value" sends.
   final Object? mine;
   final String? me;
-  final Future<void> Function(bool keepMine) onChoose;
+
+  /// Null while charting is paused for the clock.
+  final Future<void> Function(bool keepMine)? onChoose;
 
   @override
   Widget build(BuildContext context) {
     final c = context.field;
     final text = Theme.of(context).textTheme;
     final server = entry.server!;
+    final choose = onChoose;
     final who = server.changedBy == null
         ? 'On the server'
         : server.changedBy == me
@@ -128,13 +134,17 @@ class _ConflictCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: FieldSpace.s3),
-          FilledButton(onPressed: () => onChoose(true), child: const Text('Use my value')),
+          FilledButton(onPressed: choose == null ? null : () => choose(true), child: const Text('Use my value')),
           const SizedBox(height: FieldSpace.s2),
           OutlinedButton(
-            onPressed: () => onChoose(false),
+            onPressed: choose == null ? null : () => choose(false),
             child: Text('Keep ${who == 'On the server' ? 'the server’s' : 'theirs'}'),
           ),
           const SizedBox(height: FieldSpace.s1),
+          if (choose == null) ...[
+            Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            const SizedBox(height: FieldSpace.s1),
+          ],
           Text('Both values stay in the record’s history either way.', style: text.bodyMedium),
         ],
       ),

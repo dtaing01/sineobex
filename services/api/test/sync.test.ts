@@ -322,6 +322,46 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(results(r.body)[0]).toMatchObject({ status: 'rejected', reason: 'stale_reference' });
     });
 
+    it('a note has at most 300 data fields, at create and as fields are added', async () => {
+      // Review finding: 6,400 keys per note made one push write ~96,000 permanent history rows.
+      const tooMany = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`f${i}`, i]));
+      const { encounterId } = await syncedDraft();
+      const big = await phoneA.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId, noteTypeKey: 'vitals', data: tooMany },
+      });
+      expect(results((await push(h, phoneA, t.aToken, t.teamId, [big])).body)[0]).toMatchObject({
+        status: 'rejected',
+        reason: 'validation',
+      });
+      const full = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`f${i}`, i]));
+      const ok = await phoneA.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId, noteTypeKey: 'vitals', data: full },
+      });
+      const change = (field: string) =>
+        phoneA.change({
+          entity: 'encounter_note',
+          recordId: ok.recordId,
+          op: 'set',
+          field,
+          value: 1,
+          baseVersion: 1,
+        });
+      const r = await push(h, phoneA, t.aToken, t.teamId, [
+        ok,
+        await change('data.f0'),
+        await change('data.f300'),
+      ]);
+      expect(results(r.body).map((x) => [x.status, x.details?.problem])).toEqual([
+        ['accepted', undefined],
+        ['accepted', undefined],
+        ['rejected', 'too_many_fields'],
+      ]);
+    });
+
     it('a signed note refuses changes', async () => {
       const { noteId } = await syncedDraft({ plan: 'dress daily' });
       await h.scratch.owner`update sineobex.encounter_notes set status = 'signed' where id = ${noteId}`;
@@ -741,6 +781,50 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
   });
 
+  describe('clock claims', () => {
+    it('a push measured more than 5 minutes off stores none of its times as verified', async () => {
+      const ahead = new Date(h.clock.now.getTime() + 10 * 60_000).toISOString();
+      const enc = await phoneA.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical' },
+        deviceTime: ahead,
+        correctedTime: ahead,
+        clockVerified: true,
+      });
+      const r = await push(h, phoneA, t.aToken, t.teamId, [enc], { deviceTime: ahead });
+      expect(r.body.clock).toMatchObject({ flagged: true });
+      expect(results(r.body)[0]!.status).toBe('accepted');
+      const [row] = await h.scratch.owner<{ clockVerified: boolean }[]>`
+        select clock_verified as "clockVerified" from sineobex.encounters where id = ${enc.recordId}`;
+      expect(row!.clockVerified).toBe(false);
+      // The next push on a right clock clears the flag again.
+      await push(h, phoneA, t.aToken, t.teamId, []);
+    });
+  });
+
+  describe('audit attribution', () => {
+    it('record reads name a phone only when it is the reader’s own', async () => {
+      const { noteId } = await syncedDraft();
+      const read = (deviceId: string) =>
+        call(h, '/v1/sync/records', {
+          method: 'POST',
+          token: t.aToken,
+          teamId: t.teamId,
+          deviceId,
+          json: { records: [{ entity: 'encounter_note', id: noteId }] },
+        });
+      expect((await read(phoneB.deviceId)).status).toBe(200);
+      expect((await read(phoneA.deviceId)).status).toBe(200);
+      const rows = await h.scratch.owner<{ deviceId: string | null }[]>`
+        select device_id as "deviceId" from sineobex.audit_events
+        where action = 'note.viewed' and entity_id = ${noteId} and actor_user_id = ${t.aId}
+        order by seq desc limit 2`;
+      // Newest first: A's own phone is named; B's phone, claimed in the header, is not.
+      expect(rows.map((r) => r.deviceId)).toEqual([phoneA.deviceId, null]);
+    });
+  });
+
   describe('permission and quarantine', () => {
     it('a change the person may no longer make goes to quarantine; an admin accepts it onto the chart', async () => {
       const phone = await FakePhone.create();
@@ -787,6 +871,89 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         json: { decision: 'reject', reason: 'second try' },
       });
       expect(twice.status).toBe(409);
+    });
+
+    it('nobody decides on their own quarantined change, and nobody else can take its ID', async () => {
+      // Review finding: a custom role with quarantine.review but no charting could accept its
+      // own change onto the chart.
+      const role = await call(h, '/v1/team/roles', {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { name: 'Data reviewer', permissions: ['patients.view', 'quarantine.review'] },
+      });
+      expect(role.status).toBe(201);
+      const invited = await call(h, '/v1/team/members', {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: {
+          email: 'reviewer@example.com',
+          displayName: 'Robin (demo)',
+          roleId: role.body.id,
+          credential: 'none',
+        },
+      });
+      expect(invited.status).toBe(201);
+      const [reviewer] = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.users where email = 'reviewer@example.com'`;
+      const reviewerId = reviewer!.id;
+      await h.acknowledge(reviewerId);
+      const reviewerToken = await h.tokenFor('reviewer@example.com');
+      const phone = await FakePhone.create();
+      await register(h, phone, reviewerToken, t.teamId);
+      const patientId = randomUUID();
+      const own = await phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+      });
+      expect(results((await push(h, phone, reviewerToken, t.teamId, [own])).body)[0]).toMatchObject({
+        reason: 'permission',
+        quarantined: true,
+      });
+
+      // A teammate pushing a change under that ID is told the ID is taken.
+      const taken = {
+        ...(await phoneB.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } })),
+      };
+      taken.changeId = own.changeId;
+      expect(results((await push(h, phoneB, t.bToken, t.teamId, [taken])).body)[0]).toMatchObject({
+        status: 'rejected',
+        details: { problem: 'change_id_reused' },
+      });
+
+      const queue = await call(h, '/v1/team/quarantine', { token: reviewerToken, teamId: t.teamId });
+      const item = (queue.body as unknown as { id: string; changeId: string }[]).find(
+        (i) => i.changeId === own.changeId,
+      )!;
+      // Seeing it is logged with the patient it is about.
+      expect(
+        await count('audit_events', `action = 'quarantine.item_viewed' and patient_id = '${patientId}'`),
+      ).toBeGreaterThan(0);
+      const self = await call(h, `/v1/team/quarantine/${item.id}/decision`, {
+        method: 'POST',
+        token: reviewerToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Mine, and fine' },
+      });
+      expect(self.status).toBe(403);
+      expect(self.body.error?.code).toBe('own_change');
+      expect(await count('encounters', `id = '${own.recordId}'`)).toBe(0);
+      expect(
+        await count(
+          'audit_events',
+          `action = 'access.denied' and actor_user_id = '${reviewerId}' and details->>'itemId' = '${item.id}'`,
+        ),
+      ).toBe(1);
+      const byAdmin = await call(h, `/v1/team/quarantine/${item.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Confirmed with Robin' },
+      });
+      expect(byAdmin.status).toBe(200);
+      expect(await count('encounters', `id = '${own.recordId}'`)).toBe(1);
     });
 
     it('an admin decision needs a recent sign-in', async () => {
@@ -939,19 +1106,66 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       expect(status.body).toMatchObject({ status: 'active', access: 'removed' });
 
+      // An offline chart view, handed over with the rest (review finding: it was quarantined,
+      // so it never joined the audit chain as the person's).
+      const viewedPatient = randomUUID();
+      const viewed = await phoneA.change({
+        entity: 'audit',
+        op: 'append',
+        value: {
+          action: 'patient.viewed',
+          entity: 'patient',
+          entityId: viewedPatient,
+          patientId: viewedPatient,
+        },
+      });
       const uploaded = await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
         method: 'POST',
         json: await phoneA.signed({
           purpose: 'quarantine',
           deviceId: phoneA.deviceId,
-          changes: [pending, orphan],
+          changes: [pending, orphan, viewed],
         }),
       });
       expect(uploaded.status).toBe(200);
       expect(uploaded.body.results).toEqual([
         { changeId: pending.changeId, status: 'quarantined', hash: pending.valueHash },
         { changeId: orphan.changeId, status: 'quarantined', hash: orphan.valueHash },
+        { changeId: viewed.changeId, status: 'recorded', hash: viewed.valueHash },
       ]);
+      const reads = await h.scratch.owner<{ actor: string; deviceId: string; afterRemoval: unknown }[]>`
+        select actor_user_id as actor, device_id as "deviceId", details->'afterRemoval' as "afterRemoval"
+        from sineobex.audit_events where action = 'patient.viewed' and patient_id = ${viewedPatient}`;
+      expect(reads).toEqual([{ actor: t.aId, deviceId: phoneA.deviceId, afterRemoval: true }]);
+      expect(await count('quarantine_items', `change_id = '${viewed.changeId}'`)).toBe(0);
+      // Sent again, it is recorded once.
+      await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
+        method: 'POST',
+        json: await phoneA.signed({ purpose: 'quarantine', deviceId: phoneA.deviceId, changes: [viewed] }),
+      });
+      expect(
+        await count('audit_events', `action = 'patient.viewed' and patient_id = '${viewedPatient}'`),
+      ).toBe(1);
+
+      // A phone can't flood the review queue.
+      await h.scratch.owner`
+        insert into sineobex.quarantine_items
+          (team_id, device_id, user_id, change_id, entity, record_id, op, value, value_hash, details, device_time, reason)
+        select ${t.teamId}, ${phoneA.deviceId}, ${t.aId}, gen_random_uuid(), 'encounter', gen_random_uuid(), 'create',
+               '{"kind":"medical"}'::jsonb, repeat('0', 64), '{}'::jsonb, now(), 'access_removed'
+        from generate_series(1, 4999)`;
+      const flood = await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
+        method: 'POST',
+        json: await phoneA.signed({
+          purpose: 'quarantine',
+          deviceId: phoneA.deviceId,
+          changes: [await phoneA.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } })],
+        }),
+      });
+      expect(flood.status).toBe(409);
+      expect(flood.body.error?.code).toBe('quarantine_full');
+      await h.scratch.owner`
+        delete from sineobex.quarantine_items where device_id = ${phoneA.deviceId} and value_hash = ${'0'.repeat(64)}`;
       // Sending it twice stores it once.
       await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
         method: 'POST',
@@ -972,6 +1186,9 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         json: { decision: 'reject', reason: 'Duplicate of the clinic note' },
       });
       expect(rejected.status).toBe(200);
+      expect(queue.body as unknown as { changeId: string }[]).not.toContainEqual(
+        expect.objectContaining({ changeId: viewed.changeId }),
+      );
 
       // Review finding: its rejection at push used to block the accept ("already reached the
       // chart"), so the admin could only throw the note away.
@@ -987,6 +1204,42 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(accepted.status).toBe(200);
       expect(await count('encounter_notes', `id = '${orphan.recordId}'`)).toBe(1);
       expect(await count('sync_changes', `change_id = '${orphan.changeId}' and status = 'accepted'`)).toBe(1);
+
+      // An old signed status request, replayed, is answered but doesn't make the phone look seen.
+      const [{ seenBefore } = { seenBefore: null }] = await h.scratch.owner<{ seenBefore: Date | null }[]>`
+        select last_seen_at as "seenBefore" from sineobex.devices where id = ${phoneA.deviceId}`;
+      h.clock.advance(60_000);
+      const replay = await call(h, `/v1/devices/${phoneA.deviceId}/status`, {
+        method: 'POST',
+        json: await phoneA.signed({
+          purpose: 'status',
+          deviceId: phoneA.deviceId,
+          sentAt: '2025-01-01T00:00:00.000Z',
+        }),
+      });
+      expect(replay.status).toBe(200);
+      const [{ seenAfter } = { seenAfter: null }] = await h.scratch.owner<{ seenAfter: Date | null }[]>`
+        select last_seen_at as "seenAfter" from sineobex.devices where id = ${phoneA.deviceId}`;
+      expect(seenAfter).toEqual(seenBefore);
+
+      // Once an admin asks to wipe it, the phone's key hands nothing more over.
+      const wipe = await call(h, `/v1/team/devices/${phoneA.deviceId}/wipe`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { reason: 'Left the program' },
+      });
+      expect(wipe.status).toBe(200);
+      const late = await call(h, `/v1/devices/${phoneA.deviceId}/quarantine`, {
+        method: 'POST',
+        json: await phoneA.signed({
+          purpose: 'quarantine',
+          deviceId: phoneA.deviceId,
+          changes: [await phoneA.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } })],
+        }),
+      });
+      expect(late.status).toBe(409);
+      expect(late.body.error?.code).toBe('wipe_requested');
 
       const wiped = await call(h, `/v1/devices/${phoneA.deviceId}/wiped`, {
         method: 'POST',

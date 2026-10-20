@@ -196,3 +196,55 @@ export function SelectField({
     </div>
   );
 }
+
+/**
+ * One choice from a few, as radio buttons with nothing preselected: for decisions where a default
+ * would be dangerous (pressing Enter submits the form's first button, so a choice of buttons
+ * would make the first one the default).
+ */
+export function ChoiceField({
+  name,
+  legend,
+  options,
+}: {
+  name: string;
+  legend: string;
+  options: { value: string; label: string; hint?: string }[];
+}) {
+  const state = useFormState();
+  const error = state.fieldErrors?.[name];
+  const id = useFieldId(name);
+  return (
+    <fieldset
+      id={id}
+      className="px-fieldset"
+      tabIndex={-1}
+      aria-describedby={error ? `${id}-error` : undefined}
+    >
+      <legend>{legend}</legend>
+      {error && (
+        <p id={`${id}-error`} className="sx-help sx-help--error">
+          {error}
+        </p>
+      )}
+      {options.map((o) => (
+        <label key={o.value} className="px-check">
+          <input
+            type="radio"
+            name={name}
+            value={o.value}
+            required
+            aria-describedby={o.hint ? `${id}-${o.value}-hint` : undefined}
+            defaultChecked={state.values?.[name] === o.value}
+          />
+          <span>{o.label}</span>
+          {o.hint && (
+            <span id={`${id}-${o.value}-hint`} className="sx-help">
+              {o.hint}
+            </span>
+          )}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
