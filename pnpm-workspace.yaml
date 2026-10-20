@@ -1,0 +1,12 @@
+packages:
+  - apps/portal
+  - apps/website
+  - services/*
+  - packages/*
+  - db
+  - infra
+  - tools
+
+# Block install scripts by default; packages that need one are listed explicitly.
+onlyBuiltDependencies:
+  - esbuild

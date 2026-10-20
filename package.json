@@ -1,0 +1,33 @@
+{
+  "name": "sineobex",
+  "private": true,
+  "description": "Sineobex monorepo: field app, portal, API, database, infrastructure.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "db:migrate": "pnpm --filter @sineobex/db migrate",
+    "db:seed": "pnpm --filter @sineobex/db seed",
+    "contract:generate": "pnpm --filter @sineobex/contract generate",
+    "forms:export": "pnpm --filter @sineobex/forms export",
+    "phi-guard": "node tools/phi-guard.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@next/eslint-plugin-next": "16.4.2",
+    "eslint": "9.39.5",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0"
+  }
+}
