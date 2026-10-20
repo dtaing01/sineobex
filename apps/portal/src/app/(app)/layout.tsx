@@ -15,6 +15,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       show: can(team, 'team.manage_users') || can(team, 'routes.manage'),
     },
     { href: '/team/roles', label: 'Roles', show: can(team, 'team.manage_users') },
+    { href: '/team/devices', label: 'Phones', show: can(team, 'devices.manage') },
+    { href: '/team/quarantine', label: 'Quarantine', show: can(team, 'quarantine.review') },
     { href: '/audit', label: 'Audit log', show: can(team, 'team.view_audit') },
     { href: '/owner', label: 'Owner console', show: me.isOwner },
   ].filter((n) => n.show);

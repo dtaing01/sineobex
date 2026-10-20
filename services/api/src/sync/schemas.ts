@@ -204,6 +204,10 @@ export const TeamDevice = z
     clockFlagged: z.boolean(),
     unsyncedCounts: z.record(z.string(), z.number().int()),
     oldestUnsyncedAt: DateTime.nullable(),
+    unsyncedStale: z.boolean().openapi({
+      description:
+        'Something on the phone has waited more than 24 hours (module 9: an admin alert at 24 hours)',
+    }),
     openRejections: z.number().int(),
     wipeRequestedAt: DateTime.nullable(),
     wipedAt: DateTime.nullable(),
@@ -228,7 +232,9 @@ export const QuarantineItem = z
     status: z.enum(['pending', 'accepted', 'rejected']),
     receivedAt: DateTime,
     decidedAt: DateTime.nullable(),
-    decidedBy: UserRef.nullable(),
+    // Not UserRef.nullable(): for a registered schema that emits allOf [UserRef, object|null],
+    // which null can never satisfy. A union emits anyOf [UserRef, null].
+    decidedBy: z.union([UserRef, z.null()]),
     decisionReason: z.string().nullable(),
   })
   .openapi('QuarantineItem');

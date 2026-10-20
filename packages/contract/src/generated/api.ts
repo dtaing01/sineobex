@@ -819,7 +819,7 @@ export interface components {
             changeId: string;
             /** Format: date-time */
             decidedAt: string | null;
-            decidedBy: components["schemas"]["UserRef"] & (Record<string, never> | null);
+            decidedBy: components["schemas"]["UserRef"] | null;
             decisionReason: string | null;
             /** Format: uuid */
             deviceId: string;
@@ -1069,6 +1069,8 @@ export interface components {
             unsyncedCounts: {
                 [key: string]: number;
             };
+            /** @description Something on the phone has waited more than 24 hours (module 9: an admin alert at 24 hours) */
+            unsyncedStale: boolean;
             user: components["schemas"]["UserRef"];
             /** Format: date-time */
             wipedAt: string | null;

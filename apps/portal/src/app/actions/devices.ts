@@ -1,0 +1,54 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { api, PortalApiError, unwrap } from '@/lib/api';
+import { formValues, type ActionState } from '@/lib/forms';
+
+function failure(err: unknown, values: Record<string, string>): ActionState {
+  if (!(err instanceof PortalApiError)) throw err;
+  const fieldErrors: Record<string, string> = {};
+  for (const f of (err.details?.fields ?? []) as { path: string }[]) {
+    if (f.path.endsWith('reason')) fieldErrors.reason = 'Give a reason of at least 3 characters.';
+  }
+  return { error: err.message, fieldErrors, values };
+}
+
+/** Remote wipe of a lost or stolen phone (module 9). The API requires a recent sign-in. */
+export async function wipeDevice(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = formValues(form, 'deviceId', 'reason');
+  try {
+    await unwrap(
+      (await api()).POST('/v1/team/devices/{deviceId}/wipe', {
+        params: { path: { deviceId: values.deviceId ?? '' } },
+        body: { reason: values.reason ?? '' },
+      }),
+    );
+  } catch (err) {
+    return failure(err, values);
+  }
+  revalidatePath('/team/devices');
+  return {
+    ok: true,
+    message: 'Wipe requested. The phone erases this team’s data the next time it reaches the server.',
+  };
+}
+
+/** Accept a quarantined change onto the chart, or reject it; both need a reason. */
+export async function decideQuarantine(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = formValues(form, 'itemId', 'decision', 'reason');
+  const decision = values.decision === 'accept' ? 'accept' : 'reject';
+  try {
+    await unwrap(
+      (await api()).POST('/v1/team/quarantine/{itemId}/decision', {
+        params: { path: { itemId: values.itemId ?? '' } },
+        body: { decision, reason: values.reason ?? '' },
+      }),
+    );
+  } catch (err) {
+    return failure(err, values);
+  }
+  revalidatePath('/team/quarantine');
+  // The decided item leaves the list, and its form with it; the page confirms instead.
+  redirect(`/team/quarantine?decided=${decision === 'accept' ? 'accepted' : 'rejected'}`);
+}

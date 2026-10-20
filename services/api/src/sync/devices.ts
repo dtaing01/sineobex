@@ -232,7 +232,11 @@ interface TeamDeviceRow {
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
+/** Unsynced work older than this is flagged to the admin (module 9: "an admin alert at 24 hours"). */
+export const UNSYNCED_STALE_MS = 24 * 60 * 60 * 1000;
+
 export async function listDevices(scope: TeamScope) {
+  const now = scope.deps.now().getTime();
   const rows = await scope.tx(
     (tx) => tx<TeamDeviceRow[]>`
       select d.*, u.display_name,
@@ -255,6 +259,7 @@ export async function listDevices(scope: TeamScope) {
     clockFlagged: r.clockFlaggedAt !== null,
     unsyncedCounts: r.unsyncedCounts,
     oldestUnsyncedAt: iso(r.oldestUnsyncedAt),
+    unsyncedStale: r.oldestUnsyncedAt !== null && now - r.oldestUnsyncedAt.getTime() > UNSYNCED_STALE_MS,
     openRejections: r.openRejections,
     wipeRequestedAt: iso(r.wipeRequestedAt),
     wipedAt: iso(r.wipedAt),

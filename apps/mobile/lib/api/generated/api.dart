@@ -1462,7 +1462,7 @@ class QuarantineItem {
 
   final String changeId;
   final DateTime? decidedAt;
-  final Object? decidedBy;
+  final UserRef? decidedBy;
   final String? decisionReason;
   final String deviceId;
   final DateTime deviceTime;
@@ -1480,7 +1480,7 @@ class QuarantineItem {
   factory QuarantineItem.fromJson(Map<String, dynamic> json) => QuarantineItem(
         changeId: json['changeId'] as String,
         decidedAt: json['decidedAt'] == null ? null : DateTime.parse(json['decidedAt'] as String),
-        decidedBy: json['decidedBy'],
+        decidedBy: json['decidedBy'] == null ? null : UserRef.fromJson(json['decidedBy'] as Map<String, dynamic>),
         decisionReason: json['decisionReason'] == null ? null : json['decisionReason'] as String,
         deviceId: json['deviceId'] as String,
         deviceTime: DateTime.parse(json['deviceTime'] as String),
@@ -1499,7 +1499,7 @@ class QuarantineItem {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'changeId': changeId,
         'decidedAt': decidedAt == null ? null : decidedAt!.toUtc().toIso8601String(),
-        'decidedBy': decidedBy,
+        'decidedBy': decidedBy == null ? null : decidedBy!.toJson(),
         'decisionReason': decisionReason == null ? null : decisionReason!,
         'deviceId': deviceId,
         'deviceTime': deviceTime.toUtc().toIso8601String(),
@@ -2203,6 +2203,7 @@ class TeamDevice {
     required this.registeredAt,
     required this.status,
     required this.unsyncedCounts,
+    required this.unsyncedStale,
     required this.user,
     required this.wipeRequestedAt,
     required this.wipedAt,
@@ -2220,6 +2221,8 @@ class TeamDevice {
   final DateTime registeredAt;
   final DeviceStatus status;
   final Map<String, int> unsyncedCounts;
+  /// Something on the phone has waited more than 24 hours (module 9: an admin alert at 24 hours)
+  final bool unsyncedStale;
   final UserRef user;
   final DateTime? wipeRequestedAt;
   final DateTime? wipedAt;
@@ -2237,6 +2240,7 @@ class TeamDevice {
         registeredAt: DateTime.parse(json['registeredAt'] as String),
         status: DeviceStatus.fromJson(json['status'] as String),
         unsyncedCounts: (json['unsyncedCounts'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
+        unsyncedStale: json['unsyncedStale'] as bool,
         user: UserRef.fromJson(json['user'] as Map<String, dynamic>),
         wipeRequestedAt: json['wipeRequestedAt'] == null ? null : DateTime.parse(json['wipeRequestedAt'] as String),
         wipedAt: json['wipedAt'] == null ? null : DateTime.parse(json['wipedAt'] as String),
@@ -2255,6 +2259,7 @@ class TeamDevice {
         'registeredAt': registeredAt.toUtc().toIso8601String(),
         'status': status.toJson(),
         'unsyncedCounts': unsyncedCounts.map((k, v) => MapEntry(k, v)),
+        'unsyncedStale': unsyncedStale,
         'user': user.toJson(),
         'wipeRequestedAt': wipeRequestedAt == null ? null : wipeRequestedAt!.toUtc().toIso8601String(),
         'wipedAt': wipedAt == null ? null : wipedAt!.toUtc().toIso8601String(),

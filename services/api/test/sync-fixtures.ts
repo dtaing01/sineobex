@@ -165,7 +165,7 @@ export async function push(
   token: string,
   teamId: string,
   changes: unknown[],
-  options: { deviceTime?: string; counts?: Record<string, number> } = {},
+  options: { deviceTime?: string; counts?: Record<string, number>; oldest?: string } = {},
 ) {
   return call(h, '/v1/sync/push', {
     method: 'POST',
@@ -174,7 +174,7 @@ export async function push(
     json: {
       deviceId: phone.deviceId,
       clock: { deviceTime: options.deviceTime ?? h.clock.now.toISOString() },
-      unsynced: { counts: options.counts ?? { encounters: changes.length } },
+      unsynced: { counts: options.counts ?? { encounters: changes.length }, oldest: options.oldest },
       changes,
     },
   });

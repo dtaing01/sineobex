@@ -692,6 +692,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
           }[]
         ).find((d) => d.id === phoneA.deviceId)!;
       expect(await listed()).toMatchObject({ clockFlagged: true, clockOffsetMs: 420_000 });
+      // Work waiting on the phone for more than a day is flagged.
+      await push(h, phoneA, t.aToken, t.teamId, [], {
+        deviceTime: behind,
+        counts: { notes: 1 },
+        oldest: new Date(h.clock.now.getTime() - 25 * 60 * 60_000).toISOString(),
+      });
+      expect(await listed()).toMatchObject({ unsyncedStale: true });
       const right = await push(h, phoneA, t.aToken, t.teamId, []);
       expect(right.body.clock).toEqual({ offsetMs: 0, flagged: false });
       expect((await listed()).clockFlagged).toBe(false);

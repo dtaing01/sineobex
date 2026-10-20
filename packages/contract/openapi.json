@@ -963,15 +963,12 @@
             ]
           },
           "decidedBy": {
-            "allOf": [
+            "anyOf": [
               {
                 "$ref": "#/components/schemas/UserRef"
               },
               {
-                "type": [
-                  "object",
-                  "null"
-                ]
+                "type": "null"
               }
             ]
           },
@@ -1751,6 +1748,10 @@
             },
             "type": "object"
           },
+          "unsyncedStale": {
+            "description": "Something on the phone has waited more than 24 hours (module 9: an admin alert at 24 hours)",
+            "type": "boolean"
+          },
           "user": {
             "$ref": "#/components/schemas/UserRef"
           },
@@ -1782,6 +1783,7 @@
           "clockFlagged",
           "unsyncedCounts",
           "oldestUnsyncedAt",
+          "unsyncedStale",
           "openRejections",
           "wipeRequestedAt",
           "wipedAt"
