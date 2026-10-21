@@ -43,7 +43,7 @@ class HttpTransport implements ApiTransport {
     this.accessToken,
     this.teamId,
     this.deviceId,
-    this.timeout = const Duration(seconds: 20),
+    this.timeout = defaultTimeout,
   });
 
   final Uri baseUrl;
@@ -51,7 +51,22 @@ class HttpTransport implements ApiTransport {
   final HeaderSource? accessToken;
   final HeaderSource? teamId;
   final HeaderSource? deviceId;
+
+  /// How long a request may wait for its answer. Sending a body adds its time on a slow uplink
+  /// ([timeoutFor]).
   final Duration timeout;
+
+  static const defaultTimeout = Duration(seconds: 20);
+
+  /// The slowest uplink a request body is given time for, in bytes a second. On a weak uplink
+  /// (EDGE, weak 3G) a full sync batch takes longer than [timeout] just to send, and timed like a
+  /// small request it would time out on every try. Slower links still get through: the sync
+  /// engine sends less at a time after a timeout.
+  static const slowUplinkBytesPerSecond = 16 * 1024;
+
+  /// How long a request whose body is [bodyBytes] long may take to be sent and answered.
+  static Duration timeoutFor(int bodyBytes, [Duration base = defaultTimeout]) =>
+      base + Duration(milliseconds: bodyBytes * 1000 ~/ slowUplinkBytesPerSecond);
 
   @override
   Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
@@ -72,8 +87,10 @@ class HttpTransport implements ApiTransport {
 
     final http.Response response;
     try {
-      // The body too: an answer that stalls after its headers must not hang its caller.
-      response = await http.Response.fromStream(await _client.send(request).timeout(timeout)).timeout(timeout);
+      // Sending covers the upload too, so a large body gets longer. The answer's body is timed
+      // too: one that stalls after its headers must not hang its caller.
+      final sent = _client.send(request).timeout(timeoutFor(request.bodyBytes.length, timeout));
+      response = await http.Response.fromStream(await sent).timeout(timeout);
     } on TimeoutException {
       throw const NetworkException('timeout');
     } on SocketException {

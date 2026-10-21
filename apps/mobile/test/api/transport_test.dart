@@ -64,6 +64,28 @@ void main() {
     expect(h.environment, HealthEnvironment.unknown);
   });
 
+  test('a large body is given time to upload on a slow link; a small one isn’t', () async {
+    // Review finding: a full sync batch takes about 32 s to send at 25 KB/s, and every try timed
+    // out at 20 s.
+    final client = MockClient.streaming((request, body) async {
+      await body.drain<void>();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 200);
+    });
+    final transport = HttpTransport(
+      baseUrl: Uri.parse('https://api.invalid'),
+      client: client,
+      timeout: const Duration(milliseconds: 100),
+    );
+    // 16 KiB is a second on the slowest uplink given time for.
+    await transport.send('POST', '/v1/sync/push', body: {'note': 'x' * 16 * 1024});
+    await expectLater(
+      transport.send('POST', '/v1/sync/push', body: {'note': 'x'}),
+      throwsA(isA<NetworkException>().having((e) => e.reason, 'reason', 'timeout')),
+    );
+    expect(HttpTransport.timeoutFor(900 * 1024), const Duration(seconds: 20 + 56, milliseconds: 250));
+  });
+
   test('an answer that stalls after its headers times out instead of hanging its caller', () async {
     // Review finding: only the headers were timed, so one stalled body blocked every later
     // remote-wipe check on a locked phone.

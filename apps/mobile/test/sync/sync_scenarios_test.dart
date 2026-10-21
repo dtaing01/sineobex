@@ -5,6 +5,7 @@ import 'package:sineobex_field/sync/sync_engine.dart';
 
 import 'fake_server.dart';
 import 'phone_harness.dart';
+import 'uplink.dart';
 
 /// Phase 2 done-when: charting in airplane mode, killing the app mid-sync, reconnecting on a slow
 /// network, a 7-minute clock offset, and two people editing the same draft.
@@ -34,6 +35,33 @@ void main() {
     }
     phones.clear();
   });
+
+  /// A phone on a link that takes [bytesPerSecond] (or no time at all), and the link, which
+  /// records what the phone sent.
+  (TestPhone, Uplink) linkedPhone(String user, {int? bytesPerSecond}) {
+    late final TestPhone p;
+    final link = Uplink(
+      server.transportFor(user, team),
+      bytesPerSecond: bytesPerSecond,
+      elapse: (d) {
+        p.advance(d);
+        serverTime = serverTime.add(d);
+      },
+    );
+    p = TestPhone(userId: user, teamId: team, transport: () => link, wall: start);
+    phones.add(p);
+    return (p, link);
+  }
+
+  /// A note with 20 long free-text fields, about 40 KB each: 22 changes, about 800 KB.
+  String chartLongNote(TestPhone p) {
+    final encounter = p.store.createEncounter(kind: 'medical');
+    final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'wound_care');
+    for (var i = 0; i < 20; i++) {
+      p.store.setField(note, 'data.narrative_$i', 'Demo narrative $i ${'x' * 40000}');
+    }
+    return note;
+  }
 
   /// One visit charted on [p]: an encounter, a note with vitals, an edit, and a chart view.
   ({String encounter, String note}) chartVisit(TestPhone p) {
@@ -170,6 +198,51 @@ void main() {
       await p.engine.syncAll(force: true);
       expect(p.engine.nextAttempt, isNull);
     });
+
+    // Review finding: on a weak uplink every push was packed to about 800 KB and timed out at 20 s,
+    // then went again the same, so nothing ever synced, and a removal's hand-over never finished.
+    for (final rate in [25000, 5000]) {
+      test('a long note charted offline syncs on a ${rate ~/ 1000} KB/s uplink in a few tries', () async {
+        final (p, link) = linkedPhone(alex, bytesPerSecond: rate);
+        await p.engine.syncAll();
+        final note = chartLongNote(p);
+        // Out of signal first: a connection that fails at once says nothing about size.
+        link.offline = true;
+        for (var i = 0; i < 3; i++) {
+          expect(await p.engine.syncAll(force: true), isA<SyncOffline>());
+        }
+        link.offline = false;
+        // The controller's tick, every 20 seconds.
+        var ticks = 0;
+        for (; ticks < 30 && p.store.outbox().isNotEmpty; ticks++) {
+          p.advance(const Duration(seconds: 20));
+          serverTime = serverTime.add(const Duration(seconds: 20));
+          await p.engine.syncAll();
+        }
+        expect(p.store.outbox(), isEmpty);
+        final pushes = link.to('/v1/sync/push').skip(1).map((r) => r.changes).toList();
+        if (rate == 25000) {
+          // Given time for its size, the whole batch goes at once.
+          expect(pushes, [22]);
+        } else {
+          expect(ticks, lessThanOrEqualTo(15));
+          expect(pushes.first, 22);
+        }
+        // Batches that timed out were committed anyway; sent again, each change applied once.
+        expect(server.records[note]!.fields['data.narrative_0']!.version, 1);
+        expect(server.records[note]!.fields['data.narrative_19']!.version, 1);
+      });
+
+      test('a removal hands the same note over on a ${rate ~/ 1000} KB/s uplink in one go', () async {
+        final (p, link) = linkedPhone(alex, bytesPerSecond: rate);
+        await p.engine.syncAll();
+        chartLongNote(p);
+        server.removedUsers.add(alex);
+        expect(await p.engine.uploadToQuarantine(), p.store.handOverIds());
+        expect(server.quarantine, hasLength(22));
+        expect(link.to('/quarantine').length, rate == 25000 ? 1 : lessThanOrEqualTo(20));
+      });
+    }
   });
 
   group('a 7-minute clock offset', () {

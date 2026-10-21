@@ -182,12 +182,34 @@ class SyncEngine {
   /// single change is at most [maxValueBytes] plus its fields.
   static const maxBatchBytes = 900 * 1024;
 
+  /// What one request may carry now. A request that timed out goes again with half as much, down
+  /// to one change, and each answer doubles it back toward [batchSize] and [maxBatchBytes]: on a
+  /// weak uplink a full batch can take longer to send than the transport allows, and sent the same
+  /// way again it would time out on every try. (The server may have committed it anyway, since the
+  /// upload goes on after the timeout; the smaller batch then gets its receipts.)
+  int _batchLimit = batchSize;
+  int _byteLimit = maxBatchBytes;
+
+  /// Only a timeout says anything about size: a connection that fails at once doesn't.
+  void _shrink(List<OutboxEntry> timedOut) {
+    if (timedOut.isEmpty) return;
+    _batchLimit = max(1, timedOut.length ~/ 2);
+    _byteLimit = max(1, timedOut.fold(0, (n, e) => n + _size(e)) ~/ 2);
+  }
+
+  void _grow() {
+    _batchLimit = min(batchSize, _batchLimit * 2);
+    _byteLimit = min(maxBatchBytes, _byteLimit * 2);
+  }
+
+  int _size(OutboxEntry e) => utf8.encode(jsonEncode(_wire(e).toJson())).length + 1;
+
   List<OutboxEntry> _fit(List<OutboxEntry> entries) {
     var bytes = 0;
     final out = <OutboxEntry>[];
     for (final e in entries) {
-      bytes += utf8.encode(jsonEncode(_wire(e).toJson())).length + 1;
-      if (out.isNotEmpty && bytes > maxBatchBytes) break;
+      bytes += _size(e);
+      if (out.isNotEmpty && bytes > _byteLimit) break;
       out.add(e);
     }
     return out;
@@ -209,7 +231,7 @@ class SyncEngine {
   Future<SyncOutcome> _syncOnce() async {
     final deviceId = await device.deviceId(teamId);
     await _ensureRegistered(deviceId);
-    final batch = _fit(store.sendable(limit: batchSize));
+    final batch = _fit(store.sendable(limit: _batchLimit));
     final unsynced = store.unsynced();
     final before = await clock.boot.read();
     final wallBefore = _now().toUtc();
@@ -224,6 +246,9 @@ class SyncEngine {
           changes: batch.map(_wire).toList(),
         ),
       );
+    } on NetworkException catch (e) {
+      if (e.reason == 'timeout') _shrink(batch);
+      rethrow;
     } on ApiException catch (e) {
       final malformed = _malformed(e, batch.length);
       if (malformed.isEmpty) rethrow;
@@ -245,6 +270,7 @@ class SyncEngine {
         unanswered: batch.length - malformed.length,
       );
     }
+    if (batch.isNotEmpty) _grow();
     final after = await clock.boot.read();
     await clock.recordServerTime(
       serverTime: res.serverTime,
@@ -417,23 +443,34 @@ class SyncEngine {
   /// "It is sent to a quarantine queue for a Program Admin to review, so no care record is
   /// lost"). Returns the change IDs the server now holds with a matching hash, or null when the
   /// phone has no device key to sign with.
+  ///
+  /// A chunk that times out goes again at once with half as much, down to one change, since no
+  /// later push would carry it and the wipe waits for it.
   Future<Set<String>?> uploadToQuarantine() async {
     final deviceId = await device.existingDeviceId(teamId);
     if (deviceId == null) return null;
     var entries = store.handOver();
     final held = <String>{};
     while (entries.isNotEmpty) {
-      final chunk = _fit(entries.take(batchSize).toList());
-      entries = entries.sublist(chunk.length);
+      final chunk = _fit(entries.take(_batchLimit).toList());
       final payload = SignedQuarantinePayload(
         deviceId: deviceId,
         purpose: 'quarantine',
         changes: chunk.map(_wire).toList(),
       );
-      final res = await api.uploadQuarantine(
-        deviceId: deviceId,
-        body: SignedQuarantine(payload: payload, signature: await device.sign(payload.toJson())),
-      );
+      final QuarantineReceipt res;
+      try {
+        res = await api.uploadQuarantine(
+          deviceId: deviceId,
+          body: SignedQuarantine(payload: payload, signature: await device.sign(payload.toJson())),
+        );
+      } on NetworkException catch (e) {
+        if (e.reason != 'timeout' || chunk.length == 1) rethrow;
+        _shrink(chunk);
+        continue;
+      }
+      _grow();
+      entries = entries.sublist(chunk.length);
       final byId = {for (final r in res.results) r.changeId: r};
       for (final e in chunk) {
         final r = byId[e.changeId];
