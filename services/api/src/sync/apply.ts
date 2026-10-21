@@ -239,16 +239,8 @@ export async function applyChange(
   await storeReceipt(tx, actor, change, hash, outcome);
 
   if (outcome.status === 'accepted') {
-    if (change.supersedes) {
-      // A fixed create also settles the record's other rejections by this person: edits sent
-      // with the failed create were refused only because the record didn't exist, and the phone
-      // folds their values into the fix.
-      const fixed = await tx<{ changeId: string }[]>`
-        update sineobex.sync_changes set resolved_by_change = ${change.changeId}
-        where user_id = ${actor.authorId} and status = 'rejected' and resolved_by_change is null
-          and (change_id = ${change.supersedes}
-               or (${change.op === 'create'} and record_id = ${change.recordId}))
-        returning change_id`;
+    if (change.supersedes || change.conflictOf) {
+      const fixed = (await settle(tx, actor, change)).filter((s) => s.status === 'rejected');
       if (fixed.length > 0) {
         await audit({
           action: 'sync.rejection_fixed',
@@ -261,12 +253,6 @@ export async function applyChange(
           },
         });
       }
-    }
-    if (change.conflictOf) {
-      await tx`
-        update sineobex.sync_changes set resolved_by_change = ${change.changeId}
-        where change_id = ${change.conflictOf} and user_id = ${actor.authorId}
-          and status = 'conflict' and resolved_by_change is null`;
     }
   } else if (outcome.status === 'conflict') {
     await audit({
@@ -294,6 +280,41 @@ export async function applyChange(
     });
   }
   return toResult(change.changeId, outcome, hash);
+}
+
+/**
+ * Settles the rejections and conflicts an accepted fix or choice covers, so none stays open on the
+ * server once the phone holds nothing of it. That is what the phone folded into it: its earlier
+ * unsettled changes to the same field (a fix or a choice covers every one, linked or not), or for
+ * a fixed create the record's rejections (edits sent with the failed create were refused only
+ * because the record didn't exist). Then, by the person's own links, in this team, what each of
+ * those fixed or resolved in turn: a fix of a fix, or a choice made on a fix that met a conflict,
+ * under any ID the phone had. Links are followed by primary key, and the field is found through
+ * sync_changes_record. `union` drops a row it has already seen, so links in a circle end the walk.
+ * A change held for review is the admin's to settle.
+ */
+async function settle(tx: Tx, actor: ApplyActor, c: SyncChangeInput) {
+  const open = tx`s.status in ('rejected', 'conflict') and s.resolved_by_change is null
+    and coalesce(s.details ->> 'quarantined', 'false') <> 'true'`;
+  return tx<{ changeId: string; status: 'rejected' | 'conflict' }[]>`
+    with recursive covered (change_id, supersedes, conflict_of) as (
+      select s.change_id, s.supersedes, s.conflict_of from sineobex.sync_changes s
+      where s.change_id = ${c.changeId}
+         or (s.team_id = ${actor.teamId} and s.user_id = ${actor.authorId} and s.record_id = ${c.recordId}
+             and ${open} and ${
+               c.op === 'create'
+                 ? tx`s.status = 'rejected'`
+                 : tx`s.device_id = ${actor.deviceId} and s.field = ${c.field ?? null} and s.device_seq < ${c.seq}`
+             })
+      union
+      select s.change_id, s.supersedes, s.conflict_of
+      from covered k join sineobex.sync_changes s on s.change_id in (k.supersedes, k.conflict_of)
+      where s.team_id = ${actor.teamId} and s.user_id = ${actor.authorId}
+    )
+    update sineobex.sync_changes s set resolved_by_change = ${c.changeId}
+    from covered k
+    where s.change_id = k.change_id and s.change_id <> ${c.changeId} and ${open}
+    returning s.change_id, s.status`;
 }
 
 async function storeReceipt(tx: Tx, actor: ApplyActor, c: SyncChangeInput, hash: string, o: Outcome) {

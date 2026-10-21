@@ -387,6 +387,62 @@ void main() {
       expect(p.store.needsAttention(), isEmpty);
     });
 
+    test('a fix of a fix settles every earlier attempt on the server, not only the one it names', () async {
+      // Review finding: the server settled only the change a fix named, so the first rejection
+      // stayed open there (the devices page said "1 rejected") though the phone held nothing.
+      final p = phone(alex);
+      final visit = chartVisit(p);
+      await p.engine.syncAll();
+      // The note is signed on the server for a while: a stand-in for anything a later fix gets past.
+      server.serverEdit(visit.note, 'status', 'signed', by: blair);
+      p.store.setField(visit.note, 'data.plan', 'rest');
+      await p.engine.syncAll(force: true);
+      final first = p.store.needsAttention().single;
+      p.store.fixRejected(first.changeId, 'rest and fluids');
+      await p.engine.syncAll(force: true);
+      final fix = p.store.needsAttention().single;
+      expect(fix.supersedes, first.changeId);
+
+      server.serverEdit(visit.note, 'status', 'draft', by: blair);
+      p.store.fixRejected(fix.changeId, 'rest, fluids and a recheck');
+      await p.engine.syncAll(force: true);
+      expect(p.store.outbox(), isEmpty);
+      expect(
+        [
+          for (final e in [first, fix]) server.receipts[e.changeId]!.resolved,
+        ],
+        [true, true],
+      );
+    });
+
+    test('a choice made on a fix that met a conflict settles the rejection it fixed, on the server too', () async {
+      final p = phone(alex);
+      final visit = chartVisit(p);
+      await p.engine.syncAll();
+      server.serverEdit(visit.note, 'status', 'signed', by: blair);
+      p.store.setField(visit.note, 'data.plan', 'rest');
+      await p.engine.syncAll(force: true);
+      final first = p.store.needsAttention().single;
+      // Unsigned again, and a teammate writes the plan meanwhile, so the fix meets their value.
+      server.serverEdit(visit.note, 'status', 'draft', by: blair);
+      server.serverEdit(visit.note, 'data.plan', 'clinic Friday', by: blair);
+      p.store.fixRejected(first.changeId, 'rest and fluids');
+      await p.engine.syncAll(force: true);
+      final shown = p.store.needsAttention().single;
+      expect(shown.state, ChangeState.conflict);
+
+      p.store.resolveConflict(shown.changeId, keepMine: true);
+      await p.engine.syncAll(force: true);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[visit.note]!.fields['data.plan']!.value, 'rest and fluids');
+      expect(
+        [
+          for (final e in [first, shown]) server.receipts[e.changeId]!.resolved,
+        ],
+        [true, true],
+      );
+    });
+
     test('a change the person may no longer make is held by the server for review and leaves the phone', () async {
       final p = phone(alex);
       server.cannotChart.add(alex);

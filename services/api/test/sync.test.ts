@@ -79,6 +79,18 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       }[]
     ).find((d) => d.id === phone.deviceId)!.openRejections;
 
+  /** The change that settled each of these receipts, or null while it is open. */
+  const resolvedBy = async (...changes: { changeId: string }[]) =>
+    Promise.all(
+      changes.map(
+        async (c) =>
+          (
+            await h.scratch.owner<{ by: string | null }[]>`
+              select resolved_by_change as by from sineobex.sync_changes where change_id = ${c.changeId}`
+          )[0]!.by,
+      ),
+    );
+
   /** A draft encounter with one note on phone A, synced. Returns the IDs. */
   async function syncedDraft(data: Record<string, unknown> = {}) {
     const encounter = await phoneA.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
@@ -349,6 +361,195 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         `record_id = '${note.recordId}' and status = 'rejected' and resolved_by_change is null`,
       );
       expect(open).toBe(0);
+    });
+
+    describe('settling a fix settles everything it covers', () => {
+      // Review finding: an accepted fix settled only the change it named, so after a fix of a fix
+      // (or a choice made on a fix that met a conflict) the first rejection stayed open, and the
+      // devices page said "1 rejected" for a phone that held nothing.
+      const place = (lat: number) => ({ lat, lng: -83.05 });
+      const setLocation = (phone: FakePhone, recordId: string, lat: number, more = {}) =>
+        phone.change({
+          entity: 'encounter',
+          recordId,
+          op: 'set',
+          field: 'location',
+          value: place(lat),
+          ...more,
+        });
+
+      /** A fresh phone for [token]'s person, with one synced encounter. */
+      async function freshEncounter(token = t.aToken) {
+        const phone = await FakePhone.create();
+        await register(h, phone, token, t.teamId);
+        const encounter = await phone.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind: 'medical' },
+        });
+        expect(results((await push(h, phone, token, t.teamId, [encounter])).body)[0]!.status).toBe(
+          'accepted',
+        );
+        return { phone, recordId: encounter.recordId };
+      }
+
+      const statuses = (body: Parameters<typeof results>[0]) => results(body).map((r) => r.status);
+
+      it('a fix of a fix settles the first rejection too', async () => {
+        const { phone, recordId } = await freshEncounter();
+        // Latitude 95 is off the map: refused as invalid, then refused again after the first fix.
+        const first = await setLocation(phone, recordId, 95, { baseVersion: 1 });
+        const fix = await setLocation(phone, recordId, 91, { baseVersion: 1, supersedes: first.changeId });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [first])).body)).toEqual(['rejected']);
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [fix])).body)).toEqual(['rejected']);
+        expect(await openRejections(phone)).toBe(2);
+
+        const again = await setLocation(phone, recordId, 42.33, { baseVersion: 1, supersedes: fix.changeId });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [again])).body)).toEqual(['accepted']);
+        expect(await resolvedBy(first, fix)).toEqual([again.changeId, again.changeId]);
+        expect(await openRejections(phone)).toBe(0);
+        const logged = (await auditActions('sync.rejection_fixed')).find(
+          (e) => e.details.fixedBy === again.changeId,
+        );
+        expect((logged?.details.changeIds as string[]).sort()).toEqual([first.changeId, fix.changeId].sort());
+      });
+
+      it('a choice made on a fix that met a conflict settles the rejection it fixed', async () => {
+        const { phone, recordId } = await freshEncounter();
+        const first = await setLocation(phone, recordId, 95, { baseVersion: 1 });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [first])).body)).toEqual(['rejected']);
+        // A teammate sets the location meanwhile, so the fix meets their value.
+        const theirs = await setLocation(phoneB, recordId, 42.1, { baseVersion: 1 });
+        expect(statuses((await push(h, phoneB, t.bToken, t.teamId, [theirs])).body)).toEqual(['accepted']);
+        const fix = await setLocation(phone, recordId, 42.33, { baseVersion: 1, supersedes: first.changeId });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [fix])).body)).toEqual(['conflict']);
+
+        const choice = await setLocation(phone, recordId, 42.33, {
+          baseVersion: 2,
+          conflictOf: fix.changeId,
+          resolution: 'replace',
+        });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [choice])).body)).toEqual(['accepted']);
+        expect(await resolvedBy(first, fix)).toEqual([choice.changeId, choice.changeId]);
+        expect(await openRejections(phone)).toBe(0);
+      });
+
+      it('a choice settles what the phone folded into it on that field, and nothing sent later or elsewhere', async () => {
+        // The phone folds every unsettled change to the field into a fix or a choice, linked or not:
+        // here an invalid edit sent with a conflicting one, both before the choice.
+        const { phone, recordId } = await freshEncounter();
+        const otherPhone = await FakePhone.create();
+        await register(h, otherPhone, t.aToken, t.teamId);
+        const theirs = await setLocation(phoneB, recordId, 42.1, { baseVersion: 1 });
+        await push(h, phoneB, t.bToken, t.teamId, [theirs]);
+        const mine = await setLocation(phone, recordId, 42.33, { baseVersion: 1 });
+        const typo = await setLocation(phone, recordId, 95, { baseVersion: 1, follows: mine.changeId });
+        const elsewhere = await setLocation(otherPhone, recordId, 96, { baseVersion: 1 });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [mine, typo])).body)).toEqual([
+          'conflict',
+          'rejected',
+        ]);
+        expect(statuses((await push(h, otherPhone, t.aToken, t.teamId, [elsewhere])).body)).toEqual([
+          'rejected',
+        ]);
+
+        const choice = await setLocation(phone, recordId, 42.33, {
+          baseVersion: 2,
+          conflictOf: mine.changeId,
+          resolution: 'replace',
+        });
+        const later = await setLocation(phone, recordId, 97, { baseVersion: 3 });
+        expect(statuses((await push(h, phone, t.aToken, t.teamId, [choice, later])).body)).toEqual([
+          'accepted',
+          'rejected',
+        ]);
+        expect(await resolvedBy(mine, typo, later, elsewhere)).toEqual([
+          choice.changeId,
+          choice.changeId,
+          null,
+          null,
+        ]);
+        expect(await openRejections(phone)).toBe(1);
+        expect(await openRejections(otherPhone)).toBe(1);
+      });
+
+      it('links lead to the person’s changes under the phone’s earlier ID, never to anyone else’s or another team’s', async () => {
+        // A phone whose ID is spent (wiped on the server) keeps its work and sends it under a new
+        // ID, so a fix can name a rejection the earlier ID got.
+        const { phone: before, recordId } = await freshEncounter();
+        const after = await FakePhone.create();
+        await register(h, after, t.aToken, t.teamId);
+        const first = await setLocation(before, recordId, 95, { baseVersion: 1 });
+        expect(statuses((await push(h, before, t.aToken, t.teamId, [first])).body)).toEqual(['rejected']);
+        const fix = await setLocation(after, recordId, 91, { baseVersion: 1, supersedes: first.changeId });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [fix])).body)).toEqual(['rejected']);
+        const again = await setLocation(after, recordId, 42.33, { baseVersion: 1, supersedes: fix.changeId });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [again])).body)).toEqual(['accepted']);
+        expect(await resolvedBy(first, fix)).toEqual([again.changeId, again.changeId]);
+        expect(await openRejections(before)).toBe(0);
+
+        // Through someone else's change, or by someone else's, nothing of the person's is settled.
+        const other = await freshEncounter(t.bToken);
+        const mine = await setLocation(after, recordId, 96, { baseVersion: 2 });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [mine])).body)).toEqual(['rejected']);
+        const theirFix = await setLocation(other.phone, recordId, 91, {
+          baseVersion: 2,
+          supersedes: mine.changeId,
+        });
+        expect(statuses((await push(h, other.phone, t.bToken, t.teamId, [theirFix])).body)).toEqual([
+          'rejected',
+        ]);
+        const throughTheirs = await setLocation(after, other.recordId, 42.2, {
+          baseVersion: 1,
+          supersedes: theirFix.changeId,
+        });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [throughTheirs])).body)).toEqual([
+          'accepted',
+        ]);
+        const byThem = await setLocation(other.phone, other.recordId, 42.3, {
+          baseVersion: 2,
+          supersedes: mine.changeId,
+        });
+        expect(statuses((await push(h, other.phone, t.bToken, t.teamId, [byThem])).body)).toEqual([
+          'accepted',
+        ]);
+        expect(await resolvedBy(mine, theirFix)).toEqual([null, null]);
+
+        // Links that go round in a circle (only a modified phone sends these) end the walk.
+        const closing = await setLocation(after, recordId, 42.4, { baseVersion: 2 });
+        const loop = await setLocation(after, other.recordId, 93, {
+          baseVersion: 3,
+          supersedes: closing.changeId,
+        });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [loop])).body)).toEqual(['rejected']);
+        const closed = { ...closing, supersedes: loop.changeId };
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [closed])).body)).toEqual(['accepted']);
+        expect(await resolvedBy(loop)).toEqual([closing.changeId]);
+        const self = await setLocation(after, recordId, 42.5, { baseVersion: 3 });
+        expect(
+          statuses((await push(h, after, t.aToken, t.teamId, [{ ...self, supersedes: self.changeId }])).body),
+        ).toEqual(['accepted']);
+
+        // The same person's rejection in another team stays open there.
+        const team2 = await secondTeam(h, 'Chain Team', 'chain');
+        await addMember(h, team2, 'jordan@example.com', 'Jordan (demo)');
+        const away = await FakePhone.create();
+        await register(h, away, t.aToken, team2.teamId);
+        const elsewhere = await away.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind: 'telehealth' },
+        });
+        expect(statuses((await push(h, away, t.aToken, team2.teamId, [elsewhere])).body)).toEqual([
+          'rejected',
+        ]);
+        const across = await setLocation(after, recordId, 42.6, {
+          baseVersion: 4,
+          supersedes: elsewhere.changeId,
+        });
+        expect(statuses((await push(h, after, t.aToken, t.teamId, [across])).body)).toEqual(['accepted']);
+        expect(await resolvedBy(elsewhere)).toEqual([null]);
+      });
     });
 
     it('a note for an encounter the server doesn’t have is a stale reference', async () => {

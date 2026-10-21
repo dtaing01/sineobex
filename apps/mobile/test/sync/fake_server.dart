@@ -214,26 +214,46 @@ class FakeSyncServer {
     receipts[id] = _Receipt(
       userId: userId,
       deviceId: deviceId,
+      seq: c['seq']! as int,
       recordId: c['recordId']! as String,
       field: c['field'] as String?,
+      supersedes: c['supersedes'] as String?,
+      conflictOf: c['conflictOf'] as String?,
       status: o['status']! as String,
       serverVersion: o['serverVersion'] as int?,
       reason: o['reason'] as String?,
       hash: hash,
       quarantined: o['quarantined'] == true,
     );
-    if (o['status'] == 'accepted') {
-      for (final linked in [c['supersedes'], c['conflictOf']].whereType<String>()) {
-        receipts[linked]?.resolved = true;
-      }
-      // A fixed create also settles the record's other rejections by this person.
-      if (c['op'] == 'create' && c['supersedes'] != null) {
-        for (final r in receipts.values) {
-          if (r.recordId == c['recordId'] && r.userId == userId && r.status == 'rejected') r.resolved = true;
-        }
-      }
+    if (o['status'] == 'accepted' && (c['supersedes'] != null || c['conflictOf'] != null)) {
+      _settle(id, create: c['op'] == 'create');
     }
     return receipts[id]!.result(this);
+  }
+
+  /// What an accepted fix or choice covers (apply.ts settle): what the phone folded into it (its
+  /// earlier unsettled changes to the field, or a fixed create's record's rejections), then, by
+  /// the person's own links, what each of those fixed or resolved in turn.
+  void _settle(String id, {required bool create}) {
+    final fix = receipts[id]!;
+    bool open(_Receipt r) => !r.resolved && !r.quarantined && (r.status == 'rejected' || r.status == 'conflict');
+    final queue = [
+      id,
+      for (final MapEntry(:key, value: r) in receipts.entries)
+        if (r.userId == fix.userId &&
+            r.recordId == fix.recordId &&
+            open(r) &&
+            (create ? r.status == 'rejected' : r.deviceId == fix.deviceId && r.field == fix.field && r.seq < fix.seq))
+          key,
+    ];
+    final seen = <String>{};
+    while (queue.isNotEmpty) {
+      final next = queue.removeLast();
+      final r = receipts[next];
+      if (r == null || r.userId != fix.userId || !seen.add(next)) continue;
+      if (next != id && open(r)) r.resolved = true;
+      queue.addAll([r.supersedes, r.conflictOf].whereType<String>());
+    }
   }
 
   Map<String, Object?> _create(String userId, Map<String, Object?> c) {
@@ -511,8 +531,11 @@ class _Receipt {
   _Receipt({
     required this.userId,
     required this.deviceId,
+    required this.seq,
     required this.recordId,
     required this.field,
+    required this.supersedes,
+    required this.conflictOf,
     required this.status,
     required this.serverVersion,
     required this.reason,
@@ -521,8 +544,11 @@ class _Receipt {
   });
   final String userId;
   final String deviceId;
+  final int seq;
   final String recordId;
   final String? field;
+  final String? supersedes;
+  final String? conflictOf;
   final String status;
   final int? serverVersion;
   final String? reason;
