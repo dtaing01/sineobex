@@ -4,6 +4,7 @@ import { valueHash } from '../src/sync/canonical.ts';
 import { MAX_PENDING_PER_DEVICE } from '../src/sync/devices.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
+  addMember,
   call,
   FakePhone,
   handOver,
@@ -1199,6 +1200,57 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect((await viewed()).slice(before).sort()).toEqual(
         [note, noteEdit, encounterEdit].map(itemOf).sort(),
       );
+    });
+
+    it('a held change its phone pushes normally once the person is back stays held for review', async () => {
+      // Review finding: a hand-over stores no receipt, so after a re-invite the phone's normal
+      // push found nothing in its way and put the change on the chart, while the queue still
+      // said it was rejected (or waiting).
+      const { phone } = await removedPhone(h, t, 'emery@example.com', 'Emery (demo)');
+      const rejected = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      const pending = await phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical' },
+      });
+      expect((await handOver(h, phone, [rejected, pending])).status).toBe(200);
+      const items = await queue();
+      const itemOf = (c: { changeId: string }) => items.find((i) => i.changeId === c.changeId)!.id;
+      const decide = (c: { changeId: string }, decision: 'accept' | 'reject', reason: string) =>
+        call(h, `/v1/team/quarantine/${itemOf(c)}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason },
+        });
+      expect((await decide(rejected, 'reject', 'Entered twice')).status).toBe(200);
+
+      // Re-invited, the phone syncs again and sends what it still holds the normal way.
+      const back = await addMember(h, t, 'emery@example.com', 'Emery (demo)');
+      const held = (c: { changeId: string; valueHash: string }, decision: string) => ({
+        changeId: c.changeId,
+        status: 'rejected',
+        reason: 'permission',
+        message: expect.any(String),
+        details: { problem: 'held_for_review', decision },
+        quarantined: true,
+        hash: c.valueHash,
+      });
+      for (let i = 0; i < 2; i++) {
+        const r = await push(h, phone, back.token, t.teamId, [rejected, pending]);
+        expect(r.status).toBe(200);
+        expect(results(r.body)).toEqual([held(rejected, 'rejected'), held(pending, 'pending')]);
+      }
+      expect(await count('encounters', `id in ('${rejected.recordId}', '${pending.recordId}')`)).toBe(0);
+      expect(
+        await count('sync_changes', `change_id in ('${rejected.changeId}', '${pending.changeId}')`),
+      ).toBe(0);
+
+      // The admin's decision is still the way onto the chart, and the phone then gets its receipt.
+      expect((await decide(pending, 'accept', 'Visit confirmed with Emery')).status).toBe(200);
+      expect(await count('encounters', `id = '${pending.recordId}'`)).toBe(1);
+      const after = await push(h, phone, back.token, t.teamId, [pending]);
+      expect(results(after.body)[0]).toMatchObject({ status: 'accepted', hash: pending.valueHash });
     });
 
     it('activity log entries count against the cap, so a removed person’s key can’t flood the audit chain', async () => {

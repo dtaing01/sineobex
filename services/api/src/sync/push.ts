@@ -141,6 +141,23 @@ async function processOne(
     const mine = { teamId: actor.teamId, userId: actor.authorId, deviceId: actor.deviceId };
     if ((await changeOwners(tx, change.changeId)).some((o) => !sameOwner(o, mine)))
       return reused(change.changeId);
+    // This person's own change, handed over for review after they were removed: however the
+    // phone sends it again, only the admin's decision puts it on the chart. (An accepted one has
+    // a receipt, answered above.)
+    const [held] = await tx<{ status: 'pending' | 'rejected'; valueHash: string }[]>`
+      select status, value_hash from sineobex.quarantine_items where change_id = ${change.changeId}`;
+    if (held) {
+      return toResult(
+        change.changeId,
+        {
+          status: 'rejected',
+          reason: 'permission',
+          details: { problem: 'held_for_review', decision: held.status },
+          quarantined: true,
+        },
+        held.valueHash,
+      );
+    }
     return checked.ok
       ? applyChange(tx, audit, actor, change, checked.hash)
       : applyChange(tx, audit, actor, change, change.valueHash, checked.outcome);
