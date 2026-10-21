@@ -28,6 +28,7 @@ class SyncSnapshot {
     this.lastSyncedAt,
     this.nextAttempt,
     this.elsewhere = 0,
+    this.frozen,
   });
 
   /// A team's database is open (the app is unlocked with a team chosen).
@@ -45,6 +46,9 @@ class SyncSnapshot {
   /// Unsynced changes in this person's other team databases on the phone, which sync only when
   /// that team is open. Null when one of them couldn't be read.
   final int? elsewhere;
+
+  /// Why nothing new can be saved in this team (its access ended), or null.
+  final String? frozen;
 }
 
 /// Opens the person's encrypted database while the app is unlocked, keeps it syncing, and acts on
@@ -123,6 +127,7 @@ class SyncController extends ChangeNotifier implements LocalData {
       lastSyncedAt: _lastSyncedAt,
       nextAttempt: _engine?.nextAttempt,
       elsewhere: _elsewhere,
+      frozen: store.frozenMessage,
     );
   }
 
@@ -181,6 +186,7 @@ class SyncController extends ChangeNotifier implements LocalData {
 
   Future<void> _checkDevices() async {
     final dir = await databaseDirectory();
+    await _finishWipes(dir);
     final s = session.state;
     final locked = s is Locked ? s.user : null;
     final open = s is Unlocked ? s.user.userId : null;
@@ -200,16 +206,14 @@ class SyncController extends ChangeNotifier implements LocalData {
         } on Exception {
           continue; // This file stays as it is; the others are still checked.
         }
-        if (!_wipeOrdered(status.status)) continue;
+        if (status.status == DeviceStatus.wiped) {
+          await device.forgetTeam(teamId); // Spent: see SyncDeviceSpent. The data stays.
+          continue;
+        }
+        if (status.status != DeviceStatus.wipeRequested) continue;
         // The person may have unlocked meanwhile and opened this very file.
         if (_db?.path == path) continue;
-        LocalDatabase.deleteFiles(path);
-        try {
-          await requests.confirmWiped(deviceId);
-        } on Exception {
-          // Shown as "wipe requested" until the phone reaches the server again.
-        }
-        await device.forgetTeam(teamId);
+        await _wipe(path, device, deviceId, teamId);
         await session.dropTeam(teamId, userId: userId);
         wiped++;
       }
@@ -223,9 +227,53 @@ class SyncController extends ChangeNotifier implements LocalData {
     }
   }
 
-  /// Only an explicit order deletes anything. A status this app version doesn't know keeps the
-  /// data: a newer server's new state must never read as "wipe".
-  static bool _wipeOrdered(DeviceStatus status) => status == DeviceStatus.wipeRequested || status == DeviceStatus.wiped;
+  /// The one way a remote wipe deletes data (module 9). Only an explicit order (wipe_requested)
+  /// comes here: 'wiped' means the order was already carried out, and a status this app version
+  /// doesn't know keeps the data.
+  ///
+  /// The wipe is written down before anything is deleted, then the device ID is spent, then the
+  /// files go, then the server is told. If the app dies or is offline part way, [_finishWipes]
+  /// completes it later, and [_open] won't open a file whose wipe hasn't finished.
+  Future<void> _wipe(String path, DeviceIdentity device, String deviceId, String teamId) async {
+    final wipes = UnconfirmedWipes(deviceStore);
+    final wipe = UnconfirmedWipe(userId: device.userId, teamId: teamId, deviceId: deviceId, wipedAt: _now().toUtc());
+    await wipes.put(wipe);
+    if (_db?.path == path) _close();
+    await device.forgetTeam(teamId);
+    LocalDatabase.deleteFiles(path);
+    await wipes.put(wipe.asDeleted());
+    await _confirmWipe(wipes, wipe);
+  }
+
+  Future<void> _confirmWipe(UnconfirmedWipes wipes, UnconfirmedWipe wipe) async {
+    try {
+      final device = DeviceIdentity(store: deviceStore, userId: wipe.userId);
+      await DeviceRequests(
+        api: deviceApi,
+        device: device,
+        now: _now,
+      ).confirmWiped(wipe.deviceId, wipedAt: wipe.wipedAt);
+      await wipes.remove(wipe.deviceId);
+    } on Exception {
+      // Shown as "wipe requested" until a later check reaches the server.
+    }
+  }
+
+  /// Completes wipes the app didn't finish and confirms the ones the server hasn't heard about.
+  Future<void> _finishWipes(String dir) async {
+    final wipes = UnconfirmedWipes(deviceStore);
+    for (final wipe in await wipes.all()) {
+      final device = DeviceIdentity(store: deviceStore, userId: wipe.userId);
+      if (await device.existingDeviceId(wipe.teamId) == wipe.deviceId) await device.forgetTeam(wipe.teamId);
+      if (!wipe.deleted) {
+        final path = LocalDatabase.fileFor(dir, wipe.userId, wipe.teamId);
+        if (_db?.path == path) continue; // Can't happen: _open finishes the wipe first.
+        LocalDatabase.deleteFiles(path);
+        await wipes.put(wipe.asDeleted());
+      }
+      await _confirmWipe(wipes, wipe);
+    }
+  }
 
   /// Teams that dropped out of the person's profile (removed or suspended while the phone was
   /// away) can't be opened from the team picker, so their databases are dealt with at unlock:
@@ -246,8 +294,10 @@ class SyncController extends ChangeNotifier implements LocalData {
         continue;
       }
       if (!identical(session.databaseKey, key)) return; // Locked meanwhile: the next unlock tries again.
-      if (_wipeOrdered(status.status)) {
-        await _wipeFile(path, device, deviceId, teamId);
+      if (status.status == DeviceStatus.wiped) {
+        await device.forgetTeam(teamId);
+      } else if (status.status == DeviceStatus.wipeRequested) {
+        await _wipe(path, device, deviceId, teamId);
       } else if (status.status == DeviceStatus.active && status.access == DeviceStatusResultAccess.removed) {
         final db = LocalDatabase.open(path, key);
         final clock = ClockSync(boot: boot, references: DatabaseClockReferences(db), wallNow: _now);
@@ -271,7 +321,7 @@ class SyncController extends ChangeNotifier implements LocalData {
         } finally {
           db.close();
         }
-        if (handedOver) await _wipeFile(path, device, deviceId, teamId);
+        if (handedOver) await _wipe(path, device, deviceId, teamId);
       }
     }
     final open = _store;
@@ -281,19 +331,11 @@ class SyncController extends ChangeNotifier implements LocalData {
     }
   }
 
-  Future<void> _wipeFile(String path, DeviceIdentity device, String deviceId, String teamId) async {
-    LocalDatabase.deleteFiles(path);
-    try {
-      await DeviceRequests(api: deviceApi, device: device, now: _now).confirmWiped(deviceId);
-    } on Exception {
-      // The admin page still shows "wipe requested"; the data is gone either way.
-    }
-    await device.forgetTeam(teamId);
-  }
-
-  /// The server holds every unconfirmed change in [store] (that it could read at all).
+  /// The server holds every unconfirmed change in [store], and none is left that it couldn't read.
+  /// A change it couldn't read can't be handed over, and a removal isn't a wipe order: such a file
+  /// stays, locked, until an administrator orders the wipe (module 9: never dropped).
   static bool _covers(Set<String>? held, LocalStore store) =>
-      (held ?? const <String>{}).containsAll(store.handOverIds());
+      (held ?? const <String>{}).containsAll(store.handOverIds()) && store.unreadableCount() == 0;
 
   /// Waits for the database the current session opened, and for the unlock's sweep of teams no
   /// longer in the profile (tests use this).
@@ -318,6 +360,15 @@ class SyncController extends ChangeNotifier implements LocalData {
     if (s is! Unlocked || s.user.userId != userId || s.user.teamId != teamId || !identical(session.databaseKey, key)) {
       return;
     }
+    // A wipe of this team that didn't finish (the app died part way) finishes before anything
+    // can open what it covered.
+    for (final wipe in await UnconfirmedWipes(deviceStore).all()) {
+      if (wipe.userId == userId && wipe.teamId == teamId && !wipe.deleted) {
+        LocalDatabase.deleteFiles(LocalDatabase.fileFor(dir, userId, teamId));
+        await UnconfirmedWipes(deviceStore).put(wipe.asDeleted());
+      }
+    }
+    if (token != _openToken) return;
     final db = LocalDatabase.open(LocalDatabase.fileFor(dir, userId, teamId), key);
     final others = LocalDatabase.filesForUser(dir, userId).where((f) => f != db.path).toList();
     if (booted != null) _shareClockReference(db, others, key, booted.bootId);
@@ -445,6 +496,8 @@ class SyncController extends ChangeNotifier implements LocalData {
       switch (outcome) {
         case SyncWipeRequested():
           await _wipeTeam(engine, 'An administrator erased this team’s data on this phone.');
+        case SyncDeviceSpent():
+          await engine.device.forgetTeam(engine.teamId);
         case SyncAccessLost():
           await _checkAccess(engine);
         default:
@@ -467,7 +520,9 @@ class SyncController extends ChangeNotifier implements LocalData {
       return; // Offline or unknown: keep everything and try again later.
     }
     if (status == null || !identical(engine, _engine)) return;
-    if (_wipeOrdered(status.status)) {
+    if (status.status == DeviceStatus.wiped) {
+      await engine.device.forgetTeam(engine.teamId);
+    } else if (status.status == DeviceStatus.wipeRequested) {
       await _wipeTeam(engine, 'An administrator erased this team’s data on this phone.');
     } else if (status.status == DeviceStatus.active && status.access == DeviceStatusResultAccess.removed) {
       // Hand over what never synced, so no care record is lost, then wipe. Nothing new may be
@@ -481,7 +536,18 @@ class SyncController extends ChangeNotifier implements LocalData {
       }
       if (!identical(engine, _engine)) return; // Closed mid-upload: the next open starts over.
       // Without a device key nothing can be handed over, so unsynced work stays (encrypted).
-      if (!_covers(held, engine.store)) return;
+      if (!_covers(held, engine.store)) {
+        final left = engine.store.unreadableCount();
+        if (left > 0 && (held ?? const <String>{}).containsAll(engine.store.handOverIds())) {
+          engine.store.freeze(
+            'Your access to this team ended. ${left == 1 ? 'One record' : '$left records'} couldn’t be sent to a '
+            'Program Admin. ${left == 1 ? 'It stays' : 'They stay'} locked on this phone until an administrator '
+            'erases ${left == 1 ? 'it' : 'them'}.',
+          );
+          notifyListeners();
+        }
+        return;
+      }
       await _wipeTeam(
         engine,
         'Your access to this team ended. Records that hadn’t synced were sent to a Program Admin to review.',
@@ -510,17 +576,13 @@ class SyncController extends ChangeNotifier implements LocalData {
     final userId = engine.store.userId;
     final teamId = engine.teamId;
     final path = engine.store.path;
-    if (_db?.path == path) _close();
-    LocalDatabase.deleteFiles(path);
     final deviceId = await engine.device.existingDeviceId(teamId);
     if (deviceId != null) {
-      try {
-        await _signedEngine(engine).confirmWiped(deviceId);
-      } on Exception {
-        // The admin page still shows "wipe requested"; the data is gone either way.
-      }
+      await _wipe(path, engine.device, deviceId, teamId);
+    } else {
+      if (_db?.path == path) _close();
+      LocalDatabase.deleteFiles(path);
     }
-    await engine.device.forgetTeam(teamId);
     final user = switch (session.state) {
       Unlocked(:final user) || Locked(:final user) => user,
       _ => null,

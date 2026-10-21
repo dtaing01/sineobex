@@ -51,6 +51,12 @@ class SyncWipeRequested extends SyncOutcome {
   const SyncWipeRequested();
 }
 
+/// The server counts this device ID as wiped, so its wipe already happened: what the phone holds
+/// under it now was charted afterwards. The ID is spent; the data is kept and syncs under a new one.
+class SyncDeviceSpent extends SyncOutcome {
+  const SyncDeviceSpent();
+}
+
 /// Waiting out a backoff after failures.
 class SyncWaiting extends SyncOutcome {
   const SyncWaiting(this.until);
@@ -250,8 +256,10 @@ class SyncEngine {
     switch (res.device.status) {
       case DeviceStatus.active:
         break;
-      case DeviceStatus.wipeRequested || DeviceStatus.wiped:
+      case DeviceStatus.wipeRequested:
         return const SyncWipeRequested();
+      case DeviceStatus.wiped:
+        return const SyncDeviceSpent();
       case DeviceStatus.unknown:
         // A state this app version doesn't know: keep everything and stop until an update. The
         // server keeps what it applied; its receipts come back on the next try.
@@ -466,8 +474,8 @@ class DeviceRequests {
     );
   }
 
-  Future<void> confirmWiped(String deviceId) async {
-    final payload = SignedWipedPayload(deviceId: deviceId, purpose: 'wiped', wipedAt: _now().toUtc());
+  Future<void> confirmWiped(String deviceId, {DateTime? wipedAt}) async {
+    final payload = SignedWipedPayload(deviceId: deviceId, purpose: 'wiped', wipedAt: (wipedAt ?? _now()).toUtc());
     await api.confirmWiped(
       deviceId: deviceId,
       body: SignedWiped(payload: payload, signature: await device.sign(payload.toJson())),

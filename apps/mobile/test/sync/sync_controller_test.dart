@@ -7,6 +7,7 @@ import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
+import 'package:sineobex_field/sync/device_identity.dart';
 import 'package:sineobex_field/sync/local_db.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -308,6 +309,78 @@ void main() {
     server.onRequest = null;
     expect(await sync.syncNow(), isA<SyncDone>());
     sync.store!.createEncounter(kind: 'medical');
+  });
+
+  test('a removal keeps changes the server couldn’t read on the phone, locked, and says so', () async {
+    // Review finding: the hand-over left them out and the wipe then deleted them, while the notice
+    // said every unsynced record had been sent.
+    await signIn();
+    sync.store!.createEncounter(kind: 'medical');
+    sync.store!.createEncounter(kind: 'non_medical');
+    final unreadable = sync.store!.outbox().last;
+    server.malformed.add(unreadable.changeId);
+    await sync.syncNow();
+    expect(sync.store!.entry(unreadable.changeId)!.state, ChangeState.rejected);
+    server.malformed.clear();
+    sync.store!.createEncounter(kind: 'medical');
+    server.removedFromTeam.add('$userId/team-0');
+    await sync.syncNow();
+    // Both readable encounters reach the Program Admin; the unreadable one can't.
+    expect(server.quarantine, hasLength(2));
+    expect(server.quarantine.keys, isNot(contains(unreadable.changeId)));
+    expect(teamFile('team-0'), isTrue);
+    expect(session.state, isA<Unlocked>());
+    expect(sync.snapshot.frozen, contains('couldn’t be sent'));
+    expect(sync.store!.entry(unreadable.changeId), isNotNull);
+  });
+
+  test('a wipe whose confirmation couldn’t be sent is confirmed later, after a restart too', () async {
+    // Review finding: the device ID was forgotten anyway, so the server and the admin's page
+    // showed "wipe requested" forever.
+    await signIn();
+    sync.store!.createEncounter(kind: 'medical');
+    final device = deviceOf('team-0');
+    server.devices[device]!.status = 'wipe_requested';
+    server.onRequest = (path) {
+      if (path.endsWith('/wiped')) throw const NetworkException('offline');
+    };
+    await lock();
+    expect(teamFile('team-0'), isFalse);
+    expect(server.devices[device]!.status, 'wipe_requested');
+    expect(await UnconfirmedWipes(store).all(), hasLength(1));
+    server.onRequest = null;
+    sync.dispose();
+    await launch();
+    expect(server.devices[device]!.status, 'wiped');
+    expect(await UnconfirmedWipes(store).all(), isEmpty);
+  });
+
+  test('work charted under a device ID the server counts as wiped is kept and syncs under a new one', () async {
+    // Review finding: 'wiped' was read as a wipe order, deleting work no admin ordered erased.
+    await signIn();
+    final spent = deviceOf('team-0');
+    // As if this phone's earlier wipe was confirmed but forgetting the ID didn't finish.
+    server.devices[spent]!.status = 'wiped';
+    final encounter = sync.store!.createEncounter(kind: 'medical');
+    expect(await sync.syncNow(), isA<SyncDeviceSpent>());
+    expect(teamFile('team-0'), isTrue);
+    expect(await sync.syncNow(), isA<SyncDone>());
+    expect(server.records[encounter], isNotNull);
+    expect(server.devices.keys.where((d) => d != spent && server.devices[d]!.teamId == 'team-0'), hasLength(1));
+  });
+
+  test('a wipe the app didn’t finish completes before the team can be opened', () async {
+    await signIn();
+    final kept = sync.store!.createEncounter(kind: 'medical');
+    await lock();
+    // The app died after writing the wipe down, before deleting the file.
+    await UnconfirmedWipes(store)
+        .put(UnconfirmedWipe(userId: userId, teamId: 'team-0', deviceId: deviceOf('team-0'), wipedAt: wall));
+    server.offline = true;
+    await session.unlockWithPin(pin);
+    await idle();
+    expect(sync.store!.record(kept), isNull);
+    expect(sync.store!.unsynced().total, 0);
   });
 }
 

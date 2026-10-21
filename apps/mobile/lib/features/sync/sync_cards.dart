@@ -86,6 +86,10 @@ class SyncStatusCard extends StatelessWidget {
           const SizedBox(height: FieldSpace.s1),
           Text('Times are checked against the server at the next sync.', style: text.bodyMedium),
         ],
+        if (snapshot.frozen case final frozen?) ...[
+          const SizedBox(height: FieldSpace.s2),
+          Text(frozen, style: text.bodyLarge),
+        ],
         if (snapshot.elsewhere != 0) ...[
           const SizedBox(height: FieldSpace.s2),
           Text(elsewhereText(snapshot.elsewhere), style: text.bodyMedium),

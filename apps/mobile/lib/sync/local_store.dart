@@ -282,6 +282,9 @@ class LocalStore {
   void unfreeze() => _frozen = null;
   bool get frozen => _frozen != null;
 
+  /// Why nothing new may be written, while [frozen].
+  String? get frozenMessage => _frozen;
+
   /// The file this store writes to.
   String get path => _local.path;
 
@@ -589,6 +592,11 @@ class LocalStore {
   ];
 
   Set<String> handOverIds() => {for (final e in handOver()) e.changeId};
+
+  /// Rejections the server couldn't read: they can't be handed over, so a removal keeps them on
+  /// the phone (locked) until an administrator orders a wipe.
+  int unreadableCount() =>
+      outbox().where((e) => e.state == ChangeState.rejected && e.details?['problem'] == 'malformed').length;
 
   /// The oldest changes that may go now, in order. A change waits ("held") while something it
   /// depends on is rejected or in conflict (module 9: "Later changes that depend on a rejected

@@ -76,3 +76,65 @@ class DeviceIdentity {
 
   static String _b64u(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 }
+
+/// A remote wipe this phone carried out, kept until the server has its confirmation (module 9).
+class UnconfirmedWipe {
+  const UnconfirmedWipe({
+    required this.userId,
+    required this.teamId,
+    required this.deviceId,
+    required this.wipedAt,
+    this.deleted = false,
+  });
+
+  factory UnconfirmedWipe.fromJson(Map<String, Object?> j) => UnconfirmedWipe(
+    userId: j['userId']! as String,
+    teamId: j['teamId']! as String,
+    deviceId: j['deviceId']! as String,
+    wipedAt: DateTime.parse(j['wipedAt']! as String),
+    deleted: j['deleted'] == true,
+  );
+
+  final String userId;
+  final String teamId;
+  final String deviceId;
+  final DateTime wipedAt;
+
+  /// The files are gone. Until then, the team's file must not be opened: it may still hold what
+  /// the order covered.
+  final bool deleted;
+
+  UnconfirmedWipe asDeleted() =>
+      UnconfirmedWipe(userId: userId, teamId: teamId, deviceId: deviceId, wipedAt: wipedAt, deleted: true);
+
+  Map<String, Object?> toJson() => {
+    'userId': userId,
+    'teamId': teamId,
+    'deviceId': deviceId,
+    'wipedAt': wipedAt.toUtc().toIso8601String(),
+    'deleted': deleted,
+  };
+}
+
+/// Wipes written down before they start, so a wipe the app didn't finish (killed, or offline when
+/// confirming) is finished and confirmed later, whoever is signed in by then. Without this, the
+/// admin's page would show "wipe requested" forever and the audit chain would never record it.
+class UnconfirmedWipes {
+  UnconfirmedWipes(this._store);
+  final SecureStore _store;
+  static const _key = 'wipes.unconfirmed';
+
+  Future<List<UnconfirmedWipe>> all() async {
+    final raw = await _store.read(_key);
+    if (raw == null) return const [];
+    return [for (final j in jsonDecode(raw) as List<Object?>) UnconfirmedWipe.fromJson(j! as Map<String, Object?>)];
+  }
+
+  Future<void> _save(List<UnconfirmedWipe> wipes) =>
+      _store.write(_key, jsonEncode([for (final w in wipes) w.toJson()]));
+
+  Future<void> put(UnconfirmedWipe wipe) async =>
+      _save([...(await all()).where((w) => w.deviceId != wipe.deviceId), wipe]);
+
+  Future<void> remove(String deviceId) async => _save((await all()).where((w) => w.deviceId != deviceId).toList());
+}
