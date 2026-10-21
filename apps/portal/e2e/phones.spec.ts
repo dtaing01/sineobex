@@ -28,13 +28,15 @@ async function staffToken(email: string): Promise<string> {
   return verified.access_token as string;
 }
 
-function apiPost(token: string, path: string, body: unknown) {
+function apiCall(token: string, method: string, path: string, body?: unknown) {
   return fetch(`${API}${path}`, {
-    method: 'POST',
+    method,
     headers: { authorization: `Bearer ${token}`, 'x-team-id': TEAM, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
+
+const apiPost = (token: string, path: string, body: unknown) => apiCall(token, 'POST', path, body);
 
 /** A new encounter as a phone sends it. A one-key object's JSON is already canonical. */
 function createEncounter(kind: 'medical' | 'non_medical') {
@@ -182,6 +184,75 @@ test('a record from someone whose role no longer allows it is reviewed and accep
     status: 'accepted',
     hash: change.valueHash,
   });
+});
+
+test('a long queue comes a page at a time, and can be narrowed to one person', async ({ page }) => {
+  // More than a page (50) held from Riley, whose role can't chart; then one from Sam, whose role is
+  // switched to Billing/Data just long enough for their phone's record to be held too.
+  await phoneSync('billing@example.com', {
+    changes: Array.from({ length: 51 }, () => createEncounter('non_medical')),
+  });
+  const admin = await staffToken('admin@example.com');
+  const members = (await (await apiCall(admin, 'GET', '/v1/team/members')).json()) as {
+    membershipId: string;
+    email: string;
+  }[];
+  const roles = (await (await apiCall(admin, 'GET', '/v1/team/roles')).json()) as {
+    id: string;
+    key: string;
+  }[];
+  const sam = members.find((m) => m.email === 'logistics@example.com')!;
+  const setRole = async (key: string) => {
+    const changed = await apiCall(admin, 'PUT', `/v1/team/members/${sam.membershipId}/role`, {
+      roleId: roles.find((r) => r.key === key)!.id,
+      reason: 'Covering the billing desk for a day',
+    });
+    expect(changed.status).toBe(200);
+  };
+  await setRole('billing_data');
+  await phoneSync('logistics@example.com', { changes: [createEncounter('non_medical')] });
+  await setRole('logistics');
+
+  await signIn(page, 'admin@example.com');
+  await page.goto('/team/quarantine');
+  const items = page.getByRole('region', { name: /^\d+\. New encounter from / });
+  const pages = page.getByRole('navigation', { name: 'Quarantine pages' });
+  await expect(items).toHaveCount(50);
+  await expect(page.getByText('Page 1: 50 records, oldest first.')).toBeVisible();
+  await expect(pages.locator('[aria-current="page"]')).toHaveText('Page 1');
+  await expectAccessible(page, '/team/quarantine (page 1)');
+
+  await pages.getByRole('link', { name: 'Next page' }).click();
+  await expect(page).toHaveURL(/\?status=pending&after=[0-9a-f-]{36}&page=2$/);
+  await expect(items).toHaveCount(2);
+  await expect(page.getByRole('region', { name: 'New encounter from Sam Okafor (demo)' })).toHaveCount(1);
+  await expect(pages.locator('[aria-current="page"]')).toHaveText('Page 2');
+  await expect(pages.getByRole('link', { name: 'Next page' })).toHaveCount(0);
+  await expectAccessible(page, '/team/quarantine (page 2)');
+
+  // Riley's alone is still more than a page, and the next page keeps the person.
+  const person = page.getByLabel('Person');
+  await person.selectOption({ label: 'Riley Chen (demo)' });
+  await page.getByRole('button', { name: 'Show', exact: true }).click();
+  await expect(page).toHaveURL(/\?status=pending&person=[0-9a-f-]{36}$/);
+  await expect(page.getByRole('region', { name: 'New encounter from Riley Chen (demo)' })).toHaveCount(50);
+  await expect(items).toHaveCount(50);
+  await pages.getByRole('link', { name: 'Next page' }).click();
+  await expect(page).toHaveURL(/\?status=pending&person=[0-9a-f-]{36}&after=[0-9a-f-]{36}&page=2$/);
+  await expect(items).toHaveCount(1);
+  await expect(page.getByText('Page 2 from Riley Chen (demo): 1 record, oldest first.')).toBeVisible();
+  await expect(person.locator('option:checked')).toHaveText('Riley Chen (demo)');
+  await expectAccessible(page, '/team/quarantine (one person, page 2)');
+
+  // A decision there comes back to the same person and page.
+  const decide = items.first().getByRole('form');
+  await decide.getByRole('radio', { name: 'Reject' }).check();
+  await decide.getByRole('textbox', { name: 'Reason' }).fill('A test entry from the billing desk');
+  await decide.getByRole('button', { name: 'Record decision' }).click();
+  await expect(page).toHaveURL(/\?person=[0-9a-f-]{36}&after=[0-9a-f-]{36}&page=2&decided=rejected$/);
+  await expect(page.getByRole('status')).toContainText('Rejected.');
+  await expect(page.getByText('Nothing more after the previous page.')).toBeVisible();
+  await expect(person.locator('option:checked')).toHaveText('Riley Chen (demo)');
 });
 
 test('staff without the permissions never see these screens, and typed URLs are refused', async ({

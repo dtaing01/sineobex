@@ -512,6 +512,13 @@ p {
   color: var(--on-accent);
   font-weight: 700;
 }
+.px-pager ul {
+  align-items: center;
+}
+.px-pager span[aria-current='page'] {
+  padding: 0 var(--space-3);
+  font-weight: 700;
+}
 .px-value {
   margin: 0;
   white-space: pre-wrap;

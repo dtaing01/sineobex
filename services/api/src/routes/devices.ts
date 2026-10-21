@@ -13,7 +13,8 @@ import {
   DecideQuarantine,
   Device,
   DeviceStatusResult,
-  QuarantineItem,
+  QuarantinePage,
+  QuarantineQuery,
   QuarantineReceipt,
   RegisterDevice,
   SignedQuarantine,
@@ -110,10 +111,10 @@ const listQuarantineRoute = createRoute({
   path: '/v1/team/quarantine',
   operationId: 'listQuarantine',
   tags: ['devices'],
-  summary: 'Changes from phones whose user lost access, waiting for review',
+  summary: 'Changes from phones whose user lost access, waiting for review, a page at a time',
   security: [{ bearer: [] }],
-  request: { query: z.object({ status: z.enum(['pending', 'accepted', 'rejected']).default('pending') }) },
-  responses: { 200: { description: 'Items', ...json(z.array(QuarantineItem)) }, ...errors(401, 403) },
+  request: { query: QuarantineQuery },
+  responses: { 200: { description: 'A page of items', ...json(QuarantinePage) }, ...errors(401, 403, 422) },
 });
 
 const decideQuarantineRoute = createRoute({
@@ -160,7 +161,7 @@ export function registerDeviceRoutes(app: App, deps: Deps) {
 
   app.openapi(listQuarantineRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['quarantine.review'] });
-    return c.json(await listQuarantine(scope, c.req.valid('query').status), 200);
+    return c.json(await listQuarantine(scope, c.req.valid('query')), 200);
   });
 
   app.openapi(decideQuarantineRoute, async (c) => {

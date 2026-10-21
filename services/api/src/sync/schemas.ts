@@ -242,6 +242,25 @@ export const QuarantineItem = z
   })
   .openapi('QuarantineItem');
 
+export const QuarantineQuery = z.object({
+  status: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
+  userId: Uuid.optional().openapi({ description: 'Only this person’s items' }),
+  afterId: Uuid.optional().openapi({ description: 'The previous page’s nextAfterId' }),
+});
+export type QuarantineQueryValue = z.infer<typeof QuarantineQuery>;
+
+export const QuarantinePage = z
+  .object({
+    items: z.array(QuarantineItem).openapi({ description: 'Oldest first' }),
+    nextAfterId: Uuid.nullable().openapi({
+      description: 'Pass as afterId for the next page; null on the last',
+    }),
+    people: z.array(UserRef).openapi({
+      description: 'Everyone with items in this status, and the person filtered to, for a filter',
+    }),
+  })
+  .openapi('QuarantinePage');
+
 export const DecideQuarantine = z
   .object({ decision: z.enum(['accept', 'reject']), reason: Reason })
   .openapi('DecideQuarantine');

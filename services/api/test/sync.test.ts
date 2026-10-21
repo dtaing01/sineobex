@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { valueHash } from '../src/sync/canonical.ts';
-import { MAX_PENDING_PER_DEVICE } from '../src/sync/devices.ts';
+import { MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
+import { QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
   addMember,
@@ -11,6 +12,7 @@ import {
   push,
   register,
   removedPhone,
+  removedPhones,
   results,
   secondTeam,
   setupTeam,
@@ -51,6 +53,20 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       details: Record<string, unknown>;
       deviceTime: string | null;
     }[];
+  };
+
+  type QueueItem = { id: string; changeId: string; reason: string; value: unknown; user: { userId: string } };
+  type QueuePage = {
+    items: QueueItem[];
+    nextAfterId: string | null;
+    people: { userId: string; displayName: string }[];
+  };
+
+  /** One page of the review queue, as the admin (or whoever [token] is) sees it. */
+  const queuePage = async (query: Record<string, string> = {}, token = t.adminToken) => {
+    const r = await call(h, `/v1/team/quarantine?${new URLSearchParams(query)}`, { token, teamId: t.teamId });
+    expect(r.status).toBe(200);
+    return r.body as unknown as QueuePage;
   };
 
   /** A draft encounter with one note on phone A, synced. Returns the IDs. */
@@ -898,10 +914,9 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       expect(await count('encounters', `id = '${encounter.recordId}'`)).toBe(0);
 
-      const queue = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
-      const item = (
-        queue.body as unknown as { id: string; changeId: string; reason: string; value: unknown }[]
-      ).find((i) => i.changeId === encounter.changeId)!;
+      const item = (await queuePage({ userId: t.chwId })).items.find(
+        (i) => i.changeId === encounter.changeId,
+      )!;
       expect(item).toMatchObject({ reason: 'permission', value: { kind: 'non_medical' } });
 
       // Without quarantine.review the queue is refused.
@@ -978,8 +993,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         details: { problem: 'change_id_reused' },
       });
 
-      const queue = await call(h, '/v1/team/quarantine', { token: reviewerToken, teamId: t.teamId });
-      const item = (queue.body as unknown as { id: string; changeId: string }[]).find(
+      const item = (await queuePage({ userId: reviewerId }, reviewerToken)).items.find(
         (i) => i.changeId === own.changeId,
       )!;
       // Seeing it is logged with the patient it is about.
@@ -1015,7 +1029,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       // Review finding: the checks saw only this team's rows, so an ID taken in another team looked
       // free, and an admin's accept failed on the hidden receipt with a server error.
       const other = await secondTeam(h);
-      const { phone } = await removedPhone(h, t, 'rowan@example.com', 'Rowan (demo)');
+      const { phone, userId } = await removedPhone(h, t, 'rowan@example.com', 'Rowan (demo)');
       const encounter = (p: FakePhone) =>
         p.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
 
@@ -1059,11 +1073,9 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         ...late.map((c) => ({ changeId: c.changeId, status: 'quarantined', hash: c.valueHash })),
         { changeId: lateRead.changeId, status: 'rejected', reason: 'validation' },
       ]);
-      const queue = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
+      const queue = await queuePage({ userId });
       for (const c of late) {
-        const item = (queue.body as unknown as { id: string; changeId: string }[]).find(
-          (i) => i.changeId === c.changeId,
-        )!;
+        const item = queue.items.find((i) => i.changeId === c.changeId)!;
         const accept = await call(h, `/v1/team/quarantine/${item.id}/decision`, {
           method: 'POST',
           token: t.adminToken,
@@ -1132,24 +1144,20 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       select gen_random_uuid(), ${t.teamId}, ${phone.deviceId}, ${userId}, i, 'audit', gen_random_uuid(), 'append',
              ${filler}, now(), 'accepted', 1
       from generate_series(1, ${n}::int) as i`;
-    // The queue lists the oldest 200 items, so later tests must not find it full of stand-ins.
+    // Cleared after each test, so the queue holds only real hand-overs for the tests after it.
     const clearFillers = async (phone: FakePhone) => {
       await h.scratch.owner`
         delete from sineobex.quarantine_items where device_id = ${phone.deviceId} and value_hash = ${filler}`;
       await h.scratch.owner`
         delete from sineobex.sync_changes where device_id = ${phone.deviceId} and value_hash = ${filler}`;
     };
-    const queue = async () => {
-      const r = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
-      expect(r.status).toBe(200);
-      return r.body as unknown as { id: string; changeId: string }[];
-    };
+    const queue = async (userId: string) => (await queuePage({ userId })).items;
 
     it('viewing held work is logged with its patient, even when its encounter is held too', async () => {
       // Review finding: a note on a held encounter, and edits to a note or encounter the chart
       // doesn't have, were logged with no patient, so the view was missing from the patient's
       // access report.
-      const { phone } = await removedPhone(h, t, 'avery@example.com', 'Avery (demo)');
+      const { phone, userId } = await removedPhone(h, t, 'avery@example.com', 'Avery (demo)');
       const patientId = randomUUID();
       const encounter = await phone.change({
         entity: 'encounter',
@@ -1177,7 +1185,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       expect((await handOver(h, phone, [encounter, note, noteEdit, encounterEdit])).status).toBe(200);
 
-      const items = await queue();
+      const items = await queue(userId);
       const itemOf = (c: { changeId: string }) => items.find((i) => i.changeId === c.changeId)!.id;
       const viewed = async () =>
         (
@@ -1196,7 +1204,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       expect(rejected.status).toBe(200);
       const before = (await viewed()).length;
-      await queue();
+      await queue(userId);
       expect((await viewed()).slice(before).sort()).toEqual(
         [note, noteEdit, encounterEdit].map(itemOf).sort(),
       );
@@ -1206,7 +1214,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       // Review finding: a hand-over stores no receipt, so after a re-invite the phone's normal
       // push found nothing in its way and put the change on the chart, while the queue still
       // said it was rejected (or waiting).
-      const { phone } = await removedPhone(h, t, 'emery@example.com', 'Emery (demo)');
+      const { phone, userId } = await removedPhone(h, t, 'emery@example.com', 'Emery (demo)');
       const rejected = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
       const pending = await phone.change({
         entity: 'encounter',
@@ -1214,7 +1222,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         value: { kind: 'non_medical' },
       });
       expect((await handOver(h, phone, [rejected, pending])).status).toBe(200);
-      const items = await queue();
+      const items = await queue(userId);
       const itemOf = (c: { changeId: string }) => items.find((i) => i.changeId === c.changeId)!.id;
       const decide = (c: { changeId: string }, decision: 'accept' | 'reject', reason: string) =>
         call(h, `/v1/team/quarantine/${itemOf(c)}/decision`, {
@@ -1258,7 +1266,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       // permanent audit events without limit.
       const { phone, userId } = await removedPhone(h, t, 'riley@example.com', 'Riley (demo)');
       await fillPending(phone, userId, 1);
-      await fillRecorded(phone, userId, MAX_PENDING_PER_DEVICE - 2);
+      await fillRecorded(phone, userId, MAX_PENDING_PER_PERSON - 2);
       const read = () => phone.change({ entity: 'audit', op: 'append', value: { action: 'note.viewed' } });
       const last = await read();
       expect((await handOver(h, phone, [last])).body.results).toEqual([
@@ -1273,21 +1281,122 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       await clearFillers(phone);
     });
 
-    it('parallel hand-overs share the cap instead of each finding room', async () => {
-      // Review finding: each request counted in its own transaction and stored in later ones.
-      const { phone, userId } = await removedPhone(h, t, 'drew@example.com', 'Drew (demo)');
-      await fillPending(phone, userId, MAX_PENDING_PER_DEVICE - 1);
+    it('parallel hand-overs share the cap instead of each finding room, from one phone or two', async () => {
+      // Review findings: each request counted in its own transaction and stored in later ones, and
+      // each phone was counted (and locked) on its own, so a second phone found room again.
+      const { phones, userId } = await removedPhones(h, t, 'drew@example.com', 'Drew (demo)', 2);
+      const phoneOf = (i: number) => phones[i % 2]!;
+      await fillPending(phoneOf(0), userId, MAX_PENDING_PER_PERSON - 1);
       const encounters = await Promise.all(
-        Array.from({ length: 4 }, () =>
-          phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } }),
+        Array.from({ length: 4 }, (_, i) =>
+          phoneOf(i).change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } }),
         ),
       );
-      const attempts = await Promise.all(encounters.map((e) => handOver(h, phone, [e])));
+      const attempts = await Promise.all(encounters.map((e, i) => handOver(h, phoneOf(i), [e])));
       expect(attempts.map((a) => a.status).sort()).toEqual([200, 409, 409, 409]);
-      expect(await count('quarantine_items', `device_id = '${phone.deviceId}' and status = 'pending'`)).toBe(
-        MAX_PENDING_PER_DEVICE,
+      expect(await count('quarantine_items', `user_id = '${userId}' and status = 'pending'`)).toBe(
+        MAX_PENDING_PER_PERSON,
       );
-      await clearFillers(phone);
+      for (const phone of phones) await clearFillers(phone);
+    });
+
+    it('the cap counts all of a person’s phones together, and their refusal is logged once', async () => {
+      // Review finding: it counted each phone on its own, so a removed person could hand over
+      // 5,000 items from every phone they had registered and bury someone else's hand-over.
+      const { phones, userId } = await removedPhones(h, t, 'kit@example.com', 'Kit (demo)', 2);
+      const [first, second] = phones as [FakePhone, FakePhone];
+      const encounter = (p: FakePhone) =>
+        p.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      await fillPending(first, userId, MAX_PENDING_PER_PERSON - 2);
+      await fillRecorded(second, userId, 1);
+      const last = await encounter(second);
+      expect((await handOver(h, second, [last])).body.results).toEqual([
+        { changeId: last.changeId, status: 'quarantined', hash: last.valueHash },
+      ]);
+      for (const phone of [second, first]) {
+        const refused = await handOver(h, phone, [await encounter(phone)]);
+        expect(refused.status).toBe(409);
+        expect(refused.body.error?.code).toBe('quarantine_full');
+      }
+      const logged = await h.scratch.owner<{ details: Record<string, unknown> }[]>`
+        select details from sineobex.audit_events
+        where action = 'sync.quarantine_full' and actor_user_id = ${userId}`;
+      expect(logged).toEqual([
+        {
+          details: {
+            pending: MAX_PENDING_PER_PERSON - 1,
+            recorded: 1,
+            sent: 1,
+            limit: MAX_PENDING_PER_PERSON,
+          },
+        },
+      ]);
+      for (const phone of phones) await clearFillers(phone);
+    });
+
+    it('the queue comes a page at a time, oldest first, and can be filtered to one person', async () => {
+      // Review finding: it listed only the oldest 200 pending items, so one person's flood hid
+      // everyone else's hand-over until the flood was decided.
+      const flood = await removedPhone(h, t, 'lane@example.com', 'Lane (demo)');
+      const real = await removedPhone(h, t, 'max@example.com', 'Max (demo)');
+      await fillPending(flood.phone, flood.userId, QUARANTINE_PAGE_SIZE + 10);
+      const theirs = [];
+      for (let i = 0; i < 3; i++) {
+        theirs.push(
+          await real.phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } }),
+        );
+      }
+      expect((await handOver(h, real.phone, theirs)).status).toBe(200);
+
+      // Page after page, every pending item once, in the order they arrived.
+      const arrived = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.quarantine_items where team_id = ${t.teamId} and status = 'pending'
+        order by received_at, id`;
+      let page = await queuePage();
+      expect(page.items).toHaveLength(QUARANTINE_PAGE_SIZE);
+      expect(page.people).toEqual(
+        expect.arrayContaining([
+          { userId: flood.userId, displayName: 'Lane (demo)' },
+          { userId: real.userId, displayName: 'Max (demo)' },
+        ]),
+      );
+      const seen: string[] = [];
+      for (;;) {
+        seen.push(...page.items.map((i) => i.id));
+        if (!page.nextAfterId) break;
+        expect(page.nextAfterId).toBe(page.items.at(-1)!.id);
+        page = await queuePage({ afterId: page.nextAfterId });
+      }
+      expect(seen).toEqual(arrived.map((r) => r.id));
+
+      // One person's work on its own, with each item shown logged as viewed, and no other.
+      const [{ last } = { last: '0' }] = await h.scratch.owner<{ last: string }[]>`
+        select coalesce(max(id), 0)::text as last from sineobex.audit_events`;
+      const mine = await queuePage({ userId: real.userId });
+      expect(mine.items.map((i) => i.changeId).sort()).toEqual(theirs.map((c) => c.changeId).sort());
+      expect(mine.nextAfterId).toBeNull();
+      const logged = await h.scratch.owner<{ itemId: string }[]>`
+        select details->>'itemId' as "itemId" from sineobex.audit_events
+        where id > ${last}::bigint and action = 'quarantine.item_viewed' order by id`;
+      expect(logged.map((r) => r.itemId)).toEqual(mine.items.map((i) => i.id));
+
+      // The filter and the cursor together; the person stays in the filter with nothing left.
+      const floodFirst = await queuePage({ userId: flood.userId });
+      expect(floodFirst.items).toHaveLength(QUARANTINE_PAGE_SIZE);
+      const floodNext = await queuePage({ userId: flood.userId, afterId: floodFirst.nextAfterId! });
+      expect(floodNext.items).toHaveLength(10);
+      expect(new Set(floodNext.items.map((i) => i.user.userId))).toEqual(new Set([flood.userId]));
+      expect(floodNext.nextAfterId).toBeNull();
+      const none = await queuePage({ status: 'accepted', userId: real.userId });
+      expect(none.items).toEqual([]);
+      expect(none.people).toContainEqual({ userId: real.userId, displayName: 'Max (demo)' });
+
+      const bad = await call(h, '/v1/team/quarantine?afterId=not-an-id', {
+        token: t.adminToken,
+        teamId: t.teamId,
+      });
+      expect(bad.status).toBe(422);
+      await clearFillers(flood.phone);
     });
 
     it('a hand-over retried at the cap is answered again, and a refusal is logged for admins once', async () => {
@@ -1301,7 +1410,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         { changeId: encounter.changeId, status: 'quarantined', hash: encounter.valueHash },
         { changeId: read.changeId, status: 'recorded', hash: read.valueHash },
       ]);
-      await fillPending(phone, userId, MAX_PENDING_PER_DEVICE - 2);
+      await fillPending(phone, userId, MAX_PENDING_PER_PERSON - 2);
       const retry = await handOver(h, phone, [encounter, read]);
       expect(retry.status).toBe(200);
       expect(retry.body.results).toEqual(first.body.results);
@@ -1320,10 +1429,10 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         {
           actor: userId,
           details: {
-            pending: MAX_PENDING_PER_DEVICE - 1,
+            pending: MAX_PENDING_PER_PERSON - 1,
             recorded: 1,
             sent: 1,
-            limit: MAX_PENDING_PER_DEVICE,
+            limit: MAX_PENDING_PER_PERSON,
           },
         },
       ]);
@@ -1535,10 +1644,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(await count('quarantine_items', `change_id = '${pending.changeId}'`)).toBe(1);
       expect(await count('encounters', `id = '${pending.recordId}'`)).toBe(0);
 
-      const queue = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
-      const item = (queue.body as unknown as { id: string; changeId: string; reason: string }[]).find(
-        (i) => i.changeId === pending.changeId,
-      )!;
+      const queue = (await queuePage({ userId: t.aId })).items;
+      const item = queue.find((i) => i.changeId === pending.changeId)!;
       expect(item.reason).toBe('access_removed');
       const rejected = await call(h, `/v1/team/quarantine/${item.id}/decision`, {
         method: 'POST',
@@ -1547,15 +1654,11 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         json: { decision: 'reject', reason: 'Duplicate of the clinic note' },
       });
       expect(rejected.status).toBe(200);
-      expect(queue.body as unknown as { changeId: string }[]).not.toContainEqual(
-        expect.objectContaining({ changeId: viewed.changeId }),
-      );
+      expect(queue).not.toContainEqual(expect.objectContaining({ changeId: viewed.changeId }));
 
       // Review finding: its rejection at push used to block the accept ("already reached the
       // chart"), so the admin could only throw the note away.
-      const orphanItem = (queue.body as unknown as { id: string; changeId: string }[]).find(
-        (i) => i.changeId === orphan.changeId,
-      )!;
+      const orphanItem = queue.find((i) => i.changeId === orphan.changeId)!;
       const accepted = await call(h, `/v1/team/quarantine/${orphanItem.id}/decision`, {
         method: 'POST',
         token: t.adminToken,

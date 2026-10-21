@@ -1049,6 +1049,38 @@
         ],
         "type": "object"
       },
+      "QuarantinePage": {
+        "properties": {
+          "items": {
+            "description": "Oldest first",
+            "items": {
+              "$ref": "#/components/schemas/QuarantineItem"
+            },
+            "type": "array"
+          },
+          "nextAfterId": {
+            "description": "Pass as afterId for the next page; null on the last",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "description": "Everyone with items in this status, and the person filtered to, for a filter",
+            "items": {
+              "$ref": "#/components/schemas/UserRef"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "nextAfterId",
+          "people"
+        ],
+        "type": "object"
+      },
       "QuarantineReceipt": {
         "properties": {
           "results": {
@@ -3858,6 +3890,28 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Only this person’s items",
+            "in": "query",
+            "name": "userId",
+            "required": false,
+            "schema": {
+              "description": "Only this person’s items",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3865,14 +3919,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/QuarantineItem"
-                  },
-                  "type": "array"
+                  "$ref": "#/components/schemas/QuarantinePage"
                 }
               }
             },
-            "description": "Items"
+            "description": "A page of items"
           },
           "401": {
             "content": {
@@ -3893,6 +3944,16 @@
               }
             },
             "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
           }
         },
         "security": [
@@ -3900,7 +3961,7 @@
             "bearer": []
           }
         ],
-        "summary": "Changes from phones whose user lost access, waiting for review",
+        "summary": "Changes from phones whose user lost access, waiting for review, a page at a time",
         "tags": [
           "devices"
         ]

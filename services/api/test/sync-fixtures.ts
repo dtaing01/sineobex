@@ -180,11 +180,15 @@ export async function addMember(
   return { id, token: await h.tokenFor(email), membershipId: r.body.membershipId as string };
 }
 
-/** A phone whose person was removed from the team while it was offline: only its key works now. */
-export async function removedPhone(h: Harness, t: Team, email: string, displayName: string) {
+/** A person removed from the team while their phones were offline: only the phones' keys work now. */
+export async function removedPhones(h: Harness, t: Team, email: string, displayName: string, count: number) {
   const member = await addMember(h, t, email, displayName);
-  const phone = await FakePhone.create();
-  await register(h, phone, member.token, t.teamId);
+  const phones: FakePhone[] = [];
+  for (let i = 0; i < count; i++) {
+    const phone = await FakePhone.create();
+    await register(h, phone, member.token, t.teamId);
+    phones.push(phone);
+  }
   const removed = await call(h, `/v1/team/members/${member.membershipId}/remove`, {
     method: 'POST',
     token: t.adminToken,
@@ -192,7 +196,13 @@ export async function removedPhone(h: Harness, t: Team, email: string, displayNa
     json: { reason: 'Left the program' },
   });
   expect(removed.status).toBe(200);
-  return { phone, userId: member.id };
+  return { phones, userId: member.id };
+}
+
+/** A phone whose person was removed from the team while it was offline: only its key works now. */
+export async function removedPhone(h: Harness, t: Team, email: string, displayName: string) {
+  const { phones, userId } = await removedPhones(h, t, email, displayName, 1);
+  return { phone: phones[0]!, userId };
 }
 
 /** A removed person's phone handing its unsynced work to quarantine, signed with its key. */

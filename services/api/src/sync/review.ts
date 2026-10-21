@@ -2,7 +2,12 @@ import type { TeamScope } from '../auth/context.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
 import { applyChange, changeOwners, findReceipt, sameOwner, type ApplyActor } from './apply.ts';
 import { loadRecord, snapshot } from './records.ts';
-import type { RecordEntityName, RecordSnapshotValue, SyncChangeInput } from './schemas.ts';
+import type {
+  QuarantineQueryValue,
+  RecordEntityName,
+  RecordSnapshotValue,
+  SyncChangeInput,
+} from './schemas.ts';
 
 /** What a Program Admin reviews (quarantine), and what a phone reads back (records, notices). */
 
@@ -32,7 +37,14 @@ interface QuarantineRow {
 
 const UUID_TEXT = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 
-export async function listQuarantine(scope: TeamScope, status: 'pending' | 'accepted' | 'rejected') {
+/** Items per page of the review queue. */
+export const QUARANTINE_PAGE_SIZE = 50;
+
+/**
+ * The review queue, oldest first, a page at a time and optionally one person's, so one person's
+ * flood of held work can't hide someone else's hand-over behind it.
+ */
+export async function listQuarantine(scope: TeamScope, { status, userId, afterId }: QuarantineQueryValue) {
   return scope.tx(async (tx, audit) => {
     // The patient each item is about. A note's encounter comes from the chart or from the note's
     // create held here; the encounter's patient from the chart or from its create held here,
@@ -67,12 +79,31 @@ export async function listQuarantine(scope: TeamScope, status: 'pending' | 'acce
         order by c.received_at desc limit 1
       ) ec on true
       where q.status = ${status}
-      order by q.received_at
-      limit 200`;
+        ${userId ? tx`and q.user_id = ${userId}` : tx``}
+        ${
+          afterId
+            ? tx`and (q.received_at, q.id) > (
+                select a.received_at, a.id from sineobex.quarantine_items a where a.id = ${afterId})`
+            : tx``
+        }
+      order by q.received_at, q.id
+      limit ${QUARANTINE_PAGE_SIZE + 1}`;
+    const page = rows.slice(0, QUARANTINE_PAGE_SIZE);
+    // Whom the queue can be filtered to: everyone with items in this status, and whoever it is
+    // filtered to already, so the filter still shows them once their last item is decided.
+    const people = await tx<{ userId: string; displayName: string }[]>`
+      select u.id as user_id, u.display_name from sineobex.users u
+      where u.id in (
+        select q.user_id from sineobex.quarantine_items q
+        where q.status = ${status} ${userId ? tx`or q.user_id = ${userId}` : tx``})
+      order by u.display_name, u.id`;
     // The values are chart content, so looking at the queue is itself logged, item by item with
     // the patient, so a patient's access report shows it.
-    await audit({ action: 'quarantine.viewed', details: { status, count: rows.length } });
-    for (const r of rows) {
+    await audit({
+      action: 'quarantine.viewed',
+      details: { status, count: page.length, ...(userId ? { userId } : {}), ...(afterId ? { afterId } : {}) },
+    });
+    for (const r of page) {
       await audit({
         action: 'quarantine.item_viewed',
         entity: r.entity === 'audit' ? 'quarantine_item' : r.entity,
@@ -81,7 +112,7 @@ export async function listQuarantine(scope: TeamScope, status: 'pending' | 'acce
         details: { itemId: r.id },
       });
     }
-    return rows.map((r) => ({
+    const items = page.map((r) => ({
       id: r.id,
       user: { userId: r.userId, displayName: r.userName },
       deviceId: r.deviceId,
@@ -99,6 +130,7 @@ export async function listQuarantine(scope: TeamScope, status: 'pending' | 'acce
       decidedBy: r.decidedBy ? { userId: r.decidedBy, displayName: r.decidedByName ?? '' } : null,
       decisionReason: r.decisionReason,
     }));
+    return { items, nextAfterId: rows.length > page.length ? page.at(-1)!.id : null, people };
   });
 }
 

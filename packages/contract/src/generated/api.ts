@@ -461,7 +461,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Changes from phones whose user lost access, waiting for review */
+        /** Changes from phones whose user lost access, waiting for review, a page at a time */
         get: operations["listQuarantine"];
         put?: never;
         post?: never;
@@ -840,6 +840,17 @@ export interface components {
             status: "pending" | "accepted" | "rejected";
             user: components["schemas"]["UserRef"];
             value?: unknown;
+        };
+        QuarantinePage: {
+            /** @description Oldest first */
+            items: components["schemas"]["QuarantineItem"][];
+            /**
+             * Format: uuid
+             * @description Pass as afterId for the next page; null on the last
+             */
+            nextAfterId: string | null;
+            /** @description Everyone with items in this status, and the person filtered to, for a filter */
+            people: components["schemas"]["UserRef"][];
         };
         QuarantineReceipt: {
             results: {
@@ -2578,7 +2589,11 @@ export interface operations {
     listQuarantine: {
         parameters: {
             query?: {
+                /** @description The previous page’s nextAfterId */
+                afterId?: string;
                 status?: "pending" | "accepted" | "rejected";
+                /** @description Only this person’s items */
+                userId?: string;
             };
             header?: never;
             path?: never;
@@ -2586,13 +2601,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Items */
+            /** @description A page of items */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["QuarantineItem"][];
+                    "application/json": components["schemas"]["QuarantinePage"];
                 };
             };
             /** @description Not signed in, or the session expired */
@@ -2606,6 +2621,15 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -36,7 +36,7 @@ export async function wipeDevice(_: ActionState, form: FormData): Promise<Action
 
 /** Accept a quarantined change onto the chart, or reject it; both need a reason. */
 export async function decideQuarantine(_: ActionState, form: FormData): Promise<ActionState> {
-  const values = formValues(form, 'itemId', 'decision', 'reason');
+  const values = formValues(form, 'itemId', 'decision', 'reason', 'person', 'after', 'page');
   const decision = values.decision;
   // Never assumed: accepting writes to a patient's chart and can't be undone.
   if (decision !== 'accept' && decision !== 'reject') {
@@ -57,6 +57,10 @@ export async function decideQuarantine(_: ActionState, form: FormData): Promise<
     return failure(err, values);
   }
   revalidatePath('/team/quarantine');
-  // The decided item leaves the list, and its form with it; the page confirms instead.
-  redirect(`/team/quarantine?decided=${decision === 'accept' ? 'accepted' : 'rejected'}`);
+  // The decided item leaves the list, and its form with it; the page confirms instead, still
+  // showing the person and page the admin was reviewing (the page checks each value).
+  const view = new URLSearchParams();
+  for (const key of ['person', 'after', 'page']) if (values[key]) view.set(key, values[key]);
+  view.set('decided', decision === 'accept' ? 'accepted' : 'rejected');
+  redirect(`/team/quarantine?${view}`);
 }

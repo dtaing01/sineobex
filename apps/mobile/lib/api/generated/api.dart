@@ -1518,6 +1518,33 @@ class QuarantineItem {
       };
 }
 
+class QuarantinePage {
+  const QuarantinePage({
+    required this.items,
+    required this.nextAfterId,
+    required this.people,
+  });
+
+  /// Oldest first
+  final List<QuarantineItem> items;
+  /// Pass as afterId for the next page; null on the last
+  final String? nextAfterId;
+  /// Everyone with items in this status, and the person filtered to, for a filter
+  final List<UserRef> people;
+
+  factory QuarantinePage.fromJson(Map<String, dynamic> json) => QuarantinePage(
+        items: (json['items'] as List<dynamic>).map((e) => QuarantineItem.fromJson(e as Map<String, dynamic>)).toList(),
+        nextAfterId: json['nextAfterId'] == null ? null : json['nextAfterId'] as String,
+        people: (json['people'] as List<dynamic>).map((e) => UserRef.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'items': items.map((e) => e.toJson()).toList(),
+        'nextAfterId': nextAfterId == null ? null : nextAfterId!,
+        'people': people.map((e) => e.toJson()).toList(),
+      };
+}
+
 class QuarantineReceipt {
   const QuarantineReceipt({
     required this.results,
@@ -2446,10 +2473,10 @@ class SineobexApi {
     return (json as List<dynamic>).map((e) => PermissionInfo.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// Changes from phones whose user lost access, waiting for review
-  Future<List<QuarantineItem>> listQuarantine({ListQuarantineStatus? status}) async {
-    final json = await _transport.send('GET', '/v1/team/quarantine', query: <String, String>{if (status != null) 'status': (status.toJson()).toString()}, );
-    return (json as List<dynamic>).map((e) => QuarantineItem.fromJson(e as Map<String, dynamic>)).toList();
+  /// Changes from phones whose user lost access, waiting for review, a page at a time
+  Future<QuarantinePage> listQuarantine({ListQuarantineStatus? status, String? userId, String? afterId}) async {
+    final json = await _transport.send('GET', '/v1/team/quarantine', query: <String, String>{if (status != null) 'status': (status.toJson()).toString(), if (userId != null) 'userId': (userId).toString(), if (afterId != null) 'afterId': (afterId).toString()}, );
+    return QuarantinePage.fromJson(json as Map<String, dynamic>);
   }
 
   /// Standard roles and this team's custom roles

@@ -176,28 +176,36 @@ export async function deviceStatus(c: Context<AppEnv>, deps: Deps, deviceId: str
 }
 
 /**
- * More than a phone's outbox ever holds. A removed person's key stops here, whether it floods the
- * review queue or the audit chain: changes waiting for review and activity log entries it handed
- * over count together.
+ * More than a phone's outbox ever holds. A removed person's keys stop here, whether they flood
+ * the review queue or the audit chain: changes waiting for review and activity log entries they
+ * handed over count together, from all of the person's phones on the team, so another phone buys
+ * no more room to bury someone else's hand-over.
  */
-export const MAX_PENDING_PER_DEVICE = 5000;
+export const MAX_PENDING_PER_PERSON = 5000;
 
 interface HandedOver {
   pending: number;
   recorded: number;
 }
 
-/** What this phone has handed over that counts against the cap. */
-async function handedOver(tx: Tx, deviceId: string): Promise<HandedOver> {
-  // Activity log entries are never reviewed, so they count until the phone syncs again. Pushes
-  // are refused after removal, so every one recorded since its last push came through here.
+/** One hand-over (or refusal report) at a time per person on a team, whichever phone sends it. */
+async function lockPerson(tx: Tx, d: SignedDevice) {
+  await tx`select pg_advisory_xact_lock(hashtextextended(${`handover:${d.teamId}:${d.userId}`}, 0))`;
+}
+
+/** What this person has handed over to this team, from any of their phones, that counts against the cap. */
+async function handedOver(tx: Tx, d: SignedDevice): Promise<HandedOver> {
+  // Activity log entries are never reviewed, so they count until the person syncs again. Pushes
+  // are refused after removal, so every one recorded since their last push came through here.
   const [row] = await tx<HandedOver[]>`
     select (select count(*)::int from sineobex.quarantine_items
-            where device_id = ${deviceId} and status = 'pending') as pending,
-           (select count(*)::int from sineobex.sync_changes s
-            join sineobex.devices d on d.id = s.device_id
-            where s.device_id = ${deviceId} and s.entity = 'audit'
-              and s.received_at > coalesce(d.last_sync_at, d.registered_at)) as recorded`;
+            where team_id = ${d.teamId} and user_id = ${d.userId} and status = 'pending') as pending,
+           (select count(*)::int from sineobex.devices dv
+            join sineobex.sync_changes s on s.device_id = dv.id
+            where dv.team_id = ${d.teamId} and dv.user_id = ${d.userId} and s.entity = 'audit'
+              and s.received_at > (
+                select max(coalesce(last_sync_at, registered_at)) from sineobex.devices
+                where team_id = ${d.teamId} and user_id = ${d.userId})) as recorded`;
   return row!;
 }
 
@@ -231,16 +239,16 @@ export async function uploadQuarantine(
   const checked = await Promise.all(changes.map((change) => precheck(change)));
   try {
     return await deviceTx(deps, d, meta, async (tx, audit) => {
-      // One hand-over at a time per phone, counted and stored in this one transaction, so
-      // parallel requests can't each find room under the cap.
-      await tx`select pg_advisory_xact_lock(hashtextextended(${d.deviceId}, 0))`;
+      // One hand-over at a time per person, counted and stored in this one transaction, so
+      // parallel requests (from one phone or several) can't each find room under the cap.
+      await lockPerson(tx, d);
       // Each change ID too, in order and before anything is written, so a push of the same ID
       // waits for this hand-over instead of deadlocking with it on the audit chain.
       await tx`
         select pg_advisory_xact_lock(hashtextextended(id, 0))
         from unnest(${changes.map((x) => x.changeId)}::text[]) as id order by id`;
-      const held = await handedOver(tx, d.deviceId);
-      let room = MAX_PENDING_PER_DEVICE - held.pending - held.recorded;
+      const held = await handedOver(tx, d);
+      let room = MAX_PENDING_PER_PERSON - held.pending - held.recorded;
       // Only what this request adds counts: the phone starts every hand-over again from its
       // first entry, so most of a retry is already here.
       const take = () => {
@@ -286,7 +294,7 @@ export async function uploadQuarantine(
   } catch (err) {
     if (!(err instanceof QuarantineFull)) throw err;
     await reportFull(deps, d, meta, err.held, changes.length);
-    throw conflict('quarantine_full', 'This phone has handed over more than a Program Admin can review.');
+    throw conflict('quarantine_full', 'Your phones have handed over more than a Program Admin can review.');
   }
 }
 
@@ -334,15 +342,15 @@ async function recordAudit(
 }
 
 /**
- * Tells admins that a phone's work is waiting beyond the cap. At most once a day per phone: the
- * refused key must not get to fill the audit chain with refusals instead.
+ * Tells admins that a person's work is waiting beyond the cap. At most once a day per person: the
+ * refused keys must not get to fill the audit chain with refusals instead.
  */
 async function reportFull(deps: Deps, d: SignedDevice, meta: RequestMeta, held: HandedOver, sent: number) {
   await deviceTx(deps, d, meta, async (tx, audit) => {
-    await tx`select pg_advisory_xact_lock(hashtextextended(${d.deviceId}, 0))`;
+    await lockPerson(tx, d);
     const recent = await tx`
       select 1 from sineobex.audit_events
-      where team_id = ${d.teamId} and device_id = ${d.deviceId} and action = 'sync.quarantine_full'
+      where team_id = ${d.teamId} and actor_user_id = ${d.userId} and action = 'sync.quarantine_full'
         and occurred_at > now() - interval '1 day'
       limit 1`;
     if (recent.length > 0) return;
@@ -350,7 +358,7 @@ async function reportFull(deps: Deps, d: SignedDevice, meta: RequestMeta, held: 
       action: 'sync.quarantine_full',
       entity: 'device',
       entityId: d.deviceId,
-      details: { ...held, sent, limit: MAX_PENDING_PER_DEVICE },
+      details: { ...held, sent, limit: MAX_PENDING_PER_PERSON },
     });
   });
 }
