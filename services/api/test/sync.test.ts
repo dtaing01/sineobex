@@ -1070,6 +1070,68 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       await h.scratch.owner`
         delete from sineobex.sync_changes where device_id = ${phone.deviceId} and value_hash = ${filler}`;
     };
+    const queue = async () => {
+      const r = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
+      expect(r.status).toBe(200);
+      return r.body as unknown as { id: string; changeId: string }[];
+    };
+
+    it('viewing held work is logged with its patient, even when its encounter is held too', async () => {
+      // Review finding: a note on a held encounter, and edits to a note or encounter the chart
+      // doesn't have, were logged with no patient, so the view was missing from the patient's
+      // access report.
+      const { phone } = await removedPhone(h, t, 'avery@example.com', 'Avery (demo)');
+      const patientId = randomUUID();
+      const encounter = await phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+      });
+      const note = await phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: encounter.recordId, noteTypeKey: 'wound_care' },
+      });
+      const noteEdit = await phone.change({
+        entity: 'encounter_note',
+        recordId: note.recordId,
+        op: 'set',
+        field: 'data.plan',
+        value: 'rest',
+      });
+      const encounterEdit = await phone.change({
+        entity: 'encounter',
+        recordId: encounter.recordId,
+        op: 'set',
+        field: 'status',
+        value: 'completed',
+      });
+      expect((await handOver(h, phone, [encounter, note, noteEdit, encounterEdit])).status).toBe(200);
+
+      const items = await queue();
+      const itemOf = (c: { changeId: string }) => items.find((i) => i.changeId === c.changeId)!.id;
+      const viewed = async () =>
+        (
+          await h.scratch.owner<{ itemId: string }[]>`
+            select details->>'itemId' as "itemId" from sineobex.audit_events
+            where action = 'quarantine.item_viewed' and patient_id = ${patientId} order by id`
+        ).map((r) => r.itemId);
+      expect((await viewed()).sort()).toEqual([encounter, note, noteEdit, encounterEdit].map(itemOf).sort());
+
+      // Rejecting the encounter doesn't hide whose the rest is.
+      const rejected = await call(h, `/v1/team/quarantine/${itemOf(encounter)}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'reject', reason: 'Entered twice' },
+      });
+      expect(rejected.status).toBe(200);
+      const before = (await viewed()).length;
+      await queue();
+      expect((await viewed()).slice(before).sort()).toEqual(
+        [note, noteEdit, encounterEdit].map(itemOf).sort(),
+      );
+    });
 
     it('activity log entries count against the cap, so a removed person’s key can’t flood the audit chain', async () => {
       // Review finding: they were recorded without counting, so a modified phone could append

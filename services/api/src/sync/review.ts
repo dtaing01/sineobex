@@ -34,22 +34,38 @@ const UUID_TEXT = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-
 
 export async function listQuarantine(scope: TeamScope, status: 'pending' | 'accepted' | 'rejected') {
   return scope.tx(async (tx, audit) => {
-    // The patient each item is about: an encounter's own, or a note's encounter's, from the chart
-    // or, for a record the chart doesn't have yet, from the change's value.
+    // The patient each item is about. A note's encounter comes from the chart or from the note's
+    // create held here; the encounter's patient from the chart or from its create held here,
+    // whatever was decided on it; last, the item's own value (an activity log entry names the
+    // patient it read). Values were never schema-checked, so text is cast only when it is a UUID.
     const rows = await tx<QuarantineRow[]>`
       select q.*, u.display_name as user_name, du.display_name as decided_by_name,
              coalesce(
-               e.patient_id, ne.patient_id,
+               e.patient_id,
+               case when ec.value ->> 'patientId' ~ ${UUID_TEXT} then (ec.value ->> 'patientId')::uuid end,
                case when q.value ->> 'patientId' ~ ${UUID_TEXT} then (q.value ->> 'patientId')::uuid end
              ) as patient_id
       from sineobex.quarantine_items q
       join sineobex.users u on u.id = q.user_id
       left join sineobex.users du on du.id = q.decided_by
-      left join sineobex.encounters e on q.entity = 'encounter' and e.id = q.record_id
-      left join sineobex.encounter_notes n on q.entity = 'encounter_note' and n.id = q.record_id
-      left join sineobex.encounters ne on ne.id = coalesce(
-        n.encounter_id,
-        case when q.value ->> 'encounterId' ~ ${UUID_TEXT} then (q.value ->> 'encounterId')::uuid end)
+      left join lateral (
+        select case when q.entity = 'encounter' then q.record_id::text
+                    when q.entity = 'encounter_note' then coalesce(
+                      (select n.encounter_id::text from sineobex.encounter_notes n where n.id = q.record_id),
+                      (select c.value ->> 'encounterId' from sineobex.quarantine_items c
+                       where c.entity = 'encounter_note' and c.op = 'create' and c.record_id = q.record_id
+                       order by c.received_at desc limit 1))
+               end as id
+      ) enc_text on true
+      left join lateral (
+        select case when enc_text.id ~ ${UUID_TEXT} then enc_text.id::uuid end as id
+      ) enc on true
+      left join sineobex.encounters e on e.id = enc.id
+      left join lateral (
+        select c.value from sineobex.quarantine_items c
+        where c.entity = 'encounter' and c.op = 'create' and c.record_id = enc.id
+        order by c.received_at desc limit 1
+      ) ec on true
       where q.status = ${status}
       order by q.received_at
       limit 200`;
