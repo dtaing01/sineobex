@@ -133,6 +133,30 @@ export async function setupTeam(h: Harness): Promise<Team> {
   };
 }
 
+/** Another team, after setupTeam: its admin and one clinician with a registered phone. */
+export async function secondTeam(h: Harness) {
+  const ownerToken = await h.tokenFor('owner@example.com');
+  const team = await call(h, '/v1/owner/teams', {
+    method: 'POST',
+    token: ownerToken,
+    json: { name: 'Second Team' },
+  });
+  expect(team.status).toBe(201);
+  const teamId = team.body.id as string;
+  const admin = await call(h, `/v1/owner/teams/${teamId}/program-admins`, {
+    method: 'POST',
+    token: ownerToken,
+    json: { email: 'second-admin@example.com', displayName: 'Morgan (demo)' },
+  });
+  expect(admin.status).toBe(201);
+  await h.acknowledge(await userId(h, 'second-admin@example.com'));
+  const adminToken = await h.tokenFor('second-admin@example.com');
+  const member = await addMember(h, { teamId, adminToken }, 'second-staff@example.com', 'Taylor (demo)');
+  const phone = await FakePhone.create();
+  await register(h, phone, member.token, teamId);
+  return { teamId, token: member.token, phone };
+}
+
 /** A member the team's admin invited, who accepted the acknowledgements. */
 export async function addMember(
   h: Harness,

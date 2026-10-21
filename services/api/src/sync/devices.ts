@@ -10,7 +10,15 @@ import {
 import type { Tx } from '../db/database.ts';
 import { ApiError, conflict, notFound } from '../lib/errors.ts';
 import type { AppEnv, Deps } from '../types.ts';
-import { applyChange, findReceipt, precheck, quarantine, type ApplyActor } from './apply.ts';
+import {
+  applyChange,
+  changeOwners,
+  findReceipt,
+  precheck,
+  quarantine,
+  sameOwner,
+  type ApplyActor,
+} from './apply.ts';
 import { canonicalJson } from './canonical.ts';
 import { CLOCK_LIMIT_MS } from './push.ts';
 import type { RejectReasonName, SyncChangeInput } from './schemas.ts';
@@ -297,6 +305,8 @@ async function recordAudit(
     const mine = existing.userId === d.userId && existing.deviceId === d.deviceId;
     return mine && existing.status === 'accepted' ? recorded : refused;
   }
+  // An ID held in another team is hidden from this one, and its receipt can't be stored twice.
+  if ((await changeOwners(tx, change.changeId)).some((o) => !sameOwner(o, d))) return refused;
   take();
   const actor: ApplyActor = {
     teamId: d.teamId,

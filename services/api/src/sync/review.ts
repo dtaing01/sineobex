@@ -1,6 +1,6 @@
 import type { TeamScope } from '../auth/context.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
-import { applyChange, findReceipt, type ApplyActor } from './apply.ts';
+import { applyChange, changeOwners, findReceipt, sameOwner, type ApplyActor } from './apply.ts';
 import { loadRecord, snapshot } from './records.ts';
 import type { RecordEntityName, RecordSnapshotValue, SyncChangeInput } from './schemas.ts';
 
@@ -133,15 +133,18 @@ export async function decideQuarantine(
         ...(typeof d.correctedTime === 'string' ? { correctedTime: d.correctedTime } : {}),
         clockVerified: d.clockVerified === true,
       };
-      // Rejected or conflicted at push is no reason to refuse it now: the admin decides on the
-      // value as it stands, and applyChange checks it against the chart again.
-      const existing = await findReceipt(tx, item.changeId);
-      if (existing && (existing.userId !== item.userId || existing.deviceId !== item.deviceId)) {
+      // Someone else's change under this ID, in this team or in another (which this one can't
+      // see), would collide with this one's receipt.
+      const owner = { teamId: scope.team.teamId, userId: item.userId, deviceId: item.deviceId };
+      if ((await changeOwners(tx, item.changeId)).some((o) => !sameOwner(o, owner))) {
         throw conflict(
           'change_id_taken',
           'Another change was stored under this one’s ID, so it can’t be applied. Reject it, and ask for it to be charted again.',
         );
       }
+      // Rejected or conflicted at push is no reason to refuse it now: the admin decides on the
+      // value as it stands, and applyChange checks it against the chart again.
+      const existing = await findReceipt(tx, item.changeId);
       if (existing?.status === 'accepted') {
         throw conflict('already_applied', 'This change already reached the chart.');
       }

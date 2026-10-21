@@ -1,7 +1,16 @@
 import type { TeamScope } from '../auth/context.ts';
 import { TeamScope as Scope } from '../auth/context.ts';
 import { conflict } from '../lib/errors.ts';
-import { applyChange, findReceipt, precheck, resultFromReceipt, toResult, type ApplyActor } from './apply.ts';
+import {
+  applyChange,
+  changeOwners,
+  findReceipt,
+  precheck,
+  resultFromReceipt,
+  sameOwner,
+  toResult,
+  type ApplyActor,
+} from './apply.ts';
 import type { SyncChangeInput, SyncResultValue } from './schemas.ts';
 
 /** Charting pauses beyond this offset (module 9, decided Oct 12). The phone enforces it; the server flags it. */
@@ -127,11 +136,10 @@ async function processOne(
         return reused(change.changeId);
       return resultFromReceipt(tx, existing);
     }
-    // A removed person's change held for review keeps its ID: nobody else may take it, or the
-    // admin could never apply it.
-    const [held] = await tx<{ userId: string; deviceId: string }[]>`
-      select user_id, device_id from sineobex.quarantine_items where change_id = ${change.changeId}`;
-    if (held && (held.userId !== actor.authorId || held.deviceId !== actor.deviceId))
+    // An ID held anywhere else stays its holder's: a removed person's change held for review (or
+    // the admin could never apply it), or a change in another team, which this one can't see.
+    const mine = { teamId: actor.teamId, userId: actor.authorId, deviceId: actor.deviceId };
+    if ((await changeOwners(tx, change.changeId)).some((o) => !sameOwner(o, mine)))
       return reused(change.changeId);
     return checked.ok
       ? applyChange(tx, audit, actor, change, checked.hash)

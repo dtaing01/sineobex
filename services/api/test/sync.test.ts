@@ -11,6 +11,7 @@ import {
   register,
   removedPhone,
   results,
+  secondTeam,
   setupTeam,
   type Team,
 } from './sync-fixtures.ts';
@@ -965,6 +966,71 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       });
       expect(byAdmin.status).toBe(200);
       expect(await count('encounters', `id = '${own.recordId}'`)).toBe(1);
+    });
+
+    it('a change ID used in another team is refused at push, at hand-over and at review', async () => {
+      // Review finding: the checks saw only this team's rows, so an ID taken in another team looked
+      // free, and an admin's accept failed on the hidden receipt with a server error.
+      const other = await secondTeam(h);
+      const { phone } = await removedPhone(h, t, 'rowan@example.com', 'Rowan (demo)');
+      const encounter = (p: FakePhone) =>
+        p.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+
+      // Held for review here first: the other team's phone can't take the ID.
+      const held = await encounter(phone);
+      expect((await handOver(h, phone, [held])).status).toBe(200);
+      const taken = { ...(await encounter(other.phone)), changeId: held.changeId };
+      const pushed = await push(h, other.phone, other.token, other.teamId, [taken]);
+      expect(results(pushed.body)[0]).toMatchObject({
+        status: 'rejected',
+        details: { problem: 'change_id_reused' },
+      });
+      expect(await count('encounters', `id = '${taken.recordId}'`)).toBe(0);
+
+      // Used by the other team first (accepted there, or rejected): the admin is told, and nothing
+      // reaches the chart under the other team's receipt.
+      const accepted = await encounter(other.phone);
+      const refused = await other.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: randomUUID(), noteTypeKey: 'vitals' },
+      });
+      const read = await other.phone.change({
+        entity: 'audit',
+        op: 'append',
+        value: { action: 'note.viewed' },
+      });
+      const firsts = await push(h, other.phone, other.token, other.teamId, [accepted, refused, read]);
+      expect(results(firsts.body).map((r) => r.status)).toEqual(['accepted', 'rejected', 'accepted']);
+      const late = [
+        { ...(await encounter(phone)), changeId: accepted.changeId },
+        { ...(await encounter(phone)), changeId: refused.changeId },
+      ];
+      const lateRead = {
+        ...(await phone.change({ entity: 'audit', op: 'append', value: { action: 'note.viewed' } })),
+        changeId: read.changeId,
+      };
+      const handed = await handOver(h, phone, [...late, lateRead]);
+      expect(handed.status).toBe(200);
+      expect(handed.body.results).toEqual([
+        ...late.map((c) => ({ changeId: c.changeId, status: 'quarantined', hash: c.valueHash })),
+        { changeId: lateRead.changeId, status: 'rejected', reason: 'validation' },
+      ]);
+      const queue = await call(h, '/v1/team/quarantine', { token: t.adminToken, teamId: t.teamId });
+      for (const c of late) {
+        const item = (queue.body as unknown as { id: string; changeId: string }[]).find(
+          (i) => i.changeId === c.changeId,
+        )!;
+        const accept = await call(h, `/v1/team/quarantine/${item.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision: 'accept', reason: 'Visit confirmed with Rowan' },
+        });
+        expect(accept.status).toBe(409);
+        expect(accept.body.error?.code).toBe('change_id_taken');
+        expect(await count('encounters', `id = '${c.recordId}'`)).toBe(0);
+      }
     });
 
     it('an admin decision needs a recent sign-in', async () => {

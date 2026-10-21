@@ -169,6 +169,24 @@ export async function findReceipt(tx: Tx, changeId: string): Promise<Receipt | n
   return rows[0] ?? null;
 }
 
+/** Whose a change ID is: the team, person and phone that sent it. */
+export interface ChangeOwner {
+  teamId: string;
+  userId: string;
+  deviceId: string;
+}
+
+/**
+ * Everyone holding this change ID, as a receipt or a change held for review, in any team. IDs are
+ * unique across teams but a transaction sees only its own team's rows (migration 0005).
+ */
+export async function changeOwners(tx: Tx, changeId: string): Promise<ChangeOwner[]> {
+  return tx<ChangeOwner[]>`select team_id, user_id, device_id from sineobex.change_owner(${changeId})`;
+}
+
+export const sameOwner = (a: ChangeOwner, b: ChangeOwner) =>
+  a.teamId === b.teamId && a.userId === b.userId && a.deviceId === b.deviceId;
+
 /** The answer for a change the server already has. Conflicts show the server's current value. */
 export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultValue> {
   if (r.status === 'accepted') {
