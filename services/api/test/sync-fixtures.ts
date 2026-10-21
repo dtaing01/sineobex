@@ -113,26 +113,11 @@ export async function setupTeam(h: Harness): Promise<Team> {
   await h.acknowledge(adminId);
   const adminToken = await h.tokenFor('admin@example.com');
 
-  const roles = await call(h, '/v1/team/roles', { token: adminToken, teamId });
-  const roleId = (key: string) =>
-    (roles.body as unknown as { key: string; id: string }[]).find((r) => r.key === key)!.id;
-
-  const invite = async (email: string, name: string, role: string, credential: string) => {
-    const r = await call(h, '/v1/team/members', {
-      method: 'POST',
-      token: adminToken,
-      teamId,
-      json: { email, displayName: name, roleId: roleId(role), credential },
-    });
-    expect(r.status).toBe(201);
-    const id = await userId(h, email);
-    await h.acknowledge(id);
-    return { id, token: await h.tokenFor(email), membershipId: r.body.membershipId as string };
-  };
+  const asAdmin = { teamId, adminToken };
   // Credentials don't affect sync until signing (phase 4).
-  const a = await invite('jordan@example.com', 'Jordan (demo)', 'healthcare_staff', 'none');
-  const b = await invite('casey@example.com', 'Casey (demo)', 'healthcare_staff', 'none');
-  const chw = await invite('sam@example.com', 'Sam (demo)', 'community_health_worker', 'chw');
+  const a = await addMember(h, asAdmin, 'jordan@example.com', 'Jordan (demo)');
+  const b = await addMember(h, asAdmin, 'casey@example.com', 'Casey (demo)');
+  const chw = await addMember(h, asAdmin, 'sam@example.com', 'Sam (demo)', 'community_health_worker', 'chw');
   return {
     teamId,
     ownerToken,
@@ -146,6 +131,52 @@ export async function setupTeam(h: Harness): Promise<Team> {
     chwId: chw.id,
     aMembershipId: a.membershipId,
   };
+}
+
+/** A member the team's admin invited, who accepted the acknowledgements. */
+export async function addMember(
+  h: Harness,
+  team: { teamId: string; adminToken: string },
+  email: string,
+  displayName: string,
+  role = 'healthcare_staff',
+  credential = 'none',
+) {
+  const roles = await call(h, '/v1/team/roles', { token: team.adminToken, teamId: team.teamId });
+  const roleId = (roles.body as unknown as { key: string; id: string }[]).find((r) => r.key === role)!.id;
+  const r = await call(h, '/v1/team/members', {
+    method: 'POST',
+    token: team.adminToken,
+    teamId: team.teamId,
+    json: { email, displayName, roleId, credential },
+  });
+  expect(r.status).toBe(201);
+  const id = await userId(h, email);
+  await h.acknowledge(id);
+  return { id, token: await h.tokenFor(email), membershipId: r.body.membershipId as string };
+}
+
+/** A phone whose person was removed from the team while it was offline: only its key works now. */
+export async function removedPhone(h: Harness, t: Team, email: string, displayName: string) {
+  const member = await addMember(h, t, email, displayName);
+  const phone = await FakePhone.create();
+  await register(h, phone, member.token, t.teamId);
+  const removed = await call(h, `/v1/team/members/${member.membershipId}/remove`, {
+    method: 'POST',
+    token: t.adminToken,
+    teamId: t.teamId,
+    json: { reason: 'Left the program' },
+  });
+  expect(removed.status).toBe(200);
+  return { phone, userId: member.id };
+}
+
+/** A removed person's phone handing its unsynced work to quarantine, signed with its key. */
+export async function handOver(h: Harness, phone: FakePhone, changes: unknown[]) {
+  return call(h, `/v1/devices/${phone.deviceId}/quarantine`, {
+    method: 'POST',
+    json: await phone.signed({ purpose: 'quarantine', deviceId: phone.deviceId, changes }),
+  });
 }
 
 export async function register(h: Harness, phone: FakePhone, token: string, teamId: string) {

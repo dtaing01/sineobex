@@ -1,11 +1,19 @@
 import type { Context } from 'hono';
-import { deviceTx, requestMeta, type DeviceActor, type TeamScope } from '../auth/context.ts';
+import {
+  deviceTx,
+  requestMeta,
+  type AuditFn,
+  type DeviceActor,
+  type RequestMeta,
+  type TeamScope,
+} from '../auth/context.ts';
+import type { Tx } from '../db/database.ts';
 import { ApiError, conflict, notFound } from '../lib/errors.ts';
 import type { AppEnv, Deps } from '../types.ts';
 import { applyChange, findReceipt, precheck, quarantine, type ApplyActor } from './apply.ts';
 import { canonicalJson } from './canonical.ts';
 import { CLOCK_LIMIT_MS } from './push.ts';
-import type { SyncChangeInput } from './schemas.ts';
+import type { RejectReasonName, SyncChangeInput } from './schemas.ts';
 
 /**
  * Phones and their keys (module 9). Each phone registers an Ed25519 key per team while its user is
@@ -159,8 +167,42 @@ export async function deviceStatus(c: Context<AppEnv>, deps: Deps, deviceId: str
   return { status: d.status, access: await access(deps, d), serverTime: now.toISOString() };
 }
 
-/** More than a phone's outbox ever holds; a key used to flood the review queue stops here. */
+/**
+ * More than a phone's outbox ever holds. A removed person's key stops here, whether it floods the
+ * review queue or the audit chain: changes waiting for review and activity log entries it handed
+ * over count together.
+ */
 export const MAX_PENDING_PER_DEVICE = 5000;
+
+interface HandedOver {
+  pending: number;
+  recorded: number;
+}
+
+/** What this phone has handed over that counts against the cap. */
+async function handedOver(tx: Tx, deviceId: string): Promise<HandedOver> {
+  // Activity log entries are never reviewed, so they count until the phone syncs again. Pushes
+  // are refused after removal, so every one recorded since its last push came through here.
+  const [row] = await tx<HandedOver[]>`
+    select (select count(*)::int from sineobex.quarantine_items
+            where device_id = ${deviceId} and status = 'pending') as pending,
+           (select count(*)::int from sineobex.sync_changes s
+            join sineobex.devices d on d.id = s.device_id
+            where s.device_id = ${deviceId} and s.entity = 'audit'
+              and s.received_at > coalesce(d.last_sync_at, d.registered_at)) as recorded`;
+  return row!;
+}
+
+/** Thrown inside a hand-over's transaction, so nothing that request stored is kept. */
+class QuarantineFull extends Error {
+  constructor(readonly held: HandedOver) {
+    super('quarantine_full');
+  }
+}
+
+type HandOverResult =
+  | { changeId: string; status: 'quarantined' | 'recorded'; hash: string }
+  | { changeId: string; status: 'rejected'; reason: RejectReasonName };
 
 /** A removed user's phone hands over what it never synced. Nothing is applied to a chart. */
 export async function uploadQuarantine(
@@ -177,77 +219,117 @@ export async function uploadQuarantine(
   if (d.status === 'active' && (await access(deps, d)) === 'active') {
     throw conflict('use_sync', 'This phone can still sync normally.');
   }
-  const [{ pending } = { pending: 0 }] = await deps.db.tx(
-    { teamId: d.teamId, userId: d.userId },
-    (tx) => tx<{ pending: number }[]>`
-      select count(*)::int as pending from sineobex.quarantine_items
-      where device_id = ${d.deviceId} and status = 'pending'`,
-  );
-  if (pending + changes.length > MAX_PENDING_PER_DEVICE) {
+  const meta = requestMeta(c);
+  const checked = await Promise.all(changes.map((change) => precheck(change)));
+  try {
+    return await deviceTx(deps, d, meta, async (tx, audit) => {
+      // One hand-over at a time per phone, counted and stored in this one transaction, so
+      // parallel requests can't each find room under the cap.
+      await tx`select pg_advisory_xact_lock(hashtextextended(${d.deviceId}, 0))`;
+      // Each change ID too, in order and before anything is written, so a push of the same ID
+      // waits for this hand-over instead of deadlocking with it on the audit chain.
+      await tx`
+        select pg_advisory_xact_lock(hashtextextended(id, 0))
+        from unnest(${changes.map((x) => x.changeId)}::text[]) as id order by id`;
+      const held = await handedOver(tx, d.deviceId);
+      let room = MAX_PENDING_PER_DEVICE - held.pending - held.recorded;
+      // Only what this request adds counts: the phone starts every hand-over again from its
+      // first entry, so most of a retry is already here.
+      const take = () => {
+        if (--room < 0) throw new QuarantineFull(held);
+      };
+      const results: HandOverResult[] = [];
+      for (const [i, change] of changes.entries()) {
+        const check = checked[i]!;
+        if (!check.ok) {
+          results.push({ changeId: change.changeId, status: 'rejected', reason: check.outcome.reason });
+          continue;
+        }
+        if (change.entity === 'audit') {
+          results.push(await recordAudit(tx, audit, d, change, check.hash, take));
+          continue;
+        }
+        const added = await quarantine(
+          tx,
+          { teamId: d.teamId, authorId: d.userId, deviceId: d.deviceId },
+          change,
+          check.hash,
+          'access_removed',
+        );
+        if (added) {
+          take();
+          await audit({
+            action: 'sync.quarantined',
+            entity: change.entity,
+            entityId: change.recordId,
+            deviceTime: new Date(change.deviceTime),
+            details: { changeId: change.changeId, reason: 'access_removed' },
+          });
+        }
+        results.push({ changeId: change.changeId, status: 'quarantined', hash: check.hash });
+      }
+      return { results };
+    });
+  } catch (err) {
+    if (!(err instanceof QuarantineFull)) throw err;
+    await reportFull(deps, d, meta, err.held, changes.length);
     throw conflict('quarantine_full', 'This phone has handed over more than a Program Admin can review.');
   }
-  const meta = requestMeta(c);
-  const results = [];
-  for (const change of changes) {
-    const checked = await precheck(change);
-    if (!checked.ok) {
-      results.push({
-        changeId: change.changeId,
-        status: 'rejected' as const,
-        reason: checked.outcome.reason,
-      });
-      continue;
-    }
-    if (change.entity === 'audit') {
-      // What the person looked at offline joins the audit chain as theirs, from their phone, at
-      // its device time. It isn't anyone's to approve, and an admin accepting it would log the
-      // read as the admin's.
-      const recorded = await deviceTx(deps, d, meta, async (tx, audit) => {
-        await tx`select pg_advisory_xact_lock(hashtextextended(${change.changeId}, 0))`;
-        const existing = await findReceipt(tx, change.changeId);
-        if (existing)
-          return (
-            existing.userId === d.userId && existing.deviceId === d.deviceId && existing.status === 'accepted'
-          );
-        const actor: ApplyActor = {
-          teamId: d.teamId,
-          authorId: d.userId,
-          approvedBy: null,
-          deviceId: d.deviceId,
-          canChart: false,
-          quarantineOnPermission: false,
-          auditDetails: { afterRemoval: true },
-        };
-        return (await applyChange(tx, audit, actor, change, checked.hash)).status === 'accepted';
-      });
-      results.push(
-        recorded
-          ? { changeId: change.changeId, status: 'recorded' as const, hash: checked.hash }
-          : { changeId: change.changeId, status: 'rejected' as const, reason: 'validation' as const },
-      );
-      continue;
-    }
-    await deviceTx(deps, d, meta, async (tx, audit) => {
-      const added = await quarantine(
-        tx,
-        { teamId: d.teamId, authorId: d.userId, deviceId: d.deviceId },
-        change,
-        checked.hash,
-        'access_removed',
-      );
-      if (added) {
-        await audit({
-          action: 'sync.quarantined',
-          entity: change.entity,
-          entityId: change.recordId,
-          deviceTime: new Date(change.deviceTime),
-          details: { changeId: change.changeId, reason: 'access_removed' },
-        });
-      }
-    });
-    results.push({ changeId: change.changeId, status: 'quarantined' as const, hash: checked.hash });
+}
+
+/**
+ * What the person looked at offline joins the audit chain as theirs, from their phone, at its
+ * device time. It isn't anyone's to approve, and an admin accepting it would log the read as the
+ * admin's.
+ */
+async function recordAudit(
+  tx: Tx,
+  audit: AuditFn,
+  d: SignedDevice,
+  change: SyncChangeInput,
+  hash: string,
+  take: () => void,
+): Promise<HandOverResult> {
+  const recorded = { changeId: change.changeId, status: 'recorded', hash } as const;
+  const refused = { changeId: change.changeId, status: 'rejected', reason: 'validation' } as const;
+  const existing = await findReceipt(tx, change.changeId);
+  if (existing) {
+    const mine = existing.userId === d.userId && existing.deviceId === d.deviceId;
+    return mine && existing.status === 'accepted' ? recorded : refused;
   }
-  return { results };
+  take();
+  const actor: ApplyActor = {
+    teamId: d.teamId,
+    authorId: d.userId,
+    approvedBy: null,
+    deviceId: d.deviceId,
+    canChart: false,
+    quarantineOnPermission: false,
+    auditDetails: { afterRemoval: true },
+  };
+  return (await applyChange(tx, audit, actor, change, hash)).status === 'accepted' ? recorded : refused;
+}
+
+/**
+ * Tells admins that a phone's work is waiting beyond the cap. At most once a day per phone: the
+ * refused key must not get to fill the audit chain with refusals instead.
+ */
+async function reportFull(deps: Deps, d: SignedDevice, meta: RequestMeta, held: HandedOver, sent: number) {
+  await deviceTx(deps, d, meta, async (tx, audit) => {
+    await tx`select pg_advisory_xact_lock(hashtextextended(${d.deviceId}, 0))`;
+    const recent = await tx`
+      select 1 from sineobex.audit_events
+      where team_id = ${d.teamId} and device_id = ${d.deviceId} and action = 'sync.quarantine_full'
+        and occurred_at > now() - interval '1 day'
+      limit 1`;
+    if (recent.length > 0) return;
+    await audit({
+      action: 'sync.quarantine_full',
+      entity: 'device',
+      entityId: d.deviceId,
+      details: { ...held, sent, limit: MAX_PENDING_PER_DEVICE },
+    });
+  });
 }
 
 export async function confirmWiped(c: Context<AppEnv>, deps: Deps, deviceId: string, wipedAt: string) {

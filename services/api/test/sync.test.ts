@@ -1,8 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { valueHash } from '../src/sync/canonical.ts';
+import { MAX_PENDING_PER_DEVICE } from '../src/sync/devices.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { call, FakePhone, push, register, results, setupTeam, type Team } from './sync-fixtures.ts';
+import {
+  call,
+  FakePhone,
+  handOver,
+  push,
+  register,
+  removedPhone,
+  results,
+  setupTeam,
+  type Team,
+} from './sync-fixtures.ts';
 
 describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
   let h: Harness;
@@ -967,6 +978,108 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         json: { decision: 'reject', reason: 'not needed' },
       });
       expect(r.body.error?.code).toBe('reauth_required');
+    });
+  });
+
+  describe('handing work over after removal', () => {
+    // Stand-ins for work a phone already handed over, so a test needn't send thousands of entries.
+    const filler = '0'.repeat(64);
+    const fillPending = (phone: FakePhone, userId: string, n: number) => h.scratch.owner`
+      insert into sineobex.quarantine_items
+        (team_id, device_id, user_id, change_id, entity, record_id, op, value, value_hash, details, device_time, reason)
+      select ${t.teamId}, ${phone.deviceId}, ${userId}, gen_random_uuid(), 'encounter', gen_random_uuid(), 'create',
+             '{"kind":"medical"}'::jsonb, ${filler}, '{}'::jsonb, now(), 'access_removed'
+      from generate_series(1, ${n}::int)`;
+    const fillRecorded = (phone: FakePhone, userId: string, n: number) => h.scratch.owner`
+      insert into sineobex.sync_changes
+        (change_id, team_id, device_id, user_id, device_seq, entity, record_id, op, value_hash, device_time,
+         status, server_version)
+      select gen_random_uuid(), ${t.teamId}, ${phone.deviceId}, ${userId}, i, 'audit', gen_random_uuid(), 'append',
+             ${filler}, now(), 'accepted', 1
+      from generate_series(1, ${n}::int) as i`;
+    // The queue lists the oldest 200 items, so later tests must not find it full of stand-ins.
+    const clearFillers = async (phone: FakePhone) => {
+      await h.scratch.owner`
+        delete from sineobex.quarantine_items where device_id = ${phone.deviceId} and value_hash = ${filler}`;
+      await h.scratch.owner`
+        delete from sineobex.sync_changes where device_id = ${phone.deviceId} and value_hash = ${filler}`;
+    };
+
+    it('activity log entries count against the cap, so a removed person’s key can’t flood the audit chain', async () => {
+      // Review finding: they were recorded without counting, so a modified phone could append
+      // permanent audit events without limit.
+      const { phone, userId } = await removedPhone(h, t, 'riley@example.com', 'Riley (demo)');
+      await fillPending(phone, userId, 1);
+      await fillRecorded(phone, userId, MAX_PENDING_PER_DEVICE - 2);
+      const read = () => phone.change({ entity: 'audit', op: 'append', value: { action: 'note.viewed' } });
+      const last = await read();
+      expect((await handOver(h, phone, [last])).body.results).toEqual([
+        { changeId: last.changeId, status: 'recorded', hash: last.valueHash },
+      ]);
+      const over = await read();
+      const refused = await handOver(h, phone, [over]);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error?.code).toBe('quarantine_full');
+      expect(await count('sync_changes', `change_id = '${over.changeId}'`)).toBe(0);
+      expect(await count('audit_events', `details->>'changeId' = '${over.changeId}'`)).toBe(0);
+      await clearFillers(phone);
+    });
+
+    it('parallel hand-overs share the cap instead of each finding room', async () => {
+      // Review finding: each request counted in its own transaction and stored in later ones.
+      const { phone, userId } = await removedPhone(h, t, 'drew@example.com', 'Drew (demo)');
+      await fillPending(phone, userId, MAX_PENDING_PER_DEVICE - 1);
+      const encounters = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } }),
+        ),
+      );
+      const attempts = await Promise.all(encounters.map((e) => handOver(h, phone, [e])));
+      expect(attempts.map((a) => a.status).sort()).toEqual([200, 409, 409, 409]);
+      expect(await count('quarantine_items', `device_id = '${phone.deviceId}' and status = 'pending'`)).toBe(
+        MAX_PENDING_PER_DEVICE,
+      );
+      await clearFillers(phone);
+    });
+
+    it('a hand-over retried at the cap is answered again, and a refusal is logged for admins once', async () => {
+      // Review finding: the cap counted every entry sent, including ones already here, so a phone
+      // (which restarts its hand-over from the first entry) was refused forever and never wiped.
+      const { phone, userId } = await removedPhone(h, t, 'quinn@example.com', 'Quinn (demo)');
+      const encounter = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      const read = await phone.change({ entity: 'audit', op: 'append', value: { action: 'note.viewed' } });
+      const first = await handOver(h, phone, [encounter, read]);
+      expect(first.body.results).toEqual([
+        { changeId: encounter.changeId, status: 'quarantined', hash: encounter.valueHash },
+        { changeId: read.changeId, status: 'recorded', hash: read.valueHash },
+      ]);
+      await fillPending(phone, userId, MAX_PENDING_PER_DEVICE - 2);
+      const retry = await handOver(h, phone, [encounter, read]);
+      expect(retry.status).toBe(200);
+      expect(retry.body.results).toEqual(first.body.results);
+
+      // Something new is refused, and admins can see that work is waiting.
+      const more = [await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } })];
+      for (let i = 0; i < 2; i++) {
+        const refused = await handOver(h, phone, more);
+        expect(refused.body.error?.code).toBe('quarantine_full');
+      }
+      const logged = await h.scratch.owner<{ actor: string; details: Record<string, unknown> }[]>`
+        select actor_user_id as actor, details from sineobex.audit_events
+        where action = 'sync.quarantine_full' and device_id = ${phone.deviceId}`;
+      // Once: a refused key doesn't get to fill the audit chain with refusals instead.
+      expect(logged).toEqual([
+        {
+          actor: userId,
+          details: {
+            pending: MAX_PENDING_PER_DEVICE - 1,
+            recorded: 1,
+            sent: 1,
+            limit: MAX_PENDING_PER_DEVICE,
+          },
+        },
+      ]);
+      await clearFillers(phone);
     });
   });
 
