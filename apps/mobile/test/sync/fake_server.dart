@@ -146,6 +146,10 @@ class FakeSyncServer {
     final id = c['changeId']! as String;
     final hash = valueHash(c['value']);
     if (!c.containsKey('value')) return _store(userId, deviceId, c, hash, _rejected('validation'));
+    // apply.ts precheck: one value is at most MAX_VALUE_BYTES of canonical JSON.
+    if (utf8.encode(canonicalJson(c['value'])).length > maxValueBytes) {
+      return _store(userId, deviceId, c, hash, _rejected('validation', {'problem': 'too_large'}));
+    }
     if (hash != c['valueHash']) return {'changeId': id, 'status': 'rejected', 'reason': 'hash_mismatch'};
     final existing = receipts[id];
     if (existing != null) return existing.result(this);

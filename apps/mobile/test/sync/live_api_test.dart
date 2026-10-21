@@ -193,6 +193,30 @@ void main() {
     );
   }, skip: skip);
 
+  test('a refused note too large for one create is fixed as a create and edits sent with it', () async {
+    final (p, _) = await phone('clinician@example.com');
+    final note = p.store.createNote(encounterId: '0d3e6f00-0000-4000-8000-0000000000fe', noteTypeKey: 'vitals');
+    final history = 'Demo history ${'h' * 40000}';
+    final plan = 'Demo plan ${'p' * 30000}';
+    p.store.setField(note, 'data.history', history);
+    p.store.setField(note, 'data.plan', plan);
+    final first = await p.engine.syncAll(force: true) as SyncDone;
+    expect(first.rejected, 3);
+    // Together the fields are over the API's 64 KiB for one value: one follows the fixed create
+    // in the same push, as a field new to the note (version 0).
+    final encounter = p.store.createEncounter(kind: 'medical');
+    p.store.fixRejected(p.store.needsAttention().first.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+    expect(p.store.sendable().map((e) => e.op), ['create', 'create', 'set']);
+    final done = await p.engine.syncAll(force: true) as SyncDone;
+    expect([done.confirmed, done.rejected, done.conflicts], [3, 0, 0]);
+    expect(p.store.outbox(), isEmpty);
+    final (reader, _) = await phone('resident@example.com');
+    expect(
+      await serverFields(reader, note),
+      allOf(containsPair('data.history', history), containsPair('data.plan', plan)),
+    );
+  }, skip: skip);
+
   test('keeping the server’s value: a value that changed again since must be chosen again', () async {
     final (a, _) = await phone('clinician@example.com');
     final (b, _) = await phone('resident@example.com');

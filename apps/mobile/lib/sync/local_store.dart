@@ -377,7 +377,8 @@ class LocalStore {
     });
   }
 
-  /// A note for one care type within an encounter.
+  /// A note for one care type within an encounter. Data too large for one create follows it as
+  /// edits (see [_splitData]).
   String createNote({
     required String encounterId,
     required String noteTypeKey,
@@ -394,12 +395,13 @@ class LocalStore {
     if (encounter != null && encounter.status == 'signed') throw const RecordLocked();
     final id = _newId();
     return _tx(() {
-      final value = <String, Object?>{
+      final head = <String, Object?>{
         'encounterId': encounterId,
         'noteTypeKey': noteTypeKey,
         'noteTypeVersion': ?noteTypeVersion,
-        if (data.isNotEmpty) 'data': data,
       };
+      final (:inCreate, :after) = _splitData(head, data);
+      final value = {...head, if (inCreate.isNotEmpty) 'data': inCreate};
       final changeId = _append(entity: entityNote, recordId: id, op: 'create', value: value, baseVersion: 0);
       _insertRecord(
         id,
@@ -408,11 +410,58 @@ class LocalStore {
         origin: 'local',
       );
       _putField(id, 'status', 'draft', serverVersion: 0, pending: changeId);
-      for (final MapEntry(:key, :value) in data.entries) {
+      for (final MapEntry(:key, :value) in inCreate.entries) {
         _putField(id, 'data.$key', value, serverVersion: 0, pending: changeId);
       }
+      _appendData(id, after);
       return id;
     });
+  }
+
+  /// Which of a note's data goes in its create, and which follows it. One value holds at most
+  /// [maxValueBytes] (MAX_VALUE_BYTES in the API), so a note too large for one create goes the way
+  /// one charted bit by bit does: the create with the fields that fit, then the rest one by one.
+  /// A value that can't be stored at all goes on its own, where [_append] refuses it.
+  static ({Map<String, Object?> inCreate, Map<String, Object?> after}) _splitData(
+    Map<String, Object?> head,
+    Map<String, Object?> data,
+  ) {
+    if (storableProblem({...head, if (data.isNotEmpty) 'data': data}) == null || storableProblem(head) != null) {
+      return (inCreate: data, after: const {});
+    }
+    final inCreate = <String, Object?>{};
+    final after = <String, Object?>{};
+    // The create with empty data, then each field adds its key, a colon and its value, and a
+    // comma after the first.
+    var bytes = _bytes({...head, 'data': const <String, Object?>{}});
+    for (final MapEntry(:key, :value) in data.entries) {
+      final cost = storableProblem(value) == null ? _bytes(key) + 1 + _bytes(value) + (inCreate.isEmpty ? 0 : 1) : null;
+      if (cost != null && bytes + cost <= maxValueBytes) {
+        inCreate[key] = value;
+        bytes += cost;
+      } else {
+        after[key] = value;
+      }
+    }
+    return (inCreate: inCreate, after: after);
+  }
+
+  static int _bytes(Object? value) => utf8.encode(canonicalJson(value)).length;
+
+  /// Sends a note's data that didn't fit in its create, after it, one field per change. These
+  /// fields are new to the server, so each builds on version 0.
+  void _appendData(String recordId, Map<String, Object?> data) {
+    for (final MapEntry(:key, :value) in data.entries) {
+      final changeId = _append(
+        entity: entityNote,
+        recordId: recordId,
+        op: 'set',
+        field: 'data.$key',
+        value: value,
+        baseVersion: 0,
+      );
+      _putField(recordId, 'data.$key', value, serverVersion: 0, pending: changeId);
+    }
   }
 
   void _insertRecord(String id, String entity, {required Map<String, Object?> attributes, required String origin}) {
@@ -875,7 +924,8 @@ class LocalStore {
   /// For a rejected set, [value] is the corrected field value; later edits waiting on the field
   /// are folded into it. For a rejected create, [value] is the corrected create value. The
   /// record's other fields, as the person has them now (cleared ones included), fill in what
-  /// [value] leaves out, and the record's waiting or refused-with-it edits are folded in.
+  /// [value] leaves out, and the record's waiting or refused-with-it edits are folded in. A note's
+  /// data that no longer fits in one create follows it as edits (see [_splitData]).
   void fixRejected(String changeId, Object? value) {
     _guardCharting();
     final x = entry(changeId);
@@ -906,6 +956,7 @@ class LocalStore {
     final Map<String, Object?> merged;
     final Map<String, Object?> localUpdates;
     final Map<String, Object?> attributes;
+    var dataAfter = const <String, Object?>{};
     if (x.entity == entityEncounter) {
       final kind = created['kind'];
       if (kind != 'medical' && kind != 'non_medical') {
@@ -933,7 +984,10 @@ class LocalStore {
       for (final key in data.keys) {
         if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
       }
-      merged = {...created, if (data.isNotEmpty) 'data': data};
+      final head = {...created}..remove('data');
+      final (:inCreate, :after) = _splitData(head, data);
+      merged = {...head, if (inCreate.isNotEmpty) 'data': inCreate};
+      dataAfter = after;
       localUpdates = {for (final MapEntry(:key, :value) in data.entries) 'data.$key': value};
       attributes = {
         for (final name in ['encounterId', 'noteTypeKey', 'noteTypeVersion']) name: merged[name],
@@ -958,6 +1012,7 @@ class LocalStore {
         _putField(x.recordId, key, value, serverVersion: 0, pending: fix);
       }
       _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
+      _appendData(x.recordId, dataAfter);
       // The record is what the fixed create says now, which may be another encounter: the purge
       // keeps the encounter a note names.
       _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), x.recordId]);

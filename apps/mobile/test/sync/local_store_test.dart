@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -599,5 +600,96 @@ void main() {
     now = now.add(const Duration(hours: 25));
     store.purge();
     expect(store.record(merged), isNotNull);
+  });
+
+  test('a note too large for one create goes as the create and the edits that follow it', () {
+    final enc = store.createEncounter(kind: 'medical');
+    final empty = canonicalJson({
+      'encounterId': enc,
+      'noteTypeKey': 'vitals',
+      'data': {'narrative': ''},
+    });
+    // A narrative that fills the create to the API's limit exactly.
+    final full = 'n' * (maxValueBytes - utf8.encode(empty).length);
+    List<OutboxEntry> changesOf(String id) => store.outbox().where((e) => e.recordId == id).toList();
+
+    final fits = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'narrative': full, 'pulse': 90});
+    final first = changesOf(fits);
+    expect(first.map((e) => [e.op, e.field]), [
+      ['create', null],
+      ['set', 'data.pulse'],
+    ]);
+    expect(utf8.encode(canonicalJson(first.first.value)).length, maxValueBytes);
+    expect([first.last.value, first.last.baseVersion, first.last.follows], [90, 0, null]);
+
+    // One character more and the narrative can't share the create, so it follows on its own.
+    final over = store.createNote(
+      encounterId: enc,
+      noteTypeKey: 'vitals',
+      data: {'narrative': '${full}n', 'pulse': 90},
+    );
+    final second = changesOf(over);
+    expect(second.map((e) => [e.op, e.field]), [
+      ['create', null],
+      ['set', 'data.narrative'],
+    ]);
+    expect((second.first.value! as Map<String, Object?>)['data'], {'pulse': 90});
+    final fields = store.record(over)!.fields;
+    expect(
+      [fields['data.narrative']!.pendingChange, fields['data.pulse']!.pendingChange],
+      [second.last.changeId, second.first.changeId],
+    );
+
+    // Confirmed, each field is at the version the server gave it.
+    store.confirm(second.first, serverVersion: 1);
+    store.confirm(second.last, serverVersion: 1);
+    expect(store.record(over)!.fields.values.map((f) => [f.confirmed, f.serverVersion]), everyElement([true, 1]));
+  });
+
+  test('a refused note too large for one create is fixed, with the fields that don’t fit following it', () {
+    final enc = store.createEncounter(kind: 'medical');
+    confirmAll();
+    final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 38});
+    // Each fits in a value of its own; together they are over the API's 64 KiB.
+    store.setField(note, 'data.history', 'Demo history ${'h' * 40000}');
+    store.setField(note, 'data.plan', 'Demo plan ${'p' * 30000}');
+    store.setField(note, 'status', 'completed');
+    for (final e in store.sendable()) {
+      store.reject(e, reason: 'stale_reference');
+    }
+    final refused = store.needsAttention().first;
+    expect(refused.op, 'create');
+
+    store.fixRejected(refused.changeId, {'encounterId': enc, 'noteTypeKey': 'vitals'});
+    expect(store.needsAttention(), isEmpty);
+    final sendable = store.sendable();
+    expect(sendable.map((e) => e.op), ['create', 'set', 'set']);
+    final [fix, follow, status] = sendable;
+    expect(fix.supersedes, refused.changeId);
+    for (final e in sendable) {
+      expect(utf8.encode(canonicalJson(e.value)).length, lessThanOrEqualTo(maxValueBytes));
+    }
+    // One long field is in the create and the other follows it, as a field the server hasn't seen.
+    final inCreate = ((fix.value! as Map<String, Object?>)['data']! as Map<String, Object?>).keys.toSet();
+    expect({...inCreate, follow.field!.substring('data.'.length)}, {'temp_c', 'history', 'plan'});
+    expect(inCreate, contains('temp_c'));
+    expect([follow.baseVersion, follow.supersedes], [0, null]);
+    expect([status.field, status.value, status.follows], ['status', 'completed', fix.changeId]);
+    expect(store.record(note)!.fields[follow.field]!.pendingChange, follow.changeId);
+
+    // Refused and fixed again, it goes the same way, and nothing is left behind once confirmed.
+    for (final e in sendable) {
+      store.reject(e, reason: 'stale_reference');
+    }
+    store.fixRejected(fix.changeId, {'encounterId': enc, 'noteTypeKey': 'vitals'});
+    final again = store.sendable();
+    expect(again.map((e) => e.op), ['create', 'set', 'set']);
+    store.confirm(again[0], serverVersion: 1);
+    store.confirm(again[1], serverVersion: 1);
+    store.confirm(again[2], serverVersion: 2);
+    expect(store.outbox(), isEmpty);
+    final fields = store.record(note)!.fields;
+    expect(fields.values.every((f) => f.confirmed), isTrue);
+    expect(fields['data.plan']!.value, 'Demo plan ${'p' * 30000}');
   });
 }

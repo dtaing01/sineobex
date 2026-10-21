@@ -462,6 +462,34 @@ void main() {
       expect(p.store.outbox(), isEmpty);
     });
 
+    test('a refused note too large for one create is fixed and sent as a create and edits', () async {
+      // Review finding: the fix folded 70 KB of fields into one create, over the API's 64 KiB
+      // value limit, so it was refused on the phone and the note could never leave it.
+      final p = phone(alex);
+      final encounter = p.store.createEncounter(kind: 'medical');
+      await p.engine.syncAll();
+      final note = p.store.createNote(encounterId: '11111111-1111-4111-8111-111111111111', noteTypeKey: 'vitals');
+      final history = 'Demo history ${'h' * 40000}';
+      final plan = 'Demo plan ${'p' * 30000}';
+      p.store.setField(note, 'data.history', history);
+      p.store.setField(note, 'data.plan', plan);
+      await p.engine.syncAll(force: true);
+      final attention = p.store.needsAttention();
+      expect(attention.map((e) => [e.op, e.reason]), [
+        ['create', 'stale_reference'],
+        ['set', 'stale_reference'],
+        ['set', 'stale_reference'],
+      ]);
+
+      p.store.fixRejected(attention.first.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+      final done = await p.engine.syncAll(force: true) as SyncDone;
+      expect([done.confirmed, done.rejected], [2, 0]);
+      expect(p.store.outbox(), isEmpty);
+      final onServer = server.records[note]!.fields;
+      expect([onServer['data.history']!.value, onServer['data.plan']!.value], [history, plan]);
+      expect(attention.every((e) => server.receipts[e.changeId]!.resolved), isTrue);
+    });
+
     test('removal hands over everything the server can read; an unreadable change doesn’t block it', () async {
       final p = phone(alex);
       p.store.createEncounter(kind: 'medical');
