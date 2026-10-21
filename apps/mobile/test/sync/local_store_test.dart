@@ -550,4 +550,54 @@ void main() {
     store.setField(note, 'data.f0', 'changed');
     expect(() => store.setField(note, 'data.one_more', 1), throwsA(isA<LocalValidationError>()));
   });
+
+  // ---- third review ----
+
+  ServerRecord teammateEncounter(String id) => ServerRecord(
+    entity: entityEncounter,
+    id: id,
+    status: 'draft',
+    authorUserId: 'author-b',
+    attributes: const {'kind': 'medical'},
+    fields: const {
+      'patientId': ServerField(value: 'c0000000-0000-4000-8000-00000000000c', version: 1),
+      'status': ServerField(value: 'draft', version: 1),
+    },
+  );
+
+  test('a teammate’s encounter stays while a note on it is open or unsynced, then expires', () {
+    const encounter = '0b6a0a76-55a1-4a3e-9f0e-6f0b5e1c2d41';
+    store.importServerRecord(teammateEncounter(encounter));
+    final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals');
+    // A day and more without signal, still charting the note: its encounter and patient stay.
+    now = now.add(const Duration(hours: 25));
+    store.setField(note, 'data.temp_c', 38.2);
+    store.purge();
+    expect(store.record(encounter)!.fields['patientId']!.value, 'c0000000-0000-4000-8000-00000000000c');
+    // Saved and closed but not yet confirmed, the note is still here, and so is its encounter,
+    // even once the encounter is closed too.
+    store.closeRecord(note);
+    store.closeRecord(encounter);
+    expect(store.record(encounter), isNotNull);
+    // Once the note has synced and gone, nobody is working on the encounter: it goes as well.
+    for (final e in store.outbox()) {
+      store.confirm(e, serverVersion: 1);
+    }
+    expect(store.record(note), isNull);
+    expect(store.record(encounter), isNull);
+  });
+
+  test('a note whose fix moves it to another encounter keeps that encounter on the phone', () {
+    const gone = '0b6a0a76-55a1-4a3e-9f0e-6f0b5e1c2d42';
+    const merged = '0b6a0a76-55a1-4a3e-9f0e-6f0b5e1c2d43';
+    final note = store.createNote(encounterId: gone, noteTypeKey: 'vitals', data: {'temp_c': 38});
+    final create = store.outbox().single;
+    store.reject(create, reason: 'stale_reference');
+    store.importServerRecord(teammateEncounter(merged));
+    store.fixRejected(create.changeId, {'encounterId': merged, 'noteTypeKey': 'vitals'});
+    expect(store.record(note)!.attributes['encounterId'], merged);
+    now = now.add(const Duration(hours: 25));
+    store.purge();
+    expect(store.record(merged), isNotNull);
+  });
 }

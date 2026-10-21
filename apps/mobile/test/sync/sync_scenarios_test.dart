@@ -325,6 +325,39 @@ void main() {
       expect(server.history.last, containsPair('kind', 'kept_both'));
       expect(server.history.last, containsPair('value', 39.0));
     });
+
+    test('a teammate’s encounter stays while a note on it is charted offline, then expires', () async {
+      // Review finding: after a day without signal, any Save & Close purged the encounter, and
+      // with it the patient, from under the note still open on it.
+      const patient = 'c0000000-0000-4000-8000-00000000000c';
+      final a = phone(alex);
+      final b = phone(blair);
+      final encounter = b.store.createEncounter(kind: 'medical', patientId: patient);
+      await b.engine.syncAll();
+      await a.engine.syncAll();
+      expect(await a.engine.openServerRecord(entityEncounter, encounter), isTrue);
+      server.offline = true;
+      final note = a.store.createNote(encounterId: encounter, noteTypeKey: 'vitals');
+      final other = a.store.createEncounter(kind: 'non_medical');
+      a.advance(const Duration(hours: 25));
+      a.store.setField(note, 'data.temp_c', 38.2);
+      a.store.closeRecord(other);
+      expect(a.clock.status.state, ClockState.verified);
+      expect(a.store.record(encounter)!.fields['patientId']!.value, patient);
+      expect(a.store.record(note)!.open, isTrue);
+
+      // Back in signal, the note syncs and is closed. The encounter is a read-only copy again, so
+      // it goes a day after it was last downloaded.
+      server.offline = false;
+      serverTime = serverTime.add(const Duration(hours: 25));
+      await a.engine.syncAll(force: true);
+      a.store.closeRecord(note);
+      expect(a.store.record(note), isNull);
+      expect(a.store.record(encounter), isNotNull);
+      a.advance(const Duration(hours: 25));
+      a.store.purge();
+      expect(a.store.record(encounter), isNull);
+    });
   });
 
   group('rejections, quarantine and wipe', () {

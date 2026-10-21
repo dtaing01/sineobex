@@ -905,6 +905,7 @@ class LocalStore {
     final fields = rec?.fields ?? const <String, LocalField>{};
     final Map<String, Object?> merged;
     final Map<String, Object?> localUpdates;
+    final Map<String, Object?> attributes;
     if (x.entity == entityEncounter) {
       final kind = created['kind'];
       if (kind != 'medical' && kind != 'non_medical') {
@@ -920,6 +921,7 @@ class LocalStore {
       localUpdates = {
         for (final name in ['patientId', 'location']) name: merged[name],
       };
+      attributes = {'kind': kind};
     } else {
       final createdData = (created['data'] as Map<String, Object?>?) ?? const {};
       final data = <String, Object?>{
@@ -933,6 +935,9 @@ class LocalStore {
       }
       merged = {...created, if (data.isNotEmpty) 'data': data};
       localUpdates = {for (final MapEntry(:key, :value) in data.entries) 'data.$key': value};
+      attributes = {
+        for (final name in ['encounterId', 'noteTypeKey', 'noteTypeVersion']) name: merged[name],
+      };
     }
     _tx(() {
       final fix = _append(
@@ -953,6 +958,9 @@ class LocalStore {
         _putField(x.recordId, key, value, serverVersion: 0, pending: fix);
       }
       _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
+      // The record is what the fixed create says now, which may be another encounter: the purge
+      // keeps the encounter a note names.
+      _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), x.recordId]);
       final status = fields['status']?.value;
       if (status != null && status != 'draft') {
         // The create always starts as a draft; a later Complete goes as its own change.
@@ -1009,11 +1017,18 @@ class LocalStore {
 
   int _purge() {
     final expired = _nowMs - serverCopyLifetime.inMilliseconds;
-    // A field goes once the record left active use (or its server copy expired), its latest
-    // change is confirmed, and no change to it is still waiting.
+    // Out of use: closed (Save & Close), or a server copy past its lifetime. An encounter stays
+    // while the person has a note on it open or unsynced, or the note would lose its encounter
+    // and patient; after that, a teammate's encounter expires like any other server copy.
+    const outOfUse =
+        '(open = 0 OR (origin = ? AND downloaded_at < ?)) AND NOT EXISTS (SELECT 1 FROM records n '
+        "WHERE n.origin = 'local' AND json_extract(n.attributes_json, '\$.encounterId') = records.id "
+        'AND (n.open = 1 OR EXISTS (SELECT 1 FROM outbox o WHERE o.record_id = n.id)))';
+    // A field goes once its record is out of use, its latest change is confirmed, and no change
+    // to it is still waiting.
     _db.execute(
       'DELETE FROM fields WHERE pending_change IS NULL '
-      'AND record_id IN (SELECT id FROM records WHERE open = 0 OR (origin = ? AND downloaded_at < ?)) '
+      'AND record_id IN (SELECT id FROM records WHERE $outOfUse) '
       'AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.record_id = fields.record_id '
       "  AND (o.field = fields.field OR o.op = 'create'))",
       ['server', expired],
@@ -1023,7 +1038,7 @@ class LocalStore {
     _db.execute(
       'DELETE FROM records WHERE NOT EXISTS (SELECT 1 FROM fields WHERE record_id = records.id) '
       'AND NOT EXISTS (SELECT 1 FROM outbox WHERE record_id = records.id) '
-      'AND (open = 0 OR (origin = ? AND downloaded_at < ?))',
+      'AND $outOfUse',
       ['server', expired],
     );
     return removed;
