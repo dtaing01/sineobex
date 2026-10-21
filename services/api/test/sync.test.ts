@@ -1075,6 +1075,32 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       }
     });
 
+    it('a hand-over under an ID someone else’s held change already has is refused, not wiped', async () => {
+      // Review (of the hand-over rewrite): the insert stored nothing but answered "quarantined",
+      // so the phone would have wiped a change the server never held.
+      const first = await removedPhone(h, t, 'ash@example.com', 'Ash (demo)');
+      const second = await removedPhone(h, t, 'bay@example.com', 'Bay (demo)');
+      const theirs = await first.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical' },
+      });
+      expect((await handOver(h, first.phone, [theirs])).status).toBe(200);
+      const mine = {
+        ...(await second.phone.change({ entity: 'encounter', op: 'create', value: { kind: 'non_medical' } })),
+        changeId: theirs.changeId,
+      };
+      const handed = await handOver(h, second.phone, [mine]);
+      expect(handed.body.results).toEqual([
+        { changeId: mine.changeId, status: 'rejected', reason: 'validation' },
+      ]);
+      // A re-send of the first phone's own hand-over is still answered as held.
+      const again = await handOver(h, first.phone, [theirs]);
+      expect(again.body.results).toEqual([
+        { changeId: theirs.changeId, status: 'quarantined', hash: theirs.valueHash },
+      ]);
+    });
+
     it('an admin decision needs a recent sign-in', async () => {
       const stale = await h.tokenFor('admin@example.com', {
         authTime: new Date(h.clock.now.getTime() - 60 * 60_000),

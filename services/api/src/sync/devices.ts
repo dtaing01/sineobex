@@ -273,6 +273,11 @@ export async function uploadQuarantine(
             deviceTime: new Date(change.deviceTime),
             details: { changeId: change.changeId, reason: 'access_removed' },
           });
+        } else if (!(await heldFor(tx, change.changeId, d))) {
+          // Someone else's change waits under this ID (here or in another team): nothing of this
+          // phone's was stored, and answering "quarantined" would have it wipe the change.
+          results.push({ changeId: change.changeId, status: 'rejected', reason: 'validation' });
+          continue;
         }
         results.push({ changeId: change.changeId, status: 'quarantined', hash: check.hash });
       }
@@ -283,6 +288,14 @@ export async function uploadQuarantine(
     await reportFull(deps, d, meta, err.held, changes.length);
     throw conflict('quarantine_full', 'This phone has handed over more than a Program Admin can review.');
   }
+}
+
+/** This phone's own change is the one held for review under [changeId] (a re-sent hand-over). */
+async function heldFor(tx: Tx, changeId: string, d: SignedDevice): Promise<boolean> {
+  const rows = await tx`
+    select 1 from sineobex.quarantine_items
+    where change_id = ${changeId} and device_id = ${d.deviceId} and user_id = ${d.userId}`;
+  return rows.length > 0;
 }
 
 /**
