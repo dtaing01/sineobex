@@ -72,7 +72,8 @@ class HttpTransport implements ApiTransport {
 
     final http.Response response;
     try {
-      response = await http.Response.fromStream(await _client.send(request).timeout(timeout));
+      // The body too: an answer that stalls after its headers must not hang its caller.
+      response = await http.Response.fromStream(await _client.send(request).timeout(timeout)).timeout(timeout);
     } on TimeoutException {
       throw const NetworkException('timeout');
     } on SocketException {

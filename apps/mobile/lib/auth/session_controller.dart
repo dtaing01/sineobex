@@ -195,6 +195,16 @@ class SessionController extends ChangeNotifier {
 
   Uint8List? get databaseKey => _dbKey;
 
+  /// Bumped whenever the person is signed out or forgotten here. An unlock reading the vault or
+  /// the keystore across such a change stops: a remote wipe can land mid-unlock, and unlocking
+  /// into a wiped session would chart into a database nobody can ever read or hand over.
+  int _generation = 0;
+
+  bool _stillLocked(int generation, String userId) {
+    final s = _state;
+    return generation == _generation && s is Locked && s.user.userId == userId;
+  }
+
   void _set(SessionState s) {
     _state = s;
     notifyListeners();
@@ -311,32 +321,48 @@ class SessionController extends ChangeNotifier {
     _pendingEmail = null;
   }
 
-  Future<void> _afterUnlock(LocalUser user, Uint8List key) async {
-    _dbKey = key;
+  Future<void> _afterUnlock(int generation, String userId, Uint8List key) async {
+    // A sign-out or wipe meanwhile also cleared the pending sign-in, so nothing below is saved for
+    // a forgotten person; the check before unlocking is what stops the unlock.
     final pending = _pendingTokens;
     final pendingUser = _pendingUser;
     if (pending != null && pendingUser != null) {
       await _adopt(pendingUser, key, pending);
-      user = pendingUser;
     } else {
-      _factorId = await store.read(_k(user.userId, 'factor'));
+      _factorId = await store.read(_k(userId, 'factor'));
     }
-    _set(Unlocked(user, biometric: await vault.hasBiometric(user.userId)));
+    final biometric = await vault.hasBiometric(userId);
+    if (!_stillLocked(generation, userId)) {
+      _dbKey = null;
+      _tokens = null;
+      return;
+    }
+    _dbKey = key;
+    // The profile may have changed while unlocking (a team dropped): unlock into the current one.
+    final user = pending != null && pendingUser != null ? pendingUser : (_state as Locked).user;
+    _set(Unlocked(user, biometric: biometric));
   }
 
   /// Throws [WrongPin]; on [VaultWiped] the phone forgets the user and shows why.
   Future<void> unlockWithPin(String pin) async {
     final s = _state;
     if (s is! Locked) return;
+    final generation = _generation;
     try {
       final key = await vault.unlockWithPin(s.user.userId, pin);
-      await _afterUnlock(s.user, key);
+      await _afterUnlock(generation, s.user.userId, key);
     } on WrongPin catch (e) {
-      _set(Locked(s.user, attemptsLeft: e.attemptsLeft, biometric: s.biometric));
+      final now = _state;
+      if (_stillLocked(generation, s.user.userId)) {
+        _set(Locked((now as Locked).user, attemptsLeft: e.attemptsLeft, biometric: now.biometric));
+      }
       rethrow;
     } on VaultWiped {
+      final current = generation == _generation;
       await _forget(s.user.userId);
-      _set(const SignedOut(notice: 'Too many wrong PINs. The data on this phone was erased. Sign in again.'));
+      if (current) {
+        _set(const SignedOut(notice: 'Too many wrong PINs. The data on this phone was erased. Sign in again.'));
+      }
     }
   }
 
@@ -344,10 +370,11 @@ class SessionController extends ChangeNotifier {
   Future<bool> unlockWithBiometric() async {
     final s = _state;
     if (s is! Locked) return false;
+    final generation = _generation;
     final key = await vault.unlockWithBiometric(s.user.userId);
     if (key == null) return false;
-    await _afterUnlock(s.user, key);
-    return true;
+    await _afterUnlock(generation, s.user.userId, key);
+    return _state is Unlocked;
   }
 
   Future<void> enableBiometric() async {
@@ -374,15 +401,15 @@ class SessionController extends ChangeNotifier {
     _set(Unlocked(user, biometric: s.biometric));
   }
 
-  /// Forgets a team this person no longer has access to (removed while offline, or wiped), so
-  /// the team picker stops offering it.
-  Future<void> dropTeam(String teamId) async {
+  /// Forgets a team [userId] no longer has access to (removed while offline, or wiped), so the
+  /// team picker stops offering it. Nothing happens if someone else is signed in by now.
+  Future<void> dropTeam(String teamId, {required String userId}) async {
     final s = _state;
     final user = switch (s) {
       Unlocked(:final user) || Locked(:final user) => user,
       _ => null,
     };
-    if (user == null) return;
+    if (user == null || user.userId != userId) return;
     final remaining = user.teams.where((t) => t.id != teamId).toList();
     final next = LocalUser(
       userId: user.userId,
@@ -492,6 +519,7 @@ class SessionController extends ChangeNotifier {
   }
 
   void _clearMemory() {
+    _generation++;
     _dbKey = null;
     _tokens = null;
     _pendingTokens = null;
@@ -499,6 +527,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _forget(String userId) async {
+    _generation++;
     await vault.destroy(userId);
     await localData?.erase(userId);
     await _forgetSession(userId);

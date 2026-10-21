@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -61,5 +62,22 @@ void main() {
   test('unknown enum values from a newer server do not break decoding', () {
     final h = Health.fromJson({'status': 'ok', 'environment': 'staging', 'demo': false, 'release': 'r'});
     expect(h.environment, HealthEnvironment.unknown);
+  });
+
+  test('an answer that stalls after its headers times out instead of hanging its caller', () async {
+    // Review finding: only the headers were timed, so one stalled body blocked every later
+    // remote-wipe check on a locked phone.
+    final never = StreamController<List<int>>();
+    addTearDown(never.close);
+    final client = MockClient.streaming((request, body) async => http.StreamedResponse(never.stream, 200));
+    final transport = HttpTransport(
+      baseUrl: Uri.parse('https://api.invalid'),
+      client: client,
+      timeout: const Duration(milliseconds: 50),
+    );
+    await expectLater(
+      transport.send('GET', '/v1/time'),
+      throwsA(isA<NetworkException>().having((e) => e.reason, 'reason', 'timeout')),
+    );
   });
 }

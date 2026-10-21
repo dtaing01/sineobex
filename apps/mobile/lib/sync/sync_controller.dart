@@ -132,8 +132,8 @@ class SyncController extends ChangeNotifier implements LocalData {
     if (s is Unlocked && key != null) {
       _deviceTimer?.cancel();
       _deviceTimer = null;
-      if (autoSync && !identical(_sweptFor, key)) {
-        _sweptFor = key;
+      if (autoSync && !_swept) {
+        _swept = true;
         _sweeping = _sweepDropped(s.user, key).catchError((Object _) {});
       }
       final teamId = s.user.teamId;
@@ -142,6 +142,7 @@ class SyncController extends ChangeNotifier implements LocalData {
       _close();
       _opening = _open(s.user.userId, teamId, key);
     } else {
+      _swept = false;
       _close();
       if (!autoSync || s is Starting) return;
       // Every lock, wrong PIN and sign-out asks again, and so does a timer while nobody is
@@ -155,8 +156,11 @@ class SyncController extends ChangeNotifier implements LocalData {
   static const deviceCheckInterval = Duration(minutes: 5);
   Timer? _deviceTimer;
   Future<void>? _checking;
-  Uint8List? _sweptFor;
   Future<void>? _sweeping;
+
+  /// This unlock's sweep of dropped teams has started. (A flag, not the key: the key must leave
+  /// memory with the lock.)
+  bool _swept = false;
 
   /// Asks, with each team's device key, whether an admin asked to wipe this phone's data, for
   /// every database on the phone that isn't open: the locked person's (including teams no longer
@@ -165,8 +169,11 @@ class SyncController extends ChangeNotifier implements LocalData {
   /// Runs one check at a time; the returned future completes when it is done.
   Future<void> checkDevices() => _checking ??= (() {
     checksStarted++;
-    return _checkDevices().catchError((Object _) {}).whenComplete(() => _checking = null);
+    // Bounded, so one answer that never finishes can't block every later check.
+    return _checkDevices().timeout(checkTimeout).catchError((Object _) {}).whenComplete(() => _checking = null);
   })();
+
+  static const checkTimeout = Duration(minutes: 2);
 
   /// How many device checks have started (tests use it to see that a lock asks by itself).
   @visibleForTesting
@@ -184,9 +191,16 @@ class SyncController extends ChangeNotifier implements LocalData {
       for (final path in LocalDatabase.filesForUser(dir, userId)) {
         final teamId = LocalDatabase.teamOf(path);
         final deviceId = await device.existingDeviceId(teamId);
-        if (deviceId == null) continue;
+        // A device ID made offline was never registered: the server can't know it or order its wipe.
+        if (deviceId == null || !await device.isRegistered(teamId)) continue;
         final requests = DeviceRequests(api: deviceApi, device: device, now: _now);
-        if (!_wipeOrdered((await requests.status(deviceId)).status)) continue;
+        final DeviceStatusResult status;
+        try {
+          status = await requests.status(deviceId);
+        } on Exception {
+          continue; // This file stays as it is; the others are still checked.
+        }
+        if (!_wipeOrdered(status.status)) continue;
         // The person may have unlocked meanwhile and opened this very file.
         if (_db?.path == path) continue;
         LocalDatabase.deleteFiles(path);
@@ -196,7 +210,7 @@ class SyncController extends ChangeNotifier implements LocalData {
           // Shown as "wipe requested" until the phone reaches the server again.
         }
         await device.forgetTeam(teamId);
-        if (userId == locked?.userId) await session.dropTeam(teamId);
+        await session.dropTeam(teamId, userId: userId);
         wiped++;
       }
       if (wiped == 0 || LocalDatabase.filesForUser(dir, userId).isNotEmpty) continue;
@@ -224,8 +238,13 @@ class SyncController extends ChangeNotifier implements LocalData {
       final teamId = LocalDatabase.teamOf(path);
       if (user.teams.any((t) => t.id == teamId)) continue;
       final deviceId = await device.existingDeviceId(teamId);
-      if (deviceId == null) continue;
-      final status = await DeviceRequests(api: deviceApi, device: device, now: _now).status(deviceId);
+      if (deviceId == null || !await device.isRegistered(teamId)) continue;
+      final DeviceStatusResult status;
+      try {
+        status = await DeviceRequests(api: deviceApi, device: device, now: _now).status(deviceId);
+      } on Exception {
+        continue;
+      }
       if (!identical(session.databaseKey, key)) return; // Locked meanwhile: the next unlock tries again.
       if (_wipeOrdered(status.status)) {
         await _wipeFile(path, device, deviceId, teamId);
@@ -244,9 +263,11 @@ class SyncController extends ChangeNotifier implements LocalData {
           appVersion: appVersion,
           now: _now,
         );
-        bool handedOver;
+        var handedOver = false;
         try {
           handedOver = _covers(await engine.uploadToQuarantine(), store);
+        } on Exception {
+          // Tried again at the next unlock.
         } finally {
           db.close();
         }
@@ -281,10 +302,16 @@ class SyncController extends ChangeNotifier implements LocalData {
     await _sweeping;
   }
 
+  /// Bumped by every open and close: an open that a newer one or a close overtook while it
+  /// waited stops, so no second connection (with the key) or timer outlives the lock.
+  int _openToken = 0;
+
   Future<void> _open(String userId, String teamId, Uint8List key) async {
+    final token = ++_openToken;
     final dir = await databaseDirectory();
     Directory(dir).createSync(recursive: true);
     final booted = await boot.read();
+    if (token != _openToken) return;
     // The session may have locked or changed team while we waited. From the open to `_db = db`
     // nothing awaits, so no device check can delete this file while it is open.
     final s = session.state;
@@ -320,8 +347,10 @@ class SyncController extends ChangeNotifier implements LocalData {
       random: Random.secure(),
     );
     await clock.check();
+    if (token != _openToken) return;
     notifyListeners();
     if (autoSync) {
+      _timer?.cancel();
       _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
       unawaited(syncNow());
     }
@@ -349,6 +378,7 @@ class SyncController extends ChangeNotifier implements LocalData {
   }
 
   void _close() {
+    _openToken++;
     _timer?.cancel();
     _timer = null;
     _db?.close();
@@ -406,7 +436,11 @@ class SyncController extends ChangeNotifier implements LocalData {
       _syncing = false;
     }
     _offline = outcome is SyncOffline;
-    if (outcome is SyncDone) _lastSyncedAt = _now();
+    if (outcome is SyncDone) {
+      _lastSyncedAt = _now();
+      // The server took a push, so access is back (a removal undone before the hand-over ended).
+      if (identical(engine, _engine)) engine.store.unfreeze();
+    }
     if (identical(engine, _engine)) {
       switch (outcome) {
         case SyncWipeRequested():
@@ -495,7 +529,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     if (user.teams.every((t) => t.id == teamId)) {
       await session.endAfterWipe(notice);
     } else {
-      await session.dropTeam(teamId);
+      await session.dropTeam(teamId, userId: userId);
     }
   }
 

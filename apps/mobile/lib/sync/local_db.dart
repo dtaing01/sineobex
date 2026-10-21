@@ -75,7 +75,8 @@ class LocalDatabase {
         .whereType<File>()
         .map((f) => f.path)
         .where((path) => p.basename(path).startsWith('sx_${who}_') && path.endsWith('.db'))
-        .toList();
+        .toList()
+      ..sort();
   }
 
   /// Deletes a database and its side files. Used by remote wipe, wrong-PIN wipe and sign-out

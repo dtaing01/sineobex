@@ -279,6 +279,7 @@ class LocalStore {
   /// Stops every new change, audit entries included: the team's data is being handed to a
   /// Program Admin and wiped, so nothing written after the hand-over snapshot may be lost.
   void freeze(String message) => _frozen = message;
+  void unfreeze() => _frozen = null;
   bool get frozen => _frozen != null;
 
   /// The file this store writes to.
