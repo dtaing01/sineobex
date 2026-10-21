@@ -17,6 +17,9 @@ class FakeSyncServer {
   final records = <String, _Record>{};
   final receipts = <String, _Receipt>{};
   final quarantine = <String, Map<String, Object?>>{};
+
+  /// Whose each change in [quarantine] is and why it is held. Nothing here is decided: it waits.
+  final held = <String, ({String userId, String reason})>{};
   final audit = <Map<String, Object?>>[];
   final history = <Map<String, Object?>>[];
   final removedUsers = <String>{};
@@ -162,17 +165,35 @@ class FakeSyncServer {
       });
       return _store(userId, deviceId, c, hash, {'status': 'accepted', 'serverVersion': 1, 'hash': hash});
     }
-    if (cannotChart.contains(userId)) {
-      quarantine[id] = c;
-      return _store(userId, deviceId, c, hash, {
-        'status': 'rejected',
-        'reason': 'permission',
-        'quarantined': true,
-        'hash': hash,
-      });
-    }
+    if (cannotChart.contains(userId)) return _store(userId, deviceId, c, hash, _hold(userId, c, 'permission', hash));
     final outcome = c['op'] == 'create' ? _create(userId, c) : _set(userId, c);
+    // The record isn't on the chart because the person's own create of it waits for review: this
+    // waits with it (apply.ts).
+    if (outcome['reason'] == 'stale_reference' && _heldCreate(userId, c)) {
+      return _store(userId, deviceId, c, hash, _hold(userId, c, 'awaiting_review', hash));
+    }
     return _store(userId, deviceId, c, hash, outcome..putIfAbsent('hash', () => hash));
+  }
+
+  Map<String, Object?> _hold(String userId, Map<String, Object?> c, String reason, String hash) {
+    quarantine[c['changeId']! as String] = c;
+    held[c['changeId']! as String] = (userId: userId, reason: reason);
+    return {'status': 'rejected', 'reason': reason, 'quarantined': true, 'hash': hash};
+  }
+
+  /// The person's own create of the record [c] needs (the one it changes, or a note's encounter) is held.
+  bool _heldCreate(String userId, Map<String, Object?> c) {
+    final value = c['value'];
+    final (entity, id) = c['op'] == 'create'
+        ? ('encounter', value is Map<String, Object?> ? value['encounterId'] : null)
+        : (c['entity'], c['recordId']);
+    return quarantine.entries.any(
+      (q) =>
+          held[q.key]?.userId == userId &&
+          q.value['op'] == 'create' &&
+          q.value['entity'] == entity &&
+          q.value['recordId'] == id,
+    );
   }
 
   Map<String, Object?> _rejected(String reason, [Map<String, Object?>? details]) => {
@@ -405,7 +426,7 @@ class FakeSyncServer {
             results.add({'changeId': c['changeId'], 'status': 'recorded', 'hash': hash});
             continue;
           }
-          quarantine[c['changeId']! as String] = c;
+          _hold(device.userId, c, 'access_removed', hash);
           results.add({'changeId': c['changeId'], 'status': 'quarantined', 'hash': hash});
         }
         return {'results': results};

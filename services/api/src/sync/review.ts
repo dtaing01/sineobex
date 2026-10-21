@@ -1,9 +1,10 @@
 import type { TeamScope } from '../auth/context.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
-import { applyChange, changeOwners, findReceipt, sameOwner, type ApplyActor } from './apply.ts';
+import { applyChange, changeOwners, findReceipt, heldCreate, sameOwner, type ApplyActor } from './apply.ts';
 import { loadRecord, snapshot } from './records.ts';
 import type {
   QuarantineQueryValue,
+  QuarantineReasonName,
   RecordEntityName,
   RecordSnapshotValue,
   SyncChangeInput,
@@ -25,7 +26,7 @@ interface QuarantineRow {
   valueHash: string;
   details: Record<string, unknown>;
   deviceTime: Date;
-  reason: 'access_removed' | 'permission';
+  reason: QuarantineReasonName;
   status: 'pending' | 'accepted' | 'rejected';
   receivedAt: Date;
   decidedAt: Date | null;
@@ -202,16 +203,25 @@ export async function decideQuarantine(
         approvedBy: scope.principal.userId,
         deviceId: item.deviceId,
         canChart: true,
-        quarantineOnPermission: false,
+        holdForReview: false,
         auditDetails: { onBehalfOf: item.userId, quarantineItem: item.id },
       };
       const result = await applyChange(tx, audit, actor, change, item.valueHash);
       if (result.status !== 'accepted') {
         // Throwing rolls back the attempt, so the item stays pending and the chart is untouched.
-        throw conflict('cannot_apply', 'This record can’t be applied as it stands.', {
-          status: result.status,
-          ...(result.reason ? { reason: result.reason } : {}),
-        });
+        if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change))) {
+          throw conflict(
+            'waiting_on_record',
+            'This belongs to a record that is also waiting for review. Decide on that record first.',
+          );
+        }
+        throw conflict(
+          'cannot_apply',
+          result.reason === 'stale_reference'
+            ? 'The record this belongs to isn’t on the chart, so this can’t be applied.'
+            : 'This record can’t be applied as it stands.',
+          { status: result.status, ...(result.reason ? { reason: result.reason } : {}) },
+        );
       }
     }
 

@@ -81,7 +81,7 @@ export async function push(scope: TeamScope, input: PushInput) {
     approvedBy: null,
     deviceId: device.id,
     canChart: scope.can('encounters.chart'),
-    quarantineOnPermission: true,
+    holdForReview: true,
   };
 
   const results: SyncResultValue[] = [];

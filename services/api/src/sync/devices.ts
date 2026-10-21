@@ -335,7 +335,7 @@ async function recordAudit(
     approvedBy: null,
     deviceId: d.deviceId,
     canChart: false,
-    quarantineOnPermission: false,
+    holdForReview: false,
     auditDetails: { afterRemoval: true },
   };
   return (await applyChange(tx, audit, actor, change, hash)).status === 'accepted' ? recorded : refused;

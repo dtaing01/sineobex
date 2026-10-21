@@ -830,8 +830,11 @@ export interface components {
             /** Format: uuid */
             id: string;
             op: string;
-            /** @enum {string} */
-            reason: "access_removed" | "permission";
+            /**
+             * @description awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first
+             * @enum {string}
+             */
+            reason: "access_removed" | "permission" | "awaiting_review";
             /** Format: date-time */
             receivedAt: string;
             /** Format: uuid */
@@ -903,7 +906,7 @@ export interface components {
             publicKey: string;
         };
         /** @enum {string} */
-        RejectReason: "validation" | "signing_rule" | "stale_reference" | "permission" | "record_locked" | "hash_mismatch";
+        RejectReason: "validation" | "signing_rule" | "stale_reference" | "permission" | "record_locked" | "hash_mismatch" | "awaiting_review";
         RemoveMember: {
             /** @description Why, in a few words. Logged. */
             reason: string;

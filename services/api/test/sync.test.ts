@@ -15,6 +15,7 @@ import {
   removedPhones,
   results,
   secondTeam,
+  setRole,
   setupTeam,
   type Team,
 } from './sync-fixtures.ts';
@@ -68,6 +69,15 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     expect(r.status).toBe(200);
     return r.body as unknown as QueuePage;
   };
+
+  /** Rejections the devices page shows as open for [phone]. */
+  const openRejections = async (phone: FakePhone) =>
+    (
+      (await call(h, '/v1/team/devices', { token: t.adminToken, teamId: t.teamId })).body as unknown as {
+        id: string;
+        openRejections: number;
+      }[]
+    ).find((d) => d.id === phone.deviceId)!.openRejections;
 
   /** A draft encounter with one note on phone A, synced. Returns the IDs. */
   async function syncedDraft(data: Record<string, unknown> = {}) {
@@ -1025,6 +1035,135 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(await count('encounters', `id = '${own.recordId}'`)).toBe(1);
     });
 
+    it('changes to a record held for review wait for the same review instead of being refused', async () => {
+      // Review finding: a create held because the person's role couldn't chart counted as on the
+      // chart, so once the role was back their edits and notes on it were refused as stale
+      // references ("no longer exists"), which no fix could get past.
+      const harper = await addMember(h, t, 'harper@example.com', 'Harper (demo)');
+      const phone = await FakePhone.create();
+      await register(h, phone, harper.token, t.teamId);
+      const patientId = randomUUID();
+      const encounter = await phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+      });
+      await setRole(h, t, harper.membershipId, 'community_health_worker');
+      expect(results((await push(h, phone, harper.token, t.teamId, [encounter])).body)[0]).toMatchObject({
+        reason: 'permission',
+        quarantined: true,
+      });
+      await setRole(h, t, harper.membershipId, 'healthcare_staff');
+
+      const location = await phone.change({
+        entity: 'encounter',
+        recordId: encounter.recordId,
+        op: 'set',
+        field: 'location',
+        value: { lat: 42.33, lng: -83.05 },
+        baseVersion: 1,
+      });
+      const note = await phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: encounter.recordId, noteTypeKey: 'vitals', data: { temp_c: 38.2 } },
+      });
+      const pulse = await phone.change({
+        entity: 'encounter_note',
+        recordId: note.recordId,
+        op: 'set',
+        field: 'data.pulse',
+        value: 96,
+      });
+      const waiting = (c: { changeId: string; valueHash: string }) => ({
+        changeId: c.changeId,
+        status: 'rejected',
+        reason: 'awaiting_review',
+        message: expect.any(String),
+        quarantined: true,
+        hash: c.valueHash,
+      });
+      const first = await push(h, phone, harper.token, t.teamId, [location, note, pulse]);
+      expect(results(first.body)).toEqual([location, note, pulse].map(waiting));
+      // The answer to the encounter was lost, so it goes again in one push with all of the above
+      // and a new edit: the same answers, and the new edit waits too.
+      const status = await phone.change({
+        entity: 'encounter',
+        recordId: encounter.recordId,
+        op: 'set',
+        field: 'status',
+        value: 'completed',
+        baseVersion: 1,
+      });
+      const again = await push(h, phone, harper.token, t.teamId, [encounter, location, note, pulse, status]);
+      expect(results(again.body)[0]).toMatchObject({
+        reason: 'permission',
+        quarantined: true,
+        hash: encounter.valueHash,
+      });
+      expect(results(again.body).slice(1)).toEqual(
+        [location, note, pulse, status].map((c) => expect.objectContaining(waiting(c))),
+      );
+      expect(await count('encounters', `id = '${encounter.recordId}'`)).toBe(0);
+      expect(await count('encounter_notes', `id = '${note.recordId}'`)).toBe(0);
+      expect(await openRejections(phone)).toBe(0);
+
+      // Each waits in the queue after the record it belongs to, logged with the change it waits on,
+      // and seeing it is logged with its patient.
+      const queue = (await queuePage({ userId: harper.id })).items;
+      expect(queue.map((i) => [i.changeId, i.reason])).toEqual([
+        [encounter.changeId, 'permission'],
+        [location.changeId, 'awaiting_review'],
+        [note.changeId, 'awaiting_review'],
+        [pulse.changeId, 'awaiting_review'],
+        [status.changeId, 'awaiting_review'],
+      ]);
+      expect(
+        await count('audit_events', `action = 'quarantine.item_viewed' and patient_id = '${patientId}'`),
+      ).toBe(5);
+      const held = await h.scratch.owner<{ changeId: string; waitsOn: string }[]>`
+        select details->>'changeId' as "changeId", details->>'waitsOn' as "waitsOn" from sineobex.audit_events
+        where action = 'sync.quarantined' and actor_user_id = ${harper.id}
+          and details->>'reason' = 'awaiting_review'
+        order by id`;
+      expect(held).toEqual([
+        { changeId: location.changeId, waitsOn: encounter.changeId },
+        { changeId: note.changeId, waitsOn: encounter.changeId },
+        { changeId: pulse.changeId, waitsOn: note.changeId },
+        { changeId: status.changeId, waitsOn: encounter.changeId },
+      ]);
+
+      // Accepted before the record it belongs to, nothing is applied and the admin is told why.
+      const decide = (c: { changeId: string }, decision: 'accept' | 'reject', reason: string) =>
+        call(h, `/v1/team/quarantine/${queue.find((i) => i.changeId === c.changeId)!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason },
+        });
+      const early = await decide(note, 'accept', 'Vitals confirmed with Harper');
+      expect(early.status).toBe(409);
+      expect(early.body.error?.code).toBe('waiting_on_record');
+      expect(await count('encounter_notes', `id = '${note.recordId}'`)).toBe(0);
+      expect((await queuePage({ userId: harper.id })).items).toHaveLength(5);
+      for (const c of [encounter, location, note, pulse]) {
+        expect((await decide(c, 'accept', 'Visit confirmed with Harper')).status).toBe(200);
+      }
+      expect((await decide(status, 'reject', 'Not finished yet')).status).toBe(200);
+      const [chart] = await h.scratch.owner<{ location: unknown; status: string; data: unknown }[]>`
+        select e.location, e.status, n.data from sineobex.encounters e
+        join sineobex.encounter_notes n on n.encounter_id = e.id where e.id = ${encounter.recordId}`;
+      expect(chart).toEqual({
+        location: { lat: 42.33, lng: -83.05 },
+        status: 'draft',
+        data: { temp_c: 38.2, pulse: 96 },
+      });
+      const later = await push(h, phone, harper.token, t.teamId, [location, note, pulse]);
+      expect(results(later.body).map((r) => [r.status, r.hash])).toEqual(
+        [location, note, pulse].map((c) => ['accepted', c.valueHash]),
+      );
+    });
+
     it('a change ID used in another team is refused at push, at hand-over and at review', async () => {
       // Review finding: the checks saw only this team's rows, so an ID taken in another team looked
       // free, and an admin's accept failed on the hidden receipt with a server error.
@@ -1208,6 +1347,53 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect((await viewed()).slice(before).sort()).toEqual(
         [note, noteEdit, encounterEdit].map(itemOf).sort(),
       );
+    });
+
+    it('a hand-over is queued in the order it was made, so a record comes before what belongs to it', async () => {
+      // Review finding: a hand-over's items shared one arrival time, so a note could come before
+      // its encounter; accepting it failed with no reason given.
+      const { phone, userId } = await removedPhone(h, t, 'sky@example.com', 'Sky (demo)');
+      const encounter = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      const note = await phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: encounter.recordId, noteTypeKey: 'vitals' },
+      });
+      const edits = [];
+      for (const field of ['data.temp_c', 'data.pulse', 'data.plan', 'data.followup']) {
+        edits.push(
+          await phone.change({
+            entity: 'encounter_note',
+            recordId: note.recordId,
+            op: 'set',
+            field,
+            value: 1,
+          }),
+        );
+      }
+      const sent = [encounter, note, ...edits];
+      expect((await handOver(h, phone, sent)).status).toBe(200);
+      const items = await queue(userId);
+      expect(items.map((i) => i.changeId)).toEqual(sent.map((c) => c.changeId));
+
+      const decide = (c: { changeId: string }, decision: 'accept' | 'reject', reason: string) =>
+        call(h, `/v1/team/quarantine/${items.find((i) => i.changeId === c.changeId)!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason },
+        });
+      const early = await decide(edits[0]!, 'accept', 'Vitals confirmed with Sky');
+      expect(early.status).toBe(409);
+      expect(early.body.error?.code).toBe('waiting_on_record');
+      // Once the encounter is rejected, its note can't reach the chart, and the admin is told so.
+      expect((await decide(encounter, 'reject', 'Entered twice')).status).toBe(200);
+      const orphaned = await decide(note, 'accept', 'Vitals confirmed with Sky');
+      expect(orphaned.status).toBe(409);
+      expect(orphaned.body.error).toMatchObject({
+        code: 'cannot_apply',
+        message: expect.stringContaining('isn’t on the chart'),
+      });
     });
 
     it('a held change its phone pushes normally once the person is back stays held for review', async () => {

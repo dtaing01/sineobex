@@ -157,6 +157,24 @@ export async function secondTeam(h: Harness) {
   return { teamId, token: member.token, phone };
 }
 
+/** An admin moves a member to another role (by its key), as the members page does. */
+export async function setRole(
+  h: Harness,
+  team: { teamId: string; adminToken: string },
+  membershipId: string,
+  role: string,
+) {
+  const roles = await call(h, '/v1/team/roles', { token: team.adminToken, teamId: team.teamId });
+  const roleId = (roles.body as unknown as { key: string; id: string }[]).find((r) => r.key === role)!.id;
+  const r = await call(h, `/v1/team/members/${membershipId}/role`, {
+    method: 'PUT',
+    token: team.adminToken,
+    teamId: team.teamId,
+    json: { roleId, reason: 'Covering another desk for a day' },
+  });
+  expect(r.status).toBe(200);
+}
+
 /** A member the team's admin invited, who accepted the acknowledgements. */
 export async function addMember(
   h: Harness,

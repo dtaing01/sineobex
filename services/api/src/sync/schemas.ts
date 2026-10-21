@@ -47,9 +47,21 @@ export const SyncChange = z
 export type SyncChangeInput = z.infer<typeof SyncChange>;
 
 export const RejectReason = z
-  .enum(['validation', 'signing_rule', 'stale_reference', 'permission', 'record_locked', 'hash_mismatch'])
+  .enum([
+    'validation',
+    'signing_rule',
+    'stale_reference',
+    'permission',
+    'record_locked',
+    'hash_mismatch',
+    'awaiting_review',
+  ])
   .openapi('RejectReason');
 export type RejectReasonName = z.infer<typeof RejectReason>;
+
+/** Why a change waits for a Program Admin. */
+export const QuarantineReason = z.enum(['access_removed', 'permission', 'awaiting_review']);
+export type QuarantineReasonName = z.infer<typeof QuarantineReason>;
 
 export const FieldState = z
   .object({
@@ -231,7 +243,10 @@ export const QuarantineItem = z
     field: z.string().nullable(),
     value: z.unknown(),
     deviceTime: DateTime,
-    reason: z.enum(['access_removed', 'permission']),
+    reason: QuarantineReason.openapi({
+      description:
+        'awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first',
+    }),
     status: z.enum(['pending', 'accepted', 'rejected']),
     receivedAt: DateTime,
     decidedAt: DateTime.nullable(),

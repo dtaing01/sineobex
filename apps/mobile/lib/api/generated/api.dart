@@ -282,9 +282,11 @@ enum Permission {
   String toJson() => wire;
 }
 
+/// awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first
 enum QuarantineItemReason {
   accessRemoved('access_removed'),
   permission('permission'),
+  awaitingReview('awaiting_review'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');
@@ -373,6 +375,7 @@ enum RejectReason {
   permission('permission'),
   recordLocked('record_locked'),
   hashMismatch('hash_mismatch'),
+  awaitingReview('awaiting_review'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');
@@ -1472,6 +1475,7 @@ class QuarantineItem {
   final String? field;
   final String id;
   final String op;
+  /// awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first
   final QuarantineItemReason reason;
   final DateTime receivedAt;
   final String recordId;

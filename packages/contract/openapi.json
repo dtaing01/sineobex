@@ -1003,9 +1003,11 @@
             "type": "string"
           },
           "reason": {
+            "description": "awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first",
             "enum": [
               "access_removed",
-              "permission"
+              "permission",
+              "awaiting_review"
             ],
             "type": "string"
           },
@@ -1237,7 +1239,8 @@
           "stale_reference",
           "permission",
           "record_locked",
-          "hash_mismatch"
+          "hash_mismatch",
+          "awaiting_review"
         ],
         "type": "string"
       },

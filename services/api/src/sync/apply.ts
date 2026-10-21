@@ -26,6 +26,7 @@ import {
 } from './records.ts';
 import type {
   FieldStateValue,
+  QuarantineReasonName,
   RecordEntityName,
   RejectReasonName,
   SyncChangeInput,
@@ -46,6 +47,8 @@ export const REJECT_MESSAGES: Record<RejectReasonName, string> = {
   permission: 'You no longer have access to change this. It was sent to a Program Admin to review.',
   record_locked: 'This note is signed. Add an addendum instead.',
   hash_mismatch: 'The value arrived damaged. The app will send it again.',
+  awaiting_review:
+    'The record this belongs to is waiting for a Program Admin’s review. This was sent for review with it.',
 };
 
 /** Whose change this is, and what they may do. */
@@ -57,8 +60,11 @@ export interface ApplyActor {
   approvedBy: string | null;
   deviceId: string;
   canChart: boolean;
-  /** Changes refused for permission go to quarantine (push) or fail outright (an admin's accept). */
-  quarantineOnPermission: boolean;
+  /**
+   * A push: a change refused for permission, or one that belongs to a record held for review, is
+   * held for review too. An admin's accept: it fails outright.
+   */
+  holdForReview: boolean;
   /** Added to every audit event, e.g. { onBehalfOf } when an admin applies someone else's change. */
   auditDetails?: Record<string, unknown>;
 }
@@ -343,20 +349,67 @@ async function decide(
   }
 
   if (!actor.canChart) {
-    if (!actor.quarantineOnPermission) return rejected('permission');
-    await quarantine(tx, actor, c, hash, 'permission');
-    await audit({
-      action: 'sync.quarantined',
-      entity: c.entity,
-      entityId: c.recordId,
-      details: { changeId: c.changeId, reason: 'permission' },
-    });
-    return { status: 'rejected', reason: 'permission', quarantined: true };
+    if (!actor.holdForReview) return rejected('permission');
+    return hold(tx, audit, actor, c, hash, 'permission');
   }
 
-  if (c.op === 'create') return create(tx, audit, actor, c);
-  if (c.op === 'set') return set(tx, audit, actor, c);
-  return rejected('validation', { problem: 'append_only_for_audit' });
+  if (c.op !== 'create' && c.op !== 'set')
+    return rejected('validation', { problem: 'append_only_for_audit' });
+  const outcome = c.op === 'create' ? await create(tx, audit, actor, c) : await set(tx, audit, actor, c);
+  // The record isn't on the chart because the person's own create of it waits for review: this
+  // change can't be applied before that decision, and isn't wrong either, so it waits with it.
+  if (actor.holdForReview && outcome.status === 'rejected' && outcome.reason === 'stale_reference') {
+    const waitsOn = await heldCreate(tx, actor, c);
+    if (waitsOn) return hold(tx, audit, actor, c, hash, 'awaiting_review', { waitsOn });
+  }
+  return outcome;
+}
+
+/** Holds a change for a Program Admin to review, and tells the phone it may let go of it. */
+async function hold(
+  tx: Tx,
+  audit: AuditFn,
+  actor: ApplyActor,
+  c: SyncChangeInput,
+  hash: string,
+  reason: 'permission' | 'awaiting_review',
+  details: Record<string, unknown> = {},
+): Promise<Outcome> {
+  await quarantine(tx, actor, c, hash, reason);
+  await audit({
+    action: 'sync.quarantined',
+    entity: c.entity,
+    entityId: c.recordId,
+    details: { changeId: c.changeId, reason, ...details },
+  });
+  return { status: 'rejected', reason, quarantined: true };
+}
+
+/**
+ * The person's own create, still waiting for review, of the record [c] needs on the chart: the
+ * record it changes, or a new note's encounter. Returns that create's change ID.
+ */
+export async function heldCreate(
+  tx: Tx,
+  actor: Pick<ApplyActor, 'teamId' | 'authorId'>,
+  c: SyncChangeInput,
+): Promise<string | null> {
+  let needs: { entity: RecordEntityName; id: string };
+  if (c.op === 'set' && (c.entity === 'encounter' || c.entity === 'encounter_note')) {
+    needs = { entity: c.entity, id: c.recordId };
+  } else if (c.op === 'create' && c.entity === 'encounter_note') {
+    const parsed = NoteCreate.safeParse(c.value);
+    if (!parsed.success) return null;
+    needs = { entity: 'encounter', id: parsed.data.encounterId };
+  } else {
+    return null;
+  }
+  const rows = await tx<{ changeId: string }[]>`
+    select change_id from sineobex.quarantine_items
+    where team_id = ${actor.teamId} and user_id = ${actor.authorId} and status = 'pending'
+      and op = 'create' and entity = ${needs.entity} and record_id = ${needs.id}
+    limit 1`;
+  return rows[0]?.changeId ?? null;
 }
 
 async function create(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput): Promise<Outcome> {
@@ -568,15 +621,18 @@ export async function quarantine(
   actor: Pick<ApplyActor, 'teamId' | 'authorId' | 'deviceId'>,
   c: SyncChangeInput,
   hash: string,
-  reason: 'access_removed' | 'permission',
+  reason: QuarantineReasonName,
 ): Promise<boolean> {
+  // Received at the moment it is stored, not when its transaction began: a hand-over stores a
+  // phone's work in one transaction, and the queue then shows it in the order it was made, so a
+  // record comes before what belongs to it.
   const rows = await tx`
     insert into sineobex.quarantine_items
       (team_id, device_id, user_id, change_id, entity, record_id, op, field, value, value_hash,
-       details, device_time, reason)
+       details, device_time, reason, received_at)
     values (${actor.teamId}, ${actor.deviceId}, ${actor.authorId}, ${c.changeId}, ${c.entity}, ${c.recordId},
             ${c.op}, ${c.field ?? null}, ${jsonb(tx, c.value)}, ${hash},
-            ${jsonb(tx, changeDetails(c))}, ${new Date(c.deviceTime)}, ${reason})
+            ${jsonb(tx, changeDetails(c))}, ${new Date(c.deviceTime)}, ${reason}, clock_timestamp())
     on conflict (change_id) do nothing
     returning id`;
   return rows.length > 0;

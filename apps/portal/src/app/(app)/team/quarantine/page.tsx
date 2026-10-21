@@ -16,6 +16,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REASON: Record<Item['reason'], string> = {
   access_removed: 'Sent after the person lost access to the team',
   permission: 'The person’s role no longer allows it',
+  awaiting_review: 'Belongs to a record also waiting for review. Decide on that record first.',
 };
 
 const ENTITY: Record<string, string> = {
@@ -81,8 +82,9 @@ export default async function QuarantinePage({
     <>
       <h1 className="px-h1">Quarantine</h1>
       <p className="sx-help">
-        Records sent from phones whose user could no longer make them. Nothing here is on a chart until you
-        accept it; a rejected record is kept here with your reason. Opening this page is logged.
+        Records sent from phones whose user could no longer make them, and later changes to those records.
+        Nothing here is on a chart until you accept it; a rejected record is kept here with your reason.
+        Opening this page is logged.
       </p>
       {decided === 'accepted' && (
         <p role="status" className="px-alert px-alert--ok">

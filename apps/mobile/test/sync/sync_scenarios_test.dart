@@ -400,6 +400,28 @@ void main() {
       expect(p.store.record(visit.note), isNull);
     });
 
+    test('changes to a record held for review are held with it, not refused as missing', () async {
+      // Review finding: the held create counted as on the chart, so once the role was back the
+      // edit and the note were sent and refused as stale references, which no fix could get past.
+      final p = phone(alex);
+      server.cannotChart.add(alex);
+      final encounter = p.store.createEncounter(kind: 'medical');
+      final first = await p.engine.syncAll() as SyncDone;
+      expect([first.confirmed, p.store.inReviewCount()], [1, 1]);
+
+      // A Program Admin gives the role back, and the visit goes on.
+      server.cannotChart.remove(alex);
+      p.store.setField(encounter, 'location', {'lat': 42.33, 'lng': -83.05});
+      p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+      final second = await p.engine.syncAll() as SyncDone;
+      expect([second.sent, second.confirmed, second.rejected], [2, 2, 0]);
+      expect(p.store.needsAttention(), isEmpty);
+      expect(p.store.outbox(), isEmpty);
+      expect(p.store.inReviewCount(), 3);
+      expect(server.held.values.map((h) => h.reason), ['permission', 'awaiting_review', 'awaiting_review']);
+      expect(server.records, isEmpty);
+    });
+
     test('removed while offline: the phone proves itself with its key and hands its work to quarantine', () async {
       final p = phone(alex);
       await p.engine.syncAll();

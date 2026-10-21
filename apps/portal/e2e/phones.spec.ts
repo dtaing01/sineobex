@@ -55,6 +55,26 @@ function createEncounter(kind: 'medical' | 'non_medical') {
   };
 }
 
+/** An admin moves a seeded staff member to another role, as the members page does. */
+async function setRole(email: string, key: string) {
+  const admin = await staffToken('admin@example.com');
+  const members = (await (await apiCall(admin, 'GET', '/v1/team/members')).json()) as {
+    membershipId: string;
+    email: string;
+  }[];
+  const roles = (await (await apiCall(admin, 'GET', '/v1/team/roles')).json()) as {
+    id: string;
+    key: string;
+  }[];
+  const changed = await apiCall(
+    admin,
+    'PUT',
+    `/v1/team/members/${members.find((m) => m.email === email)!.membershipId}/role`,
+    { roleId: roles.find((r) => r.key === key)!.id, reason: 'Covering the billing desk for a day' },
+  );
+  expect(changed.status).toBe(200);
+}
+
 /** Registers a phone for [email] and syncs it once. */
 async function phoneSync(
   email: string,
@@ -195,26 +215,9 @@ test('a long queue comes a page at a time, and can be narrowed to one person', a
   await phoneSync('billing@example.com', {
     changes: Array.from({ length: 51 }, () => createEncounter('non_medical')),
   });
-  const admin = await staffToken('admin@example.com');
-  const members = (await (await apiCall(admin, 'GET', '/v1/team/members')).json()) as {
-    membershipId: string;
-    email: string;
-  }[];
-  const roles = (await (await apiCall(admin, 'GET', '/v1/team/roles')).json()) as {
-    id: string;
-    key: string;
-  }[];
-  const sam = members.find((m) => m.email === 'logistics@example.com')!;
-  const setRole = async (key: string) => {
-    const changed = await apiCall(admin, 'PUT', `/v1/team/members/${sam.membershipId}/role`, {
-      roleId: roles.find((r) => r.key === key)!.id,
-      reason: 'Covering the billing desk for a day',
-    });
-    expect(changed.status).toBe(200);
-  };
-  await setRole('billing_data');
+  await setRole('logistics@example.com', 'billing_data');
   await phoneSync('logistics@example.com', { changes: [createEncounter('non_medical')] });
-  await setRole('logistics');
+  await setRole('logistics@example.com', 'logistics');
 
   await signIn(page, 'admin@example.com');
   await page.goto('/team/quarantine');
@@ -256,6 +259,66 @@ test('a long queue comes a page at a time, and can be narrowed to one person', a
   await expect(page.getByRole('status')).toContainText('Rejected.');
   await expect(page.getByText('Nothing more after the previous page.')).toBeVisible();
   await expect(person.locator('option:checked')).toHaveText('Riley Chen (demo)');
+});
+
+test('a change to a record still waiting for review says so, and is decided after that record', async ({
+  page,
+}) => {
+  // Casey's role can't chart for a moment, so the new encounter is held; with the role back,
+  // Casey's location for it is held with it rather than refused.
+  await setRole('resident@example.com', 'billing_data');
+  const encounter = createEncounter('medical');
+  const casey = await phoneSync('resident@example.com', { changes: [encounter] });
+  expect((casey.body.results as unknown[])[0]).toMatchObject({ reason: 'permission', quarantined: true });
+  await setRole('resident@example.com', 'healthcare_staff');
+  const value = { lat: 42.33, lng: -83.05 };
+  const location = {
+    ...encounter,
+    changeId: randomUUID(),
+    seq: 2,
+    op: 'set',
+    field: 'location',
+    value,
+    valueHash: createHash('sha256').update(JSON.stringify(value)).digest('hex'),
+    baseVersion: 1,
+  };
+  const pushLocation = async () => {
+    const pushed = await apiPost(casey.token, '/v1/sync/push', {
+      deviceId: casey.deviceId,
+      clock: { deviceTime: new Date().toISOString() },
+      unsynced: { counts: {} },
+      changes: [location],
+    });
+    return ((await json(pushed)).results as unknown[])[0];
+  };
+  expect(await pushLocation()).toMatchObject({ reason: 'awaiting_review', quarantined: true });
+
+  await signIn(page, 'admin@example.com');
+  await page.goto('/team/quarantine');
+  await page.getByLabel('Person').selectOption({ label: 'Casey Nguyen (demo)' });
+  await page.getByRole('button', { name: 'Show', exact: true }).click();
+  await expect(page).toHaveURL(/\?status=pending&person=[0-9a-f-]{36}$/);
+  const held = page.getByRole('region', { name: '2. Encounter: Location from Casey Nguyen (demo)' });
+  await expect(held).toContainText('Belongs to a record also waiting for review');
+  await expectAccessible(page, '/team/quarantine (waiting on a record)');
+
+  // Accepted first, it is refused with the reason, and nothing reaches the chart.
+  const early = held.getByRole('form');
+  await early.getByRole('radio', { name: 'Accept onto the chart' }).check();
+  await early.getByRole('textbox', { name: 'Reason' }).fill('Location confirmed with Casey');
+  await early.getByRole('button', { name: 'Record decision' }).click();
+  await expect(early.getByRole('alert')).toContainText('Decide on that record first.');
+  await expectAccessible(page, '/team/quarantine (decide that record first)', { inPlace: true });
+
+  for (const name of ['1. New encounter from', '1. Encounter: Location from']) {
+    const decide = page.getByRole('region', { name: `${name} Casey Nguyen (demo)` }).getByRole('form');
+    await decide.getByRole('radio', { name: 'Accept onto the chart' }).check();
+    await decide.getByRole('textbox', { name: 'Reason' }).fill('Visit confirmed with Casey');
+    await decide.getByRole('button', { name: 'Record decision' }).click();
+    await expect(page).toHaveURL(/\?person=[0-9a-f-]{36}&decided=accepted$/);
+  }
+  await expect(page.getByText('Nothing from Casey Nguyen (demo) is waiting for review.')).toBeVisible();
+  expect(await pushLocation()).toMatchObject({ status: 'accepted', hash: location.valueHash });
 });
 
 test('staff without the permissions never see these screens, and typed URLs are refused', async ({
