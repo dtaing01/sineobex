@@ -144,6 +144,38 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const notMine = await push(h, phoneB, t.aToken, t.teamId, []);
       expect(notMine.status).toBe(409);
     });
+
+    it('a push with no changes replaces what the phone last reported holding', async () => {
+      // Each push reports what the phone held before its batch, so after a batch is confirmed the
+      // phone pushes once more with nothing in it. Otherwise the devices page, and the wipe panel,
+      // go on showing work the server already has as waiting on the phone.
+      const phone = await FakePhone.create();
+      await register(h, phone, t.aToken, t.teamId);
+      const listed = async () =>
+        (
+          (await call(h, '/v1/team/devices', { token: t.adminToken, teamId: t.teamId })).body as unknown as {
+            id: string;
+            unsyncedCounts: Record<string, number>;
+            oldestUnsyncedAt: string | null;
+            unsyncedStale: boolean;
+          }[]
+        ).find((d) => d.id === phone.deviceId)!;
+      const encounter = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      const sent = await push(h, phone, t.aToken, t.teamId, [encounter], {
+        counts: { encounters: 1 },
+        oldest: new Date(h.clock.now.getTime() - 30 * 60 * 60_000).toISOString(),
+      });
+      expect(results(sent.body).map((x) => x.status)).toEqual(['accepted']);
+      expect(await listed()).toMatchObject({ unsyncedCounts: { encounters: 1 }, unsyncedStale: true });
+
+      const report = await push(h, phone, t.aToken, t.teamId, [], { counts: {} });
+      expect(report.status).toBe(200);
+      expect(results(report.body)).toEqual([]);
+      const after = await listed();
+      expect(after.unsyncedCounts).toEqual({});
+      expect(after.oldestUnsyncedAt).toBeNull();
+      expect(after.unsyncedStale).toBe(false);
+    });
   });
 
   describe('confirmed receipts', () => {

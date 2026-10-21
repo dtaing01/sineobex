@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/sync/clock.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -222,8 +223,8 @@ void main() {
         expect(p.store.outbox(), isEmpty);
         final pushes = link.to('/v1/sync/push').skip(1).map((r) => r.changes).toList();
         if (rate == 25000) {
-          // Given time for its size, the whole batch goes at once.
-          expect(pushes, [22]);
+          // Given time for its size, the whole batch goes at once, then the report of what's left.
+          expect(pushes, [22, 0]);
         } else {
           expect(ticks, lessThanOrEqualTo(15));
           expect(pushes.first, 22);
@@ -678,6 +679,50 @@ void main() {
       server.devices.values.single.status = 'wipe_requested';
       expect(await p.engine.syncAll(), isA<SyncWipeRequested>());
       expect(server.records, isEmpty);
+    });
+
+    // Review finding: only the first batch's outcome counted. A wipe order, lost access, a spent
+    // device ID or a failure on a later batch came back as SyncDone, so the controller marked the
+    // phone synced and acted on none of them.
+    for (final (what, onSecondPush, outcome) in <(String, void Function(), Matcher)>[
+      ('a wipe order', () => server.devices.values.single.status = 'wipe_requested', isA<SyncWipeRequested>()),
+      ('a removal', () => server.removedUsers.add(alex), isA<SyncAccessLost>()),
+      ('a spent device ID', () => server.devices.values.single.status = 'wiped', isA<SyncDeviceSpent>()),
+      ('a dropped connection', () => throw const NetworkException('offline'), isA<SyncOffline>()),
+    ]) {
+      test('$what on a later batch is what the sync ends with', () async {
+        final p = phone(alex);
+        await p.engine.syncAll();
+        for (var i = 0; i < 150; i++) {
+          p.store.createEncounter(kind: 'medical');
+        }
+        var pushes = 0;
+        server.onRequest = (path) {
+          if (path == '/v1/sync/push' && ++pushes == 2) onSecondPush();
+        };
+        expect(await p.engine.syncAll(), outcome);
+        expect(p.store.outbox(), hasLength(50));
+      });
+    }
+
+    test('after a sync, the server’s report of what the phone holds is what is left', () async {
+      // Review finding: each push reports what the phone held before its batch, and nothing pushed
+      // again, so the admin's devices page showed confirmed work as waiting on the phone ("Waiting
+      // more than 24 hours", and "That work is lost" on a wipe).
+      final p = phone(alex);
+      await p.engine.syncAll();
+      chartVisit(p);
+      p.advance(const Duration(hours: 30));
+      serverTime = serverTime.add(const Duration(hours: 30));
+      final done = await p.engine.syncAll() as SyncDone;
+      expect(done.confirmed, 5);
+      final device = server.devices.values.single;
+      expect(device.unsynced, isEmpty);
+      expect(device.oldestUnsynced, isNull);
+      // One push with no changes reported it, and that is all: nothing more is sent.
+      expect(server.pushes, 3);
+      await p.engine.syncAll(force: true);
+      expect(server.pushes, 4);
     });
 
     test('a hash the server computes differently never confirms anything', () async {

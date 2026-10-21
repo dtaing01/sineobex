@@ -110,7 +110,11 @@ class FakeSyncServer {
     }
     final deviceTime = DateTime.parse((b['clock']! as Map<String, Object?>)['deviceTime']! as String);
     final offsetMs = now().difference(deviceTime).inMilliseconds;
-    device.unsynced = Map.of((b['unsynced']! as Map<String, Object?>)['counts']! as Map<String, Object?>);
+    // Every push replaces the phone's report, as push.ts does: the admin's devices page shows it.
+    final unsynced = b['unsynced']! as Map<String, Object?>;
+    device
+      ..unsynced = Map.of(unsynced['counts']! as Map<String, Object?>)
+      ..oldestUnsynced = unsynced['oldest'] as String?;
     final base = {
       'serverTime': now().toUtc().toIso8601String(),
       'clock': {'offsetMs': offsetMs, 'flagged': offsetMs.abs() > 5 * 60000},
@@ -508,6 +512,7 @@ class _Device {
   final String publicKey;
   String status = 'active';
   Map<String, Object?> unsynced = {};
+  String? oldestUnsynced;
 }
 
 class _Field {

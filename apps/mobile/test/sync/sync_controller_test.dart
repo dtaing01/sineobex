@@ -382,6 +382,25 @@ void main() {
     expect(sync.store!.record(kept), isNull);
     expect(sync.store!.unsynced().total, 0);
   });
+
+  // ---- fourth review ----
+
+  test('a wipe order on a later batch of a sync is carried out', () async {
+    // Review finding: only the first batch's outcome counted; this came back as done.
+    await signIn();
+    for (var i = 0; i < 150; i++) {
+      sync.store!.createEncounter(kind: 'medical');
+    }
+    final device = deviceOf('team-0');
+    var count = 0;
+    server.onRequest = (path) {
+      if (path == '/v1/sync/push' && ++count == 2) server.devices[device]!.status = 'wipe_requested';
+    };
+    expect(await sync.syncNow(), isA<SyncWipeRequested>());
+    expect(teamFile('team-0'), isFalse);
+    expect(session.state, isA<SignedOut>());
+    expect(server.devices[device]!.status, 'wiped');
+  });
 }
 
 /// The vault's keystore, with a way to hold a read of the wrapped key after it has been read (a

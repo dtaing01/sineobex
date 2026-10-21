@@ -131,14 +131,14 @@ class SyncEngine {
 
   /// Sends everything that may go now, batch after batch, stopping at the first batch that wasn't
   /// fully answered (its backoff then applies). [force] ignores a backoff ("Sync now").
+  ///
+  /// Any batch's outcome other than [SyncDone] is the result, not only the first's: a wipe order,
+  /// lost access or a spent device ID must be acted on, and after a failure work is still waiting.
   Future<SyncOutcome> syncAll({bool force = false, int maxBatches = 50}) async {
     var sent = 0, confirmed = 0, rejected = 0, conflicts = 0, unanswered = 0;
     for (var i = 0; i < maxBatches; i++) {
       final outcome = await syncOnce(force: force || i > 0);
-      if (outcome is! SyncDone) {
-        if (i == 0) return outcome;
-        break;
-      }
+      if (outcome is! SyncDone) return outcome;
       sent += outcome.sent;
       confirmed += outcome.confirmed;
       rejected += outcome.rejected;
@@ -148,6 +148,14 @@ class SyncEngine {
       // fixed create releases the notes that waited for it, which go in the next batch.
       if (outcome.unanswered > 0 || outcome.sent == 0) break;
       if (store.sendable(limit: 1).isEmpty) break;
+    }
+    // Each push reports what the phone held before its batch. With nothing more to send, nothing
+    // would correct that until the next change, and the admin's devices page would show work the
+    // server already has as waiting on the phone (and lost if it is wiped): one more push, with no
+    // changes, reports what is left. Without an answer, the next push reports instead.
+    if (_reportOutdated() && store.sendable(limit: 1).isEmpty) {
+      final report = await syncOnce(force: true);
+      if (report is SyncWipeRequested || report is SyncDeviceSpent || report is SyncAccessLost) return report;
     }
     await _refreshOpenRecords();
     return SyncDone(sent: sent, confirmed: confirmed, rejected: rejected, conflicts: conflicts, unanswered: unanswered);
@@ -215,6 +223,17 @@ class SyncEngine {
     return out;
   }
 
+  /// What the server last stored as this phone's unsynced report.
+  UnsyncedSummary? _reported;
+
+  bool _reportOutdated() {
+    final now = store.unsynced(), reported = _reported;
+    return reported == null ||
+        reported.oldest != now.oldest ||
+        reported.counts.length != now.counts.length ||
+        now.counts.entries.any((e) => reported.counts[e.key] != e.value);
+  }
+
   Future<void> _ensureRegistered(String deviceId) async {
     if (await device.isRegistered(teamId)) return;
     await api.registerDevice(
@@ -270,6 +289,7 @@ class SyncEngine {
         unanswered: batch.length - malformed.length,
       );
     }
+    _reported = unsynced;
     if (batch.isNotEmpty) _grow();
     final after = await clock.boot.read();
     await clock.recordServerTime(
