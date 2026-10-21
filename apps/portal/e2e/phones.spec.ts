@@ -187,6 +187,9 @@ test('a record from someone whose role no longer allows it is reviewed and accep
 });
 
 test('a long queue comes a page at a time, and can be narrowed to one person', async ({ page }) => {
+  // Three pages, each checked in all three themes: about 25 s on an idle machine, too close to the
+  // default 30 s for a busy CI runner.
+  test.slow();
   // More than a page (50) held from Riley, whose role can't chart; then one from Sam, whose role is
   // switched to Billing/Data just long enough for their phone's record to be held too.
   await phoneSync('billing@example.com', {
