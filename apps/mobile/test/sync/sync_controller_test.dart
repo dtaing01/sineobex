@@ -16,6 +16,7 @@ import 'package:sineobex_field/sync/sync_engine.dart';
 import '../auth/fakes.dart';
 import 'fake_server.dart';
 import 'phone_harness.dart';
+import 'uplink.dart';
 
 /// The controller with its automatic checks on, as on a real phone: remote wipe while locked or
 /// signed out, teams that dropped out of the profile, and the clock across teams. (Second review.)
@@ -32,6 +33,7 @@ void main() {
   late SyncController sync;
   late DateTime wall;
   var profileTeams = <String>['team-0'];
+  final requests = <SentRequest>[];
 
   LocalUser me() {
     final all = demoUser(teams: 2);
@@ -56,8 +58,8 @@ void main() {
       session: session,
       databaseDirectory: () async => dir.path,
       deviceStore: store,
-      teamApi: (teamId) => SineobexApi(server.transportFor(userId, teamId)),
-      deviceApi: SineobexApi(server.transportFor('', '')),
+      teamApi: (teamId) => SineobexApi(Uplink(server.transportFor(userId, teamId), log: requests)),
+      deviceApi: SineobexApi(Uplink(server.transportFor('', ''), log: requests)),
       boot: boot,
       platform: RegisterDevicePlatform.android,
       appVersion: '0.2.0-test',
@@ -75,6 +77,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('controller');
     wall = DateTime.utc(2026, 10, 20, 15);
     profileTeams = ['team-0'];
+    requests.clear();
     server = FakeSyncServer(now: () => wall);
     store = MemorySecureStore();
     vaultStore = _HeldStore(store);
@@ -384,6 +387,120 @@ void main() {
   });
 
   // ---- fourth review ----
+
+  /// The timer's ticks, 20 seconds apart. Returns what the phone sent meanwhile.
+  Future<List<SentRequest>> ticks(int n) async {
+    final before = requests.length;
+    for (var i = 0; i < n; i++) {
+      wall = wall.add(const Duration(seconds: 20));
+      await sync.tick();
+    }
+    return requests.sublist(before);
+  }
+
+  Iterable<SentRequest> pushes(List<SentRequest> sent) => sent.where((r) => r.path == '/v1/sync/push');
+  Iterable<SentRequest> handOvers(List<SentRequest> sent) => sent.where((r) => r.path.endsWith('/quarantine'));
+  Iterable<SentRequest> statusChecks(List<SentRequest> sent) => sent.where((r) => r.path.endsWith('/status'));
+
+  test('a hand-over that can’t finish isn’t sent again on every tick, and a wipe order still lands', () async {
+    // Review finding: while the app stayed unlocked, every 20 s tick pushed, was refused, and
+    // handed over everything again (up to 5,000 changes, several MB), with no backoff.
+    await signIn();
+    for (var i = 0; i < 80; i++) {
+      sync.store!.createEncounter(kind: 'medical');
+    }
+    final unreadable = sync.store!.outbox()[40];
+    server.malformed.add(unreadable.changeId);
+    await sync.syncNow();
+    server.malformed.clear();
+    server.removedFromTeam.add('$userId/team-0');
+    await sync.syncNow();
+    expect(server.quarantine, hasLength(79));
+    expect(sync.snapshot.frozen, contains('couldn’t be sent'));
+
+    final sent = await ticks(5);
+    expect(pushes(sent), isEmpty);
+    expect(handOvers(sent).fold(0, (n, r) => n + r.changes), 0, reason: 'the server holds all of it already');
+    expect(statusChecks(sent).length, lessThan(5), reason: 'asked again after a backoff');
+    expect(sync.snapshot.frozen, contains('couldn’t be sent'));
+    expect(sync.snapshot.nextAttempt, isNotNull);
+
+    // "Sync now" tries at once.
+    final before = requests.length;
+    await sync.syncNow();
+    expect(pushes(requests.sublist(before)), hasLength(1));
+    expect(statusChecks(requests.sublist(before)), hasLength(1));
+
+    // The check at lock still carries out a wipe order.
+    server.devices[deviceOf('team-0')]!.status = 'wipe_requested';
+    await lock();
+    expect(teamFile('team-0'), isFalse);
+    expect(session.state, isA<SignedOut>());
+  });
+
+  test('a hand-over the review queue had no room for finishes on a later tick, then the phone wipes', () async {
+    await signIn();
+    for (var i = 0; i < 3; i++) {
+      sync.store!.createEncounter(kind: 'medical');
+    }
+    var full = true;
+    server.onRequest = (path) {
+      if (full && path.endsWith('/quarantine')) {
+        throw const ApiException(
+          409,
+          'quarantine_full',
+          'Your phones have handed over more than a Program Admin can review.',
+        );
+      }
+    };
+    server.removedFromTeam.add('$userId/team-0');
+    await sync.syncNow();
+    expect(sync.snapshot.frozen, isNotNull);
+
+    final sent = await ticks(5);
+    expect(pushes(sent), isEmpty);
+    expect(handOvers(sent).length, lessThan(5));
+    expect(teamFile('team-0'), isTrue);
+
+    // A Program Admin works through the queue; the next try after the backoff hands over.
+    full = false;
+    wall = wall.add(const Duration(minutes: 11));
+    await sync.tick();
+    expect(server.quarantine, hasLength(3));
+    expect(teamFile('team-0'), isFalse);
+    expect(session.state, isA<SignedOut>());
+  });
+
+  test('access given back while a hand-over waits: a tick sees it and syncing goes on', () async {
+    await signIn();
+    sync.store!.createEncounter(kind: 'medical');
+    server.onRequest = (path) {
+      if (path.endsWith('/quarantine')) throw const NetworkException('offline');
+    };
+    server.removedFromTeam.add('$userId/team-0');
+    await sync.syncNow();
+    expect(sync.snapshot.frozen, isNotNull);
+    server.removedFromTeam.clear();
+    server.onRequest = null;
+    wall = wall.add(const Duration(minutes: 11));
+    await sync.tick();
+    expect(sync.snapshot.frozen, isNull);
+    await ticks(1);
+    expect(sync.store!.outbox(), isEmpty);
+  });
+
+  test('a refused sign-in is asked about again after a backoff, not on every tick', () async {
+    // The same finding, without a removal: a suspended team's phone pushed and asked with its
+    // device key every 20 seconds.
+    await signIn();
+    sync.store!.createEncounter(kind: 'medical');
+    server.refuseCode = 'team_suspended';
+    expect(await sync.syncNow(), isA<SyncAccessLost>());
+    final sent = await ticks(30);
+    expect(pushes(sent).length, lessThan(15));
+    expect(sync.store!.unsynced().total, 1);
+    expect(sync.snapshot.frozen, isNull);
+  });
 
   test('a wipe order on a later batch of a sync is carried out', () async {
     // Review finding: only the first batch's outcome counted; this came back as done.

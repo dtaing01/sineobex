@@ -87,13 +87,18 @@ class SyncEngine {
     required this.teamId,
     required this.platform,
     required this.appVersion,
+    SineobexApi? deviceApi,
     DateTime Function()? now,
     Random? random,
-  }) : _now = now ?? DateTime.now,
+  }) : deviceApi = deviceApi ?? api,
+       _now = now ?? DateTime.now,
        _random = random ?? Random();
 
   final LocalStore store;
   final SineobexApi api;
+
+  /// The API without a sign-in, for requests signed with the device key ([api] if not given).
+  final SineobexApi deviceApi;
   final DeviceIdentity device;
   final ClockSync clock;
   final String teamId;
@@ -110,6 +115,12 @@ class SyncEngine {
   DateTime? _nextAttempt;
   DateTime? get nextAttempt => _nextAttempt;
 
+  /// A backoff is running: [syncOnce] waits for [nextAttempt] unless forced.
+  bool get backingOff {
+    final wait = _nextAttempt;
+    return wait != null && _now().isBefore(wait);
+  }
+
   /// 5 s, 10 s, 20 s ... up to 10 minutes, each with up to half taken off at random so a team's
   /// phones coming back into signal don't all retry at once.
   Duration _backoff() {
@@ -118,9 +129,15 @@ class SyncEngine {
     return capped * (0.5 + _random.nextDouble() * 0.5);
   }
 
-  SyncOutcome _fail(SyncOutcome outcome) {
+  /// Something tried in place of a push didn't finish (a removal's hand-over, which goes on while
+  /// pushes are refused): the next try waits as it would after a failed push.
+  void backOff() {
     _failures++;
     _nextAttempt = _now().add(_backoff());
+  }
+
+  SyncOutcome _fail(SyncOutcome outcome) {
+    backOff();
     return outcome;
   }
 
@@ -170,9 +187,11 @@ class SyncEngine {
       return _fail(SyncOffline(e.reason));
     } on AuthException catch (e) {
       // Refreshing the session needs the network too; "unavailable" is just being offline.
-      return e.code == AuthErrorCode.unavailable ? _fail(const SyncOffline('offline')) : SyncAccessLost(e.code.name);
+      return _fail(e.code == AuthErrorCode.unavailable ? const SyncOffline('offline') : SyncAccessLost(e.code.name));
     } on ApiException catch (e) {
-      if (e.status == 401 || e.status == 403) return SyncAccessLost(e.code);
+      // A refusal backs off too: each one has the controller ask with the device key, and a
+      // removal hand over its work.
+      if (e.status == 401 || e.status == 403) return _fail(SyncAccessLost(e.code));
       if (e.code == 'device_not_registered') {
         await device.clearRegistration(teamId);
         return _fail(SyncFailed(e.code));
@@ -464,13 +483,17 @@ class SyncEngine {
   /// lost"). Returns the change IDs the server now holds with a matching hash, or null when the
   /// phone has no device key to sign with.
   ///
-  /// A chunk that times out goes again at once with half as much, down to one change, since no
-  /// later push would carry it and the wipe waits for it.
+  /// A later call sends only what the server doesn't hold yet: a hand-over that couldn't finish (a
+  /// change the server can't read, a full review queue) is tried again, and all of it can be
+  /// megabytes. A chunk that times out goes again at once with half as much, down to one change,
+  /// since no later push would carry it and the wipe waits for it.
   Future<Set<String>?> uploadToQuarantine() async {
     final deviceId = await device.existingDeviceId(teamId);
     if (deviceId == null) return null;
-    var entries = store.handOver();
-    final held = <String>{};
+    var entries = [
+      for (final e in store.handOver())
+        if (!_handedOver.contains(e.changeId)) e,
+    ];
     while (entries.isNotEmpty) {
       final chunk = _fit(entries.take(_batchLimit).toList());
       final payload = SignedQuarantinePayload(
@@ -480,7 +503,7 @@ class SyncEngine {
       );
       final QuarantineReceipt res;
       try {
-        res = await api.uploadQuarantine(
+        res = await deviceApi.uploadQuarantine(
           deviceId: deviceId,
           body: SignedQuarantine(payload: payload, signature: await device.sign(payload.toJson())),
         );
@@ -498,22 +521,25 @@ class SyncEngine {
         final kept =
             r?.status == QuarantineReceiptResultsItemStatus.quarantined ||
             r?.status == QuarantineReceiptResultsItemStatus.recorded;
-        if (kept && r!.hash == e.valueHash) held.add(e.changeId);
+        if (kept && r!.hash == e.valueHash) _handedOver.add(e.changeId);
       }
     }
-    return held;
+    return {..._handedOver};
   }
+
+  /// What this engine's earlier hand-overs left with the server.
+  final _handedOver = <String>{};
 
   /// Asks, with the device key, whether this phone must wipe or its user lost access.
   Future<DeviceStatusResult?> signedStatus() async {
     final deviceId = await device.existingDeviceId(teamId);
     if (deviceId == null) return null;
-    return DeviceRequests(api: api, device: device, now: _now).status(deviceId);
+    return DeviceRequests(api: deviceApi, device: device, now: _now).status(deviceId);
   }
 
   /// Reports a finished wipe, so the admin's device page shows it.
   Future<void> confirmWiped(String deviceId) =>
-      DeviceRequests(api: api, device: device, now: _now).confirmWiped(deviceId);
+      DeviceRequests(api: deviceApi, device: device, now: _now).confirmWiped(deviceId);
 }
 
 /// Requests a phone signs with its device key instead of a sign-in.

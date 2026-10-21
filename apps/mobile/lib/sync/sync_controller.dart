@@ -394,6 +394,7 @@ class SyncController extends ChangeNotifier implements LocalData {
       teamId: teamId,
       platform: platform,
       appVersion: appVersion,
+      deviceApi: deviceApi,
       now: _now,
       random: Random.secure(),
     );
@@ -446,10 +447,24 @@ class SyncController extends ChangeNotifier implements LocalData {
 
   Future<void> _tick() async {
     await _clock?.check();
-    final store = _store;
-    if (store != null && store.sendable(limit: 1).isNotEmpty) await syncNow(force: false);
+    final engine = _engine;
+    if (engine != null && engine.store.frozen) {
+      // A removal's hand-over that couldn't finish. A push would be refused, so none is sent; the
+      // device key asks again once the backoff is over, which also sees a wipe order, or that
+      // access is back.
+      if (!engine.backingOff) {
+        await _checkAccess(engine);
+        if (identical(engine, _engine) && engine.store.frozen) engine.backOff();
+      }
+    } else if (engine != null && engine.store.sendable(limit: 1).isNotEmpty) {
+      await syncNow(force: false);
+    }
     notifyListeners();
   }
+
+  /// One timer tick, as the timer runs it (tests drive the clock).
+  @visibleForTesting
+  Future<void> tick() => _tick();
 
   /// Rechecks the clock when the app comes back to the foreground. [fresh] ("Check again") asks
   /// the server for its time first, so a clock the person just fixed is seen right away.
@@ -512,10 +527,15 @@ class SyncController extends ChangeNotifier implements LocalData {
   ///
   /// Every await here can outlast the team being open (the app locks, or the person switches
   /// team), so each step checks [engine] is still the open one before acting on its database.
-  Future<void> _checkAccess(SyncEngine engine) async {
+  /// One check runs at a time: a push refused meanwhile waits for it instead of handing over twice.
+  Future<void> _checkAccess(SyncEngine engine) =>
+      _accessCheck ??= _askAccess(engine).whenComplete(() => _accessCheck = null);
+  Future<void>? _accessCheck;
+
+  Future<void> _askAccess(SyncEngine engine) async {
     final DeviceStatusResult? status;
     try {
-      status = await _signedEngine(engine).signedStatus();
+      status = await engine.signedStatus();
     } on Exception {
       return; // Offline or unknown: keep everything and try again later.
     }
@@ -530,9 +550,9 @@ class SyncController extends ChangeNotifier implements LocalData {
       engine.store.freeze('Your access to this team ended. Saved records are being sent to a Program Admin.');
       final Set<String>? held;
       try {
-        held = await _signedEngine(engine).uploadToQuarantine();
+        held = await engine.uploadToQuarantine();
       } on Exception {
-        return; // Tried again at the next sync.
+        return; // Tried again after a backoff ([_tick]), or at once on "Sync now".
       }
       if (!identical(engine, _engine)) return; // Closed mid-upload: the next open starts over.
       // Without a device key nothing can be handed over, so unsynced work stays (encrypted).
@@ -552,20 +572,14 @@ class SyncController extends ChangeNotifier implements LocalData {
         engine,
         'Your access to this team ended. Records that hadn’t synced were sent to a Program Admin to review.',
       );
+    } else if (status.status == DeviceStatus.active &&
+        status.access == DeviceStatusResultAccess.active &&
+        engine.store.frozen) {
+      // Added back before the hand-over finished: charting and syncing go on as before.
+      engine.store.unfreeze();
+      notifyListeners();
     }
   }
-
-  /// The same engine, talking to the API without a sign-in (device-key requests).
-  SyncEngine _signedEngine(SyncEngine e) => SyncEngine(
-    store: e.store,
-    api: deviceApi,
-    device: e.device,
-    clock: e.clock,
-    teamId: e.teamId,
-    platform: platform,
-    appVersion: appVersion,
-    now: _now,
-  );
 
   /// Remote wipe: the one time unconfirmed data is deleted (module 9), and only on the server's
   /// word to this device key. The wipe is confirmed to the server when it can be reached.

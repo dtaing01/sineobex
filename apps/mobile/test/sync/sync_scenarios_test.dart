@@ -560,6 +560,8 @@ void main() {
       final outcome = await p.engine.syncAll();
       expect(outcome, isA<SyncAccessLost>());
       expect((outcome as SyncAccessLost).code, 'not_a_member');
+      // Asked again after a backoff, not on every tick.
+      expect(await p.engine.syncAll(), isA<SyncWaiting>());
       final status = await p.engine.signedStatus();
       expect(status!.access.wire, 'removed');
       final waiting = p.store.outbox().map((e) => e.changeId).toSet();
