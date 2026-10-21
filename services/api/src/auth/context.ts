@@ -181,8 +181,23 @@ export class UserScope {
   }
 }
 
+/**
+ * Outside a team, the audit chain names a phone only when it is this person's, in any team: a
+ * header naming a teammate's phone would otherwise pin this person's sign-in on it.
+ */
+async function ownDeviceMeta(c: Context<AppEnv>, deps: Deps, p: Principal): Promise<RequestMeta> {
+  const meta = requestMeta(c);
+  if (!meta.deviceId) return meta;
+  const rows = await deps.db.tx(
+    {},
+    (tx) => tx<{ userId: string }[]>`select user_id from sineobex.device_for_signature(${meta.deviceId})`,
+  );
+  return rows[0]?.userId === p.userId ? meta : { ...meta, deviceId: null };
+}
+
 export async function userScope(c: Context<AppEnv>, deps: Deps): Promise<UserScope> {
-  return new UserScope(deps, await authenticate(c, deps), requestMeta(c));
+  const principal = await authenticate(c, deps);
+  return new UserScope(deps, principal, await ownDeviceMeta(c, deps, principal));
 }
 
 export interface TeamScopeOptions {
@@ -339,9 +354,10 @@ export class OwnerScope {
 export async function ownerScope(c: Context<AppEnv>, deps: Deps): Promise<OwnerScope> {
   const principal = await authenticate(c, deps);
   requireMfa(deps, principal);
+  const meta = await ownDeviceMeta(c, deps, principal);
   if (!principal.isOwner) {
     await deps.db.tx({ userId: principal.userId, platform: true }, (tx) =>
-      writeAudit(tx, null, { userId: principal.userId, roleKey: null, credential: null }, requestMeta(c), {
+      writeAudit(tx, null, { userId: principal.userId, roleKey: null, credential: null }, meta, {
         action: 'access.denied',
         details: { permission: 'platform.owner', route: c.req.routePath },
       }),
@@ -349,5 +365,5 @@ export async function ownerScope(c: Context<AppEnv>, deps: Deps): Promise<OwnerS
     throw forbidden('Only platform owners can do this.', 'owner_only');
   }
   requireRecentAuth(deps, principal);
-  return new OwnerScope(deps, principal, requestMeta(c));
+  return new OwnerScope(deps, principal, meta);
 }

@@ -835,6 +835,48 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       // Newest first: A's own phone is named; B's phone, claimed in the header, is not.
       expect(rows.map((r) => r.deviceId)).toEqual([phoneA.deviceId, null]);
     });
+
+    it('sign-ins, acknowledgements and owner actions name a phone only when it is the person’s own', async () => {
+      // Review finding: outside a team the header was stored unchecked, so a person could pin
+      // their sign-in on a teammate's phone.
+      const deviceOf = async (action: string, actor: string) =>
+        (
+          await h.scratch.owner<{ deviceId: string | null }[]>`
+            select device_id as "deviceId" from sineobex.audit_events
+            where action = ${action} and actor_user_id = ${actor} order by id desc limit 1`
+        )[0]?.deviceId;
+      const signIn = async (deviceId: string) => {
+        const token = await h.tokenFor('jordan@example.com', { sessionId: randomUUID() });
+        expect((await call(h, '/v1/me', { token, deviceId })).status).toBe(200);
+      };
+      await signIn(phoneB.deviceId);
+      expect(await deviceOf('session.started', t.aId)).toBeNull();
+      await signIn(phoneA.deviceId);
+      expect(await deviceOf('session.started', t.aId)).toBe(phoneA.deviceId);
+
+      const ack = await call(h, '/v1/me/acknowledgements', {
+        method: 'POST',
+        token: t.aToken,
+        deviceId: phoneB.deviceId,
+        json: { kind: 'terms_of_use', version: '2026-10-20' },
+      });
+      expect(ack.status).toBe(200);
+      expect(await deviceOf('user.acknowledged', t.aId)).toBeNull();
+
+      const [owner] = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.users where email = 'owner@example.com'`;
+      const created = await call(h, '/v1/owner/teams', {
+        method: 'POST',
+        token: await h.tokenFor('owner@example.com'),
+        deviceId: phoneA.deviceId,
+        json: { name: 'Attribution Team' },
+      });
+      expect(created.status).toBe(201);
+      expect(await deviceOf('team.created', owner!.id)).toBeNull();
+      const denied = await call(h, '/v1/owner/teams', { token: t.aToken, deviceId: phoneB.deviceId });
+      expect(denied.status).toBe(403);
+      expect(await deviceOf('access.denied', t.aId)).toBeNull();
+    });
   });
 
   describe('permission and quarantine', () => {
