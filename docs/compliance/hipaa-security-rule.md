@@ -37,7 +37,7 @@ Status: **Done** = implemented and tested in this repository. **Partial** = impl
 
 | Requirement | Implementation | Status |
 |---|---|---|
-| §164.502(b) Minimum necessary | Server copies of records on the phone expire 24 hours after download; local work is purged field by field once confirmed and closed (phase 2). Phone search index holds identifying fields and allergies only (phase 3) | Partial: phase 2 done |
+| §164.502(b) Minimum necessary | Server copies of records on the phone expire 24 hours after download (an encounter the person has a note open or unsynced on is kept until that note has synced and closed); local work is purged field by field once confirmed and closed (phase 2). Phone search index holds identifying fields and allergies only (phase 3) | Partial: phase 2 done |
 | §164.526 Right to amend | Patient amendment requests use the correction path with request and decision logged | Planned, phase 4 |
 | §164.528 Accounting of disclosures | Exports are logged with who, what and when | Planned, phase 10 |
 

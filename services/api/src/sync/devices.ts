@@ -249,8 +249,8 @@ export async function uploadQuarantine(
         from unnest(${changes.map((x) => x.changeId)}::text[]) as id order by id`;
       const held = await handedOver(tx, d);
       let room = MAX_PENDING_PER_PERSON - held.pending - held.recorded;
-      // Only what this request adds counts: the phone starts every hand-over again from its
-      // first entry, so most of a retry is already here.
+      // Only what this request adds counts: a phone sends again what an earlier unlock already
+      // handed over (it remembers only within one unlock), so much of a retry can be here already.
       const take = () => {
         if (--room < 0) throw new QuarantineFull(held);
       };
