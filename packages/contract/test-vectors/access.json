@@ -1,0 +1,145 @@
+{
+  "note": "Hand-written. Permission sets and the answers of the three derived access rules (phase 3 design 1.6, 4.1; D37). services/api permissions.ts and apps/mobile lib/patients/access.dart must give every answer. No permission key exists beyond the 23 of migration 0002.",
+  "rules": {
+    "hasFieldAccess": "any of patients.edit, encounters.chart, checkins.create",
+    "mayHoldTeamIndex": "patients.view and hasFieldAccess",
+    "mayViewProblems": "patients.view and (encounters.chart or billing.view_codes)"
+  },
+  "cases": [
+    {
+      "name": "Program Admin",
+      "permissions": [
+        "team.manage_users",
+        "team.manage_presets",
+        "team.view_audit",
+        "patients.view",
+        "patients.edit",
+        "patients.correct_identity",
+        "patients.review_duplicates",
+        "patients.view_sensitive",
+        "patients.view_sensitive_exams",
+        "patients.reverse_resolved",
+        "encounters.chart",
+        "checkins.create",
+        "referrals.create",
+        "routes.view",
+        "routes.manage",
+        "inventory.view",
+        "inventory.manage",
+        "billing.view_codes",
+        "exports.billing",
+        "exports.grant",
+        "exports.data",
+        "quarantine.review",
+        "devices.manage"
+      ],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Logistics",
+      "permissions": [
+        "patients.view",
+        "patients.edit",
+        "patients.view_sensitive",
+        "encounters.chart",
+        "checkins.create",
+        "referrals.create",
+        "routes.view",
+        "routes.manage",
+        "inventory.view",
+        "inventory.manage"
+      ],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Healthcare Staff",
+      "permissions": [
+        "patients.view",
+        "patients.edit",
+        "patients.view_sensitive",
+        "encounters.chart",
+        "checkins.create",
+        "referrals.create",
+        "routes.view",
+        "inventory.view"
+      ],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Billing/Data",
+      "permissions": ["patients.view", "billing.view_codes", "inventory.view", "exports.billing", "exports.grant"],
+      "hasFieldAccess": false,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Community health worker preset",
+      "permissions": ["patients.view", "patients.edit", "checkins.create", "referrals.create", "routes.view"],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": false
+    },
+    {
+      "name": "Custom: view and check-ins",
+      "permissions": ["patients.view", "checkins.create"],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": false
+    },
+    {
+      "name": "Custom: view and chart",
+      "permissions": ["patients.view", "encounters.chart"],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": true,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Custom: view only",
+      "permissions": ["patients.view"],
+      "hasFieldAccess": false,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": false
+    },
+    {
+      "name": "Custom: view and billing codes",
+      "permissions": ["patients.view", "billing.view_codes"],
+      "hasFieldAccess": false,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": true
+    },
+    {
+      "name": "Custom: edit without view",
+      "permissions": ["patients.edit"],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": false
+    },
+    {
+      "name": "Custom: chart without view",
+      "permissions": ["encounters.chart", "billing.view_codes"],
+      "hasFieldAccess": true,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": false
+    },
+    {
+      "name": "Custom: reviewer without field work",
+      "permissions": ["patients.view", "patients.review_duplicates", "patients.correct_identity"],
+      "hasFieldAccess": false,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": false
+    },
+    {
+      "name": "No permissions",
+      "permissions": [],
+      "hasFieldAccess": false,
+      "mayHoldTeamIndex": false,
+      "mayViewProblems": false
+    }
+  ]
+}
