@@ -87,7 +87,10 @@ export function camel(s: string): string {
 
 function enumMemberName(wire: string): string {
   const cleaned = wire.replace(/\+/g, ' plus ').replace(/</g, ' lt ').replace(/>/g, ' gt ');
-  return camel(cleaned) || 'empty';
+  const name = camel(cleaned) || 'empty';
+  // Every enum ends with an `unknown('')` fallback, so a wire value that is itself "unknown" (an
+  // allergy's severity) takes the suffix reserved words get.
+  return name === 'unknown' ? 'unknownValue' : name;
 }
 
 function dartString(s: string): string {

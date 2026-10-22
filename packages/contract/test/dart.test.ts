@@ -69,6 +69,17 @@ describe('Dart generator', () => {
     expect(out).toContain('orElse: () => Status.unknown');
   });
 
+  it('keeps the fallback apart from a wire value that is itself "unknown"', () => {
+    const severity = generateDart({
+      ...doc,
+      components: { schemas: { Severity: { type: 'string', enum: ['mild', 'unknown'] } } },
+      paths: {},
+    });
+    expect(severity).toContain("unknownValue('unknown')");
+    expect(severity).toContain("unknown('');");
+    expect(severity).toContain('orElse: () => Severity.unknown');
+  });
+
   it('maps required, optional and nullable fields', () => {
     expect(out).toContain('final DateTime recordedAt;');
     expect(out).toContain('final DateTime? resolvedAt;');
