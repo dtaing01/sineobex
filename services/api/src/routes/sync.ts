@@ -2,7 +2,15 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
 import { push } from '../sync/push.ts';
 import { fetchRecords, listNotices, markNoticeRead } from '../sync/review.ts';
-import { FetchRecords, FetchRecordsResult, Notice, SyncPush, SyncPushResult } from '../sync/schemas.ts';
+import {
+  FetchRecords,
+  FetchRecordsResult,
+  isEncounterEntity,
+  Notice,
+  SyncPush,
+  SyncPushResult,
+  type RecordEntityName,
+} from '../sync/schemas.ts';
 import type { App } from '../app.ts';
 import type { Deps } from '../types.ts';
 import { errors, Ok, Uuid } from './schemas.ts';
@@ -63,7 +71,15 @@ export function registerSyncRoutes(app: App, deps: Deps) {
 
   app.openapi(recordsRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
-    return c.json(await fetchRecords(scope, c.req.valid('json').records), 200);
+    const refs = c.req.valid('json').records;
+    // Patient-side records are read through the entity registry and its read rules (phase 3
+    // design 3.6); until it lands they are reported missing, as a record this team lacks is.
+    const stored = refs.filter((r): r is { entity: RecordEntityName; id: string } =>
+      isEncounterEntity(r.entity),
+    );
+    const result = await fetchRecords(scope, stored);
+    const other = refs.filter((r) => !isEncounterEntity(r.entity));
+    return c.json({ records: result.records, missing: [...result.missing, ...other] }, 200);
   });
 
   app.openapi(noticesRoute, async (c) => {

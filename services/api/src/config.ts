@@ -43,10 +43,36 @@ const ConfigSchema = z
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
     /** Where Supabase's invitation email sends people to set a password (the portal). */
     INVITE_REDIRECT_URL: z.string().url().optional(),
+    /**
+     * Where printed Street Medicine ID cards point: `{ID_LINK_BASE_URL}/c#<token>`, the portal's
+     * public landing page. Phones read it from /v1/me, so an offline phone builds the same URL.
+     * Cards never expire, so the host must stay registered for as long as they circulate.
+     */
+    // PLAN-OPEN: the ID link host (phase 3 design 14.1, #7), chosen before the pilot. Required in
+    // pilot and production; local and test default to the portal on this machine, and a preview
+    // to its first CORS origin (the portal's preview origin).
+    ID_LINK_BASE_URL: z
+      .string()
+      .url()
+      .optional()
+      .transform((v) => v?.replace(/\/+$/, '')),
     PORT: z.coerce.number().int().default(8787),
     RELEASE: z.string().default('dev'),
   })
   .superRefine((c, ctx) => {
+    if (c.ID_LINK_BASE_URL === undefined && ['pilot', 'production'].includes(c.APP_ENV)) {
+      ctx.addIssue({ code: 'custom', message: 'ID_LINK_BASE_URL is required in pilot and production' });
+    }
+    if (
+      c.ID_LINK_BASE_URL !== undefined &&
+      !c.ID_LINK_BASE_URL.startsWith('https://') &&
+      !['local', 'test'].includes(c.APP_ENV)
+    ) {
+      ctx.addIssue({ code: 'custom', message: 'ID_LINK_BASE_URL must use https outside local and test' });
+    }
+    if (c.ID_LINK_BASE_URL !== undefined && /[?#]/.test(c.ID_LINK_BASE_URL)) {
+      ctx.addIssue({ code: 'custom', message: 'ID_LINK_BASE_URL must not carry a query or fragment' });
+    }
     if (c.MFA_MODE === 'none' && !['local', 'test'].includes(c.APP_ENV)) {
       ctx.addIssue({ code: 'custom', message: 'MFA_MODE=none is only allowed in local and test' });
     }
@@ -62,7 +88,14 @@ const ConfigSchema = z
         message: 'IDENTITY_ADMIN=supabase needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
       });
     }
-  });
+  })
+  .transform((c) => ({ ...c, ID_LINK_BASE_URL: c.ID_LINK_BASE_URL ?? defaultIdLinkBase(c) }));
+
+/** The portal's own origin where nothing was configured (local, test and preview only). */
+function defaultIdLinkBase(c: { APP_ENV: AppEnv; CORS_ORIGINS: string[] }): string {
+  if (c.APP_ENV === 'preview' && c.CORS_ORIGINS[0]) return c.CORS_ORIGINS[0].replace(/\/+$/, '');
+  return 'http://localhost:3100';
+}
 
 export type Config = z.infer<typeof ConfigSchema>;
 

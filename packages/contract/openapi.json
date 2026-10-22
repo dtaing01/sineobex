@@ -21,6 +21,51 @@
         ],
         "type": "object"
       },
+      "AllergyCategory": {
+        "enum": [
+          "drug",
+          "food",
+          "environment",
+          "other",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "AllergyScreen": {
+        "enum": [
+          "not_asked",
+          "none_known"
+        ],
+        "type": "string"
+      },
+      "AllergySeverity": {
+        "enum": [
+          "mild",
+          "moderate",
+          "severe",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "AllergySummary": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "screen": {
+            "$ref": "#/components/schemas/AllergyScreen"
+          },
+          "severe": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "screen",
+          "count",
+          "severe"
+        ],
+        "type": "object"
+      },
       "AppointAdmin": {
         "properties": {
           "credential": {
@@ -207,6 +252,80 @@
         },
         "type": "object"
       },
+      "BirthInput": {
+        "properties": {
+          "date": {
+            "description": "With precision day",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/BirthPrecision"
+          },
+          "year": {
+            "description": "With year or estimated",
+            "maximum": 2100,
+            "minimum": 1900,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "precision"
+        ],
+        "type": "object"
+      },
+      "BirthPrecision": {
+        "enum": [
+          "day",
+          "year",
+          "estimated"
+        ],
+        "type": "string"
+      },
+      "BirthQuery": {
+        "properties": {
+          "day": {
+            "maximum": 31,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "month": {
+            "maximum": 12,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "year": {
+            "maximum": 2100,
+            "minimum": 1900,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year"
+        ],
+        "type": "object"
+      },
+      "BirthView": {
+        "properties": {
+          "date": {
+            "description": "A calendar date, YYYY-MM-DD",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/BirthPrecision"
+          },
+          "year": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "precision"
+        ],
+        "type": "object"
+      },
       "ChainCheck": {
         "properties": {
           "checked": {
@@ -261,7 +380,14 @@
         "enum": [
           "encounter",
           "encounter_note",
-          "audit"
+          "audit",
+          "patient",
+          "patient_alias",
+          "patient_allergy",
+          "patient_consent",
+          "problem",
+          "problem_note",
+          "id_link"
         ],
         "type": "string"
       },
@@ -281,6 +407,85 @@
         "required": [
           "roleId",
           "reason"
+        ],
+        "type": "object"
+      },
+      "ChartBundle": {
+        "properties": {
+          "charts": {
+            "items": {
+              "$ref": "#/components/schemas/PatientChart"
+            },
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "redirects": {
+            "description": "Every live redirect into or out of the requested IDs and the returned groups",
+            "items": {
+              "$ref": "#/components/schemas/PatientRedirect"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "charts",
+          "missing",
+          "redirects"
+        ],
+        "type": "object"
+      },
+      "ConsentView": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "given",
+              "unable",
+              "acknowledged",
+              "declined",
+              "not_offered"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "care_and_record",
+              "privacy_notice"
+            ],
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "verbal",
+              "written",
+              "not_applicable"
+            ],
+            "type": "string"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recordedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "decision",
+          "method",
+          "recordedAt",
+          "recordedBy"
         ],
         "type": "object"
       },
@@ -342,6 +547,90 @@
         },
         "type": "object"
       },
+      "DecideDuplicate": {
+        "properties": {
+          "comment": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "merge",
+              "keep_separate",
+              "not_sure"
+            ],
+            "type": "string"
+          },
+          "fieldNote": {
+            "description": "Not sure only: shown to field staff on both charts",
+            "maxLength": 200,
+            "minLength": 3,
+            "type": "string"
+          },
+          "survivorId": {
+            "description": "Merge only: the chart that is kept",
+            "format": "uuid",
+            "type": "string"
+          },
+          "versions": {
+            "description": "The versions the reviewer saw",
+            "properties": {
+              "a": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "b": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "decision",
+          "comment",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "DecideFieldReview": {
+        "properties": {
+          "baseVersion": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "comment": {
+            "description": "Required for legal name and birth",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "historyId": {
+            "description": "The alternate kept",
+            "pattern": "^\\d{1,19}$",
+            "type": "string"
+          },
+          "keep": {
+            "enum": [
+              "current",
+              "alternate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "keep",
+          "baseVersion"
+        ],
+        "type": "object"
+      },
       "DecideQuarantine": {
         "properties": {
           "decision": {
@@ -360,6 +649,20 @@
         },
         "required": [
           "decision",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "DeclineReversal": {
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
           "reason"
         ],
         "type": "object"
@@ -418,6 +721,267 @@
         ],
         "type": "object"
       },
+      "DuplicateDecisionResult": {
+        "properties": {
+          "merge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MergeView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pair": {
+            "$ref": "#/components/schemas/DuplicatePairSummary"
+          }
+        },
+        "required": [
+          "pair",
+          "merge"
+        ],
+        "type": "object"
+      },
+      "DuplicateDecisionView": {
+        "properties": {
+          "comment": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "decision": {
+            "enum": [
+              "merge",
+              "keep_separate",
+              "not_sure",
+              "undo_merge",
+              "flagged_by_staff"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "mergeId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "survivorId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "decision",
+          "comment",
+          "survivorId",
+          "mergeId",
+          "decidedBy",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "DuplicateHint": {
+        "properties": {
+          "note": {
+            "description": "The reviewer’s Not sure note, shown to field staff",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "not_sure"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "note"
+        ],
+        "type": "object"
+      },
+      "DuplicatePage": {
+        "properties": {
+          "nextAfterId": {
+            "description": "Pass as afterId for the next page; null on the last",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/DuplicatePairSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pairs",
+          "nextAfterId"
+        ],
+        "type": "object"
+      },
+      "DuplicatePairDetail": {
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/PairSide"
+          },
+          "b": {
+            "$ref": "#/components/schemas/PairSide"
+          },
+          "compared": {
+            "items": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "same": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "field",
+                "same"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DuplicateDecisionView"
+            },
+            "type": "array"
+          },
+          "pair": {
+            "$ref": "#/components/schemas/DuplicatePairSummary"
+          }
+        },
+        "required": [
+          "pair",
+          "a",
+          "b",
+          "compared",
+          "decisions"
+        ],
+        "type": "object"
+      },
+      "DuplicatePairSummary": {
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/PairPatient"
+          },
+          "b": {
+            "$ref": "#/components/schemas/PairPatient"
+          },
+          "band": {
+            "$ref": "#/components/schemas/MatchBand"
+          },
+          "creatorDismissed": {
+            "description": "The creator saw this match at intake and said \"Not them\"",
+            "type": "boolean"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firstFlaggedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastFlaggedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/MatchReason"
+            },
+            "type": "array"
+          },
+          "score": {
+            "type": "number"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DuplicateSource"
+            },
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DuplicateStatus"
+          }
+        },
+        "required": [
+          "id",
+          "a",
+          "b",
+          "status",
+          "score",
+          "band",
+          "reasons",
+          "sources",
+          "creatorDismissed",
+          "note",
+          "firstFlaggedAt",
+          "lastFlaggedAt",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "DuplicateSource": {
+        "enum": [
+          "sync",
+          "edit",
+          "merge_rematch",
+          "correction",
+          "staff_report"
+        ],
+        "type": "string"
+      },
+      "DuplicateStatus": {
+        "enum": [
+          "open",
+          "not_sure",
+          "keep_separate",
+          "merged",
+          "superseded"
+        ],
+        "type": "string"
+      },
       "ErrorResponse": {
         "properties": {
           "error": {
@@ -442,6 +1006,31 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "FetchCharts": {
+        "properties": {
+          "patientIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reason": {
+            "enum": [
+              "opened",
+              "refresh"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "patientIds",
+          "reason"
         ],
         "type": "object"
       },
@@ -482,8 +1071,207 @@
         ],
         "type": "object"
       },
+      "FieldHistoryEntry": {
+        "properties": {
+          "approvedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "correctionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceTime": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "id": {
+            "description": "A field history entry",
+            "pattern": "^\\d{1,19}$",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HistoryKind"
+          },
+          "previousValue": {},
+          "recordId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reviewId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {},
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "entity",
+          "recordId",
+          "field",
+          "version",
+          "kind",
+          "changedBy",
+          "approvedBy",
+          "deviceTime",
+          "recordedAt",
+          "reviewId",
+          "correctionId"
+        ],
+        "type": "object"
+      },
+      "FieldHistoryPage": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FieldHistoryEntry"
+            },
+            "type": "array"
+          },
+          "nextAfterId": {
+            "description": "A field history entry",
+            "pattern": "^\\d{1,19}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries",
+          "nextAfterId"
+        ],
+        "type": "object"
+      },
+      "FieldReviewPage": {
+        "properties": {
+          "nextAfterId": {
+            "description": "Pass as afterId for the next page; null on the last",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/FieldReviewView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "reviews",
+          "nextAfterId"
+        ],
+        "type": "object"
+      },
+      "FieldReviewView": {
+        "properties": {
+          "alternates": {
+            "items": {
+              "properties": {
+                "by": {
+                  "$ref": "#/components/schemas/UserRef"
+                },
+                "deviceTime": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "historyId": {
+                  "description": "A field history entry",
+                  "pattern": "^\\d{1,19}$",
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [
+                "historyId",
+                "by",
+                "deviceTime"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FieldState"
+          },
+          "field": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "needs": {
+            "$ref": "#/components/schemas/ReviewNeeds"
+          },
+          "openedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "decided",
+              "obsolete"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "field",
+          "needs",
+          "current",
+          "alternates",
+          "openedAt",
+          "status"
+        ],
+        "type": "object"
+      },
       "FieldState": {
-        "description": "On conflict: the value the server holds",
+        "description": "On conflict, or when the value was kept but not applied: the value the server holds",
         "properties": {
           "changedAt": {
             "format": "date-time",
@@ -508,6 +1296,30 @@
           "version",
           "changedBy",
           "changedAt"
+        ],
+        "type": "object"
+      },
+      "FlagDuplicate": {
+        "properties": {
+          "comment": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "patientA": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "patientB": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patientA",
+          "patientB",
+          "comment"
         ],
         "type": "object"
       },
@@ -544,6 +1356,404 @@
         ],
         "type": "object"
       },
+      "HistoryKind": {
+        "enum": [
+          "created",
+          "set",
+          "filled_blank",
+          "replaced_after_review",
+          "kept_both",
+          "confirmed",
+          "redirected",
+          "corrected",
+          "review_decided",
+          "merge_fill",
+          "merge_undone",
+          "cleared_by_allergy",
+          "entered_in_error"
+        ],
+        "type": "string"
+      },
+      "IdLinkReason": {
+        "enum": [
+          "first_card",
+          "lost",
+          "damaged",
+          "stolen",
+          "patient_request",
+          "other"
+        ],
+        "type": "string"
+      },
+      "IdLinkState": {
+        "properties": {
+          "active": {
+            "items": {
+              "$ref": "#/components/schemas/IdLinkView"
+            },
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/IdLinkView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "history"
+        ],
+        "type": "object"
+      },
+      "IdLinkStatus": {
+        "enum": [
+          "active",
+          "retired"
+        ],
+        "type": "string"
+      },
+      "IdLinkSummary": {
+        "properties": {
+          "effectiveAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "issuedOn": {
+            "description": "The patient record the link was issued on",
+            "format": "uuid",
+            "type": "string"
+          },
+          "madeOffline": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IdLinkStatus"
+          },
+          "url": {
+            "description": "patients.edit only",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issuedOn",
+          "status",
+          "effectiveAt",
+          "madeOffline"
+        ],
+        "type": "object"
+      },
+      "IdLinkView": {
+        "properties": {
+          "effectiveAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "issuedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "issuedOn": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "madeOffline": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/IdLinkReason"
+          },
+          "replacedBy": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restoredAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retiredAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retiredReason": {
+            "enum": [
+              "regenerated",
+              "superseded_by_newer",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/IdLinkStatus"
+          },
+          "tokenRef": {
+            "description": "First 12 hex characters of the token’s SHA-256",
+            "type": "string"
+          },
+          "url": {
+            "description": "Active links only, for patients.edit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issuedOn",
+          "tokenRef",
+          "status",
+          "reason",
+          "effectiveAt",
+          "issuedBy",
+          "madeOffline",
+          "retiredAt",
+          "retiredReason",
+          "replacedBy",
+          "restoredAt"
+        ],
+        "type": "object"
+      },
+      "IdentityCorrection": {
+        "properties": {
+          "baseVersion": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "field": {
+            "enum": [
+              "legalName",
+              "birth"
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "description": "declined: an amendment request refused with a reason; the chart is unchanged",
+            "enum": [
+              "corrected",
+              "declined"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "requestedByPatient": {
+            "description": "A HIPAA §164.526 amendment request",
+            "type": "boolean"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegalNameInput"
+              },
+              {
+                "$ref": "#/components/schemas/BirthInput"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "value",
+          "baseVersion",
+          "reason",
+          "requestedByPatient",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "IndexEntry": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "properties": {
+                "alias": {
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "alias"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
+          "allergies": {
+            "items": {
+              "properties": {
+                "category": {
+                  "$ref": "#/components/schemas/AllergyCategory"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "severity": {
+                  "$ref": "#/components/schemas/AllergySeverity"
+                },
+                "substance": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "substance",
+                "category",
+                "severity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "allergyScreen": {
+            "$ref": "#/components/schemas/AllergyScreen"
+          },
+          "birth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BirthView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DuplicateHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idLinks": {
+            "items": {
+              "properties": {
+                "effectiveAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "effectiveAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "lastSeenOn": {
+            "description": "A calendar date, YYYY-MM-DD",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "preferredName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviews": {
+            "description": "Fields with an open review",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "usualArea": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "versions": {
+            "properties": {
+              "allergyScreen": {
+                "type": "integer"
+              },
+              "preferredName": {
+                "type": "integer"
+              },
+              "usualArea": {
+                "type": "integer"
+              },
+              "visualDescriptor": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "preferredName",
+              "visualDescriptor",
+              "usualArea",
+              "allergyScreen"
+            ],
+            "type": "object"
+          },
+          "visualDescriptor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "patientId",
+          "preferredName",
+          "aliases",
+          "visualDescriptor",
+          "birth",
+          "usualArea",
+          "lastSeenOn",
+          "allergyScreen",
+          "allergies",
+          "idLinks",
+          "duplicate",
+          "reviews",
+          "versions"
+        ],
+        "type": "object"
+      },
       "InviteMember": {
         "properties": {
           "credential": {
@@ -574,8 +1784,111 @@
         ],
         "type": "object"
       },
+      "IssueIdLink": {
+        "properties": {
+          "linkId": {
+            "description": "Made by the client, so a retry issues nothing twice",
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/IdLinkReason"
+          },
+          "replacesLinkId": {
+            "description": "The newest active link the issuer saw; null for a first card",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "linkId",
+          "replacesLinkId",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "LegalNameInput": {
+        "properties": {
+          "family": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "given": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "given",
+          "family"
+        ],
+        "type": "object"
+      },
+      "LegalNameView": {
+        "properties": {
+          "family": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "given": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "given",
+          "family"
+        ],
+        "type": "object"
+      },
+      "MatchBand": {
+        "enum": [
+          "likely",
+          "possible",
+          "weak"
+        ],
+        "type": "string"
+      },
+      "MatchReason": {
+        "enum": [
+          "name",
+          "alias",
+          "legal_name",
+          "descriptor",
+          "typo",
+          "nickname",
+          "sounds_like",
+          "initial",
+          "dob_exact",
+          "dob_swapped",
+          "dob_month_year",
+          "dob_year_slip",
+          "dob_year",
+          "dob_estimate"
+        ],
+        "type": "string"
+      },
       "Me": {
         "properties": {
+          "idLinkBaseUrl": {
+            "description": "Where Street Medicine ID cards point: the link is `{idLinkBaseUrl}/c#<token>`. Cached on the phone, so a card made offline carries the same URL the portal shows.",
+            "type": "string"
+          },
           "isOwner": {
             "type": "boolean"
           },
@@ -632,7 +1945,8 @@
           "isOwner",
           "mfa",
           "pendingAcknowledgements",
-          "teams"
+          "teams",
+          "idLinkBaseUrl"
         ],
         "type": "object"
       },
@@ -745,6 +2059,119 @@
           "reason",
           "changedAt",
           "changedBy"
+        ],
+        "type": "object"
+      },
+      "MergePage": {
+        "properties": {
+          "merges": {
+            "items": {
+              "$ref": "#/components/schemas/MergeView"
+            },
+            "type": "array"
+          },
+          "nextAfterId": {
+            "description": "Pass as afterId for the next page; null on the last",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "merges",
+          "nextAfterId"
+        ],
+        "type": "object"
+      },
+      "MergeProblems": {
+        "properties": {
+          "comment": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "intoProblemId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "intoProblemId",
+          "comment"
+        ],
+        "type": "object"
+      },
+      "MergeView": {
+        "properties": {
+          "comment": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "merged": {
+            "$ref": "#/components/schemas/PairPatient"
+          },
+          "mergedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mergedBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "pairId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "survivor": {
+            "$ref": "#/components/schemas/PairPatient"
+          },
+          "undoable": {
+            "description": "For a caller with patients.correct_identity, when nothing was merged on top",
+            "type": "boolean"
+          },
+          "undone": {
+            "anyOf": [
+              {
+                "properties": {
+                  "at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "by": {
+                    "$ref": "#/components/schemas/UserRef"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "by",
+                  "at",
+                  "comment"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "pairId",
+          "survivor",
+          "merged",
+          "comment",
+          "mergedBy",
+          "mergedAt",
+          "undone",
+          "undoable"
         ],
         "type": "object"
       },
@@ -906,6 +2333,430 @@
         ],
         "type": "object"
       },
+      "PairPatient": {
+        "properties": {
+          "patientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PatientSummary"
+          }
+        },
+        "required": [
+          "patientId",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "PairSide": {
+        "properties": {
+          "chart": {
+            "$ref": "#/components/schemas/PatientChart"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdHow": {
+            "enum": [
+              "phone_offline",
+              "phone",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "photoId": {
+            "description": "Phase 8; always null in phase 3",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recentEncounters": {
+            "description": "Dates and kinds only",
+            "items": {
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "startedAt",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "version": {
+            "description": "Send back in DecideDuplicate.versions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chart",
+          "version",
+          "recentEncounters",
+          "photoId",
+          "createdHow",
+          "createdBy"
+        ],
+        "type": "object"
+      },
+      "PatientChart": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "allergies": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "canonicalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "consents": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentView"
+            },
+            "type": "array"
+          },
+          "duplicate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DuplicateHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idLinks": {
+            "description": "Active links of the group: usually one; one per merged record that had a card until the next new card",
+            "items": {
+              "$ref": "#/components/schemas/IdLinkSummary"
+            },
+            "type": "array"
+          },
+          "mergedFrom": {
+            "items": {
+              "properties": {
+                "mergeId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "mergedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "patientId": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "patientId",
+                "mergedAt",
+                "mergeId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "patient": {
+            "$ref": "#/components/schemas/RecordSnapshot"
+          },
+          "problemHistory": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemStatusEvent"
+            },
+            "type": "array"
+          },
+          "problemNotes": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemNoteView"
+            },
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "projection": {
+            "description": "Which projection made this copy",
+            "type": "string"
+          },
+          "redirectedFrom": {
+            "description": "The merged ID that was asked for",
+            "format": "uuid",
+            "type": "string"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/FieldReviewView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "patient",
+          "canonicalId",
+          "mergedFrom",
+          "aliases",
+          "allergies",
+          "consents",
+          "idLinks",
+          "reviews",
+          "duplicate",
+          "projection"
+        ],
+        "type": "object"
+      },
+      "PatientHit": {
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/MatchBand"
+          },
+          "patientId": {
+            "description": "The canonical patient",
+            "format": "uuid",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/MatchReason"
+            },
+            "type": "array"
+          },
+          "score": {
+            "type": "number"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PatientSummary"
+          }
+        },
+        "required": [
+          "patientId",
+          "score",
+          "band",
+          "reasons",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "PatientMatchRequest": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "maxLength": 60,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
+          "birth": {
+            "$ref": "#/components/schemas/BirthInput"
+          },
+          "excludePatientId": {
+            "description": "The patient being edited",
+            "format": "uuid",
+            "type": "string"
+          },
+          "legalName": {
+            "$ref": "#/components/schemas/LegalNameInput"
+          },
+          "preferredName": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/Surface"
+          }
+        },
+        "required": [
+          "surface"
+        ],
+        "type": "object"
+      },
+      "PatientMatchResult": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PatientHit"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "checkId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkId",
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "PatientRedirect": {
+        "properties": {
+          "mergedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mergedId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "survivorId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mergedId",
+          "survivorId",
+          "mergedAt"
+        ],
+        "type": "object"
+      },
+      "PatientSearch": {
+        "properties": {
+          "birth": {
+            "$ref": "#/components/schemas/BirthQuery"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name, street name or description",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/Surface"
+          }
+        },
+        "required": [
+          "surface"
+        ],
+        "type": "object"
+      },
+      "PatientSearchResult": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/PatientHit"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "More matched than shown: ask for more letters or a birth year",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hits",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "PatientSummary": {
+        "properties": {
+          "ageYears": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "allergy": {
+            "$ref": "#/components/schemas/AllergySummary"
+          },
+          "birth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BirthView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicateHint": {
+            "type": "boolean"
+          },
+          "lastSeenOn": {
+            "description": "A calendar date, YYYY-MM-DD",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "legalName": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegalNameView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferredName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usualArea": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visualDescriptor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "Permission": {
         "enum": [
           "team.manage_users",
@@ -946,6 +2797,226 @@
         "required": [
           "key",
           "description"
+        ],
+        "type": "object"
+      },
+      "ProblemNoteView": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "encounterId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "problemId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "writtenAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "problemId",
+          "text",
+          "encounterId",
+          "writtenAt",
+          "author"
+        ],
+        "type": "object"
+      },
+      "ProblemStatus": {
+        "enum": [
+          "new",
+          "ongoing",
+          "resolved"
+        ],
+        "type": "string"
+      },
+      "ProblemStatusEvent": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "by": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "encounterId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "historyId": {
+            "description": "A field history entry",
+            "pattern": "^\\d{1,19}$",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HistoryKind"
+          },
+          "problemId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProblemStatus"
+          }
+        },
+        "required": [
+          "historyId",
+          "problemId",
+          "status",
+          "encounterId",
+          "by",
+          "at",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ProblemView": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "codeDisplay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enteredInError": {
+            "anyOf": [
+              {
+                "properties": {
+                  "at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "by": {
+                    "$ref": "#/components/schemas/UserRef"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "by",
+                  "at"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "mergedInto": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemNoteView"
+            },
+            "type": "array"
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "recurrenceOf": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedInErrorOf": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reversalRequest": {
+            "enum": [
+              "open",
+              "reversed",
+              "declined",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProblemStatus"
+          },
+          "statusHistory": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemStatusEvent"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "title",
+          "code",
+          "codeDisplay",
+          "status",
+          "sensitive",
+          "statusHistory",
+          "notes",
+          "recurrenceOf",
+          "resolvedInErrorOf",
+          "reversalRequest",
+          "mergedInto",
+          "enteredInError",
+          "createdAt",
+          "author"
         ],
         "type": "object"
       },
@@ -1127,7 +3198,14 @@
       "RecordEntity": {
         "enum": [
           "encounter",
-          "encounter_note"
+          "encounter_note",
+          "patient",
+          "patient_alias",
+          "patient_allergy",
+          "patient_consent",
+          "problem",
+          "problem_note",
+          "id_link"
         ],
         "type": "string"
       },
@@ -1257,6 +3335,104 @@
           "reason"
         ],
         "type": "object"
+      },
+      "ReversalRequestPage": {
+        "properties": {
+          "nextAfterId": {
+            "description": "Pass as afterId for the next page; null on the last",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requests": {
+            "items": {
+              "properties": {
+                "original": {
+                  "$ref": "#/components/schemas/ProblemView"
+                },
+                "patient": {
+                  "$ref": "#/components/schemas/PatientSummary"
+                },
+                "patientId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "request": {
+                  "$ref": "#/components/schemas/ProblemView"
+                },
+                "requestedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "requestedBy": {
+                  "$ref": "#/components/schemas/UserRef"
+                }
+              },
+              "required": [
+                "request",
+                "original",
+                "patientId",
+                "patient",
+                "requestedBy",
+                "requestedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requests",
+          "nextAfterId"
+        ],
+        "type": "object"
+      },
+      "ReverseResolved": {
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "requestProblemId": {
+            "description": "The \"Resolved by mistake\" entry this answers",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReverseResolvedResult": {
+        "properties": {
+          "mergeCandidates": {
+            "description": "New or Ongoing entries added since, with the same code or title; the request first",
+            "items": {
+              "$ref": "#/components/schemas/ProblemView"
+            },
+            "type": "array"
+          },
+          "problem": {
+            "$ref": "#/components/schemas/ProblemView"
+          }
+        },
+        "required": [
+          "problem",
+          "mergeCandidates"
+        ],
+        "type": "object"
+      },
+      "ReviewNeeds": {
+        "enum": [
+          "patients.edit",
+          "patients.correct_identity"
+        ],
+        "type": "string"
       },
       "Role": {
         "properties": {
@@ -1487,6 +3663,14 @@
           "signature"
         ],
         "type": "object"
+      },
+      "Surface": {
+        "description": "Where the result is shown. On the phone no result carries a legal name.",
+        "enum": [
+          "portal",
+          "phone"
+        ],
+        "type": "string"
       },
       "SyncChange": {
         "properties": {
@@ -1827,6 +4011,78 @@
         ],
         "type": "object"
       },
+      "TeamIndexPage": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/IndexEntry"
+            },
+            "type": "array"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "next": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projection": {
+            "type": "string"
+          },
+          "redirects": {
+            "description": "First page only: the team’s complete list",
+            "items": {
+              "$ref": "#/components/schemas/PatientRedirect"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "unchanged",
+              "page"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "projection",
+          "generatedAt",
+          "entries",
+          "next",
+          "redirects"
+        ],
+        "type": "object"
+      },
+      "TeamIndexRequest": {
+        "properties": {
+          "after": {
+            "description": "The previous page’s next",
+            "format": "uuid",
+            "type": "string"
+          },
+          "have": {
+            "description": "The version this phone holds",
+            "maxLength": 60,
+            "type": "string"
+          },
+          "limit": {
+            "default": 500,
+            "maximum": 1000,
+            "minimum": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "TeamStatusChange": {
         "properties": {
           "reason": {
@@ -1846,6 +4102,139 @@
         "required": [
           "status",
           "reason"
+        ],
+        "type": "object"
+      },
+      "UndoMerge": {
+        "properties": {
+          "comment": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "type": "object"
+      },
+      "UndoMergeResult": {
+        "properties": {
+          "keptFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "linksIssuedWhileMerged": {
+            "items": {
+              "properties": {
+                "effectiveAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "issuedOn": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "linkId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "reason": {
+                  "$ref": "#/components/schemas/IdLinkReason"
+                },
+                "tokenRef": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "linkId",
+                "tokenRef",
+                "issuedOn",
+                "reason",
+                "effectiveAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "merge": {
+            "$ref": "#/components/schemas/MergeView"
+          },
+          "redirectedEdits": {
+            "description": "Edits sent to the merged record and applied to the survivor: move by hand",
+            "items": {
+              "properties": {
+                "at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "by": {
+                  "$ref": "#/components/schemas/UserRef"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "historyId": {
+                  "description": "A field history entry",
+                  "pattern": "^\\d{1,19}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "historyId",
+                "field",
+                "at",
+                "by"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "restoredLinks": {
+            "items": {
+              "properties": {
+                "issuedOn": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "linkId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "tokenRef": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "linkId",
+                "tokenRef",
+                "issuedOn"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revertedFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reviewsClosed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "merge",
+          "revertedFields",
+          "keptFields",
+          "reviewsClosed",
+          "redirectedEdits",
+          "restoredLinks",
+          "linksIssuedWhileMerged"
         ],
         "type": "object"
       },
@@ -2741,6 +5130,717 @@
         ]
       }
     },
+    "/v1/patients/charts": {
+      "post": {
+        "operationId": "fetchCharts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchCharts"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChartBundle"
+                }
+              }
+            },
+            "description": "Charts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Charts for the phone’s 24-hour cache, with every redirect that touches them. Gzipped.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/index": {
+      "post": {
+        "description": "Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version answers `unchanged`. No legal name, no token, no clinical content.",
+        "operationId": "downloadTeamIndex",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamIndexRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamIndexPage"
+                }
+              }
+            },
+            "description": "A page, or unchanged"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team search index for a phone, a page at a time. Field roles only. Gzipped.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/match": {
+      "post": {
+        "operationId": "matchPatients",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatientMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientMatchResult"
+                }
+              }
+            },
+            "description": "Candidates"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Patients who may be the person being registered, before the chart is created",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/search": {
+      "post": {
+        "description": "A name, or a full birth date; a year needs a name with it. Not paged: past 50 the screen asks for more letters or a birth year. The search text is never logged.",
+        "operationId": "searchPatients",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatientSearch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientSearchResult"
+                }
+              }
+            },
+            "description": "Results"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Find patients by name, street name, description or birth date. Logged with the patients shown.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/{patientId}": {
+      "get": {
+        "operationId": "getPatient",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientChart"
+                }
+              }
+            },
+            "description": "The chart"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A patient’s chart, as the role may see it. A merged ID answers the kept chart.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/{patientId}/corrections": {
+      "post": {
+        "operationId": "correctIdentity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityCorrection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientChart"
+                }
+              }
+            },
+            "description": "The chart after the correction"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Correct a legal name or birth date with a reason, or record a declined amendment request",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/{patientId}/history": {
+      "get": {
+        "operationId": "getPatientHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A field name; every field when absent",
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "description": "A field name; every field when absent",
+              "pattern": "^[a-z][a-zA-Z]{0,40}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "pattern": "^\\d{1,19}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldHistoryPage"
+                }
+              }
+            },
+            "description": "A page of history"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every recorded value of the chart’s fields, old and new, with who and how",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/{patientId}/id-link": {
+      "get": {
+        "operationId": "getIdLinks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdLinkState"
+                }
+              }
+            },
+            "description": "Cards"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The patient’s Street Medicine ID cards: active links with their URLs, and history",
+        "tags": [
+          "patients"
+        ]
+      },
+      "post": {
+        "operationId": "issueIdLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueIdLink"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdLinkState"
+                }
+              }
+            },
+            "description": "Cards after the issue"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Make a new card. Every active card of the patient stops working.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
     "/v1/permissions": {
       "get": {
         "operationId": "listPermissions",
@@ -2777,6 +5877,200 @@
         "summary": "Every permission a role can hold, with a plain description",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/v1/problems/{problemId}/merge": {
+      "post": {
+        "operationId": "mergeProblems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "problemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeProblems"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemView"
+                }
+              }
+            },
+            "description": "The entry kept"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Merge this entry into another; both histories and notes stay",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/v1/problems/{problemId}/reverse": {
+      "post": {
+        "operationId": "reverseResolvedProblem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "problemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReverseResolved"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseResolvedResult"
+                }
+              }
+            },
+            "description": "Reversed"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set a Resolved problem back to Ongoing, with a reason; then offers entries to merge into it",
+        "tags": [
+          "problems"
         ]
       }
     },
@@ -3178,6 +6472,519 @@
         "summary": "Remotely wipe a lost or stolen phone; its unsynced data is lost",
         "tags": [
           "devices"
+        ]
+      }
+    },
+    "/v1/team/duplicates": {
+      "get": {
+        "operationId": "listDuplicates",
+        "parameters": [
+          {
+            "description": "open: open and not sure",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "description": "open: open and not sure",
+              "enum": [
+                "open",
+                "not_sure",
+                "decided"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicatePage"
+                }
+              }
+            },
+            "description": "A page of pairs"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pairs of charts that may be the same person, oldest flagged first",
+        "tags": [
+          "duplicates"
+        ]
+      },
+      "post": {
+        "operationId": "flagDuplicate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagDuplicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicatePairSummary"
+                }
+              }
+            },
+            "description": "The pair"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Report two charts that are the same person, for a reviewer to decide",
+        "tags": [
+          "duplicates"
+        ]
+      }
+    },
+    "/v1/team/duplicates/{pairId}": {
+      "get": {
+        "operationId": "getDuplicatePair",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pairId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicatePairDetail"
+                }
+              }
+            },
+            "description": "The pair"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Both charts of a pair side by side, with what matched and earlier decisions",
+        "tags": [
+          "duplicates"
+        ]
+      }
+    },
+    "/v1/team/duplicates/{pairId}/decision": {
+      "post": {
+        "description": "Carries the versions the reviewer saw: 409 pair_changed {versions} when either chart changed or was merged since; 409 already_decided for a decided pair, unless not sure.",
+        "operationId": "decideDuplicate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pairId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideDuplicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicateDecisionResult"
+                }
+              }
+            },
+            "description": "Decided"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Merge, keep separate or not sure, with a comment",
+        "tags": [
+          "duplicates"
+        ]
+      }
+    },
+    "/v1/team/field-reviews": {
+      "get": {
+        "operationId": "listFieldReviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "enum": [
+                "open",
+                "decided"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldReviewPage"
+                }
+              }
+            },
+            "description": "A page of reviews"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fields where two values were recorded, that the signed-in person may decide",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/team/field-reviews/{reviewId}/decision": {
+      "post": {
+        "operationId": "decideFieldReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reviewId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideFieldReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldReviewView"
+                }
+              }
+            },
+            "description": "Decided"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Keep the chart’s value or an alternate. Legal name and birth date need an admin and a comment.",
+        "tags": [
+          "patients"
         ]
       }
     },
@@ -3761,6 +7568,172 @@
         ]
       }
     },
+    "/v1/team/merges": {
+      "get": {
+        "operationId": "listMerges",
+        "parameters": [
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergePage"
+                }
+              }
+            },
+            "description": "A page of merges"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recent merges, newest first",
+        "tags": [
+          "duplicates"
+        ]
+      }
+    },
+    "/v1/team/merges/{mergeId}/undo": {
+      "post": {
+        "operationId": "undoMerge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mergeId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoMerge"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoMergeResult"
+                }
+              }
+            },
+            "description": "Undone"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Undo a merge, with a comment. Each chart gets its own ID cards back.",
+        "tags": [
+          "duplicates"
+        ]
+      }
+    },
     "/v1/team/notices": {
       "get": {
         "operationId": "listNotices",
@@ -3873,6 +7846,172 @@
         ],
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/v1/team/problem-reversals": {
+      "get": {
+        "operationId": "listProblemReversals",
+        "parameters": [
+          {
+            "description": "The previous page’s nextAfterId",
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "description": "The previous page’s nextAfterId",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReversalRequestPage"
+                }
+              }
+            },
+            "description": "A page of requests"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Problems staff marked Resolved by mistake, waiting for an admin",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/v1/team/problem-reversals/{problemId}/decline": {
+      "post": {
+        "operationId": "declineProblemReversal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "problemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclineReversal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemView"
+                }
+              }
+            },
+            "description": "Declined"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Decline a request with a reason; the entry stays a separate problem",
+        "tags": [
+          "problems"
         ]
       }
     },

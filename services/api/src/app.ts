@@ -6,9 +6,12 @@ import { TokenError } from './auth/verifier.ts';
 import { ApiError, type ErrorBody } from './lib/errors.ts';
 import { registerAuditRoutes } from './routes/audit-log.ts';
 import { registerDeviceRoutes } from './routes/devices.ts';
+import { registerDuplicateRoutes } from './routes/duplicates.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import { registerMemberRoutes } from './routes/members.ts';
 import { registerOwnerRoutes } from './routes/owner.ts';
+import { registerPatientRoutes } from './routes/patients.ts';
+import { registerProblemRoutes } from './routes/problems.ts';
 import { registerRoleRoutes } from './routes/roles.ts';
 import { registerSyncRoutes } from './routes/sync.ts';
 import { registerSystemRoutes } from './routes/system.ts';
@@ -100,6 +103,9 @@ export function createApp(deps: Deps): App {
   registerRoleRoutes(app, deps);
   registerAuditRoutes(app, deps);
   registerSyncRoutes(app, deps);
+  registerPatientRoutes(app, deps);
+  registerProblemRoutes(app, deps);
+  registerDuplicateRoutes(app, deps);
   registerDeviceRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {

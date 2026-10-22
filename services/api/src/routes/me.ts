@@ -30,6 +30,11 @@ const Me = z
     mfa: z.object({ required: z.boolean(), satisfied: z.boolean() }),
     pendingAcknowledgements: z.array(Acknowledgement),
     teams: z.array(MyTeam),
+    idLinkBaseUrl: z.string().openapi({
+      description:
+        'Where Street Medicine ID cards point: the link is `{idLinkBaseUrl}/c#<token>`. Cached on the phone, ' +
+        'so a card made offline carries the same URL the portal shows.',
+    }),
   })
   .openapi('Me');
 
@@ -115,6 +120,7 @@ export function registerMeRoutes(app: App, deps: Deps): void {
         mfa: { required: deps.config.MFA_MODE === 'aal', satisfied: mfaSatisfied(deps, p) },
         pendingAcknowledgements: (await pendingAcknowledgements(deps, p)).map((a) => ({ ...a })),
         teams: result.map((t) => ({ ...t, permissions: t.permissions.filter(isPermission) })),
+        idLinkBaseUrl: deps.config.ID_LINK_BASE_URL,
       },
       200,
     );

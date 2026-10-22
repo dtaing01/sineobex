@@ -3,7 +3,7 @@ import { Reason, Uuid } from '../routes/schemas.ts';
 
 /** Wire format for module 9's change log, receipts, devices and quarantine. */
 
-const DateTime = z.string().datetime({ offset: true });
+export const DateTime = z.string().datetime({ offset: true });
 const Hash = z
   .string()
   .regex(/^[0-9a-f]{64}$/)
@@ -11,9 +11,38 @@ const Hash = z
 const Base64Url = (bytes: number) =>
   z.string().regex(new RegExp(`^[A-Za-z0-9_-]{${Math.ceil((bytes * 4) / 3)}}$`));
 
-export const ChangeEntity = z.enum(['encounter', 'encounter_note', 'audit']).openapi('ChangeEntity');
-export const RecordEntity = z.enum(['encounter', 'encounter_note']).openapi('RecordEntity');
-export type RecordEntityName = z.infer<typeof RecordEntity>;
+/** Phase 2's records: encounters and their notes. */
+export const ENCOUNTER_ENTITIES = ['encounter', 'encounter_note'] as const;
+/**
+ * Patient-side records (phase 3 design 2.1). Their values are checked by the schemas in
+ * entities/values.ts, which travel as `value: unknown` and are not OpenAPI components.
+ */
+export const PATIENT_ENTITIES = [
+  'patient',
+  'patient_alias',
+  'patient_allergy',
+  'patient_consent',
+  'problem',
+  'problem_note',
+  'id_link',
+] as const;
+
+export const ChangeEntity = z
+  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES])
+  .openapi('ChangeEntity');
+export const RecordEntity = z.enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES]).openapi('RecordEntity');
+/** Every kind of record a change, a receipt or a snapshot can name. */
+export type AnyRecordEntityName = z.infer<typeof RecordEntity>;
+export type PatientEntityName = (typeof PATIENT_ENTITIES)[number];
+/**
+ * The records the phase 2 apply path stores and loads (records.ts). The entity registry (phase 3
+ * design 2.2) widens this to every RecordEntity; until then a change naming a patient-side entity
+ * fails validation there like any other value it can't read, and a fetch reports it missing.
+ */
+export type RecordEntityName = (typeof ENCOUNTER_ENTITIES)[number];
+
+export const isEncounterEntity = (entity: string): entity is RecordEntityName =>
+  (ENCOUNTER_ENTITIES as readonly string[]).includes(entity);
 
 export const SyncChange = z
   .object({
@@ -84,7 +113,9 @@ export const SyncResult = z
     reason: RejectReason.optional(),
     message: z.string().optional(),
     details: z.record(z.string(), z.unknown()).optional(),
-    server: FieldState.optional().openapi({ description: 'On conflict: the value the server holds' }),
+    server: FieldState.optional().openapi({
+      description: 'On conflict, or when the value was kept but not applied: the value the server holds',
+    }),
     quarantined: z.boolean().optional(),
   })
   .openapi('SyncResult');
@@ -203,7 +234,7 @@ export const QuarantineReceipt = z
   })
   .openapi('QuarantineReceipt');
 
-const UserRef = z.object({ userId: Uuid, displayName: z.string() }).openapi('UserRef');
+export const UserRef = z.object({ userId: Uuid, displayName: z.string() }).openapi('UserRef');
 
 export const TeamDevice = z
   .object({
