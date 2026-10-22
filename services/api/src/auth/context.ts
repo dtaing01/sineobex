@@ -3,7 +3,14 @@ import type { Tx } from '../db/database.ts';
 import { ApiError, forbidden, unauthorized } from '../lib/errors.ts';
 import type { AppEnv, Deps } from '../types.ts';
 import { REQUIRED_ACKNOWLEDGEMENTS } from './acknowledgements.ts';
-import { CREDENTIALS, isPermission, type Credential, type Permission } from './permissions.ts';
+import {
+  ACCESS_RULES,
+  CREDENTIALS,
+  isPermission,
+  type AccessRule,
+  type Credential,
+  type Permission,
+} from './permissions.ts';
 import { TokenError, type VerifiedToken } from './verifier.ts';
 
 /** A signed-in person, resolved from a verified token. */
@@ -225,6 +232,34 @@ export class TeamScope {
     if (this.can(permission)) return;
     await this.tx((_, audit) => audit({ action: 'access.denied', details: { permission, route } }));
     throw forbidden();
+  }
+
+  /** Refuses unless at least one of the permissions is held; logged like `require`. */
+  async requireAny(permissions: readonly Permission[], route: string): Promise<void> {
+    if (permissions.some((p) => this.can(p))) return;
+    await this.tx((_, audit) =>
+      audit({ action: 'access.denied', details: { anyOf: [...permissions], route } }),
+    );
+    throw forbidden();
+  }
+
+  /**
+   * Refuses unless a derived access rule over the existing permissions holds (permissions.ts);
+   * logged like `require`, with the rule's name.
+   */
+  async requireRule(
+    rule: AccessRule,
+    route: string,
+    refusal: { message?: string; code?: string } = {},
+  ): Promise<void> {
+    if (ACCESS_RULES[rule](this.team.permissions)) return;
+    await this.tx((_, audit) => audit({ action: 'access.denied', details: { rule, route } }));
+    throw forbidden(refusal.message, refusal.code);
+  }
+
+  /** For a decision whose need for a recent sign-in depends on what it decides (a field review). */
+  requireRecentAuth(): void {
+    requireRecentAuth(this.deps, this.principal);
   }
 
   tx<T>(fn: (tx: Tx, audit: AuditFn) => Promise<T>): Promise<T> {

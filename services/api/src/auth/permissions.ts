@@ -43,6 +43,36 @@ export function isPermission(value: string): value is Permission {
   return Object.hasOwn(PERMISSIONS, value);
 }
 
+/*
+ * Combinations of the existing keys (phase 3 design 1.6 and 4.1; D37: no new permission types in
+ * the MVP, Oct 12). Pure functions over a role's permissions, used by routes, sync and the
+ * projection; the phone mirrors them in lib/patients/access.dart, both pinned by
+ * packages/contract/test-vectors/access.json.
+ */
+
+/** The permissions of people who meet patients in person. */
+export const FIELD_PERMISSIONS = ['patients.edit', 'encounters.chart', 'checkins.create'] as const;
+
+export const hasFieldAccess = (p: ReadonlySet<Permission>): boolean =>
+  FIELD_PERMISSIONS.some((k) => p.has(k));
+
+/**
+ * May hold the team search index on a phone: field roles only. Billing/Data and view-only roles
+ * never do (D38).
+ */
+// PLAN-OPEN: a way for a team to keep the index off a field role (design 14.1, #11). None in
+// phase 3: the index follows patients.view plus a field permission; a later team setting may add one.
+export const mayHoldTeamIndex = (p: ReadonlySet<Permission>): boolean =>
+  p.has('patients.view') && hasFieldAccess(p);
+
+/** May see the problem list (titles, codes, statuses, history, notes). Billing/Data sees codes. */
+export const mayViewProblems = (p: ReadonlySet<Permission>): boolean =>
+  p.has('patients.view') && (p.has('encounters.chart') || p.has('billing.view_codes'));
+
+/** The derived access rules, by name, for refusals that are logged with the rule they failed. */
+export const ACCESS_RULES = { hasFieldAccess, mayHoldTeamIndex, mayViewProblems } as const;
+export type AccessRule = keyof typeof ACCESS_RULES;
+
 /** Roles only owners may assign or take away (module 1: "A Program Admin can't appoint another Program Admin"). */
 export const OWNER_ONLY_ROLE_KEYS = new Set(['program_admin']);
 
