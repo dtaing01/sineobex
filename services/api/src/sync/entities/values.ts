@@ -264,6 +264,8 @@ export const AUDIT_MAX_PATIENTS = 50;
  * Offline reads, logged on the phone and appended to the audit chain at sync (design 2.8). Search
  * text never enters an entry, online or offline (D41): only the criteria used.
  */
+// PLAN-OPEN: search terms in the audit log (design 14.1, #9, for counsel). Never stored; if counsel
+// wants them, a separate restricted column with its own retention, never `details`.
 export const AuditAppend = z
   .object({
     action: z.enum([
