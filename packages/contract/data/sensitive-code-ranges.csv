@@ -1,0 +1,12 @@
+# ICD-10-CM codes whose problems are sensitive by default (phase 3 design 9.5): shown only to
+# patients.view_sensitive, and the phone's Sensitive switch is on and locked for them. A code is in
+# a range when its first characters, as many as `from` has, sort between `from` and `to` (both the
+# same length): F10.20 is in F01-F99, O9A.111 in O00-O9A, Z71.41 in Z71.4-Z71.4.
+from,to,label
+F01,F99,Mental and behavioral disorders
+O00,O9A,"Pregnancy, childbirth and the puerperium"
+Z30,Z39,Contraception and reproductive care
+B20,B20,HIV disease
+Z21,Z21,Asymptomatic HIV infection status
+A50,A64,Infections with a predominantly sexual mode of transmission
+Z71.4,Z71.4,Alcohol abuse counseling

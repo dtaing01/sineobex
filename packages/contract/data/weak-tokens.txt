@@ -1,0 +1,17 @@
+# Words dropped from a name before scoring, unless nothing else is left (phase 3 design 5.1):
+# "Big Mike" finds "Mike", and "Big" alone still searches. One normalized token per line.
+mr
+mrs
+ms
+miss
+dr
+big
+lil
+little
+old
+young
+jr
+sr
+ii
+iii
+the

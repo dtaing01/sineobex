@@ -1,0 +1,9 @@
+# Changes to these paths decide whether patient records are kept, protected and audited.
+# They need a review from someone who owns that risk.
+*                         @dtaing01
+/db/migrations/           @dtaing01
+/services/api/src/sync/   @dtaing01
+/services/api/src/auth/   @dtaing01
+/apps/mobile/lib/sync/    @dtaing01
+/infra/                   @dtaing01
+/.github/workflows/       @dtaing01

@@ -1,0 +1,90 @@
+{
+  "note": "Hand-written. The phase 3 done-when (design 13.1): a made-up patient is found offline by a misspelled alias, edited, and flagged as a likely duplicate at intake. db/seed/seed.ts inserts P1 from this file into the demo team; the phone's fake server, done_when_test.dart, live_patients_test.dart and services/api patients-done-when.test.ts read the same file. Everyone here is invented.",
+  "teamId": "0d3e6f00-0000-4000-8000-000000000001",
+  "today": "2026-10-22",
+  "p1": {
+    "id": "5eed0000-0000-4000-8000-000000000001",
+    "preferredName": "Del",
+    "legalName": { "given": "Delbert", "family": "Smithfield" },
+    "birth": { "precision": "day", "date": "1946-03-07" },
+    "visualDescriptor": "Demo: tall, grey beard, red cap",
+    "usualArea": "Demo: by the made-up Elm St underpass",
+    "livingSituation": { "kind": "unsheltered" },
+    "preferredLanguage": "en",
+    "allergyScreen": "not_asked",
+    "idCardChoice": "not_asked",
+    "registeredAt": "2026-10-01T16:00:00Z",
+    "lastSeenOn": "2026-10-03",
+    "fieldVersion": 1,
+    "aliases": [{ "id": "5eed0a00-0000-4000-8000-000000000001", "alias": "Smitty" }],
+    "allergies": [
+      {
+        "id": "5eed0b00-0000-4000-8000-000000000001",
+        "substance": "penicillin",
+        "category": "drug",
+        "severity": "severe"
+      }
+    ],
+    "consents": [
+      {
+        "id": "5eed0c00-0000-4000-8000-000000000001",
+        "kind": "care_and_record",
+        "decision": "given",
+        "method": "verbal"
+      },
+      {
+        "id": "5eed0c00-0000-4000-8000-000000000002",
+        "kind": "privacy_notice",
+        "decision": "acknowledged",
+        "method": "verbal"
+      }
+    ],
+    "idLinks": [],
+    "phoneSearchRows": ["del", "smitty", "demo tall grey beard red cap"],
+    "neverOnThePhone": ["delbert", "smithfield"]
+  },
+  "search": {
+    "text": "Smity",
+    "criteria": ["name"],
+    "expected": {
+      "first": "5eed0000-0000-4000-8000-000000000001",
+      "reasons": ["alias", "typo"],
+      "phoneScore": 0.8333333333333334
+    }
+  },
+  "edit": {
+    "entity": "patient",
+    "recordId": "5eed0000-0000-4000-8000-000000000001",
+    "field": "usualArea",
+    "value": "Demo: by the library steps",
+    "baseVersion": 1,
+    "previousValue": "Demo: by the made-up Elm St underpass"
+  },
+  "intake": {
+    "preferredName": "Smitty",
+    "legalName": { "given": "Del", "family": null },
+    "typedBirth": "7/3/46",
+    "birthMode": "date",
+    "birth": { "precision": "day", "date": "1946-07-03" },
+    "readBack": "July 3, 1946 · age 80",
+    "needsConfirmation": true,
+    "consent": { "decision": "given", "method": "verbal", "scriptVersion": "2026-10-1", "language": "en" },
+    "privacyNotice": { "decision": "acknowledged" },
+    "dismissed": ["5eed0000-0000-4000-8000-000000000001"],
+    "phoneSearchRows": ["smitty"]
+  },
+  "match": {
+    "expected": {
+      "candidate": "5eed0000-0000-4000-8000-000000000001",
+      "band": "likely",
+      "reasons": ["name", "alias", "dob_swapped"],
+      "phoneScore": 0.9475,
+      "tolerance": 1e-9,
+      "serverScoreAtLeast": 0.7,
+      "queued": true,
+      "creatorDismissed": true,
+      "possibleDuplicate": false
+    }
+  },
+  "neverInAuditDetails": ["smit", "delbert"]
+}
