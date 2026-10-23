@@ -1,5 +1,6 @@
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
+import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
 
 /**
  * Loads made-up teams, staff, patients, routes and bags for the preview.
@@ -48,7 +49,28 @@ export const DEMO_STAFF = [
     credential: 'none',
     owner: false,
   },
+  {
+    // The community health worker preset (a custom role every team gets): demographics, check-ins
+    // and referrals, no problem list (phase 3 design 4.2).
+    email: 'chw@example.com',
+    name: 'Robin Patel (demo)',
+    role: 'community_health_worker',
+    credential: 'chw',
+    owner: false,
+  },
 ] as const;
+
+/**
+ * Who seeded patient records name as their author, in every demo environment (the preview has no
+ * seeded staff: people are invited through the portal). No identity provider issues this issuer,
+ * so nobody can sign in as it.
+ */
+export const SEED_AUTHOR = {
+  email: 'demo-intake@example.com',
+  name: 'Demo intake (demo)',
+  issuer: 'urn:sineobex:demo-seed',
+  subject: 'demo-intake',
+} as const;
 
 // A valid-format NPI used only for demo staff (CMS's documented example number).
 const DEMO_NPI = '1234567893';
@@ -109,10 +131,23 @@ export async function seed(
         await tx`
           insert into sineobex.team_memberships (team_id, user_id, role_id, credential, credential_fields)
           select ${DEMO_TEAM_ID}, ${userId}, r.id, ${s.credential}, ${tx.json(FIELDS[s.credential] ?? {})}
-          from sineobex.roles r where r.key = ${s.role!} and r.team_id is null
+          from sineobex.roles r
+          where r.key = ${s.role!} and (r.team_id is null or r.team_id = ${DEMO_TEAM_ID})
           on conflict (team_id, user_id) do nothing`;
       }
       log(`  ${DEMO_STAFF.length} demo staff (password from the dev identity provider)`);
     }
+
+    // A second team, so a similar name elsewhere is there to never be found.
+    await tx`
+      insert into sineobex.teams (id, name) values (${NEIGHBOUR_TEAM_ID}, 'Neighbouring Demo Team (made-up data)')
+      on conflict (id) do nothing`;
+    const [author] = await tx<{ id: string }[]>`
+      insert into sineobex.users (email, display_name, auth_issuer, auth_subject)
+      values (${SEED_AUTHOR.email}, ${SEED_AUTHOR.name}, ${SEED_AUTHOR.issuer}, ${SEED_AUTHOR.subject})
+      on conflict (email) do update set display_name = excluded.display_name
+      returning id`;
+    const { patients } = await seedDemoPatients(tx, DEMO_TEAM_ID, author!.id);
+    log(`  ${patients} made-up patients`);
   });
 }

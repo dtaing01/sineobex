@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Sql, TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MIGRATIONS_DIR, migrate, setEnvironment } from '../src/migrate.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
+import { demoPatientId, NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
+import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
 import { asApp, makeTeam, makeUser } from './helpers.ts';
 
 // Phase 3 (patients): migrations 0009-0012 (phase 3 design 1, 13.4). Made-up people only.
@@ -574,5 +576,104 @@ describe('candidate retrieval', () => {
     for (const plan of plans) walk(plan);
     expect(scans.filter((s) => s.startsWith('Seq Scan'))).toEqual([]);
     expect(scans.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('made-up patients in the seed', () => {
+  let db: ScratchDatabase;
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+    await seed(db.owner);
+    await seed(db.owner);
+  });
+  afterAll(async () => {
+    await db.drop();
+  });
+
+  it('holds the done-when patient exactly as done-when.json describes it', async () => {
+    const vector = JSON.parse(
+      await readFile(new URL('../../packages/contract/test-vectors/done-when.json', import.meta.url), 'utf8'),
+    ) as {
+      teamId: string;
+      p1: { id: string; preferredName: string; usualArea: string; aliases: { id: string; alias: string }[] };
+    };
+    expect(vector.teamId).toBe(DEMO_TEAM_ID);
+    const [p1] = await db.owner<
+      { teamId: string; preferredName: string; usualArea: string; versions: unknown }[]
+    >`
+      select team_id as "teamId", preferred_name as "preferredName", usual_area as "usualArea",
+             field_versions->'usualArea' as versions
+      from sineobex.patients where id = ${vector.p1.id}`;
+    expect(p1).toEqual({
+      teamId: DEMO_TEAM_ID,
+      preferredName: vector.p1.preferredName,
+      usualArea: vector.p1.usualArea,
+      versions: 1,
+    });
+    const aliases =
+      await db.owner`select id, alias from sineobex.patient_aliases where patient_id = ${vector.p1.id}`;
+    expect(aliases.map((a) => ({ id: a.id as string, alias: a.alias as string }))).toEqual(vector.p1.aliases);
+    // P1 has no card: the done-when's index entry carries idLinks: [].
+    expect(
+      await db.owner`select 1 from sineobex.patient_id_links where patient_id = ${vector.p1.id}`,
+    ).toHaveLength(0);
+  });
+
+  it('is made up: descriptions and free text say Demo, and every author is a demo account', async () => {
+    const [counts] = await db.owner<{ demo: number; other: number }[]>`
+      select count(*) filter (where team_id = ${DEMO_TEAM_ID})::int as demo,
+             count(*) filter (where team_id = ${NEIGHBOUR_TEAM_ID})::int as other
+      from sineobex.patients`;
+    expect(counts!.demo).toBeGreaterThanOrEqual(38);
+    expect(counts!.other).toBe(1);
+    const text = await db.owner<{ t: string }[]>`
+      select visual_descriptor as t from sineobex.patients where visual_descriptor is not null
+      union all select usual_area from sineobex.patients where usual_area is not null
+      union all select living_situation_other from sineobex.patients where living_situation_other is not null
+      union all select text from sineobex.problem_notes
+      union all select note from sineobex.duplicate_pairs where note is not null
+      union all select comment from sineobex.duplicate_decisions
+      union all select reaction from sineobex.patient_allergies where reaction is not null
+      union all select reason from sineobex.patient_consents where reason is not null`;
+    expect(text.length).toBeGreaterThan(20);
+    for (const r of text) expect(r.t.startsWith('Demo:'), r.t).toBe(true);
+    const authors = await db.owner<{ email: string; name: string }[]>`
+      select distinct u.email, u.display_name as name from sineobex.patients p
+      join sineobex.users u on u.id = p.author_user_id`;
+    expect(authors.every((a) => a.email.endsWith('@example.com') && a.name.endsWith('(demo)'))).toBe(true);
+  });
+
+  it('has the scenarios the demos and end-to-end tests need', async () => {
+    const pairs = await db.owner<
+      { status: string }[]
+    >`select status from sineobex.duplicate_pairs order by status`;
+    expect(pairs.map((p) => p.status)).toEqual(['keep_separate', 'merged', 'not_sure', 'open']);
+    const statuses = await db.owner<
+      { status: string }[]
+    >`select distinct status from sineobex.problems order by 1`;
+    expect(statuses.map((s) => s.status)).toEqual(['new', 'ongoing', 'resolved']);
+    const [special] = await db.owner<
+      { sensitive: number; reversal: number; recurrence: number; retracted: number }[]
+    >`
+      select count(*) filter (where sensitive)::int as sensitive,
+             count(*) filter (where reversal_request = 'open')::int as reversal,
+             count(*) filter (where recurrence_of is not null)::int as recurrence,
+             count(*) filter (where error_reason is not null)::int as retracted
+      from sineobex.problems`;
+    expect(special).toEqual({ sensitive: 2, reversal: 1, recurrence: 1, retracted: 1 });
+    // A merge retires no card: both records of the merged group keep an active one (D39).
+    const [merge] = await db.owner<{ survivor: string; merged: string }[]>`
+      select survivor_id as survivor, merged_id as merged from sineobex.patient_merges where undone_at is null`;
+    const cards = await db.owner`
+      select l.id from sineobex.patient_id_links l join sineobex.patients p on p.id = l.patient_id
+      where p.canonical_id = ${merge!.survivor} and l.status = 'active'`;
+    expect(cards).toHaveLength(2);
+    expect(merge!.merged).toBe(demoPatientId(9));
+    const reviews = await db.owner`select 1 from sineobex.field_reviews where status = 'open'`;
+    expect(reviews).toHaveLength(1);
+    const chw = await db.owner<{ key: string }[]>`
+      select r.key from sineobex.team_memberships m join sineobex.users u on u.id = m.user_id
+      join sineobex.roles r on r.id = m.role_id where u.email = 'chw@example.com'`;
+    expect(chw.map((r) => r.key)).toEqual(['community_health_worker']);
   });
 });

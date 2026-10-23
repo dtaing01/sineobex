@@ -78,7 +78,8 @@ describe('seed', () => {
     await seed(db.owner);
     const users = await db.owner<{ email: string; displayName: string }[]>`
       select email, display_name as "displayName" from sineobex.users`;
-    expect(users.length).toBe(6);
+    // Seven staff, and the author of the seeded patient records (who can't sign in).
+    expect(users.length).toBe(8);
     expect(users.every((u) => u.email.endsWith('@example.com') && u.displayName.endsWith('(demo)'))).toBe(
       true,
     );
