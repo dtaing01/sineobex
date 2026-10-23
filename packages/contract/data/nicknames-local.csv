@@ -1,0 +1,23 @@
+# Local supplement to nicknames.csv (phase 3 design 5.1): Spanish diminutives and transliterations
+# of Arabic names common among the pilot's patients, which the upstream list doesn't cover. Written
+# and reviewed by hand for this project, normalized as the search keys are (lower case, accents
+# removed: José is jose). Two tokens are equivalent when they share a line.
+jose,pepe
+francisco,paco,pancho
+jesus,chuy,chucho
+guadalupe,lupe,lupita
+ignacio,nacho
+enrique,kike,quique
+eduardo,lalo
+guillermo,memo
+roberto,beto
+alberto,beto
+manuel,manolo
+rosario,chayo
+dolores,lola
+concepcion,concha,conchita
+mercedes,meche
+consuelo,chelo
+mohammed,muhammad,mohamed,mohamad,mohammad,muhammed
+ahmed,ahmad
+hussein,husayn,hussain

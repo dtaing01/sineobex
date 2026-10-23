@@ -8,7 +8,7 @@
     "./openapi.json": "./openapi.json"
   },
   "scripts": {
-    "generate": "tsx scripts/generate.ts",
+    "generate": "tsx scripts/generate.ts && tsx scripts/gen-patient-data.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

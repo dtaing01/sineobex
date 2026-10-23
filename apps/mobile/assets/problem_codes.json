@@ -1,0 +1,2568 @@
+{
+ "note": "GENERATED from packages/contract/data/icd10cm-curated.csv and sensitive-code-ranges.csv by `pnpm contract:generate`. ICD-10-CM (CDC/NCHS, public domain), April 1, 2026 release; official long titles.",
+ "system": "icd10cm",
+ "codes": [
+  {
+   "code": "S01.01XA",
+   "title": "Laceration without foreign body of scalp, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S01.81XA",
+   "title": "Laceration without foreign body of other part of head, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S00.03XA",
+   "title": "Contusion of scalp, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S00.83XA",
+   "title": "Contusion of other part of head, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S51.811A",
+   "title": "Laceration without foreign body of right forearm, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S51.812A",
+   "title": "Laceration without foreign body of left forearm, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S60.511A",
+   "title": "Abrasion of right hand, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S60.512A",
+   "title": "Abrasion of left hand, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S61.411A",
+   "title": "Laceration without foreign body of right hand, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S61.412A",
+   "title": "Laceration without foreign body of left hand, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S80.811A",
+   "title": "Abrasion, right lower leg, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S80.812A",
+   "title": "Abrasion, left lower leg, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S81.811A",
+   "title": "Laceration without foreign body, right lower leg, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S81.812A",
+   "title": "Laceration without foreign body, left lower leg, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S90.811A",
+   "title": "Abrasion, right foot, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S90.812A",
+   "title": "Abrasion, left foot, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S91.311A",
+   "title": "Laceration without foreign body, right foot, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S91.312A",
+   "title": "Laceration without foreign body, left foot, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "T14.8XXA",
+   "title": "Other injury of unspecified body region, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "T14.90XA",
+   "title": "Injury, unspecified, initial encounter",
+   "group": "wounds",
+   "sensitive": false
+  },
+  {
+   "code": "S93.401A",
+   "title": "Sprain of unspecified ligament of right ankle, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S93.402A",
+   "title": "Sprain of unspecified ligament of left ankle, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S83.91XA",
+   "title": "Sprain of unspecified site of right knee, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S83.92XA",
+   "title": "Sprain of unspecified site of left knee, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S63.501A",
+   "title": "Unspecified sprain of right wrist, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S63.502A",
+   "title": "Unspecified sprain of left wrist, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S39.012A",
+   "title": "Strain of muscle, fascia and tendon of lower back, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S22.31XA",
+   "title": "Fracture of one rib, right side, initial encounter for closed fracture",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S22.32XA",
+   "title": "Fracture of one rib, left side, initial encounter for closed fracture",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S02.2XXA",
+   "title": "Fracture of nasal bones, initial encounter for closed fracture",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S06.0X0A",
+   "title": "Concussion without loss of consciousness, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "S09.90XA",
+   "title": "Unspecified injury of head, initial encounter",
+   "group": "injuries",
+   "sensitive": false
+  },
+  {
+   "code": "T20.10XA",
+   "title": "Burn of first degree of head, face, and neck, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T20.20XA",
+   "title": "Burn of second degree of head, face, and neck, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T22.111A",
+   "title": "Burn of first degree of right forearm, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T22.112A",
+   "title": "Burn of first degree of left forearm, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T22.211A",
+   "title": "Burn of second degree of right forearm, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T22.212A",
+   "title": "Burn of second degree of left forearm, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T23.101A",
+   "title": "Burn of first degree of right hand, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T23.102A",
+   "title": "Burn of first degree of left hand, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T23.201A",
+   "title": "Burn of second degree of right hand, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T23.202A",
+   "title": "Burn of second degree of left hand, unspecified site, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T24.201A",
+   "title": "Burn of second degree of unspecified site of right lower limb, except ankle and foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T24.202A",
+   "title": "Burn of second degree of unspecified site of left lower limb, except ankle and foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T25.121A",
+   "title": "Burn of first degree of right foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T25.122A",
+   "title": "Burn of first degree of left foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T25.221A",
+   "title": "Burn of second degree of right foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T25.222A",
+   "title": "Burn of second degree of left foot, initial encounter",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T30.0",
+   "title": "Burn of unspecified body region, unspecified degree",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "L55.1",
+   "title": "Sunburn of second degree",
+   "group": "burns",
+   "sensitive": false
+  },
+  {
+   "code": "T33.531A",
+   "title": "Superficial frostbite of right finger(s), initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T33.532A",
+   "title": "Superficial frostbite of left finger(s), initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T33.821A",
+   "title": "Superficial frostbite of right foot, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T33.822A",
+   "title": "Superficial frostbite of left foot, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T33.90XA",
+   "title": "Superficial frostbite of unspecified sites, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T34.90XA",
+   "title": "Frostbite with tissue necrosis of unspecified sites, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T69.021A",
+   "title": "Immersion foot, right foot, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T69.022A",
+   "title": "Immersion foot, left foot, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T69.1XXA",
+   "title": "Chilblains, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T68.XXXA",
+   "title": "Hypothermia, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T67.5XXA",
+   "title": "Heat exhaustion, unspecified, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "T67.9XXA",
+   "title": "Effect of heat and light, unspecified, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "X31.XXXA",
+   "title": "Exposure to excessive natural cold, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "X30.XXXA",
+   "title": "Exposure to excessive natural heat, initial encounter",
+   "group": "exposure",
+   "sensitive": false
+  },
+  {
+   "code": "W54.0XXA",
+   "title": "Bitten by dog, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "S61.451A",
+   "title": "Open bite of right hand, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "S61.452A",
+   "title": "Open bite of left hand, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "S81.851A",
+   "title": "Open bite, right lower leg, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "S81.852A",
+   "title": "Open bite, left lower leg, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "T63.441A",
+   "title": "Toxic effect of venom of bees, accidental (unintentional), initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "L50.9",
+   "title": "Urticaria, unspecified",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "T78.40XA",
+   "title": "Allergy, unspecified, initial encounter",
+   "group": "bites",
+   "sensitive": false
+  },
+  {
+   "code": "L03.011",
+   "title": "Cellulitis of right finger",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.012",
+   "title": "Cellulitis of left finger",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.113",
+   "title": "Cellulitis of right upper limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.114",
+   "title": "Cellulitis of left upper limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.115",
+   "title": "Cellulitis of right lower limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.116",
+   "title": "Cellulitis of left lower limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.211",
+   "title": "Cellulitis of face",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.317",
+   "title": "Cellulitis of buttock",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L03.90",
+   "title": "Cellulitis, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.212",
+   "title": "Cutaneous abscess of back [any part, except buttock and flank]",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.31",
+   "title": "Cutaneous abscess of buttock",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.411",
+   "title": "Cutaneous abscess of right axilla",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.412",
+   "title": "Cutaneous abscess of left axilla",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.413",
+   "title": "Cutaneous abscess of right upper limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.414",
+   "title": "Cutaneous abscess of left upper limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.415",
+   "title": "Cutaneous abscess of right lower limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.416",
+   "title": "Cutaneous abscess of left lower limb",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.511",
+   "title": "Cutaneous abscess of right hand",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.512",
+   "title": "Cutaneous abscess of left hand",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.611",
+   "title": "Cutaneous abscess of right foot",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.612",
+   "title": "Cutaneous abscess of left foot",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.91",
+   "title": "Cutaneous abscess, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L02.01",
+   "title": "Cutaneous abscess of face",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L01.00",
+   "title": "Impetigo, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L08.9",
+   "title": "Local infection of the skin and subcutaneous tissue, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L30.9",
+   "title": "Dermatitis, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L29.9",
+   "title": "Pruritus, unspecified",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L85.3",
+   "title": "Xerosis cutis",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L60.0",
+   "title": "Ingrowing nail",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "R21",
+   "title": "Rash and other nonspecific skin eruption",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L89.151",
+   "title": "Pressure ulcer of sacral region, stage 1",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L89.152",
+   "title": "Pressure ulcer of sacral region, stage 2",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L89.153",
+   "title": "Pressure ulcer of sacral region, stage 3",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L89.154",
+   "title": "Pressure ulcer of sacral region, stage 4",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L97.911",
+   "title": "Non-pressure chronic ulcer of unspecified part of right lower leg limited to breakdown of skin",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "L97.921",
+   "title": "Non-pressure chronic ulcer of unspecified part of left lower leg limited to breakdown of skin",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "I87.2",
+   "title": "Venous insufficiency (chronic) (peripheral)",
+   "group": "skin",
+   "sensitive": false
+  },
+  {
+   "code": "B86",
+   "title": "Scabies",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B85.0",
+   "title": "Pediculosis due to Pediculus humanus capitis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B85.1",
+   "title": "Pediculosis due to Pediculus humanus corporis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B85.3",
+   "title": "Phthiriasis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B35.1",
+   "title": "Tinea unguium",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B35.3",
+   "title": "Tinea pedis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B35.4",
+   "title": "Tinea corporis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B35.6",
+   "title": "Tinea cruris",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B37.2",
+   "title": "Candidiasis of skin and nail",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "B37.0",
+   "title": "Candidal stomatitis",
+   "group": "parasites",
+   "sensitive": false
+  },
+  {
+   "code": "L84",
+   "title": "Corns and callosities",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "M79.671",
+   "title": "Pain in right foot",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "M79.672",
+   "title": "Pain in left foot",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "L97.511",
+   "title": "Non-pressure chronic ulcer of other part of right foot limited to breakdown of skin",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "L97.521",
+   "title": "Non-pressure chronic ulcer of other part of left foot limited to breakdown of skin",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "E11.621",
+   "title": "Type 2 diabetes mellitus with foot ulcer",
+   "group": "foot",
+   "sensitive": false
+  },
+  {
+   "code": "J06.9",
+   "title": "Acute upper respiratory infection, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J02.9",
+   "title": "Acute pharyngitis, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J02.0",
+   "title": "Streptococcal pharyngitis",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J01.90",
+   "title": "Acute sinusitis, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J20.9",
+   "title": "Acute bronchitis, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J18.9",
+   "title": "Pneumonia, unspecified organism",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "J11.1",
+   "title": "Influenza due to unidentified influenza virus with other respiratory manifestations",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "U07.1",
+   "title": "COVID-19",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "A15.0",
+   "title": "Tuberculosis of lung",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "Z22.7",
+   "title": "Latent tuberculosis",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "B18.2",
+   "title": "Chronic viral hepatitis C",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "B17.10",
+   "title": "Acute hepatitis C without hepatic coma",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "Z21",
+   "title": "Asymptomatic human immunodeficiency virus [HIV] infection status",
+   "group": "infections",
+   "sensitive": true
+  },
+  {
+   "code": "B20",
+   "title": "Human immunodeficiency virus [HIV] disease",
+   "group": "infections",
+   "sensitive": true
+  },
+  {
+   "code": "N39.0",
+   "title": "Urinary tract infection, site not specified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "H10.9",
+   "title": "Unspecified conjunctivitis",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "H66.90",
+   "title": "Otitis media, unspecified, unspecified ear",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "A41.9",
+   "title": "Sepsis, unspecified organism",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "A09",
+   "title": "Infectious gastroenteritis and colitis, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "A49.02",
+   "title": "Methicillin resistant Staphylococcus aureus infection, unspecified site",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "M86.9",
+   "title": "Osteomyelitis, unspecified",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "I33.0",
+   "title": "Acute and subacute infective endocarditis",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "B02.9",
+   "title": "Zoster without complications",
+   "group": "infections",
+   "sensitive": false
+  },
+  {
+   "code": "A53.9",
+   "title": "Syphilis, unspecified",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A54.00",
+   "title": "Gonococcal infection of lower genitourinary tract, unspecified",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A56.00",
+   "title": "Chlamydial infection of lower genitourinary tract, unspecified",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A59.01",
+   "title": "Trichomonal vulvovaginitis",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A60.00",
+   "title": "Herpesviral infection of urogenital system, unspecified",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A63.0",
+   "title": "Anogenital (venereal) warts",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "A64",
+   "title": "Unspecified sexually transmitted disease",
+   "group": "sexual_health",
+   "sensitive": true
+  },
+  {
+   "code": "N76.0",
+   "title": "Acute vaginitis",
+   "group": "sexual_health",
+   "sensitive": false
+  },
+  {
+   "code": "B37.31",
+   "title": "Acute candidiasis of vulva and vagina",
+   "group": "sexual_health",
+   "sensitive": false
+  },
+  {
+   "code": "Z11.3",
+   "title": "Encounter for screening for infections with a predominantly sexual mode of transmission",
+   "group": "sexual_health",
+   "sensitive": false
+  },
+  {
+   "code": "Z11.4",
+   "title": "Encounter for screening for human immunodeficiency virus [HIV]",
+   "group": "sexual_health",
+   "sensitive": false
+  },
+  {
+   "code": "Z20.2",
+   "title": "Contact with and (suspected) exposure to infections with a predominantly sexual mode of transmission",
+   "group": "sexual_health",
+   "sensitive": false
+  },
+  {
+   "code": "J44.9",
+   "title": "Chronic obstructive pulmonary disease, unspecified",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J44.1",
+   "title": "Chronic obstructive pulmonary disease with (acute) exacerbation",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J45.909",
+   "title": "Unspecified asthma, uncomplicated",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J45.901",
+   "title": "Unspecified asthma with (acute) exacerbation",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J45.40",
+   "title": "Moderate persistent asthma, uncomplicated",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J45.41",
+   "title": "Moderate persistent asthma with (acute) exacerbation",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "J43.9",
+   "title": "Emphysema, unspecified",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "R06.02",
+   "title": "Shortness of breath",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "R05.1",
+   "title": "Acute cough",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "R05.3",
+   "title": "Chronic cough",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "R04.2",
+   "title": "Hemoptysis",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "R09.02",
+   "title": "Hypoxemia",
+   "group": "respiratory",
+   "sensitive": false
+  },
+  {
+   "code": "I10",
+   "title": "Essential (primary) hypertension",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I16.9",
+   "title": "Hypertensive crisis, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I16.0",
+   "title": "Hypertensive urgency",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I50.9",
+   "title": "Heart failure, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I25.10",
+   "title": "Atherosclerotic heart disease of native coronary artery without angina pectoris",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I21.9",
+   "title": "Acute myocardial infarction, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I48.91",
+   "title": "Unspecified atrial fibrillation",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I73.9",
+   "title": "Peripheral vascular disease, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I82.401",
+   "title": "Acute embolism and thrombosis of unspecified deep veins of right lower extremity",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I82.402",
+   "title": "Acute embolism and thrombosis of unspecified deep veins of left lower extremity",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "I63.9",
+   "title": "Cerebral infarction, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "G45.9",
+   "title": "Transient cerebral ischemic attack, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "R03.0",
+   "title": "Elevated blood-pressure reading, without diagnosis of hypertension",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "R07.9",
+   "title": "Chest pain, unspecified",
+   "group": "cardiovascular",
+   "sensitive": false
+  },
+  {
+   "code": "E11.9",
+   "title": "Type 2 diabetes mellitus without complications",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E11.65",
+   "title": "Type 2 diabetes mellitus with hyperglycemia",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E11.649",
+   "title": "Type 2 diabetes mellitus with hypoglycemia without coma",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E11.40",
+   "title": "Type 2 diabetes mellitus with diabetic neuropathy, unspecified",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E11.22",
+   "title": "Type 2 diabetes mellitus with diabetic chronic kidney disease",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E10.9",
+   "title": "Type 1 diabetes mellitus without complications",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E10.10",
+   "title": "Type 1 diabetes mellitus with ketoacidosis without coma",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "R73.03",
+   "title": "Prediabetes",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E16.2",
+   "title": "Hypoglycemia, unspecified",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E78.5",
+   "title": "Hyperlipidemia, unspecified",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E66.9",
+   "title": "Obesity, unspecified",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E44.0",
+   "title": "Moderate protein-calorie malnutrition",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E46",
+   "title": "Unspecified protein-calorie malnutrition",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E51.2",
+   "title": "Wernicke's encephalopathy",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E86.0",
+   "title": "Dehydration",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E87.1",
+   "title": "Hypo-osmolality and hyponatremia",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "E87.6",
+   "title": "Hypokalemia",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "Z79.4",
+   "title": "Long term (current) use of insulin",
+   "group": "endocrine",
+   "sensitive": false
+  },
+  {
+   "code": "D64.9",
+   "title": "Anemia, unspecified",
+   "group": "blood",
+   "sensitive": false
+  },
+  {
+   "code": "D50.9",
+   "title": "Iron deficiency anemia, unspecified",
+   "group": "blood",
+   "sensitive": false
+  },
+  {
+   "code": "D51.9",
+   "title": "Vitamin B12 deficiency anemia, unspecified",
+   "group": "blood",
+   "sensitive": false
+  },
+  {
+   "code": "D69.6",
+   "title": "Thrombocytopenia, unspecified",
+   "group": "blood",
+   "sensitive": false
+  },
+  {
+   "code": "K21.9",
+   "title": "Gastro-esophageal reflux disease without esophagitis",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K29.70",
+   "title": "Gastritis, unspecified, without bleeding",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K25.9",
+   "title": "Gastric ulcer, unspecified as acute or chronic, without hemorrhage or perforation",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K92.2",
+   "title": "Gastrointestinal hemorrhage, unspecified",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K92.0",
+   "title": "Hematemesis",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K59.00",
+   "title": "Constipation, unspecified",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K64.9",
+   "title": "Unspecified hemorrhoids",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K61.0",
+   "title": "Anal abscess",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K70.30",
+   "title": "Alcoholic cirrhosis of liver without ascites",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K70.31",
+   "title": "Alcoholic cirrhosis of liver with ascites",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K70.10",
+   "title": "Alcoholic hepatitis without ascites",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K74.60",
+   "title": "Unspecified cirrhosis of liver",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K76.0",
+   "title": "Fatty (change of) liver, not elsewhere classified",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K85.20",
+   "title": "Alcohol induced acute pancreatitis without necrosis or infection",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "K86.0",
+   "title": "Alcohol-induced chronic pancreatitis",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "R10.9",
+   "title": "Unspecified abdominal pain",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "R10.13",
+   "title": "Epigastric pain",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "R11.2",
+   "title": "Nausea with vomiting, unspecified",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "R19.7",
+   "title": "Diarrhea, unspecified",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "R63.4",
+   "title": "Abnormal weight loss",
+   "group": "gastro",
+   "sensitive": false
+  },
+  {
+   "code": "N18.9",
+   "title": "Chronic kidney disease, unspecified",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "N18.30",
+   "title": "Chronic kidney disease, stage 3 unspecified",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "N17.9",
+   "title": "Acute kidney failure, unspecified",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "N20.0",
+   "title": "Calculus of kidney",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "R31.9",
+   "title": "Hematuria, unspecified",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "R32",
+   "title": "Unspecified urinary incontinence",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "R33.9",
+   "title": "Retention of urine, unspecified",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "N40.1",
+   "title": "Benign prostatic hyperplasia with lower urinary tract symptoms",
+   "group": "kidney",
+   "sensitive": false
+  },
+  {
+   "code": "G40.909",
+   "title": "Epilepsy, unspecified, not intractable, without status epilepticus",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G40.919",
+   "title": "Epilepsy, unspecified, intractable, without status epilepticus",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R56.9",
+   "title": "Unspecified convulsions",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G43.909",
+   "title": "Migraine, unspecified, not intractable, without status migrainosus",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R51.9",
+   "title": "Headache, unspecified",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G62.1",
+   "title": "Alcoholic polyneuropathy",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G47.00",
+   "title": "Insomnia, unspecified",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G89.29",
+   "title": "Other chronic pain",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "G89.11",
+   "title": "Acute pain due to trauma",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R20.2",
+   "title": "Paresthesia of skin",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R42",
+   "title": "Dizziness and giddiness",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R55",
+   "title": "Syncope and collapse",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R41.82",
+   "title": "Altered mental status, unspecified",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R40.20",
+   "title": "Unspecified coma",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "R29.6",
+   "title": "Repeated falls",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "S06.9X0A",
+   "title": "Unspecified intracranial injury without loss of consciousness, initial encounter",
+   "group": "neuro",
+   "sensitive": false
+  },
+  {
+   "code": "F07.81",
+   "title": "Postconcussional syndrome",
+   "group": "neuro",
+   "sensitive": true
+  },
+  {
+   "code": "M54.50",
+   "title": "Low back pain, unspecified",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M54.2",
+   "title": "Cervicalgia",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M54.6",
+   "title": "Pain in thoracic spine",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M54.40",
+   "title": "Lumbago with sciatica, unspecified side",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.561",
+   "title": "Pain in right knee",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.562",
+   "title": "Pain in left knee",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.511",
+   "title": "Pain in right shoulder",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.512",
+   "title": "Pain in left shoulder",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.571",
+   "title": "Pain in right ankle and joints of right foot",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M25.572",
+   "title": "Pain in left ankle and joints of left foot",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M79.604",
+   "title": "Pain in right leg",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M79.605",
+   "title": "Pain in left leg",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M79.641",
+   "title": "Pain in right hand",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M79.642",
+   "title": "Pain in left hand",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M19.90",
+   "title": "Unspecified osteoarthritis, unspecified site",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M10.9",
+   "title": "Gout, unspecified",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "M62.82",
+   "title": "Rhabdomyolysis",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "Z89.511",
+   "title": "Acquired absence of right leg below knee",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "Z89.512",
+   "title": "Acquired absence of left leg below knee",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "Z99.3",
+   "title": "Dependence on wheelchair",
+   "group": "musculoskeletal",
+   "sensitive": false
+  },
+  {
+   "code": "F32.A",
+   "title": "Depression, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F32.9",
+   "title": "Major depressive disorder, single episode, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F33.9",
+   "title": "Major depressive disorder, recurrent, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F33.1",
+   "title": "Major depressive disorder, recurrent, moderate",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F34.1",
+   "title": "Dysthymic disorder",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F41.9",
+   "title": "Anxiety disorder, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F41.1",
+   "title": "Generalized anxiety disorder",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F41.0",
+   "title": "Panic disorder [episodic paroxysmal anxiety]",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F43.10",
+   "title": "Post-traumatic stress disorder, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F43.20",
+   "title": "Adjustment disorder, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F20.9",
+   "title": "Schizophrenia, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F25.9",
+   "title": "Schizoaffective disorder, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F29",
+   "title": "Unspecified psychosis not due to a substance or known physiological condition",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F31.9",
+   "title": "Bipolar disorder, unspecified",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F31.81",
+   "title": "Bipolar II disorder",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F60.3",
+   "title": "Borderline personality disorder",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F90.9",
+   "title": "Attention-deficit hyperactivity disorder, unspecified type",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F03.90",
+   "title": "Unspecified dementia, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "F79",
+   "title": "Unspecified intellectual disabilities",
+   "group": "mental_health",
+   "sensitive": true
+  },
+  {
+   "code": "R45.851",
+   "title": "Suicidal ideations",
+   "group": "mental_health",
+   "sensitive": false
+  },
+  {
+   "code": "R45.88",
+   "title": "Nonsuicidal self-harm",
+   "group": "mental_health",
+   "sensitive": false
+  },
+  {
+   "code": "R44.0",
+   "title": "Auditory hallucinations",
+   "group": "mental_health",
+   "sensitive": false
+  },
+  {
+   "code": "T14.91XA",
+   "title": "Suicide attempt, initial encounter",
+   "group": "mental_health",
+   "sensitive": false
+  },
+  {
+   "code": "Z91.51",
+   "title": "Personal history of suicidal behavior",
+   "group": "mental_health",
+   "sensitive": false
+  },
+  {
+   "code": "F10.10",
+   "title": "Alcohol abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F10.20",
+   "title": "Alcohol dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F10.21",
+   "title": "Alcohol dependence, in remission",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F10.230",
+   "title": "Alcohol dependence with withdrawal, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F10.231",
+   "title": "Alcohol dependence with withdrawal delirium",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F10.239",
+   "title": "Alcohol dependence with withdrawal, unspecified",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F11.10",
+   "title": "Opioid abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F11.20",
+   "title": "Opioid dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F11.21",
+   "title": "Opioid dependence, in remission",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F11.23",
+   "title": "Opioid dependence with withdrawal",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F11.90",
+   "title": "Opioid use, unspecified, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F12.10",
+   "title": "Cannabis abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F12.20",
+   "title": "Cannabis dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F12.90",
+   "title": "Cannabis use, unspecified, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F13.20",
+   "title": "Sedative, hypnotic or anxiolytic dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F13.239",
+   "title": "Sedative, hypnotic or anxiolytic dependence with withdrawal, unspecified",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F14.10",
+   "title": "Cocaine abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F14.20",
+   "title": "Cocaine dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F14.23",
+   "title": "Cocaine dependence with withdrawal",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F15.10",
+   "title": "Other stimulant abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F15.20",
+   "title": "Other stimulant dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F15.23",
+   "title": "Other stimulant dependence with withdrawal",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F19.10",
+   "title": "Other psychoactive substance abuse, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F19.20",
+   "title": "Other psychoactive substance dependence, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F17.200",
+   "title": "Nicotine dependence, unspecified, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F17.210",
+   "title": "Nicotine dependence, cigarettes, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "F17.290",
+   "title": "Nicotine dependence, other tobacco product, uncomplicated",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "Z72.0",
+   "title": "Tobacco use",
+   "group": "substance_use",
+   "sensitive": false
+  },
+  {
+   "code": "Z87.891",
+   "title": "Personal history of nicotine dependence",
+   "group": "substance_use",
+   "sensitive": false
+  },
+  {
+   "code": "Z71.41",
+   "title": "Alcohol abuse counseling and surveillance of alcoholic",
+   "group": "substance_use",
+   "sensitive": true
+  },
+  {
+   "code": "Z71.51",
+   "title": "Drug abuse counseling and surveillance of drug abuser",
+   "group": "substance_use",
+   "sensitive": false
+  },
+  {
+   "code": "Z79.891",
+   "title": "Long term (current) use of opiate analgesic",
+   "group": "substance_use",
+   "sensitive": false
+  },
+  {
+   "code": "T40.411A",
+   "title": "Poisoning by fentanyl or fentanyl analogs, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.412A",
+   "title": "Poisoning by fentanyl or fentanyl analogs, intentional self-harm, initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.414A",
+   "title": "Poisoning by fentanyl or fentanyl analogs, undetermined, initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.1X1A",
+   "title": "Poisoning by heroin, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.2X1A",
+   "title": "Poisoning by other opioids, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.601A",
+   "title": "Poisoning by unspecified narcotics, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T40.5X1A",
+   "title": "Poisoning by cocaine, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T43.621A",
+   "title": "Poisoning by amphetamines, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T42.4X1A",
+   "title": "Poisoning by benzodiazepines, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T51.0X1A",
+   "title": "Toxic effect of ethanol, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T39.1X1A",
+   "title": "Poisoning by 4-Aminophenol derivatives, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T50.901A",
+   "title": "Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T50.902A",
+   "title": "Poisoning by unspecified drugs, medicaments and biological substances, intentional self-harm, initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "T58.01XA",
+   "title": "Toxic effect of carbon monoxide from motor vehicle exhaust, accidental (unintentional), initial encounter",
+   "group": "overdose",
+   "sensitive": false
+  },
+  {
+   "code": "Z33.1",
+   "title": "Pregnant state, incidental",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z32.01",
+   "title": "Encounter for pregnancy test, result positive",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z32.02",
+   "title": "Encounter for pregnancy test, result negative",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z34.90",
+   "title": "Encounter for supervision of normal pregnancy, unspecified, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O09.90",
+   "title": "Supervision of high risk pregnancy, unspecified, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O99.320",
+   "title": "Drug use complicating pregnancy, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O99.310",
+   "title": "Alcohol use complicating pregnancy, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O99.330",
+   "title": "Smoking (tobacco) complicating pregnancy, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O21.0",
+   "title": "Mild hyperemesis gravidarum",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O20.0",
+   "title": "Threatened abortion",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O20.9",
+   "title": "Hemorrhage in early pregnancy, unspecified",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O23.40",
+   "title": "Unspecified infection of urinary tract in pregnancy, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O24.419",
+   "title": "Gestational diabetes mellitus in pregnancy, unspecified control",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O13.9",
+   "title": "Gestational [pregnancy-induced] hypertension without significant proteinuria, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O14.90",
+   "title": "Unspecified pre-eclampsia, unspecified trimester",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O03.9",
+   "title": "Complete or unspecified spontaneous abortion without complication",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "O00.90",
+   "title": "Unspecified ectopic pregnancy without intrauterine pregnancy",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z39.2",
+   "title": "Encounter for routine postpartum follow-up",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z30.09",
+   "title": "Encounter for other general counseling and advice on contraception",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z30.011",
+   "title": "Encounter for initial prescription of contraceptive pills",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z30.013",
+   "title": "Encounter for initial prescription of injectable contraceptive",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "Z30.9",
+   "title": "Encounter for contraceptive management, unspecified",
+   "group": "pregnancy",
+   "sensitive": true
+  },
+  {
+   "code": "N93.9",
+   "title": "Abnormal uterine and vaginal bleeding, unspecified",
+   "group": "pregnancy",
+   "sensitive": false
+  },
+  {
+   "code": "N73.9",
+   "title": "Female pelvic inflammatory disease, unspecified",
+   "group": "pregnancy",
+   "sensitive": false
+  },
+  {
+   "code": "K02.9",
+   "title": "Dental caries, unspecified",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "K04.7",
+   "title": "Periapical abscess without sinus",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "K05.30",
+   "title": "Chronic periodontitis, unspecified",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "K08.109",
+   "title": "Complete loss of teeth, unspecified cause, unspecified class",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "K12.2",
+   "title": "Cellulitis and abscess of mouth",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "S02.5XXA",
+   "title": "Fracture of tooth (traumatic), initial encounter for closed fracture",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "H54.7",
+   "title": "Unspecified visual loss",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "T15.91XA",
+   "title": "Foreign body on external eye, part unspecified, right eye, initial encounter",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "T15.92XA",
+   "title": "Foreign body on external eye, part unspecified, left eye, initial encounter",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "S05.01XA",
+   "title": "Injury of conjunctiva and corneal abrasion without foreign body, right eye, initial encounter",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "S05.02XA",
+   "title": "Injury of conjunctiva and corneal abrasion without foreign body, left eye, initial encounter",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "H61.23",
+   "title": "Impacted cerumen, bilateral",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "H92.01",
+   "title": "Otalgia, right ear",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "H92.02",
+   "title": "Otalgia, left ear",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "R04.0",
+   "title": "Epistaxis",
+   "group": "eye_ear_dental",
+   "sensitive": false
+  },
+  {
+   "code": "R50.9",
+   "title": "Fever, unspecified",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R53.83",
+   "title": "Other fatigue",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R53.81",
+   "title": "Other malaise",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R60.0",
+   "title": "Localized edema",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R60.9",
+   "title": "Edema, unspecified",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R59.9",
+   "title": "Enlarged lymph nodes, unspecified",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R64",
+   "title": "Cachexia",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R62.7",
+   "title": "Adult failure to thrive",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "R47.81",
+   "title": "Slurred speech",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "W19.XXXA",
+   "title": "Unspecified fall, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "Y04.0XXA",
+   "title": "Assault by unarmed brawl or fight, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "T74.11XA",
+   "title": "Adult physical abuse, confirmed, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "T76.11XA",
+   "title": "Adult physical abuse, suspected, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "T74.21XA",
+   "title": "Adult sexual abuse, confirmed, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "T76.21XA",
+   "title": "Adult sexual abuse, suspected, initial encounter",
+   "group": "symptoms",
+   "sensitive": false
+  },
+  {
+   "code": "Z00.00",
+   "title": "Encounter for general adult medical examination without abnormal findings",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z23",
+   "title": "Encounter for immunization",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z11.1",
+   "title": "Encounter for screening for respiratory tuberculosis",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z48.00",
+   "title": "Encounter for change or removal of nonsurgical wound dressing",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z48.02",
+   "title": "Encounter for removal of sutures",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z76.0",
+   "title": "Encounter for issue of repeat prescription",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z79.01",
+   "title": "Long term (current) use of anticoagulants",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z88.0",
+   "title": "Allergy status to penicillin",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z91.010",
+   "title": "Allergy to peanuts",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z91.040",
+   "title": "Latex allergy status",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z99.81",
+   "title": "Dependence on supplemental oxygen",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z99.2",
+   "title": "Dependence on renal dialysis",
+   "group": "screening",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.01",
+   "title": "Sheltered homelessness",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.02",
+   "title": "Unsheltered homelessness",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.10",
+   "title": "Inadequate housing, unspecified",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.811",
+   "title": "Housing instability, housed, with risk of homelessness",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.41",
+   "title": "Food insecurity",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.5",
+   "title": "Extreme poverty",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.6",
+   "title": "Low income",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z59.11",
+   "title": "Inadequate housing environmental temperature",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z56.0",
+   "title": "Unemployment, unspecified",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z60.2",
+   "title": "Problems related to living alone",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z65.1",
+   "title": "Imprisonment and other incarceration",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z65.2",
+   "title": "Problems related to release from prison",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z65.3",
+   "title": "Problems related to other legal circumstances",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z65.4",
+   "title": "Victim of crime and terrorism",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z75.3",
+   "title": "Unavailability and inaccessibility of health-care facilities",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z91.410",
+   "title": "Personal history of adult physical and sexual abuse",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z62.810",
+   "title": "Personal history of physical and sexual abuse in childhood",
+   "group": "social",
+   "sensitive": false
+  },
+  {
+   "code": "Z91.81",
+   "title": "History of falling",
+   "group": "social",
+   "sensitive": false
+  }
+ ]
+}
