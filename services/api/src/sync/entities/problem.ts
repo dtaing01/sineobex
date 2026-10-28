@@ -130,16 +130,19 @@ async function applyStatus(s: SetContext): Promise<Outcome> {
   if (s.change.resolution === 'replace' && !s.saw) return { status: 'conflict', server: s.cur };
   const cur = s.cur.value as StatusValue;
   const next = s.value as StatusValue;
-  // Every observation counts, so module 5's 90-day check knows when someone last looked.
-  if (next.status === cur.status) return writeValue(s, 'confirmed');
   const forward = RANK[next.status] > RANK[cur.status];
   if (s.saw) {
+    // Every observation counts, so module 5's 90-day check knows when someone last looked.
+    if (next.status === cur.status) return writeValue(s, 'confirmed');
     if (forward) return writeValue(s, 'set');
     // The phone never offers either: Resolved back is an admin's, and Ongoing never goes back to New.
     return invalid(cur.status === 'resolved' ? 'resolved_needs_admin' : 'status_backwards');
   }
+  // Older than the observation the chart holds: history, even when it agrees, so the time the
+  // status was last seen never moves back and a later stale observation is still recognised.
   const observedAt = s.rec.fieldMeta.status?.at;
   if (observedAt && when(s.change).getTime() < Date.parse(observedAt)) return keepInHistory(s);
+  if (next.status === cur.status) return writeValue(s, 'confirmed');
   if (forward) return writeValue(s, 'set');
   if (cur.status === 'resolved') return { status: 'conflict', server: s.cur };
   return keepInHistory(s);
@@ -232,7 +235,8 @@ export const problemRules: EntityRules<Value> = {
                                  else status_changed_at end,
         status_changed_by = case when status is distinct from ${v.status} then ${meta.by}::uuid
                                  else status_changed_by end,
-        status = ${v.status}, status_encounter_id = ${v.encounterId}, status_checked_at = ${meta.at}`;
+        status = ${v.status}, status_encounter_id = ${v.encounterId},
+        status_checked_at = greatest(status_checked_at, ${meta.at}::timestamptz)`;
     } else {
       const { reason } = value as { reason: string };
       set = tx`error_reason = ${reason}, error_by = ${meta.by}, error_at = ${meta.at}`;
