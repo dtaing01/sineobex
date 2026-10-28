@@ -1,7 +1,7 @@
 import type { z } from '@hono/zod-openapi';
 import { rematchPatient } from '../../patients/duplicates.ts';
 import { bookkeeping, invalid, storeCreate, type EntityRules, type FieldMeta } from '../records.ts';
-import { canonicalOf } from './patient.ts';
+import { groupOf } from './patient.ts';
 import { AliasCreate, patientFieldSchema, valueParents } from './values.ts';
 
 /**
@@ -60,7 +60,7 @@ export const aliasRules: EntityRules<Value> = {
       patientId: v.patientId,
       action: 'alias.created',
       after: async () => {
-        await rematchPatient(ctx.tx, ctx.audit, (await canonicalOf(ctx.tx, v.patientId))!, 'edit');
+        await rematchPatient(ctx.tx, ctx.audit, (await groupOf(ctx.tx, v.patientId))!, 'edit');
         return undefined;
       },
     }),
@@ -107,6 +107,6 @@ export const aliasRules: EntityRules<Value> = {
   writeAction: () => 'alias.removed',
 
   async afterWrite(s) {
-    await rematchPatient(s.tx, s.audit, (await canonicalOf(s.tx, s.rec.patientId!))!, 'edit');
+    await rematchPatient(s.tx, s.audit, (await groupOf(s.tx, s.rec.patientId!))!, 'edit');
   },
 };

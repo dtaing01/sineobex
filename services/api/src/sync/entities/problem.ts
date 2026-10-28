@@ -15,7 +15,7 @@ import {
   type StoredRecord,
 } from '../records.ts';
 import { keepInHistory, keepServer, writeValue } from './fields.ts';
-import { canonicalOf } from './patient.ts';
+import { groupOf } from './patient.ts';
 import { patientFieldSchema, ProblemCreate, valueParents } from './values.ts';
 
 /**
@@ -52,6 +52,9 @@ interface ProblemRow {
   statusEncounterId: string | null;
   recurrenceOf: string | null;
   resolvedInErrorOf: string | null;
+  statusChangedAt: Date;
+  statusCheckedAt: Date;
+  reversalRequest: string | null;
   mergedInto: string | null;
   errorReason: string | null;
   errorAt: Date | null;
@@ -69,18 +72,21 @@ interface ProblemRow {
 export async function loadProblem(tx: Tx, id: string, lock: boolean): Promise<StoredRecord | null> {
   const rows = await tx<ProblemRow[]>`
     select id, team_id, patient_id, title, code_system, code, code_display, sensitive, status,
-           status_encounter_id, recurrence_of, resolved_in_error_of, merged_into, error_reason, error_at,
-           source, created_encounter_id, onset_date::text as onset_date, author_user_id, version,
-           field_versions, field_meta, created_at, updated_at
+           status_encounter_id, status_changed_at, status_checked_at, recurrence_of, resolved_in_error_of,
+           reversal_request, merged_into, error_reason, error_at, source, created_encounter_id,
+           onset_date::text as onset_date, author_user_id, version, field_versions, field_meta, created_at,
+           updated_at
     from sineobex.problems where id = ${id}
     ${lock ? tx`for no key update` : tx``}`;
   const r = rows[0];
   if (!r) return null;
+  // The shape the chart routes give a problem (patients/charts.ts), so the phone sees one shape
+  // whichever route it comes through.
   return {
     entity: 'problem',
     id: r.id,
     teamId: r.teamId,
-    status: r.errorAt ? 'entered_in_error' : r.mergedInto ? 'merged' : 'active',
+    status: r.status,
     authorUserId: r.authorUserId,
     version: r.version,
     patientId: r.patientId,
@@ -95,13 +101,17 @@ export async function loadProblem(tx: Tx, id: string, lock: boolean): Promise<St
       title: r.title,
       code: r.code === null ? null : { system: r.codeSystem, code: r.code, display: r.codeDisplay },
       sensitive: r.sensitive,
-      recurrenceOf: r.recurrenceOf,
-      resolvedInErrorOf: r.resolvedInErrorOf,
       source: r.source,
       createdEncounterId: r.createdEncounterId,
       onsetDate: r.onsetDate,
+      recurrenceOf: r.recurrenceOf,
+      resolvedInErrorOf: r.resolvedInErrorOf,
+      reversalRequest: r.reversalRequest,
+      mergedInto: r.mergedInto,
+      statusChangedAt: r.statusChangedAt.toISOString(),
+      statusCheckedAt: r.statusCheckedAt.toISOString(),
     },
-    internal: { mergedInto: r.mergedInto },
+    internal: { mergedInto: r.mergedInto, retracted: r.errorAt !== null },
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -115,7 +125,7 @@ export async function loadProblem(tx: Tx, id: string, lock: boolean): Promise<St
  */
 async function applyStatus(s: SetContext): Promise<Outcome> {
   // Kept, and the problem stays retracted: nothing for the worker to fix.
-  if (s.rec.status === 'entered_in_error') return keepInHistory(s);
+  if (s.rec.internal.retracted) return keepInHistory(s);
   if (s.change.resolution === 'keep_server') return keepServer(s, false);
   if (s.change.resolution === 'replace' && !s.saw) return { status: 'conflict', server: s.cur };
   const cur = s.cur.value as StatusValue;
@@ -160,7 +170,7 @@ export const problemRules: EntityRules<Value> = {
           select pr.status, p.canonical_id from sineobex.problems pr
           join sineobex.patients p on p.team_id = pr.team_id and p.id = pr.patient_id
           where pr.team_id = ${ctx.actor.teamId} and pr.id = ${origin}`;
-        const group = await canonicalOf(tx, v.patientId);
+        const group = await groupOf(tx, v.patientId);
         return earlier?.status === 'resolved' && earlier.canonicalId === group
           ? null
           : invalid('not_resolved');

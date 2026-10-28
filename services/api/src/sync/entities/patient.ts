@@ -1,4 +1,5 @@
 import type { Tx } from '../../db/database.ts';
+import { canonicalOf, patientSnapshot, patientValues, type PatientRow } from '../../patients/charts.ts';
 import { rematchPatient } from '../../patients/duplicates.ts';
 import {
   bookkeeping,
@@ -24,71 +25,18 @@ const IDENTITY_FIELDS = new Set(['legalName', 'birth']);
 /** A change to one of these re-runs matching ('edit', design 8.2). */
 const MATCHED_FIELDS = new Set(['preferredName', 'legalName', 'birth']);
 
-interface PatientRow {
-  id: string;
-  teamId: string;
-  status: 'active' | 'merged';
-  mergedInto: string | null;
-  canonicalId: string;
-  preferredName: string | null;
-  legalGivenName: string | null;
-  legalFamilyName: string | null;
-  visualDescriptor: string | null;
-  birthPrecision: 'day' | 'year' | 'estimated' | null;
-  birthDate: string | null;
-  birthYear: number | null;
-  livingSituation: string | null;
-  livingSituationOther: string | null;
-  usualArea: string | null;
-  preferredLanguage: string | null;
-  allergyScreen: string;
-  idCardChoice: string;
-  registeredAt: Date;
-  clockVerified: boolean;
-  authorUserId: string;
-  version: number;
-  fieldVersions: Record<string, number>;
-  fieldMeta: Record<string, FieldMeta>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/** The sync fields of a row, as the phone sends and receives them. */
-function patientValues(r: PatientRow): Record<string, unknown> {
-  return {
-    preferredName: r.preferredName,
-    legalName:
-      r.legalGivenName === null && r.legalFamilyName === null
-        ? null
-        : { given: r.legalGivenName, family: r.legalFamilyName },
-    visualDescriptor: r.visualDescriptor,
-    birth:
-      r.birthPrecision === null
-        ? null
-        : r.birthPrecision === 'day'
-          ? { precision: 'day', date: r.birthDate }
-          : { precision: r.birthPrecision, year: r.birthYear },
-    livingSituation:
-      r.livingSituation === null
-        ? null
-        : r.livingSituationOther === null
-          ? { kind: r.livingSituation }
-          : { kind: r.livingSituation, other: r.livingSituationOther },
-    usualArea: r.usualArea,
-    preferredLanguage: r.preferredLanguage,
-    allergyScreen: r.allergyScreen,
-    idCardChoice: r.idCardChoice,
-  };
-}
-
-/** Loads a patient record (merged or not); `lock` takes it FOR NO KEY UPDATE, as merges do (D32). */
+/**
+ * Loads a patient record (merged or not), in the shape the chart routes give it (patients/
+ * charts.ts), so the phone sees one shape whichever route a record comes through. `lock` takes the
+ * row FOR NO KEY UPDATE, as merges do (D32).
+ */
 export async function loadPatient(tx: Tx, id: string, lock: boolean): Promise<StoredRecord | null> {
   const rows = await tx<PatientRow[]>`
     select id, team_id, status, merged_into, canonical_id, preferred_name, legal_given_name,
-           legal_family_name, visual_descriptor, birth_precision, birth_date::text as birth_date, birth_year,
-           living_situation, living_situation_other, usual_area, preferred_language, allergy_screen,
-           id_card_choice, registered_at, clock_verified, author_user_id, version, field_versions,
-           field_meta, created_at, updated_at
+           legal_family_name, visual_descriptor, birth_precision, to_char(birth_date, 'YYYY-MM-DD') as birth_date,
+           birth_year, living_situation, living_situation_other, usual_area, preferred_language, allergy_screen,
+           id_card_choice, last_seen_at, registered_at, clock_verified, author_user_id, created_device_id,
+           field_versions, field_meta, version, created_at, updated_at
     from sineobex.patients where id = ${id}
     ${lock ? tx`for no key update` : tx``}`;
   const r = rows[0];
@@ -104,7 +52,7 @@ export async function loadPatient(tx: Tx, id: string, lock: boolean): Promise<St
     fieldVersions: r.fieldVersions,
     fieldMeta: r.fieldMeta,
     values: patientValues(r),
-    attributes: { registeredAt: r.registeredAt.toISOString(), clockVerified: r.clockVerified },
+    attributes: patientSnapshot(r).attributes,
     internal: { canonicalId: r.canonicalId, mergedInto: r.mergedInto },
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -112,10 +60,8 @@ export async function loadPatient(tx: Tx, id: string, lock: boolean): Promise<St
 }
 
 /** The patient's group: itself when active, its survivor when merged. Null when the team has none. */
-export async function canonicalOf(tx: Tx, patientId: string): Promise<string | null> {
-  const [row] = await tx<{ canonicalId: string }[]>`
-    select canonical_id from sineobex.patients where id = ${patientId}`;
-  return row?.canonicalId ?? null;
+export async function groupOf(tx: Tx, patientId: string): Promise<string | null> {
+  return (await canonicalOf(tx, [patientId])).get(patientId) ?? null;
 }
 
 type Birth = { precision: 'day'; date: string } | { precision: 'year' | 'estimated'; year: number } | null;

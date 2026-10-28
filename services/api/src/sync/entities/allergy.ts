@@ -10,7 +10,7 @@ import {
   type EntityRules,
   type FieldMeta,
 } from '../records.ts';
-import { canonicalOf, loadPatient, writePatient } from './patient.ts';
+import { groupOf, loadPatient, writePatient } from './patient.ts';
 import { AllergyCreate, patientFieldSchema, valueParents } from './values.ts';
 
 /**
@@ -52,7 +52,7 @@ interface AllergyRow {
  */
 async function clearNoKnownAllergies(ctx: ChangeContext, patientId: string): Promise<void> {
   const { tx, actor, change: c } = ctx;
-  const patient = await loadPatient(tx, (await canonicalOf(tx, patientId))!, true);
+  const patient = await loadPatient(tx, (await groupOf(tx, patientId))!, true);
   if (!patient || patient.values.allergyScreen !== 'none_known') return;
   const version = (patient.fieldVersions.allergyScreen ?? 0) + 1;
   const meta = { by: actor.authorId, at: when(c).toISOString(), changeId: c.changeId };
