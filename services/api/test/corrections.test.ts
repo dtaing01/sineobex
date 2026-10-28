@@ -143,12 +143,28 @@ describe('identity corrections', () => {
     });
   });
 
-  // These answer with the chart (S2's loadChart); a correction also re-runs matching (S3's rematchPatient).
+  /** The sources of the pair, if any, matching has flagged for these two patients. */
+  const pairSources = async (a: string, b: string) =>
+    (
+      await h.scratch.owner<{ sources: string[] }[]>`
+        select sources from sineobex.duplicate_pairs
+        where (patient_a, patient_b) = (least(${a}::uuid, ${b}::uuid), greatest(${a}::uuid, ${b}::uuid))`
+    )[0]?.sources ?? null;
+
   describe('corrections and declined amendments', () => {
     it('corrects a legal name: history `corrected` with old and new, a correction row, reviews closed', async () => {
       const p = await createPatient(h, teamId, editor.userId, {
+        preferredName: 'Smitty Demo',
         legalName: { given: names[0], family: names[1] },
+        birth: { precision: 'day', date: '1946-03-07' },
       });
+      // Someone matching would pair with this chart; nothing has run matching on it yet.
+      const twin = await createPatient(h, teamId, editor.userId, {
+        preferredName: 'Smitty Demo',
+        legalName: { given: names[0], family: null },
+        birth: { precision: 'day', date: '1946-03-07' },
+      });
+      expect(await pairSources(p.id, twin.id)).toBeNull();
       const reviewId = randomUUID();
       await h.scratch.owner`
         insert into sineobex.field_reviews (id, team_id, patient_id, entity, record_id, field, needs)
@@ -199,6 +215,8 @@ describe('identity corrections', () => {
         correctionId: expect.any(String),
         requestedByPatient: true,
       });
+      // Matching ran again, as a correction.
+      expect(await pairSources(p.id, twin.id)).toEqual(['correction']);
     });
 
     it('records a declined amendment request with the requested value, the chart unchanged', async () => {

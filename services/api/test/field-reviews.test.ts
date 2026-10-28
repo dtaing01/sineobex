@@ -399,10 +399,17 @@ describe('field reviews', () => {
       expect(await reviewRow(reviewId)).toMatchObject({ status: 'decided', comment: 'Checked the ID card' });
     });
 
-    // Waits on S3: keeping an identity alternate re-runs duplicate matching (rematchPatient).
     it('writes a kept legal name with a correction row and re-runs matching', async () => {
       const p = await createPatient(h, teamId, editor.userId, {
+        preferredName: 'Kenji Demo',
         legalName: { given: values[3], family: null },
+        birth: { precision: 'day', date: '1958-11-02' },
+      });
+      // Someone matching would pair with this chart; nothing has run matching on it yet.
+      const twin = await createPatient(h, teamId, editor.userId, {
+        preferredName: 'Kenji Demo',
+        legalName: { given: values[3], family: values[4] },
+        birth: { precision: 'day', date: '1958-11-02' },
       });
       const { reviewId, historyId } = await openReview(
         p.id,
@@ -428,11 +435,11 @@ describe('field reviews', () => {
           oldValue: unknown;
           newValue: unknown;
           reason: string;
-          historyId: string;
+          historyKind: string;
         }[]
       >`
         select c.kind, c.field, c.old_value as "oldValue", c.new_value as "newValue", c.reason,
-               h.kind as "historyId"
+               h.kind as "historyKind"
         from sineobex.patient_corrections c join sineobex.field_history h on h.id = c.history_id
         where c.patient_id = ${p.id}`;
       expect(correction).toEqual({
@@ -441,10 +448,15 @@ describe('field reviews', () => {
         oldValue: { given: values[3], family: null },
         newValue: { given: values[3], family: values[4] },
         reason: 'Checked the ID card',
-        historyId: 'review_decided',
+        historyKind: 'review_decided',
       });
       const [decided] = await expectAudit(h, 'field_review.decided', { after: mark, count: 1 });
       expect(decided!.details).toMatchObject({ correctionId: expect.any(String), version: 2 });
+      // Matching ran again, as a correction.
+      const [pair] = await h.scratch.owner<{ sources: string[] }[]>`
+        select sources from sineobex.duplicate_pairs
+        where (patient_a, patient_b) = (least(${p.id}::uuid, ${twin.id}::uuid), greatest(${p.id}::uuid, ${twin.id}::uuid))`;
+      expect(pair).toEqual({ sources: ['correction'] });
     });
   });
 
