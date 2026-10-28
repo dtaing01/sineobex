@@ -420,7 +420,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The server’s copy of records, with each field’s version, for drafts a phone holds open */
+        /**
+         * The server’s copy of records, with each field’s version, for records a phone holds open
+         * @description Each kind of record needs its read permission: encounters and notes encounters.chart, patient records patients.view, problems and their notes patients.view with encounters.chart or billing.view_codes. A sensitive problem the role can’t see is reported missing, like a record the team doesn’t have.
+         */
         post: operations["fetchRecords"];
         delete?: never;
         options?: never;

@@ -1,15 +1,14 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { teamScope } from '../auth/context.ts';
+import { teamScope, type TeamScope } from '../auth/context.ts';
 import { push } from '../sync/push.ts';
 import { fetchRecords, listNotices, markNoticeRead } from '../sync/review.ts';
 import {
   FetchRecords,
   FetchRecordsResult,
-  isEncounterEntity,
   Notice,
   SyncPush,
   SyncPushResult,
-  type RecordEntityName,
+  type AnyRecordEntityName,
 } from '../sync/schemas.ts';
 import type { App } from '../app.ts';
 import type { Deps } from '../types.ts';
@@ -37,7 +36,11 @@ const recordsRoute = createRoute({
   path: '/v1/sync/records',
   operationId: 'fetchRecords',
   tags: ['sync'],
-  summary: 'The server’s copy of records, with each field’s version, for drafts a phone holds open',
+  summary: 'The server’s copy of records, with each field’s version, for records a phone holds open',
+  description:
+    'Each kind of record needs its read permission: encounters and notes encounters.chart, patient records ' +
+    'patients.view, problems and their notes patients.view with encounters.chart or billing.view_codes. A ' +
+    'sensitive problem the role can’t see is reported missing, like a record the team doesn’t have.',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(FetchRecords) } },
   responses: { 200: { description: 'Records', ...json(FetchRecordsResult) }, ...errors(401, 403, 422) },
@@ -63,6 +66,24 @@ const readNoticeRoute = createRoute({
   responses: { 200: { description: 'Marked read', ...json(Ok) }, ...errors(401, 403, 404) },
 });
 
+/**
+ * Who may read each kind of record through sync (phase 3 design 3.6, 4.1): refused and logged
+ * like any route's permission, for the whole request.
+ */
+async function requireRead(scope: TeamScope, entity: AnyRecordEntityName) {
+  const route = '/v1/sync/records';
+  switch (entity) {
+    case 'encounter':
+    case 'encounter_note':
+      return scope.require('encounters.chart', route);
+    case 'problem':
+    case 'problem_note':
+      return scope.requireRule('mayViewProblems', route);
+    default:
+      return scope.require('patients.view', route);
+  }
+}
+
 export function registerSyncRoutes(app: App, deps: Deps) {
   app.openapi(pushRoute, async (c) => {
     const scope = await teamScope(c, deps);
@@ -70,16 +91,10 @@ export function registerSyncRoutes(app: App, deps: Deps) {
   });
 
   app.openapi(recordsRoute, async (c) => {
-    const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
+    const scope = await teamScope(c, deps);
     const refs = c.req.valid('json').records;
-    // Patient-side records are read through the entity registry and its read rules (phase 3
-    // design 3.6); until it lands they are reported missing, as a record this team lacks is.
-    const stored = refs.filter((r): r is { entity: RecordEntityName; id: string } =>
-      isEncounterEntity(r.entity),
-    );
-    const result = await fetchRecords(scope, stored);
-    const other = refs.filter((r) => !isEncounterEntity(r.entity));
-    return c.json({ records: result.records, missing: [...result.missing, ...other] }, 200);
+    for (const entity of new Set(refs.map((r) => r.entity))) await requireRead(scope, entity);
+    return c.json(await fetchRecords(scope, refs), 200);
   });
 
   app.openapi(noticesRoute, async (c) => {

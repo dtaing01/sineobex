@@ -262,7 +262,7 @@ export async function uploadQuarantine(
           continue;
         }
         if (change.entity === 'audit') {
-          results.push(await recordAudit(tx, audit, d, change, check.hash, take));
+          results.push(await recordAudit(tx, audit, d, change, check.hash, take, deps.now()));
           continue;
         }
         const added = await quarantine(
@@ -318,6 +318,7 @@ async function recordAudit(
   change: SyncChangeInput,
   hash: string,
   take: () => void,
+  now: Date,
 ): Promise<HandOverResult> {
   const recorded = { changeId: change.changeId, status: 'recorded', hash } as const;
   const refused = { changeId: change.changeId, status: 'rejected', reason: 'validation' } as const;
@@ -334,8 +335,10 @@ async function recordAudit(
     authorId: d.userId,
     approvedBy: null,
     deviceId: d.deviceId,
-    canChart: false,
+    // Nothing but activity log entries is applied here: every other change was held above.
+    permissions: new Set(),
     holdForReview: false,
+    now,
     auditDetails: { afterRemoval: true },
   };
   return (await applyChange(tx, audit, actor, change, hash)).status === 'accepted' ? recorded : refused;

@@ -5086,7 +5086,7 @@ class SineobexApi {
     return ChartBundle.fromJson(json as Map<String, dynamic>);
   }
 
-  /// The server’s copy of records, with each field’s version, for drafts a phone holds open
+  /// The server’s copy of records, with each field’s version, for records a phone holds open
   Future<FetchRecordsResult> fetchRecords({required FetchRecords body}) async {
     final json = await _transport.send('POST', '/v1/sync/records', body: body.toJson());
     return FetchRecordsResult.fromJson(json as Map<String, dynamic>);

@@ -1,11 +1,21 @@
 import type { TeamScope } from '../auth/context.ts';
+import { PERMISSION_KEYS } from '../auth/permissions.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
-import { applyChange, changeOwners, findReceipt, heldCreate, sameOwner, type ApplyActor } from './apply.ts';
-import { loadRecord, snapshot } from './records.ts';
+import {
+  applyInSavepoint,
+  changeOwners,
+  findReceipt,
+  heldCreate,
+  sameOwner,
+  type ApplyActor,
+} from './apply.ts';
+import { RULES, takesTeamLock } from './entities/index.ts';
+import { lockTeamWrites } from './locks.ts';
+import { snapshot } from './records.ts';
 import type {
+  AnyRecordEntityName,
   QuarantineQueryValue,
   QuarantineReasonName,
-  RecordEntityName,
   RecordSnapshotValue,
   SyncChangeInput,
 } from './schemas.ts';
@@ -36,8 +46,6 @@ interface QuarantineRow {
   patientId: string | null;
 }
 
-const UUID_TEXT = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-
 /** Items per page of the review queue. */
 export const QUARANTINE_PAGE_SIZE = 50;
 
@@ -47,38 +55,16 @@ export const QUARANTINE_PAGE_SIZE = 50;
  */
 export async function listQuarantine(scope: TeamScope, { status, userId, afterId }: QuarantineQueryValue) {
   return scope.tx(async (tx, audit) => {
-    // The patient each item is about. A note's encounter comes from the chart or from the note's
-    // create held here; the encounter's patient from the chart or from its create held here,
-    // whatever was decided on it; last, the item's own value (an activity log entry names the
-    // patient it read). Values were never schema-checked, so text is cast only when it is a UUID.
+    // The patient each item is about (migration 0009, patient_of_change): the record itself, its
+    // row's patient, or what its value names; for a note or an encounter, through the encounter,
+    // on the chart or its create held here, whatever was decided on it. Values were never
+    // schema-checked, so text is read only when it is a UUID.
     const rows = await tx<QuarantineRow[]>`
       select q.*, u.display_name as user_name, du.display_name as decided_by_name,
-             coalesce(
-               e.patient_id,
-               case when ec.value ->> 'patientId' ~ ${UUID_TEXT} then (ec.value ->> 'patientId')::uuid end,
-               case when q.value ->> 'patientId' ~ ${UUID_TEXT} then (q.value ->> 'patientId')::uuid end
-             ) as patient_id
+             sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id
       from sineobex.quarantine_items q
       join sineobex.users u on u.id = q.user_id
       left join sineobex.users du on du.id = q.decided_by
-      left join lateral (
-        select case when q.entity = 'encounter' then q.record_id::text
-                    when q.entity = 'encounter_note' then coalesce(
-                      (select n.encounter_id::text from sineobex.encounter_notes n where n.id = q.record_id),
-                      (select c.value ->> 'encounterId' from sineobex.quarantine_items c
-                       where c.entity = 'encounter_note' and c.op = 'create' and c.record_id = q.record_id
-                       order by c.received_at desc limit 1))
-               end as id
-      ) enc_text on true
-      left join lateral (
-        select case when enc_text.id ~ ${UUID_TEXT} then enc_text.id::uuid end as id
-      ) enc on true
-      left join sineobex.encounters e on e.id = enc.id
-      left join lateral (
-        select c.value from sineobex.quarantine_items c
-        where c.entity = 'encounter' and c.op = 'create' and c.record_id = enc.id
-        order by c.received_at desc limit 1
-      ) ec on true
       where q.status = ${status}
         ${userId ? tx`and q.user_id = ${userId}` : tx``}
         ${
@@ -147,6 +133,12 @@ export async function decideQuarantine(
   reason: string,
 ) {
   const outcome = await scope.tx(async (tx, audit) => {
+    // A patient-side item, or an encounter naming a patient, takes the team's write lock before
+    // its row (D32), as a push of the same change would. What it is never changes, so a look first
+    // is enough to know.
+    const [peek] = await tx<Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value'>[]>`
+      select entity, op, field, value from sineobex.quarantine_items where id = ${itemId}`;
+    if (peek && takesTeamLock(peek as SyncChangeInput)) await lockTeamWrites(tx, scope.team.teamId);
     const rows = await tx<QuarantineRow[]>`
       select q.*, null as user_name, null as decided_by_name, null as patient_id
       from sineobex.quarantine_items q where q.id = ${itemId} for update`;
@@ -202,11 +194,14 @@ export async function decideQuarantine(
         authorId: item.userId,
         approvedBy: scope.principal.userId,
         deviceId: item.deviceId,
-        canChart: true,
+        // The admin's accept is the approval, whatever the person's role held.
+        permissions: new Set(PERMISSION_KEYS),
         holdForReview: false,
+        now: scope.deps.now(),
         auditDetails: { onBehalfOf: item.userId, quarantineItem: item.id },
       };
-      const result = await applyChange(tx, audit, actor, change, item.valueHash);
+      // A database constraint the checks missed answers cannot_apply below, not a server error.
+      const result = await applyInSavepoint(tx, audit, actor, change, item.valueHash);
       if (result.status !== 'accepted') {
         // Throwing rolls back the attempt, so the item stays pending and the chart is untouched.
         if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change))) {
@@ -246,22 +241,27 @@ export async function decideQuarantine(
   return { ok: true as const };
 }
 
-const PREFIX: Record<RecordEntityName, string> = { encounter: 'encounter', encounter_note: 'note' };
-
-/** The server's copy of records a phone holds open, with every field's version. Each read is logged. */
-export async function fetchRecords(scope: TeamScope, refs: { entity: RecordEntityName; id: string }[]) {
+/**
+ * The server's copy of records a phone holds open, with every field's version. The route has
+ * checked each entity's read rule; a sensitive problem (or its note) the role can't see is
+ * reported missing, like one the team lacks (design 4.3). Each read is logged, a patient-side
+ * one as a view of that patient.
+ */
+export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEntityName; id: string }[]) {
   return scope.tx(async (tx, audit) => {
     const records: RecordSnapshotValue[] = [];
     const missing: typeof refs = [];
     for (const ref of refs) {
-      const record = await loadRecord(tx, ref.entity, ref.id, false);
-      if (!record) {
+      const rules = RULES[ref.entity];
+      const record = await rules.load(tx, ref.id, false);
+      if (!record || !(await mayRead(scope, record))) {
         missing.push(ref);
         continue;
       }
       records.push(snapshot(record));
+      const encounterSide = ref.entity === 'encounter' || ref.entity === 'encounter_note';
       await audit({
-        action: `${PREFIX[ref.entity]}.viewed`,
+        action: encounterSide ? `${rules.auditPrefix}.viewed` : 'patient.viewed',
         entity: ref.entity,
         entityId: ref.id,
         patientId: record.patientId,
@@ -269,6 +269,15 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: RecordEntit
       });
     }
     return { records, missing };
+
+    /** Sensitive problems need patients.view_sensitive (Oct 19); a note goes with its problem. */
+    async function mayRead(s: TeamScope, record: { entity: string; attributes: Record<string, unknown> }) {
+      if (s.can('patients.view_sensitive')) return true;
+      if (record.entity === 'problem') return record.attributes.sensitive !== true;
+      if (record.entity !== 'problem_note') return true;
+      const problem = await RULES.problem.load(tx, record.attributes.problemId as string, false);
+      return problem?.attributes.sensitive !== true;
+    }
   });
 }
 

@@ -2,7 +2,7 @@ import type { TeamScope } from '../auth/context.ts';
 import { TeamScope as Scope } from '../auth/context.ts';
 import { conflict } from '../lib/errors.ts';
 import {
-  applyChange,
+  applyInSavepoint,
   changeOwners,
   findReceipt,
   precheck,
@@ -11,6 +11,8 @@ import {
   toResult,
   type ApplyActor,
 } from './apply.ts';
+import { takesTeamLock } from './entities/index.ts';
+import { lockTeamWrites } from './locks.ts';
 import type { SyncChangeInput, SyncResultValue } from './schemas.ts';
 
 /** Charting pauses beyond this offset (module 9, decided Oct 12). The phone enforces it; the server flags it. */
@@ -80,8 +82,9 @@ export async function push(scope: TeamScope, input: PushInput) {
     authorId: scope.principal.userId,
     approvedBy: null,
     deviceId: device.id,
-    canChart: scope.can('encounters.chart'),
+    permissions: scope.team.permissions,
     holdForReview: true,
+    now,
   };
 
   const results: SyncResultValue[] = [];
@@ -119,7 +122,11 @@ export async function push(scope: TeamScope, input: PushInput) {
   return { ...base, results, device: { status: device.status } };
 }
 
-/** One change, one transaction: the data, its receipt and its audit entry commit together. */
+/**
+ * One change, one transaction: the data, its receipt and its audit entry commit together. The
+ * change applies inside a savepoint, so a database constraint it breaks is a stored rejection and
+ * the phone's queue moves on (D42).
+ */
 async function processOne(
   scope: TeamScope,
   actor: ApplyActor,
@@ -130,6 +137,9 @@ async function processOne(
   return scope.tx(async (tx, audit) => {
     // A retry racing its own first attempt waits here, then finds the receipt.
     await tx`select pg_advisory_xact_lock(hashtextextended(${change.changeId}, 0))`;
+    // Patient-side changes, and encounter writes that name a patient, take the team's write lock
+    // before anything else, so a merge and a push lock in one order (D32).
+    if (takesTeamLock(change)) await lockTeamWrites(tx, actor.teamId);
     const existing = await findReceipt(tx, change.changeId);
     if (existing) {
       if (existing.userId !== actor.authorId || existing.deviceId !== actor.deviceId)
@@ -159,8 +169,8 @@ async function processOne(
       );
     }
     return checked.ok
-      ? applyChange(tx, audit, actor, change, checked.hash)
-      : applyChange(tx, audit, actor, change, change.valueHash, checked.outcome);
+      ? applyInSavepoint(tx, audit, actor, change, checked.hash)
+      : applyInSavepoint(tx, audit, actor, change, change.valueHash, checked.outcome);
   });
 }
 

@@ -1,37 +1,26 @@
-import { z } from '@hono/zod-openapi';
+import type { z } from '@hono/zod-openapi';
 import type { AuditFn } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
-import { Uuid } from '../routes/schemas.ts';
 import { canonicalJson } from './canonical.ts';
+import { applyField } from './entities/fields.ts';
+import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
+import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
-  appendHistory,
-  EncounterCreate,
-  fieldSchema,
   fieldState,
-  insertEncounter,
-  insertNote,
-  isBlank,
+  invalid,
   jsonb,
   jsonProblem,
-  isLocked,
-  loadRecord,
-  MAX_NOTE_FIELDS,
   MAX_VALUE_BYTES,
-  NoteCreate,
-  sameValue,
-  writeField,
-  type CreateInput,
-  type HistoryEntry,
+  rejected,
+  type ApplyActor,
+  type ChangeContext,
+  type EntityRules,
+  type Outcome,
   type StoredRecord,
 } from './records.ts';
-import type {
-  FieldStateValue,
-  QuarantineReasonName,
-  RecordEntityName,
-  RejectReasonName,
-  SyncChangeInput,
-  SyncResultValue,
-} from './schemas.ts';
+import type { QuarantineReasonName, RejectReasonName, SyncChangeInput, SyncResultValue } from './schemas.ts';
+
+export type { ApplyActor } from './records.ts';
 
 /**
  * Applies one change entry from a phone (module 9) and writes its receipt. The caller runs this
@@ -51,56 +40,13 @@ export const REJECT_MESSAGES: Record<RejectReasonName, string> = {
     'The record this belongs to is waiting for a Program Admin’s review. This was sent for review with it.',
 };
 
-/** Whose change this is, and what they may do. */
-export interface ApplyActor {
-  teamId: string;
-  /** The person who made the change on the phone. */
-  authorId: string;
-  /** Who approved it, when someone else did (a Program Admin accepting a quarantined change). */
-  approvedBy: string | null;
-  deviceId: string;
-  canChart: boolean;
-  /**
-   * A push: a change refused for permission, or one that belongs to a record held for review, is
-   * held for review too. An admin's accept: it fails outright.
-   */
-  holdForReview: boolean;
-  /** Added to every audit event, e.g. { onBehalfOf } when an admin applies someone else's change. */
-  auditDetails?: Record<string, unknown>;
-}
-
-type Outcome =
-  | { status: 'accepted'; serverVersion: number }
-  | { status: 'rejected'; reason: RejectReasonName; details?: Record<string, unknown>; quarantined?: boolean }
-  | { status: 'conflict'; server: FieldStateValue };
-
-const AuditAppend = z
-  .object({
-    action: z.enum(['patient.viewed', 'patient.searched', 'encounter.viewed', 'note.viewed']),
-    entity: z
-      .string()
-      .regex(/^[a-z_]{1,40}$/)
-      .optional(),
-    entityId: Uuid.optional(),
-    patientId: Uuid.optional(),
-    resultCount: z.number().int().min(0).max(100_000).optional(),
-  })
-  .strict();
-
-const PREFIX: Record<RecordEntityName, string> = { encounter: 'encounter', encounter_note: 'note' };
-
-const rejected = (reason: RejectReasonName, details?: Record<string, unknown>): Outcome => ({
-  status: 'rejected',
-  reason,
-  ...(details ? { details } : {}),
-});
-
 function issues(error: z.ZodError): Record<string, unknown> {
   // Paths and codes only: zod messages are safe today, but a value must never reach a log.
   return { problems: error.issues.slice(0, 10).map((i) => ({ path: i.path.join('.'), code: i.code })) };
 }
 
-const when = (c: SyncChangeInput) => new Date(c.correctedTime ?? c.deviceTime);
+/** The server's date, for rules about dates (YYYY-MM-DD, UTC). */
+const today = (actor: ApplyActor) => actor.now.toISOString().slice(0, 10);
 
 /**
  * Pure checks that need no database: the value is storable and its hash matches. A broken value
@@ -138,7 +84,14 @@ export async function precheck(change: SyncChangeInput): Promise<Precheck> {
 export function toResult(changeId: string, o: Outcome, hash?: string): SyncResultValue {
   switch (o.status) {
     case 'accepted':
-      return { changeId, status: 'accepted', serverVersion: o.serverVersion, ...(hash ? { hash } : {}) };
+      return {
+        changeId,
+        status: 'accepted',
+        serverVersion: o.serverVersion,
+        ...(hash ? { hash } : {}),
+        ...(o.server ? { server: o.server } : {}),
+        ...(o.details ? { details: o.details } : {}),
+      };
     case 'conflict':
       return { changeId, status: 'conflict', serverVersion: o.server.version, server: o.server };
     case 'rejected':
@@ -193,15 +146,32 @@ export async function changeOwners(tx: Tx, changeId: string): Promise<ChangeOwne
 export const sameOwner = (a: ChangeOwner, b: ChangeOwner) =>
   a.teamId === b.teamId && a.userId === b.userId && a.deviceId === b.deviceId;
 
-/** The answer for a change the server already has. Conflicts show the server's current value. */
+/**
+ * The answer for a change the server already has, so a retry gets the answer the first attempt
+ * got. A conflict, and a value kept but not applied (kept both, history only), show the field as
+ * the server holds it now.
+ */
 export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultValue> {
+  const current = async (recordId: string) => {
+    const record = await rulesFor(r.entity)?.load(tx, recordId, false);
+    return record && r.field
+      ? fieldState(record, r.field)
+      : { value: null, version: 0, changedBy: null, changedAt: null };
+  };
   if (r.status === 'accepted') {
-    return {
-      changeId: r.changeId,
-      status: 'accepted',
-      serverVersion: r.serverVersion ?? 0,
-      hash: r.valueHash,
-    };
+    const details = r.details ?? undefined;
+    const kept = details?.outcome === 'kept_both' || details?.outcome === 'history_only';
+    const on = typeof details?.redirectedTo === 'string' ? details.redirectedTo : r.recordId;
+    return toResult(
+      r.changeId,
+      {
+        status: 'accepted',
+        serverVersion: r.serverVersion ?? 0,
+        ...(kept ? { server: await current(on) } : {}),
+        ...(details ? { details } : {}),
+      },
+      r.valueHash,
+    );
   }
   if (r.status === 'rejected') {
     const quarantined = r.details?.quarantined === true;
@@ -211,15 +181,19 @@ export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultV
       r.valueHash,
     );
   }
-  const record =
-    r.entity === 'encounter' || r.entity === 'encounter_note'
-      ? await loadRecord(tx, r.entity, r.recordId, false)
-      : null;
-  const server =
-    record && r.field
-      ? fieldState(record, r.field)
-      : { value: null, version: 0, changedBy: null, changedAt: null };
-  return toResult(r.changeId, { status: 'conflict', server });
+  return toResult(r.changeId, { status: 'conflict', server: await current(r.recordId) });
+}
+
+/**
+ * An accepted change that never reached the chart as the person sent it: kept as the other value
+ * of a review, kept in history only, or applied to a merged record's survivor.
+ */
+function keptNotApplied(details: Record<string, unknown> | null): boolean {
+  return (
+    details?.outcome === 'kept_both' ||
+    details?.outcome === 'history_only' ||
+    details?.redirectedTo !== undefined
+  );
 }
 
 /**
@@ -283,6 +257,42 @@ export async function applyChange(
 }
 
 /**
+ * applyChange inside a savepoint (phase 3 design 2.2 step 5, D42). A database integrity error
+ * (SQLSTATE class 23: not null, foreign key, unique, check) means a rule the API should have
+ * checked first wasn't: it would fail the same way on every retry, and a push stops at a failing
+ * change, so the phone's queue would never move again. Instead the change's writes roll back and it
+ * is stored as a rejection naming the constraint (schema, never a value), which the worker sees and
+ * fixes, and the devices page counts as the bug report it is. Any other error (a deadlock, a lost
+ * connection) may succeed on retry, so it still aborts the transaction and stops the batch.
+ *
+ * Everything inside runs on the savepoint's own handle: postgres.js fails the whole transaction
+ * when a query on the outer handle fails, even one that was caught.
+ */
+export async function applyInSavepoint(
+  tx: Tx,
+  audit: AuditFn,
+  actor: ApplyActor,
+  change: SyncChangeInput,
+  hash: string,
+  rejection?: Outcome,
+): Promise<SyncResultValue> {
+  try {
+    return await tx.savepoint((sp) => applyChange(sp, audit, actor, change, hash, rejection));
+  } catch (err) {
+    const broken = integrityError(err);
+    if (!broken) throw err;
+    return applyChange(tx, audit, actor, change, hash, invalid('server_constraint', broken));
+  }
+}
+
+/** The constraint an integrity error names, or null for any other error. */
+function integrityError(err: unknown): { constraint: string | null; sqlstate: string } | null {
+  const e = err as { code?: unknown; constraint_name?: unknown } | null;
+  if (typeof e?.code !== 'string' || !e.code.startsWith('23')) return null;
+  return { constraint: typeof e.constraint_name === 'string' ? e.constraint_name : null, sqlstate: e.code };
+}
+
+/**
  * Settles the rejections and conflicts an accepted fix or choice covers, so none stays open on the
  * server once the phone holds nothing of it. That is what the phone folded into it: its earlier
  * unsettled changes to the same field (a fix or a choice covers every one, linked or not), or for
@@ -321,8 +331,14 @@ async function storeReceipt(tx: Tx, actor: ApplyActor, c: SyncChangeInput, hash:
   const serverVersion =
     o.status === 'accepted' ? o.serverVersion : o.status === 'conflict' ? o.server.version : null;
   const reason = o.status === 'rejected' ? o.reason : null;
+  // An accepted receipt keeps its details too (kept both, redirected, a link's outcome), so a
+  // retry gets the same answer (design 2.5).
   const details =
-    o.status === 'rejected' ? { ...o.details, ...(o.quarantined ? { quarantined: true } : {}) } : null;
+    o.status === 'rejected'
+      ? { ...o.details, ...(o.quarantined ? { quarantined: true } : {}) }
+      : o.status === 'accepted'
+        ? (o.details ?? null)
+        : null;
   // An admin accepting a quarantined change replaces the receipt its push got (quarantined,
   // rejected or in conflict). An accepted receipt is final.
   await tx`
@@ -348,11 +364,14 @@ async function decide(
   c: SyncChangeInput,
   hash: string,
 ): Promise<Outcome> {
-  if (c.entity === 'audit') {
-    if (c.op !== 'append') return rejected('validation', { problem: 'audit_is_append_only' });
+  const rules = rulesFor(c.entity);
+  if (!rules) {
+    if (c.op !== 'append') return invalid('audit_is_append_only');
     const parsed = AuditAppend.safeParse(c.value);
     if (!parsed.success) return rejected('validation', issues(parsed.error));
     const v = parsed.data;
+    // Offline reads join the chain as the person's own, at their device time. Search text never
+    // travels (D41); which patients a search showed does, so each one's access report finds it.
     await audit({
       action: v.action,
       entity: v.entity,
@@ -364,24 +383,35 @@ async function decide(
         offline: true,
         changeId: c.changeId,
         ...(v.resultCount === undefined ? {} : { resultCount: v.resultCount }),
+        ...(v.patientIds === undefined ? {} : { patientIds: v.patientIds }),
+        ...(v.criteria === undefined ? {} : { criteria: v.criteria }),
+        ...(v.source === undefined ? {} : { source: v.source }),
+        ...(v.checkId === undefined ? {} : { checkId: v.checkId }),
       },
     });
     return { status: 'accepted', serverVersion: 1 };
   }
 
-  if (!actor.canChart) {
+  // Each entity names the existing catalog key it needs (design 2.2, D37): a community health
+  // worker registers patients without being able to chart.
+  if (!actor.permissions.has(rules.permission(c.op === 'set' ? 'set' : 'create', c.field))) {
     if (!actor.holdForReview) return rejected('permission');
     return hold(tx, audit, actor, c, hash, 'permission');
   }
 
-  if (c.op !== 'create' && c.op !== 'set')
-    return rejected('validation', { problem: 'append_only_for_audit' });
-  const outcome = c.op === 'create' ? await create(tx, audit, actor, c) : await set(tx, audit, actor, c);
-  // The record isn't on the chart because the person's own create of it waits for review: this
-  // change can't be applied before that decision, and isn't wrong either, so it waits with it.
-  if (actor.holdForReview && outcome.status === 'rejected' && outcome.reason === 'stale_reference') {
-    const waitsOn = await heldCreate(tx, actor, c);
-    if (waitsOn) return hold(tx, audit, actor, c, hash, 'awaiting_review', { waitsOn });
+  if (c.op !== 'create' && c.op !== 'set') return invalid('append_only_for_audit');
+  const ctx: ChangeContext = { tx, audit, actor, change: c };
+  const outcome = c.op === 'create' ? await create(ctx, rules) : await set(ctx, rules);
+  if (actor.holdForReview && outcome.status === 'rejected') {
+    // Only known once the record is: a problem marked entered in error by someone else.
+    if (outcome.reason === 'permission') return hold(tx, audit, actor, c, hash, 'permission');
+    // The record isn't on the chart because the person's own create of it (or of what it
+    // names) waits for review: this change can't be applied before that decision, and isn't
+    // wrong either, so it waits with it.
+    if (outcome.reason === 'stale_reference') {
+      const waitsOn = await heldCreate(tx, actor, c);
+      if (waitsOn) return hold(tx, audit, actor, c, hash, 'awaiting_review', { waitsOn });
+    }
   }
   return outcome;
 }
@@ -407,172 +437,104 @@ async function hold(
 }
 
 /**
- * The person's own create, still waiting for review, of the record [c] needs on the chart: the
- * record it changes, or a new note's encounter. Returns that create's change ID.
+ * The records [c] needs on the chart: for a set, the record it changes and what its value names;
+ * for a create, its parents (a patient for an alias, an encounter for a note).
+ */
+function needs(rules: EntityRules, c: SyncChangeInput): ParentRef[] {
+  if (c.op === 'set') {
+    const parsed = c.field ? rules.fieldSchema(c.field)?.safeParse(c.value) : undefined;
+    return [
+      { entity: rules.entity, id: c.recordId },
+      ...(parsed?.success ? rules.parentsOfSet(c.field!, parsed.data) : []),
+    ];
+  }
+  const parsed = rules.create.safeParse(c.value);
+  return parsed.success ? rules.parents(parsed.data) : [];
+}
+
+/**
+ * The person's own create, still waiting for review, of a record [c] needs on the chart (the
+ * record it changes, or a parent it names: a whole intake held, its aliases with it). Returns that
+ * create's change ID.
  */
 export async function heldCreate(
   tx: Tx,
   actor: Pick<ApplyActor, 'teamId' | 'authorId'>,
   c: SyncChangeInput,
 ): Promise<string | null> {
-  let needs: { entity: RecordEntityName; id: string };
-  if (c.op === 'set' && (c.entity === 'encounter' || c.entity === 'encounter_note')) {
-    needs = { entity: c.entity, id: c.recordId };
-  } else if (c.op === 'create' && c.entity === 'encounter_note') {
-    const parsed = NoteCreate.safeParse(c.value);
-    if (!parsed.success) return null;
-    needs = { entity: 'encounter', id: parsed.data.encounterId };
-  } else {
-    return null;
+  const rules = rulesFor(c.entity);
+  if (!rules || (c.op !== 'create' && c.op !== 'set')) return null;
+  for (const need of needs(rules, c)) {
+    const rows = await tx<{ changeId: string }[]>`
+      select change_id from sineobex.quarantine_items
+      where team_id = ${actor.teamId} and user_id = ${actor.authorId} and status = 'pending'
+        and op = 'create' and entity = ${need.entity} and record_id = ${need.id}
+      limit 1`;
+    if (rows[0]) return rows[0].changeId;
   }
-  const rows = await tx<{ changeId: string }[]>`
-    select change_id from sineobex.quarantine_items
-    where team_id = ${actor.teamId} and user_id = ${actor.authorId} and status = 'pending'
-      and op = 'create' and entity = ${needs.entity} and record_id = ${needs.id}
-    limit 1`;
-  return rows[0]?.changeId ?? null;
+  return null;
 }
 
-async function create(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput): Promise<Outcome> {
-  const entity = c.entity as RecordEntityName;
-  const input: CreateInput = {
-    id: c.recordId,
-    teamId: actor.teamId,
-    authorUserId: actor.authorId,
-    deviceId: actor.deviceId,
-    changeId: c.changeId,
-    at: when(c),
-    deviceTime: new Date(c.deviceTime),
-    clockVerified: c.clockVerified,
-  };
-  let initial: Record<string, unknown> | null;
-  let patientId: string | null;
-  if (entity === 'encounter') {
-    const parsed = EncounterCreate.safeParse(c.value);
-    if (!parsed.success) return rejected('validation', issues(parsed.error));
-    initial = await insertEncounter(tx, input, parsed.data);
-    patientId = parsed.data.patientId ?? null;
-  } else {
-    const parsed = NoteCreate.safeParse(c.value);
-    if (!parsed.success) return rejected('validation', issues(parsed.error));
-    const encounter = await loadRecord(tx, 'encounter', parsed.data.encounterId, false);
-    if (!encounter) return rejected('stale_reference', { problem: 'encounter_missing' });
-    if (isLocked(encounter)) return rejected('record_locked');
-    initial = await insertNote(tx, input, parsed.data);
-    patientId = encounter.patientId;
-  }
-  if (!initial) return rejected('validation', { problem: 'record_exists' });
-
-  for (const [field, value] of Object.entries(initial)) {
-    await appendHistory(tx, history(actor, c, entity, field, 1, value, undefined, 'created'));
-  }
-  await audit({
-    action: `${PREFIX[entity]}.created`,
-    entity,
-    entityId: c.recordId,
-    patientId,
-    deviceTime: new Date(c.deviceTime),
-    details: { ...actor.auditDetails, changeId: c.changeId, clockVerified: c.clockVerified },
-  });
-  return { status: 'accepted', serverVersion: 1 };
+/**
+ * A new record (design 2.2 step 3): its value, the rules it breaks on its own, the parents it names
+ * (which must exist in the team, in any status: a missing one is a stale reference, so a foreign key
+ * never answers first), then the entity's own create.
+ */
+async function create(ctx: ChangeContext, rules: EntityRules): Promise<Outcome> {
+  const parsed = rules.create.safeParse(ctx.change.value);
+  if (!parsed.success) return rejected('validation', issues(parsed.error));
+  const problem = rules.valueProblem?.('create', undefined, parsed.data, today(ctx.actor));
+  if (problem) return invalid(problem);
+  const missing = await missingParent(ctx.tx, ctx.actor.teamId, rules.parents(parsed.data));
+  if (missing) return rejected('stale_reference', { problem: missingProblem(missing) });
+  return rules.applyCreate(ctx, parsed.data);
 }
 
-/** The draft reconciliation rule (Oct 19 decisions; plan D9). */
-async function set(tx: Tx, audit: AuditFn, actor: ApplyActor, c: SyncChangeInput): Promise<Outcome> {
-  const entity = c.entity as RecordEntityName;
+/**
+ * A change to one field (design 2.2 step 4): its value, the record (locked), what the value names,
+ * the merged record's survivor when there is one, then the field's class decides (2.4).
+ */
+async function set(ctx: ChangeContext, rules: EntityRules): Promise<Outcome> {
+  const { tx, actor, change: c } = ctx;
   const field = c.field;
-  if (!field) return rejected('validation', { problem: 'field_missing' });
-  const schema = fieldSchema(entity, field);
-  if (!schema) return rejected('validation', { problem: 'unknown_field' });
+  if (!field) return invalid('field_missing');
+  const schema = rules.fieldSchema(field);
+  const cls = rules.fieldClass(field);
+  if (!schema || !cls) return invalid('unknown_field');
   const parsed = schema.safeParse(c.value);
   if (!parsed.success) return rejected('validation', issues(parsed.error));
   const value: unknown = parsed.data;
+  const problem = rules.valueProblem?.('set', field, value, today(actor));
+  if (problem) return invalid(problem);
 
-  const record = await loadRecord(tx, entity, c.recordId, true);
-  if (!record) return rejected('stale_reference', { problem: 'record_missing' });
-  if (isLocked(record)) return rejected('record_locked');
-  const dataFields = Object.keys(record.fieldVersions).filter((f) => f.startsWith('data.'));
-  if (field.startsWith('data.') && !(field in record.fieldVersions) && dataFields.length >= MAX_NOTE_FIELDS) {
-    return rejected('validation', { problem: 'too_many_fields' });
+  const named = await rules.load(tx, c.recordId, true);
+  if (!named) return rejected('stale_reference', { problem: 'record_missing' });
+  const missing = await missingParent(tx, actor.teamId, rules.parentsOfSet(field, value));
+  if (missing) return rejected('stale_reference', { problem: missingProblem(missing) });
+  if (rules.mayChange && !rules.mayChange(actor, named, field)) return rejected('permission');
+
+  // A set naming a merged record applies to its survivor, as one that never saw the survivor's
+  // value (design 2.7): a blank fills, the same value is a no-op, a different one is kept both.
+  const redirect = rules.redirect ? await rules.redirect(tx, named, field) : null;
+  const rec = redirect?.to ?? named;
+  const cur = fieldState(rec, field);
+  const saw =
+    !redirect &&
+    (c.baseVersion === cur.version || (await followsCurrent(tx, actor, c, rec, field, cur.version)));
+  const outcome = await applyField(cls, { ...ctx, rules, rec, field, value, cur, saw, redirect });
+  if (redirect && outcome.status === 'accepted') {
+    return { ...outcome, details: { ...outcome.details, ...redirect.details } };
   }
-  const current = fieldState(record, field);
-  const decider = actor.approvedBy ?? actor.authorId;
-  const sawCurrent =
-    c.baseVersion === current.version || (await followsCurrent(tx, actor, c, record, field, current.version));
-
-  if (c.resolution === 'keep_server') {
-    // The user looked at both and kept the server's value. Their own value is kept in history,
-    // never lost, and the note's author is told when the kept value came from someone else.
-    // Only the value they saw can be kept: if it changed again since, they choose again.
-    if (!sawCurrent) return { status: 'conflict', server: current };
-    await appendHistory(tx, {
-      ...history(actor, c, entity, field, current.version, value, current.value, 'kept_both'),
-      approvedBy: decider,
-    });
-    if (current.changedBy && current.changedBy !== actor.authorId && record.authorUserId !== decider) {
-      await tx`
-        insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
-        values (${actor.teamId}, ${record.authorUserId}, 'conflict_resolved', ${entity}, ${record.id})`;
-    }
-    await audit({
-      action: `${PREFIX[entity]}.conflict_resolved`,
-      entity,
-      entityId: record.id,
-      patientId: record.patientId,
-      deviceTime: new Date(c.deviceTime),
-      details: {
-        ...actor.auditDetails,
-        changeId: c.changeId,
-        field,
-        kept: 'server',
-        version: current.version,
-      },
-    });
-    return { status: 'accepted', serverVersion: current.version };
-  }
-
-  // Already the server's value: nothing to write, and the phone now holds the current version.
-  if (sameValue(current.value, value)) return { status: 'accepted', serverVersion: current.version };
-
-  let kind: HistoryEntry['kind'];
-  if (c.resolution === 'replace') {
-    if (!sawCurrent) return { status: 'conflict', server: current };
-    kind = 'replaced_after_review';
-  } else if (sawCurrent) {
-    kind = 'set';
-  } else if (isBlank(current.value)) {
-    kind = 'filled_blank';
-  } else {
-    // "A field that already holds a different value is never overwritten silently."
-    return { status: 'conflict', server: current };
-  }
-
-  const version = current.version + 1;
-  await writeField(tx, record, field, value, version, {
-    by: actor.authorId,
-    at: when(c).toISOString(),
-    changeId: c.changeId,
-  });
-  await appendHistory(tx, {
-    ...history(actor, c, entity, field, version, value, current.value, kind),
-    approvedBy: kind === 'replaced_after_review' ? decider : actor.approvedBy,
-  });
-  await audit({
-    action: `${PREFIX[entity]}.updated`,
-    entity,
-    entityId: record.id,
-    patientId: record.patientId,
-    deviceTime: new Date(c.deviceTime),
-    details: { ...actor.auditDetails, changeId: c.changeId, field, kind, version },
-  });
-  return { status: 'accepted', serverVersion: version };
+  return outcome;
 }
 
 /**
  * A second edit to the same field made before the first was confirmed carries the first one's ID.
  * The person was looking at the current value if that change, by them, is what last wrote the
  * field (a set, or the create that filled it), or if its receipt shows it left the field at the
- * current version (it matched the value already there).
+ * current version (it matched the value already there). Not when that change was kept rather than
+ * applied, or applied to a merged record's survivor (design 2.2 step 7): the person never saw the
+ * chart's value, and their second edit would overwrite it silently.
  */
 async function followsCurrent(
   tx: Tx,
@@ -589,38 +551,12 @@ async function followsCurrent(
   return (
     prev !== null &&
     prev.status === 'accepted' &&
+    !keptNotApplied(prev.details) &&
     prev.userId === actor.authorId &&
     prev.recordId === c.recordId &&
     prev.field === field &&
     prev.serverVersion === version
   );
-}
-
-function history(
-  actor: ApplyActor,
-  c: SyncChangeInput,
-  entity: RecordEntityName,
-  field: string,
-  version: number,
-  value: unknown,
-  previousValue: unknown,
-  kind: HistoryEntry['kind'],
-): HistoryEntry {
-  return {
-    teamId: actor.teamId,
-    entity,
-    recordId: c.recordId,
-    field,
-    version,
-    value,
-    previousValue,
-    kind,
-    changedBy: actor.authorId,
-    approvedBy: actor.approvedBy,
-    changeId: c.changeId,
-    deviceId: actor.deviceId,
-    deviceTime: new Date(c.deviceTime),
-  };
 }
 
 export function changeDetails(c: SyncChangeInput): Record<string, unknown> {
