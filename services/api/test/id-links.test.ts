@@ -19,7 +19,9 @@ import {
   createTeam,
   expectAudit,
   expectAuditClean,
+  logSpy,
   memberWith,
+  mergeDirect,
   type Member,
 } from './patient-fixtures.ts';
 
@@ -36,9 +38,10 @@ describe('ID links', () => {
   let otherIssuer: Member;
   /** Every token this file made, so no audit row or log line may mention one. */
   const tokens: string[] = [];
+  const logs = logSpy();
 
   beforeAll(async () => {
-    h = await createHarness();
+    h = await createHarness({ log: logs.log });
     teamId = await createTeam(h, 'ID Link Team (demo)');
     otherTeamId = await createTeam(h, 'Other ID Link Team (demo)');
     admin = await memberWith(h, teamId, ['team.manage_users', 'patients.view'], {
@@ -130,18 +133,8 @@ describe('ID links', () => {
         where l.token_hash = ${await idLinkTokenHash(token)} and l.status = 'active'`
     )[0]?.canonicalId ?? null;
 
-  /**
-   * Merges `mergedId` into `survivorId` the way a merge leaves patient rows (design 8.4 step 2), and
-   * nothing else: a card's fate is what these tests are about. (The shared mergeDirect sets the
-   * status before canonical_id, which the patients check constraint refuses.)
-   */
   const merge = (mergedId: string, survivorId: string) =>
-    h.scratch.owner.begin(async (sql) => {
-      await sql`update sineobex.patients
-                set status = 'merged', merged_into = ${survivorId}, canonical_id = ${survivorId}
-                where id = ${mergedId}`;
-      await sql`update sineobex.patients set canonical_id = ${survivorId} where canonical_id = ${mergedId}`;
-    });
+    mergeDirect(h, teamId, mergedId, survivorId, admin.userId);
 
   const notices = async (userId: string, recordId: string) =>
     (
@@ -487,8 +480,186 @@ describe('ID links', () => {
     expect(await link(cardId)).toMatchObject({ status: 'retired' });
   });
 
-  it('never writes a token or a link into an audit event', async () => {
+  describe('online issue and the card screen (design 3.5)', () => {
+    interface LinkView {
+      id: string;
+      issuedOn: string;
+      url?: string;
+      tokenRef: string;
+      status: string;
+      reason: string;
+      madeOffline: boolean;
+      retiredReason: string | null;
+      replacedBy: string | null;
+      issuedBy: { userId: string; displayName: string };
+    }
+    interface LinkState {
+      active: LinkView[];
+      history: LinkView[];
+    }
+
+    const call = async (path: string, by: Member, json?: unknown) => {
+      const res = await h.request(path, {
+        method: json === undefined ? 'GET' : 'POST',
+        token: by.token,
+        teamId,
+        ...(json === undefined ? {} : { json }),
+      });
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      const text = await res.text();
+      return {
+        status: res.status,
+        text,
+        body: JSON.parse(text) as LinkState & { error?: { code: string; details?: Record<string, unknown> } },
+      };
+    };
+    const post = (
+      patientId: string,
+      by: Member,
+      body: { linkId?: string; replacesLinkId: string | null; reason?: string },
+    ) =>
+      call(`/v1/patients/${patientId}/id-link`, by, { linkId: randomUUID(), reason: 'first_card', ...body });
+    const get = (patientId: string, by: Member = jordan) => call(`/v1/patients/${patientId}/id-link`, by);
+    /** The token in an active card's URL (for the log and audit checks). */
+    const tokenOf = (url: string | undefined) => {
+      const token = url!.split('#')[1]!;
+      tokens.push(token);
+      return token;
+    };
+
+    it('makes a first card on the server, with server time, and shows its URL', async () => {
+      const p = await createPatient(h, teamId, jordan.userId);
+      const mark = await auditMark(h);
+      const res = await post(p.id, jordan, { replacesLinkId: null });
+      expect(res.status).toBe(200);
+      const [card] = res.body.active;
+      expect(res.body.history).toEqual([]);
+      expect(card).toMatchObject({
+        issuedOn: p.id,
+        status: 'active',
+        reason: 'first_card',
+        madeOffline: false,
+        issuedBy: { userId: jordan.userId, displayName: 'Jordan (demo)' },
+      });
+      const token = tokenOf(card!.url);
+      expect(token).toMatch(ID_LINK_TOKEN_PATTERN);
+      expect(card!.url).toBe(`http://localhost:3100/c#${token}`);
+      expect(card!.tokenRef).toBe(await idLinkTokenRef(token));
+      const [generated] = await expectAudit(h, 'id_link.generated', {
+        after: mark,
+        patientId: p.id,
+        count: 1,
+      });
+      expect(generated!.details).toMatchObject({ linkId: card!.id, offline: false, status: 'active' });
+      expect(
+        (
+          await h.scratch.owner<{ effectiveAt: Date }[]>`
+        select effective_at as "effectiveAt" from sineobex.patient_id_links where id = ${card!.id}`
+        )[0]!.effectiveAt,
+      ).toEqual(h.clock.now);
+    });
+
+    it('replaces the card, lists the old one as history, and answers a retry with the same cards', async () => {
+      const p = await createPatient(h, teamId, jordan.userId);
+      const first = (await post(p.id, jordan, { replacesLinkId: null })).body.active[0]!;
+      tokenOf(first.url);
+      const linkId = randomUUID();
+      const res = await post(p.id, casey, { linkId, replacesLinkId: first.id, reason: 'stolen' });
+      expect(res.status).toBe(200);
+      expect(res.body.active.map((l) => l.id)).toEqual([linkId]);
+      tokenOf(res.body.active[0]!.url);
+      expect(res.body.history).toEqual([
+        expect.objectContaining({
+          id: first.id,
+          status: 'retired',
+          retiredReason: 'regenerated',
+          replacedBy: linkId,
+        }),
+      ]);
+      expect(res.body.history[0]!.url).toBeUndefined();
+
+      const mark = await auditMark(h);
+      const retry = await post(p.id, casey, { linkId, replacesLinkId: first.id, reason: 'stolen' });
+      expect(retry.status).toBe(200);
+      expect(retry.body).toEqual(res.body);
+      await expectAudit(h, 'id_link.generated', { after: mark, count: 0 });
+      await expectAudit(h, 'id_link.viewed', { after: mark, count: 1 });
+    });
+
+    it('answers 409 link_changed with the active IDs, never a URL or a token', async () => {
+      const p = await createPatient(h, teamId, jordan.userId);
+      const first = (await post(p.id, jordan, { replacesLinkId: null })).body.active[0]!;
+      const token = tokenOf(first.url);
+      const second = (await post(p.id, jordan, { replacesLinkId: first.id })).body.active[0]!;
+      const secondToken = tokenOf(second.url);
+      for (const replacesLinkId of [first.id, null]) {
+        const res = await post(p.id, casey, { replacesLinkId });
+        expect(res.status).toBe(409);
+        expect(res.body.error).toEqual({
+          code: 'link_changed',
+          message: expect.any(String),
+          details: { activeLinkIds: [second.id] },
+        });
+        for (const t of [token, secondToken, '/c#']) expect(res.text).not.toContain(t);
+      }
+      expect(await activeInGroup(p.id)).toEqual([second.id]);
+    });
+
+    it('refuses a card for a merged chart with the survivor, and shows the group’s cards on either ID', async () => {
+      const survivor = await createPatient(h, teamId, jordan.userId);
+      const merged = await createPatient(h, teamId, jordan.userId);
+      const a = (await post(survivor.id, jordan, { replacesLinkId: null })).body.active[0]!;
+      const b = (await post(merged.id, jordan, { replacesLinkId: null })).body.active[0]!;
+      tokenOf(a.url);
+      tokenOf(b.url);
+      await merge(merged.id, survivor.id);
+
+      const refused = await post(merged.id, casey, { replacesLinkId: b.id });
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toMatchObject({
+        code: 'patient_merged',
+        details: { survivorId: survivor.id },
+      });
+      expect(refused.text).not.toContain('/c#');
+
+      const mark = await auditMark(h);
+      const state = await get(merged.id);
+      expect(state.status).toBe(200);
+      expect(state.body.active.map((l) => [l.id, l.issuedOn]).sort()).toEqual(
+        [
+          [a.id, survivor.id],
+          [b.id, merged.id],
+        ].sort(),
+      );
+      const viewed = await expectAudit(h, 'id_link.viewed', {
+        after: mark,
+        patientId: survivor.id,
+        count: 2,
+      });
+      expect(viewed.map((v) => v.details.linkId).sort()).toEqual([a.id, b.id].sort());
+
+      // A new card naming either one replaces both, on the kept record.
+      const next = await post(survivor.id, casey, { replacesLinkId: b.id, reason: 'patient_request' });
+      expect(next.status).toBe(200);
+      tokenOf(next.body.active[0]!.url);
+      expect(next.body.active).toEqual([expect.objectContaining({ issuedOn: survivor.id })]);
+      expect(next.body.history.map((l) => l.id).sort()).toEqual([a.id, b.id].sort());
+      expect(await activeInGroup(survivor.id)).toEqual([next.body.active[0]!.id]);
+    });
+
+    it('answers 404 for a patient the team doesn’t have', async () => {
+      const elsewhere = await createPatient(h, otherTeamId, otherIssuer.userId);
+      for (const id of [randomUUID(), elsewhere.id]) {
+        expect((await get(id)).status).toBe(404);
+        expect((await post(id, jordan, { replacesLinkId: null })).status).toBe(404);
+      }
+    });
+  });
+
+  it('never writes a token or a link into an audit event or a log line', async () => {
     expect(tokens.length).toBeGreaterThan(10);
     await expectAuditClean(h, [...tokens, '/c#']);
+    expect(logs.lines.length).toBeGreaterThan(0);
+    logs.expectClean([...tokens, '/c#']);
   });
 });

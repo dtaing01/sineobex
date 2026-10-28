@@ -1,6 +1,7 @@
 import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
-import { notImplemented } from './pending.ts';
+import { conflict, notFound } from '../lib/errors.ts';
+import { lockTeamWrites } from '../sync/locks.ts';
 import type { IdLinkReasonValue, IdLinkStateValue, IssueIdLinkInput } from './schemas.ts';
 
 /**
@@ -258,24 +259,155 @@ export async function idLinkHandshake(
   };
 }
 
+interface LinkRow {
+  id: string;
+  patientId: string;
+  status: 'active' | 'retired';
+  reason: IdLinkReasonValue;
+  effectiveAt: Date;
+  madeOffline: boolean;
+  retiredAt: Date | null;
+  retiredReason: 'regenerated' | 'superseded_by_newer' | null;
+  retiredByLink: string | null;
+  restoredAt: Date | null;
+  tokenHash: string;
+  issuedBy: string;
+  issuedByName: string;
+  /** Read for active links only, to build their URL. */
+  token: string | null;
+}
+
+/** The patient's canonical record, or null when the team has no such patient. */
+async function canonicalOf(tx: Tx, patientId: string): Promise<string | null> {
+  const [row] = await tx<{ canonicalId: string }[]>`
+    select canonical_id from sineobex.patients where id = ${patientId}`;
+  return row?.canonicalId ?? null;
+}
+
+/**
+ * Every link of the group, newest first: the active ones with their URL (both routes need
+ * patients.edit), the retired ones as history. `auditViews` logs each URL shown.
+ */
+async function linkState(
+  tx: Tx,
+  audit: AuditFn,
+  scope: TeamScope,
+  canonicalId: string,
+  auditViews: boolean,
+): Promise<IdLinkStateValue> {
+  const rows = await tx<LinkRow[]>`
+    select l.id, l.patient_id, l.status, l.reason, l.effective_at, l.made_offline, l.retired_at,
+           l.retired_reason, l.retired_by_link, l.restored_at, l.token_hash, l.issued_by,
+           u.display_name as issued_by_name,
+           case when l.status = 'active' then l.token end as token
+    from sineobex.patient_id_links l
+    join sineobex.patients p on p.team_id = l.team_id and p.id = l.patient_id
+    join sineobex.users u on u.id = l.issued_by
+    where p.team_id = ${scope.team.teamId} and p.canonical_id = ${canonicalId}
+    order by l.effective_at desc, l.received_at desc, l.id`;
+  const view = (r: LinkRow) => ({
+    id: r.id,
+    issuedOn: r.patientId,
+    ...(r.token ? { url: idLinkUrl(scope.deps.config.ID_LINK_BASE_URL, r.token) } : {}),
+    tokenRef: tokenRefOf(r.tokenHash),
+    status: r.status,
+    reason: r.reason,
+    effectiveAt: r.effectiveAt.toISOString(),
+    issuedBy: { userId: r.issuedBy, displayName: r.issuedByName },
+    madeOffline: r.madeOffline,
+    retiredAt: r.retiredAt?.toISOString() ?? null,
+    retiredReason: r.retiredReason,
+    replacedBy: r.retiredByLink,
+    restoredAt: r.restoredAt?.toISOString() ?? null,
+  });
+  const active = rows.filter((r) => r.status === 'active');
+  if (auditViews) {
+    for (const r of active) {
+      await audit({
+        action: 'id_link.viewed',
+        entity: 'id_link',
+        entityId: r.id,
+        patientId: canonicalId,
+        details: { linkId: r.id, tokenRef: tokenRefOf(r.tokenHash) },
+      });
+    }
+  }
+  return { active: active.map(view), history: rows.filter((r) => r.status !== 'active').map(view) };
+}
+
 /**
  * GET /v1/patients/{patientId}/id-link: the group's active links (usually one; one per merged
  * record that had a card until the next regeneration, D39) and their history. A merged ID answers
  * its survivor's. Audited as `id_link.viewed {linkId, tokenRef}` per active link shown.
  */
-export async function getIdLinks(_scope: TeamScope, _patientId: string): Promise<IdLinkStateValue> {
-  throw notImplemented();
+export async function getIdLinks(scope: TeamScope, patientId: string): Promise<IdLinkStateValue> {
+  return scope.tx(async (tx, audit) => {
+    const canonicalId = await canonicalOf(tx, patientId);
+    if (!canonicalId) throw notFound('patient');
+    return linkState(tx, audit, scope, canonicalId, true);
+  });
 }
 
 /**
  * POST /v1/patients/{patientId}/id-link: the server makes the token and runs the handshake in
  * 'online' mode with server time. 409 link_changed {activeLinkIds} or 409 patient_merged
- * {survivorId}; neither carries a URL or a token.
+ * {survivorId}; neither carries a URL or a token. A retry with the same linkId issues nothing twice.
  */
 export async function issueIdLink(
-  _scope: TeamScope,
-  _patientId: string,
-  _input: IssueIdLinkInput,
+  scope: TeamScope,
+  patientId: string,
+  input: IssueIdLinkInput,
 ): Promise<IdLinkStateValue> {
-  throw notImplemented();
+  return scope.tx(async (tx, audit) => {
+    await lockTeamWrites(tx, scope.team.teamId);
+    const canonicalId = await canonicalOf(tx, patientId);
+    if (!canonicalId) throw notFound('patient');
+    const [earlier] = await tx<{ canonicalId: string }[]>`
+      select p.canonical_id from sineobex.patient_id_links l
+      join sineobex.patients p on p.team_id = l.team_id and p.id = l.patient_id
+      where l.id = ${input.linkId}`;
+    if (earlier) {
+      // An issue that went through but whose answer never arrived: the cards as they are now.
+      if (earlier.canonicalId === canonicalId) return linkState(tx, audit, scope, canonicalId, true);
+      throw conflict('link_id_taken', 'That card ID is already in use. Reload the page and try again.');
+    }
+    const result = await idLinkHandshake(
+      tx,
+      audit,
+      {
+        linkId: input.linkId,
+        patientId,
+        token: newIdLinkToken(),
+        replacesLinkId: input.replacesLinkId,
+        reason: input.reason,
+        effectiveAt: scope.deps.now(),
+        clockVerified: true,
+        madeOffline: false,
+        issuedBy: scope.principal.userId,
+        deviceId: scope.meta.deviceId,
+        changeId: null,
+      },
+      'online',
+    );
+    if (result.status === 'link_changed') {
+      throw conflict(
+        'link_changed',
+        'Someone made a new card for this patient since you looked. Check the cards and try again.',
+        { activeLinkIds: result.activeLinkIds },
+      );
+    }
+    if (result.status === 'rejected') {
+      if (result.problem === 'patient_merged') {
+        throw conflict(
+          'patient_merged',
+          'This chart was merged into another. Make the card from the kept chart.',
+          { survivorId: result.survivorId },
+        );
+      }
+      // A token the server just made is taken (2^-128): fail, and the person tries again.
+      throw new Error(`id link issue refused: ${result.problem}`);
+    }
+    // The new card's URL is in the answer; id_link.generated already records it.
+    return linkState(tx, audit, scope, canonicalId, false);
+  });
 }
