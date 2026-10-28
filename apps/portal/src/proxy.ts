@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { authProvider } from '@/lib/auth';
 import { idleState, REFRESH_MARGIN_MS, sessionOptions, type SessionData } from '@/lib/session';
 
-// Pages anyone may load. Everything else needs a session that has passed MFA.
-const PUBLIC_PATHS = new Set(['/sign-in', '/sign-in/mfa', '/sign-in/mfa/enroll']);
+// Pages anyone may load. Everything else needs a session that has passed MFA. /c is where a Street
+// Medicine ID card's QR code leads, so anyone who finds a card may open it; it shows no team and
+// no patient data, and the card's token stays in the fragment, which never reaches this server.
+const PUBLIC_PATHS = new Set(['/sign-in', '/sign-in/mfa', '/sign-in/mfa/enroll', '/c']);
 
 function securityHeaders(response: NextResponse, csp: string, isDev: boolean) {
   response.headers.set('Content-Security-Policy', csp);
