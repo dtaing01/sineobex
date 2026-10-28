@@ -4,13 +4,11 @@ import { conflict, invalid, notFound } from '../lib/errors.ts';
 import { sha256Hex } from '../sync/canonical.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
 import { jsonb } from '../sync/records.ts';
-import { notImplemented } from './pending.ts';
-import { projectSummary } from './projection.ts';
+import { loadSummaries, projectSummary } from './projection.ts';
 import type {
   DeclineReversalInput,
   MergeProblemsInput,
   PageQueryValue,
-  PatientSummaryValue,
   ProblemViewValue,
   ReversalRequestPageValue,
   ReverseResolvedInput,
@@ -29,16 +27,6 @@ import type {
 
 /** Requests per page. */
 export const REVERSAL_PAGE_SIZE = 50;
-
-// The patients' summaries, from the loader search uses (design 3.1), so the two never drift.
-// TODO(S2): import loadSummaries from S2's module once it lands; until then the queue answers 501.
-async function loadSummaries(
-  _tx: Tx,
-  _scope: TeamScope,
-  _patientIds: string[],
-): Promise<Map<string, PatientSummaryValue>> {
-  throw notImplemented();
-}
 
 interface ProblemRow {
   id: string;

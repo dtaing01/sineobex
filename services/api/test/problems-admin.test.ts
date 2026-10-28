@@ -137,7 +137,12 @@ describe('problem admin', () => {
   type Body = ProblemView & {
     problem: ProblemView;
     mergeCandidates: ProblemView[];
-    requests: { request: ProblemView; original: ProblemView; patientId: string }[];
+    requests: {
+      request: ProblemView;
+      original: ProblemView;
+      patientId: string;
+      patient: Record<string, unknown>;
+    }[];
     error?: { code: string; details?: Record<string, unknown> };
   };
 
@@ -369,7 +374,6 @@ describe('problem admin', () => {
     });
   });
 
-  // Waits on S2: each request carries the patient's summary (loadSummaries, projectSummary).
   describe('the queue', () => {
     it('lists open requests beside their original, hiding sensitive ones from a role without them', async () => {
       const plain = await withRequest();
@@ -378,10 +382,15 @@ describe('problem admin', () => {
       const res = await call('/v1/team/problem-reversals', admin);
       expect(res.status).toBe(200);
       const mine = res.body.requests.filter((r) => [plain.request, sensitive.request].includes(r.request.id));
-      expect(mine.map((r) => [r.request.id, r.original.id, r.patientId])).toEqual([
-        [plain.request, plain.original, plain.patientId],
-        [sensitive.request, sensitive.original, sensitive.patientId],
-      ]);
+      // Both were asked for at the same moment: the queue breaks the tie by ID.
+      expect(mine.map((r) => [r.request.id, r.original.id, r.patientId]).sort()).toEqual(
+        [
+          [plain.request, plain.original, plain.patientId],
+          [sensitive.request, sensitive.original, sensitive.patientId],
+        ].sort(),
+      );
+      // Each request carries who the patient is, as the role may see it.
+      for (const r of mine) expect(r.patient).toMatchObject({ preferredName: 'Demo person' });
       await expectAudit(h, 'problem.reversals_viewed', { after: mark, count: 1 });
       await expectAudit(h, 'patient.viewed', { after: mark, patientId: plain.patientId, count: 1 });
 
