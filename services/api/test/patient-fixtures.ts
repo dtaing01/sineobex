@@ -212,7 +212,8 @@ export async function mergeDirect(
     const [merge] = await sql<{ id: string }[]>`
       insert into sineobex.patient_merges (team_id, pair_id, survivor_id, merged_id, decision_id, merged_by)
       values (${teamId}, ${pair!.id}, ${survivorId}, ${mergedId}, ${decision!.id}, ${decidedBy}) returning id`;
-    await sql`update sineobex.patients set status = 'merged', merged_into = ${survivorId}
+    // One update for the merged row: its checks tie status, merged_into and canonical_id together.
+    await sql`update sineobex.patients set status = 'merged', merged_into = ${survivorId}, canonical_id = ${survivorId}
               where team_id = ${teamId} and id = ${mergedId}`;
     await sql`update sineobex.patients set canonical_id = ${survivorId}
               where team_id = ${teamId} and canonical_id = ${mergedId}`;
