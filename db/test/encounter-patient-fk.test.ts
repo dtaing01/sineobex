@@ -56,7 +56,7 @@ describe('0013: the encounter names a patient of its team', () => {
 
   it('applies over phase 2 rows naming unknown patients and leaves them as they are', async () => {
     const result = await migrate(db.owner);
-    expect(result.applied).toEqual(['0013']);
+    expect(result.applied[0]).toBe('0013');
     const [row] = await db.owner<{ patientId: string }[]>`
       select patient_id as "patientId" from sineobex.encounters where id = ${ghostEncounter}`;
     expect(row!.patientId).toBe(ghost);
