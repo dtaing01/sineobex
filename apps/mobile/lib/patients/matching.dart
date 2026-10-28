@@ -7,12 +7,18 @@ import 'match_constants.dart';
 import 'normalize.dart';
 import 'trigram.dart';
 
-/// The search and duplicate-match score (design 5.2), the phone's copy of
-/// services/api/src/patients/matching.ts. SQL and FTS5 only find candidates; this decides. The
-/// phone has no sound-alike term (Double Metaphone is server only, design 14.1 #10), so its score
-/// can be lower than the server's for the same pair; match.json records both.
+/// The search and duplicate-matching score (design 5.2): one formula, implemented here and in the
+/// server's services/api/src/patients/matching.ts. SQL and the phone's FTS5 table only find
+/// candidates; this decides. packages/contract/test-vectors/match.json pins the two to each other:
+/// every case records the phone's answer (this file: no sound-alike term, design 14.1 #10) and the
+/// server's (with Double Metaphone codes from Postgres), scores to 1e-9, bands and reasons exactly.
+///
+/// Everything that could depend on the order of the inputs (which string is "best", which reason is
+/// given on a tie) is decided over a fixed order: names by source (preferred, legal, alias,
+/// descriptor) then text, births by precision then value, and a later candidate replaces an earlier
+/// one only when strictly better.
 
-/// Where a name string came from.
+/// Where a name string came from, in the order ties are decided.
 enum NameSource {
   /// What they go by.
   preferred,
@@ -22,238 +28,352 @@ enum NameSource {
 
   alias,
 
-  /// What they look like; searched (weighted), never matched.
+  /// What they look like: searched (weighted), never matched.
   descriptor,
 }
 
-/// One name string, normalized once for scoring against many.
-class MatchName {
-  factory MatchName(NameSource source, String? text) {
-    final norm = normalizeName(text) ?? '';
-    final tokens = scoringTokens(nameTokens(norm));
-    return MatchName._(source, norm, tokens, trigrams(norm), [for (final t in tokens) trigrams(t)]);
+/// One searchable string of a patient, normalized once for scoring against many.
+class NameKey {
+  /// From [norm], already normalized (the phone's search table stores names normalized).
+  NameKey.normalized(NameSource source, String norm) : this._(source, norm, scoringTokens(norm));
+
+  NameKey._(this.source, this.norm, this.tokens) : _joined = trigrams(tokens.join(' '));
+
+  /// [text] as typed or stored; null when nothing of it is left after normalizing.
+  static NameKey? of(NameSource source, String? text) {
+    final norm = normalizeName(text);
+    return norm == null ? null : NameKey.normalized(source, norm);
   }
 
   /// A legal name as the scorer reads it: "given family", either part possibly absent.
-  factory MatchName.legal(String? given, String? family) =>
-      MatchName(NameSource.legal, [given, family].nonNulls.join(' '));
-
-  MatchName._(this.source, this.norm, this.tokens, this.trigramSet, this._tokenTrigrams);
+  static NameKey? legal(String? given, String? family) => of(NameSource.legal, [given, family].nonNulls.join(' '));
 
   final NameSource source;
 
-  /// `normalize_name`, or '' when nothing is left.
+  /// `normalize_name` of the text.
   final String norm;
 
-  /// The tokens scored: weak words dropped unless nothing else is left.
+  /// The words scored: weak words dropped unless nothing else is left.
   final List<String> tokens;
-  final Set<String> trigramSet;
-  final List<Set<String>> _tokenTrigrams;
-
-  bool get isEmpty => tokens.isEmpty;
+  final Set<String> _joined;
 }
 
-/// A patient as the scorer sees it: for a stored patient, every name string and birth of its group
-/// (a canonical patient and everything merged into it); for an intake, what was typed.
-class MatchPatient {
-  MatchPatient({this.patientId, required Iterable<MatchName> names, Iterable<Birth> births = const [], this.lastSeen})
-    : names = [
-        for (final n in names)
-          if (!n.isEmpty) n,
-      ],
-      births = List.unmodifiable(births);
+/// A canonical patient and every record merged into it, as scoring sees them: the strings the
+/// caller may search, and the births.
+class CandidateGroup {
+  CandidateGroup({
+    required this.patientId,
+    required Iterable<NameKey> keys,
+    Iterable<Birth?> births = const [],
+    this.lastSeen,
+  }) : keys = _sortedKeys(keys),
+       births = _sortedBirths(births);
 
-  /// The canonical ID; null for an intake not yet saved.
-  final String? patientId;
-  final List<MatchName> names;
+  /// The canonical ID.
+  final String patientId;
+  final List<NameKey> keys;
   final List<Birth> births;
 
-  /// Orders equal scores, most recently seen first.
+  /// Orders equal scores: the most recently seen first.
   final DateTime? lastSeen;
 }
 
-class MatchScore {
-  const MatchScore(this.score, this.reasons);
+/// Someone being registered (or a stored patient, at the fake server's re-run): legal "given
+/// family", preferred name, street names, and a birth. A description never matches.
+class MatchSubject {
+  MatchSubject({required Iterable<NameKey> names, this.birth}) : names = _sortedKeys(names);
 
-  final double score;
+  /// The subject of an intake form, from what was typed.
+  factory MatchSubject.of({
+    String? preferredName,
+    ({String? given, String? family})? legalName,
+    Iterable<String> aliases = const [],
+    Birth? birth,
+  }) => MatchSubject(
+    names: [
+      NameKey.of(NameSource.preferred, preferredName),
+      if (legalName != null) NameKey.legal(legalName.given, legalName.family),
+      for (final a in aliases) NameKey.of(NameSource.alias, a),
+    ].nonNulls,
+    birth: birth,
+  );
 
-  /// Why, as the closed list the screens put in words, in [MatchReason] order.
-  final List<MatchReason> reasons;
-
-  /// likely ≥ [matchLikely] > possible ≥ [matchPossible] > weak.
-  MatchBand get band => score >= matchLikely
-      ? MatchBand.likely
-      : score >= matchPossible
-      ? MatchBand.possible
-      : MatchBand.weak;
+  final List<NameKey> names;
+  final Birth? birth;
 }
 
+/// A year and month to search by, which no recorded birth is (`BirthQuery` without a day).
+typedef BirthMonth = ({int year, int month});
+
+/// What a person typed into search: a name, street name or description, and a birth.
+class SearchQuery {
+  SearchQuery({String? text, this.birth}) : norm = normalizeName(text), month = null;
+
+  /// A search by a year and month (the portal's form allows it; the phone's Born field gives a
+  /// [Birth]).
+  SearchQuery.yearMonth({String? text, required BirthMonth this.month}) : norm = normalizeName(text), birth = null;
+
+  /// The normalized search text; null for a search by birth date alone.
+  final String? norm;
+  final Birth? birth;
+  final BirthMonth? month;
+
+  /// Nothing to search by: no name, and no full birth date (a year never browses the list).
+  bool get isEmpty => norm == null && birth is! BirthDate;
+}
+
+/// A score and why.
+class MatchScore {
+  const MatchScore(this.score, this.reasons);
+  final double score;
+
+  /// Why, as the closed list the screens put in words, in [MatchReason]'s order; never a name.
+  final List<MatchReason> reasons;
+
+  MatchBand get band => bandOf(score);
+}
+
+/// likely ≥ [matchLikely] > possible ≥ [matchPossible] > weak.
+MatchBand bandOf(double score) => score >= matchLikely
+    ? MatchBand.likely
+    : score >= matchPossible
+    ? MatchBand.possible
+    : MatchBand.weak;
+
+List<NameKey> _sortedKeys(Iterable<NameKey> keys) => [...keys]
+  ..sort((a, b) {
+    final s = a.source.index - b.source.index;
+    return s != 0 ? s : a.norm.compareTo(b.norm);
+  });
+
 // --------------------------------------------------------------------------------------------
-// Tokens
+// Nicknames
 // --------------------------------------------------------------------------------------------
 
-final Map<String, Set<int>> _nicknameIndex = () {
-  final index = <String, Set<int>>{};
+final Map<String, List<int>> _groupsOf = () {
+  final index = <String, List<int>>{};
   for (var i = 0; i < nicknameGroups.length; i++) {
-    for (final name in nicknameGroups[i].split(' ')) {
-      (index[name] ??= {}).add(i);
+    for (final t in nicknameGroups[i].split(' ')) {
+      (index[t] ??= []).add(i);
     }
   }
   return index;
 }();
 
-/// Two tokens share a line of the nickname data (José/Pepe, Mike/Michael).
+/// Two different tokens on one line of the nickname list ("mike" and "michael").
 bool areNicknames(String a, String b) {
   if (a == b) return false;
-  final ga = _nicknameIndex[a];
-  final gb = _nicknameIndex[b];
+  final ga = _groupsOf[a];
+  final gb = _groupsOf[b];
   return ga != null && gb != null && ga.any(gb.contains);
 }
 
-/// Every token that shares a nickname line with [token]; the phone's FTS query ORs their trigrams.
-Set<String> nicknamesOf(String token) =>
-    {for (final g in _nicknameIndex[token] ?? const <int>{}) ...nicknameGroups[g].split(' ')}..remove(token);
+/// Every token that shares a line with [t], sorted. Expanded at query time only, so no reindex.
+List<String> nicknamePartners(String t) =>
+    ({for (final g in _groupsOf[t] ?? const <int>[]) ...nicknameGroups[g].split(' ')}..remove(t)).toList()..sort();
 
-/// Optimal string alignment distance: insertions, deletions, substitutions and adjacent
-/// transpositions, each substring edited once.
+/// The tokens candidate retrieval looks for (the FTS query's terms): the scoring tokens of every
+/// query string plus their nickname partners, sorted.
+List<String> retrievalTokens(Iterable<String> norms) => ({
+  for (final n in norms)
+    for (final t in scoringTokens(n)) ...[t, ...nicknamePartners(t)],
+}).toList()..sort();
+
+// --------------------------------------------------------------------------------------------
+// Tokens
+// --------------------------------------------------------------------------------------------
+
+/// Optimal string alignment distance: insertions, deletions, substitutions, adjacent swaps.
 int osaDistance(String a, String b) {
-  final n = a.length;
-  final m = b.length;
-  var prev2 = List<int>.filled(m + 1, 0);
-  var prev = List<int>.generate(m + 1, (j) => j);
-  for (var i = 1; i <= n; i++) {
-    final cur = List<int>.filled(m + 1, 0)..[0] = i;
-    for (var j = 1; j <= m; j++) {
-      final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
-      var d = min(min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + cost);
-      if (i > 1 && j > 1 && a.codeUnitAt(i - 1) == b.codeUnitAt(j - 2) && a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
-        d = min(d, prev2[j - 2] + 1);
-      }
-      cur[j] = d;
+  final m = a.length;
+  final n = b.length;
+  final d = [for (var i = 0; i <= m; i++) List<int>.generate(n + 1, (j) => i == 0 ? j : (j == 0 ? i : 0))];
+  for (var i = 1; i <= m; i++) {
+    for (var j = 1; j <= n; j++) {
+      final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+      var v = min(min(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) v = min(v, d[i - 2][j - 2] + 1);
+      d[i][j] = v;
     }
-    prev2 = prev;
-    prev = cur;
   }
-  return prev[m];
+  return d[m][n];
 }
 
-/// How a token matched, for the reasons.
-enum _How { exact, nickname, typo, initial, prefix, none }
+/// How two tokens matched. [exact] and [prefix] give no reason of their own; the phone never
+/// finds a sound-alike.
+enum How { exact, nickname, typo, initial, prefix }
 
-typedef _TokMatch = ({double sim, _How how});
+typedef TokenMatch = ({double sim, How? how});
 
-_TokMatch _tok(String q, Set<String> qt, String c, Set<String> ct, {required bool search}) {
-  if (q == c) return (sim: 1.0, how: _How.exact);
-  _TokMatch best = (sim: 0.0, how: _How.none);
-  void consider(double sim, _How how) {
+/// `tokSim(q, c)`: 1 when equal, else the best of nickname, edit distance, trigrams, an initial
+/// and (in [search]) a prefix ("smi" finds Smitty). Evaluated in that order; a later term wins only
+/// when strictly higher.
+TokenMatch tokSim(String q, String c, {required bool search}) {
+  if (q == c) return (sim: 1.0, how: How.exact);
+  TokenMatch best = (sim: 0.0, how: null);
+  void consider(double sim, How how) {
     if (sim > best.sim) best = (sim: sim, how: how);
   }
 
-  if (areNicknames(q, c)) consider(nicknameSim, _How.nickname);
-  final longest = max(q.length, c.length);
-  if (min(q.length, c.length) >= 3) consider(1 - osaDistance(q, c) / longest, _How.typo);
-  consider(trigramSetSimilarity(qt, ct), _How.typo);
-  if ((q.length == 1 && c.startsWith(q)) || (c.length == 1 && q.startsWith(c))) consider(initialSim, _How.initial);
-  if (search && q.length >= 3 && c.startsWith(q)) consider(prefixSim, _How.prefix);
+  if (areNicknames(q, c)) consider(nicknameSim, How.nickname);
+  final shorter = min(q.length, c.length);
+  final longer = max(q.length, c.length);
+  if (shorter >= 3) consider(1 - osaDistance(q, c) / longer, How.typo);
+  consider(trigramSimilarity(q, c), How.typo);
+  if ((q.length == 1 && c.startsWith(q)) || (c.length == 1 && q.startsWith(c))) consider(initialSim, How.initial);
+  if (search && q.length >= 3 && c.startsWith(q)) consider(prefixSim, How.prefix);
   return best;
 }
 
-/// `tokSim(q, c)`: how close a query token is to a stored one, from 0 to 1. [search] allows the
-/// prefix term (typing "smi").
-double tokSim(String q, String c, {bool search = false}) => _tok(q, trigrams(q), c, trigrams(c), search: search).sim;
+/// A token match counts toward the reasons only when it is at least a weak name match.
+bool _counts(TokenMatch m) => m.sim >= nameFloor;
 
-/// For each token of [from], its best match among [to].
-List<_TokMatch> _bestEach(MatchName from, MatchName to, {required bool search}) => [
-  for (var i = 0; i < from.tokens.length; i++)
-    [
-      for (var j = 0; j < to.tokens.length; j++)
-        _tok(from.tokens[i], from._tokenTrigrams[i], to.tokens[j], to._tokenTrigrams[j], search: search),
-    ].fold<_TokMatch>((sim: 0.0, how: _How.none), (a, b) => b.sim > a.sim ? b : a),
-];
-
-double _mean(Iterable<double> xs, int n) => n == 0 ? 0 : xs.fold<double>(0, (a, b) => a + b) / n;
-
-/// `coverage(Q, C)`: every typed token is found. The mean over the query's tokens of their best
-/// [tokSim] against the stored string's.
-double coverage(MatchName query, MatchName stored, {bool search = true}) =>
-    stored.isEmpty ? 0 : _mean(_bestEach(query, stored, search: search).map((m) => m.sim), query.tokens.length);
-
-/// `symSim(A, B)`: each side's tokens found in the other, averaged over both.
-double symSim(MatchName a, MatchName b) {
-  if (a.isEmpty || b.isEmpty) return 0;
-  final ab = _bestEach(a, b, search: false).fold<double>(0, (s, m) => s + m.sim);
-  final ba = _bestEach(b, a, search: false).fold<double>(0, (s, m) => s + m.sim);
-  return (ab + ba) / (a.tokens.length + b.tokens.length);
+TokenMatch _bestOf(String q, List<String> cs, {required bool search}) {
+  TokenMatch best = (sim: 0.0, how: null);
+  for (final c in cs) {
+    final m = tokSim(q, c, search: search);
+    if (m.sim > best.sim) best = m;
+  }
+  return best;
 }
 
-/// `nameSim(a, b)`: the whole strings' trigram similarity or the token alignment, whichever is
-/// higher.
-double nameSim(MatchName a, MatchName b) => max(trigramSetSimilarity(a.trigramSet, b.trigramSet), symSim(a, b));
+typedef Similarity = ({double sim, List<How> hows});
+
+/// `coverage(Q, C)`: the mean over the typed tokens of their best match, so every typed word is
+/// found.
+Similarity coverage(List<String> qs, List<String> cs, {required bool search}) {
+  if (qs.isEmpty || cs.isEmpty) return (sim: 0.0, hows: const []);
+  var sum = 0.0;
+  final hows = <How>[];
+  for (final q in qs) {
+    final m = _bestOf(q, cs, search: search);
+    sum += m.sim;
+    if (m.how != null && _counts(m)) hows.add(m.how!);
+  }
+  return (sim: sum / qs.length, hows: hows);
+}
+
+/// `symSim(A, B)`: coverage both ways, weighted by the number of tokens on each side.
+Similarity symSim(List<String> as, List<String> bs) {
+  if (as.isEmpty || bs.isEmpty) return (sim: 0.0, hows: const []);
+  var sum = 0.0;
+  final hows = <How>[];
+  for (final (xs, ys) in [(as, bs), (bs, as)]) {
+    for (final x in xs) {
+      final m = _bestOf(x, ys, search: false);
+      sum += m.sim;
+      if (m.how != null && _counts(m)) hows.add(m.how!);
+    }
+  }
+  return (sim: sum / (as.length + bs.length), hows: hows);
+}
+
+/// `nameSim(a, b)`: the whole strings' trigram similarity, or [symSim] of their tokens, whichever
+/// is higher.
+Similarity nameSim(NameKey a, NameKey b) {
+  final sym = symSim(a.tokens, b.tokens);
+  final whole = trigramSetSimilarity(a._joined, b._joined);
+  return whole > sym.sim ? (sim: whole, hows: whole >= nameFloor ? const [How.typo] : const []) : sym;
+}
 
 // --------------------------------------------------------------------------------------------
 // Births
 // --------------------------------------------------------------------------------------------
 
-/// `dobSim(x, y)`, with the reason it gives; null when either birth is unknown.
-({double sim, MatchReason? reason})? dobSim(Birth? x, Birth? y) {
-  if (x == null || y == null) return null;
-  ({double sim, MatchReason? reason}) give(double sim, MatchReason reason) =>
-      sim > 0 ? (sim: sim, reason: reason) : (sim: 0.0, reason: null);
-  final dy = (x.year - y.year).abs();
-  switch ((x, y)) {
-    case (BirthEstimate(), _) || (_, BirthEstimate()):
-      return give(dy <= estimateRange ? estimateNear : 0, MatchReason.dobEstimate);
-    case (final BirthDate a, final BirthDate b):
-      if (a == b) return (sim: 1.0, reason: MatchReason.dobExact);
-      if (a.year == b.year && a.month == b.day && a.day == b.month && a.month <= 12 && a.day <= 12) {
-        return (sim: dobSwapped, reason: MatchReason.dobSwapped);
-      }
-      if (a.year == b.year && a.month == b.month) return (sim: dobMonthYear, reason: MatchReason.dobMonthYear);
-      if (a.month == b.month && a.day == b.day && (const {1, 10, 100}.contains(dy) || _transposed(a.year, b.year))) {
-        return (sim: dobYearSlip, reason: MatchReason.dobYearSlip);
-      }
-      return give(a.year == b.year ? dobYear : 0, MatchReason.dobYear);
-    default:
-      // A year against a year or a date.
-      return give(dy == 0 ? yearSame : (dy == 1 ? yearNear : 0), MatchReason.dobYear);
-  }
-}
+/// How two births agree; [reason] is null when they disagree (sim 0).
+typedef DobMatch = ({double sim, MatchReason? reason});
 
-/// Two years whose digits differ by one swap of neighbours (1946/1964).
-bool _transposed(int a, int b) {
+const DobMatch _disagree = (sim: 0.0, reason: null);
+
+/// 1946/1964: the digits with one adjacent pair swapped.
+bool _digitsTransposed(int a, int b) {
   final x = a.toString();
   final y = b.toString();
   if (x.length != y.length || x == y) return false;
   for (var i = 0; i + 1 < x.length; i++) {
-    if (x[i] != y[i]) {
-      return x[i] == y[i + 1] && x[i + 1] == y[i] && x.substring(i + 2) == y.substring(i + 2);
+    if (x[i] == y[i + 1] &&
+        x[i + 1] == y[i] &&
+        x.substring(0, i) == y.substring(0, i) &&
+        x.substring(i + 2) == y.substring(i + 2)) {
+      return true;
     }
   }
   return false;
 }
 
-({double sim, MatchReason? reason})? _bestBirth(Birth? x, List<Birth> ys) {
-  ({double sim, MatchReason? reason})? best;
-  for (final y in ys) {
-    final d = dobSim(x, y);
-    if (d != null && (best == null || d.sim > best.sim)) best = d;
+/// Years 1, 10 or 100 apart, or with two digits transposed: a slip of the pen.
+bool _yearSlip(int a, int b) => const {1, 10, 100}.contains((a - b).abs()) || _digitsTransposed(a, b);
+
+DobMatch _yearRule(int a, int b) => a == b
+    ? (sim: yearSame, reason: MatchReason.dobYear)
+    : (a - b).abs() == 1
+    ? (sim: yearNear, reason: MatchReason.dobYear)
+    : _disagree;
+
+/// `dobSim(x, y)`: null when either is unknown. [x] is the query or the new patient, [y] a stored
+/// birth.
+DobMatch? dobSim(Birth? x, Birth? y) {
+  if (x == null || y == null) return null;
+  if (x is BirthEstimate || y is BirthEstimate) {
+    return (x.year - y.year).abs() <= estimateRange ? (sim: estimateNear, reason: MatchReason.dobEstimate) : _disagree;
+  }
+  if (x is! BirthDate || y is! BirthDate) return _yearRule(x.year, y.year);
+  final a = x;
+  final b = y;
+  if (a == b) return (sim: 1.0, reason: MatchReason.dobExact);
+  if (a.year == b.year && a.day <= 12 && a.day != a.month && a.month == b.day && a.day == b.month) {
+    return (sim: dobSwapped, reason: MatchReason.dobSwapped);
+  }
+  if (a.year == b.year && a.month == b.month) return (sim: dobMonthYear, reason: MatchReason.dobMonthYear);
+  if (a.month == b.month && a.day == b.day && _yearSlip(a.year, b.year)) {
+    return (sim: dobYearSlip, reason: MatchReason.dobYearSlip);
+  }
+  if (a.year == b.year) return (sim: dobYear, reason: MatchReason.dobYear);
+  return _disagree;
+}
+
+/// A year and month searched against a stored birth: against a full date, the same year and
+/// month [dobMonthYear], the same year only [dobYear], otherwise 0; against a year it is a year.
+DobMatch? dobSimMonth(BirthMonth x, Birth? y) {
+  if (y == null) return null;
+  if (y is BirthEstimate) {
+    return (x.year - y.year).abs() <= estimateRange ? (sim: estimateNear, reason: MatchReason.dobEstimate) : _disagree;
+  }
+  if (y is! BirthDate) return _yearRule(x.year, y.year);
+  if (x.year == y.year && x.month == y.month) return (sim: dobMonthYear, reason: MatchReason.dobMonthYear);
+  if (x.year == y.year) return (sim: dobYear, reason: MatchReason.dobYear);
+  return _disagree;
+}
+
+String _birthKey(Birth b) => b is BirthDate ? b.iso : b.year.toString().padLeft(4, '0');
+
+int _precisionOrder(Birth b) => switch (b) {
+  BirthDate() => 0,
+  BirthYear() => 1,
+  BirthEstimate() => 2,
+};
+
+/// Births in a fixed order, unknown ones dropped.
+List<Birth> _sortedBirths(Iterable<Birth?> births) => [...births.nonNulls]
+  ..sort((a, b) {
+    final p = _precisionOrder(a) - _precisionOrder(b);
+    return p != 0 ? p : _birthKey(a).compareTo(_birthKey(b));
+  });
+
+DobMatch? _best(Iterable<DobMatch?> matches) {
+  DobMatch? best;
+  for (final m in matches) {
+    if (m != null && (best == null || m.sim > best.sim)) best = m;
   }
   return best;
 }
 
-// --------------------------------------------------------------------------------------------
-// Search and match
-// --------------------------------------------------------------------------------------------
+/// The best [dobSim] against any of the group's births; null when nothing can be compared.
+DobMatch? bestDob(Birth? x, List<Birth> births) => _best(births.map((y) => dobSim(x, y)));
 
-/// What a person typed into search: a name, street name or description, and a birth.
-class SearchQuery {
-  SearchQuery({String? text, this.birth}) : name = MatchName(NameSource.preferred, text);
-  final MatchName name;
-  final Birth? birth;
-
-  /// Nothing to search by: no name, and no full birth date.
-  bool get isEmpty => name.isEmpty && birth is! BirthDate;
-}
+// --------------------------------------------------------------------------------------------
+// Scores
+// --------------------------------------------------------------------------------------------
 
 MatchReason _sourceReason(NameSource s) => switch (s) {
   NameSource.preferred => MatchReason.name,
@@ -262,146 +382,159 @@ MatchReason _sourceReason(NameSource s) => switch (s) {
   NameSource.descriptor => MatchReason.descriptor,
 };
 
-MatchReason? _howReason(_How h) => switch (h) {
-  _How.nickname => MatchReason.nickname,
-  _How.typo => MatchReason.typo,
-  _How.initial => MatchReason.initial,
-  _How.exact || _How.prefix || _How.none => null,
-};
+void _addHows(Set<MatchReason> out, List<How> hows) {
+  for (final h in hows) {
+    switch (h) {
+      case How.nickname:
+        out.add(MatchReason.nickname);
+      case How.typo:
+        out.add(MatchReason.typo);
+      case How.initial:
+        out.add(MatchReason.initial);
+      case How.exact || How.prefix:
+        break;
+    }
+  }
+}
 
 List<MatchReason> _ordered(Set<MatchReason> reasons) => [
   for (final r in MatchReason.values)
     if (reasons.contains(r)) r,
 ];
 
-/// The search score (Patients tab): the best of the candidate's strings by [coverage], a
-/// description weighted by [descriptorWeight], blended with the birth when the query has one. A
-/// birth-date-only search scores the birth alone. Shown when the score is at least [searchMin].
-MatchScore scoreSearch(SearchQuery query, MatchPatient candidate) {
+/// The search score of one candidate group (design 5.2, "Search"): the best of its strings by
+/// [coverage] of the typed words (a description weighted by [descriptorWeight]), blended with the
+/// birth when the query has one and the group has one. A search by birth date alone scores the
+/// birth. Reasons: the best string's source and how its words matched, when the name counts at all
+/// ([nameFloor]), and the birth's reason. The caller passes only the strings the role may search.
+MatchScore scoreSearch(SearchQuery q, CandidateGroup group) {
   final reasons = <MatchReason>{};
   var text = 0.0;
-  if (!query.name.isEmpty) {
-    MatchName? best;
-    List<_TokMatch>? bestTokens;
-    for (final s in candidate.names) {
-      final tokens = _bestEach(query.name, s, search: true);
-      final weight = s.source == NameSource.descriptor ? descriptorWeight : 1.0;
-      final score = _mean(tokens.map((m) => m.sim), tokens.length) * weight;
-      if (score > text) {
-        text = score;
-        best = s;
-        bestTokens = tokens;
+  ({NameKey key, List<How> hows})? best;
+  final norm = q.norm;
+  if (norm != null) {
+    final qs = scoringTokens(norm);
+    for (final key in group.keys) {
+      final cov = coverage(qs, key.tokens, search: true);
+      final s = cov.sim * (key.source == NameSource.descriptor ? descriptorWeight : 1);
+      if (s > text) {
+        text = s;
+        best = (key: key, hows: cov.hows);
       }
     }
-    if (best != null) {
-      reasons.add(_sourceReason(best.source));
-      reasons.addAll(bestTokens!.map((m) => _howReason(m.how)).nonNulls);
+    if (best != null && text >= nameFloor) {
+      reasons.add(_sourceReason(best.key.source));
+      _addHows(reasons, best.hows);
     }
   }
-  final dob = query.birth == null ? null : _bestBirth(query.birth, candidate.births);
+  final month = q.month;
+  final dob = month != null ? _best(group.births.map((y) => dobSimMonth(month, y))) : bestDob(q.birth, group.births);
+  final score = norm == null
+      ? (dob?.sim ?? 0.0)
+      : (dob != null ? (1 - searchDobWeight) * text + searchDobWeight * dob.sim : text);
   if (dob?.reason case final r?) reasons.add(r);
-  final double score;
-  if (query.name.isEmpty) {
-    score = query.birth is BirthDate ? (dob?.sim ?? 0) : 0;
-  } else {
-    score = dob == null ? text : (1 - searchDobWeight) * text + searchDobWeight * dob.sim;
-  }
   return MatchScore(score, _ordered(reasons));
 }
 
-/// The duplicate-match score (intake before saving, and the fake server's re-run): the best pair
-/// of name strings, an alias pair weighted by [aliasWeight], with the best birth agreement, and
-/// the caps that keep a birth alone, one shared street name, or two different full dates from
-/// flagging anyone. The description never takes part.
-MatchScore scoreMatch(MatchPatient subject, MatchPatient stored) {
-  final reasons = <MatchReason>{};
-  var n = 0.0;
-  var bestSingle = false;
-  for (final a in subject.names) {
-    if (a.source == NameSource.descriptor) continue;
-    var aBest = 0.0;
-    MatchName? aMatch;
-    for (final b in stored.names) {
-      if (b.source == NameSource.descriptor) continue;
-      final w = a.source == NameSource.alias || b.source == NameSource.alias ? aliasWeight : 1.0;
-      final s = nameSim(a, b) * w;
-      if (s > aBest) {
-        aBest = s;
-        aMatch = b;
-      }
-      if (s > n) {
-        n = s;
-        bestSingle = a.tokens.length == 1 && b.tokens.length == 1;
-      }
-    }
-    if (aMatch != null && aBest >= nameFloor) {
-      reasons.add(_sourceReason(aMatch.source));
-      reasons.addAll(_bestEach(a, aMatch, search: false).map((m) => _howReason(m.how)).nonNulls);
+/// The match score (design 5.2, "Match"): the best name pair N (an alias on either side weighs
+/// [aliasWeight]), the best birth D, the blend, and the three caps that keep a birth alone, one
+/// shared street name or two different full dates from flagging anyone. Reasons: every name pair
+/// that would be a possible match on its own (weighted ≥ [matchPossible]) and the best pair when it
+/// counts (≥ [nameFloor]), each as its stored source (an alias on either side is `alias`) and how
+/// its words matched; then the birth's reason.
+MatchScore scoreMatch(MatchSubject subject, CandidateGroup group) {
+  final mine = subject.names.where((k) => k.source != NameSource.descriptor);
+  final theirs = group.keys.where((k) => k.source != NameSource.descriptor).toList();
+  final pairs = <({double s, MatchReason reason, List<How> hows, bool single})>[];
+  var bestIndex = -1;
+  for (final a in mine) {
+    for (final b in theirs) {
+      final alias = a.source == NameSource.alias || b.source == NameSource.alias;
+      final sim = nameSim(a, b);
+      final pair = (
+        s: sim.sim * (alias ? aliasWeight : 1),
+        reason: alias ? MatchReason.alias : _sourceReason(b.source),
+        hows: sim.hows,
+        single: a.tokens.length == 1 && b.tokens.length == 1,
+      );
+      if (bestIndex < 0 || pair.s > pairs[bestIndex].s) bestIndex = pairs.length;
+      pairs.add(pair);
     }
   }
-  final births = subject.births.isEmpty ? null : _bestOver(subject.births, stored.births);
-  if (births?.reason case final r?) reasons.add(r);
-  var total = births == null ? n * noDobFactor : wName * n + wDob * births.sim;
-  if (births == null && bestSingle) total = min(total, singleNameCap);
-  if (births != null &&
-      births.sim == 0 &&
-      subject.births.every((b) => b is BirthDate) &&
-      stored.births.every((b) => b is BirthDate)) {
+  final best = bestIndex < 0 ? null : pairs[bestIndex];
+  final n = best?.s ?? 0.0;
+  final dob = bestDob(subject.birth, group.births);
+  var total = dob != null ? wName * n + wDob * dob.sim : n * noDobFactor;
+  if (dob == null && (best?.single ?? false)) total = min(total, singleNameCap);
+  if (dob != null && dob.sim == 0 && subject.birth is BirthDate && group.births.any((b) => b is BirthDate)) {
     total = min(total, dobConflictCap);
   }
   if (n < nameFloor) total = min(total, dobOnlyCap);
+
+  final reasons = <MatchReason>{};
+  for (final (i, p) in pairs.indexed) {
+    if (p.s >= matchPossible || (i == bestIndex && n >= nameFloor)) {
+      reasons.add(p.reason);
+      _addHows(reasons, p.hows);
+    }
+  }
+  if (dob?.reason case final r?) reasons.add(r);
   return MatchScore(total, _ordered(reasons));
 }
 
-({double sim, MatchReason? reason})? _bestOver(List<Birth> xs, List<Birth> ys) {
-  ({double sim, MatchReason? reason})? best;
-  for (final x in xs) {
-    final d = _bestBirth(x, ys);
-    if (d != null && (best == null || d.sim > best.sim)) best = d;
-  }
-  return best;
-}
+// --------------------------------------------------------------------------------------------
+// Ranking
+// --------------------------------------------------------------------------------------------
 
-/// A scored candidate.
-class RankedPatient {
-  const RankedPatient(this.patient, this.score);
-  final MatchPatient patient;
+/// A scored candidate group.
+class RankedGroup {
+  const RankedGroup(this.group, this.score);
+  final CandidateGroup group;
   final MatchScore score;
 }
 
-int _byRank(RankedPatient a, RankedPatient b) {
-  final s = b.score.score.compareTo(a.score.score);
-  if (s != 0) return s;
-  final la = a.patient.lastSeen;
-  final lb = b.patient.lastSeen;
-  if (la != lb) {
-    if (la == null) return 1;
-    if (lb == null) return -1;
-    final l = lb.compareTo(la);
-    if (l != 0) return l;
+/// Score desc, then the most recently seen, then canonical ID: the server's order.
+int byRank(RankedGroup a, RankedGroup b) {
+  if (a.score.score != b.score.score) return b.score.score.compareTo(a.score.score);
+  final sa = a.group.lastSeen;
+  final sb = b.group.lastSeen;
+  if (sa != sb) {
+    if (sa == null) return 1;
+    if (sb == null) return -1;
+    return sb.compareTo(sa);
   }
-  return (a.patient.patientId ?? '').compareTo(b.patient.patientId ?? '');
+  return a.group.patientId.compareTo(b.group.patientId);
 }
 
-/// Scores, keeps what reaches [searchMin], sorts like the server (score, then most recently seen,
-/// then ID) and cuts to [limit].
-List<RankedPatient> rankSearch(SearchQuery query, Iterable<MatchPatient> candidates, {int limit = searchLimit}) {
-  if (query.isEmpty) return const [];
-  final hits = [
-    for (final c in candidates)
-      if (scoreSearch(query, c) case final s when s.score >= searchMin) RankedPatient(c, s),
-  ]..sort(_byRank);
-  return hits.take(limit).toList();
+/// Search hits at or above [searchMin], best first: at most [limit], and whether more scored that
+/// high (Show more).
+({List<RankedGroup> hits, bool truncated}) rankSearch(
+  SearchQuery query,
+  Iterable<CandidateGroup> groups, {
+  int limit = searchLimit,
+}) {
+  if (query.isEmpty) return (hits: const [], truncated: false);
+  final ranked = [
+    for (final g in groups)
+      if (scoreSearch(query, g) case final s when s.score >= searchMin) RankedGroup(g, s),
+  ]..sort(byRank);
+  return (hits: ranked.take(limit).toList(), truncated: ranked.length > limit);
 }
 
-/// Scores [subject] against each candidate except its own group, keeps what reaches
-/// [matchPossible], sorts like [rankSearch] and cuts to [limit]. Suppressed pairs ("Not the same
-/// person") are the caller's to leave out.
-List<RankedPatient> rankMatches(MatchPatient subject, Iterable<MatchPatient> candidates, {int limit = matchLimit}) {
-  final hits = [
-    for (final c in candidates)
-      if (subject.patientId == null || c.patientId != subject.patientId)
-        if (scoreMatch(subject, c) case final s when s.score >= matchPossible) RankedPatient(c, s),
-  ]..sort(_byRank);
-  return hits.take(limit).toList();
+/// Candidates for someone being registered, at or above [minScore], best first, at most [limit].
+/// [exclude] holds canonical IDs left out: the patient's own group when editing, and pairs a
+/// person kept separate.
+List<RankedGroup> rankMatches(
+  MatchSubject subject,
+  Iterable<CandidateGroup> groups, {
+  Set<String> exclude = const {},
+  double minScore = matchPossible,
+  int limit = matchLimit,
+}) {
+  final ranked = [
+    for (final g in groups)
+      if (!exclude.contains(g.patientId))
+        if (scoreMatch(subject, g) case final s when s.score >= minScore) RankedGroup(g, s),
+  ]..sort(byRank);
+  return ranked.take(limit).toList();
 }
