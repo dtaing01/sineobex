@@ -1,5 +1,8 @@
 import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
+import { findMatches, loadMatchSubject, suppressedCanonicals } from './candidates.ts';
+import { canonicalOf } from './charts.ts';
+import { CANDIDATE_LIMIT, QUEUE_THRESHOLD } from './match-constants.ts';
 import { notImplemented } from './pending.ts';
 import type {
   DecideDuplicateInput,
@@ -28,6 +31,9 @@ export interface RematchResult {
   possibleDuplicate: boolean;
 }
 
+/** Every candidate at or above QUEUE_THRESHOLD is queued, not only the few the intake panel shows. */
+const REMATCH_LIMIT = CANDIDATE_LIMIT;
+
 /**
  * The server's re-run of matching (phase 3 design 8.2), inside the caller's transaction with the
  * team lock already held (lockTeamWrites): every accepted patient create ('sync'), every accepted
@@ -35,15 +41,69 @@ export interface RematchResult {
  * review decision ('correction'), and for the survivor after a merge ('merge_rematch'). Skips the
  * patient's own group and suppressed pairs, upserts every candidate at or above QUEUE_THRESHOLD and
  * audits `duplicate.flagged {pairId, score, sources}` with both IDs in details.patientIds.
+ *
+ * It takes no lock of its own (D32): pair rows are only written under the team lock, which the
+ * caller holds. A patient the team doesn't have, or one with no name to match, flags nothing.
+ * Refreshing an open or not-sure pair keeps the higher score, adds the source and moves
+ * last_flagged_at; a decided pair is left alone. A creator's "Not them" never suppresses a pair.
  */
 export async function rematchPatient(
-  _tx: Tx,
-  _audit: AuditFn,
-  _patientId: string,
-  _source: RematchSource,
-  _options: RematchOptions = {},
+  tx: Tx,
+  audit: AuditFn,
+  patientId: string,
+  source: RematchSource,
+  options: RematchOptions = {},
 ): Promise<RematchResult> {
-  throw notImplemented();
+  const none: RematchResult = { flagged: [], possibleDuplicate: false };
+  const [own] = await tx<{ teamId: string; canonicalId: string }[]>`
+    select team_id, canonical_id from sineobex.patients
+    where team_id = sineobex.current_team_id() and id = ${patientId}`;
+  if (!own) return none;
+  const self = own.canonicalId;
+  const subject = await loadMatchSubject(tx, self);
+  if (!subject || subject.names.length === 0) return none;
+  const exclude = await suppressedCanonicals(tx, self);
+  exclude.add(self);
+  const found = await findMatches(tx, subject, { exclude, minScore: QUEUE_THRESHOLD, limit: REMATCH_LIMIT });
+  if (found.length === 0) return none;
+
+  // What the creator saw may name a patient merged since: compare groups, not IDs.
+  const intake = await canonicalOf(tx, [...(options.shown ?? []), ...(options.dismissed ?? [])]);
+  const groups = (ids: readonly string[] = []) =>
+    new Set(ids.flatMap((id) => (intake.has(id) ? [intake.get(id)!] : [])));
+  const dismissed = groups(options.dismissed);
+  const shown = new Set([...groups(options.shown), ...dismissed]);
+
+  const flagged: RematchResult['flagged'] = [];
+  for (const f of found) {
+    const [a, b] = self < f.canonicalId ? [self, f.canonicalId] : [f.canonicalId, self];
+    // A decided pair (keep separate, merged, superseded) is left as it is: the `where` returns no row.
+    const [row] = await tx<{ id: string; created: boolean; score: string; sources: string[] }[]>`
+      insert into sineobex.duplicate_pairs as d
+        (team_id, patient_a, patient_b, score, reasons, sources, creator_dismissed)
+      values (${own.teamId}, ${a}, ${b}, ${f.score}, ${f.reasons}::text[], ${[source]}::text[],
+        ${dismissed.has(f.canonicalId)})
+      on conflict (team_id, patient_a, patient_b) do update set
+        score = greatest(d.score, excluded.score),
+        reasons = case when excluded.score > d.score then excluded.reasons else d.reasons end,
+        sources = case when ${source}::text = any (d.sources) then d.sources else d.sources || excluded.sources end,
+        creator_dismissed = d.creator_dismissed or excluded.creator_dismissed,
+        last_flagged_at = now()
+      where d.status in ('open', 'not_sure')
+      returning d.id, (xmax = 0) as created, d.score, d.sources`;
+    if (!row) continue;
+    flagged.push({ pairId: row.id, otherId: f.canonicalId, score: Number(row.score), created: row.created });
+    if (row.created) {
+      await audit({
+        action: 'duplicate.flagged',
+        entity: 'duplicate_pair',
+        entityId: row.id,
+        patientId: null,
+        details: { pairId: row.id, score: Number(row.score), sources: row.sources, patientIds: [a, b] },
+      });
+    }
+  }
+  return { flagged, possibleDuplicate: flagged.some((f) => !shown.has(f.otherId)) };
 }
 
 /** GET /v1/team/duplicates: open and not-sure pairs (or decided ones), oldest flagged first. */
