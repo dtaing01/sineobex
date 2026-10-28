@@ -4,7 +4,13 @@ import Link from 'next/link';
 import { decideQuarantine } from '@/app/actions/devices';
 import { ActionForm, ChoiceField, SubmitButton, TextField } from '@/components/ActionForm';
 import { api, unwrap } from '@/lib/api';
-import { formatDateTime, quarantineValue, syncFieldLabel } from '@/lib/labels';
+import {
+  formatDateTime,
+  quarantineValue,
+  syncEntityLabel,
+  syncEntityNoun,
+  syncFieldLabel,
+} from '@/lib/labels';
 
 export const metadata: Metadata = { title: 'Quarantine' };
 
@@ -19,15 +25,9 @@ const REASON: Record<Item['reason'], string> = {
   awaiting_review: 'Belongs to a record also waiting for review. Decide on that record first.',
 };
 
-const ENTITY: Record<string, string> = {
-  encounter: 'Encounter',
-  encounter_note: 'Note',
-  audit: 'Activity log entry',
-};
-
 function what(item: Item): string {
-  const entity = ENTITY[item.entity] ?? item.entity;
-  if (item.op === 'create') return `New ${entity.toLowerCase()}`;
+  if (item.op === 'create') return `New ${syncEntityNoun(item.entity)}`;
+  const entity = syncEntityLabel(item.entity);
   return item.field ? `${entity}: ${syncFieldLabel(item.field)}` : entity;
 }
 
