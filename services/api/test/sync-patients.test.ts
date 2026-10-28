@@ -349,6 +349,160 @@ describe('phase 3 sync: patient-side records', () => {
       });
       expect(await one(phoneA, t.aToken, c)).toMatchObject({ details: { problem: 'too_many_allergies' } });
     });
+
+    it('street names: two phones’ aliases union, a removal is set once, and at most 20 stay active', async () => {
+      const p = await patient();
+      const add = (phone: FakePhone, alias: string) =>
+        phone.change({ entity: 'patient_alias', op: 'create', value: { patientId: p.id, alias } });
+      const a = await add(phoneA, 'Smitty');
+      const b = await add(phoneB, 'Big Del');
+      const mark = await auditMark(h);
+      expect(await asA(a)).toEqual([accepted(a)]);
+      expect(await asB(b)).toEqual([accepted(b)]);
+      await expectAudit(h, 'alias.created', { after: mark, patientId: p.id, count: 2 });
+      expect(await count('patient_aliases', `patient_id = '${p.id}' and status = 'active'`)).toBe(2);
+      // Matching re-ran for each, with the alias as a name key.
+      expect(await count('patient_name_keys', `patient_id = '${p.id}' and source = 'alias'`)).toBe(2);
+
+      const remove = (phone: FakePhone, reason: string) =>
+        phone.change({
+          entity: 'patient_alias',
+          recordId: a.recordId,
+          op: 'set',
+          field: 'removal',
+          value: { reason },
+        });
+      const first = await remove(phoneA, 'Demo: he dislikes it');
+      expect(await asA(first)).toEqual([accepted(first)]);
+      await expectAudit(h, 'alias.removed', { after: mark, patientId: p.id, count: 1 });
+      const second = await remove(phoneB, 'Demo: not his name');
+      expect((await asB(second))[0]!.details).toEqual({ outcome: 'history_only' });
+      const [alias] = await h.scratch.owner<{ status: string; removedReason: string; removedBy: string }[]>`
+        select status, removed_reason as "removedReason", removed_by as "removedBy"
+        from sineobex.patient_aliases where id = ${a.recordId}`;
+      expect(alias).toEqual({ status: 'removed', removedReason: 'Demo: he dislikes it', removedBy: t.aId });
+      expect(await count('patient_name_keys', `source_id = '${a.recordId}'`)).toBe(0);
+
+      await h.scratch.owner`
+        insert into sineobex.patient_aliases (id, team_id, patient_id, alias, author_user_id)
+        select gen_random_uuid(), ${t.teamId}, ${p.id}, 'Demo alias ' || i, ${t.aId} from generate_series(1, 19) as i`;
+      const tooMany = await add(phoneA, 'Twenty-first');
+      expect(await one(phoneA, t.aToken, tooMany)).toMatchObject({
+        details: { problem: 'too_many_aliases' },
+      });
+    });
+
+    it('an intake like someone the creator wasn’t shown says so in its receipt', async () => {
+      const like = {
+        preferredName: 'Ozzie',
+        legalName: { given: 'Oswald', family: 'Prendergast' },
+        birth: { precision: 'day', date: '1958-11-02' },
+      };
+      const existing = await patient(like as NewPatient);
+      const unshown = await phoneA.change({ entity: 'patient', op: 'create', value: intakeValue(like) });
+      expect(await one(phoneA, t.aToken, unshown)).toEqual({
+        ...accepted(unshown),
+        details: { possibleDuplicate: true },
+      });
+      const shown = await phoneB.change({
+        entity: 'patient',
+        op: 'create',
+        value: intakeValue({
+          ...like,
+          matchCheck: {
+            checkId: randomUUID(),
+            where: 'phone',
+            indexVersion: null,
+            shown: [existing.id, unshown.recordId],
+            dismissed: [existing.id, unshown.recordId],
+          },
+        }),
+      });
+      expect(await one(phoneB, t.bToken, shown)).toEqual(accepted(shown));
+      expect(
+        await count('duplicate_pairs', `'${shown.recordId}' in (patient_a, patient_b) and creator_dismissed`),
+      ).toBe(2);
+    });
+
+    it('a record read through sync has the shape the chart gives it', async () => {
+      const p = await patient({
+        aliases: ['Smitty'],
+        allergies: [{ substance: 'Penicillin', severity: 'severe' }],
+      });
+      const problemId = await createProblem(h, t.teamId, p.id, t.aId, { code: 'J02.9' });
+      const chart = await call(h, `/v1/patients/${p.id}`, { token: t.aToken, teamId: t.teamId });
+      expect(chart.status).toBe(200);
+      const c = chart.body as unknown as {
+        patient: object;
+        aliases: { id: string }[];
+        allergies: { id: string }[];
+        problems: { id: string }[];
+      };
+      const synced = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: t.aToken,
+        teamId: t.teamId,
+        json: {
+          records: [
+            { entity: 'patient', id: p.id },
+            { entity: 'patient_alias', id: p.aliasIds[0] },
+            { entity: 'patient_allergy', id: p.allergyIds[0] },
+            { entity: 'problem', id: problemId },
+          ],
+        },
+      });
+      expect(synced.body.records).toEqual([
+        c.patient,
+        c.aliases.find((x) => x.id === p.aliasIds[0]),
+        c.allergies.find((x) => x.id === p.allergyIds[0]),
+        c.problems.find((x) => x.id === problemId),
+      ]);
+    });
+  });
+
+  describe('ID links made on a phone (design 10.4)', () => {
+    const token = () => randomUUID().replace(/-/g, '').slice(0, 22);
+    const link = (phone: FakePhone, patientId: string, replacesLinkId: string | null = null) =>
+      phone.change({
+        entity: 'id_link',
+        op: 'create',
+        value: { patientId, token: token(), replacesLinkId, reason: replacesLinkId ? 'lost' : 'first_card' },
+      });
+
+    it('a community health worker makes a card: accepted with its outcome, the same on a retry', async () => {
+      const p = await patient();
+      const c = await link(chwPhone, p.id);
+      const r = await one(chwPhone, t.chwToken, c);
+      expect(r).toEqual({
+        ...accepted(c),
+        details: { linkOutcome: 'active', activeLinkId: c.recordId, retiredLinkIds: [] },
+      });
+      expect(await one(chwPhone, t.chwToken, c)).toEqual(r);
+      const next = await link(chwPhone, p.id, c.recordId);
+      expect((await one(chwPhone, t.chwToken, next)).details).toEqual({
+        linkOutcome: 'active',
+        activeLinkId: next.recordId,
+        retiredLinkIds: [c.recordId],
+      });
+    });
+
+    it('a card for a merged patient, or one the team lacks, is a stale reference; Billing/Data’s is held', async () => {
+      const survivor = await patient();
+      const merged = await patient();
+      await mergeDirect(h, t.teamId, merged.id, survivor.id, t.adminId);
+      const r = await asA(await link(phoneA, merged.id), await link(phoneA, randomUUID()));
+      expect(r.map((x) => [x.reason, x.details])).toEqual([
+        ['stale_reference', { problem: 'patient_merged', survivorId: survivor.id }],
+        ['stale_reference', { problem: 'patient_missing' }],
+      ]);
+      const held = await link(billing.phone, survivor.id);
+      expect(await one(billing.phone, billing.token, held)).toMatchObject({
+        reason: 'permission',
+        quarantined: true,
+        hash: held.valueHash,
+      });
+      expect(await count('patient_id_links', `patient_id in ('${survivor.id}', '${merged.id}')`)).toBe(0);
+    });
   });
 
   describe('permission per entity, existing keys only (D37)', () => {
@@ -398,13 +552,18 @@ describe('phase 3 sync: patient-side records', () => {
       expect(await count('patient_allergies', `id = '${allergy.recordId}' and status = 'active'`)).toBe(1);
     });
 
-    it('a CHW registers a patient', async () => {
+    it('a CHW registers a patient with a street name', async () => {
       const c = await chwPhone.change({
         entity: 'patient',
         op: 'create',
         value: intakeValue({ preferredName: 'Bo' }),
       });
-      expect(await one(chwPhone, t.chwToken, c)).toEqual(accepted(c));
+      const alias = await chwPhone.change({
+        entity: 'patient_alias',
+        op: 'create',
+        value: { patientId: c.recordId, alias: 'Bobo' },
+      });
+      expect(await send(chwPhone, t.chwToken, c, alias)).toEqual([accepted(c), accepted(alias)]);
     });
 
     it('Billing/Data holds every patient-side write for review', async () => {
