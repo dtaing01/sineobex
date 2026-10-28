@@ -177,7 +177,7 @@ for (const [email, role, screens] of [
   ['billing@example.com', 'Billing/Data', ['Patients']],
   ['owner@example.com', 'an owner outside any team', []],
 ] as const) {
-  test(`${role} sees only ${screens.length ? screens.join(' and ') : 'no patient screens'}`, async ({
+  test(`${role} sees ${screens.length ? `only ${screens.join(' and ')}` : 'no patient screens'}`, async ({
     page,
   }) => {
     await signIn(page, email);
