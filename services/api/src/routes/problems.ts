@@ -94,7 +94,7 @@ export function registerProblemRoutes(app: App, deps: Deps) {
   });
 
   app.openapi(declineRoute, async (c) => {
-    const scope = await teamScope(c, deps, { permissions: ['patients.reverse_resolved'] });
+    const scope = await teamScope(c, deps, { permissions: ['patients.reverse_resolved'], recentAuth: true });
     return c.json(await declineReversal(scope, c.req.valid('param').problemId, c.req.valid('json')), 200);
   });
 

@@ -76,7 +76,8 @@ interface PatientRow {
 
 /**
  * Loads a patient of the team. `lock` takes the row `FOR NO KEY UPDATE`, as merges do, so it never
- * waits on the `FOR KEY SHARE` a child insert's foreign key holds (D32).
+ * waits on the `FOR KEY SHARE` a child insert's foreign key holds (D32). Must read every field
+ * exactly as the sync patient entity (sync/entities/patient.ts) does, until one replaces the other.
  */
 export async function loadPatientRecord(tx: Tx, id: string, lock: boolean): Promise<PatientRecord | null> {
   const [r] = await tx<PatientRow[]>`
@@ -155,7 +156,11 @@ function columnsOf(field: PatientField, value: unknown): Record<string, unknown>
   }
 }
 
-/** Writes one patient field and its version, the way the sync apply path keeps the bookkeeping. */
+/**
+ * Writes one patient field and its version, the way the sync apply path keeps the bookkeeping. Must
+ * stay in step with the sync patient entity's writer (sync/entities/patient.ts) until one replaces
+ * the other.
+ */
 export async function writePatientField(
   tx: Tx,
   rec: PatientRecord,
