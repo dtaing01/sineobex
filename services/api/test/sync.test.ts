@@ -4,6 +4,7 @@ import { valueHash } from '../src/sync/canonical.ts';
 import { MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
 import { QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
 import { createHarness, type Harness } from './harness.ts';
+import { createPatient } from './patient-fixtures.ts';
 import {
   addMember,
   call,
@@ -1215,7 +1216,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const reviewerToken = await h.tokenFor('reviewer@example.com');
       const phone = await FakePhone.create();
       await register(h, phone, reviewerToken, t.teamId);
-      const patientId = randomUUID();
+      // Encounters name a real patient of the team (migration 0013).
+      const { id: patientId } = await createPatient(h, t.teamId, t.adminId);
       const own = await phone.change({
         entity: 'encounter',
         op: 'create',
@@ -1275,7 +1277,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const harper = await addMember(h, t, 'harper@example.com', 'Harper (demo)');
       const phone = await FakePhone.create();
       await register(h, phone, harper.token, t.teamId);
-      const patientId = randomUUID();
+      // Encounters name a real patient of the team (migration 0013).
+      const { id: patientId } = await createPatient(h, t.teamId, t.adminId);
       const encounter = await phone.change({
         entity: 'encounter',
         op: 'create',
@@ -1530,7 +1533,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       // doesn't have, were logged with no patient, so the view was missing from the patient's
       // access report.
       const { phone, userId } = await removedPhone(h, t, 'avery@example.com', 'Avery (demo)');
-      const patientId = randomUUID();
+      // Encounters name a real patient of the team (migration 0013).
+      const { id: patientId } = await createPatient(h, t.teamId, t.adminId);
       const encounter = await phone.change({
         entity: 'encounter',
         op: 'create',

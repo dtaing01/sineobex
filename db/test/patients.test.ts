@@ -68,9 +68,12 @@ describe('0009-0012 on a database holding phase 2 rows', () => {
     await db.owner`insert into sineobex.field_history (team_id, entity, record_id, field, version, value, kind, changed_by)
                    values (${team}, 'encounter', ${encounter}, 'status', 1, '"draft"', 'created', ${user})`;
 
-    const result = await migrate(db.owner);
-    // Later migrations (0013 onward) apply too; these four come first.
-    expect(result.applied.slice(0, 4)).toEqual(['0009', '0010', '0011', '0012']);
+    // 0009-0012 only: 0013 adds the encounter's patient foreign key, tested in encounter-patient-fk.test.ts.
+    for (const f of await readdir(MIGRATIONS_DIR)) {
+      if (f >= '0009' && f < '0013') await copyFile(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    const result = await migrate(db.owner, { dir });
+    expect(result.applied).toEqual(['0009', '0010', '0011', '0012']);
     const [row] = await db.owner<{ patientId: string }[]>`
       select patient_id as "patientId" from sineobex.encounters where id = ${encounter}`;
     expect(row!.patientId).toBe(ghost);
