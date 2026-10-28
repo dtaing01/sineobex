@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { z } from '@hono/zod-openapi';
 import { expect } from 'vitest';
 import { canonicalJson, valueHash } from '../src/sync/canonical.ts';
+import type { ChangeEntity } from '../src/sync/schemas.ts';
 import type { Harness } from './harness.ts';
 
 export type Json = Record<string, unknown> & { error?: { code: string; details?: Record<string, unknown> } };
@@ -44,7 +46,7 @@ export class FakePhone {
   }
 
   async change(c: {
-    entity: 'encounter' | 'encounter_note' | 'audit';
+    entity: z.infer<typeof ChangeEntity>;
     recordId?: string;
     op: 'create' | 'set' | 'append';
     field?: string;
@@ -275,3 +277,77 @@ export type Result = {
 };
 
 export const results = (body: Json) => body.results as Result[];
+
+/**
+ * A patient create's value (phase 3 design 2.1): consent given verbally and the privacy notice
+ * acknowledged, with new IDs for both rows, plus [fields]. Everyone here is made up.
+ */
+export function intakeValue(fields: Record<string, unknown> = {}) {
+  return {
+    consent: {
+      id: randomUUID(),
+      decision: 'given',
+      method: 'verbal',
+      scriptVersion: '2026-10-1',
+      language: 'en',
+    },
+    privacyNotice: { id: randomUUID(), decision: 'acknowledged' },
+    ...fields,
+  };
+}
+
+/** A draft encounter written straight to the database, as a synced create leaves it. */
+export async function createEncounter(
+  h: Harness,
+  teamId: string,
+  authorId: string,
+  patientId: string | null,
+) {
+  const id = randomUUID();
+  const at = h.clock.now.toISOString();
+  const fields = ['patientId', 'location', 'status'];
+  await h.scratch.owner`
+    insert into sineobex.encounters (id, team_id, patient_id, kind, author_user_id, started_at, field_versions,
+      field_meta)
+    values (${id}, ${teamId}, ${patientId}, 'medical', ${authorId}, ${at},
+      ${h.scratch.owner.json(Object.fromEntries(fields.map((f) => [f, 1])))},
+      ${h.scratch.owner.json(Object.fromEntries(fields.map((f) => [f, { by: authorId, at, changeId: null }])))})`;
+  return id;
+}
+
+export type ProblemStatus = 'new' | 'ongoing' | 'resolved';
+
+/**
+ * A problem written straight to the database the way the seed writes one: each observed status in
+ * order (the status version counts them), the last one current, observed at [at] (default: the
+ * harness clock).
+ */
+export async function createProblem(
+  h: Harness,
+  teamId: string,
+  patientId: string,
+  authorId: string,
+  p: { statuses?: ProblemStatus[]; at?: Date; code?: string; sensitive?: boolean; title?: string } = {},
+) {
+  const id = randomUUID();
+  const statuses = p.statuses ?? ['new'];
+  const at = (p.at ?? h.clock.now).toISOString();
+  const sql = h.scratch.owner;
+  const current = statuses[statuses.length - 1]!;
+  await sql`
+    insert into sineobex.problems (id, team_id, patient_id, title, code_system, code, sensitive, status,
+      status_changed_at, status_changed_by, status_checked_at, author_user_id, field_versions, field_meta, version)
+    values (${id}, ${teamId}, ${patientId}, ${p.title ?? 'Demo problem'}, ${p.code ? 'icd10cm' : null}, ${p.code ?? null},
+      ${p.sensitive ?? false}, ${current}, ${at}, ${authorId}, ${at}, ${authorId},
+      ${sql.json({ status: statuses.length })}, ${sql.json({ status: { by: authorId, at, changeId: null } })},
+      ${statuses.length})`;
+  for (const [i, status] of statuses.entries()) {
+    await sql`
+      insert into sineobex.field_history (team_id, entity, record_id, field, version, value, previous_value, kind,
+        changed_by)
+      values (${teamId}, 'problem', ${id}, 'status', ${i + 1}, ${sql.json({ status, encounterId: null })},
+        ${i === 0 ? null : sql.json({ status: statuses[i - 1]!, encounterId: null })}, ${i === 0 ? 'created' : 'set'},
+        ${authorId})`;
+  }
+  return id;
+}
