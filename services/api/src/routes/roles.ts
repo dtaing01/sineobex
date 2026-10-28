@@ -67,8 +67,8 @@ function slug(name: string): string {
   const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 30);
+    .slice(0, 27) // custom_ + 27 + _ + 6 = 41 characters, the most roles.key allows
+    .replace(/^_+|_+$/g, '');
   return `custom_${base || 'role'}_${crypto.randomUUID().slice(0, 6)}`;
 }
 

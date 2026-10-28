@@ -377,6 +377,15 @@ describe('phase 1 foundation', () => {
       isStandard: false,
       permissions: ['routes.view', 'patients.view'],
     });
+    // A long name still makes a key the database accepts (41 characters at most).
+    const long = await call('/v1/team/roles', {
+      method: 'POST',
+      token: mercyToken,
+      teamId,
+      json: { name: 'Healthcare Staff + Review duplicates', permissions: ['patients.view'] },
+    });
+    expect(long.status).toBe(201);
+    expect(long.body.key).toMatch(/^[a-z][a-z0-9_]{1,40}$/);
     const standard = await call(`/v1/team/roles/${roles.logistics}`, {
       method: 'PUT',
       token: mercyToken,
