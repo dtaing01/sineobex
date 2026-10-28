@@ -414,13 +414,11 @@ export async function mergeProblems(
       update sineobex.problems set merged_into = ${into.id}
       where team_id = ${absorbed.teamId} and merged_into = ${absorbed.id} returning id`;
     await tx`update sineobex.problems set merged_into = ${into.id} where id = ${absorbed.id}`;
-    // The comment is kept with the other reasons. patient_corrections has no kind for a problem
-    // merge; it is the last step of a reversal (design 9.4 step 3), recorded on field `mergedInto`.
-    // PLAN-OPEN: a `problem_merge` kind needs a migration (patient_corrections_kind_check).
+    // The comment is kept with the other reasons (0014), on the absorbed entry's `mergedInto`.
     const [correction] = await tx<{ id: string }[]>`
       insert into sineobex.patient_corrections
         (team_id, patient_id, kind, entity, record_id, field, old_value, new_value, reason, decided_by, decided_at)
-      values (${absorbed.teamId}, ${absorbed.patientId}, 'problem_reversal', 'problem', ${absorbed.id},
+      values (${absorbed.teamId}, ${absorbed.patientId}, 'problem_merge', 'problem', ${absorbed.id},
               'mergedInto', null, ${jsonb(tx, { intoProblemId: into.id })}, ${input.comment},
               ${scope.principal.userId}, ${scope.deps.now()})
       returning id`;

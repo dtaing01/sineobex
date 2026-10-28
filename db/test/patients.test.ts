@@ -69,7 +69,8 @@ describe('0009-0012 on a database holding phase 2 rows', () => {
                    values (${team}, 'encounter', ${encounter}, 'status', 1, '"draft"', 'created', ${user})`;
 
     const result = await migrate(db.owner);
-    expect(result.applied).toEqual(['0009', '0010', '0011', '0012']);
+    // Later files (0014 onward) apply after these, in the same run.
+    expect(result.applied.slice(0, 4)).toEqual(['0009', '0010', '0011', '0012']);
     const [row] = await db.owner<{ patientId: string }[]>`
       select patient_id as "patientId" from sineobex.encounters where id = ${encounter}`;
     expect(row!.patientId).toBe(ghost);

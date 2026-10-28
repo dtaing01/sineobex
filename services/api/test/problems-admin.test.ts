@@ -314,6 +314,22 @@ describe('problem admin', () => {
       // A problem that was never a request isn't one now.
       expect((await decline(original)).status).toBe(404);
     });
+
+    it('is an admin decision: it needs a recent sign-in, and patients.reverse_resolved (refusal logged)', async () => {
+      const { request } = await withRequest();
+      const stale = {
+        ...admin,
+        token: await h.tokenFor(adminEmail, { authTime: new Date(h.clock.now.getTime() - 3600_000) }),
+      };
+      const old = await decline(request, stale);
+      expect(old.status).toBe(403);
+      expect(old.body.error?.code).toBe('reauth_required');
+      const mark = await auditMark(h);
+      expect((await decline(request, clinician)).status).toBe(403);
+      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied!.details).toMatchObject({ permission: 'patients.reverse_resolved' });
+      expect(await row(request)).toMatchObject({ reversalRequest: 'open' });
+    });
   });
 
   describe('merge', () => {
@@ -341,9 +357,14 @@ describe('problem admin', () => {
         intoId: original,
         correctionId: expect.any(String),
       });
-      const [correction] = await h.scratch.owner<{ field: string; reason: string }[]>`
-        select field, reason from sineobex.patient_corrections where id = ${event!.details.correctionId as string}`;
-      expect(correction).toEqual({ field: 'mergedInto', reason: 'Same burn, one entry' });
+      const [correction] = await h.scratch.owner<{ kind: string; field: string; reason: string }[]>`
+        select kind, field, reason from sineobex.patient_corrections
+        where id = ${event!.details.correctionId as string}`;
+      expect(correction).toEqual({
+        kind: 'problem_merge',
+        field: 'mergedInto',
+        reason: 'Same burn, one entry',
+      });
 
       // Merged once: it can't be merged or reversed again.
       expect((await merge(request, original)).body.error?.code).toBe('problem_merged');
