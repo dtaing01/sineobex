@@ -1,5 +1,6 @@
-import { recognisableAfter } from '../../patients/recognisable.ts';
 import type { Tx } from '../../db/database.ts';
+import { ESTIMATE_RANGE } from '../../patients/match-constants.ts';
+import { recognisableAfter } from '../../patients/recognisable.ts';
 import {
   appendHistory,
   historyOf,
@@ -265,11 +266,8 @@ function writeUnlessUnrecognisable(s: SetContext, kind: HistoryKind): Promise<Ou
   return writeValue(s, kind);
 }
 
-// PLAN-OPEN: tune on pilot data (module 2). How far, in years, a stated birth may be from an
-// estimated one ("about 46") and still refine it (design 5.3, 14.1 #12). Must equal ESTIMATE_RANGE
-// in patients/match-constants.ts, which the matcher uses.
-export const ESTIMATE_RANGE = 3;
-
+// An estimate ("about 46") is refined to a stated year or date only within ESTIMATE_RANGE years of
+// it, the matcher's own range (design 2.4, 14.1 #12).
 type BirthValue = { precision: 'day'; date: string } | { precision: 'year' | 'estimated'; year: number };
 type LegalNameValue = { given: string | null; family: string | null };
 
