@@ -9,6 +9,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { me, team } = await currentUser();
   const nav = [
     { href: '/home', label: 'Home', show: !!team },
+    // Patients (phase 3 design 12.2): existing permissions only (D37), the same rules the API checks.
+    { href: '/patients', label: 'Patients', show: can(team, 'patients.view') },
+    {
+      href: '/team/reviews',
+      label: 'Reviews',
+      show: can(team, 'patients.edit') || can(team, 'patients.correct_identity'),
+    },
+    { href: '/team/duplicates', label: 'Duplicates', show: can(team, 'patients.review_duplicates') },
+    {
+      href: '/team/merges',
+      label: 'Merges',
+      show: can(team, 'patients.review_duplicates') || can(team, 'patients.correct_identity'),
+    },
+    {
+      href: '/team/problem-reversals',
+      label: 'Problem reversals',
+      show: can(team, 'patients.reverse_resolved'),
+    },
     {
       href: '/team/members',
       label: 'Team members',
