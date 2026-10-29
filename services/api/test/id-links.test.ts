@@ -11,8 +11,10 @@ import {
   newIdLinkToken,
   type HandshakeInput,
 } from '../src/patients/id-links.ts';
+import { canonicalJson } from '../src/sync/canonical.ts';
 import { lockTeamWrites } from '../src/sync/locks.ts';
 import { createHarness, type Harness } from './harness.ts';
+import { FakePhone, push, register, results } from './sync-fixtures.ts';
 import {
   auditMark,
   createPatient,
@@ -478,6 +480,37 @@ describe('ID links', () => {
     expect(await activeInGroup(patientId)).toEqual([caseys.linkId]);
     expect(await link(jordans.linkId)).toMatchObject({ status: 'retired' });
     expect(await link(cardId)).toMatchObject({ status: 'retired' });
+  });
+
+  it('confirms a card a phone pushed with the hash of the value it sent, not of the token', async () => {
+    const phone = await FakePhone.create();
+    await register(h, phone, jordan.token, teamId);
+    const p = await createPatient(h, teamId, jordan.userId);
+    const token = newIdLinkToken();
+    tokens.push(token);
+    const value = { patientId: p.id, token, replacesLinkId: null, reason: 'first_card' };
+    const change = await phone.change({ entity: 'id_link', op: 'create', value });
+    const res = await push(h, phone, jordan.token, teamId, [change]);
+    expect(res.status).toBe(200);
+    const [result] = results(res.body);
+    // The receipt carries the hash of the canonical JSON the phone hashed (module 2: "receipt with
+    // the token's hash" is the hash of the value that holds it), so the phone can let go of it.
+    const canonical = createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+    expect(change.valueHash).toBe(canonical);
+    expect(result).toMatchObject({
+      status: 'accepted',
+      hash: canonical,
+      details: { linkOutcome: 'active', activeLinkId: change.recordId, retiredLinkIds: [] },
+    });
+    const [receipt] = await h.scratch.owner<{ valueHash: string }[]>`
+      select value_hash as "valueHash" from sineobex.sync_changes where change_id = ${change.changeId}`;
+    expect(receipt!.valueHash).toBe(canonical);
+    // The link itself is looked up by the token's own hash.
+    expect(await link(change.recordId)).toMatchObject({
+      status: 'active',
+      tokenHash: await idLinkTokenHash(token),
+    });
+    expect(JSON.stringify(res.body)).not.toContain(token);
   });
 
   describe('online issue and the card screen (design 3.5)', () => {
