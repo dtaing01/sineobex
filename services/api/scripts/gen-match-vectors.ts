@@ -1,5 +1,4 @@
 // Writes the matching vectors the API shares with the phone (phase 3 design 5.1, 13.2), from Postgres:
-//   packages/contract/data/unaccent-latin.json    what lower(unaccent(c)) leaves of each character
 //   packages/contract/test-vectors/normalize.json sineobex.normalize_name() of each input
 //   packages/contract/test-vectors/trigram.json   pg_trgm similarity() of each pair
 //   packages/contract/test-vectors/match.json     scores from the TypeScript scorer, with the
@@ -8,8 +7,16 @@
 //   TEST_ADMIN_DATABASE_URL=postgres://... pnpm --filter @sineobex/api exec tsx scripts/gen-match-vectors.ts
 // test/matching.test.ts rebuilds the three vector files and fails if a committed copy differs, so a
 // change to matching.ts comes with regenerated vectors (and the same change in the phone's scorer).
-// The TypeScript normalizer reads the committed accent map: when the map changes, run this twice.
-import { mkdir, writeFile } from 'node:fs/promises';
+//
+// The accent map, packages/contract/data/unaccent-latin.json, is frozen: the API, the phone and
+// Postgres's normalize_name (0015, generated from it) all read it, because the live `unaccent`
+// dictionary differs between Postgres versions. Changing it is a deliberate, separate step:
+//   ... gen-match-vectors.ts --refresh-accent-map            rebuild the map from this Postgres's unaccent
+//   ... gen-match-vectors.ts --write-migration 00NN_name     write a migration pinning normalize_name to it
+// then run the plain command again (twice: the TypeScript normalizer reads the committed map).
+// A changed map always needs a new migration; test/matching.test.ts fails until the newest
+// definition of normalize_name is the one this script generates.
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createScratchDatabase } from '@sineobex/db/testing';
@@ -50,9 +57,10 @@ const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 const ALL_CHARACTERS = { from: 0x80, to: 0x10ffff, skipFrom: 0xd800, skipTo: 0xdfff };
 
 /**
- * Every non-ASCII character Postgres doesn't treat as a plain separator: what
+ * Every non-ASCII character this Postgres's `unaccent` doesn't leave a plain separator: what
  * `lower(unaccent(c))` leaves of it, with anything outside [a-z0-9] as one space ('' for the
- * combining marks unaccent removes). Keys are upper-case hex code points.
+ * combining marks unaccent removes). Keys are upper-case hex code points. Only for
+ * `--refresh-accent-map`: the answer depends on the Postgres version and locale.
  */
 export async function buildAccentMap(sql: Sql): Promise<Record<string, string>> {
   const r = ALL_CHARACTERS;
@@ -77,6 +85,77 @@ export const accentMapFile = (map: Record<string, string>) =>
       'space. Keys are hex code points. A character not listed is a separator; ASCII is lower-cased.',
     map,
   });
+
+export const readAccentMap = async (): Promise<Record<string, string>> =>
+  (JSON.parse(await readFile(resolve(root, MAP_FILE), 'utf8')) as { map: Record<string, string> }).map;
+
+/** A Postgres Unicode-escape literal of one code point (U&'\00C0', U&'\+01F110'). */
+const uchar = (hex: string) => (hex.length <= 4 ? `\\${hex.padStart(4, '0')}` : `\\+${hex.padStart(6, '0')}`);
+
+/**
+ * `sineobex.normalize_name` as a function of the map alone (design 5.1): each character with a
+ * multi-character answer replaced first (ß → ss), then one translate() for the single-character
+ * answers, the characters removed outright (combining marks) and ASCII upper case, then every run
+ * outside [a-z0-9] one space. No `unaccent` and no `lower()`, which follow the server's version and
+ * locale; only constants, so it is honestly immutable.
+ */
+export function normalizeNameFunction(map: Record<string, string>): string {
+  const entries = Object.entries(map).sort(([a], [b]) => parseInt(a, 16) - parseInt(b, 16));
+  const multi = entries.filter(([, v]) => v.length > 1);
+  const single = entries.filter(([, v]) => v.length === 1);
+  const removed = entries.filter(([, v]) => v === '');
+  for (const [hex, v] of entries) {
+    if (!/^[a-z0-9 ]*$/.test(v) || v === ' ') throw new Error(`accent map: bad answer for U+${hex}`);
+  }
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const from = [...single, ...removed].map(([hex]) => uchar(hex)).join('');
+  const to = single.map(([, v]) => v).join('');
+  const opens: string[] = [];
+  for (let i = 0; i < multi.length; i += 12)
+    opens.push(`    ${'replace('.repeat(Math.min(12, multi.length - i))}`);
+  return [
+    'create or replace function sineobex.normalize_name(input text) returns text',
+    'language sql immutable parallel safe',
+    'set search_path = sineobex, public, extensions as $$',
+    '  select nullif(btrim(regexp_replace(translate(',
+    ...opens,
+    "    coalesce(input, ''),",
+    ...multi.map(([hex, v]) => `    U&'${uchar(hex)}', '${v}'),`),
+    `    U&'${upper}${from}',`,
+    `    '${upper.toLowerCase()}${to}'),`,
+    "    '[^a-z0-9]+', ' ', 'g')), '')",
+    '$$;',
+  ].join('\n');
+}
+
+/** A migration that pins normalize_name to the map and rebuilds every stored search key with it. */
+export function normalizeMigration(map: Record<string, string>): string {
+  return `-- Name normalization pinned to packages/contract/data/unaccent-latin.json (phase 3 design 5.1).
+--
+-- normalize_name called the live \`unaccent\` dictionary, whose rules differ between Postgres
+-- versions (17 keeps the space in " 1/4" for "¼"; 16 trims it), so the search keys stored here could
+-- drift from what the API and the phone compute from the pinned map. This body holds only constants
+-- generated from that map by services/api/scripts/gen-match-vectors.ts (--write-migration), so it
+-- gives the same answer on every version and locale. A changed map needs a new migration like this.
+
+set search_path = sineobex, public, extensions;
+
+${normalizeNameFunction(map)}
+
+-- Every stored key again, with the pinned function: the patients' own (legal, preferred, descriptor)
+-- and each active street name's, as the 0009 triggers write them.
+do $$
+begin
+  delete from sineobex.patient_name_keys;
+  perform sineobex.put_name_key(p.team_id, p.id, 'legal', p.id, concat_ws(' ', p.legal_given_name, p.legal_family_name)),
+          sineobex.put_name_key(p.team_id, p.id, 'preferred', p.id, p.preferred_name),
+          sineobex.put_name_key(p.team_id, p.id, 'descriptor', p.id, p.visual_descriptor)
+  from sineobex.patients p;
+  perform sineobex.put_name_key(a.team_id, a.patient_id, 'alias', a.id, a.alias)
+  from sineobex.patient_aliases a where a.status = 'active';
+end $$;
+`;
+}
 
 // ------------------------------------------------------------------------------------------------
 // normalize.json and trigram.json: Postgres is the expected value
@@ -532,19 +611,28 @@ export async function buildVectorFiles(sql: Sql): Promise<Record<string, string>
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const args = process.argv.slice(2);
+  const migration = args.includes('--write-migration')
+    ? args[args.indexOf('--write-migration') + 1]
+    : undefined;
+  if (args.includes('--write-migration') && !/^\d{4}_[a-z0-9_]+$/.test(migration ?? '')) {
+    throw new Error('--write-migration takes a migration name such as 0015_pinned_name_normalization');
+  }
   const scratch = await createScratchDatabase();
   try {
-    const files: Record<string, string> = {
-      [MAP_FILE]: accentMapFile(await buildAccentMap(scratch.owner)),
-      ...(await buildVectorFiles(scratch.owner)),
-    };
+    const files: Record<string, string> = {};
+    if (args.includes('--refresh-accent-map'))
+      files[MAP_FILE] = accentMapFile(await buildAccentMap(scratch.owner));
+    else if (migration) files[`db/migrations/${migration}.sql`] = normalizeMigration(await readAccentMap());
+    else Object.assign(files, await buildVectorFiles(scratch.owner));
     for (const [path, content] of Object.entries(files)) {
       const full = resolve(root, path);
       await mkdir(dirname(full), { recursive: true });
       await writeFile(full, content);
     }
-    console.log(`match vectors written: ${Object.keys(files).length} files`);
-    if (stale.length > 0) console.log('The accent map changed: run this again so the scores use it.');
+    console.log(`written: ${Object.keys(files).join(', ')}`);
+    if (stale.length > 0)
+      console.log('normalize_name and the map disagree: pin it with --write-migration first.');
   } finally {
     await scratch.drop();
   }

@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { createScratchDatabase, type ScratchDatabase } from '@sineobex/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildVectorFiles, MAP_FILE } from '../scripts/gen-match-vectors.ts';
+import { buildVectorFiles, MAP_FILE, normalizeNameFunction } from '../scripts/gen-match-vectors.ts';
 import type { Tx } from '../src/db/database.ts';
 import {
   ALL_SOURCES,
@@ -304,7 +304,9 @@ describe('the vectors against Postgres', () => {
     for (const [path, content] of Object.entries(files)) expect(read(path), path).toBe(content);
   });
 
-  it('hold the accent map Postgres uses, for every listed character and every Latin block', async () => {
+  // Postgres's normalize_name is generated from the pinned map (0015), never the live `unaccent`,
+  // whose rules differ between versions: stored keys and the phone's and API's agree on 16 and 17.
+  it('normalize_name answers from the pinned map, for every listed character and every Latin block', async () => {
     const map = (JSON.parse(read(MAP_FILE)) as { map: Record<string, string> }).map;
     const listed = Object.keys(map).map((hex) => parseInt(hex, 16));
     const latin: number[] = [];
@@ -314,13 +316,34 @@ describe('the vectors against Postgres', () => {
       [0x1e00, 0x1eff],
     ] as const)
       for (let c = from; c <= to; c++) latin.push(c);
-    const codePoints = [...new Set([...listed, ...latin])].sort((a, b) => a - b);
-    const rows = await db.owner<{ c: number; n: string | null }[]>`
-      select c, sineobex.normalize_name('x' || chr(c) || 'y') as n from unnest(${codePoints}::int[]) as c`;
+    // Unlisted characters are separators: a non-breaking space, Cyrillic, CJK, an emoji.
+    const unlisted = [0xa0, 0x416, 0x65e5, 0x1f9fa];
+    for (const c of unlisted) expect(listed).not.toContain(c);
+    const codePoints = [...new Set([...listed, ...latin, ...unlisted])].sort((a, b) => a - b);
+    const rows = await db.owner<{ c: number; n: string | null; upper: string | null }[]>`
+      select c, sineobex.normalize_name('x' || chr(c) || 'y') as n, sineobex.normalize_name('X' || chr(c) || 'Y') as upper
+      from unnest(${codePoints}::int[]) as c`;
+    expect(rows).toHaveLength(codePoints.length);
     for (const r of rows) {
       const ch = String.fromCodePoint(r.c);
-      expect(normalizeName(`x${ch}y`), `U+${r.c.toString(16)}`).toBe(r.n);
+      const hex = r.c.toString(16).toUpperCase().padStart(4, '0');
+      const expected = `x${map[hex] ?? ' '}y`.replace(/ +/g, ' ');
+      expect(r.n, `U+${hex}`).toBe(expected);
+      expect(r.upper, `U+${hex}`).toBe(expected);
+      expect(normalizeName(`x${ch}y`), `U+${hex}`).toBe(expected);
     }
+  });
+
+  it('defines normalize_name last as the generator writes it from the map, without unaccent', () => {
+    const dir = new URL('db/migrations/', root);
+    const defining = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+      .filter((f) => readFileSync(new URL(f, dir), 'utf8').includes('function sineobex.normalize_name('));
+    const newest = readFileSync(new URL(defining[defining.length - 1]!, dir), 'utf8');
+    const map = (JSON.parse(read(MAP_FILE)) as { map: Record<string, string> }).map;
+    expect(newest).toContain(normalizeNameFunction(map));
+    expect(normalizeNameFunction(map)).not.toContain('unaccent');
   });
 });
 

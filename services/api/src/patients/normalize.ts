@@ -3,15 +3,16 @@ import { WEAK_TOKENS } from './generated/weak-tokens.ts';
 
 /**
  * Name normalization for search and matching (phase 3 design 5.1), exactly as
- * `sineobex.normalize_name()` (0001) does it in Postgres: accents removed (`unaccent`), lower case,
- * every run of characters other than [a-z0-9] one space, trimmed, null when nothing is left.
+ * `sineobex.normalize_name()` does it in Postgres: accents removed, lower case, every run of
+ * characters other than [a-z0-9] one space, trimmed, null when nothing is left.
  *
- * The phone has no Unicode normalization, so neither side calls one: both read the character map
- * packages/contract/data/unaccent-latin.json, generated from Postgres by
- * services/api/scripts/gen-match-vectors.ts (what `lower(unaccent(c))` leaves of each character,
- * with anything outside [a-z0-9] as a space). A character outside the map is a separator, as
- * Postgres's regular expression makes it. normalize.json pins this function, the phone's
- * lib/patients/normalize.dart and Postgres to each other.
+ * The phone has no Unicode normalization, so no side calls one: the API, the phone and Postgres all
+ * read one frozen character map, packages/contract/data/unaccent-latin.json (what PostgreSQL 16's
+ * `lower(unaccent(c))` left of each character, with anything outside [a-z0-9] as a space). Postgres's
+ * normalize_name is generated from it (0015), because the live `unaccent` dictionary differs between
+ * Postgres versions and the stored search keys must not. A character outside the map is a
+ * separator. normalize.json pins this function, the phone's lib/patients/normalize.dart and
+ * Postgres to each other; services/api/scripts/gen-match-vectors.ts says how to change the map.
  *
  * Non-Latin scripts normalize to nothing today (design 14.2-10).
  */
