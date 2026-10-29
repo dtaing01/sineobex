@@ -775,4 +775,39 @@ describe('merge (design 8.4)', () => {
     ).toBe(200);
     expect(await pairOf(survivor, outside)).toMatchObject({ status: 'open', sources: ['merge_rematch'] });
   });
+
+  it('changes nothing, and shows nothing, when the merge or the queue can’t be logged', async () => {
+    const survivor = (await createPatient(h, teamId, admin.userId, { preferredName: 'Hyacinth' })).id;
+    const merged = (await createPatient(h, teamId, admin.userId, { preferredName: 'Hyacinth' })).id;
+    const pairId = await openPair(survivor, merged);
+    const body = {
+      decision: 'merge',
+      survivorId: survivor,
+      comment: 'Same person',
+      versions: await versions(pairId),
+    };
+    await h.scratch.owner.unsafe(`
+      create function sineobex.test_fail_merge() returns trigger language plpgsql as $$
+      begin
+        if new.action in ('patient.merged', 'duplicates.viewed') then raise exception 'audit refused'; end if;
+        return new;
+      end $$;
+      create trigger test_fail_merge before insert on sineobex.audit_events
+        for each row execute function sineobex.test_fail_merge()`);
+    try {
+      expect((await post(`/v1/team/duplicates/${pairId}/decision`, body)).status).toBe(500);
+      const listed = await get('/v1/team/duplicates');
+      expect(listed.status).toBe(500);
+      expect(await listed.text()).not.toContain(survivor);
+    } finally {
+      await h.scratch.owner.unsafe(`
+        drop trigger test_fail_merge on sineobex.audit_events;
+        drop function sineobex.test_fail_merge()`);
+    }
+    expect(await patient(merged)).toMatchObject({ status: 'active', canonicalId: merged });
+    expect((await pairOf(survivor, merged))!.status).toBe('open');
+    const decisions = await h.scratch
+      .owner`select id from sineobex.duplicate_decisions where pair_id = ${pairId}`;
+    expect(decisions).toHaveLength(0);
+  });
 });
