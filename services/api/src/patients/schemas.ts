@@ -378,7 +378,20 @@ export const IndexEntry = z
   .object({
     patientId: Uuid,
     preferredName: z.string().nullable(),
-    aliases: z.array(z.object({ id: Uuid, alias: z.string() })).max(20),
+    aliases: z
+      .array(
+        z.object({
+          id: Uuid.nullable().openapi({
+            description: 'The street name’s record, which a phone may remove offline; null for a merged name',
+          }),
+          alias: z.string(),
+          kind: z.enum(['alias', 'merged_name']).openapi({
+            description:
+              'merged_name: the preferred name of a record merged into this one. Not a street name record',
+          }),
+        }),
+      )
+      .max(20),
     visualDescriptor: z.string().nullable(),
     birth: z.union([BirthView, z.null()]),
     usualArea: z.string().nullable(),

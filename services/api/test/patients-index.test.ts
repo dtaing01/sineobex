@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CHW_PRESET, PERMISSION_KEYS, type Permission } from '../src/auth/permissions.ts';
 import { normalizeName } from '../src/patients/normalize.ts';
-import type { TeamIndexPageValue } from '../src/patients/schemas.ts';
+import type { ChartBundleValue, TeamIndexPageValue } from '../src/patients/schemas.ts';
 import { INDEX_PROJECTION } from '../src/patients/team-index.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
@@ -174,7 +174,11 @@ describe('an index page', () => {
       reviews: [],
       versions: { preferredName: 1, visualDescriptor: 1, usualArea: 1, allergyScreen: 1 },
     });
-    expect(entry.aliases.map((a) => a.alias)).toEqual(['Smitty', 'Lefty', 'Delly']);
+    expect(entry.aliases.map((a) => [a.alias, a.kind])).toEqual([
+      ['Smitty', 'alias'],
+      ['Lefty', 'alias'],
+      ['Delly', 'merged_name'],
+    ]);
     expect(entry.allergies).toEqual([
       { id: expect.any(String), substance: 'penicillin', category: 'drug', severity: 'severe' },
     ]);
@@ -196,6 +200,26 @@ describe('an index page', () => {
       patientId: null,
     });
     expect(event!.details).toEqual({ version: body.version, after: null, next: null, count: 1 });
+  });
+
+  it('gives a merged record’s name no ID, and every street name the ID the chart bundle has', async () => {
+    const entry = (await page(staff.token)).entries.find((e) => e.patientId === p1)!;
+    const merged = entry.aliases.filter((a) => a.kind === 'merged_name');
+    expect(merged).toEqual([{ id: null, alias: 'Delly', kind: 'merged_name' }]);
+    const res = await h.request('/v1/patients/charts', {
+      method: 'POST',
+      token: staff.token,
+      teamId,
+      json: { patientIds: [p1], reason: 'opened' },
+    });
+    const bundle = (await res.json()) as ChartBundleValue;
+    const active = bundle.charts[0]!.aliases.filter((a) => a.status === 'active');
+    expect(
+      entry.aliases
+        .filter((a) => a.kind === 'alias')
+        .map((a) => [a.id, a.alias])
+        .sort(),
+    ).toEqual(active.map((a) => [a.id, a.attributes.alias]).sort());
   });
 
   it('answers unchanged for the version the phone holds, and logs nothing', async () => {

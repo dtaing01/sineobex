@@ -525,6 +525,23 @@ enum IdentityCorrectionOutcome {
   String toJson() => wire;
 }
 
+/// merged_name: the preferred name of a record merged into this one. Not a street name record
+enum IndexEntryAliasesItemKind {
+  alias('alias'),
+  mergedName('merged_name'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const IndexEntryAliasesItemKind(this.wire);
+  final String wire;
+
+  static IndexEntryAliasesItemKind fromJson(String value) =>
+      IndexEntryAliasesItemKind.values.firstWhere((e) => e.wire == value, orElse: () => IndexEntryAliasesItemKind.unknown);
+
+  String toJson() => wire;
+}
+
 /// open: open and not sure
 enum ListDuplicatesStatus {
   open('open'),
@@ -2514,19 +2531,25 @@ class IndexEntryAliasesItem {
   const IndexEntryAliasesItem({
     required this.alias,
     required this.id,
+    required this.kind,
   });
 
   final String alias;
-  final String id;
+  /// The street name’s record, which a phone may remove offline; null for a merged name
+  final String? id;
+  /// merged_name: the preferred name of a record merged into this one. Not a street name record
+  final IndexEntryAliasesItemKind kind;
 
   factory IndexEntryAliasesItem.fromJson(Map<String, dynamic> json) => IndexEntryAliasesItem(
         alias: json['alias'] as String,
-        id: json['id'] as String,
+        id: json['id'] == null ? null : json['id'] as String,
+        kind: IndexEntryAliasesItemKind.fromJson(json['kind'] as String),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'alias': alias,
-        'id': id,
+        'id': id == null ? null : id!,
+        'kind': kind.toJson(),
       };
 }
 

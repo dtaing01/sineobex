@@ -1592,13 +1592,26 @@
                   "type": "string"
                 },
                 "id": {
+                  "description": "The street name’s record, which a phone may remove offline; null for a merged name",
                   "format": "uuid",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "description": "merged_name: the preferred name of a record merged into this one. Not a street name record",
+                  "enum": [
+                    "alias",
+                    "merged_name"
+                  ],
                   "type": "string"
                 }
               },
               "required": [
                 "id",
-                "alias"
+                "alias",
+                "kind"
               ],
               "type": "object"
             },

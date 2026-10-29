@@ -49,7 +49,7 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
         fieldVersions: Record<string, number>;
         lastSeenAt: Date | null;
         aliases: { id: string; alias: string }[];
-        mergedNames: { id: string; alias: string }[];
+        mergedNames: string[];
         allergies: IndexEntryValue['allergies'];
         idLinks: { id: string; effectiveAt: string }[];
         reviews: string[];
@@ -65,14 +65,13 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
                        join sineobex.patients g on g.team_id = a.team_id and g.id = a.patient_id
                        where a.team_id = p.team_id and g.canonical_id = p.id and a.status = 'active'),
                       '[]') as aliases,
-             coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'alias', g.preferred_name)
-                                        order by m.merged_at, g.id)
-                       from sineobex.patients g
-                       left join sineobex.patient_merges m
-                         on m.team_id = g.team_id and m.merged_id = g.id and m.undone_at is null
-                       where g.team_id = p.team_id and g.canonical_id = p.id and g.id <> p.id
-                         and g.preferred_name is not null),
-                      '[]') as merged_names,
+             array(select g.preferred_name
+                   from sineobex.patients g
+                   left join sineobex.patient_merges m
+                     on m.team_id = g.team_id and m.merged_id = g.id and m.undone_at is null
+                   where g.team_id = p.team_id and g.canonical_id = p.id and g.id <> p.id
+                     and g.preferred_name is not null
+                   order by m.merged_at, g.id) as merged_names,
              coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'substance', a.substance,
                                                            'category', a.category, 'severity', a.severity)
                                         order by a.recorded_at, a.id)
@@ -102,9 +101,12 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
       page.map((r) => r.id),
     );
     const entries: IndexEntryValue[] = page.map((r) => {
-      const aliases = [...r.aliases];
-      for (const m of r.mergedNames) {
-        if (m.alias !== r.preferredName && !aliases.some((a) => a.alias === m.alias)) aliases.push(m);
+      // A merged record's preferred name finds the survivor offline, but it is no street name record:
+      // no ID, so a phone can't send a removal the server could never apply.
+      const aliases: IndexEntryValue['aliases'] = r.aliases.map((a) => ({ ...a, kind: 'alias' }));
+      for (const name of r.mergedNames) {
+        if (name !== r.preferredName && !aliases.some((a) => a.alias === name))
+          aliases.push({ id: null, alias: name, kind: 'merged_name' });
       }
       return {
         patientId: r.id,

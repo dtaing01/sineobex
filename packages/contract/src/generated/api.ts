@@ -1334,8 +1334,16 @@ export interface components {
         IndexEntry: {
             aliases: {
                 alias: string;
-                /** Format: uuid */
-                id: string;
+                /**
+                 * Format: uuid
+                 * @description The street name’s record, which a phone may remove offline; null for a merged name
+                 */
+                id: string | null;
+                /**
+                 * @description merged_name: the preferred name of a record merged into this one. Not a street name record
+                 * @enum {string}
+                 */
+                kind: "alias" | "merged_name";
             }[];
             allergies: {
                 category: components["schemas"]["AllergyCategory"];
