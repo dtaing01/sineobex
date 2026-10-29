@@ -1,9 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AuditEvent } from '../src/auth/context.ts';
 import type { Permission } from '../src/auth/permissions.ts';
 import type { Tx } from '../src/db/database.ts';
 import { rematchPatient, type RematchOptions, type RematchSource } from '../src/patients/duplicates.ts';
+import { idLinkTokenHash, newIdLinkToken } from '../src/patients/id-links.ts';
 import { QUEUE_THRESHOLD } from '../src/patients/match-constants.ts';
+import type {
+  DuplicateDecisionResultValue,
+  DuplicatePageValue,
+  DuplicatePairDetailValue,
+  DuplicatePairSummaryValue,
+  PatientChartValue,
+} from '../src/patients/schemas.ts';
 import { lockTeamWrites } from '../src/sync/locks.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
@@ -18,6 +27,7 @@ import {
   type Member,
   type NewPatient,
 } from './patient-fixtures.ts';
+import type { Json } from './sync-fixtures.ts';
 
 // The duplicate queue (phase 3 design 8, 3.4): the server's re-run of matching, the queue and its
 // side-by-side, decisions with a comment and a recent sign-in, and a merge that moves nothing,
@@ -51,7 +61,28 @@ const SMITTY: NewPatient = {
   legalName: { given: 'Del', family: null },
   birth: { precision: 'day', date: '1946-07-03' },
 };
-const NAMES = ['delbert', 'smithfield', 'smitty', 'kowalski', '1946-03-07'];
+/** The same shape of pair, for the queue's tests, so no earlier test's patients join it. */
+const IGNATIUS: NewPatient = {
+  preferredName: 'Ignatius',
+  legalName: { given: 'Ignatius', family: 'Demoworth' },
+  aliases: ['Iggy'],
+  birth: { precision: 'day', date: '1958-02-09' },
+};
+const IGGY: NewPatient = {
+  preferredName: 'Iggy',
+  legalName: { given: 'Ignatius', family: null },
+  birth: { precision: 'day', date: '1958-09-02' },
+};
+const NAMES = [
+  'delbert',
+  'smithfield',
+  'smitty',
+  'kowalski',
+  '1946-03-07',
+  'demoworth',
+  'iggy',
+  '1958-02-09',
+];
 
 /** Runs the re-run as a push does: in a team transaction, team lock first, audited as `userId`. */
 function rematch(patientId: string, source: RematchSource, options: RematchOptions = {}) {
@@ -93,6 +124,13 @@ async function keepSeparate(x: string, y: string): Promise<string> {
     insert into sineobex.duplicate_pairs (team_id, patient_a, patient_b, score, sources, status, decided_at, decided_by)
     values (${teamId}, ${a!}, ${b!}, 0.9, '{sync}', 'keep_separate', now(), ${admin.userId}) returning id`;
   return row!.id;
+}
+
+async function emailOf(userId: string): Promise<string> {
+  const [user] = await h.scratch.owner<
+    { email: string }[]
+  >`select email from sineobex.users where id = ${userId}`;
+  return user!.email;
 }
 
 beforeAll(async () => {
@@ -225,5 +263,516 @@ describe('the re-run at sync (design 8.2)', () => {
     const result = await rematch(merged, 'edit');
     expect(result.flagged.map((f) => f.otherId)).toEqual([other]);
     expect(await pairOf(survivor, other)).toMatchObject({ status: 'open' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// The queue, the pair page and decisions, through the routes
+// ------------------------------------------------------------------------------------------------
+
+const CLINICIAN: Permission[] = ['patients.view', 'patients.edit', 'encounters.chart'];
+
+const get = (path: string, token = admin.token) => h.request(path, { token, teamId });
+const post = (path: string, json: unknown, token = admin.token) =>
+  h.request(path, { method: 'POST', token, teamId, json });
+
+/** An open pair as the re-run leaves it, at a fixed score. */
+async function openPair(x: string, y: string, reasons: string[] = ['name']): Promise<string> {
+  const [a, b] = [x, y].sort();
+  const [row] = await h.scratch.owner<{ id: string }[]>`
+    insert into sineobex.duplicate_pairs (team_id, patient_a, patient_b, score, reasons, sources)
+    values (${teamId}, ${a!}, ${b!}, 0.85, ${reasons}, '{sync}') returning id`;
+  return row!.id;
+}
+
+async function versions(pairId: string): Promise<{ a: number; b: number }> {
+  const res = await get(`/v1/team/duplicates/${pairId}`);
+  const body = (await res.json()) as DuplicatePairDetailValue;
+  return { a: body.a.version, b: body.b.version };
+}
+
+const decide = async (pairId: string, body: Record<string, unknown>, token = admin.token) =>
+  post(`/v1/team/duplicates/${pairId}/decision`, { versions: await versions(pairId), ...body }, token);
+
+interface PatientState {
+  status: string;
+  canonicalId: string;
+  version: number;
+  preferredName: string | null;
+  legalGivenName: string | null;
+  legalFamilyName: string | null;
+  birthPrecision: string | null;
+  birthDate: string | null;
+  birthYear: number | null;
+  livingSituation: string | null;
+  allergyScreen: string;
+  fieldVersions: Record<string, number>;
+}
+
+async function patient(id: string): Promise<PatientState> {
+  const [row] = await h.scratch.owner<PatientState[]>`
+    select status, canonical_id as "canonicalId", version, preferred_name as "preferredName",
+      legal_given_name as "legalGivenName", legal_family_name as "legalFamilyName",
+      birth_precision as "birthPrecision", to_char(birth_date, 'YYYY-MM-DD') as "birthDate",
+      birth_year as "birthYear", living_situation as "livingSituation", allergy_screen as "allergyScreen",
+      field_versions as "fieldVersions"
+    from sineobex.patients where id = ${id}`;
+  return row!;
+}
+
+async function reviewsOn(id: string): Promise<{ field: string; needs: string; mergeId: string | null }[]> {
+  return h.scratch.owner`
+    select field, needs, merge_id as "mergeId" from sineobex.field_reviews
+    where record_id = ${id} and status = 'open' order by field`;
+}
+
+async function issueLink(patientId: string): Promise<string> {
+  const id = randomUUID();
+  const token = newIdLinkToken();
+  await h.scratch.owner`
+    insert into sineobex.patient_id_links (id, team_id, patient_id, token, token_hash, status, reason, effective_at,
+      clock_verified, made_offline, issued_by)
+    values (${id}, ${teamId}, ${patientId}, ${token}, ${await idLinkTokenHash(token)}, 'active', 'first_card', now(),
+      true, false, ${admin.userId})`;
+  return id;
+}
+
+describe('the queue and the pair page (design 8.3, 3.4)', () => {
+  let p1: string;
+  let p2: string;
+  let pairId: string;
+  let clinician: Member;
+
+  beforeAll(async () => {
+    clinician = await memberWith(h, teamId, CLINICIAN);
+    p1 = (await createPatient(h, teamId, admin.userId, IGNATIUS)).id;
+    p2 = (await createPatient(h, teamId, admin.userId, IGGY)).id;
+    await rematch(p2, 'sync', { shown: [p1], dismissed: [p1] });
+    pairId = (await pairOf(p1, p2))!.id;
+  });
+
+  it('lists open pairs oldest first with both summaries, and audits the patients it showed', async () => {
+    const mark = await auditMark(h);
+    const res = await get('/v1/team/duplicates');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const page = (await res.json()) as DuplicatePageValue;
+    const listed = page.pairs.find((p) => p.id === pairId)!;
+    expect(listed).toMatchObject({
+      status: 'open',
+      band: 'likely',
+      creatorDismissed: true,
+      sources: ['sync'],
+    });
+    expect(listed.reasons).toContain('dob_swapped');
+    expect(listed.score).toBeGreaterThanOrEqual(QUEUE_THRESHOLD);
+    const sides = { [listed.a.patientId]: listed.a.summary, [listed.b.patientId]: listed.b.summary };
+    expect(sides[p1]).toMatchObject({ preferredName: 'Ignatius', aliases: ['Iggy'], duplicateHint: true });
+    expect(sides[p2]).toMatchObject({ preferredName: 'Iggy' });
+    const flagged = page.pairs.map((p) => p.lastFlaggedAt);
+    expect(flagged).toEqual([...flagged].sort());
+
+    const [viewed] = await expectAudit(h, 'duplicates.viewed', { after: mark, count: 1 });
+    expect(viewed!.details).toMatchObject({ status: 'open', count: page.pairs.length });
+    expect(viewed!.details.patientIds).toEqual(expect.arrayContaining([p1, p2]));
+    await expectAuditClean(h, NAMES, mark);
+  });
+
+  it('refuses the queue, the pair page and decisions without patients.review_duplicates, and logs it', async () => {
+    const mark = await auditMark(h);
+    expect((await get('/v1/team/duplicates', clinician.token)).status).toBe(403);
+    expect((await get(`/v1/team/duplicates/${pairId}`, clinician.token)).status).toBe(403);
+    const res = await post(
+      `/v1/team/duplicates/${pairId}/decision`,
+      { decision: 'keep_separate', comment: 'Different people', versions: { a: 1, b: 1 } },
+      clinician.token,
+    );
+    expect(res.status).toBe(403);
+    await expectAudit(h, 'access.denied', { after: mark, count: 3 });
+  });
+
+  it('shows both records side by side with Same or Differs, and audits one view per patient', async () => {
+    const mark = await auditMark(h);
+    const res = await get(`/v1/team/duplicates/${pairId}`);
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as DuplicatePairDetailValue;
+    const bySide = { [detail.pair.a.patientId]: detail.a, [detail.pair.b.patientId]: detail.b };
+    expect(bySide[p1]!.chart.canonicalId).toBe(p1);
+    expect(bySide[p1]!.chart.patient.fields.preferredName!.value).toBe('Ignatius');
+    expect(bySide[p2]!.chart.aliases).toEqual([]);
+    expect(bySide[p1]).toMatchObject({
+      version: 1,
+      recentEncounters: [],
+      photoId: null,
+      createdHow: 'unknown',
+    });
+    expect(bySide[p1]!.createdBy.userId).toBe(admin.userId);
+    const compared = Object.fromEntries(detail.compared.map((c) => [c.field, c.same]));
+    expect(compared).toMatchObject({
+      preferredName: false,
+      birth: false,
+      allergyScreen: true,
+      idCardChoice: true,
+    });
+    expect(detail.decisions).toEqual([]);
+
+    const views = await expectAudit(h, 'duplicate.pair_viewed', { after: mark, count: 2 });
+    expect(views.map((v) => v.patientId).sort()).toEqual([p1, p2].sort());
+    for (const v of views) expect(v.details).toEqual({ pairId });
+    expect((await get(`/v1/team/duplicates/${randomUUID()}`)).status).toBe(404);
+  });
+
+  it('refuses a decision without a comment, or without a recent sign-in', async () => {
+    const v = await versions(pairId);
+    for (const comment of [undefined, '', '  a ']) {
+      const res = await post(`/v1/team/duplicates/${pairId}/decision`, {
+        decision: 'keep_separate',
+        comment,
+        versions: v,
+      });
+      expect(res.status).toBe(422);
+    }
+    const stale = await h.tokenFor(await emailOf(admin.userId), {
+      authTime: new Date(h.clock.now.getTime() - 20 * 60_000),
+    });
+    const res = await post(
+      `/v1/team/duplicates/${pairId}/decision`,
+      { decision: 'keep_separate', comment: 'Different people', versions: v },
+      stale,
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as Json).error?.code).toBe('reauth_required');
+    expect((await pairOf(p1, p2))!.status).toBe('open');
+  });
+
+  it('answers 409 pair_changed with versions only when either record changed since it was loaded', async () => {
+    const seen = await versions(pairId);
+    await h.scratch.owner`update sineobex.patients set version = version + 1 where id = ${p2}`;
+    const mark = await auditMark(h);
+    const res = await post(`/v1/team/duplicates/${pairId}/decision`, {
+      decision: 'keep_separate',
+      comment: 'Different people',
+      versions: seen,
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as Json;
+    expect(body.error!.code).toBe('pair_changed');
+    const [pa, pb] = [p1, p2].sort();
+    expect(body.error!.details).toEqual({
+      versions: { a: pa === p1 ? 1 : 2, b: pb === p1 ? 1 : 2 },
+    });
+    expect(JSON.stringify(body).toLowerCase()).not.toMatch(/ignatius|iggy|1958/);
+    await expectAudit(h, 'duplicate.decided', { after: mark, count: 0 });
+  });
+
+  it('keeps a Not sure pair in the queue with its note, shown on both charts', async () => {
+    const mark = await auditMark(h);
+    const res = await decide(pairId, {
+      decision: 'not_sure',
+      comment: 'Could not tell from the charts',
+      fieldNote: 'Check the ID card at the next visit',
+    });
+    expect(res.status).toBe(200);
+    const result = (await res.json()) as DuplicateDecisionResultValue;
+    expect(result.merge).toBeNull();
+    expect(result.pair).toMatchObject({
+      status: 'not_sure',
+      note: 'Check the ID card at the next visit',
+      decidedAt: null,
+    });
+
+    const decided = await expectAudit(h, 'duplicate.decided', { after: mark, count: 2 });
+    expect(decided.map((d) => d.patientId).sort()).toEqual([p1, p2].sort());
+    expect(decided[0]!.details).toMatchObject({ pairId, decision: 'not_sure' });
+    expect(decided[0]!.details.commentSha256).toMatch(/^[0-9a-f]{64}$/);
+    await expectAuditClean(h, ['could not tell', 'check the id card'], mark);
+
+    for (const status of ['open', 'not_sure']) {
+      const page = (await (await get(`/v1/team/duplicates?status=${status}`)).json()) as DuplicatePageValue;
+      expect(page.pairs.map((p) => p.id)).toContain(pairId);
+    }
+    for (const id of [p1, p2]) {
+      const chart = (await (await get(`/v1/patients/${id}`)).json()) as PatientChartValue;
+      expect(chart.duplicate).toEqual({ status: 'not_sure', note: 'Check the ID card at the next visit' });
+    }
+
+    // Not sure again, without a note: the pair stays, its note with it, both decisions on the page.
+    expect((await decide(pairId, { decision: 'not_sure', comment: 'Still unsure' })).status).toBe(200);
+    expect((await pairOf(p1, p2))!.note).toBe('Check the ID card at the next visit');
+    const detail = (await (await get(`/v1/team/duplicates/${pairId}`)).json()) as DuplicatePairDetailValue;
+    expect(detail.decisions.map((d) => [d.decision, d.comment])).toEqual([
+      ['not_sure', 'Could not tell from the charts'],
+      ['not_sure', 'Still unsure'],
+    ]);
+  });
+
+  it('keeps a pair separate for good: decided, listed as decided, and refused a second decision', async () => {
+    const res = await decide(pairId, { decision: 'keep_separate', comment: 'Different people, met both' });
+    expect(res.status).toBe(200);
+    const result = (await res.json()) as DuplicateDecisionResultValue;
+    expect(result.pair.status).toBe('keep_separate');
+    expect(result.pair.decidedAt).not.toBeNull();
+    const open = (await (await get('/v1/team/duplicates')).json()) as DuplicatePageValue;
+    expect(open.pairs.map((p) => p.id)).not.toContain(pairId);
+    const decided = (await (await get('/v1/team/duplicates?status=decided')).json()) as DuplicatePageValue;
+    expect(decided.pairs.map((p) => p.id)).toContain(pairId);
+
+    const again = await decide(pairId, { decision: 'not_sure', comment: 'Changed my mind' });
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as Json).error!.code).toBe('already_decided');
+    expect((await rematch(p2, 'edit')).flagged).toEqual([]);
+  });
+
+  it('lets staff flag two charts they know are one person, without merging anything', async () => {
+    const x = (await createPatient(h, teamId, admin.userId, { preferredName: 'Ozzie', aliases: ['Oz'] })).id;
+    const y = (await createPatient(h, teamId, admin.userId, { preferredName: 'Oswald' })).id;
+    const mark = await auditMark(h);
+    const res = await post(
+      '/v1/team/duplicates',
+      { patientA: x, patientB: y, comment: 'Same man, he told me' },
+      clinician.token,
+    );
+    expect(res.status).toBe(200);
+    const pair = (await res.json()) as DuplicatePairSummaryValue;
+    expect(pair).toMatchObject({ status: 'open', sources: ['staff_report'] });
+    expect((await patient(x)).status).toBe('active');
+    const [flagged] = await expectAudit(h, 'duplicate.flagged', { after: mark, count: 1 });
+    expect(flagged!.details).toMatchObject({ pairId: pair.id, sources: ['staff_report'] });
+    expect([...(flagged!.details.patientIds as string[])].sort()).toEqual([x, y].sort());
+    await expectAuditClean(h, ['he told me', 'ozzie', 'oswald'], mark);
+
+    // A pair kept separate is a reviewer's to re-open, not a flag's.
+    expect(
+      (
+        await post(
+          '/v1/team/duplicates',
+          { patientA: p1, patientB: p2, comment: 'Same man again' },
+          clinician.token,
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (await post('/v1/team/duplicates', { patientA: x, patientB: x, comment: 'Same man' })).status,
+    ).toBe(422);
+    const billing = await memberWith(h, teamId, ['patients.view']);
+    expect(
+      (await post('/v1/team/duplicates', { patientA: x, patientB: y, comment: 'Same' }, billing.token))
+        .status,
+    ).toBe(403);
+  });
+});
+
+describe('merge (design 8.4)', () => {
+  it('fills blanks, opens reviews for differences, clears "none known", retires no card, supersedes pairs', async () => {
+    const survivor = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Gus',
+        legalName: { given: 'Augustus', family: null },
+        birth: { precision: 'estimated', year: 1950 },
+        usualArea: 'Demo: by the pier',
+        allergyScreen: 'none_known',
+      })
+    ).id;
+    const merged = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Gussie',
+        legalName: { given: 'Augustus', family: 'Demopell' },
+        birth: { precision: 'day', date: '1952-04-01' },
+        usualArea: 'Demo: by the library',
+        livingSituation: { kind: 'vehicle' },
+        idCardChoice: 'wants',
+        allergies: [{ substance: 'latex', category: 'environment', severity: 'moderate' }],
+      })
+    ).id;
+    const third = (await createPatient(h, teamId, admin.userId, { preferredName: 'Augie' })).id;
+    const survivorLink = await issueLink(survivor);
+    const mergedLink = await issueLink(merged);
+    const pairId = await openPair(survivor, merged);
+    const otherPair = await openPair(merged, third);
+    const mark = await auditMark(h);
+
+    const res = await decide(pairId, {
+      decision: 'merge',
+      survivorId: survivor,
+      comment: 'Same man, ID card checked',
+    });
+    expect(res.status).toBe(200);
+    const result = (await res.json()) as DuplicateDecisionResultValue;
+    expect(result.pair.status).toBe('merged');
+    expect(result.merge).toMatchObject({
+      pairId,
+      survivor: { patientId: survivor },
+      merged: { patientId: merged, summary: { preferredName: 'Gussie' } },
+      comment: 'Same man, ID card checked',
+      undone: null,
+      undoable: true,
+    });
+
+    // Moves nothing: the merged row points at the survivor, its allergy stays where it was stored.
+    expect(await patient(merged)).toMatchObject({ status: 'merged', canonicalId: survivor });
+    const [allergy] = await h.scratch.owner<{ patientId: string }[]>`
+      select patient_id as "patientId" from sineobex.patient_allergies where patient_id = ${merged}`;
+    expect(allergy!.patientId).toBe(merged);
+
+    // Blanks filled (the estimate within range), "none known" cleared by the merged record's allergy.
+    const s = await patient(survivor);
+    expect(s).toMatchObject({
+      preferredName: 'Gus',
+      legalGivenName: 'Augustus',
+      legalFamilyName: 'Demopell',
+      birthPrecision: 'day',
+      birthDate: '1952-04-01',
+      livingSituation: 'vehicle',
+      allergyScreen: 'not_asked',
+    });
+    const [m] = await h.scratch.owner<
+      { id: string; filledFields: Record<string, number>; reviewsOpened: string[] }[]
+    >`
+      select id, filled_fields as "filledFields", reviews_opened as "reviewsOpened"
+      from sineobex.patient_merges where pair_id = ${pairId}`;
+    expect(m!.filledFields).toEqual({
+      legalName: 2,
+      birth: 2,
+      livingSituation: 2,
+      allergyScreen: 2,
+      idCardChoice: 2,
+    });
+    const kinds = await h.scratch.owner<{ field: string; kind: string; approvedBy: string | null }[]>`
+      select field, kind, approved_by as "approvedBy" from sineobex.field_history
+      where record_id = ${survivor} and version = 2 order by field`;
+    expect(kinds.find((k) => k.field === 'allergyScreen')!.kind).toBe('cleared_by_allergy');
+    expect(kinds.find((k) => k.field === 'birth')).toMatchObject({
+      kind: 'merge_fill',
+      approvedBy: admin.userId,
+    });
+
+    // Differences: a review each, the merged value the alternate; nothing overwritten.
+    expect(await reviewsOn(survivor)).toEqual([
+      { field: 'preferredName', needs: 'patients.edit', mergeId: m!.id },
+      { field: 'usualArea', needs: 'patients.edit', mergeId: m!.id },
+    ]);
+    expect(m!.reviewsOpened).toHaveLength(2);
+    const alternates = await h.scratch.owner<{ field: string; value: unknown }[]>`
+      select field, value from sineobex.field_history
+      where record_id = ${survivor} and kind = 'kept_both' order by field`;
+    expect(alternates).toEqual([
+      { field: 'preferredName', value: 'Gussie' },
+      { field: 'usualArea', value: 'Demo: by the library' },
+    ]);
+
+    // No card retired (D39): both stay active and both open the survivor's chart.
+    const links = await h.scratch.owner<{ id: string; status: string }[]>`
+      select id, status from sineobex.patient_id_links where id in (${survivorLink}, ${mergedLink})`;
+    expect(links.map((l) => l.status)).toEqual(['active', 'active']);
+
+    // The other pair naming the merged record is settled, restorably.
+    const [other] = await h.scratch.owner<{ status: string; before: string; by: string }[]>`
+      select status, status_before_superseded as before, superseded_by_merge as by
+      from sineobex.duplicate_pairs where id = ${otherPair}`;
+    expect(other).toEqual({ status: 'superseded', before: 'open', by: m!.id });
+
+    const merges = await expectAudit(h, 'patient.merged', { after: mark, count: 2 });
+    expect(merges.map((e) => e.patientId).sort()).toEqual([survivor, merged].sort());
+    expect(merges[0]!.details).toEqual({ mergeId: m!.id, survivorId: survivor, mergedId: merged });
+    await expectAudit(h, 'duplicate.decided', { after: mark, count: 2 });
+    await expectAuditClean(h, ['gus', 'augustus', 'demopell', 'id card checked', '1952'], mark);
+  });
+
+  it('opens an identity review for an estimate refined outside its range, and fills nothing there', async () => {
+    const survivor = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Wendell',
+        birth: { precision: 'estimated', year: 1950 },
+      })
+    ).id;
+    const merged = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Wendell',
+        birth: { precision: 'day', date: '1960-02-02' },
+      })
+    ).id;
+    const pairId = await openPair(survivor, merged);
+    expect(
+      (await decide(pairId, { decision: 'merge', survivorId: survivor, comment: 'Same person' })).status,
+    ).toBe(200);
+    expect(await patient(survivor)).toMatchObject({ birthPrecision: 'estimated', birthYear: 1950 });
+    expect(await reviewsOn(survivor)).toEqual([
+      expect.objectContaining({ field: 'birth', needs: 'patients.correct_identity' }),
+    ]);
+  });
+
+  it('merges only the pair’s own records, and only while both are canonical', async () => {
+    const x = (await createPatient(h, teamId, admin.userId, { preferredName: 'Lorcan' })).id;
+    const y = (await createPatient(h, teamId, admin.userId, { preferredName: 'Lorcan' })).id;
+    const z = (await createPatient(h, teamId, admin.userId, { preferredName: 'Lorcan' })).id;
+    const pairId = await openPair(x, y);
+    const wrong = await decide(pairId, { decision: 'merge', survivorId: z, comment: 'Same person' });
+    expect(wrong.status).toBe(422);
+    const seen = await versions(pairId);
+    await mergeDirect(h, teamId, y, z, admin.userId);
+    const res = await post(`/v1/team/duplicates/${pairId}/decision`, {
+      decision: 'merge',
+      survivorId: x,
+      comment: 'Same person',
+      versions: seen,
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as Json).error!.code).toBe('pair_changed');
+  });
+
+  it('locks patient rows FOR NO KEY UPDATE, so a push holding FOR KEY SHARE never blocks it', async () => {
+    const survivor = (await createPatient(h, teamId, admin.userId, { preferredName: 'Thaddeus' })).id;
+    const merged = (await createPatient(h, teamId, admin.userId, { preferredName: 'Thaddeus' })).id;
+    const pairId = await openPair(survivor, merged);
+    const body = {
+      decision: 'merge',
+      survivorId: survivor,
+      comment: 'Same person',
+      versions: await versions(pairId),
+    };
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const holding = new Promise<void>((resolve) => (locked = resolve));
+    // What an encounter or allergy insert's foreign key check holds on both patients.
+    const push = h.scratch.owner.begin(async (sql) => {
+      await sql`select id from sineobex.patients where id in (${survivor}, ${merged}) for key share`;
+      locked();
+      await released;
+    });
+    await holding;
+    const timeout = new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 5_000));
+    const outcome = await Promise.race([post(`/v1/team/duplicates/${pairId}/decision`, body), timeout]);
+    release();
+    await push;
+    expect(outcome).not.toBe('blocked');
+    expect((outcome as Response).status).toBe(200);
+  });
+
+  it('re-matches the survivor after a merge, its group against everyone else', async () => {
+    const survivor = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Benedikt',
+        birth: { precision: 'year', year: 1979 },
+      })
+    ).id;
+    const merged = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Benedikt',
+        aliases: ['Bennie'],
+        birth: { precision: 'year', year: 1979 },
+      })
+    ).id;
+    const pairId = await openPair(survivor, merged);
+    const outside = (
+      await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Bennie',
+        birth: { precision: 'year', year: 1979 },
+      })
+    ).id;
+    expect(
+      (await decide(pairId, { decision: 'merge', survivorId: survivor, comment: 'Same person' })).status,
+    ).toBe(200);
+    expect(await pairOf(survivor, outside)).toMatchObject({ status: 'open', sources: ['merge_rematch'] });
   });
 });
