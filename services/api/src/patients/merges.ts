@@ -312,7 +312,8 @@ export async function mergeRecords(
 
   // 7. Pairs this merge settles leave the queue, restorable by undo: those whose sides now share
   // the survivor, and those naming a record that is no longer canonical, which nobody could decide
-  // (the survivor's re-match flags its group against the other side again).
+  // (the survivor's re-match flags its group against the other side again, keeping the pair's Not
+  // sure note and the creator's "Not them").
   await tx`
     update sineobex.duplicate_pairs d set
       status_before_superseded = d.status, status = 'superseded', superseded_by_merge = ${mergeId}

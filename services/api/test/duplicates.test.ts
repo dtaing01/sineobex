@@ -776,6 +776,29 @@ describe('merge (design 8.4)', () => {
     expect(await pairOf(survivor, outside)).toMatchObject({ status: 'open', sources: ['merge_rematch'] });
   });
 
+  it('carries a settled pair’s Not sure note and "Not them" to the survivor’s new pair', async () => {
+    const PERCIVAL: NewPatient = { preferredName: 'Percival', birth: { precision: 'year', year: 1969 } };
+    const survivor = (await createPatient(h, teamId, admin.userId, PERCIVAL)).id;
+    const merged = (await createPatient(h, teamId, admin.userId, PERCIVAL)).id;
+    const other = (await createPatient(h, teamId, admin.userId, PERCIVAL)).id;
+    const pairId = await openPair(survivor, merged);
+    const [a, b] = [merged, other].sort();
+    await h.scratch.owner`
+      insert into sineobex.duplicate_pairs (team_id, patient_a, patient_b, score, reasons, sources, status, note,
+        creator_dismissed)
+      values (${teamId}, ${a!}, ${b!}, 0.8, '{name}', '{sync}', 'not_sure', 'Ask about the tattoo', true)`;
+    expect(
+      (await decide(pairId, { decision: 'merge', survivorId: survivor, comment: 'Same person' })).status,
+    ).toBe(200);
+    expect(await pairOf(merged, other)).toMatchObject({ status: 'superseded' });
+    expect(await pairOf(survivor, other)).toMatchObject({
+      status: 'open',
+      note: 'Ask about the tattoo',
+      creatorDismissed: true,
+      sources: ['merge_rematch'],
+    });
+  });
+
   it('changes nothing, and shows nothing, when the merge or the queue can’t be logged', async () => {
     const survivor = (await createPatient(h, teamId, admin.userId, { preferredName: 'Hyacinth' })).id;
     const merged = (await createPatient(h, teamId, admin.userId, { preferredName: 'Hyacinth' })).id;

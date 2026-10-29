@@ -45,6 +45,32 @@ export interface RematchResult {
 /** Every candidate at or above QUEUE_THRESHOLD is queued, not only the few the intake panel shows. */
 const REMATCH_LIMIT = CANDIDATE_LIMIT;
 
+interface Carried {
+  note: string | null;
+  creatorDismissed: boolean;
+}
+
+/**
+ * What superseded pairs between this group and each candidate's knew: a merge supersedes a pair
+ * naming the merged record, and the survivor's re-match flags the groups again (8.4 step 7), so
+ * the new pair keeps the latest Not sure note and the creator's "Not them".
+ */
+async function carriedOver(tx: Tx, self: string, others: readonly string[]): Promise<Map<string, Carried>> {
+  const rows = await tx<({ other: string } & Carried)[]>`
+    select c.other, bool_or(d.creator_dismissed) as creator_dismissed,
+           (array_agg(d.note order by d.last_flagged_at desc) filter (where d.note is not null))[1] as note
+    from sineobex.duplicate_pairs d
+    join sineobex.patients pa on pa.team_id = d.team_id and pa.id = d.patient_a
+    join sineobex.patients pb on pb.team_id = d.team_id and pb.id = d.patient_b
+    cross join lateral (
+      select case when pa.canonical_id = ${self}::uuid then pb.canonical_id else pa.canonical_id end as other
+    ) c
+    where d.team_id = sineobex.current_team_id() and d.status = 'superseded'
+      and ${self}::uuid in (pa.canonical_id, pb.canonical_id) and c.other = any (${[...others]}::uuid[])
+    group by c.other`;
+  return new Map(rows.map((r) => [r.other, { note: r.note, creatorDismissed: r.creatorDismissed }]));
+}
+
 /**
  * The server's re-run of matching (phase 3 design 8.2), inside the caller's transaction with the
  * team lock already held (lockTeamWrites): every accepted patient create ('sync'), every accepted
@@ -85,20 +111,31 @@ export async function rematchPatient(
   const dismissed = groups(options.dismissed);
   const shown = new Set([...groups(options.shown), ...dismissed]);
 
+  const carried =
+    source === 'merge_rematch'
+      ? await carriedOver(
+          tx,
+          self,
+          found.map((f) => f.canonicalId),
+        )
+      : new Map<string, Carried>();
+
   const flagged: RematchResult['flagged'] = [];
   for (const f of found) {
     const [a, b] = self < f.canonicalId ? [self, f.canonicalId] : [f.canonicalId, self];
+    const before = carried.get(f.canonicalId);
     // A decided pair (keep separate, merged, superseded) is left as it is: the `where` returns no row.
     const [row] = await tx<{ id: string; created: boolean; score: string; sources: string[] }[]>`
       insert into sineobex.duplicate_pairs as d
-        (team_id, patient_a, patient_b, score, reasons, sources, creator_dismissed)
+        (team_id, patient_a, patient_b, score, reasons, sources, creator_dismissed, note)
       values (${own.teamId}, ${a}, ${b}, ${f.score}, ${f.reasons}::text[], ${[source]}::text[],
-        ${dismissed.has(f.canonicalId)})
+        ${dismissed.has(f.canonicalId) || (before?.creatorDismissed ?? false)}, ${before?.note ?? null})
       on conflict (team_id, patient_a, patient_b) do update set
         score = greatest(d.score, excluded.score),
         reasons = case when excluded.score > d.score then excluded.reasons else d.reasons end,
         sources = case when ${source}::text = any (d.sources) then d.sources else d.sources || excluded.sources end,
         creator_dismissed = d.creator_dismissed or excluded.creator_dismissed,
+        note = coalesce(d.note, excluded.note),
         last_flagged_at = now()
       where d.status in ('open', 'not_sure')
       returning d.id, (xmax = 0) as created, d.score, d.sources`;
@@ -438,8 +475,10 @@ async function scorePair(tx: Tx, x: string, y: string): Promise<Scored | null> {
  * POST /v1/team/duplicates: staff who know two charts are one person (source staff_report). The
  * pair joins the queue at whatever score the two groups have, with a `flagged_by_staff` decision
  * row holding the comment; it merges nothing. A pair someone kept separate is refused (409
- * already_decided): only a reviewer re-opens that question.
+ * already_decided).
  */
+// PLAN-OPEN: only a reviewer should re-open a pair kept separate (design 8.6); there is no route for
+// it yet, and a staff flag never does.
 export async function flagDuplicate(
   scope: TeamScope,
   input: FlagDuplicateInput,
