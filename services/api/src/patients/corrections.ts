@@ -1,17 +1,12 @@
 import type { TeamScope } from '../auth/context.ts';
 import { conflict, invalid, notFound } from '../lib/errors.ts';
 import { sha256Hex } from '../sync/canonical.ts';
+import { loadPatient, writePatient } from '../sync/entities/patient.ts';
 import { birthProblem } from '../sync/entities/values.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
-import { jsonb, sameValue } from '../sync/records.ts';
+import { fieldState, jsonb, sameValue } from '../sync/records.ts';
 import { loadChart } from './charts.ts';
-import {
-  appendPatientHistory,
-  loadPatientRecord,
-  patientFieldState,
-  rematchAfter,
-  writePatientField,
-} from './field-reviews.ts';
+import { appendPatientHistory, groupIdOf, rematchAfter } from './field-reviews.ts';
 import type { IdentityCorrectionInput, PatientChartValue } from './schemas.ts';
 
 /** The value as sync carries it: a birth holds a date or a year, never both. */
@@ -40,12 +35,12 @@ export async function correctIdentity(
 ): Promise<PatientChartValue> {
   return scope.tx(async (tx, audit) => {
     await lockTeamWrites(tx, scope.team.teamId);
-    const named = await loadPatientRecord(tx, patientId, false);
+    const named = await loadPatient(tx, patientId, false);
     if (!named) throw notFound('patient');
-    const rec = await loadPatientRecord(tx, named.canonicalId, true);
+    const rec = await loadPatient(tx, groupIdOf(named), true);
     if (!rec) throw notFound('patient');
     const field = input.field;
-    const current = patientFieldState(rec, field);
+    const current = fieldState(rec, field);
     if (input.baseVersion !== current.version) {
       throw conflict('field_changed', 'This field changed since you opened the chart. Look again.', {
         field,
@@ -84,7 +79,7 @@ export async function correctIdentity(
       await audit({ action: 'patient.viewed', patientId: rec.id, details: { source: 'correction' } });
     } else {
       const version = current.version + 1;
-      await writePatientField(tx, rec, field, value, version, {
+      await writePatient(tx, rec, field, value, version, {
         by: admin,
         at: now.toISOString(),
         changeId: null,

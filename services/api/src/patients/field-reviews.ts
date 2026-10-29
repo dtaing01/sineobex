@@ -3,9 +3,9 @@ import type { Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { conflict, invalid, notFound } from '../lib/errors.ts';
 import { sha256Hex } from '../sync/canonical.ts';
-import { jsonb, sameValue, type FieldMeta } from '../sync/records.ts';
-import type { FieldStateValue } from '../sync/schemas.ts';
+import { loadPatient, writePatient } from '../sync/entities/patient.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
+import { fieldState, jsonb, sameValue, type StoredRecord } from '../sync/records.ts';
 import { rematchPatient } from './duplicates.ts';
 import { recognisableAfter } from './recognisable.ts';
 import type {
@@ -21,162 +21,16 @@ import type {
  * value, the other is a `kept_both` history row carrying the review's ID, and someone who knows the
  * patient picks. Phones and the portal decide online, so a decision never races a push.
  *
- * The patient row as sync names its fields is read and written here, and by identity corrections.
+ * Patient fields are read and written through the sync patient entity (sync/entities/patient.ts),
+ * so a decision stores a value exactly as a phone's change would.
  */
 
-/** Patient fields as sync names them (design 2.1), and the two an admin corrects. */
-export const PATIENT_FIELDS = [
-  'preferredName',
-  'legalName',
-  'visualDescriptor',
-  'birth',
-  'livingSituation',
-  'usualArea',
-  'preferredLanguage',
-  'allergyScreen',
-  'idCardChoice',
-] as const;
-export type PatientField = (typeof PATIENT_FIELDS)[number];
 export const IDENTITY_FIELDS: readonly string[] = ['legalName', 'birth'];
 /** Fields that identify someone: an accepted change re-runs duplicate matching (design 8.2). */
 const MATCHED_FIELDS: readonly string[] = ['preferredName', 'legalName', 'birth'];
 
-/** A patient row, with its fields as sync carries them. */
-export interface PatientRecord {
-  id: string;
-  teamId: string;
-  status: 'active' | 'merged';
-  canonicalId: string;
-  fieldVersions: Record<string, number>;
-  fieldMeta: Record<string, FieldMeta>;
-  values: Record<PatientField, unknown>;
-}
-
-interface PatientRow {
-  id: string;
-  teamId: string;
-  status: 'active' | 'merged';
-  canonicalId: string;
-  preferredName: string | null;
-  legalGivenName: string | null;
-  legalFamilyName: string | null;
-  visualDescriptor: string | null;
-  birthPrecision: 'day' | 'year' | 'estimated' | null;
-  birthDate: string | null;
-  birthYear: number | null;
-  livingSituation: string | null;
-  livingSituationOther: string | null;
-  usualArea: string | null;
-  preferredLanguage: string | null;
-  allergyScreen: string;
-  idCardChoice: string;
-  fieldVersions: Record<string, number>;
-  fieldMeta: Record<string, FieldMeta>;
-}
-
-/**
- * Loads a patient of the team. `lock` takes the row `FOR NO KEY UPDATE`, as merges do, so it never
- * waits on the `FOR KEY SHARE` a child insert's foreign key holds (D32). Must read every field
- * exactly as the sync patient entity (sync/entities/patient.ts) does, until one replaces the other.
- */
-export async function loadPatientRecord(tx: Tx, id: string, lock: boolean): Promise<PatientRecord | null> {
-  const [r] = await tx<PatientRow[]>`
-    select id, team_id, status, canonical_id, preferred_name, legal_given_name, legal_family_name,
-           visual_descriptor, birth_precision, birth_date::text as birth_date, birth_year, living_situation,
-           living_situation_other, usual_area, preferred_language, allergy_screen, id_card_choice,
-           field_versions, field_meta
-    from sineobex.patients where id = ${id} ${lock ? tx`for no key update` : tx``}`;
-  if (!r) return null;
-  return {
-    id: r.id,
-    teamId: r.teamId,
-    status: r.status,
-    canonicalId: r.canonicalId,
-    fieldVersions: r.fieldVersions,
-    fieldMeta: r.fieldMeta,
-    values: {
-      preferredName: r.preferredName,
-      legalName:
-        r.legalGivenName === null && r.legalFamilyName === null
-          ? null
-          : { given: r.legalGivenName, family: r.legalFamilyName },
-      visualDescriptor: r.visualDescriptor,
-      birth:
-        r.birthPrecision === null
-          ? null
-          : r.birthPrecision === 'day'
-            ? { precision: 'day', date: r.birthDate }
-            : { precision: r.birthPrecision, year: r.birthYear },
-      livingSituation:
-        r.livingSituation === null
-          ? null
-          : r.livingSituation === 'other'
-            ? { kind: 'other', other: r.livingSituationOther }
-            : { kind: r.livingSituation },
-      usualArea: r.usualArea,
-      preferredLanguage: r.preferredLanguage,
-      allergyScreen: r.allergyScreen,
-      idCardChoice: r.idCardChoice,
-    },
-  };
-}
-
-export function patientFieldState(rec: PatientRecord, field: string): FieldStateValue {
-  const meta = rec.fieldMeta[field];
-  return {
-    value: rec.values[field as PatientField] ?? null,
-    version: rec.fieldVersions[field] ?? 0,
-    changedBy: meta?.by ?? null,
-    changedAt: meta?.at ?? null,
-  };
-}
-
-/** The columns a sync field value is stored in. */
-function columnsOf(field: PatientField, value: unknown): Record<string, unknown> {
-  const v = value as Record<string, unknown> | string | null;
-  const o = (v ?? {}) as Record<string, unknown>;
-  switch (field) {
-    case 'legalName':
-      return { legalGivenName: o.given ?? null, legalFamilyName: o.family ?? null };
-    case 'birth':
-      return {
-        birthPrecision: o.precision ?? null,
-        birthDate: o.precision === 'day' ? o.date : null,
-        birthYear:
-          o.precision === undefined
-            ? null
-            : o.precision === 'day'
-              ? Number(String(o.date).slice(0, 4))
-              : o.year,
-      };
-    case 'livingSituation':
-      return { livingSituation: o.kind ?? null, livingSituationOther: o.kind === 'other' ? o.other : null };
-    default:
-      return { [field]: v };
-  }
-}
-
-/**
- * Writes one patient field and its version, the way the sync apply path keeps the bookkeeping. Must
- * stay in step with the sync patient entity's writer (sync/entities/patient.ts) until one replaces
- * the other.
- */
-export async function writePatientField(
-  tx: Tx,
-  rec: PatientRecord,
-  field: PatientField,
-  value: unknown,
-  version: number,
-  meta: FieldMeta,
-): Promise<void> {
-  await tx`
-    update sineobex.patients
-    set ${tx(columnsOf(field, value) as Record<string, string | number | null>)},
-        field_versions = field_versions || jsonb_build_object(${field}::text, ${version}::int),
-        field_meta = field_meta || jsonb_build_object(${field}::text, ${jsonb(tx, meta)}),
-        version = version + 1
-    where id = ${rec.id}`;
-}
+/** The canonical patient of a record loadPatient returned: itself, or its survivor when merged. */
+export const groupIdOf = (rec: StoredRecord) => rec.internal.canonicalId as string;
 
 /** A field history row of a patient field, written outside the sync apply path; returns its ID. */
 export async function appendPatientHistory(
@@ -204,9 +58,9 @@ export async function appendPatientHistory(
 }
 
 /** Re-runs duplicate matching after a decided or corrected field that identifies someone. */
-export async function rematchAfter(tx: Tx, audit: AuditFn, rec: PatientRecord, field: string) {
+export async function rematchAfter(tx: Tx, audit: AuditFn, rec: StoredRecord, field: string) {
   if (!MATCHED_FIELDS.includes(field)) return;
-  await rematchPatient(tx, audit, rec.canonicalId, IDENTITY_FIELDS.includes(field) ? 'correction' : 'edit');
+  await rematchPatient(tx, audit, groupIdOf(rec), IDENTITY_FIELDS.includes(field) ? 'correction' : 'edit');
 }
 
 /** Reviews per page. */
@@ -216,7 +70,7 @@ interface ReviewRow {
   id: string;
   recordId: string;
   canonicalId: string;
-  field: PatientField;
+  field: string;
   needs: 'patients.edit' | 'patients.correct_identity';
   status: 'open' | 'decided' | 'obsolete';
   openedAt: Date;
@@ -239,9 +93,9 @@ async function reviewViews(tx: Tx, rows: ReviewRow[]): Promise<FieldReviewViewVa
     from sineobex.field_history h join sineobex.users u on u.id = h.changed_by
     where h.review_id = any(${rows.map((r) => r.id)}::uuid[]) and h.kind = 'kept_both'
     order by h.id`;
-  const records = new Map<string, PatientRecord | null>();
+  const records = new Map<string, StoredRecord | null>();
   for (const r of rows) {
-    if (!records.has(r.recordId)) records.set(r.recordId, await loadPatientRecord(tx, r.recordId, false));
+    if (!records.has(r.recordId)) records.set(r.recordId, await loadPatient(tx, r.recordId, false));
   }
   return rows.map((r) => {
     const rec = records.get(r.recordId);
@@ -250,9 +104,7 @@ async function reviewViews(tx: Tx, rows: ReviewRow[]): Promise<FieldReviewViewVa
       patientId: r.canonicalId,
       field: r.field,
       needs: r.needs,
-      current: rec
-        ? patientFieldState(rec, r.field)
-        : { value: null, version: 0, changedBy: null, changedAt: null },
+      current: rec ? fieldState(rec, r.field) : { value: null, version: 0, changedBy: null, changedAt: null },
       alternates: alternates
         .filter((a) => a.reviewId === r.id)
         .map((a) => ({
@@ -344,9 +196,9 @@ export async function decideFieldReview(
     if (IDENTITY_FIELDS.includes(review.field) && input.comment === undefined) {
       throw invalid('comment_required', 'Say why: a legal name or birth date is changed with a reason.');
     }
-    const rec = await loadPatientRecord(tx, review.recordId, true);
+    const rec = await loadPatient(tx, review.recordId, true);
     if (!rec) throw notFound('review');
-    const current = patientFieldState(rec, review.field);
+    const current = fieldState(rec, review.field);
     // Versions only: the reviewer re-reads the chart through the audited GET.
     if (input.baseVersion !== current.version) {
       throw conflict('field_changed', 'This field changed since you opened the review. Look again.', {
@@ -373,7 +225,7 @@ export async function decideFieldReview(
       if (!sameValue(current.value, alternate.value)) {
         version = current.version + 1;
         // Recorded as the person who saw that value, approved by the reviewer.
-        await writePatientField(tx, rec, review.field, alternate.value, version, {
+        await writePatient(tx, rec, review.field, alternate.value, version, {
           by: alternate.changedBy,
           at: now.toISOString(),
           changeId: null,
@@ -415,7 +267,7 @@ export async function decideFieldReview(
       action: 'field_review.decided',
       entity: 'patient',
       entityId: rec.id,
-      patientId: rec.canonicalId,
+      patientId: groupIdOf(rec),
       details: {
         reviewId: review.id,
         field: review.field,
