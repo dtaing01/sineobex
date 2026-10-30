@@ -42,7 +42,9 @@ function staleSet(recordId: string, field: string, value: string) {
 async function tabTo(page: Page, name: string, limit = 40) {
   for (let i = 0; i < limit; i++) {
     await page.keyboard.press('Tab');
-    const focused = await page.evaluate(() => document.activeElement?.textContent ?? '');
+    const focused = await page.evaluate(
+      () => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '',
+    );
     if (focused.replace(/\s+/g, ' ').trim() === name) return;
   }
   throw new Error(`${name} never took focus`);
@@ -81,9 +83,11 @@ test('a misspelled street name finds the patient, from the keyboard, and nothing
   const del = results.getByRole('link', { name: 'Open chart: Del, born 1946' });
   await expect(del).toBeVisible();
   await expect(page.getByRole('status')).toContainText(/found/);
-  const row = results.getByRole('row').filter({ has: del });
+  const row = results
+    .getByRole('row')
+    .filter({ has: page.getByRole('link', { name: 'Open chart: Del, born 1946' }) });
   await expect(row).toContainText('Smitty');
-  await expect(row).toContainText('Street name, spelled a little differently');
+  await expect(row).toContainText('Likely: Street name');
   await expect(page).toHaveURL(/\/patients$/);
   await expectAccessible(page, 'search results', { inPlace: true });
   await expectReflow(page, 'search results');
@@ -137,13 +141,13 @@ test('a Program Admin sees every problem with its history, and the profile works
   await signIn(page, 'admin@example.com');
   await page.goto(`/patients/${DEE}`);
   const problems = page.getByRole('region', { name: 'Problems' });
-  await expect(problems.getByRole('heading')).toHaveText([
+  await expect(problems.getByRole('heading', { level: 3 })).toHaveText([
     'Opioid dependence, uncomplicated',
     'Essential (primary) hypertension',
   ]);
   await expect(problems).toContainText('Sensitive');
   // The status history is a disclosure, opened from the keyboard.
-  const disclosure = problems.getByText('Status history and notes: Essential (primary) hypertension');
+  const disclosure = problems.getByText('Status history and notes for Essential (primary) hypertension');
   await disclosure.focus();
   await page.keyboard.press('Enter');
   await expect(problems.locator('details[open]')).toContainText('Ongoing');
@@ -188,7 +192,7 @@ test('a field review decided from the queue by keyboard, and the history shows t
   await expect(page.getByRole('region', { name: 'Details' })).toContainText(spot);
   await page
     .getByRole('region', { name: 'Details' })
-    .getByRole('link', { name: 'History: Usually found' })
+    .getByRole('link', { name: 'History of Usually found' })
     .click();
   await expect(page).toHaveURL(new RegExp(`/patients/${KEN}/history\\?field=usualArea$`));
   await expect(page).toHaveTitle('History · Sineobex');

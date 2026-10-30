@@ -52,7 +52,8 @@ test('a date of birth is corrected behind the sign-in check, read back in words,
   await form.getByRole('button', { name: 'Save' }).click();
 
   await expect(page).toHaveURL(new RegExp(`/patients/${BENNY}\\?corrected=birth$`));
-  await expect(page.getByRole('status')).toContainText('Date of birth corrected');
+  // The ID card panel has a status region of its own.
+  await expect(page.getByRole('status').filter({ hasText: 'Date of birth corrected' })).toBeVisible();
   await expect(page.getByRole('main')).toContainText(`Born February ${day}, 1961`);
   await page.goto(`/patients/${BENNY}/history?field=birth`);
   const row = page.getByRole('row').filter({ hasText: 'Admin correction' }).first();
@@ -72,7 +73,9 @@ test('a patient’s request to change the legal name, declined: recorded with a 
   await form.getByLabel(/^Reason/).fill('Demo: the made-up ID card shows the recorded spelling');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(new RegExp(`/patients/${BENNY}\\?corrected=declined$`));
-  await expect(page.getByRole('status')).toContainText('The declined request is recorded');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'The declined request is recorded' }),
+  ).toBeVisible();
   await expect(page.getByRole('main')).toContainText('Legal name: Benjamin Ross');
 });
 

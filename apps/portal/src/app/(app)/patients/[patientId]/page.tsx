@@ -83,7 +83,7 @@ function Problems({ chart }: { chart: Schemas['PatientChart'] }) {
             {(history.length > 0 || notes.length > 0) && (
               <details>
                 <summary>
-                  Status history and notes<span className="sr-only">: {title}</span>
+                  Status history and notes<span className="sr-only"> for {title}</span>
                 </summary>
                 {history.length > 0 && (
                   <ol className="px-list">
@@ -189,7 +189,7 @@ export default async function PatientPage({
                 {fieldValueText(field, chartValue(chart, field), today)}
                 <span className={styles.meta}>
                   <Link href={`/patients/${id}/history?field=${field}`} prefetch={false}>
-                    History<span className="sr-only">: {syncFieldLabel(field)}</span>
+                    History<span className="sr-only"> of {syncFieldLabel(field)}</span>
                   </Link>
                 </span>
               </dd>

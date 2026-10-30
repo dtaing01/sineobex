@@ -43,11 +43,13 @@ function Results() {
           <tr key={r.patientId}>
             <th scope="row">
               {/* No prefetch: loading a chart logs a view, and nobody has opened it yet. The link's
-                  name says whose chart it opens; its visible part is the name. */}
-              <Link href={`/patients/${r.patientId}`} prefetch={false}>
-                <span className="sr-only">Open chart: </span>
+                  name says whose chart it opens, and starts with what it shows. */}
+              <Link
+                href={`/patients/${r.patientId}`}
+                prefetch={false}
+                aria-label={`Open chart: ${r.name}${r.bornSuffix}`}
+              >
                 {r.name}
-                <span className="sr-only">{r.bornSuffix}</span>
               </Link>
               {r.legalName && <span className={styles.meta}>Legal name: {r.legalName}</span>}
               {r.descriptor && <span className={styles.meta}>{r.descriptor}</span>}
@@ -81,7 +83,7 @@ export function SearchForm() {
       <fieldset className="px-fieldset">
         <legend>Date of birth (optional)</legend>
         <p className="sx-help">A year needs a name with it. A full date works on its own.</p>
-        <div className="px-form px-form--inline">
+        <div className={`px-form px-form--inline ${styles.dateParts}`}>
           <TextField name="month" label="Month" inputMode="numeric" autoComplete="off" maxLength={2} />
           <TextField name="day" label="Day" inputMode="numeric" autoComplete="off" maxLength={2} />
           <TextField name="year" label="Year" inputMode="numeric" autoComplete="off" maxLength={4} />
