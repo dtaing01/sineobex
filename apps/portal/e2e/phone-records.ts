@@ -27,8 +27,24 @@ export interface PhoneChange {
   minutesAgo: number;
 }
 
-/** A phone for a seeded staff member. `send` pushes changes in order and expects each accepted. */
-export async function phoneOf(email: string) {
+type Phone = Awaited<ReturnType<typeof registerOnce>>;
+const phones = new Map<string, Promise<Phone>>();
+
+/**
+ * The phone of a seeded staff member, registered once for the whole run: a second phone for the
+ * same person would change what the Phones page lists for phones.spec.ts. `send` pushes changes in
+ * order and expects each accepted.
+ */
+export function phoneOf(email: string): Promise<Phone> {
+  let phone = phones.get(email);
+  if (!phone) {
+    phone = registerOnce(email);
+    phones.set(email, phone);
+  }
+  return phone;
+}
+
+async function registerOnce(email: string) {
   const phone = await registerPhone(email);
   let seq = 0;
   return {
