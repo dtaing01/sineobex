@@ -125,6 +125,8 @@ function UndoResult({ undone, names }: { undone: Undone; names: MergeNames }) {
             ID card <code>{l.tokenRef}</code> works again for {record(l.issuedOn)}.
           </li>
         ))}
+        {/* PLAN-OPEN: cards at undo (design 14.1, #16): a card made while merged stays with the
+            survivor, and the admin checks who carries it. */}
         {undone.linksIssuedWhileMerged.map((l) => (
           <li key={l.linkId}>
             ID card <code>{l.tokenRef}</code> was made while the charts were merged (

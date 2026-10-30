@@ -1,11 +1,13 @@
 import type { Schemas } from '@sineobex/contract';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { who } from '@/components/SideBySide';
 import { api, unwrap } from '@/lib/api';
 import { formatDateTime, PROBLEM_STATUS } from '@/lib/labels';
 import { ArrivalHeading } from '../duplicates/ArrivalHeading';
-import { ReversalDecision } from './ReversalDecision';
+import { ReversalDecision, ReversalOffers } from './ReversalDecision';
+import styles from './reversals.module.css';
 
 export const metadata: Metadata = { title: 'Problem reversals' };
 
@@ -82,9 +84,13 @@ export default async function ProblemReversalsPage({
     (await api()).GET('/v1/team/problem-reversals', { params: { query: after ? { afterId: after } : {} } }),
   );
   const count = list.requests.length;
+  // A new view starts afresh: Next keeps client state across visits to the same page, so without
+  // this an answered offer would outlive the decision. Each outcome's address names the entry it
+  // answered, so it differs from the last.
+  const view = [one('done'), one('entry'), after ?? ''].join(':');
 
   return (
-    <>
+    <Fragment key={view}>
       <h1 className="px-h1">Problem reversals</h1>
       <p className="sx-help">
         Problems a worker says were marked Resolved by mistake. They added the problem again as a new entry,
@@ -97,40 +103,42 @@ export default async function ProblemReversalsPage({
           <p>{done.text}</p>
         </section>
       )}
-      {count === 0 ? (
-        <p className="px-panel">
-          {page > 1 ? 'Nothing more after the previous page.' : 'No request is waiting.'}
-        </p>
-      ) : (
-        <p className="sx-help">
-          Page {page}: {count} {count === 1 ? 'request' : 'requests'}, oldest first.
-        </p>
-      )}
-      {list.requests.map((r, i) => {
-        const heading = `request-${r.request.id}`;
-        const title = `${i + 1}. ${r.request.title}`;
-        return (
-          <section key={r.request.id} aria-labelledby={heading} className="px-panel">
-            <h2 id={heading} className="px-h2">
-              {title}, for {who(r.patient)}
-            </h2>
-            <p>
-              {r.requestedBy.displayName} added this again on {formatDateTime(r.requestedAt)}, saying it never
-              went away. <Link href={`/patients/${r.patientId}`}>Open chart: {who(r.patient)}</Link>
-            </p>
-            <ul className="px-cards">
-              <Entry heading="The original entry" problem={r.original} />
-              <Entry heading="The new entry" problem={r.request} />
-            </ul>
-            <ReversalDecision
-              requestId={r.request.id}
-              originalId={r.original.id}
-              originalTitle={r.original.title}
-              label={title}
-            />
-          </section>
-        );
-      })}
+      <ReversalOffers>
+        {count === 0 ? (
+          <p className="px-panel">
+            {page > 1 ? 'Nothing more after the previous page.' : 'No request is waiting.'}
+          </p>
+        ) : (
+          <p className="sx-help">
+            Page {page}: {count} {count === 1 ? 'request' : 'requests'}, oldest first.
+          </p>
+        )}
+        {list.requests.map((r, i) => {
+          const heading = `request-${r.request.id}`;
+          const title = `${i + 1}. ${r.request.title}`;
+          return (
+            <section key={r.request.id} aria-labelledby={heading} className="px-panel">
+              <h2 id={heading} className="px-h2">
+                {title}, for {who(r.patient)}
+              </h2>
+              <p>
+                {r.requestedBy.displayName} added this again on {formatDateTime(r.requestedAt)}, saying it
+                never went away. <Link href={`/patients/${r.patientId}`}>Open chart: {who(r.patient)}</Link>
+              </p>
+              <ul className={styles.entries}>
+                <Entry heading="The original entry" problem={r.original} />
+                <Entry heading="The new entry" problem={r.request} />
+              </ul>
+              <ReversalDecision
+                requestId={r.request.id}
+                originalId={r.original.id}
+                originalTitle={r.original.title}
+                label={title}
+              />
+            </section>
+          );
+        })}
+      </ReversalOffers>
       {(page > 1 || list.nextAfterId) && (
         <nav aria-label="Request pages" className="px-tabs px-pager">
           <ul>
@@ -152,6 +160,6 @@ export default async function ProblemReversalsPage({
           </ul>
         </nav>
       )}
-    </>
+    </Fragment>
   );
 }

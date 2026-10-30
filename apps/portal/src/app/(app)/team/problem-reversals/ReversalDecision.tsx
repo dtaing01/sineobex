@@ -2,7 +2,7 @@
 
 import type { Schemas } from '@sineobex/contract';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { decideReversal, mergeProblemEntries } from '@/app/actions/problems';
 import { ActionForm, ChoiceField, SubmitButton, TextField } from '@/components/ActionForm';
 import type { ActionState } from '@/lib/forms';
@@ -16,9 +16,31 @@ function describeProblem(p: Problem): string {
   return `${p.title}${p.code ? ` (${p.code})` : ''}, ${PROBLEM_STATUS[p.status]}, added ${formatDateTime(p.createdAt)} by ${p.author.displayName}`;
 }
 
+interface Offered {
+  requestId: string;
+  reversed: Reversed;
+}
+
+const OfferMerge = createContext<(offered: Offered) => void>(() => {});
+
 /**
- * Reverse or Decline, each with a reason (design 9.4). After Reverse, the same place offers to
- * merge the new entry into the original, which is Ongoing again.
+ * Holds the offer to merge after a Reverse, above the list. Every server action re-renders the
+ * page (the proxy renews the session cookie on each request), and the answered request leaves the
+ * list with its form, so the offer can't live in the request's own section.
+ */
+export function ReversalOffers({ children }: { children: ReactNode }) {
+  const [offered, setOffered] = useState<Offered | null>(null);
+  return (
+    <OfferMerge.Provider value={setOffered}>
+      {offered && <MergeOffer key={offered.requestId} {...offered} />}
+      {children}
+    </OfferMerge.Provider>
+  );
+}
+
+/**
+ * Reverse or Decline, each with a reason (design 9.4). After Reverse, the page offers to merge
+ * the new entry into the original, which is Ongoing again.
  */
 export function ReversalDecision({
   requestId,
@@ -32,11 +54,21 @@ export function ReversalDecision({
   /** Names the request, so each form on the page has a name of its own. */
   label: string;
 }) {
-  const [reversed, setReversed] = useState<Reversed | null>(null);
-  if (reversed) return <MergeOffer reversed={reversed} requestId={requestId} />;
+  const offer = useContext(OfferMerge);
+  const [reversed, setReversed] = useState(false);
+  if (reversed) {
+    return (
+      <p className="px-alert px-alert--ok">
+        Reversed. The offer to merge the entries is at the top of the list.
+      </p>
+    );
+  }
   const decide = async (state: ActionState, form: FormData) => {
     const next = await decideReversal(state, form);
-    if (next.reversed) setReversed(next.reversed);
+    if (next.reversed) {
+      setReversed(true);
+      offer({ requestId, reversed: next.reversed });
+    }
     return next;
   };
   return (
@@ -75,23 +107,23 @@ export function ReversalDecision({
 }
 
 /** "Merge the new entry into the original?" (design 9.4 step 3), with focus on the outcome first. */
-function MergeOffer({ reversed, requestId }: { reversed: Reversed; requestId: string }) {
+function MergeOffer({ reversed, requestId }: Offered) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   const { problem, mergeCandidates } = reversed;
   const only = mergeCandidates.length === 1 ? mergeCandidates[0] : undefined;
   return (
-    <div className="px-doc">
+    <section aria-labelledby={`reversed-${requestId}`} className="px-panel">
       <div className="px-alert px-alert--ok">
-        <h3 id={`reversed-${requestId}`} ref={heading} tabIndex={-1} className="px-h3">
+        <h2 id={`reversed-${requestId}`} ref={heading} tabIndex={-1} className="px-h2">
           Reversed: {problem.title} is Ongoing again
-        </h3>
+        </h2>
         <p>Its history keeps both entries, and the worker who asked is told.</p>
       </div>
       {mergeCandidates.length === 0 ? (
         <p>
           No other entry stands in for it, so there is nothing to merge.{' '}
-          <Link href="/team/problem-reversals?done=reversed">Back to the list</Link>
+          <Link href={`/team/problem-reversals?done=reversed&entry=${requestId}`}>Back to the list</Link>
         </p>
       ) : (
         <ActionForm
@@ -100,6 +132,7 @@ function MergeOffer({ reversed, requestId }: { reversed: Reversed; requestId: st
           label="Merge the new entry into the original"
         >
           <h3 className="px-h3">Merge the new entry into the original?</h3>
+          {/* PLAN-OPEN: undo limits (design 14.1, #15): no undo for a problem merge in phase 3. */}
           <p>
             The entry’s history and notes then show in the original’s timeline, and it leaves the problem list
             and the bag check. A problem merge can’t be undone yet.
@@ -133,10 +166,10 @@ function MergeOffer({ reversed, requestId }: { reversed: Reversed; requestId: st
           />
           <div className="px-actions">
             <SubmitButton>Merge entries</SubmitButton>
-            <Link href="/team/problem-reversals?done=reversed">Keep them separate</Link>
+            <Link href={`/team/problem-reversals?done=reversed&entry=${requestId}`}>Keep them separate</Link>
           </div>
         </ActionForm>
       )}
-    </div>
+    </section>
   );
 }

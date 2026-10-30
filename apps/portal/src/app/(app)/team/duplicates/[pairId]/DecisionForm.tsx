@@ -48,6 +48,7 @@ export function DecisionForm({
 
 function DecisionFields({ records }: { records: [PairRecord, PairRecord] }) {
   const state = useFormState();
+  // PLAN-OPEN: merge survivor default (design 14.1, #26): the older record.
   const older = records.find((r) => r.older) ?? records[0];
   const [decision, setDecision] = useState(state.values?.decision);
   const [kept, setKept] = useState(state.values?.survivorId ?? older.id);

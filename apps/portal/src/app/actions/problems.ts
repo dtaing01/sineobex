@@ -24,9 +24,8 @@ export type ReversalState = ActionState & { reversed?: Schemas['ReverseResolvedR
 
 /**
  * Reverse or decline a "Resolved by mistake" request, with a reason (design 9.4). Reverse sets the
- * original back to Ongoing and returns the merge offer, which the page shows in place: the list is
- * not reloaded, or the request (now answered) would leave the page with its offer. Decline leaves
- * the new entry a separate problem.
+ * original back to Ongoing and returns the merge offer, which the page holds above the list (the
+ * answered request leaves the list). Decline leaves the new entry a separate problem.
  */
 export async function decideReversal(_: ActionState, form: FormData): Promise<ReversalState> {
   const values = formValues(form, 'requestId', 'originalId', 'decision', 'reason');
@@ -67,7 +66,7 @@ export async function decideReversal(_: ActionState, form: FormData): Promise<Re
     return failure(err, values, 'reason');
   }
   revalidatePath('/team/problem-reversals');
-  redirect('/team/problem-reversals?done=declined');
+  redirect(`/team/problem-reversals?${new URLSearchParams({ done: 'declined', entry: requestId })}`);
 }
 
 /**
@@ -94,5 +93,5 @@ export async function mergeProblemEntries(_: ActionState, form: FormData): Promi
     return failure(err, values, 'comment');
   }
   revalidatePath('/team/problem-reversals');
-  redirect('/team/problem-reversals?done=merged');
+  redirect(`/team/problem-reversals?${new URLSearchParams({ done: 'merged', entry: values.problemId! })}`);
 }
