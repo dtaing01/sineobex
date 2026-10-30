@@ -26,15 +26,15 @@ this table is their state. Update it as units land.
 | S4 ID links, corrections, reviews, problem admin | Done | group handshake, online ID cards, corrections and declined amendments, field reviews, problem reversals; migration 0014 | — |
 | P0 Phone core | Done | `apps/mobile/lib/patients/{access,recognisable,id_link_token,dob,display,normalize,trigram,matching,match_constants}.dart`, all vectors pass | — |
 | W0 Portal shell | Done | navigation, `lib/{labels,dob}.ts`, `/c`, shared e2e helpers | Nav links to W1/W2 pages show "Page not found" until those land |
-| **P1 Phone sync layer** | **Not started** (an attempt read the code and committed nothing) | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
-| **W1 Portal patients** | **Not started** | — | All of row W1 |
-| **W2 Portal duplicates, merges, reversals** | **Not started** | — | All of row W2. S3's refusal codes are under "As built" |
+| **P1 Phone sync layer** | **In progress** (in an agent's worktree; nothing on the branch yet) | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
+| **W1 Portal patients** | **In progress** (in an agent's worktree; nothing on the branch yet) | — | All of row W1, including 13.7's "the merged patient's URL opens the survivor" step (the seeded merge of 9 into 8 fits) |
+| W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
 | P2 Phone patients domain | Not started; needs P1 | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
 | P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
 | Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
 
-Order from here: **P1, W1 and W2 can run in parallel now** (disjoint files). P2 after P1; P3
+Order from here: **P1 and W1 run in parallel** (disjoint files). P2 after P1; P3
 after P2 (or against P2's interfaces); the review last.
 
 ### As built: where the code departs from, or reads, this design
@@ -113,6 +113,17 @@ Later units build on the code, not on the text above, where they differ.
   copy differs from the JSON. Only severe allergies show their severity on the badge. `birthLabel`
   gives the profile header's forms; the search-row form is P3's. Date-of-birth error messages other
   than the February one are worded independently on the phone and in the portal.
+- **Portal duplicates (W2).** Every server action re-renders the page (the proxy rewrites the
+  session cookie on each request), so a result held in a list item vanishes when the item leaves the
+  list: the problem merge offer lives in a provider above the list, and outcome URLs carry the
+  answered entry's UUID (`?done=merged&entry=…`). After a pair decision the reviewer returns to the
+  queue, whose confirmation heading takes focus and links to the next pair. The pair page sends the
+  versions the reviewer saw and re-reads the pair on `pair_changed`, keeping what was typed. Specs
+  create their own patients through a phone push (`e2e/phone-records.ts`, one phone per person per
+  run), so they never change seeded rows other specs read. The staff flag
+  (`POST /v1/team/duplicates`) has no screen in phase 3: the PRD asks only for automatic flagging and
+  the queue. A person with several phones gets a numbered wipe section per
+  phone (found by W2; axe `landmark-unique`).
 - **Portal shell (W0).** `/c` shows signed-in and signed-out visitors the same page and never reads
   the fragment; removing the token from the address bar and history is left to phase 9 (scanning).
 
