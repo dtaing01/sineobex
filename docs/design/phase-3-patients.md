@@ -11,6 +11,123 @@ Done when (Build plan): **a made-up patient is found offline by a misspelled ali
 
 > **Project lead amendment (Oct 22), overriding the text below.** "Keep for today" pins are **cut from phase 3**: the PRD doesn't ask for them, and the route cache they stand in for arrives in phase 7 (plan risk 8: cut from the edges). Wherever this design mentions them: `cache_scopes.kind` is `'opened'` or `'route'` (phase 7) only; `FetchCharts.reason` is `'opened' | 'refresh'`; there is no pin action, limit, audit event, UI or test for pins; D30 reads "charts a person opened or worked on". Constant 23 in 14.1 is removed. Everything else stands.
 
+## Status (Oct 30), and how to pick the work up
+
+Read `CLAUDE.md` at the repository root first: environment, commands, the CI lock, conventions.
+Then this section, then the design sections the next unit needs. Units are defined in section 15;
+this table is their state. Update it as units land.
+
+| Unit | State | On the PR branch | What is left |
+|---|---|---|---|
+| S0 Contract and schema | Done | migrations 0009–0012, routes, schemas, generated data, seed, `patient-fixtures.ts` | — |
+| S1 Sync entity rules | Done | entity registry (`services/api/src/sync/entities/*`), per-entity permissions, savepoint, field classes, redirects, migration 0013 (encounter→patient FK) | — |
+| S2 Matching, search, index, charts | Done | scorer and vectors, search, match, charts, history, projection, team index; migration 0015 (pinned `normalize_name`) | — |
+| S3 Duplicates and merges | Done | re-match at sync, queue, decisions, merge, undo; `patients-done-when.test.ts` (server half of 13.1) passes | — |
+| S4 ID links, corrections, reviews, problem admin | Done | group handshake, online ID cards, corrections and declined amendments, field reviews, problem reversals; migration 0014 | — |
+| P0 Phone core | Done | `apps/mobile/lib/patients/{access,recognisable,id_link_token,dob,display,normalize,trigram,matching,match_constants}.dart`, all vectors pass | — |
+| W0 Portal shell | Done | navigation, `lib/{labels,dob}.ts`, `/c`, shared e2e helpers | Nav links to W1/W2 pages show "Page not found" until those land |
+| **P1 Phone sync layer** | **Not started** (an attempt read the code and committed nothing) | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
+| **W1 Portal patients** | **Not started** | — | All of row W1 |
+| **W2 Portal duplicates, merges, reversals** | **Not started** | — | All of row W2. S3's refusal codes are under "As built" |
+| P2 Phone patients domain | Not started; needs P1 | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
+| P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
+| D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
+| Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
+
+Order from here: **P1, W1 and W2 can run in parallel now** (disjoint files). P2 after P1; P3
+after P2 (or against P2's interfaces); the review last.
+
+### As built: where the code departs from, or reads, this design
+
+Later units build on the code, not on the text above, where they differ.
+
+- **Shared (S0).** The phase 2 type `RecordEntityName` stays the encounter pair; the wider type is
+  `AnyRecordEntityName`. `PairSide.photo` is `photoId: Uuid | null`; `PairSide.createdHow` has
+  `'unknown'` (seeded rows). The Dart generator names its enum fallback `unknownValue`, because
+  `unknown` is a real allergy value. `ID_LINK_BASE_URL` is required in pilot and production
+  (https), defaults to `http://localhost:3100` in local and test; `/v1/me` returns it.
+  Nicknames come from `carltonnorthern/nicknames` (Apache-2.0, pinned commit, licence vendored).
+  The 427 ICD-10-CM codes come from a GitHub mirror of the CDC FY2026 tabular (the proxy blocks
+  CMS and CDC); a clinician must review the list before the pilot.
+- **Sync (S1).** Encounter and note loads lock `FOR NO KEY UPDATE` (with `FOR UPDATE` an encounter
+  edit and a problem naming it deadlock). A status confirmation counts as an observation and bumps
+  the version; an older observation that didn't see the current version is history only, even when
+  it agrees. Redirected writes use history kind `redirected`; a problem's `enteredInError` is
+  never redirected. A problem conflict sends no `conflict_resolved` notice. `server_constraint`
+  rejections carry `sqlstate`. Alias (20) and allergy (30) caps count per patient record. Links made
+  through sync are `made_offline: true`. Sync read rules live in `review.ts`.
+- **The rules the phone's fake server must mirror** (S1's list; check each against
+  `services/api/src/sync/entities/*`):
+  1. Value schemas, strict and never transforming, with `valueProblem` and `parents` /
+     `parentsOfSet` (`packages/contract/test-vectors/sync-values.json`).
+  2. Per-entity permissions: `patients.edit` for patient, alias, consent, id_link and allergy
+     creates; `encounters.chart` for allergy `enteredInError`, problems, problem notes, encounters
+     and notes; a problem's `enteredInError` also needs its author or `patients.reverse_resolved`.
+     A missing permission is held for review.
+  3. Parents of creates and sets: missing → stale reference; the person's own held create →
+     `awaiting_review`.
+  4. Field classes: keep-both (`not_asked` is blank for `allergyScreen` and `idCardChoice`),
+     identity with `ESTIMATE_RANGE`, `nothing_to_recognise` as `history_only`, set-once, "no known
+     allergies" against an allergy in both orders, a `resolution` on these classes is
+     `nothing_to_resolve`.
+  5. Problem status: confirmations bump the version; an unseen older observation is history only;
+     the check date never moves back; `resolved_needs_admin` and `status_backwards`; a retracted
+     problem gives `history_only` for a status and `problemRetracted` for a note.
+  6. Accepted receipts carry `server` and `details`, and replays answer the same; a change that
+     follows a kept or redirected change never counts as having seen the chart.
+  7. Redirects: patient sets go to the canonical patient with `redirectedTo` and `mergeId`; problem
+     status sets follow `merged_into`; children are stored as sent; an ID link for a merged patient
+     is `patient_merged` with `survivorId`.
+  8. Caps: 20 active aliases, 30 active allergies per patient record; `record_exists` for a taken
+     ID, consents included.
+  9. `AuditAppend` with up to 50 `patientIds`, `criteria`, `source`, `checkId`.
+  10. A patient create re-runs matching: the receipt carries `possibleDuplicate` unless the match was
+      already shown (`matchCheck.shown` / `dismissed`).
+- **Matching (S2).** `normalize_name` is generated from `packages/contract/data/unaccent-latin.json`
+  (migration 0015), never from live `unaccent`; refreshing the map is an explicit generator step
+  (`gen-match-vectors.ts --refresh-accent-map`). Rules the vectors pin (and P0 mirrors): match
+  reasons are every name pair at or above `MATCH_POSSIBLE` plus the best pair; a token's "how" is a
+  reason only at or above `NAME_FLOOR`; a prefix match gives no "how"; weak words are dropped from the
+  whole-string trigram; descriptors never get the sound-alike term; ties go by source (preferred,
+  legal, alias, descriptor) then text; a year-and-month search against a full date scores
+  `DOB_MONTH_YEAR`, `DOB_YEAR` or 0. History leaves out ID link records (their create value holds
+  the token). Charts list removed aliases and allergies entered in error with their status. Team
+  index aliases are `{id: Uuid | null, alias, kind: 'alias' | 'merged_name'}`: a merged record's
+  name has no ID and must never be offered for removal.
+- **Duplicates (S3).** A merge supersedes (restorably) open and Not sure pairs naming the merged
+  record; the survivor's re-match flags them again, keeping the Not sure note and "Not them". The
+  queue lists a pair only while both sides are active. Not sure leaves `decided_at` null.
+  `duplicate.decided` is written once per patient. Undo keeps a "none known" fill once the group has
+  an allergy, and any fill whose removal would leave nobody recognisable (`keptFields`); it is
+  refused while a merge made at the same time or later involves the survivor's group. The staff
+  flag needs `patients.edit` and is refused on a pair kept separate (PLAN-OPEN). The re-match limit
+  is `CANDIDATE_LIMIT`. Refusal codes for the portal: 409 `pair_changed {versions:{a,b}}`,
+  409 `already_decided`, 422 `survivor_not_in_pair`, 422 `same_patient`,
+  409 `undo_later_merge_first {mergeIds}`, 409 `already_undone`, 403 `reauth_required`.
+- **ID links and admin (S4).** A stale offline card that loses a conflict changes nothing else. An
+  online issue with no active card proceeds even when `replacesLinkId` is set. A problem merge's
+  comment is its own correction kind, `problem_merge` (migration 0014). Declining a reversal request
+  needs a recent sign-in. Patient fields outside sync are read and written through S1's patient
+  entity, one implementation.
+- **Phone core (P0).** `normalize.dart` holds a copy of the accent map, and its test fails if the
+  copy differs from the JSON. Only severe allergies show their severity on the badge. `birthLabel`
+  gives the profile header's forms; the search-row form is P3's. Date-of-birth error messages other
+  than the February one are worded independently on the phone and in the portal.
+- **Portal shell (W0).** `/c` shows signed-in and signed-out visitors the same page and never reads
+  the fragment; removing the token from the address bar and history is left to phase 9 (scanning).
+
+### Questions that need a person (each has a default in code, marked PLAN-OPEN)
+
+- **Counsel:** registration consent wording, minors and withdrawal; which diagnosis codes count as
+  sensitive; whether search text should ever be kept in the audit log (default: never).
+- **Brooke and Mercy:** the curated ICD-10-CM list (and its source); living situation options;
+  match thresholds, to tune on pilot data; month-first date entry.
+- **The team:** the ID link domain (`ID_LINK_BASE_URL` must be set before the pilot);
+  `OFFLINE_AFTER_MINUTES = 10` (when an intake counts as made offline); whether only a reviewer may
+  reopen a pair kept separate; per-user rate limiting (recommended at the API gateway in phase 12).
+
+---
+
 ## 0. Ground truth and the choices
 
 ### 0.1 Facts from the code that shape this design
