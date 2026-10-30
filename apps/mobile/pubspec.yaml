@@ -1,0 +1,59 @@
+name: sineobex_field
+description: "Sineobex field app: offline-first charting for street medicine."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=3.47.6"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: 3.0.7
+  cryptography: 2.9.0
+  flutter_riverpod: 3.4.3
+  flutter_secure_storage: 11.2.0
+  go_router: 18.1.0
+  http: 1.6.0
+  local_auth: 3.0.2
+  lucide_icons_flutter: 3.1.25
+  path: 1.9.1
+  path_provider: 2.1.6
+  sqlite3: 3.7.1
+  url_launcher: 6.3.2
+  uuid: 4.6.0
+
+dev_dependencies:
+  fake_async: 1.3.3
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+# SQLCipher instead of plain SQLite (module 9: "Encrypted local database (for example SQLCipher)").
+# package:sqlite3's build hook downloads a checksum-verified SQLCipher build for each platform, so
+# host-side tests run against real SQLCipher too.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # Atkinson Hyperlegible Next, Atkinson Hyperlegible Mono and Barlow Condensed, all under the
+    # SIL Open Font License (assets/fonts/OFL.txt). Bundled so the app never fetches fonts at runtime.
+    - family: AtkinsonHyperlegibleNext
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Variable.ttf
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Italic-Variable.ttf
+          style: italic
+    - family: AtkinsonHyperlegibleMono
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-Variable.ttf
+    - family: BarlowCondensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+          weight: 700
