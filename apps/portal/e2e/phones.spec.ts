@@ -118,13 +118,19 @@ test('a Program Admin sees what each phone holds and wipes a lost one', async ({
   await signIn(page, 'admin@example.com');
   await page.getByRole('navigation', { name: 'Portal' }).getByRole('link', { name: 'Phones' }).click();
   await expect(page).toHaveURL(/\/team\/devices$/);
-  const row = page.getByRole('row').filter({ hasText: 'Jordan Lee (demo)' }).first();
-  await expect(row).toContainText('3 encounters, 2 notes');
+  // Other specs may give Jordan more phones: this one is told apart by what it holds.
+  const row = page
+    .getByRole('row')
+    .filter({ hasText: 'Jordan Lee (demo)' })
+    .filter({ hasText: '3 encounters, 2 notes' });
+  await expect(row).toHaveCount(1);
   await expect(row).toContainText('7 minutes behind, charting paused');
   await expect(page.getByRole('status')).toContainText('holding unsynced work');
   await expectAccessible(page, '/team/devices');
 
-  const section = page.getByRole('region', { name: 'Wipe Jordan Lee (demo)’s phone' }).first();
+  const section = page
+    .getByRole('region', { name: /^Wipe Jordan Lee \(demo\)’s phone/ })
+    .filter({ has: page.locator(`[id="wipe-${jordan.deviceId}"]`) });
   const wipe = section.getByRole('form');
   await expect(section).toContainText('including work that never reached the server: 3 encounters, 2 notes');
   await wipe.getByRole('button', { name: 'Wipe this phone' }).click();
@@ -134,9 +140,7 @@ test('a Program Admin sees what each phone holds and wipes a lost one', async ({
   await wipe.getByRole('button', { name: 'Wipe this phone' }).click();
   // The section now says so from the page's own state, not just the form's answer.
   await expect(section.getByRole('status')).toContainText('Wipe requested');
-  await expect(page.getByRole('row').filter({ hasText: 'Jordan Lee (demo)' }).first()).toContainText(
-    'Wipe requested',
-  );
+  await expect(row).toContainText('Wipe requested');
   await expectAccessible(page, '/team/devices (wipe requested)', { inPlace: true });
 
   // The phone's next sync is told to wipe, and nothing more it sends is applied.
@@ -332,4 +336,18 @@ test('staff without the permissions never see these screens, and typed URLs are 
     await page.goto(path);
     await expect(page).toHaveURL(/\/home\?denied=1$/);
   }
+});
+
+test('a person with two phones gets a wipe section for each, told apart by name', async ({ page }) => {
+  await phoneSync('logistics@example.com');
+  await phoneSync('logistics@example.com');
+
+  await signIn(page, 'admin@example.com');
+  await page.goto('/team/devices');
+  const names = await page.getByRole('heading', { level: 2, name: /^Wipe / }).allTextContents();
+  expect(
+    names.filter((n) => /phone \d+ of \d+ \(Android, registered /.test(n)).length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(new Set(names).size).toBe(names.length);
+  await expectAccessible(page, '/team/devices');
 });

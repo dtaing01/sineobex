@@ -22,11 +22,38 @@ function clockText(d: TeamDevice): string {
   return `${minutes} minutes ${d.clockOffsetMs > 0 ? 'behind' : 'ahead'}, charting paused`;
 }
 
+/**
+ * "Riley’s phone", or, when a person has more than one, "Riley’s phone 2 of 3 (Android, registered
+ * …)": each wipe section needs its own name, for screen readers and so nobody wipes the wrong one.
+ * Numbered by registration because two phones can register in the same minute.
+ */
+function phoneNames(listed: TeamDevice[]): Map<string, string> {
+  const names = new Map<string, string>();
+  const byUser = Map.groupBy(listed, (d) => d.user.userId);
+  for (const own of byUser.values()) {
+    const sorted = own.toSorted(
+      (a, b) => a.registeredAt.localeCompare(b.registeredAt) || a.id.localeCompare(b.id),
+    );
+    sorted.forEach((d, i) => {
+      const base = `${d.user.displayName}’s phone`;
+      names.set(
+        d.id,
+        sorted.length === 1
+          ? base
+          : `${base} ${i + 1} of ${sorted.length} (${d.platform === 'ios' ? 'iPhone' : 'Android'}, registered ${formatDateTime(d.registeredAt)})`,
+      );
+    });
+  }
+  return names;
+}
+
 export default async function DevicesPage() {
   const devices = await unwrap((await api()).GET('/v1/team/devices'));
   const holding = devices.filter(
     (d) => d.status === 'active' && Object.values(d.unsyncedCounts).some((n) => n > 0),
   );
+  const wipeable = devices.filter((d) => d.status !== 'wiped');
+  const names = phoneNames(wipeable);
 
   return (
     <>
@@ -93,53 +120,47 @@ export default async function DevicesPage() {
         )}
       </section>
 
-      {devices
-        .filter((d) => d.status !== 'wiped')
-        .map((d) => (
-          <section key={d.id} aria-labelledby={`wipe-${d.id}`} className="px-panel">
-            <h2 id={`wipe-${d.id}`} className="px-h2">
-              Wipe {d.user.displayName}’s phone
-            </h2>
-            {d.status === 'wipe_requested' ? (
-              <p role="status" className="px-alert px-alert--info">
-                Wipe requested{d.wipeRequestedAt ? ` ${formatDateTime(d.wipeRequestedAt)}` : ''}. The phone
-                erases this team’s data the next time it reaches the server, and this page shows when it has.
+      {wipeable.map((d) => (
+        <section key={d.id} aria-labelledby={`wipe-${d.id}`} className="px-panel">
+          <h2 id={`wipe-${d.id}`} className="px-h2">
+            Wipe {names.get(d.id)}
+          </h2>
+          {d.status === 'wipe_requested' ? (
+            <p role="status" className="px-alert px-alert--info">
+              Wipe requested{d.wipeRequestedAt ? ` ${formatDateTime(d.wipeRequestedAt)}` : ''}. The phone
+              erases this team’s data the next time it reaches the server, and this page shows when it has.
+            </p>
+          ) : (
+            <>
+              <p>
+                Only for a lost or stolen phone. It erases this team’s data at the phone’s next contact with
+                the server
+                {Object.values(d.unsyncedCounts).some((n) => n > 0) ? (
+                  <>
+                    ,{' '}
+                    <strong>
+                      including work that never reached the server: {unsyncedSummary(d.unsyncedCounts)}
+                    </strong>
+                    . That work is lost.
+                  </>
+                ) : (
+                  <>. At its last sync it held nothing unsynced.</>
+                )}
               </p>
-            ) : (
-              <>
-                <p>
-                  Only for a lost or stolen phone. It erases this team’s data at the phone’s next contact with
-                  the server
-                  {Object.values(d.unsyncedCounts).some((n) => n > 0) ? (
-                    <>
-                      ,{' '}
-                      <strong>
-                        including work that never reached the server: {unsyncedSummary(d.unsyncedCounts)}
-                      </strong>
-                      . That work is lost.
-                    </>
-                  ) : (
-                    <>. At its last sync it held nothing unsynced.</>
-                  )}
-                </p>
-                <ActionForm
-                  id={`wipe-form-${d.id}`}
-                  action={wipeDevice}
-                  label={`Wipe ${d.user.displayName}’s phone`}
-                >
-                  <input type="hidden" name="deviceId" value={d.id} />
-                  <TextField
-                    name="reason"
-                    label="Reason"
-                    hint="For example: reported stolen on the route"
-                    required
-                  />
-                  <SubmitButton variant="danger">Wipe this phone</SubmitButton>
-                </ActionForm>
-              </>
-            )}
-          </section>
-        ))}
+              <ActionForm id={`wipe-form-${d.id}`} action={wipeDevice} label={`Wipe ${names.get(d.id)}`}>
+                <input type="hidden" name="deviceId" value={d.id} />
+                <TextField
+                  name="reason"
+                  label="Reason"
+                  hint="For example: reported stolen on the route"
+                  required
+                />
+                <SubmitButton variant="danger">Wipe this phone</SubmitButton>
+              </ActionForm>
+            </>
+          )}
+        </section>
+      ))}
     </>
   );
 }
