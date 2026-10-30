@@ -49,8 +49,9 @@ export function BirthField({ children }: { children: ReactNode }) {
           <SelectField
             name="birthMode"
             label="The patient gave"
+            // Short: a select is as wide as its longest option, however narrow the screen (1.4.10).
             options={[
-              { value: 'date', label: 'A date of birth, or just the year' },
+              { value: 'date', label: 'A date or a year' },
               { value: 'age', label: 'Only their age' },
             ]}
           />

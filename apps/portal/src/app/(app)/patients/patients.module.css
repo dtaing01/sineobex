@@ -49,3 +49,13 @@
 .link {
   overflow-wrap: anywhere;
 }
+
+/* Cards one under another: .px-cards' 260 px columns don't fit inside a panel at 320 px. */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

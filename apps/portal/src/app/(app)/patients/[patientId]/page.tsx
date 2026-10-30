@@ -60,7 +60,7 @@ function Problems({ chart }: { chart: Schemas['PatientChart'] }) {
   const problems = chart.problems ?? [];
   if (problems.length === 0) return <p>No problems recorded.</p>;
   return (
-    <ul className="px-cards">
+    <ul className={styles.cards}>
       {problems.map((p) => {
         const title = String(attr(p, 'title'));
         const code = attr(p, 'code') as { code: string } | null;

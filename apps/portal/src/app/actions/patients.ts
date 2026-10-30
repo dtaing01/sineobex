@@ -238,8 +238,9 @@ export interface CorrectionState extends ActionState {
 }
 
 const WHY = {
-  // Staff found the chart wrong.
-  error: { outcome: 'corrected', requestedByPatient: false },
+  // Staff found the chart wrong. (Not `error`: a radio's ID is `<field>-<value>`, and
+  // `<field>-error` is the field's error message.)
+  mistake: { outcome: 'corrected', requestedByPatient: false },
   // A HIPAA §164.526 amendment request, accepted.
   amend: { outcome: 'corrected', requestedByPatient: true },
   // The same request, declined: recorded with the value asked for, the chart unchanged.

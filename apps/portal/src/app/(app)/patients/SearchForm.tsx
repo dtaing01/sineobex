@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { searchPatients, type SearchState } from '@/app/actions/patients';
-import { ActionForm, SubmitButton, TextField, useFormState } from '@/components/ActionForm';
+import { ActionForm, SubmitButton, TextField, useFieldId, useFormState } from '@/components/ActionForm';
 import styles from './patients.module.css';
 
 // The form's action runs here and hands the server only the form. Given the server action itself,
@@ -12,10 +13,20 @@ async function search(_: SearchState, form: FormData): Promise<SearchState> {
 }
 
 function Results() {
-  const { rows } = useFormState() as SearchState;
+  const state = useFormState() as SearchState;
+  const table = useRef<HTMLTableElement>(null);
+  const nameId = useFieldId('name');
+  // The fields are drawn afresh with each answer, which drops focus to the page: it goes to the
+  // results instead, or back to the name when nobody was found (the count is announced either way).
+  useEffect(() => {
+    if (!state.ok) return;
+    if (state.rows?.length) table.current?.focus();
+    else document.getElementById(nameId)?.focus();
+  }, [state, nameId]);
+  const rows = state.rows;
   if (!rows?.length) return null;
   return (
-    <table className={`px-table ${styles.stack}`}>
+    <table ref={table} tabIndex={-1} className={`px-table ${styles.stack}`}>
       <caption>Search results</caption>
       <thead>
         <tr>

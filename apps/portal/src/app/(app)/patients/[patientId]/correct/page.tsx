@@ -19,7 +19,7 @@ function WhyFields() {
         name="why"
         legend="Why is it changing?"
         options={[
-          { value: 'error', label: 'Correcting a mistake on the chart' },
+          { value: 'mistake', label: 'Correcting a mistake on the chart' },
           {
             value: 'amend',
             label: 'The patient asked for this change',

@@ -47,7 +47,10 @@ export function PatientHeader({ chart, today }: { chart: Chart; today: string })
       <p>
         {legal && legal !== name && <span className={styles.meta}>Legal name: {legal}</span>}
         <span className={styles.meta}>
-          {birth ? `Born ${fieldValueText('birth', birth, today)}` : 'Date of birth not recorded'}
+          {/* "Born March 7, 1946 · age 80"; a year or an estimate reads back with its own words. */}
+          {birth
+            ? `${(birth as { precision?: string }).precision === 'day' ? 'Born ' : ''}${fieldValueText('birth', birth, today)}`
+            : 'Date of birth not recorded'}
         </span>
         {visualDescriptor && visualDescriptor !== name && (
           <span className={styles.meta}>{visualDescriptor}</span>

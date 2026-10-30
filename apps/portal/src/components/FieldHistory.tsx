@@ -45,7 +45,10 @@ export function FieldHistory({
             <td data-label="New value">{fieldValueText(e.field, e.value, today)}</td>
             <td data-label="Who">
               {e.changedBy.displayName}
-              {e.approvedBy && <span className={styles.meta}>Approved by {e.approvedBy.displayName}</span>}
+              {/* An admin's own correction is approved by its author: said once. */}
+              {e.approvedBy && e.approvedBy.userId !== e.changedBy.userId && (
+                <span className={styles.meta}>Approved by {e.approvedBy.displayName}</span>
+              )}
             </td>
             <td data-label="When">{formatDateTime(e.deviceTime ?? e.recordedAt)}</td>
             <td data-label="How">{historyHow(e)}</td>
