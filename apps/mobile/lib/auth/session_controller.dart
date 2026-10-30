@@ -138,6 +138,14 @@ abstract interface class LocalData {
 
   /// Deletes every database the user has here.
   Future<void> erase(String userId);
+
+  /// Deletes the server's copies (the team index, cached charts) from every team database the user
+  /// has here, read with [key], and keeps their unsynced work (design 6.3).
+  Future<void> clearServerCopies(String userId, Uint8List key);
+
+  /// Marks every team database the user has here so its server copies are deleted first thing at
+  /// its next open: a sign-out without the key can't open them.
+  Future<void> markServerCopiesStale(String userId);
 }
 
 /// [LocalData] found when first used, for an owner created after the session (the sync
@@ -154,6 +162,12 @@ class DeferredLocalData implements LocalData {
 
   @override
   Future<void> erase(String userId) => _find().erase(userId);
+
+  @override
+  Future<void> clearServerCopies(String userId, Uint8List key) => _find().clearServerCopies(userId, key);
+
+  @override
+  Future<void> markServerCopiesStale(String userId) => _find().markServerCopiesStale(userId);
 }
 
 /// Sign-in, PIN setup, lock and unlock (module 1 "Offline sign-in", module 9 "Device security").
@@ -458,8 +472,9 @@ class SessionController extends ChangeNotifier {
   /// key and the encrypted databases stay, locked to this user: signing in again here asks for
   /// the same PIN and syncing finishes. Nobody else who signs in here can read them.
   ///
-  /// From the lock screen the databases can't be read (the key is not in memory), so whatever
-  /// is on the phone stays.
+  /// What stays is local work only: the server's copies (the team index, cached charts) are
+  /// deleted before the session is forgotten, or, from the lock screen, where the databases can't
+  /// be read (the key is not in memory), marked to be deleted first thing when one is next opened.
   Future<void> signOut({bool keepUnsynced = false}) async {
     final s = _state;
     final tokens = _tokens;
@@ -473,6 +488,7 @@ class SessionController extends ChangeNotifier {
       if (!keepUnsynced && await _nothingUnsynced(userId)) {
         await _forget(userId);
       } else {
+        await _dropServerCopies(userId);
         await _forgetSession(userId);
         kept = await localData?.hasAny(userId) ?? false;
         if (kept) await _setKept(userId, kept: true);
@@ -500,12 +516,27 @@ class SessionController extends ChangeNotifier {
       if (await _nothingUnsynced(userId)) {
         await _forget(userId);
       } else {
+        await _dropServerCopies(userId);
         await _forgetSession(userId);
         await _setKept(userId, kept: true);
       }
     }
     _clearMemory();
     _set(SignedOut(notice: notice));
+  }
+
+  /// Server data never outlives the session that downloaded it (D29): with the key in memory it is
+  /// deleted now; without it, or when a file can't be read now, the files are marked.
+  Future<void> _dropServerCopies(String userId) async {
+    final data = localData;
+    if (data == null) return;
+    final key = _dbKey;
+    if (key == null) return data.markServerCopiesStale(userId);
+    try {
+      await data.clearServerCopies(userId, key);
+    } on Exception {
+      await data.markServerCopiesStale(userId);
+    }
   }
 
   /// True only when nothing on this phone could be lost by erasing the user's data: no database

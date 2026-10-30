@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../api/generated/api.dart';
 import '../auth/session_controller.dart';
@@ -51,6 +52,35 @@ class SyncSnapshot {
   final String? frozen;
 }
 
+/// The open team, as an [AfterSyncRefresher] needs it.
+class OpenTeam {
+  const OpenTeam({
+    required this.userId,
+    required this.teamId,
+    required this.store,
+    required this.api,
+    required this.clock,
+    required this.permissions,
+  });
+  final String userId;
+  final String teamId;
+  final LocalStore store;
+
+  /// The API as the signed-in person in [teamId].
+  final SineobexApi api;
+  final ClockSync clock;
+
+  /// The person's permission keys in the team, as /v1/me last reported them.
+  final List<String> permissions;
+}
+
+/// The refreshers for one open team (lib/patients/: the team index and the chart cache).
+typedef RefresherFactory = List<AfterSyncRefresher> Function(OpenTeam team);
+
+/// The secure-store marker of a database whose server copies must go before anything reads it
+/// (sign-out from the lock screen, with no key to open it; design 6.3).
+String serverCopiesStaleKey(String path) => 'serverCopiesStale:${p.basename(path)}';
+
 /// Opens the person's encrypted database while the app is unlocked, keeps it syncing, and acts on
 /// what the server says about the phone (module 9).
 ///
@@ -69,6 +99,8 @@ class SyncController extends ChangeNotifier implements LocalData {
     required this.appVersion,
     this.autoSync = true,
     this.interval = const Duration(seconds: 20),
+    this.refreshers,
+    this.refreshInterval = const Duration(minutes: 15),
     DateTime Function()? now,
     this.monotonic,
   }) : _now = now ?? DateTime.now {
@@ -91,6 +123,13 @@ class SyncController extends ChangeNotifier implements LocalData {
   final String appVersion;
   final bool autoSync;
   final Duration interval;
+
+  /// Makes the open team's refreshers; none when null.
+  final RefresherFactory? refreshers;
+
+  /// How often the refreshers run on their own while unlocked (INDEX_CHECK_INTERVAL): sync only
+  /// ticks while something is sendable, and the index must still be checked and expired.
+  final Duration refreshInterval;
   final DateTime Function() _now;
 
   /// For the clock check between syncs (tests drive it; the app uses a Stopwatch).
@@ -103,6 +142,7 @@ class SyncController extends ChangeNotifier implements LocalData {
   String? _userId;
   String? _teamId;
   Timer? _timer;
+  Timer? _refreshTimer;
   bool _syncing = false;
   bool _offline = false;
   DateTime? _lastSyncedAt;
@@ -369,7 +409,12 @@ class SyncController extends ChangeNotifier implements LocalData {
       }
     }
     if (token != _openToken) return;
-    final db = LocalDatabase.open(LocalDatabase.fileFor(dir, userId, teamId), key);
+    final path = LocalDatabase.fileFor(dir, userId, teamId);
+    // Signed out from the lock screen: the server's copies in this file go before anything reads
+    // it (design 6.3).
+    final stale = await deviceStore.read(serverCopiesStaleKey(path)) != null;
+    if (token != _openToken) return;
+    final db = LocalDatabase.open(path, key);
     final others = LocalDatabase.filesForUser(dir, userId).where((f) => f != db.path).toList();
     if (booted != null) _shareClockReference(db, others, key, booted.bootId);
     final clock = ClockSync(boot: boot, references: DatabaseClockReferences(db), wallNow: _now, monotonic: monotonic);
@@ -380,6 +425,7 @@ class SyncController extends ChangeNotifier implements LocalData {
       chartingPaused: () => clock.status.paused,
       now: _now,
     );
+    if (stale) store.clearServerData();
     _db = db;
     _clock = clock;
     _store = store;
@@ -398,14 +444,35 @@ class SyncController extends ChangeNotifier implements LocalData {
       now: _now,
       random: Random.secure(),
     );
+    final team = OpenTeam(
+      userId: userId,
+      teamId: teamId,
+      store: store,
+      api: _engine!.api,
+      clock: clock,
+      permissions: s.user.team?.permissions ?? const [],
+    );
+    _engine!.refreshers.addAll(refreshers?.call(team) ?? const []);
+    if (stale) await deviceStore.delete(serverCopiesStaleKey(path));
     await clock.check();
     if (token != _openToken) return;
     notifyListeners();
     if (autoSync) {
       _timer?.cancel();
       _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
+      _refreshTimer?.cancel();
+      _refreshTimer = Timer.periodic(refreshInterval, (_) => unawaited(refreshNow(reason: RefreshReason.timer)));
+      unawaited(refreshNow(reason: RefreshReason.opened));
       unawaited(syncNow());
     }
+  }
+
+  /// Runs the open team's refreshers now (pull to refresh; the controller's timer and an unlock).
+  Future<void> refreshNow({RefreshReason reason = RefreshReason.manual}) async {
+    final engine = _engine;
+    if (engine == null) return;
+    await engine.runRefreshers(reason);
+    if (identical(engine, _engine)) notifyListeners();
   }
 
   /// Gives [db] the newest clock reference any of this person's databases measured since boot.
@@ -433,6 +500,8 @@ class SyncController extends ChangeNotifier implements LocalData {
     _openToken++;
     _timer?.cancel();
     _timer = null;
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
     _db?.close();
     _db = null;
     _store = null;
@@ -629,6 +698,44 @@ class SyncController extends ChangeNotifier implements LocalData {
   @override
   Future<void> erase(String userId) => eraseUser(userId);
 
+  /// Sign-out with the key in memory ("Log out anyway" included): the server's copies go from every
+  /// team database of the user, the open one too, and local work stays (design 6.3, D20). A file
+  /// that can't be opened now is marked, so the next open clears it first.
+  @override
+  Future<void> clearServerCopies(String userId, Uint8List key) async {
+    for (final path in LocalDatabase.filesForUser(await databaseDirectory(), userId)) {
+      final open = _store;
+      if (open != null && open.path == path) {
+        open.clearServerData();
+        continue;
+      }
+      try {
+        final db = LocalDatabase.open(path, key);
+        try {
+          LocalStore(
+            db,
+            userId: userId,
+            stamp: () => ClockStamp(deviceTime: _now().toUtc(), correctedTime: null, verified: false),
+            now: _now,
+          ).clearServerData();
+        } finally {
+          db.close();
+        }
+      } catch (_) {
+        await deviceStore.write(serverCopiesStaleKey(path), '1');
+      }
+    }
+  }
+
+  /// Sign-out from the lock screen: no key to open the files, so each is marked and cleared first
+  /// thing at its next open.
+  @override
+  Future<void> markServerCopiesStale(String userId) async {
+    for (final path in LocalDatabase.filesForUser(await databaseDirectory(), userId)) {
+      await deviceStore.write(serverCopiesStaleKey(path), '1');
+    }
+  }
+
   /// Unsynced changes across [paths]; null if any of them can't be read with [key].
   int? _count(Iterable<String> paths, Uint8List key) {
     var total = 0;
@@ -655,6 +762,7 @@ class SyncController extends ChangeNotifier implements LocalData {
   @override
   void dispose() {
     _deviceTimer?.cancel();
+    _refreshTimer?.cancel();
     session.removeListener(_onSession);
     _close();
     super.dispose();

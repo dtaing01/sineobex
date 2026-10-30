@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
@@ -34,6 +35,8 @@ void main() {
   late DateTime wall;
   var profileTeams = <String>['team-0'];
   final requests = <SentRequest>[];
+  RefresherFactory? refreshers;
+  var refreshInterval = const Duration(minutes: 15);
 
   LocalUser me() {
     final all = demoUser(teams: 2);
@@ -64,6 +67,8 @@ void main() {
       platform: RegisterDevicePlatform.android,
       appVersion: '0.2.0-test',
       interval: const Duration(hours: 1),
+      refreshers: refreshers,
+      refreshInterval: refreshInterval,
       now: () => wall,
       monotonic: () => boot.elapsed,
     );
@@ -78,6 +83,8 @@ void main() {
     wall = DateTime.utc(2026, 10, 20, 15);
     profileTeams = ['team-0'];
     requests.clear();
+    refreshers = null;
+    refreshInterval = const Duration(minutes: 15);
     server = FakeSyncServer(now: () => wall);
     store = MemorySecureStore();
     vaultStore = _HeldStore(store);
@@ -159,6 +166,104 @@ void main() {
     expect(await session.keptUsers(), isEmpty);
     expect(await vault.hasVault(userId), isFalse);
     expect(server.devices[deviceOf('team-0')]!.status, 'wiped');
+  });
+
+  /// Server data in the open team's file: an index row, its name, and a cached chart's scope.
+  void seedServerCopies() {
+    final db = sync.store!.database;
+    db.execute("INSERT INTO team_index (patient_id, entry_json) VALUES ('p-index', '{}')");
+    db.execute(
+      "INSERT INTO patient_names (name, patient_id, source, origin) VALUES ('zee', 'p-index', 'preferred', 'index')",
+    );
+    sync.store!.addScope('p-cached');
+    sync.store!.setKv('index.version', '3.idx1');
+  }
+
+  /// What of the server's data a team's file still holds, read with [key] (the app is signed out).
+  List<int> serverCopiesIn(String teamId, Uint8List key) {
+    final db = LocalDatabase.open(LocalDatabase.fileFor(dir.path, userId, teamId), key);
+    try {
+      int n(String sql) => db.db.select(sql).first.values.first! as int;
+      return [
+        n('SELECT count(*) FROM team_index'),
+        n('SELECT count(*) FROM patient_names'),
+        n('SELECT count(*) FROM cache_scopes'),
+        n("SELECT count(*) FROM kv WHERE key LIKE 'index.%'"),
+        n('SELECT count(*) FROM outbox'),
+      ];
+    } finally {
+      db.close();
+    }
+  }
+
+  test('signing out deletes the server’s copies from every team file and keeps local work', () async {
+    profileTeams = ['team-0', 'team-1'];
+    await signIn();
+    await openTeam('team-1');
+    seedServerCopies();
+    await openTeam('team-0');
+    seedServerCopies();
+    server.offline = true;
+    sync.store!.createEncounter(kind: 'medical');
+    final key = session.databaseKey!;
+    // "Log out anyway": unsynced work stays, the server's copies don't (design 6.3).
+    await session.signOut(keepUnsynced: true);
+    expect(serverCopiesIn('team-0', key), [0, 0, 0, 0, 1]);
+    expect(serverCopiesIn('team-1', key), [0, 0, 0, 0, 0]);
+    expect(await store.read(serverCopiesStaleKey(LocalDatabase.fileFor(dir.path, userId, 'team-0'))), isNull);
+  });
+
+  test('a sign-out from the lock screen marks each file; the next open clears it before anything reads it', () async {
+    await signIn();
+    seedServerCopies();
+    server.offline = true;
+    sync.store!.createEncounter(kind: 'medical');
+    final key = session.databaseKey!;
+    final marker = serverCopiesStaleKey(LocalDatabase.fileFor(dir.path, userId, 'team-0'));
+    await lock();
+    await session.signOut();
+    expect(await store.read(marker), '1');
+    expect(serverCopiesIn('team-0', key), [1, 1, 1, 1, 1]);
+
+    // The first moment the open file can be read, the index is already gone.
+    List<int>? firstSeen;
+    sync.addListener(() {
+      final open = sync.store;
+      if (open != null && firstSeen == null) {
+        firstSeen = [open.database.select('SELECT count(*) AS n FROM team_index').first['n']! as int];
+      }
+    });
+    await signIn();
+    expect(firstSeen, [0]);
+    expect(await store.read(marker), isNull);
+    expect(sync.store!.unsynced().total, 1);
+  });
+
+  test('the open team’s refreshers run at open, after each sync, and on their own timer', () async {
+    final reasons = <RefreshReason>[];
+    OpenTeam? team;
+    refreshers = (t) {
+      team = t;
+      return [_Refresher(reasons.add)];
+    };
+    refreshInterval = const Duration(milliseconds: 20);
+    sync.dispose();
+    await launch();
+    await signIn();
+    expect(team!.teamId, 'team-0');
+    expect(team!.permissions, demoUser().teams.first.permissions);
+    expect(identical(team!.store, sync.store), isTrue);
+    expect(reasons.take(2), [RefreshReason.opened, RefreshReason.afterSync]);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(reasons.skip(2), contains(RefreshReason.timer));
+    // Pull to refresh.
+    await sync.refreshNow();
+    expect(reasons.last, RefreshReason.manual);
+    // Locked: nothing runs.
+    await lock();
+    final ran = reasons.length;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(reasons, hasLength(ran));
   });
 
   test('a status this app version doesn’t know never deletes anything', () async {
@@ -518,6 +623,13 @@ void main() {
     expect(session.state, isA<SignedOut>());
     expect(server.devices[device]!.status, 'wiped');
   });
+}
+
+class _Refresher implements AfterSyncRefresher {
+  _Refresher(this.onRefresh);
+  final void Function(RefreshReason) onRefresh;
+  @override
+  Future<void> refresh(RefreshReason reason) async => onRefresh(reason);
 }
 
 /// The vault's keystore, with a way to hold a read of the wrapped key after it has been read (a

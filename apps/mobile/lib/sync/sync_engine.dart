@@ -68,6 +68,28 @@ class SyncFailed extends SyncOutcome {
   final String code;
 }
 
+/// Why the refreshers run now.
+enum RefreshReason {
+  /// The team's database was just opened (an unlock, a team switch).
+  opened,
+
+  /// A sync reached the server.
+  afterSync,
+
+  /// The controller's own timer, while unlocked.
+  timer,
+
+  /// The person asked (pull to refresh).
+  manual,
+}
+
+/// Downloads server data that isn't a change's receipt after a sync: the team search index and
+/// the cached charts (lib/patients/, design sections 6 and 7). Each decides from [RefreshReason]
+/// and its own bookkeeping whether to ask the server now, and handles being offline itself.
+abstract interface class AfterSyncRefresher {
+  Future<void> refresh(RefreshReason reason);
+}
+
 /// Sends the outbox and applies receipts (module 9 "Sync protocol").
 ///
 /// 1. Unconfirmed changes go in small batches, oldest first.
@@ -110,6 +132,10 @@ class SyncEngine {
   static const batchSize = 100;
   static const firstBackoff = Duration(seconds: 5);
   static const maxBackoff = Duration(minutes: 10);
+
+  /// Run after every sync that reached the server, and when the controller asks (its timer, an
+  /// unlock, pull to refresh). Registered by the controller for the open team.
+  final refreshers = <AfterSyncRefresher>[];
 
   int _failures = 0;
   DateTime? _nextAttempt;
@@ -175,7 +201,41 @@ class SyncEngine {
       if (report is SyncWipeRequested || report is SyncDeviceSpent || report is SyncAccessLost) return report;
     }
     await _refreshOpenRecords();
+    await runRefreshers(RefreshReason.afterSync);
     return SyncDone(sent: sent, confirmed: confirmed, rejected: rejected, conflicts: conflicts, unanswered: unanswered);
+  }
+
+  /// The refreshers' run in progress, if any.
+  Future<void>? _refreshing;
+
+  /// Runs every refresher in turn, best effort: a failure is the next run's to retry, and never
+  /// the sync's outcome. One run at a time: a call while one runs waits for it, then runs its own
+  /// (a timer tick during a sync's refresh). Nothing runs while the store is frozen for a
+  /// removal's hand-over (D21): the server's data isn't this person's to download any more, and a
+  /// search of it couldn't be logged. Nothing is awaited unless a run is in progress, so a call
+  /// never waits on a future made in another zone (a widget test's fake clock).
+  Future<void> runRefreshers(RefreshReason reason) async {
+    for (var running = _refreshing; running != null; running = _refreshing) {
+      await running;
+    }
+    final run = _runRefreshers(reason);
+    _refreshing = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_refreshing, run)) _refreshing = null;
+    }
+  }
+
+  Future<void> _runRefreshers(RefreshReason reason) async {
+    for (final r in [...refreshers]) {
+      if (store.frozen) return;
+      try {
+        await r.refresh(reason);
+      } on Exception {
+        // Best effort: what didn't download is asked for again later.
+      }
+    }
   }
 
   Future<SyncOutcome> syncOnce({bool force = false}) async {
@@ -343,7 +403,16 @@ class SyncEngine {
         case SyncResultStatus.accepted:
           // A receipt confirms only the exact value: the server's hash must match ours.
           if (r.hash == e.valueHash) {
-            store.confirm(e, serverVersion: r.serverVersion ?? 0);
+            // Kept but not applied, redirected, a card's outcome: the receipt says (design 2.5).
+            final s = r.server;
+            store.confirm(
+              e,
+              serverVersion: r.serverVersion ?? 0,
+              server: s == null
+                  ? null
+                  : ServerField(value: s.value, version: s.version, changedBy: s.changedBy, changedAt: s.changedAt),
+              details: r.details,
+            );
             confirmed++;
           } else {
             unanswered++;
