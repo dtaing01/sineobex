@@ -205,11 +205,43 @@ void main() {
     seedServerCopies();
     server.offline = true;
     sync.store!.createEncounter(kind: 'medical');
+    // Two cached charts, one with a street name added here and not yet synced.
+    final worked = server.seedPatient(preferredName: 'Quillon');
+    final cleared = server.seedPatient(preferredName: 'Ottoline');
+    for (final (id, name) in [(worked, 'quillon'), (cleared, 'ottoline')]) {
+      sync.store!.importServerRecord(
+        ServerRecord(
+          entity: entityPatient,
+          id: id,
+          status: 'active',
+          authorUserId: userId,
+          attributes: const {},
+          fields: {'preferredName': ServerField(value: name, version: 1)},
+        ),
+        open: false,
+      );
+      sync.store!.database.execute(
+        "INSERT INTO patient_names (name, patient_id, source, origin) VALUES (?, ?, 'preferred', 'cache')",
+        [name, id],
+      );
+    }
+    sync.store!.createRecord(entityAlias, {'patientId': worked, 'alias': 'Quill'});
     final key = session.databaseKey!;
     // "Log out anyway": unsynced work stays, the server's copies don't (design 6.3).
     await session.signOut(keepUnsynced: true);
-    expect(serverCopiesIn('team-0', key), [0, 0, 0, 0, 1]);
+    expect(serverCopiesIn('team-0', key), [0, 1, 0, 0, 2]);
     expect(serverCopiesIn('team-1', key), [0, 0, 0, 0, 0]);
+    // Offline, the worker still finds the patient whose work waits; the cleared chart is gone.
+    final db = LocalDatabase.open(LocalDatabase.fileFor(dir.path, userId, 'team-0'), key);
+    List<Object?> found(String trigram) => [
+      for (final r in db.db.select('SELECT DISTINCT patient_id FROM patient_names WHERE patient_names MATCH ?', [
+        '"$trigram"',
+      ]))
+        r['patient_id'],
+    ];
+    expect(found('qui'), [worked]);
+    expect(found('ott'), isEmpty);
+    db.close();
     expect(await store.read(serverCopiesStaleKey(LocalDatabase.fileFor(dir.path, userId, 'team-0'))), isNull);
   });
 

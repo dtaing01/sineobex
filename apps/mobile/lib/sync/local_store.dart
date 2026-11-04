@@ -1822,10 +1822,11 @@ class LocalStore {
   }
 
   /// Deletes the server's data from this phone and keeps local work (design 2.9-7, 6.3): the team
-  /// index and its staging, every search name of the index and of cached charts, the names and ID
-  /// links of patients no local work is about, every redirect and scope, and every patient-side
-  /// record no local work needs. Never an outbox entry. Called at sign-out, at the index's 7-day
-  /// expiry, on a 403 for the index, and first at open when the file was marked stale.
+  /// index, its staging and its search names; every redirect and scope; and the charts no local
+  /// work is about, with their search names and ID links. A chart local work keeps stays whole, its
+  /// names included, as in the purge: the worker must still find offline the patient whose work
+  /// waits. Never an outbox entry. Called at sign-out, at the index's 7-day expiry, on a 403 for
+  /// the index, and first at open when the file was marked stale.
   void clearServerData() {
     _tx(() {
       final work = localWorkPatients();
@@ -1834,17 +1835,17 @@ class LocalStore {
       _db
         ..execute('DELETE FROM team_index')
         ..execute('DELETE FROM team_index_staging')
-        ..execute("DELETE FROM patient_names WHERE origin IN ('index', 'cache')");
+        ..execute("DELETE FROM patient_names WHERE origin = 'index'");
       for (final p in {
         for (final r in _db.select(
-          "SELECT patient_id AS p FROM patient_names WHERE origin = 'local' "
+          "SELECT patient_id AS p FROM patient_names WHERE origin IN ('cache', 'local') "
           'UNION SELECT patient_id FROM id_links UNION SELECT patient_id FROM records WHERE patient_id IS NOT NULL',
         ))
           r['p'] as String,
       }) {
         if (kept(p)) continue;
         _db
-          ..execute("DELETE FROM patient_names WHERE patient_id = ? AND origin = 'local'", [p])
+          ..execute("DELETE FROM patient_names WHERE patient_id = ? AND origin IN ('cache', 'local')", [p])
           ..execute('DELETE FROM id_links WHERE patient_id = ?', [p])
           ..execute(
             'DELETE FROM records WHERE patient_id = ? AND open = 0 '

@@ -482,6 +482,7 @@ void main() {
   group('clearing server data', () {
     test('deletes the index, cached charts, redirects and scopes, and keeps local work and its charts', () {
       final cached = cachedChart();
+      addName(cached, 'quillon', source: 'alias');
       final worked = cachedChart();
       store.setField(worked, 'usualArea', 'Demo: pier');
       final madeHere = patient();
@@ -510,7 +511,8 @@ void main() {
         [namesOf(cached), namesOf(worked), namesOf(madeHere), namesOf(waiting)],
         [
           <String>[],
-          <String>[],
+          // Local work keeps its chart whole, names included: the worker still finds it offline.
+          ['cache', 'cache'],
           <String>[],
           ['local'],
         ],
@@ -519,7 +521,7 @@ void main() {
       expect(store.kv('index.version'), isNull);
       expect(store.kv('intake.draft'), '{}');
       expect(store.outbox().map((e) => e.changeId), outbox);
-      for (final name in ['zee', 'zed', 'quorvel', 'del']) {
+      for (final name in ['quillon', 'quorvel', 'del']) {
         expect(onDisk(name), isFalse, reason: name);
       }
     });
