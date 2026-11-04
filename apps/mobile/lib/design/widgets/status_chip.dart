@@ -102,7 +102,10 @@ class StatusBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(text, style: theme.bodyLarge?.copyWith(fontWeight: FontWeight.w700, color: t.fg)),
+                  Text(
+                    text,
+                    style: theme.bodyLarge?.copyWith(fontWeight: FontWeight.w700, color: t.fg),
+                  ),
                   if (detail != null) ...[
                     const SizedBox(height: FieldSpace.s1),
                     Text(detail!, style: theme.bodyMedium?.copyWith(color: context.field.ink)),

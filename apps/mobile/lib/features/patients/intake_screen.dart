@@ -343,7 +343,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       usualArea: _area.text.trim().isEmpty ? null : _area.text.trim(),
       livingSituation: _living == null
           ? null
-          : {'kind': _living, if (_living == 'other' && _livingOther.text.trim().isNotEmpty) 'other': _livingOther.text.trim()},
+          : {
+              'kind': _living,
+              if (_living == 'other' && _livingOther.text.trim().isNotEmpty) 'other': _livingOther.text.trim(),
+            },
     );
     final yes = await confirm(
       context,
@@ -386,7 +389,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         key: null,
       ),
     if (_birth.error case final e?) (message: e, focus: _birthFocus, key: null),
-    if (_livingOtherMissing) (message: 'Say what “Other” means for their living situation.', focus: _livingOtherFocus, key: null),
+    if (_livingOtherMissing)
+      (message: 'Say what “Other” means for their living situation.', focus: _livingOtherFocus, key: null),
     if (_substance.text.trim().isNotEmpty)
       (message: 'Add the allergy you started, or clear it.', focus: _substanceFocus, key: null),
   ];
@@ -550,8 +554,11 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   Future<void> _back() async {
     if (_isEdit) {
-      if (_view != null && (_changes().isNotEmpty || _aliases.isNotEmpty || _allergies.isNotEmpty ||
-          _existingAliases.any((a) => a.removal != null))) {
+      if (_view != null &&
+          (_changes().isNotEmpty ||
+              _aliases.isNotEmpty ||
+              _allergies.isNotEmpty ||
+              _existingAliases.any((a) => a.removal != null))) {
         final discard = await confirm(
           context,
           title: 'Discard your changes?',
@@ -618,12 +625,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     }
     setState(() {
       _allergies.add(
-        NewAllergy(
-          substance: substance,
-          category: _category,
-          severity: _severity,
-          reaction: _t(_reaction),
-        ),
+        NewAllergy(substance: substance, category: _category, severity: _severity, reaction: _t(_reaction)),
       );
       _substance.clear();
       _reaction.clear();
@@ -680,7 +682,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
                   padding: const EdgeInsets.all(FieldSpace.s4),
                   children: [
                     if (_errors.isNotEmpty) ...[
-                      KeyedSubtree(key: _errorsKey, child: _ErrorList(errors: _errors, onTap: _goTo)),
+                      KeyedSubtree(
+                        key: _errorsKey,
+                        child: _ErrorList(errors: _errors, onTap: _goTo),
+                      ),
                       const SizedBox(height: FieldSpace.s3),
                     ],
                     if (_saveError != null) ...[ErrorMessage(_saveError!), const SizedBox(height: FieldSpace.s3)],
@@ -811,7 +816,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           onSelected: (v) => setState(() => _unable = v),
         ),
         const SizedBox(height: FieldSpace.s2),
-        Text('The chart is made. It shows “Consent not recorded yet” until someone asks again.', style: text.bodyMedium),
+        Text(
+          'The chart is made. It shows “Consent not recorded yet” until someone asks again.',
+          style: text.bodyMedium,
+        ),
       ],
       if (_consent == _Consent.declines) ...[
         const SizedBox(height: FieldSpace.s3),
@@ -881,8 +889,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       if (v.consents.isEmpty)
         const Text('No consent decisions on this phone.')
       else
-        for (final c in v.consents)
-          Text('${consentText(c.kind, c.decision)}${c.pending ? ' · not synced yet' : ''}'),
+        for (final c in v.consents) Text('${consentText(c.kind, c.decision)}${c.pending ? ' · not synced yet' : ''}'),
       if (v.consentNotRecorded) ...[
         const SizedBox(height: FieldSpace.s2),
         const Text('Record consent from the chart: Record consent now.'),
@@ -910,7 +917,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
             controller: c,
             focusNode: f,
             enabled: _editable('legalName'),
-            helper: _isEdit ? (_editable('legalName') ? 'Not recorded yet. Add it if they give it.' : _needsFull) : null,
+            helper: _isEdit
+                ? (_editable('legalName') ? 'Not recorded yet. Add it if they give it.' : _needsFull)
+                : null,
             onSubmitted: (_) => unawaited(_check()),
           );
     final given = legalPart('Given name', 'legalGiven', _given, _givenFocus, givenLocked);
@@ -979,7 +988,13 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           unawaited(_check());
         },
         child: large
-            ? Column(children: [given, const SizedBox(height: FieldSpace.s3), family])
+            ? Column(
+                children: [
+                  given,
+                  const SizedBox(height: FieldSpace.s3),
+                  family,
+                ],
+              )
             : Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -989,10 +1004,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
                 ],
               ),
       ),
-      if (givenLocked || familyLocked) ...[
-        const SizedBox(height: FieldSpace.s1),
-        const _AdminOnly(),
-      ],
+      if (givenLocked || familyLocked) ...[const SizedBox(height: FieldSpace.s1), const _AdminOnly()],
     ];
   }
 
@@ -1249,7 +1261,10 @@ class _ErrorList extends StatelessWidget {
                   padding: EdgeInsets.zero,
                 ),
                 onPressed: () => onTap(e),
-                child: Text(e.message, style: Theme.of(context).textTheme.bodyLarge?.copyWith(decoration: TextDecoration.underline)),
+                child: Text(
+                  e.message,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(decoration: TextDecoration.underline),
+                ),
               ),
           ],
         ),
@@ -1303,8 +1318,9 @@ class _LockedValue extends StatelessWidget {
 class _AdminOnly extends StatelessWidget {
   const _AdminOnly();
   @override
-  Widget build(BuildContext context) =>
-      ExcludeSemantics(child: Text('Only a Program Admin can correct this.', style: Theme.of(context).textTheme.bodyMedium));
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Text('Only a Program Admin can correct this.', style: Theme.of(context).textTheme.bodyMedium),
+  );
 }
 
 /// A row of a list on the form with its 48 px action.

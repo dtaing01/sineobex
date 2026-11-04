@@ -67,12 +67,7 @@ class DuplicatePanel extends StatelessWidget {
           if (dismissed.contains(p.patientId))
             _Folded(patient: p, onUndo: () => onUndo(p))
           else
-            _Candidate(
-              patient: p,
-              today: today,
-              onThisIsThem: () => onThisIsThem(p),
-              onNotThem: () => onNotThem(p),
-            ),
+            _Candidate(patient: p, today: today, onThisIsThem: () => onThisIsThem(p), onNotThem: () => onNotThem(p)),
           const SizedBox(height: FieldSpace.s2),
         ],
       ],
@@ -179,9 +174,12 @@ class _Folded extends StatelessWidget {
       Expanded(child: Text('Not ${listName(patient)}', style: Theme.of(context).textTheme.bodyLarge)),
       TextButton(
         onPressed: onUndo,
-        child: Semantics(label: 'Undo: ${listName(patient)} might be them', excludeSemantics: true, child: const Text('Undo')),
+        child: Semantics(
+          label: 'Undo: ${listName(patient)} might be them',
+          excludeSemantics: true,
+          child: const Text('Undo'),
+        ),
       ),
     ],
   );
 }
-

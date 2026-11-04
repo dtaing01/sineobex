@@ -55,12 +55,8 @@ class AppHarness {
       now: () => wall,
       monotonic: () => boot.elapsed,
       // As the app wires it (app_providers.dart), with a clipboard the test reads.
-      refreshers: (team) => PatientServices(
-        team,
-        idLinkBaseUrl: server.idLinkBaseUrl,
-        copy: _copy,
-        wallNow: () => wall,
-      ).refreshers,
+      refreshers: (team) =>
+          PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
     );
     addTearDown(dispose);
   }

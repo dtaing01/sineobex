@@ -106,10 +106,7 @@ class _IdCardState extends ConsumerState<_IdCard> {
         builder: (context, _) {
           final v = _s.patients.read(widget.patientId);
           if (v == null) {
-            return const Padding(
-              padding: EdgeInsets.all(FieldSpace.s4),
-              child: NoticeMessage('Open the chart first.'),
-            );
+            return const Padding(padding: EdgeInsets.all(FieldSpace.s4), child: NoticeMessage('Open the chart first.'));
           }
           final paused = sync.snapshot.clock.paused;
           final mayEdit = _s.mayEdit && v.mergedInto == null;
@@ -127,10 +124,7 @@ class _IdCardState extends ConsumerState<_IdCard> {
             padding: const EdgeInsets.all(FieldSpace.s4),
             children: [
               // The conflict first (10.4 step 6): another card won, the one printed won't open the chart.
-              for (final n in lost) ...[
-                _lostMessage(v, n, today, mayEdit),
-                const SizedBox(height: FieldSpace.s3),
-              ],
+              for (final n in lost) ...[_lostMessage(v, n, today, mayEdit), const SizedBox(height: FieldSpace.s3)],
               if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s3)],
               const SectionHeading('Cards that open this chart'),
               if (working.length > 1) ...[
@@ -143,7 +137,11 @@ class _IdCardState extends ConsumerState<_IdCard> {
                 const SizedBox(height: FieldSpace.s2),
               ],
               for (final card in working) ...[
-                _CardState(card: card, today: today, onCopy: mayEdit && card.copyable ? () => unawaited(_copy(card)) : null),
+                _CardState(
+                  card: card,
+                  today: today,
+                  onCopy: mayEdit && card.copyable ? () => unawaited(_copy(card)) : null,
+                ),
                 const SizedBox(height: FieldSpace.s2),
               ],
               if (working.isEmpty)

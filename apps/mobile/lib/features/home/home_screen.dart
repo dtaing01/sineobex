@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../app_providers.dart';
 import '../../auth/session_controller.dart';
 import '../../design/tokens.dart';
+import '../../patients/patient_providers.dart';
+import '../patients/patient_labels.dart' show ago;
 import '../sync/sign_out_dialog.dart';
 import '../sync/sync_cards.dart';
 
@@ -17,6 +19,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     final sync = ref.watch(syncControllerProvider);
+    final services = ref.watch(patientServicesProvider);
     final state = session.state;
     if (state is! Unlocked) return const SizedBox.shrink();
     final text = Theme.of(context).textTheme;
@@ -24,9 +27,13 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Home')),
       body: ListenableBuilder(
-        listenable: sync,
+        listenable: Listenable.merge([sync, ?services]),
         builder: (context, _) {
           final snapshot = sync.snapshot;
+          // Notices need no fix, but they wait in Needs attention until read.
+          final notices = sync.store?.notices(unreadOnly: true).length ?? 0;
+          final waiting = snapshot.attention.length + notices;
+          final index = services?.index.state;
           return ListView(
             padding: const EdgeInsets.all(FieldSpace.s4),
             children: [
@@ -41,12 +48,21 @@ class HomeScreen extends ConsumerWidget {
                 ClockPausedCard(status: snapshot.clock, onCheckAgain: () => unawaited(sync.checkClock(fresh: true))),
                 const SizedBox(height: FieldSpace.s4),
               ],
-              if (snapshot.attention.isNotEmpty) ...[
-                NeedsAttentionTile(count: snapshot.attention.length, onOpen: () => context.push('/attention')),
+              if (waiting > 0) ...[
+                NeedsAttentionTile(count: waiting, onOpen: () => context.push('/attention')),
                 const SizedBox(height: FieldSpace.s4),
               ],
               if (snapshot.open) ...[
                 SyncStatusCard(snapshot: snapshot, onSyncNow: () => unawaited(sync.syncNow())),
+                if (index != null && index.eligible) ...[
+                  const SizedBox(height: FieldSpace.s2),
+                  Text(
+                    index.present && index.refreshedAt != null
+                        ? 'Patient list: updated ${ago(index.refreshedAt!, ref.read(wallClockProvider)())}'
+                        : 'Patient list: not on this phone',
+                    style: text.bodyLarge,
+                  ),
+                ],
                 const SizedBox(height: FieldSpace.s5),
               ],
               if (state.user.teams.length > 1)

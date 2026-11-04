@@ -27,16 +27,14 @@ class SamePersonSheet extends StatelessWidget {
   /// "Is this Del, born March 7, 1946, usually by the Elm St underpass?"
   String get question {
     final p = patient;
-    return '${[
-      'Is this ${listName(p)}',
-      if (p.birth case final b?)
-        switch (b) {
-          BirthDate(:final year, :final month, :final day) => 'born ${monthNames[month - 1]} $day, $year',
-          BirthYear(:final year) => 'born in $year',
-          BirthEstimate() => 'about ${ageOn(b, today)}',
-        },
-      if (p.usualArea != null) 'usually ${p.usualArea}',
-    ].join(', ')}?';
+    final born = switch (p.birth) {
+      BirthDate(:final year, :final month, :final day) => 'born ${monthNames[month - 1]} $day, $year',
+      BirthYear(:final year) => 'born in $year',
+      final BirthEstimate b => 'about ${ageOn(b, today)}',
+      null => null,
+    };
+    final parts = ['Is this ${listName(p)}', ?born, if (p.usualArea != null) 'usually ${p.usualArea}'];
+    return '${parts.join(', ')}?';
   }
 
   @override

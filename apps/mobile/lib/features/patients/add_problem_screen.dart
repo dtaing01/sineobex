@@ -167,7 +167,11 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
                     _code = null;
                     _sameComingBack = null;
                   }),
-                  child: Semantics(label: 'Remove code ${code.code}', excludeSemantics: true, child: const Text('Remove code')),
+                  child: Semantics(
+                    label: 'Remove code ${code.code}',
+                    excludeSemantics: true,
+                    child: const Text('Remove code'),
+                  ),
                 ),
               ),
             ] else ...[
@@ -261,7 +265,10 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
               ),
             ],
             const SizedBox(height: FieldSpace.s5),
-            SizedBox(height: FieldTap.large, child: FilledButton(onPressed: _save, child: const Text('Add problem'))),
+            SizedBox(
+              height: FieldTap.large,
+              child: FilledButton(onPressed: _save, child: const Text('Add problem')),
+            ),
           ],
         ),
       ),

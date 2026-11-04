@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../api/generated/api.dart' show DecideFieldReview, DecideFieldReviewKeep, DuplicateHintStatus, FieldReviewView;
+import '../../api/generated/api.dart'
+    show DecideFieldReview, DecideFieldReviewKeep, DuplicateHintStatus, FieldReviewView;
 import '../../api/transport.dart' show ApiException, NetworkException;
 import '../../app_providers.dart';
 import '../../auth/session_controller.dart';
@@ -290,7 +291,11 @@ class _ProfileState extends ConsumerState<_Profile> {
     final mayChart = _s.mayChart && !merged;
     final legal = v.legalName;
     final legalText = legal == null ? null : [legal.given, legal.family].nonNulls.join(' ').trim();
-    final name = v.preferredName ?? (legalText?.isNotEmpty ?? false ? legalText : null) ?? v.visualDescriptor ?? 'No name recorded';
+    final name =
+        v.preferredName ??
+        (legalText?.isNotEmpty ?? false ? legalText : null) ??
+        v.visualDescriptor ??
+        'No name recorded';
     final birth = v.birth == null ? null : birthLabel(v.birth!, today);
     final seen = isoDay(v.lastSeenOn);
     final summary = [
@@ -342,10 +347,12 @@ class _ProfileState extends ConsumerState<_Profile> {
           Text('Legal name: $legalText', style: text.bodyLarge),
         if (v.visualDescriptor != null && v.visualDescriptor != name) Text(v.visualDescriptor!, style: text.bodyLarge),
         if (v.usualArea != null) Text('Usually found: ${v.usualArea}', style: text.bodyLarge),
-        if (v.copy != ChartCopy.partial) Text('Living situation: ${livingSituationText(v.livingSituation)}', style: text.bodyLarge),
+        if (v.copy != ChartCopy.partial)
+          Text('Living situation: ${livingSituationText(v.livingSituation)}', style: text.bodyLarge),
         if (v.preferredLanguage != null) Text('Language: ${languageText(v.preferredLanguage)}', style: text.bodyLarge),
         if (teamName != null) Text('Team: $teamName', style: text.bodyMedium?.copyWith(color: c.inkMuted)),
-        if (seen != null) Text('Last seen ${shortDate(seen, today)}', style: text.bodyMedium?.copyWith(color: c.inkMuted)),
+        if (seen != null)
+          Text('Last seen ${shortDate(seen, today)}', style: text.bodyMedium?.copyWith(color: c.inkMuted)),
         const SizedBox(height: FieldSpace.s3),
 
         // ---- banners, most urgent first ----
@@ -562,7 +569,11 @@ class _ProfileState extends ConsumerState<_Profile> {
             action: a.active && !a.mergedName && mayEdit
                 ? TextButton(
                     onPressed: () => unawaited(_removeAlias(a)),
-                    child: Semantics(label: 'Remove street name ${a.alias}', excludeSemantics: true, child: const Text('Remove')),
+                    child: Semantics(
+                      label: 'Remove street name ${a.alias}',
+                      excludeSemantics: true,
+                      child: const Text('Remove'),
+                    ),
                   )
                 : null,
           ),
@@ -730,7 +741,8 @@ class _Line extends StatelessWidget {
                       color: muted ? c.inkMuted : c.ink,
                     ),
                   ),
-                  if (detail != null && detail!.isNotEmpty) Text(detail!, style: t.bodyMedium?.copyWith(color: c.inkMuted)),
+                  if (detail != null && detail!.isNotEmpty)
+                    Text(detail!, style: t.bodyMedium?.copyWith(color: c.inkMuted)),
                 ],
               ),
             ),
@@ -910,9 +922,9 @@ class _ConsentDialogState extends State<_ConsentDialog> {
       TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
       FilledButton(
         onPressed: _agrees == true || (_agrees == false && _reason != null)
-            ? () => Navigator.of(context).pop(
-                _agrees! ? const ConsentAnswer.given() : ConsentAnswer.unable(_reason!.label),
-              )
+            ? () =>
+                  Navigator.of(context)
+                      .pop(_agrees! ? const ConsentAnswer.given() : ConsentAnswer.unable(_reason!.label))
             : null,
         child: const Text('Save'),
       ),
@@ -974,7 +986,10 @@ class _HistorySheetState extends State<_HistorySheet> {
                 const Text('No changes recorded yet.')
               else
                 for (final l in snap.data!)
-                  Padding(padding: const EdgeInsets.only(bottom: FieldSpace.s2), child: Text(l, style: text.bodyLarge)),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: FieldSpace.s2),
+                    child: Text(l, style: text.bodyLarge),
+                  ),
             ],
           );
         },

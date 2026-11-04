@@ -166,7 +166,10 @@ String count(int n) => n.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'
 /// The row form of a birth (design 12.1): "born 1946 · 80" for a date, "born 1946" for a year
 /// alone, "about 46" for an estimate; and the same for a screen reader.
 ({String text, String spoken}) birthRowLabel(Birth birth, DateTime today) => switch (birth) {
-  BirthDate(:final year) => (text: 'born $year · ${ageOn(birth, today)}', spoken: 'born $year, age ${ageOn(birth, today)}'),
+  BirthDate(:final year) => (
+    text: 'born $year · ${ageOn(birth, today)}',
+    spoken: 'born $year, age ${ageOn(birth, today)}',
+  ),
   BirthYear(:final year) => (text: 'born $year', spoken: 'born $year'),
   BirthEstimate() => (text: 'about ${ageOn(birth, today)}', spoken: 'about ${ageOn(birth, today)} years old'),
 };

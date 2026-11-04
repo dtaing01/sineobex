@@ -153,13 +153,12 @@ class _FieldReviewSheetState extends State<FieldReviewSheet> {
               if (!widget.online)
                 Padding(
                   padding: const EdgeInsets.only(bottom: FieldSpace.s2),
-                  child: Text('Connect to save a choice. Until then both values stay on the chart.', style: text.bodyLarge),
+                  child: Text(
+                    'Connect to save a choice. Until then both values stay on the chart.',
+                    style: text.bodyLarge,
+                  ),
                 ),
-              BusyButton(
-                label: 'Save choice',
-                busy: _saving,
-                onPressed: widget.online && _chosen ? _save : null,
-              ),
+              BusyButton(label: 'Save choice', busy: _saving, onPressed: widget.online && _chosen ? _save : null),
             ] else if (!_identity)
               Text('Someone who can edit patient details will choose.', style: text.bodyLarge),
           ],

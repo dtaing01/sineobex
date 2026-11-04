@@ -101,10 +101,7 @@ class SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final heading = Semantics(
-      header: true,
-      child: Text(text, style: Theme.of(context).textTheme.titleLarge),
-    );
+    final heading = Semantics(header: true, child: Text(text, style: Theme.of(context).textTheme.titleLarge));
     return Padding(
       padding: const EdgeInsets.only(top: FieldSpace.s5, bottom: FieldSpace.s2),
       child: trailing == null

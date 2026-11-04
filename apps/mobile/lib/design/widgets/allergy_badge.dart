@@ -52,7 +52,13 @@ class AllergyCountBadge extends StatelessWidget {
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge({required this.icon, required this.tone, required this.text, required this.spoken, required this.compact});
+  const _Badge({
+    required this.icon,
+    required this.tone,
+    required this.text,
+    required this.spoken,
+    required this.compact,
+  });
   final IconData icon;
   final ChipTone tone;
   final String text;

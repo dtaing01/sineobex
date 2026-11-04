@@ -179,7 +179,8 @@ class _ProblemState extends ConsumerState<_Problem> {
                     : 'No code: won’t add supplies to route bags',
                 style: text.bodyLarge,
               ),
-              if (isoDay(p.onsetDate) case final onset?) Text('Started ${shortDate(onset, today)}', style: text.bodyLarge),
+              if (isoDay(p.onsetDate) case final onset?)
+                Text('Started ${shortDate(onset, today)}', style: text.bodyLarge),
               if (p.recurrenceOf != null)
                 Text(
                   'Came back · earlier episode'
@@ -215,8 +216,7 @@ class _ProblemState extends ConsumerState<_Problem> {
                 WideButton(
                   label: p.status == 'ongoing' ? 'Still ongoing' : 'Still new',
                   icon: LucideIcons.check,
-                  onPressed: () =>
-                      _do('Status confirmed for today', () => _s.problems.confirmStatus(p.id)),
+                  onPressed: () => _do('Status confirmed for today', () => _s.problems.confirmStatus(p.id)),
                 ),
                 if (p.statusCheckedAt != null)
                   Padding(
@@ -353,8 +353,10 @@ class _Timeline extends StatelessWidget {
       for (final n in problem.notes)
         (
           at: n.writtenAt,
-          line: '${n.text}\n${n.authorName ?? 'You'} · ${n.writtenAt == null ? 'not synced yet' : shortDate(n.writtenAt!, today)}',
-          spoken: 'Note by ${n.authorName ?? 'you'}, ${n.writtenAt == null ? 'not synced yet' : longDate(n.writtenAt!)}: ${n.text}',
+          line:
+              '${n.text}\n${n.authorName ?? 'You'} · ${n.writtenAt == null ? 'not synced yet' : shortDate(n.writtenAt!, today)}',
+          spoken:
+              'Note by ${n.authorName ?? 'you'}, ${n.writtenAt == null ? 'not synced yet' : longDate(n.writtenAt!)}: ${n.text}',
         ),
       for (final e in problem.history)
         (
@@ -367,7 +369,8 @@ class _Timeline extends StatelessWidget {
               '${longDate(e.at)}, ${e.encounterId == null ? 'from the patient profile' : 'at a visit'}',
         ),
     ]..sort((a, b) => (b.at ?? DateTime(9999)).compareTo(a.at ?? DateTime(9999)));
-    if (items.isEmpty) return Text('Nothing yet. The history shows once the chart is downloaded.', style: text.bodyLarge);
+    if (items.isEmpty)
+      return Text('Nothing yet. The history shows once the chart is downloaded.', style: text.bodyLarge);
     return Semantics(
       container: true,
       label: 'Timeline, ${items.length} entries',

@@ -29,6 +29,17 @@ void main() {
     'good on good-soft': ((c) => c.good, (c) => c.goodSoft),
     'info on info-soft': ((c) => c.info, (c) => c.infoSoft),
     'ink on warning-soft (demo banner)': ((c) => c.ink, (c) => c.warningSoft),
+    // Phase 3's chips, badges and banners (lib/design/widgets/status_chip.dart, allergy_badge.dart):
+    // each tone's words on its own background, and a banner's detail line in ink on it.
+    'ink on surface-sunken (neutral chip, locked field)': ((c) => c.ink, (c) => c.surfaceSunken),
+    'ink on info-soft (banner detail)': ((c) => c.ink, (c) => c.infoSoft),
+    'ink on good-soft (banner detail)': ((c) => c.ink, (c) => c.goodSoft),
+    'ink on critical-soft (banner detail)': ((c) => c.ink, (c) => c.criticalSoft),
+    'ink on accent-soft (chosen review value)': ((c) => c.ink, (c) => c.accentSoft),
+    'muted ink on ground (profile details)': ((c) => c.inkMuted, (c) => c.ground),
+    'accent on surface (text buttons)': ((c) => c.accent, (c) => c.surface),
+    'accent on ground (text buttons)': ((c) => c.accent, (c) => c.ground),
+    'critical on surface (field errors)': ((c) => c.critical, (c) => c.surface),
   };
 
   for (final theme in FieldTheme.values) {

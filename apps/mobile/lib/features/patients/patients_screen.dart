@@ -292,7 +292,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                     WideButton(
                       label: 'New patient with this name',
                       icon: LucideIcons.userPlus,
-                      onPressed: () => unawaited(context.push('/patients/new', extra: IntakeStart(name: _query.text.trim()))),
+                      onPressed: () =>
+                          unawaited(context.push('/patients/new', extra: IntakeStart(name: _query.text.trim()))),
                     ),
                   ],
                 ] else if (_emptyQuery) ...[
@@ -306,9 +307,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                         runSpacing: FieldSpace.s2,
                         children: [
                           FilledButton(
-                            onPressed: () => unawaited(
-                              context.push('/patients/new', extra: const IntakeStart(fromDraft: true)),
-                            ),
+                            onPressed: () =>
+                                unawaited(context.push('/patients/new', extra: const IntakeStart(fromDraft: true))),
                             child: const Text('Continue'),
                           ),
                           OutlinedButton(onPressed: () => unawaited(_discardDraft()), child: const Text('Discard')),
