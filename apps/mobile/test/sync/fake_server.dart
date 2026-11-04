@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/patients/access.dart';
 import 'package:sineobex_field/patients/dob.dart';
 import 'package:sineobex_field/patients/generated/sensitive_codes.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
@@ -81,7 +82,14 @@ class FakeSyncServer {
   final idLinks = <String, FakeIdLink>{};
 
   /// Notices for people (user_notices): kind, entity and record ID only.
-  final notices = <({String userId, String kind, String entity, String recordId})>[];
+  final notices = <FakeNotice>[];
+
+  /// What the online read routes audited: `patient.viewed`, `patient.searched`,
+  /// `patient.match_checked`, `patient.index_downloaded`, with who and which patients.
+  final serverAudit = <Map<String, Object?>>[];
+
+  /// The ID link base URL a chart's links are made with (ID_LINK_BASE_URL in local and test).
+  String idLinkBaseUrl = 'http://localhost:3100';
 
   /// Network conditions for the next requests.
   bool offline = false;
@@ -299,7 +307,13 @@ class FakeSyncServer {
         ('POST', '/v1/devices') => _register(userId, teamId, body!),
         ('POST', '/v1/sync/push') => _push(userId, teamId, body!),
         ('POST', '/v1/sync/records') => _fetch(body!),
-        ('GET', '/v1/team/notices') => <Object?>[],
+        ('GET', '/v1/team/notices') => _notices(userId),
+        ('POST', '/v1/patients/index') => _index(userId, body!),
+        ('POST', '/v1/patients/charts') => _charts(userId, body!),
+        ('POST', '/v1/patients/search') => _search(userId, body!),
+        ('POST', '/v1/patients/match') => _match(userId, body!),
+        ('GET', _) when _chartPath.hasMatch(path) => _chart(userId, _chartPath.firstMatch(path)![1]!),
+        ('POST', _) when _noticeRead.hasMatch(path) => _markRead(userId, _noticeRead.firstMatch(path)![1]!),
         ('GET', '/v1/time') => {'epochMs': now().millisecondsSinceEpoch, 'serverTime': now().toUtc().toIso8601String()},
         _ => throw ApiException(404, 'not_found', 'no route $method $path'),
       };
@@ -570,6 +584,7 @@ class FakeSyncServer {
     final record = records[recordId] = FakeRecord(
       id: recordId,
       entity: rules.entity,
+      createdAt: DateTime.parse(at),
       author: actor.userId,
       attributes: rules.attributes(v),
       status: rules.initialStatus(v),
@@ -594,6 +609,7 @@ class FakeSyncServer {
           records[id] = FakeRecord(
             id: id,
             entity: entityConsent,
+            createdAt: DateTime.parse(at),
             author: actor.userId,
             attributes: {
               'patientId': recordId,
@@ -699,18 +715,10 @@ class FakeSyncServer {
     if (rival != null) {
       final (winner, loser) = won ? (linkId, rival.id) : (rival.id, linkId);
       notices
-        ..add((
-          userId: won ? rival.issuedBy : actor.userId,
-          kind: 'id_link_superseded',
-          entity: entityIdLink,
-          recordId: loser,
-        ))
-        ..add((
-          userId: won ? actor.userId : rival.issuedBy,
-          kind: 'id_link_kept',
-          entity: entityIdLink,
-          recordId: winner,
-        ));
+        ..add(
+          FakeNotice(_uuid(), won ? rival.issuedBy : actor.userId, 'id_link_superseded', entityIdLink, loser, now()),
+        )
+        ..add(FakeNotice(_uuid(), won ? actor.userId : rival.issuedBy, 'id_link_kept', entityIdLink, winner, now()));
     }
     return _accepted(
       1,
@@ -852,6 +860,8 @@ class FakeSyncServer {
     Map<String, Object?> c, {
     String? reviewId,
   }) => history.add({
+    'id': '${history.length + 1}',
+    'at': _when(c),
     'entity': rec.entity,
     'recordId': rec.id,
     'field': field,
@@ -1067,6 +1077,521 @@ class FakeSyncServer {
     return flaggedUnseen;
   }
 
+  // ---- the patient read routes (design 3.1, 6, 7; services/api/src/patients) ----
+
+  static final _chartPath = RegExp(r'^/v1/patients/([0-9a-fA-F-]{36})$');
+  static final _noticeRead = RegExp(r'^/v1/team/notices/([^/]+)/read$');
+
+  void _require(String userId, String permission) {
+    if (!permissionsOf(userId).contains(permission)) {
+      throw const ApiException(403, 'forbidden', 'Your role doesn’t allow this.');
+    }
+  }
+
+  static String _iso(DateTime t) => t.toUtc().toIso8601String();
+  Map<String, Object?> _user(String? id) => {'userId': id ?? 'unknown', 'displayName': 'Demo user'};
+
+  /// The open or not-sure pair touching a group whose sides are still two patients (the most
+  /// recently flagged), as a chart, an index entry and a summary show it.
+  Map<String, Object?>? _hint(String canonicalId) {
+    final p = pairs.reversed
+        .where(
+          (p) =>
+              (p.status == 'open' || p.status == 'not_sure') &&
+              canonicalOf(p.a) != canonicalOf(p.b) &&
+              (canonicalOf(p.a) == canonicalId || canonicalOf(p.b) == canonicalId),
+        )
+        .firstOrNull;
+    return p == null ? null : {'status': p.status, 'note': p.note};
+  }
+
+  /// Records of [entity] that belong to [canonicalId]'s group.
+  List<FakeRecord> _ofGroup(String entity, String canonicalId) => [
+    for (final r in records.values)
+      if (r.entity == entity && r.patientId != null && canonicalOf(r.patientId!) == canonicalId) r,
+  ]..sort((a, b) => a.createdAt != b.createdAt ? a.createdAt.compareTo(b.createdAt) : a.id.compareTo(b.id));
+
+  List<FakeIdLink> _activeLinks(String canonicalId) =>
+      idLinks.values.where((l) => l.status == 'active' && canonicalOf(l.patientId) == canonicalId).toList()..sort(
+        (a, b) => a.effectiveAt != b.effectiveAt ? a.effectiveAt.compareTo(b.effectiveAt) : a.id.compareTo(b.id),
+      );
+
+  Set<String> _openReviewFields(String canonicalId) => {
+    for (final r in reviews.values)
+      if (r.status == 'open' && canonicalOf(r.recordId) == canonicalId) r.field,
+  };
+
+  /// Live redirects: every merged record and the canonical patient its chart is now ([into] only).
+  List<Map<String, Object?>> _redirects({Set<String>? into}) => [
+    for (final r
+        in records.values.where((r) => r.entity == entityPatient && r.status == 'merged').toList()
+          ..sort((a, b) => a.id.compareTo(b.id)))
+      if (into == null || into.contains(canonicalOf(r.id)))
+        {
+          'mergedId': r.id,
+          'survivorId': canonicalOf(r.id),
+          'mergedAt': _iso(
+            merges.values.where((m) => m.mergedId == r.id && m.undoneAt == null).firstOrNull?.mergedAt ?? now(),
+          ),
+        },
+  ];
+
+  /// One team index entry (team-index.ts): only the PRD's list and bookkeeping, never a legal name.
+  Map<String, Object?> _indexEntry(FakeRecord p) {
+    final aliases = <Map<String, Object?>>[
+      for (final a in _ofGroup(entityAlias, p.id))
+        if (a.status == 'active') {'id': a.id, 'alias': a.attributes['alias'], 'kind': 'alias'},
+    ];
+    // A merged record's preferred name finds the survivor, but it is no street name record: no ID.
+    for (final g in groupOf(p.id).where((g) => g.id != p.id)) {
+      final name = g.fields['preferredName']?.value;
+      if (name is String && name != p.fields['preferredName']?.value && !aliases.any((a) => a['alias'] == name)) {
+        aliases.add({'id': null, 'alias': name, 'kind': 'merged_name'});
+      }
+    }
+    return {
+      'patientId': p.id,
+      'preferredName': p.fields['preferredName']?.value,
+      'aliases': aliases.take(20).toList(),
+      'visualDescriptor': p.fields['visualDescriptor']?.value,
+      'birth': p.fields['birth']?.value,
+      'usualArea': p.fields['usualArea']?.value,
+      'lastSeenOn': _iso(p.createdAt).substring(0, 10),
+      'allergyScreen': p.fields['allergyScreen']?.value ?? 'not_asked',
+      'allergies': [
+        for (final a in _ofGroup(entityAllergy, p.id))
+          if (a.status == 'active')
+            {
+              'id': a.id,
+              'substance': a.attributes['substance'],
+              'category': a.attributes['category'] ?? 'unknown',
+              'severity': a.attributes['severity'] ?? 'unknown',
+            },
+      ],
+      'idLinks': [
+        for (final l in _activeLinks(p.id)) {'id': l.id, 'effectiveAt': _iso(l.effectiveAt)},
+      ],
+      'duplicate': _hint(p.id),
+      'reviews': _openReviewFields(p.id).toList()..sort(),
+      'versions': {
+        for (final f in ['preferredName', 'visualDescriptor', 'usualArea', 'allergyScreen'])
+          f: p.fields[f]?.version ?? 0,
+      },
+    };
+  }
+
+  /// The index's version: it moves whenever anything an entry or the redirect list shows changes,
+  /// as the server's statement-level triggers bump its counter.
+  final _indexVersions = <String, int>{};
+
+  /// How many index pages were downloaded (tests watch a resumed download).
+  int indexPages = 0;
+
+  Map<String, Object?> _index(String userId, Map<String, Object?> b) {
+    if (!mayHoldTeamIndex(permissionsOf(userId))) {
+      throw const ApiException(403, 'index_not_permitted', 'Your role doesn’t keep the patient list on a phone.');
+    }
+    final active = records.values.where((r) => r.entity == entityPatient && r.status == 'active').toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    final all = [for (final p in active) _indexEntry(p)];
+    final content = valueHash({'entries': all, 'redirects': _redirects()});
+    final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.idx1';
+    final base = {'version': version, 'projection': 'idx1', 'generatedAt': _iso(now())};
+    final after = b['after'] as String?;
+    if (after == null && b['have'] == version) {
+      return {...base, 'status': 'unchanged', 'entries': <Object?>[], 'next': null, 'redirects': <Object?>[]};
+    }
+    final limit = ((b['limit'] as num?) ?? 500).toInt().clamp(100, 1000);
+    final rest = [
+      for (final e in all)
+        if (after == null || (e['patientId']! as String).compareTo(after) > 0) e,
+    ];
+    final page = rest.take(limit).toList();
+    final next = rest.length > limit ? page.last['patientId'] : null;
+    indexPages++;
+    serverAudit.add({
+      'action': 'patient.index_downloaded',
+      'userId': userId,
+      'details': {'version': version, 'after': after, 'next': next, 'count': page.length},
+    });
+    return {...base, 'status': 'page', 'entries': page, 'next': next, 'redirects': after == null ? _redirects() : []};
+  }
+
+  /// A record as RecordSnapshot shows it.
+  Map<String, Object?> _snapshot(FakeRecord r, Map<String, Object?> attributes, List<String> fieldNames) {
+    final versions = [for (final f in r.fields.values) f.version];
+    return {
+      'entity': r.entity,
+      'id': r.id,
+      'version': versions.isEmpty ? 1 : versions.reduce(max),
+      'status': r.status,
+      'authorUserId': r.author,
+      'createdAt': _iso(r.createdAt),
+      'updatedAt': _iso(r.createdAt),
+      'attributes': attributes,
+      'fields': {for (final f in fieldNames) f: r.state(f)},
+    };
+  }
+
+  Map<String, Object?> _problemSnapshot(FakeRecord r) {
+    final code = r.attributes['code'] as Map<String, Object?>?;
+    return _snapshot(
+      r,
+      {
+        'patientId': r.patientId,
+        'title': r.attributes['title'],
+        'code': code == null ? null : {'system': code['system'], 'code': code['code'], 'display': code['display']},
+        'sensitive': r.attributes['sensitive'] == true,
+        'source': 'sync',
+        'createdEncounterId': r.attributes['encounterId'],
+        'onsetDate': r.attributes['onsetDate'],
+        'recurrenceOf': r.attributes['recurrenceOf'],
+        'resolvedInErrorOf': r.attributes['resolvedInErrorOf'],
+        'reversalRequest': r.attributes['reversalRequest'],
+        'mergedInto': r.mergedInto,
+        'statusChangedAt': _iso(r.checkedAt ?? r.createdAt),
+        'statusCheckedAt': _iso(r.checkedAt ?? r.createdAt),
+      },
+      const ['status', 'enteredInError'],
+    );
+  }
+
+  /// A group's chart, projected for [userId]'s role (charts.ts loadGroupCharts and projectChart):
+  /// problems only with the problem list's permissions, sensitive ones only with view_sensitive,
+  /// card links only with patients.edit. A legal name stays: the chart is the person's own.
+  Map<String, Object?> _chartOf(String userId, String canonicalId) {
+    final perms = permissionsOf(userId);
+    final problemsShown = mayViewProblems(perms);
+    final sensitive = problemsShown && perms.contains('patients.view_sensitive');
+    final urls = perms.contains('patients.edit');
+    final p = records[canonicalId]!;
+    final problems = [
+      for (final r in _ofGroup(entityProblem, canonicalId))
+        if (sensitive || r.attributes['sensitive'] != true) r,
+    ];
+    final problemIds = {for (final r in problems) r.id};
+    return {
+      'patient': _snapshot(p, {
+        'registeredAt': _iso(p.createdAt),
+        'clockVerified': true,
+        'lastSeenAt': _iso(p.createdAt),
+      }, patientFieldNames),
+      'canonicalId': canonicalId,
+      'mergedFrom': [
+        for (final m in merges.values)
+          if (m.undoneAt == null && canonicalOf(m.mergedId) == canonicalId)
+            {'patientId': m.mergedId, 'mergedAt': _iso(m.mergedAt), 'mergeId': m.id},
+      ],
+      'aliases': [
+        for (final a in _ofGroup(entityAlias, canonicalId))
+          _snapshot(a, {'patientId': a.patientId, 'alias': a.attributes['alias']}, const ['removal']),
+      ],
+      'allergies': [
+        for (final a in _ofGroup(entityAllergy, canonicalId))
+          _snapshot(
+            a,
+            {
+              'patientId': a.patientId,
+              'substance': a.attributes['substance'],
+              'category': a.attributes['category'] ?? 'unknown',
+              'reaction': a.attributes['reaction'],
+              'severity': a.attributes['severity'] ?? 'unknown',
+              'encounterId': a.attributes['encounterId'],
+              'recordedAt': _iso(a.createdAt),
+            },
+            const ['enteredInError'],
+          ),
+      ],
+      'consents': [
+        for (final c in _ofGroup(entityConsent, canonicalId))
+          {
+            'id': c.id,
+            'kind': c.attributes['kind'],
+            'decision': c.attributes['decision'],
+            'method': c.attributes['method'] ?? 'verbal',
+            'recordedAt': _iso(c.createdAt),
+            'recordedBy': _user(c.author),
+          },
+      ],
+      if (problemsShown) ...{
+        'problems': [for (final r in problems) _problemSnapshot(r)],
+        'problemHistory': [
+          for (final h in history)
+            if (h['entity'] == entityProblem && h['field'] == 'status' && problemIds.contains(h['recordId']))
+              {
+                'historyId': h['id'],
+                'problemId': h['recordId'],
+                'status': (h['value']! as Map<String, Object?>)['status'],
+                'encounterId': (h['value']! as Map<String, Object?>)['encounterId'],
+                'by': _user(h['by'] as String?),
+                'at': h['at'],
+                'kind': h['kind'],
+              },
+        ],
+        'problemNotes': [
+          for (final n in records.values)
+            if (n.entity == entityProblemNote && problemIds.contains(n.attributes['problemId']))
+              {
+                'id': n.id,
+                'problemId': n.attributes['problemId'],
+                'text': n.attributes['text'],
+                'encounterId': n.attributes['encounterId'],
+                'writtenAt': _iso(n.createdAt),
+                'author': _user(n.author),
+              },
+        ],
+      },
+      'idLinks': [
+        for (final l in _activeLinks(canonicalId))
+          {
+            'id': l.id,
+            'issuedOn': l.patientId,
+            'status': l.status,
+            'effectiveAt': _iso(l.effectiveAt),
+            'madeOffline': true,
+            if (urls) 'url': idLinkUrl(idLinkBaseUrl, l.token),
+          },
+      ],
+      'reviews': [
+        for (final r in reviews.values)
+          if (r.status == 'open' && canonicalOf(r.recordId) == canonicalId)
+            {
+              'id': r.id,
+              'patientId': r.recordId,
+              'field': r.field,
+              'needs': r.needs,
+              'current': records[r.recordId]!.state(r.field),
+              'alternates': [
+                for (final h in history)
+                  if (h['reviewId'] == r.id)
+                    {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['at']},
+              ],
+              'openedAt': _iso(now()),
+              'status': r.status,
+            },
+      ],
+      'duplicate': _hint(canonicalId),
+      'projection': ['c1', if (problemsShown) 'prob', if (sensitive) 'sens', if (urls) 'url'].join('+'),
+    };
+  }
+
+  /// How many charts each request asked for (tests watch the phone's batch sizes).
+  final chartRequests = <int>[];
+
+  /// POST /v1/patients/charts: the charts of the requested patients' groups, and every live
+  /// redirect into the returned groups. One `patient.viewed {source: 'cache'}` per chart.
+  Map<String, Object?> _charts(String userId, Map<String, Object?> b) {
+    _require(userId, 'patients.view');
+    final requested = {for (final id in (b['patientIds']! as List<Object?>).cast<String>()) id.toLowerCase()};
+    chartRequests.add(requested.length);
+    final groups = <String>{
+      for (final id in requested)
+        if (records[id]?.entity == entityPatient) canonicalOf(id),
+    };
+    final charts = [
+      for (final id in groups)
+        if (records[id]!.status == 'active') _chartOf(userId, id),
+    ];
+    for (final c in charts) {
+      serverAudit.add({
+        'action': 'patient.viewed',
+        'userId': userId,
+        'patientId': c['canonicalId'],
+        'details': {'source': 'cache', 'reason': b['reason']},
+      });
+    }
+    final returned = {for (final c in charts) c['canonicalId']! as String};
+    return {
+      'charts': charts,
+      'missing': [
+        for (final id in requested)
+          if (records[id]?.entity != entityPatient || !returned.contains(canonicalOf(id))) id,
+      ],
+      'redirects': _redirects(into: returned),
+    };
+  }
+
+  /// GET /v1/patients/{id}: the group's chart; a merged ID answers the survivor's with
+  /// `redirectedFrom`.
+  Map<String, Object?> _chart(String userId, String patientId) {
+    _require(userId, 'patients.view');
+    if (records[patientId]?.entity != entityPatient) throw const ApiException(404, 'not_found', 'No such patient.');
+    final canonical = canonicalOf(patientId);
+    serverAudit.add({'action': 'patient.viewed', 'userId': userId, 'patientId': canonical, 'details': {}});
+    return {..._chartOf(userId, canonical), if (canonical != patientId) 'redirectedFrom': patientId};
+  }
+
+  /// A group as the scorer reads it: every record's names of [sources], and every birth.
+  CandidateGroup _candidate(String canonicalId, Set<NameSource> sources) {
+    final group = groupOf(canonicalId).toList();
+    final ids = {for (final r in group) r.id};
+    return CandidateGroup(
+      patientId: canonicalId,
+      keys: [
+        for (final r in group) ...[
+          if (sources.contains(NameSource.preferred))
+            NameKey.of(NameSource.preferred, r.fields['preferredName']?.value as String?),
+          if (sources.contains(NameSource.legal))
+            if (r.fields['legalName']?.value case final Map<String, Object?> legal)
+              NameKey.legal(legal['given'] as String?, legal['family'] as String?),
+          if (sources.contains(NameSource.descriptor))
+            NameKey.of(NameSource.descriptor, r.fields['visualDescriptor']?.value as String?),
+        ],
+        if (sources.contains(NameSource.alias))
+          for (final a in records.values)
+            if (a.entity == entityAlias && a.status == 'active' && ids.contains(a.patientId))
+              NameKey.of(NameSource.alias, a.attributes['alias'] as String?),
+      ].nonNulls,
+      births: [for (final r in group) Birth.fromJson(r.fields['birth']?.value)],
+      lastSeen: group.map((r) => r.createdAt).reduce((a, b) => a.isAfter(b) ? a : b),
+    );
+  }
+
+  Iterable<String> get _activePatients =>
+      records.values.where((r) => r.entity == entityPatient && r.status == 'active').map((r) => r.id);
+
+  /// Who someone is in a result list (projection.ts loadSummaries and projectSummary): on the phone,
+  /// never a legal name (D40).
+  Map<String, Object?> _summary(String canonicalId, String surface) {
+    final p = records[canonicalId]!;
+    final birth = p.fields['birth']?.value as Map<String, Object?>?;
+    final allergies = _ofGroup(entityAllergy, canonicalId).where((a) => a.status == 'active').toList();
+    final today = now().toUtc();
+    int? age;
+    if (birth != null) {
+      final b = Birth.fromJson(birth)!;
+      age = switch (b) {
+        BirthDate(:final year, :final month, :final day) =>
+          today.year - year - (today.month < month || (today.month == month && today.day < day) ? 1 : 0),
+        _ => today.year - b.year,
+      };
+    }
+    return {
+      'preferredName': p.fields['preferredName']?.value,
+      if (surface != 'phone') 'legalName': p.fields['legalName']?.value,
+      'aliases': [
+        for (final a in _ofGroup(entityAlias, canonicalId).where((a) => a.status == 'active').take(5))
+          a.attributes['alias'],
+      ],
+      'visualDescriptor': p.fields['visualDescriptor']?.value,
+      'birth': birth,
+      'ageYears': age,
+      'usualArea': p.fields['usualArea']?.value,
+      'lastSeenOn': _iso(p.createdAt).substring(0, 10),
+      'allergy': {
+        'screen': p.fields['allergyScreen']?.value ?? 'not_asked',
+        'count': allergies.length,
+        'severe': allergies.any((a) => a.attributes['severity'] == 'severe'),
+      },
+      'duplicateHint': _hint(canonicalId) != null,
+    };
+  }
+
+  Map<String, Object?> _hit(RankedGroup h, String surface) => {
+    'patientId': h.group.patientId,
+    'score': h.score.score,
+    'band': h.score.band.toJson(),
+    'reasons': [for (final r in h.score.reasons) r.toJson()],
+    'summary': _summary(h.group.patientId, surface),
+  };
+
+  /// POST /v1/patients/search (search.ts), scored with the phone's scorer (no sound-alike term).
+  Map<String, Object?> _search(String userId, Map<String, Object?> b) {
+    _require(userId, 'patients.view');
+    final name = b['name'] as String?;
+    final birth = b['birth'] as Map<String, Object?>?;
+    final year = (birth?['year'] as num?)?.toInt();
+    final month = (birth?['month'] as num?)?.toInt();
+    final day = (birth?['day'] as num?)?.toInt();
+    final query = year != null && month != null && day == null
+        ? SearchQuery.yearMonth(text: name, month: (year: year, month: month))
+        : SearchQuery(
+            text: name,
+            birth: year == null
+                ? null
+                : day != null && month != null
+                ? BirthDate(year, month, day)
+                : BirthYear(year),
+          );
+    final surface = b['surface'] as String? ?? 'phone';
+    final all = NameSource.values.toSet();
+    final (:hits, :truncated) = query.isEmpty
+        ? (hits: const <RankedGroup>[], truncated: false)
+        : rankSearch(query, [
+            for (final id in _activePatients) _candidate(id, all),
+          ], limit: ((b['limit'] as num?) ?? searchLimit).toInt());
+    final shown = [for (final h in hits) _hit(h, surface)];
+    serverAudit.add({
+      'action': 'patient.searched',
+      'userId': userId,
+      'details': {
+        'resultCount': shown.length,
+        'patientIds': [for (final h in shown) h['patientId']],
+        'criteria': [if (name != null) 'name', if (year != null) day != null ? 'birth_full' : 'birth_year'],
+        'surface': surface,
+      },
+    });
+    return {'hits': shown, 'truncated': truncated};
+  }
+
+  /// POST /v1/patients/match (match.ts): the intake's check before saving.
+  Map<String, Object?> _match(String userId, Map<String, Object?> b) {
+    _require(userId, 'patients.edit');
+    final legal = b['legalName'] as Map<String, Object?>?;
+    final birth = b['birth'] as Map<String, Object?>?;
+    final subject = MatchSubject.of(
+      preferredName: b['preferredName'] as String?,
+      legalName: legal == null ? null : (given: legal['given'] as String?, family: legal['family'] as String?),
+      aliases: ((b['aliases'] as List<Object?>?) ?? const []).cast<String>(),
+      birth: Birth.fromJson(birth),
+    );
+    final exclude = <String>{};
+    final own = b['excludePatientId'] as String?;
+    if (own != null && records[own]?.entity == entityPatient) {
+      final self = canonicalOf(own);
+      exclude.add(self);
+      for (final p in pairs) {
+        if (p.status == 'kept_separate' && (p.a == self || p.b == self)) exclude.add(p.a == self ? p.b : p.a);
+      }
+    }
+    final surface = b['surface'] as String? ?? 'phone';
+    final found = rankMatches(subject, [
+      for (final id in _activePatients) _candidate(id, {NameSource.legal, NameSource.preferred, NameSource.alias}),
+    ], exclude: exclude);
+    final checkId = _uuid();
+    final candidates = [for (final f in found) _hit(f, surface)];
+    serverAudit.add({
+      'action': 'patient.match_checked',
+      'userId': userId,
+      'details': {
+        'checkId': checkId,
+        'patientIds': [for (final c in candidates) c['patientId']],
+        'surface': surface,
+      },
+    });
+    return {'checkId': checkId, 'candidates': candidates};
+  }
+
+  List<Object?> _notices(String userId) => [
+    for (final n in notices)
+      if (n.userId == userId)
+        {
+          'id': n.id,
+          'kind': n.kind,
+          'entity': n.entity,
+          'recordId': n.recordId,
+          'createdAt': _iso(n.createdAt),
+          'readAt': n.readAt == null ? null : _iso(n.readAt!),
+        },
+  ];
+
+  Map<String, Object?> _markRead(String userId, String id) {
+    for (final n in notices.where((n) => n.id == id && n.userId == userId)) {
+      n.readAt ??= now();
+    }
+    return {'ok': true};
+  }
+
   // ---- reads ----
 
   Map<String, Object?> _fetch(Map<String, Object?> b) {
@@ -1229,7 +1754,11 @@ class FakeRecord {
     required this.fields,
     this.status = 'active',
     this.patientId,
-  });
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.utc(2026);
+
+  /// When the server stored it (registeredAt for a patient, recordedAt for an allergy).
+  final DateTime createdAt;
   final String id;
   final String entity;
   final String author;
@@ -1281,6 +1810,20 @@ class FakePair {
 
   /// open, not_sure, kept_separate, merged or superseded.
   String status = 'open';
+
+  /// A reviewer's Not sure note ("check ID card at next visit").
+  String? note;
+}
+
+class FakeNotice {
+  FakeNotice(this.id, this.userId, this.kind, this.entity, this.recordId, this.createdAt);
+  final String id;
+  final String userId;
+  final String kind;
+  final String entity;
+  final String recordId;
+  final DateTime createdAt;
+  DateTime? readAt;
 }
 
 class FakeMerge {
