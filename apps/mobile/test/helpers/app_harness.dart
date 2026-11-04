@@ -11,6 +11,7 @@ import 'package:sineobex_field/config/env.dart';
 import 'package:sineobex_field/design/tokens.dart';
 import 'package:sineobex_field/features/lock/lock_screens.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
+import 'package:sineobex_field/patients/problems.dart' show ProblemCodes;
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -104,6 +105,11 @@ class AppHarness {
     overrides: [
       appConfigProvider.overrideWithValue(config),
       wallClockProvider.overrideWithValue(() => wall),
+      // The bundled list read straight from the file: an asset bundle decodes a file this size on
+      // another isolate, which a widget test's fake clock never waits for.
+      problemCodesProvider.overrideWith(
+        (ref) async => ProblemCodes.parse(File('assets/problem_codes.json').readAsStringSync()),
+      ),
       sessionProvider.overrideWithValue(session),
       syncControllerProvider.overrideWithValue(sync),
       biometricsAvailableProvider.overrideWith((ref) async => true),

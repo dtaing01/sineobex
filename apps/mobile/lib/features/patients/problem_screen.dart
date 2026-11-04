@@ -381,7 +381,9 @@ class _Timeline extends StatelessWidget {
           for (final i in items)
             Padding(
               padding: const EdgeInsets.only(bottom: FieldSpace.s3),
+              // Each entry its own item of the list, read with its date in full.
               child: Semantics(
+                container: true,
                 label: i.spoken,
                 excludeSemantics: true,
                 child: Text(i.line, style: text.bodyLarge),
