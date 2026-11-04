@@ -26,6 +26,14 @@ enum DeviceChannel {
       switch call.method {
       case "bootClock":
         result(bootClock())
+      case "secureCopy":
+        guard let args = call.arguments as? [String: Any], let text = args["text"] as? String else {
+          result(FlutterError(code: "bad_args", message: "text required", details: nil))
+          return
+        }
+        let expiresAfterMs = (args["expiresAfterMs"] as? NSNumber)?.doubleValue ?? 60_000
+        secureCopy(text, expiresAfter: expiresAfterMs / 1000)
+        result(true)
       case "excludeFromBackup":
         guard let args = call.arguments as? [String: Any], let path = args["path"] as? String else {
           result(FlutterError(code: "bad_args", message: "path required", details: nil))
@@ -46,6 +54,15 @@ enum DeviceChannel {
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  /// An ID link on the pasteboard that stays on this device (never Universal Clipboard) and expires
+  /// after `seconds` (design 10.4). The item is the link alone; it names no one.
+  private static func secureCopy(_ text: String, expiresAfter seconds: Double) {
+    UIPasteboard.general.setItems(
+      [["public.utf8-plain-text": text]],
+      options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(seconds)]
+    )
   }
 
   /// The clock check (lib/sync/clock.dart) needs time since boot that keeps counting while the
