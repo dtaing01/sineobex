@@ -724,31 +724,29 @@ class _Line extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final c = context.field;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: FieldSpace.s2),
-      child: Row(
+    final words = MergeSemantics(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: MergeSemantics(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    text,
-                    style: t.bodyLarge?.copyWith(
-                      decoration: muted ? TextDecoration.lineThrough : null,
-                      color: muted ? c.inkMuted : c.ink,
-                    ),
-                  ),
-                  if (detail != null && detail!.isNotEmpty)
-                    Text(detail!, style: t.bodyMedium?.copyWith(color: c.inkMuted)),
-                ],
-              ),
+          Text(
+            text,
+            style: t.bodyLarge?.copyWith(
+              decoration: muted ? TextDecoration.lineThrough : null,
+              color: muted ? c.inkMuted : c.ink,
             ),
           ),
-          ?action,
+          if (detail != null && detail!.isNotEmpty) Text(detail!, style: t.bodyMedium?.copyWith(color: c.inkMuted)),
         ],
+      ),
+    );
+    // The action beside the words, or under them when the two don't fit (a narrow phone, large
+    // text): never clipped.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: FieldSpace.s2),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [words, ?action],
       ),
     );
   }

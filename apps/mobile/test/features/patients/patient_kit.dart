@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/design/tokens.dart';
 import 'package:sineobex_field/patients/consent_script.dart';
 import 'package:sineobex_field/sync/local_store.dart';
@@ -114,6 +116,14 @@ Future<void> syncAndRefresh(WidgetTester tester, AppHarness h) async {
     await h.sync.refreshNow(reason: RefreshReason.manual);
   });
   await tester.pumpAndSettle();
+}
+
+/// Goes to [location] as a tap in the app would (a pushed route).
+Future<void> go(WidgetTester tester, String location) async {
+  final context = tester.element(find.byType(Navigator).first);
+  unawaited(GoRouter.of(context).push(location));
+  await settle(tester);
+  await settle(tester);
 }
 
 /// Opens the Patients tab from the bar.
