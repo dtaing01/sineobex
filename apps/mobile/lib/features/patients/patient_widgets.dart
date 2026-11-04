@@ -138,7 +138,8 @@ class RadioChips<T> extends StatelessWidget {
   /// The group's name, read before the chips.
   final String? label;
 
-  /// A chip's spoken label when it differs from its text ("Other, selected, text box below").
+  /// A chip's spoken label when it differs from its text ("Other, text box below"; "selected"
+  /// comes from the flag, so it is never said twice).
   final String Function(T value, bool selected)? spoken;
   final bool enabled;
 
@@ -149,10 +150,17 @@ class RadioChips<T> extends StatelessWidget {
       runSpacing: FieldSpace.s2,
       children: [
         for (final MapEntry(key: value, value: text) in options.entries)
+          // One node per chip: the group flag and the state on the button itself, not on a node
+          // around it.
           Semantics(
+            container: true,
+            button: true,
             inMutuallyExclusiveGroup: true,
             selected: value == selected,
-            label: spoken?.call(value, value == selected),
+            enabled: enabled,
+            label: spoken?.call(value, value == selected) ?? text,
+            onTap: enabled ? () => onSelected(value) : null,
+            excludeSemantics: true,
             child: ChoiceChip(
               label: Text(text),
               selected: value == selected,

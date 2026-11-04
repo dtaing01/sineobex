@@ -436,14 +436,18 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           if (c.band == MatchBand.likely && !_dismissed.contains(c.patientId)) c,
       ];
       if (likely.isNotEmpty) {
+        // The question, not a spinner, while the worker decides.
+        setState(() => _saving = false);
         final answer = await askSamePerson(context, likely.first, todayOf(ref));
         if (!mounted || answer == null) return;
         if (answer == SamePersonAnswer.open) {
-          setState(() => _saving = false);
           await _thisIsThem(likely.first);
           return;
         }
-        setState(() => _dismissed.addAll(likely.map((c) => c.patientId)));
+        setState(() {
+          _dismissed.addAll(likely.map((c) => c.patientId));
+          _saving = true;
+        });
       }
       final result = _s.patients.createPatient(
         Intake(
@@ -905,7 +909,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   List<Widget> _nameSection() {
     final v = _view;
-    final large = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    // Side by side, stacked at large text or on a narrow phone (design 12.1).
+    final large = MediaQuery.textScalerOf(context).scale(1) > 1.3 || MediaQuery.sizeOf(context).width < 360;
     final legal = v?.legalName;
     final givenLocked = v != null && (legal?.given?.isNotEmpty ?? false);
     final familyLocked = v != null && (legal?.family?.isNotEmpty ?? false);
@@ -987,7 +992,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           }
           unawaited(_check());
         },
-        child: large
+        child: givenLocked && familyLocked
+            ? _LockedValue(label: 'Legal name', value: '${_given.text} ${_family.text}')
+            : large
             ? Column(
                 children: [
                   given,
@@ -1097,7 +1104,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       RadioChips<String>(
         options: livingSituationLabels,
         selected: _living,
-        spoken: (v, on) => v == 'other' && on ? 'Other, selected, text box below' : livingSituationLabels[v]!,
+        spoken: (v, on) => v == 'other' && on ? 'Other, text box below' : livingSituationLabels[v]!,
         onSelected: (v) {
           setState(() => _living = v);
           if (v == 'other') WidgetsBinding.instance.addPostFrameCallback((_) => _livingOtherFocus.requestFocus());

@@ -175,20 +175,21 @@ String count(int n) => n.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'
 };
 
 /// What a name match was against: as the object of "Close to …", and as a sentence's subject.
-({String object, String subject})? _against(List<MatchReason> reasons) {
-  if (reasons.contains(MatchReason.name)) return (object: 'the name they go by', subject: 'Name they go by');
-  if (reasons.contains(MatchReason.alias)) return (object: 'a street name', subject: 'Street name');
-  if (reasons.contains(MatchReason.descriptor)) return (object: 'the description', subject: 'Description');
-  return null;
-}
+const _against = {
+  MatchReason.name: (object: 'the name they go by', subject: 'Name they go by'),
+  MatchReason.alias: (object: 'a street name', subject: 'Street name'),
+  MatchReason.descriptor: (object: 'the description', subject: 'Description'),
+};
 
 /// Why a hit or a possible duplicate matched, in words (design 8.1: "Street name matches · Birth
-/// date: day and month swapped"). The reasons never carry the text that matched, and a legal name
-/// is never shown on a list (D40): it is "Close to the legal name on a chart you opened".
+/// date: day and month swapped"), one phrase per name it matched. The reasons never carry the
+/// text that matched, and a legal name is never shown on a list (D40): it is "Close to the legal
+/// name on a chart you opened".
 List<String> matchReasonTexts(List<MatchReason> reasons) {
   final out = <String>[];
   if (reasons.contains(MatchReason.legalName)) out.add('Close to the legal name on a chart you opened');
-  if (_against(reasons) case (:final object, :final subject)) {
+  for (final MapEntry(key: reason, value: (:object, :subject)) in _against.entries) {
+    if (!reasons.contains(reason)) continue;
     out.add(
       reasons.contains(MatchReason.typo)
           ? 'Close to $object'

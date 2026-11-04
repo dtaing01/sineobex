@@ -64,7 +64,6 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   /// "Opened recently on this phone", read (and audited) once each time the empty state shows.
   List<FoundPatient>? _recent;
-  bool _hasDraft = false;
 
   static const _quiet = Duration(milliseconds: 600);
 
@@ -97,8 +96,9 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   bool get _emptyQuery => _query.text.trim().isEmpty && _born is! BirthDate;
 
+  /// "Opened recently on this phone": a list of patients, so audited (by the call) once each time
+  /// the empty state is shown, never per rebuild.
   void _loadEmpty() {
-    _hasDraft = _s.mayEdit && _s.patients.draft() != null;
     try {
       _recent = _s.search.openedRecently();
       _problem = null;
@@ -181,7 +181,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     );
     if (!yes || !mounted) return;
     _s.patients.discardDraft();
-    setState(() => _hasDraft = false);
+    setState(() {});
   }
 
   void _open(FoundPatient p) => unawaited(context.push('/patients/${p.patientId}'));
@@ -297,7 +297,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                     ),
                   ],
                 ] else if (_emptyQuery) ...[
-                  if (_hasDraft) ...[
+                  if (_s.mayEdit && _s.patients.draft() != null) ...[
                     StatusBanner(
                       icon: LucideIcons.squarePen,
                       tone: ChipTone.info,
