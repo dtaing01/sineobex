@@ -88,6 +88,9 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   'problem_retracted' => 'Your note was saved on a problem someone marked entered in error.',
   'id_link_superseded' =>
     'Another new card was made after yours. That card is the valid one; yours won’t open the chart.',
+  'id_link_kept' => 'Another new card was made for the same patient at about the same time. Yours is the valid one.',
+  'id_link_conflict' => 'Two new cards were made for one patient. The newer one is the valid one.',
+  'problem_reversal_decided' => 'A Program Admin answered your request about a problem marked Resolved by mistake.',
   _ => 'Something changed after it synced.',
 };
 

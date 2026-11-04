@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
@@ -175,19 +177,26 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('Back with anything typed keeps a draft the Patients tab offers to continue', (tester) async {
+  testWidgets('Back with anything typed keeps a draft, without the legal name, to continue', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await offlineIntake(tester);
     await tapOn(tester, find.text('Agrees'));
     await type(tester, 'preferredName', 'Smitty');
+    await type(tester, 'legalGiven', 'Delmar');
     await tester.binding.handlePopRoute();
     await settle(tester);
     expect(find.text('Keep this as a draft?'), findsOneWidget);
+    expect(find.textContaining('The legal name isn’t kept in a draft'), findsOneWidget);
     await tapOn(tester, find.text('Keep draft'));
-    expect(h.patients.patients.draft()?['preferred'], 'Smitty');
+    final draft = h.patients.patients.draft()!;
+    expect(draft['preferred'], 'Smitty');
+    // A legal name stays only in a chart (design 2.9-11), never in the draft.
+    expect(jsonEncode(draft), isNot(contains('Delmar')));
     await expectShown(tester, find.text('Continue the patient you were adding?'));
     await tapOn(tester, find.text('Continue'));
     expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Smitty');
+    expect((await fieldNamed(tester, 'legalGiven')).controller!.text, isEmpty);
+    await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
     await expectScreenOk(tester);
     handle.dispose();
   });

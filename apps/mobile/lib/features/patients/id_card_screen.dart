@@ -112,9 +112,12 @@ class _IdCardState extends ConsumerState<_IdCard> {
           final mayEdit = _s.mayEdit && v.mergedInto == null;
           final working = v.workingCards;
           final group = {v.canonicalId, ...v.cards.map((c) => c.issuedOn)};
-          final lost = [
+          final cardIds = {for (final c in v.cards) c.id};
+          // A card conflict's outcome, for one of this chart's cards: the message comes first
+          // (10.4 step 6), worded from this phone's own cards, never from the notice.
+          final notices = [
             for (final n in _s.store.notices(unreadOnly: true))
-              if (n.kind == noticeCardSuperseded && (n.patientId == null || group.contains(n.patientId))) n,
+              if (_cardNoticeKinds.contains(n.kind) && (group.contains(n.patientId) || cardIds.contains(n.recordId))) n,
           ];
           final others = [
             for (final c in v.cards)
@@ -123,8 +126,7 @@ class _IdCardState extends ConsumerState<_IdCard> {
           return ListView(
             padding: const EdgeInsets.all(FieldSpace.s4),
             children: [
-              // The conflict first (10.4 step 6): another card won, the one printed won't open the chart.
-              for (final n in lost) ...[_lostMessage(v, n, today, mayEdit), const SizedBox(height: FieldSpace.s3)],
+              for (final n in notices) ...[_noticeMessage(v, n, today, mayEdit), const SizedBox(height: FieldSpace.s3)],
               if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s3)],
               const SectionHeading('Cards that open this chart'),
               if (working.length > 1) ...[
@@ -186,9 +188,6 @@ class _IdCardState extends ConsumerState<_IdCard> {
                   const SizedBox(height: FieldSpace.s2),
                 ],
               ],
-              if (lost.isNotEmpty)
-                for (final n in lost)
-                  TextButton(onPressed: () => _dismiss(n), child: const Text('Done with this message')),
             ],
           );
         },
@@ -196,31 +195,54 @@ class _IdCardState extends ConsumerState<_IdCard> {
     );
   }
 
-  /// "Another new card for Del was made at 2:14 PM, after yours at 1:50 PM. That card is the valid
-  /// one; the card you printed won't open the chart."
-  Widget _lostMessage(PatientView v, LocalNotice n, DateTime today, bool mayEdit) {
+  /// A card conflict's outcome (design 10.4): for the losing maker, "Another new card for Del was
+  /// made at 2:14 PM, after yours at 1:50 PM. That card is the valid one; the card you printed won't
+  /// open the chart."; for the winning maker, that theirs stands; for an admin, which card is valid.
+  Widget _noticeMessage(PatientView v, LocalNotice n, DateTime today, bool mayEdit) {
     final mine = v.cards.where((c) => c.id == n.recordId).firstOrNull;
     final winner = v.workingCards.firstOrNull;
     String at(DateTime? t) => t == null ? '' : ' at ${TimeOfDay.fromDateTime(t.toLocal()).format(context)}';
+    String on(DateTime? t) => t == null ? '' : ' on ${shortDate(t, today)}${at(t)}';
     final name = v.preferredName ?? 'this patient';
-    return StatusBanner(
-      icon: LucideIcons.triangleAlert,
-      tone: ChipTone.warning,
-      text:
-          'Another new card for $name was made${at(winner?.effectiveAt)}, after yours${at(mine?.effectiveAt)}. '
-          'That card is the valid one; the card you printed won’t open the chart.',
-      action: Wrap(
-        spacing: FieldSpace.s2,
-        runSpacing: FieldSpace.s2,
-        children: [
-          if (winner != null && winner.copyable && mayEdit)
-            FilledButton(onPressed: () => unawaited(_copy(winner)), child: const Text('Copy the valid link')),
-          if (mayEdit) OutlinedButton(onPressed: () => unawaited(_make(v)), child: const Text('Make a new card')),
-        ],
+    final done = TextButton(onPressed: () => _dismiss(n), child: const Text('Got it'));
+    return switch (n.kind) {
+      noticeCardKept => StatusBanner(
+        icon: LucideIcons.circleCheck,
+        tone: ChipTone.good,
+        text: 'Another new card for $name was made at about the same time as yours. Yours is the valid one.',
+        action: done,
       ),
-    );
+      noticeCardConflict => StatusBanner(
+        icon: LucideIcons.info,
+        tone: ChipTone.info,
+        text: 'Two new cards were made for one patient. The card made${on(winner?.effectiveAt)} is the valid one.',
+        action: done,
+      ),
+      _ => StatusBanner(
+        icon: LucideIcons.triangleAlert,
+        tone: ChipTone.warning,
+        text:
+            'Another new card for $name was made${at(winner?.effectiveAt)}, after yours${at(mine?.effectiveAt)}. '
+            'That card is the valid one; the card you printed won’t open the chart.',
+        action: Wrap(
+          spacing: FieldSpace.s2,
+          runSpacing: FieldSpace.s2,
+          children: [
+            if (winner != null && winner.copyable && mayEdit)
+              FilledButton(onPressed: () => unawaited(_copy(winner)), child: const Text('Copy the valid link')),
+            if (mayEdit) OutlinedButton(onPressed: () => unawaited(_make(v)), child: const Text('Make a new card')),
+            done,
+          ],
+        ),
+      ),
+    };
   }
 }
+
+/// The notices of a card conflict (design 10.4 step 3), kind and card ID only.
+const noticeCardKept = 'id_link_kept';
+const noticeCardConflict = 'id_link_conflict';
+const _cardNoticeKinds = {noticeCardSuperseded, noticeCardKept, noticeCardConflict};
 
 /// One card as a sentence with an icon (design 10.4 step 1).
 class _CardState extends StatelessWidget {

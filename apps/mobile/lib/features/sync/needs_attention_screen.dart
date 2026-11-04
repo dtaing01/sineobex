@@ -90,9 +90,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
             for (final n in notices)
               _NoticeCard(
                 notice: n,
-                onOpen: n.patientId == null || services == null
-                    ? null
-                    : () => unawaited(context.push('/patients/${n.patientId}')),
+                onOpen: _opener(context, n, services),
                 onDone: () {
                   store!.markNoticeRead(n.id);
                   services?.changed();
@@ -116,6 +114,20 @@ class NeedsAttentionScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Where a notice's "Open" goes, from this phone's own data: the patient it names, or the problem
+/// it names when the phone holds it. Null when the phone has neither.
+VoidCallback? _opener(BuildContext context, LocalNotice n, PatientServices? services) {
+  if (services == null) return null;
+  if (n.patientId case final patient?) return () => unawaited(context.push('/patients/$patient'));
+  if (n.kind == 'problem_reversal_decided' && n.recordId != null) {
+    final problem = services.problems.problem(n.recordId!);
+    if (problem != null) {
+      return () => unawaited(context.push('/patients/${problem.patientId}/problems/${problem.id}'));
+    }
+  }
+  return null;
 }
 
 class _ConflictCard extends StatelessWidget {
@@ -388,7 +400,11 @@ class _NoticeCard extends StatelessWidget {
       spacing: FieldSpace.s2,
       runSpacing: FieldSpace.s2,
       children: [
-        if (onOpen != null) OutlinedButton(onPressed: onOpen, child: const Text('Open the chart')),
+        if (onOpen != null)
+          OutlinedButton(
+            onPressed: onOpen,
+            child: Text(notice.patientId == null ? 'Open the problem' : 'Open the chart'),
+          ),
         TextButton(onPressed: onDone, child: const Text('Got it')),
       ],
     ),

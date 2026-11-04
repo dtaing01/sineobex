@@ -65,6 +65,42 @@ void main() {
     });
   }
 
+  testWidgets('a card that lost to a newer one says so first, from this phone’s own cards', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await tester.runAsync(() => h.patients.patients.open(p1Id));
+    h.server.offline = true;
+    h.patients.idLinks.makeCard(p1Id, reason: 'first_card');
+    // Someone at the office makes a card a minute later, online.
+    h.server
+      ..offline = false
+      ..seed(entityIdLink, {
+        'patientId': p1Id,
+        'token': 'CCCCCCCCCCCCCCCCCCCCCC',
+        'replacesLinkId': null,
+        'reason': 'first_card',
+      }, at: h.wall.add(const Duration(minutes: 1)));
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open ID card'));
+    final message = find.textContaining('Another new card for Del was made at');
+    await expectShown(tester, message);
+    expect(
+      find.textContaining('That card is the valid one; the card you printed won’t open the chart.'),
+      findsOneWidget,
+    );
+    // The message comes before the cards.
+    expect(tester.getRect(message).top, lessThan(tester.getRect(find.text('Cards that open this chart')).top));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.text('Copy the valid link'));
+    expect(h.copied.single, endsWith('#CCCCCCCCCCCCCCCCCCCCCC'));
+    await tapOn(tester, find.text('Got it'));
+    expect(message, findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('a card made while the clock is off waits for it', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);

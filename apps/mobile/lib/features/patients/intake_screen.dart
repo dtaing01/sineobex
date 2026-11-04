@@ -125,6 +125,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   final _existingAliases = <_ExistingAlias>[];
   bool _editing = false;
 
+  /// The draft this form continues had a legal name, which a draft never keeps.
+  bool _legalNameDropped = false;
+
   PatientServices get _s => widget.services;
   bool get _isEdit => widget.editing != null;
 
@@ -220,8 +223,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     _noticeReason.text = text('noticeReason');
     _preferred.text = text('preferred');
     _aliases.addAll([...?(d['aliases'] as List<Object?>?)?.whereType<String>()]);
-    _given.text = text('given');
-    _family.text = text('family');
+    _legalNameDropped = d['legalNameTyped'] == true;
     _birth = BirthEntry.fromDraft(d['birth'], todayOf(ref));
     _descriptor.text = text('descriptor');
     _area.text = text('area');
@@ -242,7 +244,11 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     _card = IdCardAnswer.values.where((c) => c.name == d['card']).firstOrNull ?? _card;
   }
 
-  /// The draft: what was typed, kept in the encrypted database (11.1), never in plain storage.
+  bool get _legalNameTyped => _given.text.trim().isNotEmpty || _family.text.trim().isNotEmpty;
+
+  /// The draft: what was typed, kept in the encrypted database (11.1), never in plain storage. Never
+  /// the legal name (design 2.9-11: the phone keeps a legal name only in a chart); only that one was
+  /// typed, so the form can ask for it again.
   Map<String, Object?> _draft() => {
     'consent': _consent?.name,
     'method': _method,
@@ -251,8 +257,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     'noticeReason': _noticeReason.text,
     'preferred': _preferred.text,
     'aliases': _aliases,
-    'given': _given.text,
-    'family': _family.text,
+    'legalNameTyped': _legalNameTyped,
     'birth': _birth.toDraft(),
     'descriptor': _descriptor.text,
     'area': _area.text,
@@ -583,8 +588,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Keep this as a draft?'),
-        content: const Text(
-          'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.',
+        content: Text(
+          'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.'
+          '${_legalNameTyped ? ' The legal name isn’t kept in a draft: ask for it again when you continue.' : ''}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Discard')),
@@ -983,6 +989,14 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       const SizedBox(height: FieldSpace.s4),
       Semantics(header: true, child: Text('Legal name, if given', style: Theme.of(context).textTheme.titleMedium)),
       const SizedBox(height: FieldSpace.s2),
+      if (_legalNameDropped && !_legalNameTyped) ...[
+        const StatusBanner(
+          icon: LucideIcons.info,
+          tone: ChipTone.info,
+          text: 'The legal name isn’t kept in a draft. Ask for it again.',
+        ),
+        const SizedBox(height: FieldSpace.s2),
+      ],
       Focus(
         onFocusChange: (has) {
           if (has) return;
