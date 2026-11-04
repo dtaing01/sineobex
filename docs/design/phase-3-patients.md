@@ -29,12 +29,12 @@ this table is their state. Update it as units land.
 | P1 Phone sync layer | Done | local DB v2 (`local_db.dart`), entity registry (`entities.dart`), store (`local_store.dart`: patient-side records, scopes, redirects, purge, notices, hooks), engine and controller refreshers, sign-out clearing; the fake with S1's rules and the read routes; `entities_test`, `local_db_test`, `patient_store_test`, `patient_rules_test`, `fake_reads_test` | — |
 | W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
-| **P2 Phone patients domain** | **In progress**, on P1's commits | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
+| **P2 Phone patients domain** | **Done, with two follow-ups in progress** | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | The intake draft drops the legal name; a refresher pulls `GET /v1/team/notices` |
 | P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
 | Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
 
-Order from here: P2 (building on P1); P3 from P2's interfaces; the review last.
+Order from here: P2's two follow-ups; P3 (building on P2); the review last.
 
 ### As built: where the code departs from, or reads, this design
 
@@ -137,6 +137,23 @@ Later units build on the code, not on the text above, where they differ.
   as they do in the purge). A recorded legal name is admin-only even on the creating phone before
   sync (PRD: "Staff edit every field except legal name and date of birth"). A problem note whose
   problem isn't on the phone has no `patient_id` and follows phase 2's purge after confirmation.
+- **Phone patients domain (P2).** Chart data that isn't a record (consents, reviews, the
+  duplicate hint, problem history and notes, which records the chart lists, the partial flag) rides
+  in the patient record as a server-only field `_chart` at version 0, so it is imported, refreshed
+  and purged with the chart; a test shows it never enters the outbox. The refresher also re-downloads
+  partial copies under a live scope, so "the full chart opens when the phone reconnects" happens.
+  Online open waits 5 s for the chart, then shows the phone's copy (audited locally) and imports the
+  download when it arrives, so both sides may log that view. In an online match check, candidates
+  only the phone found are logged under the server's `checkId`, and `matchCheck.where` is `both`.
+  The index swap keeps `local` search names of patients with unsynced work. A clock more than
+  5 minutes behind the last refresh counts as wound back. Short queries add nickname partners'
+  FTS terms. A server-only search hit carries an allergy count and severity instead of a badge when
+  the phone doesn't hold the allergies. A pending card whose create was refused shows as rejected,
+  from the outbox. The card link base comes from `/v1/me` (`patientRefreshers(team,
+  {idLinkBaseUrl})`), kept in kv so an offline restart still copies links. Charts download in
+  batches of 10, halved on a timeout down to 1 and doubled after each answer up to 50. Decided after
+  P2: the intake draft never holds a legal name (2.9-11: kv outlives sign-out and the purge), and
+  the phone pulls notices after sync.
 - **Portal patients (W1).** Search and the ID card panel need JavaScript: their actions run in the
   browser so earlier results and card links never travel back in a request body. Card links reach
   the browser only through `GET /id-link` (logged), never with the chart; since W1's review, chart
