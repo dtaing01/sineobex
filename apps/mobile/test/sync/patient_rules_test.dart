@@ -413,6 +413,37 @@ void main() {
       expect(server.records[problem]!.fields['status']!.version, 3);
     });
 
+    test('“Still ongoing” from a phone bumps the version; an older unseen one stays history only', () async {
+      // An hour passes for a and the server alike, so a's clock stays right.
+      void later() {
+        a.advance(const Duration(hours: 1));
+        serverTime = serverTime.add(const Duration(hours: 1));
+      }
+
+      b.store.setField(problem, 'status', status('new'), observe: true);
+      later();
+      a.store.setField(problem, 'status', status('ongoing'));
+      await sync(a);
+      later();
+      a.store.setField(problem, 'status', status('ongoing'), observe: true);
+      final seen = await sync(a);
+      expect([seen.sent, seen.confirmed], [1, 1]);
+      final record = server.records[problem]!;
+      expect([record.fields['status']!.version, record.status], [3, 'ongoing']);
+      expect(server.history.last['kind'], 'confirmed');
+      final checked = record.checkedAt;
+      expect(checked, start.add(const Duration(hours: 2)));
+      expect(a.store.record(problem)!.fields['status']!.serverVersion, 3);
+
+      // b saw New at the start, before both of a's observations: kept in history, nothing moves.
+      final late = await sync(b);
+      expect([late.confirmed, late.conflicts, late.rejected], [1, 0, 0]);
+      expect([record.fields['status']!.version, record.status, record.checkedAt], [3, 'ongoing', checked]);
+      expect(server.history.last['kind'], 'kept_both');
+      expect(b.store.record(problem)!.fields['status']!.value, status('ongoing'));
+      expect(b.store.needsAttention(), isEmpty);
+    });
+
     test('an older observation that didn’t see the current one is history, even when it agrees', () async {
       b.store.setField(problem, 'status', status('ongoing'));
       a.advance(const Duration(hours: 2));

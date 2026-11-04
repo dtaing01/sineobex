@@ -338,6 +338,24 @@ void main() {
       );
     });
 
+    test('“Still ongoing” is sent as an observation; an equal value is otherwise no change', () {
+      final p = patient();
+      final problem = store.createRecord(entityProblem, {'patientId': p, 'title': 'Cough', 'status': 'ongoing'});
+      store.confirm(createOf(problem), serverVersion: 1);
+      const same = {'status': 'ongoing', 'encounterId': null};
+      store.setField(problem, 'status', same);
+      expect(store.outbox(), isEmpty);
+      store.setField(problem, 'status', same, observe: true);
+      final seen = store.outbox().single;
+      expect([seen.field, seen.value, seen.baseVersion, seen.follows], ['status', same, 1, null]);
+      expect(store.record(problem)!.fields['status']!.pendingChange, seen.changeId);
+      // Seen again before the first is confirmed: it follows it, as any second edit does.
+      store.setField(problem, 'status', same, observe: true);
+      expect(store.outbox().last.follows, seen.changeId);
+      expect(() => store.setField(p, 'usualArea', null, observe: true), throwsArgumentError);
+      expect(store.outbox(), hasLength(2));
+    });
+
     test('a problem’s status never goes back here', () {
       final p = patient();
       final problem = store.createRecord(entityProblem, {'patientId': p, 'title': 'Cough', 'status': 'ongoing'});

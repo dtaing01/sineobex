@@ -786,14 +786,21 @@ class LocalStore {
 
   /// Changes one field. A second edit before the first is confirmed builds on it (`follows`), so
   /// the server never mistakes the person's own earlier edit for someone else's.
-  void setField(String recordId, String field, Object? value) {
+  ///
+  /// A value equal to the field's is no change and is not sent, unless [observe]: a problem's
+  /// status seen again ("Still ongoing", design 9.1) is an observation the server records, moving
+  /// its version and check date (9.2). Only a status field is observed.
+  void setField(String recordId, String field, Object? value, {bool observe = false}) {
     final rec = record(recordId);
     if (rec == null) throw StateError('no such record');
+    if (observe && rulesFor(rec.entity)?.fieldClass(field) != FieldClass.status) {
+      throw ArgumentError('only a status is observed: $field');
+    }
     _guardFor(rec.entity);
     if (rec.status == 'signed') throw const RecordLocked();
     _checkField(rec.entity, field, value);
     final current = rec.fields[field];
-    if (current != null && canonicalJson(current.value) == canonicalJson(value)) return;
+    if (!observe && current != null && canonicalJson(current.value) == canonicalJson(value)) return;
     if (current == null &&
         field.startsWith('data.') &&
         rec.fields.keys.where((k) => k.startsWith('data.')).length >= maxNoteFields) {
