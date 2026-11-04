@@ -369,8 +369,9 @@ class _Timeline extends StatelessWidget {
               '${longDate(e.at)}, ${e.encounterId == null ? 'from the patient profile' : 'at a visit'}',
         ),
     ]..sort((a, b) => (b.at ?? DateTime(9999)).compareTo(a.at ?? DateTime(9999)));
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return Text('Nothing yet. The history shows once the chart is downloaded.', style: text.bodyLarge);
+    }
     return Semantics(
       container: true,
       label: 'Timeline, ${items.length} entries',
