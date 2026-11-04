@@ -437,8 +437,7 @@ class ChartCache {
 
 /// Keeps the charts a person relies on current (design 7.2): after a sync (at most every
 /// [minInterval]), on the controller's timer, at an unlock and on pull to refresh, the charts with
-/// local work or a partial copy are downloaded again (`reason: 'refresh'`). It also learns where
-/// ID links point (`/v1/me`), once, if the phone doesn't know yet.
+/// local work or a partial copy are downloaded again (`reason: 'refresh'`).
 class ChartCacheRefresher implements AfterSyncRefresher {
   ChartCacheRefresher(this.cache, {this.minInterval = const Duration(minutes: 2), DateTime Function()? now})
     : _now = now ?? DateTime.now;
@@ -447,7 +446,6 @@ class ChartCacheRefresher implements AfterSyncRefresher {
   final Duration minInterval;
   final DateTime Function() _now;
   DateTime? _last;
-  bool _askedBaseUrl = false;
 
   @override
   Future<void> refresh(RefreshReason reason) async {
@@ -457,14 +455,6 @@ class ChartCacheRefresher implements AfterSyncRefresher {
     final last = _last;
     if (reason == RefreshReason.afterSync && last != null && now.difference(last) < minInterval) return;
     _last = now;
-    if (!_askedBaseUrl && IdLinks.baseUrlOf(store) == null) {
-      _askedBaseUrl = true;
-      try {
-        IdLinks.rememberBaseUrl(store, (await cache.api.getMe()).idLinkBaseUrl);
-      } on Exception {
-        // Learned from the next chart with a card link instead.
-      }
-    }
     final ids = cache.refreshable();
     if (ids.isEmpty) return;
     await cache.fetch(ids, reason: FetchChartsReason.refresh);

@@ -113,7 +113,8 @@ class IdLinks {
 
   static const _baseKey = 'idLinks.baseUrl';
 
-  /// Where card links point (`/v1/me` `idLinkBaseUrl`), once the phone has seen it.
+  /// Where card links point: `/v1/me` `idLinkBaseUrl`, kept in the team's database so a card made
+  /// offline, after a restart, carries the same URL the portal shows.
   static String? baseUrlOf(LocalStore store) {
     final v = store.kv(_baseKey);
     return v == null || v.isEmpty ? null : v;
@@ -357,19 +358,13 @@ class IdLinks {
 
   /// A downloaded chart's active cards (design 7.1): the server's list for the group. A card it no
   /// longer lists was retired elsewhere; a card this phone blocked stays blocked while the new card
-  /// made here is still pending. Tokens come with the link (patients.edit only), and the link also
-  /// tells the phone where links point.
+  /// made here is still pending. Tokens come with the link (patients.edit only).
   static void importChartLinks(LocalStore store, String canonical, List<IdLinkSummary> links) {
     final cards = [
       for (final l in links)
         if (l.status == IdLinkStatus.active)
           (id: l.id, issuedOn: l.issuedOn, effectiveAt: l.effectiveAt, token: l.url == null ? null : tokenOf(l.url!)),
     ];
-    for (final l in links) {
-      final url = l.url;
-      final i = url?.indexOf('/c#') ?? -1;
-      if (url != null && i > 0) rememberBaseUrl(store, url.substring(0, i));
-    }
     _importActive(store, canonical, cards);
   }
 

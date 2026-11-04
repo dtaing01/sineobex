@@ -20,8 +20,11 @@ import 'team_index.dart';
 ///
 /// Screens listen to it (and to the sync controller) for changes: an index swap, a chart download,
 /// a change made through [patients].
+///
+/// [idLinkBaseUrl] is `/v1/me`'s `idLinkBaseUrl` (where card links point), kept in the team's
+/// database so an offline restart still has it; null keeps what the database holds.
 class PatientServices extends ChangeNotifier {
-  PatientServices(OpenTeam team, {SecureCopy copy = secureCopy, DateTime Function()? wallNow})
+  PatientServices(OpenTeam team, {String? idLinkBaseUrl, SecureCopy copy = secureCopy, DateTime Function()? wallNow})
     : store = team.store,
       userId = team.userId,
       teamId = team.teamId,
@@ -34,6 +37,7 @@ class PatientServices extends ChangeNotifier {
     index = TeamIndex(store, permissions: permissions, now: corrected)..onChanged = notifyListeners;
     charts = ChartCache(store, team.api, now: corrected)..onChanged = notifyListeners;
     idLinks = IdLinks(store, copy: copy, now: corrected)..install();
+    if (idLinkBaseUrl != null) IdLinks.rememberBaseUrl(store, idLinkBaseUrl);
     problems = Problems(store, permissions: permissions);
     search = PatientSearcher(store, team.api, index: index);
     patients = PatientRepository(
@@ -90,9 +94,10 @@ class PatientServices extends ChangeNotifier {
   bool get mayChart => permissions.contains('encounters.chart');
 }
 
-/// For `SyncController(refreshers: patientRefreshers)`: makes the open team's [PatientServices]
-/// and returns its refreshers.
-List<AfterSyncRefresher> patientRefreshers(OpenTeam team) => PatientServices(team).refreshers;
+/// For `SyncController(refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: ...))`: makes
+/// the open team's [PatientServices] and returns its refreshers. [idLinkBaseUrl] is `/v1/me`'s.
+List<AfterSyncRefresher> patientRefreshers(OpenTeam team, {String? idLinkBaseUrl}) =>
+    PatientServices(team, idLinkBaseUrl: idLinkBaseUrl).refreshers;
 
 /// The open team's [PatientServices]; null while no team is open (locked, signed out, no team
 /// chosen) or when the controller was built without [patientRefreshers].
