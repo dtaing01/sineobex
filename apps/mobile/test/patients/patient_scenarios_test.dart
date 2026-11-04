@@ -9,6 +9,7 @@ import 'package:sineobex_field/patients/dob.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/patient_repository.dart';
+import 'package:sineobex_field/patients/patient_search.dart';
 import 'package:sineobex_field/patients/team_index.dart';
 import 'package:sineobex_field/sync/clock.dart';
 import 'package:sineobex_field/sync/local_store.dart';
@@ -469,6 +470,19 @@ void main() {
     expect(a.store.database.select("SELECT 1 FROM patient_names WHERE origin = 'index'"), isEmpty);
     expect(a.store.record(opened), isNull);
     expect(a.store.record(worked), isNotNull);
+  });
+
+  test('a frozen store asks the server nothing: no search, no check (D21)', () async {
+    final a = phone(alex);
+    server.seedPatient(preferredName: 'Del');
+    await syncAndRefresh(a);
+    a.store.freeze('Your access to this team ended.');
+    await expectLater(a.services.search.search('Del'), throwsA(isA<ChartingPaused>()));
+    await expectLater(
+      a.services.search.checkMatches(const MatchInput(preferredName: 'Del')),
+      throwsA(isA<ChartingPaused>()),
+    );
+    expect(server.serverAudit.where((e) => e['action'] != 'patient.index_downloaded'), isEmpty);
   });
 
   test(
