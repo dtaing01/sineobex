@@ -1,42 +1,20 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import {
-  expectAccessible,
-  expectNothingStored,
-  expectReflow,
-  registerPhone,
-  signIn,
-  watchTraffic,
-} from './helpers';
+import { expectAccessible, expectNothingStored, expectReflow, signIn, watchTraffic } from './helpers';
+import { phoneOf } from './phone-records';
 
 // Phase 3 design 13.7: search, the profile as each role sees it, field reviews and history, against
 // the seeded demo team (made-up people, db/seed/demo-patients.ts).
 const patient = (n: number) => `5eed0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const DEL = patient(1); // the done-when's patient: street name "Smitty", born 1946
+const ROSA = patient(8); // kept when Rosie (9) was merged into her; both records have a card
+const ROSIE = patient(9);
 const DEE = patient(16); // two problems, one of them sensitive
 const KEN = patient(20); // where he is usually found has an open review
 const SMOKEY = patient(26); // a street name, and a coded problem beside a sensitive one
 const NANA = patient(34); // two allergies
 
 test.describe.configure({ mode: 'serial' });
-
-/** A change a phone made without seeing the chart's current value: the chart keeps its own, and a review opens. */
-function staleSet(recordId: string, field: string, value: string) {
-  return {
-    changeId: randomUUID(),
-    seq: 1,
-    entity: 'patient',
-    recordId,
-    op: 'set',
-    field,
-    value,
-    // A plain string's JSON is already canonical.
-    valueHash: createHash('sha256').update(JSON.stringify(value)).digest('hex'),
-    baseVersion: 0,
-    deviceTime: new Date().toISOString(),
-    clockVerified: true,
-  };
-}
 
 /** Tab until `name` has focus: the page works from the keyboard alone. */
 async function tabTo(page: Page, name: string, limit = 40) {
@@ -164,8 +142,15 @@ test('a field review decided from the queue by keyboard, and the history shows t
 }) => {
   // A phone that didn't see Ken's current spot records another: the chart keeps its own.
   const spot = `Demo: e2e spot ${randomUUID().slice(0, 8)}`;
-  const phone = await registerPhone('clinician@example.com');
-  await phone.push([staleSet(KEN, 'usualArea', spot)]);
+  const phone = await phoneOf('admin@example.com');
+  await phone.send({
+    entity: 'patient',
+    recordId: KEN,
+    op: 'set',
+    field: 'usualArea',
+    value: spot,
+    minutesAgo: 0,
+  });
 
   await signIn(page, 'logistics@example.com');
   await page.goto('/team/reviews');
@@ -205,8 +190,40 @@ test('a field review decided from the queue by keyboard, and the history shows t
   await expect(cells.nth(0)).toHaveText(/^Demo: /);
   await expect(cells.nth(1)).toHaveText(spot);
   // Recorded by the person who saw the value, approved by the reviewer.
-  await expect(cells.nth(2)).toContainText('Jordan Lee (demo)');
+  await expect(cells.nth(2)).toContainText('Alex Rivera (demo)');
   await expect(cells.nth(2)).toContainText('Approved by Sam Okafor (demo)');
   await expectAccessible(page, 'history');
   await expectReflow(page, 'history');
+});
+
+test('a merged record’s address opens the chart it was merged into, with the banner and both ID cards', async ({
+  page,
+}) => {
+  await signIn(page, 'logistics@example.com');
+  const traffic = watchTraffic(page);
+  await page.goto(`/patients/${ROSIE}`);
+  await expect(page).toHaveTitle('Patient · Sineobex');
+  await expect(
+    page.getByText('The record you opened was merged into this chart on Sep 27, 2026.'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Rosa');
+  await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveAttribute(
+    'href',
+    `/patients/${ROSA}/history`,
+  );
+  // Each record's card keeps opening the kept chart until a new card is made (D39).
+  const panel = page.getByRole('region', { name: 'ID card' });
+  await expect(panel).toContainText('2 cards open this chart');
+  await expect(panel.getByRole('listitem')).toHaveText([
+    'Card made Sep 20, 2026, for a record merged into this chart',
+    'Card made Sep 3, 2026',
+  ]);
+  await expectAccessible(page, 'merged chart');
+  await panel.getByRole('button', { name: 'Show links' }).click();
+  await expect(panel.locator('code')).toHaveText([
+    /\/c#DemoCardToken000000009$/,
+    /\/c#DemoCardToken000000008$/,
+  ]);
+  for (const token of ['DemoCardToken000000009', 'DemoCardToken000000008'])
+    expect(await traffic.carrying(token)).toEqual([]);
 });
