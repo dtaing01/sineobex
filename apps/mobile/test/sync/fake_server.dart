@@ -1399,6 +1399,7 @@ class FakeSyncServer {
         'patientId': c['canonicalId'],
         'details': {'source': 'cache', 'reason': b['reason']},
       });
+      _auditLinkViews(userId, c, 'cache');
     }
     final returned = {for (final c in charts) c['canonicalId']! as String};
     return {
@@ -1417,8 +1418,31 @@ class FakeSyncServer {
     _require(userId, 'patients.view');
     if (records[patientId]?.entity != entityPatient) throw const ApiException(404, 'not_found', 'No such patient.');
     final canonical = canonicalOf(patientId);
-    serverAudit.add({'action': 'patient.viewed', 'userId': userId, 'patientId': canonical, 'details': {}});
-    return {..._chartOf(userId, canonical), if (canonical != patientId) 'redirectedFrom': patientId};
+    final chart = _chartOf(userId, canonical);
+    serverAudit.add({
+      'action': 'patient.viewed',
+      'userId': userId,
+      'patientId': canonical,
+      'details': {'source': 'phone'},
+    });
+    _auditLinkViews(userId, chart, 'phone');
+    return {...chart, if (canonical != patientId) 'redirectedFrom': patientId};
+  }
+
+  /// A chart that carries card links (patients.edit) is a read of those links (charts.ts
+  /// auditLinkViews, design 10.6): one `id_link.viewed {linkId, tokenRef, source}` per link shown.
+  void _auditLinkViews(String userId, Map<String, Object?> chart, String source) {
+    for (final l in (chart['idLinks']! as List<Object?>).cast<Map<String, Object?>>()) {
+      final url = l['url'] as String?;
+      if (url == null) continue;
+      serverAudit.add({
+        'action': 'id_link.viewed',
+        'userId': userId,
+        'patientId': chart['canonicalId'],
+        'entityId': l['id'],
+        'details': {'linkId': l['id'], 'tokenRef': idLinkTokenRef(Uri.parse(url).fragment), 'source': source},
+      });
+    }
   }
 
   /// A group as the scorer reads it: every record's names of [sources], and every birth.

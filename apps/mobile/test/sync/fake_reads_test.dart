@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/patients/id_link_token.dart';
 import 'package:sineobex_field/sync/entities.dart';
 
 import 'fake_server.dart';
@@ -117,7 +118,12 @@ void main() {
       expect(c.aliases.single.attributes['alias'], 'Smitts');
       expect(c.problems!.map((r) => r.attributes['title']), unorderedEquals(['Cough', 'Low mood']));
       expect(c.idLinks.single.url, endsWith('/c#EEEEEEEEEEEEEEEEEEEEEE'));
-      expect(server.serverAudit.single['details'], {'source': 'cache', 'reason': 'opened'});
+      // The chart, and the card link it carries (design 10.6).
+      expect(server.serverAudit.map((a) => (a['action'], (a['details']! as Map)['source'])), [
+        ('patient.viewed', 'cache'),
+        ('id_link.viewed', 'cache'),
+      ]);
+      expect((server.serverAudit.last['details']! as Map)['tokenRef'], idLinkTokenRef('EEEEEEEEEEEEEEEEEEEEEE'));
     });
 
     test('the projection: no problem list without its permissions, sensitive ones only with view_sensitive', () async {
@@ -134,6 +140,10 @@ void main() {
       )).charts.single;
       expect(c.problems!.map((r) => r.attributes['title']), ['Cough']);
       expect(c.idLinks.single.url, isNull);
+      // Without a link to show, no link was read.
+      expect(server.serverAudit.where((a) => a['action'] == 'id_link.viewed'), hasLength(1));
+      await api.getPatient(patientId: p);
+      expect(server.serverAudit.last['action'], 'patient.viewed');
     });
   });
 
