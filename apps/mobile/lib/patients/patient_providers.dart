@@ -39,7 +39,7 @@ class PatientServices extends ChangeNotifier {
     idLinks = IdLinks(store, copy: copy, now: corrected)..install();
     if (idLinkBaseUrl != null) IdLinks.rememberBaseUrl(store, idLinkBaseUrl);
     problems = Problems(store, permissions: permissions);
-    search = PatientSearcher(store, team.api, index: index);
+    search = PatientSearcher(store, team.api, index: index, now: corrected);
     patients = PatientRepository(
       store,
       index: index,

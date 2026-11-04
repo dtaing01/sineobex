@@ -14,6 +14,7 @@ import 'consent_script.dart';
 import 'display.dart';
 import 'dob.dart';
 import 'id_links.dart';
+import 'normalize.dart';
 import 'patient_search.dart' show addSearchName, writeSearchNames;
 import 'problems.dart';
 import 'team_index.dart';
@@ -691,6 +692,46 @@ class PatientRepository {
       }
     });
     onChanged?.call();
+  }
+
+  /// **Attach to another patient** (Needs attention, for a create refused because its patient is
+  /// missing on the server): the same street name, allergy, consent or problem, made again for
+  /// [patientId] and sent as the fix of the refused one (`replaceRejected`), which settles it once
+  /// confirmed. A street name's own search row moves with it. A card is never moved: its fix is a
+  /// new card ([IdLinks.replaceRejected]). Returns the new record's ID.
+  String attachToPatient(String changeId, String patientId) {
+    final refused = store.entry(changeId);
+    if (refused == null || refused.op != 'create') throw StateError('not a refused create');
+    if (refused.entity == entityIdLink) throw ArgumentError('a card is fixed with a new card');
+    final value = refused.value;
+    if (value is! Map<String, Object?> || !value.containsKey('patientId')) {
+      throw ArgumentError('this change names no patient');
+    }
+    final from = value['patientId']! as String;
+    final target = store.canonicalPatient(patientId);
+    final id = store.transaction(() {
+      final id = store.replaceRejected(changeId, entity: refused.entity, value: {...value, 'patientId': target});
+      if (refused.entity == entityAlias) {
+        final alias = value['alias'] as String?;
+        final norm = normalizeName(alias);
+        final kept = store
+            .recordIdsOfPatient(from)
+            .map(store.record)
+            .any(
+              (r) => r != null && r.entity == entityAlias && normalizeName(r.attributes['alias'] as String?) == norm,
+            );
+        if (norm != null && !kept) {
+          store.database.execute(
+            "DELETE FROM patient_names WHERE patient_id = ? AND origin = 'local' AND source = 'alias' AND name = ?",
+            [from, norm],
+          );
+        }
+        addSearchName(store.database, target, 'local', 'alias', alias);
+      }
+      return id;
+    });
+    onChanged?.call();
+    return id;
   }
 
   /// A street name, added to the chart open on screen (the ID it was opened under: if that patient

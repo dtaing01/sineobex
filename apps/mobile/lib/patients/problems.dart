@@ -300,6 +300,14 @@ class Problems {
     store.setField(problemId, 'status', {'status': to, 'encounterId': encounterId});
   }
 
+  /// **Still ongoing** (9.1): the person confirms the current status at a visit. It is sent even
+  /// though nothing changed (an observation: the server records who looked and when, which module
+  /// 5's 90-day status check reads). Throws [ChartingPaused] while the clock check fails.
+  void confirmStatus(String problemId, {String? encounterId}) {
+    final p = problem(problemId) ?? (throw StateError('no such problem'));
+    store.setField(problemId, 'status', {'status': p.status, 'encounterId': encounterId}, observe: true);
+  }
+
   /// Marks the whole problem entered in error, with a reason: hidden from lists, kept in history.
   void enteredInError(String problemId, String reason) =>
       store.setField(problemId, 'enteredInError', {'reason': _reason(reason)});

@@ -320,11 +320,18 @@ class MatchRun {
 
 /// Searches and duplicate checks for one team's store.
 class PatientSearcher {
-  PatientSearcher(this.store, this.client, {required this.index, this.wait = const Duration(seconds: 3)});
+  PatientSearcher(
+    this.store,
+    this.client, {
+    required this.index,
+    this.wait = const Duration(seconds: 3),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   final LocalStore store;
   final api.SineobexApi client;
   final TeamIndex index;
+  final DateTime Function() _now;
 
   /// How long the phone waits for the server before showing its own list (5.6, 8.1).
   final Duration wait;
@@ -485,6 +492,41 @@ class PatientSearcher {
     );
   }
 
+  /// **Opened recently on this phone** (the Patients tab with an empty query): the patients whose
+  /// charts an `opened` scope keeps, most recently opened or worked on first, one row per chart (a
+  /// merged record shows as its survivor), built like search rows and never with a legal name. A
+  /// display of patients, so audited before it returns, in the same transaction as the read (D21,
+  /// 5.6), as a search with no criteria. Throws [ChartingPaused] when the store is frozen.
+  List<FoundPatient> openedRecently({int limit = 20}) {
+    _refuseIfFrozen();
+    return store.transaction(() {
+      final now = _now();
+      final scopes = [
+        for (final s in store.scopes())
+          if (s.kind == scopeOpened && s.expiresAt.isAfter(now)) s,
+      ]..sort((a, b) => b.expiresAt.compareTo(a.expiresAt));
+      final order = <String>[];
+      for (final s in scopes) {
+        final c = store.canonicalPatient(s.patientId);
+        if (!order.contains(c)) order.add(c);
+      }
+      final shown = order.take(limit).toList();
+      final groups = _groupsOf(shown.toSet());
+      final rows = [
+        for (final id in shown)
+          if (groups[id] case final g?) _view(RankedGroup(g.group, const MatchScore(0, [])), groups),
+      ];
+      store.appendAudit(
+        'patient.searched',
+        patientIds: [for (final r in rows) r.patientId],
+        resultCount: rows.length,
+        criteria: const [],
+        source: 'cache',
+      );
+      return rows;
+    });
+  }
+
   /// The phone's duplicate check alone, audited here.
   MatchRun checkOnPhone(MatchInput input) {
     _refuseIfFrozen();
@@ -533,7 +575,8 @@ class PatientSearcher {
       [for (final g in groups.values) g.group],
       exclude: {if (own != null) store.canonicalPatient(own)},
     );
-    return [for (final r in ranked) _view(r, groups)];
+    final pending = _pendingCreates();
+    return [for (final r in ranked) _view(r, groups, pending)];
   }
 
   // ---- candidates and groups ----
@@ -581,11 +624,15 @@ class PatientSearcher {
     if (raw.isEmpty) return (hits: const [], truncated: false);
     final groups = _groupsOf(raw);
     final ranked = rankSearch(q, [for (final g in groups.values) g.group], limit: limit);
-    return (hits: [for (final r in ranked.hits) _view(r, groups)], truncated: ranked.truncated);
+    final pending = _pendingCreates();
+    return (hits: [for (final r in ranked.hits) _view(r, groups, pending)], truncated: ranked.truncated);
   }
 
-  /// The candidate groups of [raw] IDs: each canonical patient with every record merged into it,
-  /// its search names, the legal names of its records held here (scored, never shown), and births.
+  /// The candidate groups of [raw] IDs: each canonical patient with every record merged into it.
+  /// Its names come from where the search table's rows came from, read by indexed keys: the index
+  /// entry (preferred name, street names, description) and the records here (a cached chart's or a
+  /// patient made here: their fields as the person has them, and active street names), plus the
+  /// legal names of those records (scored, never shown) and every birth.
   Map<String, _Group> _groupsOf(Set<String> raw) {
     final redirects = store.redirects();
     String canonical(String id) {
@@ -609,23 +656,13 @@ class PatientSearcher {
       members[canonical(m)]?.add(m);
     }
     final all = {for (final s in members.values) ...s}.toList();
-    final names = <String, List<NameKey>>{};
     final fields = <String, Map<String, Object?>>{};
     final entries = <String, Map<String, Object?>>{};
+    final aliases = <String, List<String>>{};
+    final allergies = <String, List<BadgeAllergy>>{};
     for (var i = 0; i < all.length; i += 500) {
       final chunk = all.sublist(i, i + 500 > all.length ? all.length : i + 500);
       final marks = List.filled(chunk.length, '?').join(', ');
-      for (final r in store.database.select(
-        'SELECT patient_id, name, source FROM patient_names WHERE patient_id IN ($marks)',
-        chunk,
-      )) {
-        final source = switch (r['source']) {
-          'preferred' => NameSource.preferred,
-          'alias' => NameSource.alias,
-          _ => NameSource.descriptor,
-        };
-        (names[r['patient_id']! as String] ??= []).add(NameKey.normalized(source, r['name']! as String));
-      }
       for (final r in store.database.select(
         "SELECT r.id, f.field, f.value_json FROM records r JOIN fields f ON f.record_id = r.id WHERE r.entity = 'patient' "
         "AND f.field IN ('preferredName', 'legalName', 'visualDescriptor', 'birth', 'usualArea', 'allergyScreen', "
@@ -633,6 +670,19 @@ class PatientSearcher {
         chunk,
       )) {
         (fields[r['id']! as String] ??= {})[r['field']! as String] = jsonDecode(r['value_json']! as String);
+      }
+      for (final r in store.database.select(
+        "SELECT patient_id, entity, attributes_json FROM records WHERE entity IN ('$entityAlias', '$entityAllergy') "
+        "AND status = 'active' AND patient_id IN ($marks)",
+        chunk,
+      )) {
+        final p = r['patient_id']! as String;
+        final a = jsonDecode(r['attributes_json']! as String) as Map<String, Object?>;
+        if (r['entity'] == entityAlias) {
+          if (a['alias'] case final String alias) (aliases[p] ??= []).add(alias);
+        } else if (a['substance'] case final String substance) {
+          (allergies[p] ??= []).add((substance: substance, severity: a['severity'] as String?));
+        }
       }
       for (final r in store.database.select(
         'SELECT patient_id, entry_json FROM team_index WHERE patient_id IN ($marks)',
@@ -646,7 +696,12 @@ class PatientSearcher {
         c: _Group(
           CandidateGroup(
             patientId: c,
-            keys: {for (final id in ids) ...?names[id], for (final id in ids) ..._recordKeys(fields[id])},
+            keys: [
+              for (final id in ids) ..._entryKeys(entries[id]),
+              for (final id in ids) ..._recordKeys(fields[id]),
+              for (final id in ids)
+                for (final a in aliases[id] ?? const <String>[]) NameKey.of(NameSource.alias, a),
+            ].nonNulls,
             births: [
               for (final id in ids) Birth.fromJson(fields[id]?['birth']),
               for (final id in ids) Birth.fromJson(entries[id]?['birth']),
@@ -657,6 +712,9 @@ class PatientSearcher {
           entry: entries[c],
           fields: fields[c] ?? (ids.map((id) => fields[id]).nonNulls.firstOrNull ?? const {}),
           ids: ids,
+          aliases: [for (final id in ids) ...?aliases[id]],
+          allergies: [for (final id in ids) ...?allergies[id]],
+          hasRecords: ids.any((id) => fields.containsKey(id) || aliases.containsKey(id) || allergies.containsKey(id)),
         ),
     };
   }
@@ -666,52 +724,45 @@ class PatientSearcher {
 
   static DateTime? _lastSeen(String? day) => day == null ? null : DateTime.tryParse(day);
 
+  /// An index entry's names: what the swap wrote to the search table for it.
+  static Iterable<NameKey?> _entryKeys(Map<String, Object?>? e) sync* {
+    if (e == null) return;
+    yield NameKey.of(NameSource.preferred, e['preferredName'] as String?);
+    for (final a in (e['aliases'] as List<Object?>? ?? const []).cast<Map<String, Object?>>()) {
+      yield NameKey.of(NameSource.alias, a['alias'] as String?);
+    }
+    yield NameKey.of(NameSource.descriptor, e['visualDescriptor'] as String?);
+  }
+
   /// A record's own names (its fields as the phone has them, edits made here included), and its
   /// legal name for scoring only.
-  static Iterable<NameKey> _recordKeys(Map<String, Object?>? f) sync* {
+  static Iterable<NameKey?> _recordKeys(Map<String, Object?>? f) sync* {
     if (f == null) return;
-    final preferred = NameKey.of(NameSource.preferred, f['preferredName'] as String?);
-    if (preferred != null) yield preferred;
-    final descriptor = NameKey.of(NameSource.descriptor, f['visualDescriptor'] as String?);
-    if (descriptor != null) yield descriptor;
+    yield NameKey.of(NameSource.preferred, f['preferredName'] as String?);
+    yield NameKey.of(NameSource.descriptor, f['visualDescriptor'] as String?);
     final legal = f['legalName'];
-    if (legal is Map<String, Object?>) {
-      final key = NameKey.legal(legal['given'] as String?, legal['family'] as String?);
-      if (key != null) yield key;
-    }
+    if (legal is Map<String, Object?>) yield NameKey.legal(legal['given'] as String?, legal['family'] as String?);
   }
 
   // ---- views ----
 
-  FoundPatient _view(RankedGroup r, Map<String, _Group> groups) {
+  /// Patients whose create waits here, for "On this phone only" (read once per list).
+  Set<String> _pendingCreates() => {
+    for (final r in store.database.select(
+      "SELECT record_id FROM outbox WHERE entity = '$entityPatient' AND op = 'create' AND state <> 'superseded'",
+    ))
+      r['record_id']! as String,
+  };
+
+  FoundPatient _view(RankedGroup r, Map<String, _Group> groups, [Set<String>? pending]) {
     final g = groups[r.group.patientId]!;
     final e = g.entry;
     final f = g.fields;
     final meta = _meta(f);
     String? pick(String field) => f.containsKey(field) ? f[field] as String? : e?[field] as String?;
-    final aliases = <String>[];
-    final active = <BadgeAllergy>[];
-    var hasRecords = false;
-    for (final id in g.ids) {
-      for (final rid in store.recordIdsOfPatient(id)) {
-        final rec = store.record(rid);
-        if (rec == null || rec.status != 'active') continue;
-        if (rec.entity == entityAlias) {
-          hasRecords = true;
-          final a = rec.attributes['alias'];
-          if (a is String && rec.fields['removal']?.value == null) aliases.add(a);
-        } else if (rec.entity == entityAllergy) {
-          hasRecords = true;
-          if (rec.fields['enteredInError']?.value == null) {
-            active.add((
-              substance: rec.attributes['substance']! as String,
-              severity: rec.attributes['severity'] as String?,
-            ));
-          }
-        }
-      }
-    }
-    if (!hasRecords && e != null) {
+    final aliases = [...g.aliases];
+    final active = [...g.allergies];
+    if (!g.hasRecords && e != null) {
       for (final a in (e['aliases'] as List<Object?>? ?? const []).cast<Map<String, Object?>>()) {
         aliases.add(a['alias']! as String);
       }
@@ -724,9 +775,7 @@ class PatientSearcher {
     final duplicate = e?['duplicate'] is Map<String, Object?>
         ? DuplicateHint.fromJson(e!['duplicate']! as Map<String, Object?>)
         : meta?.duplicate;
-    final notSynced = store.outbox().any(
-      (x) => x.entity == entityPatient && x.op == 'create' && g.ids.contains(x.recordId),
-    );
+    final waiting = pending ?? _pendingCreates();
     return FoundPatient(
       patientId: r.group.patientId,
       score: r.score.score,
@@ -743,7 +792,7 @@ class PatientSearcher {
       severeAllergy: active.any((a) => a.severity == 'severe'),
       possibleDuplicate: duplicate != null,
       duplicate: duplicate,
-      notSynced: notSynced,
+      notSynced: g.ids.any(waiting.contains),
     );
   }
 
@@ -788,9 +837,25 @@ class PatientSearcher {
 }
 
 class _Group {
-  _Group(this.group, {required this.entry, required this.fields, required this.ids});
+  _Group(
+    this.group, {
+    required this.entry,
+    required this.fields,
+    required this.ids,
+    required this.aliases,
+    required this.allergies,
+    required this.hasRecords,
+  });
   final CandidateGroup group;
   final Map<String, Object?>? entry;
   final Map<String, Object?> fields;
   final Set<String> ids;
+
+  /// Active street names and allergies of the group's records here.
+  final List<String> aliases;
+  final List<BadgeAllergy> allergies;
+
+  /// The phone holds records of this group (a cached chart, a partial copy or work made here), which
+  /// then describe it rather than the index entry.
+  final bool hasRecords;
 }
