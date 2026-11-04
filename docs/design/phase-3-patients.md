@@ -25,17 +25,17 @@ this table is their state. Update it as units land.
 | S3 Duplicates and merges | Done | re-match at sync, queue, decisions, merge, undo; `patients-done-when.test.ts` (server half of 13.1) passes | — |
 | S4 ID links, corrections, reviews, problem admin | Done | group handshake, online ID cards, corrections and declined amendments, field reviews, problem reversals; migration 0014 | — |
 | P0 Phone core | Done | `apps/mobile/lib/patients/{access,recognisable,id_link_token,dob,display,normalize,trigram,matching,match_constants}.dart`, all vectors pass | — |
-| W0 Portal shell | Done | navigation, `lib/{labels,dob}.ts`, `/c`, shared e2e helpers | Nav links to W1/W2 pages show "Page not found" until those land |
-| **P1 Phone sync layer** | **In progress** (in an agent's worktree; nothing on the branch yet) | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
-| **W1 Portal patients** | **In progress** (in an agent's worktree; nothing on the branch yet) | — | All of row W1, including 13.7's "the merged patient's URL opens the survivor" step (the seeded merge of 9 into 8 fits) |
+| W0 Portal shell | Done | navigation, `lib/{labels,dob}.ts`, `/c`, shared e2e helpers | — |
+| **P1 Phone sync layer** | **In progress**: store v2, engine and the fake's S1 rules and read routes committed in an agent's worktree, full CI pending | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
+| W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
-| P2 Phone patients domain | Not started; needs P1 | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
+| **P2 Phone patients domain** | **In progress**, on P1's commits | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
 | P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
 | Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
 
-Order from here: **P1 and W1 run in parallel** (disjoint files). P2 after P1; P3
-after P2 (or against P2's interfaces); the review last.
+Order from here: P1 lands, then P2 (already building on P1's commits); P3 from P2's interfaces;
+the review last.
 
 ### As built: where the code departs from, or reads, this design
 
@@ -124,6 +124,18 @@ Later units build on the code, not on the text above, where they differ.
   (`POST /v1/team/duplicates`) has no screen in phase 3: the PRD asks only for automatic flagging and
   the queue. A person with several phones gets a numbered wipe section per
   phone (found by W2; axe `landmark-unique`).
+- **Portal patients (W1).** Search and the ID card panel need JavaScript: their actions run in the
+  browser so earlier results and card links never travel back in a request body. Card links reach
+  the browser only through `GET /id-link` (logged), never with the chart; since W1's review, chart
+  reads log `id_link.viewed` for each link they carry, and the pair page and a correction's answer
+  carry none. Correct identity always passes through `/reauth` first; a stale sign-in at save time
+  loses what was typed. "Why is it changing?" (three options) replaces the "patient asked" checkbox
+  and the separate decline. History's "How" says "on a phone" when an entry has a device time; it
+  can't say "offline" because history entries don't carry it (PLAN-OPEN). Problem entries in history
+  read "Problem status" without the title. A browser can't clear the clipboard after 60 seconds as
+  the phone does, so the portal relies on the printing caution beside the link. Open for the review
+  round: field review entries carry only IDs, so the reviews queue can't name the patient or who
+  recorded the current value.
 - **Portal shell (W0).** `/c` shows signed-in and signed-out visitors the same page and never reads
   the fragment; removing the token from the address bar and history is left to phase 9 (scanning).
 
