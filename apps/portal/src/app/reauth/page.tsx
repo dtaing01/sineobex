@@ -11,7 +11,7 @@ export default async function ReauthPage({ searchParams }: { searchParams: Promi
   return (
     <AuthFrame
       title="Confirm it’s you"
-      lede="Changing staff access and running exports need a fresh code from your authenticator app."
+      lede="Some actions need a fresh code from your authenticator app: changing staff access, merging or correcting patient records, and exports."
     >
       <ActionForm id="reauth" action={reauthenticate} label="Confirm with authenticator code">
         <input type="hidden" name="next" value={safeNext(next)} />

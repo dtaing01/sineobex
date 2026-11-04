@@ -142,7 +142,7 @@ export const MATCH_REASON: Record<Schemas['MatchReason'], string> = {
   alias: 'Street name',
   legal_name: 'Legal name',
   descriptor: 'Description',
-  typo: 'Name, spelled a little differently',
+  typo: 'Spelled a little differently',
   nickname: 'Nickname for the name',
   sounds_like: 'Name sounds the same',
   initial: 'Initial',
