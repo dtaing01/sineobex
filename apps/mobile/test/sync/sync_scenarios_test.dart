@@ -403,7 +403,8 @@ void main() {
     test('a teammate’s encounter stays while a note on it is charted offline, then expires', () async {
       // Review finding: after a day without signal, any Save & Close purged the encounter, and
       // with it the patient, from under the note still open on it.
-      const patient = 'c0000000-0000-4000-8000-00000000000c';
+      // The server holds encounters only on its patients (migration 0013): the patient comes first.
+      final patient = server.seedPatient(id: 'c0000000-0000-4000-8000-00000000000c');
       final a = phone(alex);
       final b = phone(blair);
       final encounter = b.store.createEncounter(kind: 'medical', patientId: patient);
@@ -519,7 +520,7 @@ void main() {
 
     test('a change the person may no longer make is held by the server for review and leaves the phone', () async {
       final p = phone(alex);
-      server.cannotChart.add(alex);
+      server.permissions[alex] = FakeSyncServer.chw;
       final visit = chartVisit(p);
       p.store.closeRecord(visit.note);
       p.store.closeRecord(visit.encounter);
@@ -534,13 +535,13 @@ void main() {
       // Review finding: the held create counted as on the chart, so once the role was back the
       // edit and the note were sent and refused as stale references, which no fix could get past.
       final p = phone(alex);
-      server.cannotChart.add(alex);
+      server.permissions[alex] = FakeSyncServer.chw;
       final encounter = p.store.createEncounter(kind: 'medical');
       final first = await p.engine.syncAll() as SyncDone;
       expect([first.confirmed, p.store.inReviewCount()], [1, 1]);
 
       // A Program Admin gives the role back, and the visit goes on.
-      server.cannotChart.remove(alex);
+      server.permissions.remove(alex);
       p.store.setField(encounter, 'location', {'lat': 42.33, 'lng': -83.05});
       p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
       final second = await p.engine.syncAll() as SyncDone;
