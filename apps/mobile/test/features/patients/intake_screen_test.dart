@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 
-import '../../helpers/app_harness.dart';
 import 'patient_kit.dart';
 
 /// New patient (design 11, 8.1, 12.1), offline as in 13.1 step 5: consent as a radio group, the

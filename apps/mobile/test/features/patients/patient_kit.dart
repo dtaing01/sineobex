@@ -14,6 +14,8 @@ import '../../auth/fakes.dart';
 import '../../helpers/app_harness.dart';
 import '../../sync/fake_server.dart';
 
+export '../../helpers/app_harness.dart';
+
 /// What the patient screen tests share: signing in as a field role, the done-when fixture's P1
 /// (design 13.1) on the fake server, syncing, and the checks every patient screen must pass.
 

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 
-import '../../helpers/app_harness.dart';
 import 'patient_kit.dart';
 
 /// Edit details (design 11.5, 12.1): the intake form titled "Edit details" with **Update and
