@@ -29,12 +29,12 @@ this table is their state. Update it as units land.
 | P1 Phone sync layer | Done | local DB v2 (`local_db.dart`), entity registry (`entities.dart`), store (`local_store.dart`: patient-side records, scopes, redirects, purge, notices, hooks), engine and controller refreshers, sign-out clearing; the fake with S1's rules and the read routes; `entities_test`, `local_db_test`, `patient_store_test`, `patient_rules_test`, `fake_reads_test` | — |
 | W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
-| **P2 Phone patients domain** | **Done, with two follow-ups in progress** | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | The intake draft drops the legal name; a refresher pulls `GET /v1/team/notices` |
+| P2 Phone patients domain | Done | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | — |
 | P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
 | Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
 
-Order from here: P2's two follow-ups; P3 (building on P2); the review last.
+Order from here: P3 (building on P2); the review last.
 
 ### As built: where the code departs from, or reads, this design
 
@@ -152,8 +152,10 @@ Later units build on the code, not on the text above, where they differ.
   from the outbox. The card link base comes from `/v1/me` (`patientRefreshers(team,
   {idLinkBaseUrl})`), kept in kv so an offline restart still copies links. Charts download in
   batches of 10, halved on a timeout down to 1 and doubled after each answer up to 50. Decided after
-  P2: the intake draft never holds a legal name (2.9-11: kv outlives sign-out and the purge), and
-  the phone pulls notices after sync.
+  P2: the intake draft never holds a legal name (2.9-11: kv outlives sign-out and the purge;
+  `saveDraft` drops `legalGiven`, `legalFamily` and `legalName` and keeps `legalNameDropped`), and
+  the phone pulls notices after sync (`NoticesRefresher`; reads go back through
+  `ServerNotices.markRead`, queued by notice ID while offline).
 - **Portal patients (W1).** Search and the ID card panel need JavaScript: their actions run in the
   browser so earlier results and card links never travel back in a request body. Card links reach
   the browser only through `GET /id-link` (logged), never with the chart; since W1's review, chart
