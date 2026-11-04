@@ -614,8 +614,14 @@ class PatientRepository {
     return result;
   }
 
-  /// The intake left before Create, kept in the encrypted database (11.1). It may hold what was
-  /// typed, a legal name included, until Create or Discard.
+  /// The keys of a draft that may hold a legal name: never stored (D40, 2.9-11).
+  static const draftLegalKeys = {'legalGiven', 'legalFamily', 'legalName'};
+
+  /// Set in a saved draft when a legal name was typed and not kept, so the form asks for it again.
+  static const draftLegalNameDropped = 'legalNameDropped';
+
+  /// The intake left before Create, kept in the encrypted database (11.1), as [saveDraft] stored
+  /// it: what was typed, never a legal name, with [draftLegalNameDropped] true when one was typed.
   Map<String, Object?>? draft() {
     final v = store.kv(draftKey);
     if (v == null || v.isEmpty) return null;
@@ -623,7 +629,24 @@ class PatientRepository {
     return d is Map<String, Object?> && d.isNotEmpty ? d : null;
   }
 
-  void saveDraft(Map<String, Object?> draft) => store.setKv(draftKey, jsonEncode(draft));
+  /// Keeps a half-filled intake. A legal name (any of [draftLegalKeys]) is left out: the draft
+  /// lives in `kv`, which outlives scopes, the purge and sign-out, so an abandoned draft would keep
+  /// someone's legal name on the phone with no chart to hold it (D40, 2.9-11). The form gets
+  /// [draftLegalNameDropped] instead and asks again.
+  void saveDraft(Map<String, Object?> draft) {
+    bool typed(Object? v) =>
+        (v is String && v.trim().isNotEmpty) || (v is Map && v.values.any(typed)) || (v is List && v.any(typed));
+    final dropped = draft[draftLegalNameDropped] == true || draftLegalKeys.any((k) => typed(draft[k]));
+    store.setKv(
+      draftKey,
+      jsonEncode({
+        for (final MapEntry(:key, :value) in draft.entries)
+          if (!draftLegalKeys.contains(key) && key != draftLegalNameDropped) key: value,
+        if (dropped) draftLegalNameDropped: true,
+      }),
+    );
+  }
+
   void discardDraft() => store.setKv(draftKey, '');
 
   // ---- edit (11.5) ----

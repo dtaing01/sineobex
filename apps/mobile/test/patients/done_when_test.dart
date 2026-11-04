@@ -322,4 +322,29 @@ void main() {
     // The index's names may still score; the legal name no longer can.
     expect(services.search.searchOnPhone('Delbert Smithfield').hits.where((h) => h.matchedLegalName), isEmpty);
   });
+
+  test('an intake draft never keeps a legal name, in kv or anywhere else (D40, 2.9-11)', () {
+    services.patients.saveDraft({
+      'preferredName': 'Smitty',
+      'legalGiven': 'Delbert',
+      'legalFamily': 'Smithfield',
+      'legalName': {'given': 'Delbert', 'family': 'Smithfield'},
+      'usualArea': 'Demo: by the library steps',
+    });
+    expect(tablesHolding(RegExp('Delbert|Smithfield', caseSensitive: false)), isEmpty);
+    expect(services.patients.draft(), {
+      'preferredName': 'Smitty',
+      'usualArea': 'Demo: by the library steps',
+      PatientRepository.draftLegalNameDropped: true,
+    });
+    // Saving the returned draft again keeps saying the name must be asked for.
+    services.patients.saveDraft(services.patients.draft()!);
+    expect(services.patients.draft()![PatientRepository.draftLegalNameDropped], isTrue);
+    // Nothing typed there, nothing dropped.
+    services.patients.saveDraft({'preferredName': 'Smitty', 'legalGiven': '  '});
+    expect(services.patients.draft(), {'preferredName': 'Smitty'});
+    // The draft survives what clears server data, which is why it may never hold a legal name.
+    phone.store.clearServerData();
+    expect(services.patients.draft(), {'preferredName': 'Smitty'});
+  });
 }
