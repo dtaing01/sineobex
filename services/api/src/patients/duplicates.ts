@@ -279,7 +279,7 @@ export async function listDuplicates(
 
 /** One side of the pair page: the group's chart, and how and by whom this record was made. */
 async function pairSide(tx: Tx, scope: TeamScope, patientId: string): Promise<PairSideValue> {
-  const chart = await loadChart(tx, scope, patientId);
+  const chart = await loadChart(tx, scope, patientId, { linkUrls: false });
   const [own] = await tx<
     { version: number; authorUserId: string; displayName: string; offline: boolean | null }[]
   >`

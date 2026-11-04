@@ -126,7 +126,7 @@ export async function correctIdentity(
         },
       });
     }
-    const chart = await loadChart(tx, scope, rec.id);
+    const chart = await loadChart(tx, scope, rec.id, { linkUrls: false });
     if (!chart) throw notFound('patient');
     return chart;
   });

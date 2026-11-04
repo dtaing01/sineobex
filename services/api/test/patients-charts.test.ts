@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Permission } from '../src/auth/permissions.ts';
 import { CHART_TABLES } from '../src/patients/charts.ts';
 import { HISTORY_PAGE } from '../src/patients/history.ts';
+import { idLinkTokenRef } from '../src/patients/id-links.ts';
 import type { ChartBundleValue, FieldHistoryPageValue, PatientChartValue } from '../src/patients/schemas.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
@@ -158,6 +159,13 @@ describe('GET /v1/patients/{patientId}', () => {
     expect(c.projection).toBe('c1+prob+sens+url');
     const [event] = await expectAudit(h, 'patient.viewed', { after: mark, count: 1, patientId: p1 });
     expect(event!.details).toEqual({ source: 'portal' });
+    // The chart carried the card's link, so that is logged as a read of the link (design 10.6).
+    const [link] = await expectAudit(h, 'id_link.viewed', { after: mark, count: 1, patientId: p1 });
+    expect(link!.details).toEqual({
+      linkId: c.idLinks[0]!.id,
+      tokenRef: await idLinkTokenRef(TOKEN),
+      source: 'portal',
+    });
   });
 
   it('answers a merged ID with the survivor’s chart', async () => {
@@ -167,7 +175,9 @@ describe('GET /v1/patients/{patientId}', () => {
   });
 
   it('shows Billing/Data the whole chart without sensitive problems or card links (D38)', async () => {
+    const mark = await auditMark(h);
     const c = await chart(billing.token, p1);
+    await expectAudit(h, 'id_link.viewed', { after: mark, count: 0 });
     expect(c.aliases).toHaveLength(2);
     expect(c.allergies).toHaveLength(1);
     expect(c.consents).toHaveLength(4);
@@ -235,6 +245,8 @@ describe('POST /v1/patients/charts', () => {
     const events = await expectAudit(h, 'patient.viewed', { after: mark, count: 2 });
     expect(events.map((e) => e.patientId).sort()).toEqual([p1, p3].sort());
     for (const e of events) expect(e.details).toEqual({ source: 'cache', reason: 'opened' });
+    const [link] = await expectAudit(h, 'id_link.viewed', { after: mark, count: 1, patientId: p1 });
+    expect(link!.details).toMatchObject({ tokenRef: await idLinkTokenRef(TOKEN), source: 'cache' });
   });
 
   it('projects every chart in the bundle', async () => {

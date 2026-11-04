@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Permission } from '../src/auth/permissions.ts';
+import { idLinkTokenHash, newIdLinkToken } from '../src/patients/id-links.ts';
 import { createHarness, type Harness } from './harness.ts';
 import {
   auditMark,
@@ -282,6 +283,24 @@ describe('identity corrections', () => {
         select birth_date::text as "birthDate" from sineobex.patients where id = ${survivor.id}`;
       expect(row!.birthDate).toBe('1979-03-07');
     });
+  });
+
+  it('answers with the chart but no card link, since the correction screen never offers Copy link', async () => {
+    const p = await createPatient(h, teamId, admin.userId, { birth: { precision: 'year', year: 1950 } });
+    const token = newIdLinkToken();
+    await h.scratch.owner`
+      insert into sineobex.patient_id_links (id, team_id, patient_id, token, token_hash, status, reason,
+        effective_at, clock_verified, made_offline, issued_by)
+      values (${randomUUID()}, ${teamId}, ${p.id}, ${token}, ${await idLinkTokenHash(token)}, 'active',
+        'first_card', now(), true, false, ${admin.userId})`;
+    const res = await correct(p.id, {
+      field: 'birth',
+      value: { precision: 'year', year: 1951 },
+      baseVersion: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain(token);
+    expect((res.body as unknown as { idLinks: unknown[] }).idLinks).toHaveLength(1);
   });
 
   it('keeps names, dates and reasons out of audit details and log lines', async () => {

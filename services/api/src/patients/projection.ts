@@ -53,9 +53,18 @@ export function projectionFor(permissions: ReadonlySet<Permission>, surface: Sur
 /**
  * Removes from a fully loaded chart what the caller's role may not see. A chart is the person's own
  * opened record, so it keeps the legal name on both surfaces (D40); `projection` names the result.
+ * `linkUrls: false` is for answers whose screen never offers Copy link (the pair page, a correction):
+ * they carry no card URL whatever the role, so a card's link is read only where it is shown, and
+ * logged there.
  */
-export function projectChart(scope: TeamScope, chart: PatientChartValue): PatientChartValue {
-  const p = projectionFor(scope.team.permissions, 'portal');
+export function projectChart(
+  scope: TeamScope,
+  chart: PatientChartValue,
+  { linkUrls = true }: { linkUrls?: boolean } = {},
+): PatientChartValue {
+  const full = projectionFor(scope.team.permissions, 'portal');
+  const p =
+    linkUrls || !full.idLinkUrls ? full : { ...full, idLinkUrls: false, key: full.key.replace('+url', '') };
   const out: PatientChartValue = { ...chart, projection: p.key };
   if (!p.problems) {
     delete out.problems;

@@ -1,10 +1,10 @@
 import type { z } from '@hono/zod-openapi';
-import type { TeamScope } from '../auth/context.ts';
+import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { notFound } from '../lib/errors.ts';
 import type { FieldMeta } from '../sync/records.ts';
 import type { FieldStateValue, RecordSnapshotValue } from '../sync/schemas.ts';
-import { idLinkUrl } from './id-links.ts';
+import { idLinkTokenRef, idLinkUrl } from './id-links.ts';
 import { birthFromRow, duplicateHints, projectChart } from './projection.ts';
 import type {
   HistoryKind,
@@ -546,22 +546,42 @@ async function loadGroupCharts(
 /**
  * The projected chart of a patient's group inside the caller's transaction, without auditing (the
  * caller audits what it shows, as the duplicate pair page does). Null when the team has no such patient.
+ * `linkUrls: false` leaves out card URLs (`projectChart`).
  */
 export async function loadChart(
   tx: Tx,
   scope: TeamScope,
   patientId: string,
+  options: { linkUrls?: boolean } = {},
 ): Promise<PatientChartValue | null> {
   const canonical = (await canonicalOf(tx, [patientId])).get(patientId);
   if (!canonical) return null;
   const chart = (await loadGroupCharts(tx, scope, [canonical])).get(canonical);
   if (!chart) return null;
-  const projected = projectChart(scope, chart);
+  const projected = projectChart(scope, chart, options);
   return canonical === patientId ? projected : { ...projected, redirectedFrom: patientId };
 }
 
 /** Where a chart was opened, for `patient.viewed`: a registered phone of this person, or the portal. */
 const viewSource = (scope: TeamScope) => (scope.meta.deviceId ? 'phone' : 'portal');
+
+/**
+ * A chart that carries card links (`patients.edit`) is a read of those links, so each one shown is
+ * logged as `id_link.viewed`, as `GET /id-link` logs it (design 10.6): whoever asks who has seen a
+ * card's link finds chart reads too. The token is the URL's fragment (`idLinkUrl`).
+ */
+async function auditLinkViews(audit: AuditFn, chart: PatientChartValue, source: string): Promise<void> {
+  for (const l of chart.idLinks) {
+    if (!l.url) continue;
+    await audit({
+      action: 'id_link.viewed',
+      entity: 'id_link',
+      entityId: l.id,
+      patientId: chart.canonicalId,
+      details: { linkId: l.id, tokenRef: await idLinkTokenRef(new URL(l.url).hash.slice(1)), source },
+    });
+  }
+}
 
 /**
  * GET /v1/patients/{patientId}: the projected chart of the patient's group. A merged ID answers the
@@ -578,6 +598,7 @@ export async function getChart(scope: TeamScope, patientId: string): Promise<Pat
       patientId: chart.canonicalId,
       details: { source: viewSource(scope) },
     });
+    await auditLinkViews(audit, chart, viewSource(scope));
     return chart;
   });
 }
@@ -596,7 +617,8 @@ export async function fetchCharts(scope: TeamScope, input: FetchChartsInput): Pr
     for (const id of groups) {
       const chart = full.get(id);
       if (!chart) continue;
-      charts.push(projectChart(scope, chart));
+      const projected = projectChart(scope, chart);
+      charts.push(projected);
       await audit({
         action: 'patient.viewed',
         entity: 'patient',
@@ -604,6 +626,7 @@ export async function fetchCharts(scope: TeamScope, input: FetchChartsInput): Pr
         patientId: id,
         details: { source: 'cache', reason: input.reason },
       });
+      await auditLinkViews(audit, projected, 'cache');
     }
     return {
       charts,

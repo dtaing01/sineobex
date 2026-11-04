@@ -422,6 +422,19 @@ describe('the queue and the pair page (design 8.3, 3.4)', () => {
     expect((await get(`/v1/team/duplicates/${randomUUID()}`)).status).toBe(404);
   });
 
+  it('leaves card links out of the pair page, which never offers Copy link', async () => {
+    const linkId = await issueLink(p1);
+    const mark = await auditMark(h);
+    const res = await get(`/v1/team/duplicates/${pairId}`);
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as DuplicatePairDetailValue;
+    const side = detail.pair.a.patientId === p1 ? detail.a : detail.b;
+    expect(side.chart.idLinks.map((l) => l.id)).toEqual([linkId]);
+    expect(Object.keys(side.chart.idLinks[0]!)).not.toContain('url');
+    expect(side.chart.projection).not.toContain('url');
+    await expectAudit(h, 'id_link.viewed', { after: mark, count: 0 });
+  });
+
   it('refuses a decision without a comment, or without a recent sign-in', async () => {
     const v = await versions(pairId);
     for (const comment of [undefined, '', '  a ']) {
