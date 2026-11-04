@@ -5,7 +5,7 @@ import '../api/transport.dart';
 import '../sync/local_store.dart';
 import '../sync/sync_engine.dart';
 import 'access.dart';
-import 'patient_search.dart' show writeSearchNames;
+import 'patient_search.dart' show searchNamesOf;
 
 /// The team search index on the phone (design section 6): every active patient's preferred name,
 /// street names, description, birth, usual area, last-seen date and allergies, so a field worker
@@ -198,6 +198,9 @@ class TeamIndex {
         'INSERT OR REPLACE INTO team_index (patient_id, entry_json, preferred, birth_year, birth_date, last_seen) '
         'VALUES (?, ?, ?, ?, ?, ?)',
       );
+      final names = db.prepare(
+        "INSERT INTO patient_names (name, patient_id, source, origin) VALUES (?, ?, ?, 'index')",
+      );
       var count = 0;
       try {
         for (final page in pages) {
@@ -212,19 +215,19 @@ class TeamIndex {
               date,
               e.lastSeenOn,
             ]);
-            writeSearchNames(
-              db,
-              e.patientId,
-              'index',
+            for (final n in searchNamesOf(
               preferred: e.preferredName,
               aliases: [for (final a in e.aliases) a.alias],
               descriptor: e.visualDescriptor,
-            );
+            )) {
+              names.execute([n.name, e.patientId, n.source]);
+            }
             count++;
           }
         }
       } finally {
         insert.close();
+        names.close();
       }
       final working = store.localWorkPatients();
       for (final r in db.select(
@@ -265,13 +268,18 @@ class TeamIndex {
 /// doesn't run refreshers then). Pages halve after a timeout down to [indexMinPageLimit] and double
 /// back after each answer (the D24 pattern).
 class TeamIndexRefresher implements AfterSyncRefresher {
-  TeamIndexRefresher(this.index, this.client, {DateTime Function()? wallNow}) : _wall = wallNow ?? DateTime.now;
+  TeamIndexRefresher(this.index, this.client, {DateTime Function()? wallNow, this.maxPageLimit = indexPageLimit})
+    : _wall = wallNow ?? DateTime.now,
+      _limit = maxPageLimit;
+
+  /// The page size asked for while answers come (smaller in tests).
+  final int maxPageLimit;
 
   final TeamIndex index;
   final api.SineobexApi client;
   final DateTime Function() _wall;
   DateTime? _lastCheck;
-  int _limit = indexPageLimit;
+  int _limit;
 
   /// The page size the next request asks for.
   int get pageLimit => _limit;
@@ -340,11 +348,11 @@ class TeamIndexRefresher implements AfterSyncRefresher {
     while (true) {
       try {
         final page = await client.downloadTeamIndex(body: r);
-        _limit = (_limit * 2).clamp(indexMinPageLimit, indexPageLimit);
+        _limit = (_limit * 2).clamp(indexMinPageLimit, maxPageLimit);
         return page;
       } on NetworkException catch (e) {
         if (e.reason != 'timeout' || _limit <= indexMinPageLimit) return null;
-        _limit = (_limit ~/ 2).clamp(indexMinPageLimit, indexPageLimit);
+        _limit = (_limit ~/ 2).clamp(indexMinPageLimit, maxPageLimit);
         r = api.TeamIndexRequest(have: r.have, after: r.after, limit: _limit);
       }
     }

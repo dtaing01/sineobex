@@ -47,11 +47,36 @@ void writeSearchNames(
   String? descriptor,
 }) {
   db.execute('DELETE FROM patient_names WHERE patient_id = ? AND origin = ?', [patientId, origin]);
-  addSearchName(db, patientId, origin, 'preferred', preferred);
-  for (final a in aliases) {
-    addSearchName(db, patientId, origin, 'alias', a);
+  for (final n in searchNamesOf(preferred: preferred, aliases: aliases, descriptor: descriptor)) {
+    db.execute('INSERT INTO patient_names (name, patient_id, source, origin) VALUES (?, ?, ?, ?)', [
+      n.name,
+      patientId,
+      n.source,
+      origin,
+    ]);
   }
-  addSearchName(db, patientId, origin, 'descriptor', descriptor);
+}
+
+/// One patient's search names, normalized, each once: what [writeSearchNames] writes. The index swap
+/// inserts these directly (its rows are all new), since on the FTS5 table every lookup by patient
+/// is a scan.
+List<({String source, String name})> searchNamesOf({
+  String? preferred,
+  Iterable<String> aliases = const [],
+  String? descriptor,
+}) {
+  final out = <({String source, String name})>[];
+  void add(String source, String? text) {
+    final norm = normalizeName(text);
+    if (norm != null && !out.any((n) => n.source == source && n.name == norm)) out.add((source: source, name: norm));
+  }
+
+  add('preferred', preferred);
+  for (final a in aliases) {
+    add('alias', a);
+  }
+  add('descriptor', descriptor);
+  return out;
 }
 
 /// Adds one search name (normalized), unless that patient already has it from [origin].
