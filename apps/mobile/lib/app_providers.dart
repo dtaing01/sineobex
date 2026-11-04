@@ -10,6 +10,7 @@ import 'api/transport.dart';
 import 'auth/auth_provider.dart';
 import 'auth/session_controller.dart';
 import 'config/env.dart';
+import 'patients/patient_providers.dart' show patientRefreshers;
 import 'security/key_vault.dart';
 import 'security/secure_store.dart';
 import 'sync/clock.dart';
@@ -17,6 +18,9 @@ import 'sync/device_channel.dart';
 import 'sync/sync_controller.dart';
 
 final appConfigProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment());
+
+/// The phone's wall clock for what screens show (ages, "updated 2 hours ago"); tests fix it.
+final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 final httpClientProvider = Provider<http.Client>((ref) {
   final client = http.Client();
@@ -57,16 +61,28 @@ LocalUser localUserFromMe(Me me) => LocalUser(
   ],
 );
 
+/// Where Street Medicine ID card links point (`/v1/me` `idLinkBaseUrl`), from the last sign-in in
+/// this run of the app. The team database keeps its own copy, so after a restart (no `/v1/me`
+/// until the next sign-in) the links made offline still carry the right address.
+class IdLinkBase {
+  String? value;
+}
+
+final idLinkBaseProvider = Provider<IdLinkBase>((ref) => IdLinkBase());
+
 final Provider<SessionController> sessionProvider = Provider<SessionController>((ref) {
   final config = ref.watch(appConfigProvider);
   final client = ref.watch(httpClientProvider);
+  final linkBase = ref.watch(idLinkBaseProvider);
   final controller = SessionController(
     auth: ref.watch(authProvider),
     vault: ref.watch(keyVaultProvider),
     store: ref.watch(deviceStoreProvider),
     fetchMe: (token) async {
       final api = SineobexApi(HttpTransport(baseUrl: config.apiBaseUrl, client: client, accessToken: () => token));
-      return localUserFromMe(await api.getMe());
+      final me = await api.getMe();
+      linkBase.value = me.idLinkBaseUrl;
+      return localUserFromMe(me);
     },
     // Read when called, not now: the sync controller itself listens to this session.
     localData: DeferredLocalData(() => ref.read(syncControllerProvider)),
@@ -107,6 +123,7 @@ final Provider<SyncController> syncControllerProvider = Provider<SyncController>
   final config = ref.watch(appConfigProvider);
   final client = ref.watch(httpClientProvider);
   final session = ref.watch(sessionProvider);
+  final linkBase = ref.watch(idLinkBaseProvider);
   final controller = SyncController(
     session: session,
     databaseDirectory: databaseDirectory,
@@ -118,6 +135,10 @@ final Provider<SyncController> syncControllerProvider = Provider<SyncController>
     boot: PlatformBootClock(),
     platform: Platform.isIOS ? RegisterDevicePlatform.ios : RegisterDevicePlatform.android,
     appVersion: appVersion,
+    // The team index, the chart cache and the card hook for each team database it opens. Copy link
+    // must work on a phone that never downloaded a chart with a card, so the card address comes
+    // from the sign-in's /v1/me.
+    refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: linkBase.value),
   );
   ref.onDispose(controller.dispose);
   return controller;

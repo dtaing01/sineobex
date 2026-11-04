@@ -10,6 +10,7 @@ import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/config/env.dart';
 import 'package:sineobex_field/design/tokens.dart';
 import 'package:sineobex_field/features/lock/lock_screens.dart';
+import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -19,21 +20,26 @@ import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 
 class AppHarness {
+  /// [permissions] replaces the demo user's (`encounters.chart` only) in every team, and the fake
+  /// server learns the same list.
   AppHarness({
     DeploymentKind deployment = DeploymentKind.preview,
     this.idle = const Duration(minutes: 5),
     int teams = 1,
     this.theme,
+    List<String>? permissions,
   }) : config = AppConfig(
          apiBaseUrl: Uri.parse('https://api.invalid'),
          deployment: deployment,
          idleLockMinutes: idle.inMinutes,
        ) {
+    final user = permissions == null ? demoUser(teams: teams) : _withPermissions(demoUser(teams: teams), permissions);
+    if (permissions != null) server.permissions[user.userId] = permissions.toSet();
     session = SessionController(
       auth: auth,
       vault: KeyVault(store: store, biometricStore: bio, pbkdf2Iterations: 1000),
       store: store,
-      fetchMe: (_) async => demoUser(teams: teams),
+      fetchMe: (_) async => user,
       localData: DeferredLocalData(() => sync),
     );
     sync = SyncController(
@@ -48,9 +54,39 @@ class AppHarness {
       autoSync: false,
       now: () => wall,
       monotonic: () => boot.elapsed,
+      // As the app wires it (app_providers.dart), with a clipboard the test reads.
+      refreshers: (team) => PatientServices(
+        team,
+        idLinkBaseUrl: server.idLinkBaseUrl,
+        copy: _copy,
+        wallNow: () => wall,
+      ).refreshers,
     );
     addTearDown(dispose);
   }
+
+  static LocalUser _withPermissions(LocalUser u, List<String> permissions) => LocalUser(
+    userId: u.userId,
+    email: u.email,
+    displayName: u.displayName,
+    teams: [
+      for (final t in u.teams)
+        TeamRef(id: t.id, name: t.name, roleName: t.roleName, credential: t.credential, permissions: permissions),
+    ],
+  );
+
+  /// What Copy link put on the clipboard, and whether the platform takes it.
+  final copied = <String>[];
+  bool clipboardWorks = true;
+
+  Future<bool> _copy(String text) async {
+    if (!clipboardWorks) return false;
+    copied.add(text);
+    return true;
+  }
+
+  /// The open team's patient services.
+  PatientServices get patients => PatientServices.of(sync.store!)!;
 
   final AppConfig config;
   final Duration idle;
@@ -71,6 +107,7 @@ class AppHarness {
   Widget build() => ProviderScope(
     overrides: [
       appConfigProvider.overrideWithValue(config),
+      wallClockProvider.overrideWithValue(() => wall),
       sessionProvider.overrideWithValue(session),
       syncControllerProvider.overrideWithValue(sync),
       biometricsAvailableProvider.overrideWith((ref) async => true),

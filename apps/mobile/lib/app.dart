@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'app_providers.dart';
 import 'auth/session_controller.dart';
@@ -11,6 +12,13 @@ import 'design/tokens.dart';
 import 'design/widgets/demo_banner.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/lock_screens.dart';
+import 'features/patients/add_problem_screen.dart';
+import 'features/patients/id_card_screen.dart';
+import 'features/patients/intake_screen.dart';
+import 'features/patients/patient_screen.dart';
+import 'features/patients/patient_widgets.dart' show IntakeStart, TypedDetails;
+import 'features/patients/patients_screen.dart';
+import 'features/patients/problem_screen.dart';
 import 'features/sign_in/sign_in_screens.dart';
 import 'features/sync/needs_attention_screen.dart';
 import 'security/idle_lock.dart';
@@ -63,8 +71,48 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/pin', builder: (_, _) => const PinSetupScreen()),
       GoRoute(path: '/unlock', builder: (_, _) => const UnlockScreen()),
       GoRoute(path: '/team', builder: (_, _) => const TeamPickerScreen()),
-      GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+      // The tabs (design 12.1). Start, Schedule and Resources arrive with their phases.
+      ShellRoute(
+        builder: (context, state, child) => TabShell(location: state.matchedLocation, child: child),
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+          GoRoute(
+            path: '/patients',
+            builder: (_, state) => PatientsScreen(focusSearch: state.extra == PatientsScreen.fromTabBar),
+          ),
+        ],
+      ),
       GoRoute(path: '/attention', builder: (_, _) => const NeedsAttentionScreen()),
+      // Patient routes carry UUIDs only (D12); what a screen needs beyond the ID travels in `extra`,
+      // never in the location.
+      GoRoute(
+        path: '/patients/new',
+        builder: (_, state) => IntakeScreen(start: state.extra is IntakeStart ? state.extra! as IntakeStart : null),
+      ),
+      GoRoute(
+        path: '/patients/:id',
+        builder: (_, state) => PatientScreen(
+          patientId: state.pathParameters['id']!,
+          typed: state.extra is TypedDetails ? state.extra! as TypedDetails : null,
+        ),
+      ),
+      GoRoute(
+        path: '/patients/:id/edit',
+        builder: (_, state) => IntakeScreen(editing: state.pathParameters['id']),
+      ),
+      GoRoute(
+        path: '/patients/:id/card',
+        builder: (_, state) => IdCardScreen(patientId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/patients/:id/problems/new',
+        builder: (_, state) => AddProblemScreen(patientId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/patients/:id/problems/:problemId',
+        builder: (_, state) =>
+            ProblemScreen(patientId: state.pathParameters['id']!, problemId: state.pathParameters['problemId']!),
+      ),
     ],
   );
   ref.onDispose(router.dispose);
@@ -124,6 +172,36 @@ class _SineobexAppState extends ConsumerState<SineobexApp> {
         session: session,
         idle: config.idleLock,
         child: DemoFrame(enabled: config.isDemo, child: child ?? const SizedBox.shrink()),
+      ),
+    );
+  }
+}
+
+/// The bottom navigation: Home and Patients. Opening Patients from the bar focuses its search.
+class TabShell extends StatelessWidget {
+  const TabShell({super.key, required this.location, required this.child});
+  final String location;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final index = location.startsWith('/patients') ? 1 : 0;
+    return Scaffold(
+      body: child,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: index,
+        onDestinationSelected: (i) {
+          if (i == index) return;
+          if (i == 0) {
+            context.go('/');
+          } else {
+            context.go('/patients', extra: PatientsScreen.fromTabBar);
+          }
+        },
+        destinations: const [
+          NavigationDestination(icon: Icon(LucideIcons.house), label: 'Home'),
+          NavigationDestination(icon: Icon(LucideIcons.users), label: 'Patients'),
+        ],
       ),
     );
   }

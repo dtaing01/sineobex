@@ -40,6 +40,10 @@ hooks:
 
 flutter:
   uses-material-design: true
+  # The curated ICD-10-CM list for Add problem (design 9.5), generated from
+  # packages/contract/data/icd10cm-curated.csv.
+  assets:
+    - assets/problem_codes.json
   fonts:
     # Atkinson Hyperlegible Next, Atkinson Hyperlegible Mono and Barlow Condensed, all under the
     # SIL Open Font License (assets/fonts/OFL.txt). Bundled so the app never fetches fonts at runtime.
