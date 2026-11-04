@@ -7,6 +7,7 @@ import 'package:sineobex_field/patients/consent_script.dart';
 import 'package:sineobex_field/patients/display.dart';
 import 'package:sineobex_field/patients/dob.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
+import 'package:sineobex_field/patients/id_links.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/patient_repository.dart';
 import 'package:sineobex_field/patients/patient_search.dart';
@@ -483,6 +484,74 @@ void main() {
       throwsA(isA<ChartingPaused>()),
     );
     expect(server.serverAudit.where((e) => e['action'] != 'patient.index_downloaded'), isEmpty);
+  });
+
+  test('notices from the server: fetched once, stored once, read on the server; nothing while frozen', () async {
+    final a = phone(alex), b = phone(blair);
+    var fetches = 0, reads = 0;
+    server.onRequest = (path) {
+      if (path == '/v1/team/notices') fetches++;
+      if (path.endsWith('/read')) reads++;
+    };
+    // Two new cards for one patient: the newer is valid, and the server tells both makers.
+    final p = server.seedPatient(preferredName: 'Del');
+    final old = server.seed(entityIdLink, {
+      'patientId': p,
+      'token': newIdLinkToken(),
+      'replacesLinkId': null,
+      'reason': 'first_card',
+    });
+    await a.services.patients.open(p);
+    await b.services.patients.open(p);
+    server.offline = true;
+    final older = b.services.idLinks.makeCard(p, reason: 'lost');
+    advance(const Duration(minutes: 1));
+    final newer = a.services.idLinks.makeCard(p, reason: 'lost');
+    server.offline = false;
+    await syncAndRefresh(a);
+    await syncAndRefresh(b);
+    expect(server.idLinks[old]!.status, 'retired');
+    expect(server.notices.map((n) => (n.userId, n.kind, n.recordId)).toSet(), {
+      (blair, noticeCardSuperseded, older),
+      (alex, noticeCardKept, newer),
+    });
+    await syncAndRefresh(a);
+
+    final kept = a.store.notices().single;
+    expect([kept.kind, kept.recordId, kept.patientId], [noticeCardKept, newer, p]);
+    expect([a.services.notices.fromServer(kept.id), a.services.notices.entityOf(kept.id)], [true, entityIdLink]);
+    // The loser's receipt already said so: the server's notice is that one, not a second.
+    final lost = b.store.notices().single;
+    expect([lost.kind, lost.recordId, b.services.notices.fromServer(lost.id)], [noticeCardSuperseded, older, true]);
+
+    // Fetched again, stored once.
+    await a.phone.engine.runRefreshers(RefreshReason.manual);
+    expect(a.store.notices(), hasLength(1));
+
+    // Read offline: here at once, on the server at the next contact, once.
+    server.offline = true;
+    a.services.notices.markRead(kept.id);
+    expect(a.store.notices().single.readAt, isNotNull);
+    await a.phone.engine.runRefreshers(RefreshReason.manual);
+    expect(server.notices.firstWhere((n) => n.userId == alex).readAt, isNull);
+    server.offline = false;
+    await a.phone.engine.runRefreshers(RefreshReason.manual);
+    expect(server.notices.firstWhere((n) => n.userId == alex).readAt, isNotNull);
+    final sent = reads;
+    await a.phone.engine.runRefreshers(RefreshReason.manual);
+    expect(reads, sent);
+
+    // Read in the portal: read on the phone at its next fetch.
+    server.notices.firstWhere((n) => n.userId == blair).readAt = serverTime;
+    await b.phone.engine.runRefreshers(RefreshReason.manual);
+    expect(b.store.notices().single.readAt, isNotNull);
+
+    // Nothing is fetched while the store is frozen.
+    a.store.freeze('Your access to this team ended.');
+    final before = fetches;
+    await a.phone.engine.runRefreshers(RefreshReason.manual);
+    await a.services.notices.sync();
+    expect(fetches, before);
   });
 
   test(

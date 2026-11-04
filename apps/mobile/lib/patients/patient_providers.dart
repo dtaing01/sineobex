@@ -1,12 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/generated/api.dart' show SineobexApi;
+import '../api/transport.dart';
 import '../app_providers.dart' show syncControllerProvider;
 import '../security/secure_copy.dart';
 import '../sync/local_store.dart';
 import '../sync/sync_controller.dart';
 import '../sync/sync_engine.dart';
 import 'access.dart';
+
 import 'chart_cache.dart';
 import 'id_links.dart';
 import 'patient_repository.dart';
@@ -48,7 +53,12 @@ class PatientServices extends ChangeNotifier {
       problems: problems,
       now: corrected,
     )..onChanged = notifyListeners;
-    refreshers = [TeamIndexRefresher(index, team.api, wallNow: wallNow), ChartCacheRefresher(charts, now: wallNow)];
+    notices = ServerNotices(store, team.api)..onChanged = notifyListeners;
+    refreshers = [
+      TeamIndexRefresher(index, team.api, wallNow: wallNow),
+      ChartCacheRefresher(charts, now: wallNow),
+      NoticesRefresher(notices, now: wallNow),
+    ];
     _byStore[store] = this;
   }
 
@@ -65,9 +75,10 @@ class PatientServices extends ChangeNotifier {
   late final Problems problems;
   late final PatientSearcher search;
   late final PatientRepository patients;
+  late final ServerNotices notices;
 
-  /// The index refresher, then the chart cache's (the engine runs them after syncs, on its timer,
-  /// at an unlock and on pull to refresh).
+  /// The index refresher, the chart cache's, then the notices' (the engine runs them after syncs,
+  /// on its timer, at an unlock and on pull to refresh).
   late final List<AfterSyncRefresher> refreshers;
 
   static final _byStore = Expando<PatientServices>('PatientServices');
@@ -132,3 +143,184 @@ TeamIndexState? indexStateOf(PatientServices? s) => s?.index.state;
 /// Whether a chart the phone holds is only the index's partial copy.
 bool isPartialChart(LocalStore store, String patientId) =>
     chartMetaOf(store, store.canonicalPatient(patientId))?.partial ?? false;
+
+// ------------------------------------------------------------------------------------------------
+// Notices from the server
+// ------------------------------------------------------------------------------------------------
+
+/// "Someone kept the server's value; yours is in history" (phase 2).
+const noticeConflictResolved = 'conflict_resolved';
+
+/// "Your new card is the valid one" (design 10.4: two cards were made for one patient).
+const noticeCardKept = 'id_link_kept';
+
+/// To members who manage users: two new cards were made for one patient.
+const noticeCardConflict = 'id_link_conflict';
+
+/// A Program Admin decided a "Resolved by mistake" request (design 9.4).
+const noticeReversalDecided = 'problem_reversal_decided';
+
+/// The person's notices from the server (`GET /v1/team/notices`: kind, entity and record ID only),
+/// kept with the phone's own ([LocalStore.notices]), and read on the phone and on the server alike.
+///
+/// The server's notice IDs live in `kv` with the local notice each became and its entity (IDs only,
+/// no PHI), so a notice is stored once however often it is fetched. A notice the phone already
+/// made from a receipt (the same kind about the same record, a card that lost) is that notice, not
+/// a second one. A read on the phone reaches the server at the next contact; offline reads wait in
+/// `kv` by notice ID.
+class ServerNotices {
+  ServerNotices(this.store, this.client);
+
+  final LocalStore store;
+  final SineobexApi client;
+
+  /// Called after notices arrive or are read, so screens re-read.
+  void Function()? onChanged;
+
+  static const _mapKey = 'notices.server';
+  static const _queueKey = 'notices.readQueue';
+
+  Map<String, Map<String, Object?>> _map() {
+    final v = store.kv(_mapKey);
+    if (v == null || v.isEmpty) return {};
+    return {
+      for (final MapEntry(:key, :value) in (jsonDecode(v) as Map<String, Object?>).entries)
+        key: {...value! as Map<String, Object?>},
+    };
+  }
+
+  void _saveMap(Map<String, Map<String, Object?>> m) => store.setKv(_mapKey, jsonEncode(m));
+
+  List<String> _queue() {
+    final v = store.kv(_queueKey);
+    return v == null || v.isEmpty ? [] : (jsonDecode(v) as List<Object?>).cast<String>();
+  }
+
+  void _saveQueue(List<String> q) => store.setKv(_queueKey, jsonEncode(q));
+
+  String? _serverIdOf(String localId) =>
+      _map().entries.where((e) => e.value['local'] == localId).map((e) => e.key).firstOrNull;
+
+  /// Whether [localId] came from the server.
+  bool fromServer(String localId) => _serverIdOf(localId) != null;
+
+  /// The entity a server notice names (`id_link`, `problem`, `encounter_note`, ...); null for the
+  /// phone's own notices.
+  String? entityOf(String localId) {
+    final id = _serverIdOf(localId);
+    return id == null ? null : _map()[id]?['entity'] as String?;
+  }
+
+  /// The person read [localId]: read here now, and on the server at the next contact.
+  void markRead(String localId) {
+    store.transaction(() {
+      store.markNoticeRead(localId);
+      final id = _serverIdOf(localId);
+      final queue = _queue();
+      if (id != null && !queue.contains(id) && _map()[id]?['acked'] != true) _saveQueue([...queue, id]);
+    });
+    onChanged?.call();
+  }
+
+  /// Sends the reads made here, then fetches the server's notices. Nothing while the store is frozen
+  /// (a removal's hand-over: the team's data is no longer this person's to download).
+  Future<void> sync() async {
+    if (store.frozen) return;
+    if (!await _sendReads()) return;
+    final fetched = await client.listNotices();
+    var added = false;
+    store.transaction(() {
+      final map = _map();
+      final local = {for (final n in store.notices()) n.id: n};
+      final linked = {for (final e in map.values) e['local']};
+      for (final n in fetched) {
+        final entry = map[n.id];
+        if (entry != null) {
+          // Read elsewhere (the portal): read here too.
+          final mine = local[entry['local']];
+          if (n.readAt != null && mine != null && mine.readAt == null) store.markNoticeRead(mine.id);
+          if (n.readAt != null) entry['acked'] = true;
+          continue;
+        }
+        if (n.readAt != null) continue;
+        final same = local.values
+            .where((l) => l.kind == n.kind && l.recordId == n.recordId && n.recordId != null && !linked.contains(l.id))
+            .firstOrNull;
+        final id =
+            same?.id ?? store.addNotice(n.kind, recordId: n.recordId, patientId: _patientOf(n.entity, n.recordId));
+        linked.add(id);
+        map[n.id] = {'local': id, 'entity': n.entity, 'acked': false};
+        added = true;
+      }
+      _saveMap(map);
+    });
+    if (added) onChanged?.call();
+  }
+
+  /// Marks on the server what was read here. False when the phone lost the network part way (what
+  /// is left stays queued).
+  Future<bool> _sendReads() async {
+    final map = _map();
+    final read = {
+      for (final n in store.notices())
+        if (n.readAt != null) n.id,
+    };
+    final pending = {
+      ..._queue(),
+      for (final MapEntry(:key, :value) in map.entries)
+        if (value['acked'] != true && read.contains(value['local'])) key,
+    };
+    for (final id in pending) {
+      try {
+        await client.markNoticeRead(noticeId: id);
+      } on NetworkException {
+        return false;
+      } on ApiException catch (e) {
+        if (e.status != 404) rethrow;
+      }
+      store.transaction(() {
+        final m = _map();
+        m[id]?['acked'] = true;
+        _saveMap(m);
+        _saveQueue([
+          for (final q in _queue())
+            if (q != id) q,
+        ]);
+      });
+    }
+    return true;
+  }
+
+  /// The patient a notice is about, when the phone holds its record (a card, a problem).
+  String? _patientOf(String? entity, String? recordId) {
+    if (recordId == null) return null;
+    if (entity == entityIdLink) {
+      final row = store.database.select('SELECT patient_id FROM id_links WHERE id = ?', [recordId]).firstOrNull;
+      if (row != null) return store.canonicalPatient(row['patient_id']! as String);
+    }
+    final p = store.record(recordId)?.patientId;
+    return p == null ? null : store.canonicalPatient(p);
+  }
+}
+
+/// Pulls the person's notices after syncs (at most every [minInterval]), on the controller's timer,
+/// at an unlock and on pull to refresh, sending the reads made here first.
+class NoticesRefresher implements AfterSyncRefresher {
+  NoticesRefresher(this.notices, {this.minInterval = const Duration(minutes: 2), DateTime Function()? now})
+    : _now = now ?? DateTime.now;
+
+  final ServerNotices notices;
+  final Duration minInterval;
+  final DateTime Function() _now;
+  DateTime? _last;
+
+  @override
+  Future<void> refresh(RefreshReason reason) async {
+    if (notices.store.frozen) return;
+    final now = _now();
+    final last = _last;
+    if (reason == RefreshReason.afterSync && last != null && now.difference(last) < minInterval) return;
+    _last = now;
+    await notices.sync();
+  }
+}
