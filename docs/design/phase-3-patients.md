@@ -26,7 +26,7 @@ this table is their state. Update it as units land.
 | S4 ID links, corrections, reviews, problem admin | Done | group handshake, online ID cards, corrections and declined amendments, field reviews, problem reversals; migration 0014 | — |
 | P0 Phone core | Done | `apps/mobile/lib/patients/{access,recognisable,id_link_token,dob,display,normalize,trigram,matching,match_constants}.dart`, all vectors pass | — |
 | W0 Portal shell | Done | navigation, `lib/{labels,dob}.ts`, `/c`, shared e2e helpers | — |
-| **P1 Phone sync layer** | **In progress**: store v2, engine and the fake's S1 rules and read routes committed in an agent's worktree, full CI pending | — | All of row P1. The fake server must mirror S1's rules: the list is under "As built" below |
+| P1 Phone sync layer | Done | local DB v2 (`local_db.dart`), entity registry (`entities.dart`), store (`local_store.dart`: patient-side records, scopes, redirects, purge, notices, hooks), engine and controller refreshers, sign-out clearing; the fake with S1's rules and the read routes; `entities_test`, `local_db_test`, `patient_store_test`, `patient_rules_test`, `fake_reads_test` | Keep a kept chart's search rows on `clearServerData` (below) |
 | W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
 | **P2 Phone patients domain** | **In progress**, on P1's commits | — | All of row P2, including the phone half of the done-when (13.1) against the fake and the live API |
@@ -34,8 +34,7 @@ this table is their state. Update it as units land.
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
 | Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
 
-Order from here: P1 lands, then P2 (already building on P1's commits); P3 from P2's interfaces;
-the review last.
+Order from here: P2 (building on P1); P3 from P2's interfaces; the review last.
 
 ### As built: where the code departs from, or reads, this design
 
@@ -124,6 +123,20 @@ Later units build on the code, not on the text above, where they differ.
   (`POST /v1/team/duplicates`) has no screen in phase 3: the PRD asks only for automatic flagging and
   the queue. A person with several phones gets a numbered wipe section per
   phone (found by W2; axe `landmark-unique`).
+- **Phone sync layer (P1).** `outbox.patient_id` (phase 2 encounters backfilled) makes "local work
+  keeps its chart" one indexed query; `local_notices.field` lets a notice name its field;
+  `team_index.birth_year` is indexed. The store writes the kept-both, nothing-to-recognise,
+  possible-duplicate and retracted-problem notices itself; ID link outcomes are P2's, through
+  `onConfirmed`. Each `onConfirmed` hook runs in its own savepoint and a hook that throws is
+  swallowed, so a confirmation never stops the queue. `replaceRejected` deletes a refused create's
+  local record; a refused set falls back to the server's value. `clearServerData` also clears the
+  `index.*` keys and keeps `intake.draft`; the stale marker is `serverCopiesStale:<file basename>`.
+  The fake's index version is a counter that moves whenever the content changes. Decided after P1:
+  a chart kept by local work keeps its search rows when server data is cleared (2.9-7 read that way:
+  a worker must find offline the patient they have unsynced work for, and names go with their chart
+  as they do in the purge). A recorded legal name is admin-only even on the creating phone before
+  sync (PRD: "Staff edit every field except legal name and date of birth"). A problem note whose
+  problem isn't on the phone has no `patient_id` and follows phase 2's purge after confirmation.
 - **Portal patients (W1).** Search and the ID card panel need JavaScript: their actions run in the
   browser so earlier results and card links never travel back in a request body. Card links reach
   the browser only through `GET /id-link` (logged), never with the chart; since W1's review, chart
