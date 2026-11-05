@@ -57,6 +57,8 @@ interface RouteCase {
   method: 'GET' | 'POST';
   path: string;
   body?: unknown;
+  /** Tells two cases of one route apart in the test name. */
+  label?: string;
   /** Permissions that pass the route's own check. */
   allowed: Permission[];
   /** Permissions that don't; the refusal is logged. */
@@ -81,9 +83,19 @@ const ROUTES: RouteCase[] = [
     method: 'POST',
     path: '/v1/patients/match',
     body: { preferredName: 'Smitty', surface: 'phone' },
-    allowed: ['patients.edit'],
+    allowed: ['patients.view', 'patients.edit'],
     refused: ['patients.view', 'billing.view_codes'],
     logged: { permission: 'patients.edit' },
+  },
+  {
+    // The candidates are names and births: a role refused search is refused them too (review S5).
+    label: 'without patients.view',
+    method: 'POST',
+    path: '/v1/patients/match',
+    body: { preferredName: 'Smitty', surface: 'phone' },
+    allowed: ['patients.view', 'patients.edit'],
+    refused: ['patients.edit', 'checkins.create'],
+    logged: { permission: 'patients.view' },
   },
   {
     method: 'GET',
@@ -134,17 +146,36 @@ const ROUTES: RouteCase[] = [
   {
     method: 'GET',
     path: '/v1/team/field-reviews?status=open',
-    allowed: ['patients.edit'],
+    allowed: ['patients.view', 'patients.edit'],
     refused: ['patients.view'],
     logged: { anyOf: ['patients.edit', 'patients.correct_identity'] },
+  },
+  {
+    // The list carries the chart's values and the patient (review S5).
+    label: 'without patients.view',
+    method: 'GET',
+    path: '/v1/team/field-reviews?status=open',
+    allowed: ['patients.view', 'patients.edit'],
+    refused: ['patients.edit', 'patients.correct_identity'],
+    logged: { permission: 'patients.view' },
   },
   {
     method: 'POST',
     path: `/v1/team/field-reviews/${id()}/decision`,
     body: { keep: 'current', baseVersion: 1 },
-    allowed: ['patients.correct_identity'],
+    allowed: ['patients.view', 'patients.correct_identity'],
     refused: ['patients.view', 'billing.view_codes'],
     logged: { anyOf: ['patients.edit', 'patients.correct_identity'] },
+  },
+  {
+    // The answer is the decided review, with the chart's values.
+    label: 'without patients.view',
+    method: 'POST',
+    path: `/v1/team/field-reviews/${id()}/decision`,
+    body: { keep: 'current', baseVersion: 1 },
+    allowed: ['patients.view', 'patients.edit'],
+    refused: ['patients.edit'],
+    logged: { permission: 'patients.view' },
   },
   {
     method: 'GET',
@@ -256,7 +287,7 @@ describe('phase 3 routes', () => {
     h.request(r.path, { method: r.method, token, teamId, ...(r.body === undefined ? {} : { json: r.body }) });
 
   for (const r of ROUTES) {
-    const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}');
+    const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}') + (r.label ? ` (${r.label})` : '');
     it(`${r.method} ${route} refuses a role without what it needs, and logs it`, async () => {
       const member = await memberWith(h, teamId, r.refused);
       const mark = await auditMark(h);

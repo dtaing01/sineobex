@@ -203,7 +203,8 @@ export function registerPatientRoutes(app: App, deps: Deps) {
   });
 
   app.openapi(matchRoute, async (c) => {
-    const scope = await teamScope(c, deps, { permissions: ['patients.edit'] });
+    // The candidates are names and births: a role refused search is refused them here too.
+    const scope = await teamScope(c, deps, { permissions: ['patients.view', 'patients.edit'] });
     return c.json(await matchPatients(scope, c.req.valid('json')), 200);
   });
 
@@ -236,15 +237,16 @@ export function registerPatientRoutes(app: App, deps: Deps) {
     return c.json(await correctIdentity(scope, c.req.valid('param').patientId, c.req.valid('json')), 200);
   });
 
+  // Both answer with the chart's values, so both need patients.view as well as a key that decides.
   app.openapi(reviewsRoute, async (c) => {
-    const scope = await teamScope(c, deps);
+    const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
     await scope.requireAny(['patients.edit', 'patients.correct_identity'], c.req.routePath);
     return c.json(await listFieldReviews(scope, c.req.valid('query')), 200);
   });
 
   app.openapi(decideReviewRoute, async (c) => {
     // The review's own `needs`, and a recent sign-in for identity fields, are checked once it is loaded.
-    const scope = await teamScope(c, deps);
+    const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
     await scope.requireAny(['patients.edit', 'patients.correct_identity'], c.req.routePath);
     return c.json(await decideFieldReview(scope, c.req.valid('param').reviewId, c.req.valid('json')), 200);
   });
