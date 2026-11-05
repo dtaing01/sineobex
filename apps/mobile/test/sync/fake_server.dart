@@ -1252,7 +1252,12 @@ class FakeSyncServer {
       'idLinks': [
         for (final l in _activeLinks(p.id)) {'id': l.id, 'effectiveAt': _iso(l.effectiveAt)},
       ],
-      'duplicate': _hint(p.id),
+      // The reviewer's Not sure note is free text, which can hold a legal name (D40): it shows
+      // from the chart only (review finding P7).
+      'duplicate': switch (_hint(p.id)) {
+        final hint? => {'status': hint['status']},
+        null => null,
+      },
       'reviews': _openReviewFields(p.id).toList()..sort(),
       'versions': {
         for (final f in ['preferredName', 'visualDescriptor', 'usualArea', 'allergyScreen'])

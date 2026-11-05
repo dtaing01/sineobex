@@ -76,6 +76,24 @@ void main() {
       expect(entry.versions.preferredName, 1);
     });
 
+    test('a Not sure pair shows in the index without its note; the chart keeps the note', () async {
+      // Review finding P7: the note is free text, which can hold a legal name (D40).
+      final p = chart();
+      final other = server.seedPatient(preferredName: 'Demo Wren');
+      server.pairs.add(
+        FakePair('f1000000-0000-4000-8000-000000000001', p, other, 0.9, ['staff'])
+          ..status = 'not_sure'
+          ..note = 'Demo: Ysolde, check the card',
+      );
+      final raw = await server.handle(alex, team, 'POST', '/v1/patients/index', const <String, Object?>{});
+      expect(jsonEncode(raw), isNot(contains('check the card')));
+      final index = await api.downloadTeamIndex(body: const TeamIndexRequest());
+      final entry = index.entries.firstWhere((e) => e.patientId == p);
+      expect([entry.duplicate?.status, entry.duplicate?.note], [DuplicateHintStatus.notSure, null]);
+      final open = await api.getPatient(patientId: p);
+      expect(open.duplicate?.note, 'Demo: Ysolde, check the card');
+    });
+
     test('`have` the current version answers unchanged; any change moves it', () async {
       final p = chart();
       final v1 = (await api.downloadTeamIndex(body: const TeamIndexRequest())).version;
