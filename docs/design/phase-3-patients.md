@@ -32,7 +32,7 @@ this table is their state. Update it as units land.
 | P2 Phone patients domain | Done | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | — |
 | P3 Phone screens | Done | `apps/mobile/lib/features/patients/**` (Patients tab, intake and edit, duplicate panel and sheet, profile, ID card, problem, add problem, field review sheet), tab shell and wiring (`app.dart`, `app_providers.dart`), Needs attention texts and notices, Home line, `allergy_badge`, `status_chip`, `birth_field`; widget tests in three themes, at 200% text and 320 wide | Field review decision and History go through P2 wrappers, with fake routes (review list) |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
-| **Review** | **In progress**: two reviews reported (table below); the screens review is running | — | Fix units R1, R2, R3, then R5; each finding with a regression test |
+| **Review** | **In progress**: all three reviews reported (tables below) | — | Fix units R1, R2, R3, R5; each finding with a regression test |
 
 Order from here: the review and its fixes, then the phase closes (section 15 row D).
 
@@ -211,10 +211,27 @@ is still running. Every fix lands with a regression test that fails with the fix
 | P10 | Low | Field review decision and History are called from the screens, bypassing the domain layer, and the fake has neither route | Domain wrappers (R3), fake routes (R1), screens use them (R5) | R1, R3, R5 |
 | W1 | Low | The reviews queue can't name its patient (field review entries carry IDs only) | `FieldReviewView` gains the projected patient summary; the portal names the patient | R2, coordinator |
 
+Screens review (at a29bde0; scratch tests R1–R12 in the coordinator's scratchpad, `zz_review_test.dart`):
+
+| # | Sev | Finding | Fix | Unit |
+|---|---|---|---|---|
+| V1 | High | A frozen store still shows a chart (legal name included) with nothing logged: the profile catches `ChartingPaused` and then renders `read()`; a stale Opened-recently row opens it | The profile shows the frozen message and never reads; screens clear lists when the store freezes; `read()` refuses while frozen | R5, R3 |
+| V2 | Medium | An edit form open at a lock, sign-out or app kill leaves `records.open = 1` for good, so the chart (legal name included) is never purged and keeps re-downloading | "Being edited" is not durable: reset on store open, closed before the store closes | R3 |
+| V3 | Medium | A lock mid-intake loses everything typed (11.1 promises a draft) | Save the draft as the form changes and before a lock | R5 |
+| V4 | Medium | After Declines, Back offers to keep a draft, which then holds the person's details (11.2: no record) | Declines discards without asking; `saveDraft` refuses a declined intake | R5, R3 |
+| V5 | Low | The legal given name reaches the draft as the pre-filled preferred name (and search text through "New patient with this name") | A pre-filled, unedited preferred name stays out of the draft | R5 |
+| V6 | Medium | Result rows, problem rows and code results are buttons with no tap action for Switch Access and Voice Access | `onTap` on each `Semantics` | R5 |
+| V7 | Low | "Add what you typed" drops fields a list-only chart can't take and says "Added" | Keep them in the banner until the full chart opens; clear only on success | R5 |
+| V8 | Low | A birth typed on a list-only chart is dropped while the screen says "Saved" | Disable the field, or refuse with the needs-full-chart message | R5 |
+| V9 | Low | "Update and save" isn't atomic: a retry queues street names twice; no length checks when adding | One transaction; check lengths when added | R5 |
+| V10 | Low | With two likely matches the sheet asks about one and records both as "Not them" | Dismiss only the one asked about | R5 |
+| V11 | Low | The note counter announces every keystroke past 90% | Announce once on crossing 90% and at the limit | R5 |
+| V12 | Low | On lock, a screen under another rebuilds against the closed database and throws | Builders return nothing when the store changed | R5 |
+
 Units: **R1** server sync and the fake (`services/api/src/sync/**`, `apps/mobile/test/sync/fake_server.dart`);
 **R2** server patients, routes and contract (`services/api/src/patients/**`, `routes/{patients,audit-log,field-reviews}`);
 **R3** phone sync and domain (`apps/mobile/lib/{sync,patients,auth,security}/**`, Android `MainActivity.kt`);
-**R5** phone screens, after the screens review.
+**R5** phone screens (`apps/mobile/lib/features/**`), the V findings and P10's screen side.
 
 ### Questions that need a person (each has a default in code, marked PLAN-OPEN)
 
