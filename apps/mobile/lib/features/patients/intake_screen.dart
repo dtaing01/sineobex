@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ import '../../patients/patient_providers.dart';
 import '../../patients/patient_repository.dart';
 import '../../patients/patient_search.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
+import '../../sync/sync_controller.dart' show SyncController;
 import 'duplicate_panel.dart';
 import 'patient_labels.dart';
 import 'patient_row.dart';
@@ -128,23 +130,62 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   /// The draft this form continues had a legal name, which a draft never keeps.
   bool _legalNameDropped = false;
 
+  // ---- the draft (11.1) ----
+
+  /// "What do they go by?" holds what the form filled in (the legal given name, or a search's
+  /// text), not what the worker typed: either may be a legal name, so a draft leaves it out.
+  bool _preferredFilledIn = false;
+
+  /// The draft this form continues left out a name filled in for the worker.
+  bool _preferredDropped = false;
+
+  /// Saved as the form changes, and when the app leaves the screen, so a lock (idle, or after 30
+  /// seconds in the background) or a killed app loses nothing typed.
+  Timer? _autosave;
+  static const _draftQuiet = Duration(seconds: 1);
+  late final SyncController _sync;
+  AppLifecycleListener? _lifecycle;
+
+  /// What this form last wrote to the draft; null until it writes one.
+  String? _saved;
+
+  /// Created, discarded, closed as declined, or left for an existing chart: no draft from here on.
+  bool _finished = false;
+
   PatientServices get _s => widget.services;
   bool get _isEdit => widget.editing != null;
 
   @override
   void initState() {
     super.initState();
+    _sync = ref.read(syncControllerProvider);
     if (_isEdit) {
       _loadForEdit();
-    } else if (widget.start?.fromDraft ?? false) {
-      _loadDraft();
-    } else if (widget.start?.name case final name?) {
-      _preferred.text = name;
+    } else {
+      if (widget.start?.fromDraft ?? false) {
+        _loadDraft();
+      } else if (widget.start?.name case final name?) {
+        _preferred.text = name;
+        _preferredFilledIn = true;
+      }
+      for (final c in _textControllers) {
+        c.addListener(_draftChanged);
+      }
+      _lifecycle = AppLifecycleListener(onHide: _saveDraftNow);
     }
+  }
+
+  /// Every state change of a new intake may change the draft.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _draftChanged();
   }
 
   @override
   void dispose() {
+    _lifecycle?.dispose();
+    _saveDraftNow();
     if (_editing) {
       try {
         _s.patients.finishEditing(widget.editing!);
@@ -222,6 +263,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     _notice = PrivacyNoticeDecision.values.where((n) => n.name == d['notice']).firstOrNull ?? _notice;
     _noticeReason.text = text('noticeReason');
     _preferred.text = text('preferred');
+    _preferredDropped = d[_draftPreferredDropped] == true;
     _aliases.addAll([...?(d['aliases'] as List<Object?>?)?.whereType<String>()]);
     _legalNameDropped = d[PatientRepository.draftLegalNameDropped] == true;
     _birth = BirthEntry.fromDraft(d['birth'], todayOf(ref));
@@ -246,21 +288,30 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   bool get _legalNameTyped => _given.text.trim().isNotEmpty || _family.text.trim().isNotEmpty;
 
+  /// "What do they go by?" holds a name the form filled in and the worker hasn't changed.
+  bool get _preferredWasFilledIn => _preferredFilledIn && _preferred.text.trim().isNotEmpty;
+
+  /// Set in a saved draft when it left out a name filled in for the worker, so the form asks again.
+  static const _draftPreferredDropped = 'preferredDropped';
+
   /// The draft: what was typed, kept in the encrypted database (11.1), never in plain storage. The
   /// legal name travels only under [PatientRepository.draftLegalKeys], which `saveDraft` leaves out
   /// (design 2.9-11: the phone keeps a legal name only in a chart), marking the draft so the form
-  /// asks for it again.
+  /// asks for it again. A name the form filled in (from the legal given name, or from a search) may
+  /// be a legal name too, so it stays out unless the worker changed it, and the draft says so.
   Map<String, Object?> _draft() => {
     'consent': _consent?.name,
     'method': _method,
     'unable': _unable?.name,
     'notice': _notice.name,
     'noticeReason': _noticeReason.text,
-    'preferred': _preferred.text,
+    'preferred': _preferredWasFilledIn ? '' : _preferred.text,
+    if (_preferredWasFilledIn || (_preferredDropped && _preferred.text.trim().isEmpty)) _draftPreferredDropped: true,
     'aliases': _aliases,
     // Only under these keys, which saveDraft leaves out (marking the draft instead).
     'legalGiven': _given.text,
     'legalFamily': _family.text,
+    if (_legalNameDropped && !_legalNameTyped) PatientRepository.draftLegalNameDropped: true,
     'birth': _birth.toDraft(),
     'descriptor': _descriptor.text,
     'area': _area.text,
@@ -275,9 +326,24 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     'card': _card.name,
   };
 
+  List<TextEditingController> get _textControllers => [
+    _preferred,
+    _aliasInput,
+    _given,
+    _family,
+    _descriptor,
+    _area,
+    _livingOther,
+    _substance,
+    _reaction,
+    _noticeReason,
+  ];
+
+  /// Something worth a draft: typed text (a name the form filled in doesn't count), a list item, a
+  /// birth or a choice. Consent alone is a choice: an Agrees with nothing else is still kept.
   bool get _typedAnything =>
       [
-        _preferred,
+        if (!_preferredFilledIn) _preferred,
         _aliasInput,
         _given,
         _family,
@@ -293,6 +359,48 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _consent != null ||
       _living != null ||
       _language != null;
+
+  /// A person who declines is not recorded (11.2), so neither is a draft of their details.
+  bool get _declined => _consent == _Consent.declines;
+
+  /// This form continues the draft, or wrote it.
+  bool get _ownsDraft => (widget.start?.fromDraft ?? false) || _saved != null;
+
+  void _draftChanged() {
+    if (_isEdit || _finished) return;
+    _autosave?.cancel();
+    _autosave = Timer(_draftQuiet, _saveDraftNow);
+  }
+
+  /// Writes the draft now, if it changed; a declined intake's, or an empty one this form owns, goes.
+  /// Never into a database a lock has closed, nor while a hand-over has frozen the store.
+  void _saveDraftNow() {
+    _autosave?.cancel();
+    _autosave = null;
+    if (_isEdit || _finished || !servicesOpen(_sync, _s) || _s.store.frozen) return;
+    if (_declined || !_typedAnything) {
+      if (_ownsDraft && _saved != '') {
+        _s.patients.discardDraft();
+        _saved = '';
+      }
+      return;
+    }
+    final draft = _draft();
+    final key = jsonEncode(draft);
+    if (key == _saved) return;
+    _s.patients.saveDraft(draft);
+    _saved = key;
+  }
+
+  /// No draft from here on: the patient was created, the intake discarded or declined, or the
+  /// worker went to the existing chart. [discard] deletes the draft this form continued or wrote
+  /// (never another intake's).
+  void _finish({bool discard = false}) {
+    _autosave?.cancel();
+    _autosave = null;
+    if (discard && _ownsDraft) _s.patients.discardDraft();
+    _finished = true;
+  }
 
   // ---------------------------------------------------------------------------------------------
   // The duplicate check (8.1)
@@ -365,7 +473,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       yes: 'Open the chart',
     );
     if (!yes || !mounted) return;
-    _s.patients.discardDraft();
+    _finish(discard: true);
     context.pushReplacement('/patients/${p.patientId}', extra: typed.isEmpty ? null : typed);
   }
 
@@ -481,6 +589,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           matchCheck: run?.matchCheck(dismissed: _dismissed),
         ),
       );
+      // The create took the draft with it.
+      _finish();
       if (!mounted) return;
       showDone(context, result.cardWaitsForClock ? 'Saved. Make the card once the phone’s clock is right.' : 'Saved');
       context.pushReplacement('/patients/${result.patientId}');
@@ -583,17 +693,28 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       if (mounted) context.pop();
       return;
     }
-    if (!_typedAnything) {
+    // Declines: no record and no draft (11.2), as Close without saving. Nothing typed: nothing kept.
+    if (_declined || !_typedAnything) {
+      _finish(discard: true);
       if (mounted) context.pop();
       return;
     }
+    final legal = _legalNameTyped;
+    final filledIn = _preferredWasFilledIn;
+    final leftOut = legal && filledIn
+        ? ' The legal name, and the name filled in from it, aren’t kept in a draft: ask for them again when you '
+              'continue.'
+        : legal
+        ? ' The legal name isn’t kept in a draft: ask for it again when you continue.'
+        : filledIn
+        ? ' The name filled in for you isn’t kept in a draft: ask for it again when you continue.'
+        : '';
     final choice = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Keep this as a draft?'),
         content: Text(
-          'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.'
-          '${_legalNameTyped ? ' The legal name isn’t kept in a draft: ask for it again when you continue.' : ''}',
+          'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.$leftOut',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Discard')),
@@ -603,9 +724,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     );
     if (choice == null || !mounted) return;
     if (choice) {
-      _s.patients.saveDraft(_draft());
+      _saveDraftNow();
+      _finish();
     } else {
-      _s.patients.discardDraft();
+      _finish(discard: true);
     }
     if (mounted) context.pop();
   }
@@ -843,7 +965,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         WideButton(
           label: 'Close without saving',
           onPressed: () {
-            _s.patients.discardDraft();
+            _finish(discard: true);
             context.pop();
           },
         ),
@@ -951,8 +1073,20 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           focusNode: _preferredFocus,
           enabled: _editable('preferredName'),
           helper: _editable('preferredName') ? null : _needsFull,
+          // The worker's own words from here on: a draft keeps them.
+          onChanged: (_) {
+            if (_preferredFilledIn) setState(() => _preferredFilledIn = false);
+          },
         ),
       ),
+      if (_preferredDropped && _preferred.text.trim().isEmpty) ...[
+        const SizedBox(height: FieldSpace.s2),
+        const StatusBanner(
+          icon: LucideIcons.info,
+          tone: ChipTone.info,
+          text: 'The name they go by was filled in for you, so the draft didn’t keep it. Ask for it again.',
+        ),
+      ],
       const SizedBox(height: FieldSpace.s4),
       Semantics(header: true, child: Text('Street names', style: Theme.of(context).textTheme.titleMedium)),
       const SizedBox(height: FieldSpace.s2),
@@ -1005,7 +1139,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           if (has) return;
           // The given name fills "What do they go by?" when that is empty (11.1 #4).
           if (!_isEdit && _preferred.text.trim().isEmpty && _given.text.trim().isNotEmpty && !_givenFocus.hasFocus) {
-            setState(() => _preferred.text = _given.text.trim());
+            setState(() {
+              _preferred.text = _given.text.trim();
+              _preferredFilledIn = true;
+            });
           }
           unawaited(_check());
         },

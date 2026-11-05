@@ -204,6 +204,147 @@ void main() {
     handle.dispose();
   });
 
+  group('the draft is kept as the form changes, never with a legal name (V3, V4, V5)', () {
+    Future<AppHarness> newIntake(WidgetTester tester) async {
+      final h = await signIn(tester);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      return h;
+    }
+
+    Future<void> lockAndUnlock(WidgetTester tester, AppHarness h) async {
+      await tester.runAsync(h.session.lock);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      await enter(tester, 'PIN', '482913');
+      await tapText(tester, 'Unlock');
+      await tester.runAsync(h.sync.ready);
+      await settle(tester);
+    }
+
+    Future<void> typeRook(WidgetTester tester) async {
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await type(tester, 'legalGiven', 'Demo Rookwood');
+      await type(tester, 'visualDescriptor', 'Demo: scar over left eye');
+    }
+
+    Future<void> expectRookOffered(WidgetTester tester, AppHarness h) async {
+      final draft = h.patients.patients.draft()!;
+      expect(draft['preferred'], 'Demo Rook');
+      expect(draft['descriptor'], 'Demo: scar over left eye');
+      expect(jsonEncode(draft), isNot(contains('Rookwood')));
+      expect(draft[PatientRepository.draftLegalNameDropped], isTrue);
+      await openPatientsTab(tester);
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      await tapOn(tester, find.text('Continue'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Demo Rook');
+      expect((await fieldNamed(tester, 'legalGiven')).controller!.text, isEmpty);
+      await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
+      await expectScreenOk(tester);
+    }
+
+    testWidgets('an idle lock after a pause in typing loses nothing (V3)', (tester) async {
+      final h = await newIntake(tester);
+      await typeRook(tester);
+      await tester.pump(const Duration(seconds: 2));
+      await lockAndUnlock(tester, h);
+      await expectRookOffered(tester, h);
+    });
+
+    testWidgets('the app leaving the screen keeps it at once, before a lock (V3)', (tester) async {
+      final h = await newIntake(tester);
+      await typeRook(tester);
+      // Straight to another app, then back after the grace period: locked.
+      tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.runAsync(h.session.lock);
+      tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      await enter(tester, 'PIN', '482913');
+      await tapText(tester, 'Unlock');
+      await tester.runAsync(h.sync.ready);
+      await settle(tester);
+      await expectRookOffered(tester, h);
+    });
+
+    testWidgets('Declines: no draft of the person’s details, and Back asks nothing (V4)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await type(tester, 'visualDescriptor', 'Demo: scar over left eye');
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft(), isNotNull);
+      // Back up to the consent question; its Declines comes before the card's.
+      await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 3000);
+      await settle(tester);
+      await tapOn(tester, find.text('Declines').first);
+      await expectShown(tester, find.text('Close without saving'));
+      // What was kept as they typed goes as soon as they decline.
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft(), isNull);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.text('Keep this as a draft?'), findsNothing);
+      expect(h.patients.patients.draft(), isNull);
+      expect(find.text('Continue the patient you were adding?'), findsNothing);
+    });
+
+    testWidgets('a preferred name filled in from the legal given name stays out of the draft (V5)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'legalGiven', 'Delmar');
+      await type(tester, 'legalFamily', 'Quill');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Delmar');
+      await tester.pump(const Duration(seconds: 2));
+      expect(jsonEncode(h.patients.patients.draft()), isNot(contains('Delmar')));
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(
+        find.textContaining('The legal name, and the name filled in from it, aren’t kept in a draft'),
+        findsOneWidget,
+      );
+      await tapOn(tester, find.text('Keep draft'));
+      final draft = h.patients.patients.draft()!;
+      expect(jsonEncode(draft), isNot(contains('Delmar')));
+      expect(jsonEncode(draft), isNot(contains('Quill')));
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      await tapOn(tester, find.text('Continue'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, isEmpty);
+      await expectShown(
+        tester,
+        find.text('The name they go by was filled in for you, so the draft didn’t keep it. Ask for it again.'),
+      );
+      await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
+      await expectScreenOk(tester);
+    });
+
+    testWidgets('a search’s text carried into the form stays out of the draft until changed (V5)', (tester) async {
+      final h = await signIn(tester);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Quentin');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await settle(tester);
+      await tapOn(tester, find.text('New patient with this name'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Quentin');
+      await tapOn(tester, find.text('Agrees'));
+      await tester.pump(const Duration(seconds: 2));
+      expect(jsonEncode(h.patients.patients.draft()), isNot(contains('Quentin')));
+      // The worker's own words are kept.
+      await type(tester, 'preferredName', 'Quentin Q');
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft()!['preferred'], 'Quentin Q');
+    });
+  });
+
   testWidgets('declining ends the intake with nothing recorded', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await offlineIntake(tester);
