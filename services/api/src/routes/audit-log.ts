@@ -83,6 +83,22 @@ export function registerAuditRoutes(app: App, deps: Deps): void {
     const scope = await teamScope(c, deps, { permissions: ['team.view_audit'] });
     const q = c.req.valid('json');
     const page = await scope.tx(async (tx, audit) => {
+      // A patient's entries are those naming any record of its group (a merged record's events are
+      // the same person's), as the event's patient or among the patients it showed
+      // (details.patientIds: searches, match checks, listings; D33).
+      const group = q.patientId
+        ? [
+            ...new Set([
+              q.patientId.toLowerCase(),
+              ...(
+                await tx<{ id: string }[]>`
+                  select g.id from sineobex.patients p
+                  join sineobex.patients g on g.team_id = p.team_id and g.canonical_id = p.canonical_id
+                  where p.team_id = ${scope.team.teamId} and p.id = ${q.patientId}`
+              ).map((r) => r.id),
+            ]),
+          ]
+        : [];
       const rows = await tx<
         {
           id: string;
@@ -107,7 +123,11 @@ export function registerAuditRoutes(app: App, deps: Deps): void {
         left join sineobex.users u on u.id = e.actor_user_id
         where e.team_id = ${scope.team.teamId}
           ${q.actorUserId ? tx`and e.actor_user_id = ${q.actorUserId}` : tx``}
-          ${q.patientId ? tx`and e.patient_id = ${q.patientId}` : tx``}
+          ${
+            q.patientId
+              ? tx`and (e.patient_id = any (${group}::uuid[]) or (e.details -> 'patientIds') ?| ${group}::text[])`
+              : tx``
+          }
           ${q.actionPrefix ? tx`and e.action like ${`${q.actionPrefix}%`}` : tx``}
           ${q.from ? tx`and e.occurred_at >= ${q.from}` : tx``}
           ${q.to ? tx`and e.occurred_at < ${q.to}` : tx``}
