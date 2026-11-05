@@ -233,7 +233,11 @@ export function registerPatientRoutes(app: App, deps: Deps) {
   });
 
   app.openapi(correctionRoute, async (c) => {
-    const scope = await teamScope(c, deps, { permissions: ['patients.correct_identity'], recentAuth: true });
+    // The answer is the chart, so a role that can't read charts can't correct one either.
+    const scope = await teamScope(c, deps, {
+      permissions: ['patients.view', 'patients.correct_identity'],
+      recentAuth: true,
+    });
     return c.json(await correctIdentity(scope, c.req.valid('param').patientId, c.req.valid('json')), 200);
   });
 
