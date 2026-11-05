@@ -661,12 +661,12 @@ class PatientRepository {
     throw StateError('open the chart first');
   }
 
-  /// The edit form is on screen: the record stays open, so nothing is purged under it.
-  void startEditing(String patientId) => store.reopen(_recordOf(patientId));
+  /// The edit form is on screen: nothing is purged under it. Kept in memory only, so a lock, a
+  /// sign-out or a killed app ends it (screens review V2).
+  void startEditing(String patientId) => store.beginEditing(_recordOf(patientId));
 
-  /// The form closed (Update and save, or back): the record closes and the `opened` scope keeps the
-  /// chart for 24 hours.
-  void finishEditing(String patientId) => store.closeRecord(_recordOf(patientId));
+  /// The form closed (Update and save, or back): the `opened` scope keeps the chart for 24 hours.
+  void finishEditing(String patientId) => store.endEditing(_recordOf(patientId));
 
   /// **Update and save**: one `set` per changed field (sync names, values as the server takes them;
   /// text trimmed, empty text cleared), each with the version the form loaded, in one transaction.

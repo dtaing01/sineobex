@@ -502,6 +502,50 @@ void main() {
     expect(a.store.outbox(), hasLength(waiting));
   });
 
+  // Screens review V2: the edit form set records.open = 1 in the file and cleared it only from the
+  // form's dispose, after a lock or sign-out had closed the store, so the chart (legal name
+  // included) was never purged and kept downloading again.
+  group('an edit form keeps a chart only while it is open', () {
+    test('a form open when the app is killed keeps nothing once the store opens again', () async {
+      final a = phone(alex);
+      final p = server.seedPatient(preferredName: 'Del', legalName: {'given': 'Demo', 'family': 'Editkept'});
+      await a.services.patients.open(p);
+      a.services.patients.startEditing(p);
+      advance(const Duration(hours: 25));
+      a.store.purge();
+      expect(a.store.record(p), isNotNull, reason: 'the form is open: nothing is purged under it');
+      expect(a.services.charts.refreshable(), {p});
+
+      await a.restart(); // killed with the form open; finishEditing never ran
+      expect(a.store.localWorkPatients(), isEmpty);
+      expect(a.services.charts.refreshable(), isEmpty, reason: 'no download again for a form nobody has open');
+      a.store.purge();
+      expect(a.store.record(p), isNull);
+      expect(a.store.database.select("SELECT 1 FROM fields WHERE value_json LIKE '%Editkept%'"), isEmpty);
+    });
+
+    test('a file an earlier version left with a chart open is reset when the store opens', () async {
+      final a = phone(alex);
+      final p = server.seedPatient(preferredName: 'Del');
+      await a.services.patients.open(p);
+      a.store.database.execute('UPDATE records SET open = 1 WHERE id = ?', [p]);
+      await a.restart();
+      advance(const Duration(hours: 25));
+      a.store.purge();
+      expect(a.store.record(p), isNull);
+    });
+
+    test('closing the form lets the purge decide again', () async {
+      final a = phone(alex);
+      final p = server.seedPatient(preferredName: 'Del');
+      await a.services.patients.open(p);
+      a.services.patients.startEditing(p);
+      advance(const Duration(hours: 25));
+      a.services.patients.finishEditing(p);
+      expect(a.store.record(p), isNull);
+    });
+  });
+
   test('notices from the server: fetched once, stored once, read on the server; nothing while frozen', () async {
     final a = phone(alex), b = phone(blair);
     var fetches = 0, reads = 0;

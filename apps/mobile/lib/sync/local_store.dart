@@ -346,7 +346,12 @@ class LocalStore {
     Uuid? uuid,
   }) : _paused = chartingPaused ?? (() => false),
        _now = now ?? DateTime.now,
-       _uuid = uuid ?? const Uuid(goptions: GlobalOptions(CryptoRNG()));
+       _uuid = uuid ?? const Uuid(goptions: GlobalOptions(CryptoRNG())) {
+    // An edit form is never open in a store that just opened (screens review V2): a file an earlier
+    // version left with a patient-side record open, after a lock, a sign-out or a killed app, would
+    // otherwise keep that chart, legal name included, from the purge for good.
+    _local.db.execute('UPDATE records SET open = 0 WHERE open = 1 AND patient_id IS NOT NULL');
+  }
 
   final LocalDatabase _local;
   final String userId;
@@ -884,6 +889,21 @@ class LocalStore {
   }
 
   void reopen(String recordId) => _db.execute('UPDATE records SET open = 1 WHERE id = ?', [recordId]);
+
+  /// Patient-side records with an edit form open on them, in memory only (screens review V2): the
+  /// editing ends with this store, so a lock, a sign-out, a team switch or a killed app never
+  /// leaves a chart kept from the purge by a form nobody has open. (An encounter or note stays open
+  /// in the file until Save & Close, phase 2's rule; a patient's edit form saves as it goes.)
+  final _editing = <String>{};
+
+  /// An edit form is open on [recordId]: its patient's chart is local work until [endEditing].
+  void beginEditing(String recordId) => _editing.add(recordId);
+
+  /// The form closed: what it kept may be purged now.
+  void endEditing(String recordId) {
+    _editing.remove(recordId);
+    purge();
+  }
 
   // ---- reading ----
 
@@ -1833,7 +1853,7 @@ class LocalStore {
   // ---- purge ----
 
   /// Patients someone is working on here: a change waiting (or refused, or in conflict) that is
-  /// about them, and a record of theirs, or an encounter on them, open here.
+  /// about them, a record of theirs on an edit form, and an encounter on them open here.
   Set<String> localWorkPatients() => {
     for (final r in _db.select(
       "SELECT patient_id AS p FROM outbox WHERE state <> 'superseded' AND patient_id IS NOT NULL "
@@ -1842,6 +1862,10 @@ class LocalStore {
       "WHERE r.entity = 'encounter' AND r.open = 1 AND f.field = 'patientId' AND json_type(f.value_json) = 'text'",
     ))
       r['p'] as String,
+    for (final id in _editing)
+      if (_db.select('SELECT patient_id FROM records WHERE id = ?', [id]).firstOrNull?['patient_id']
+          case final String p)
+        p,
   };
 
   /// Whether [patientId]'s chart is in use, given the patients in use: theirs, or their survivor's.
