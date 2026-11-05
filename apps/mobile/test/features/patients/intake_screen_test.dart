@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
+import 'package:sineobex_field/patients/patient_repository.dart' show PatientRepository;
 import 'package:sineobex_field/sync/local_store.dart';
 
 import 'patient_kit.dart';
@@ -190,8 +191,10 @@ void main() {
     await tapOn(tester, find.text('Keep draft'));
     final draft = h.patients.patients.draft()!;
     expect(draft['preferred'], 'Smitty');
-    // A legal name stays only in a chart (design 2.9-11), never in the draft.
+    // A legal name stays only in a chart (design 2.9-11), never in the draft: only that one was typed.
     expect(jsonEncode(draft), isNot(contains('Delmar')));
+    expect(draft.keys.toSet().intersection(PatientRepository.draftLegalKeys), isEmpty);
+    expect(draft[PatientRepository.draftLegalNameDropped], isTrue);
     await expectShown(tester, find.text('Continue the patient you were adding?'));
     await tapOn(tester, find.text('Continue'));
     expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Smitty');

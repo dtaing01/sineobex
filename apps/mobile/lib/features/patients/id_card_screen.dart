@@ -89,10 +89,8 @@ class _IdCardState extends ConsumerState<_IdCard> {
     }
   }
 
-  void _dismiss(LocalNotice n) {
-    _s.store.markNoticeRead(n.id);
-    _s.changed();
-  }
+  /// Read here now, and on the server at the next contact.
+  void _dismiss(LocalNotice n) => _s.notices.markRead(n.id);
 
   @override
   Widget build(BuildContext context) {
@@ -240,8 +238,6 @@ class _IdCardState extends ConsumerState<_IdCard> {
 }
 
 /// The notices of a card conflict (design 10.4 step 3), kind and card ID only.
-const noticeCardKept = 'id_link_kept';
-const noticeCardConflict = 'id_link_conflict';
 const _cardNoticeKinds = {noticeCardSuperseded, noticeCardKept, noticeCardConflict};
 
 /// One card as a sentence with an icon (design 10.4 step 1).

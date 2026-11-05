@@ -98,6 +98,11 @@ void main() {
     expect(h.copied.single, endsWith('#CCCCCCCCCCCCCCCCCCCCCC'));
     await tapOn(tester, find.text('Got it'));
     expect(message, findsNothing);
+    // Read on the phone, and on the server at the next contact.
+    await syncAndRefresh(tester, h);
+    final lost = h.server.notices.where((n) => n.kind == 'id_link_superseded').toList();
+    expect(lost, hasLength(1));
+    expect(lost.single.readAt, isNotNull);
     handle.dispose();
   });
 

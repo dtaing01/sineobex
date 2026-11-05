@@ -91,10 +91,8 @@ class NeedsAttentionScreen extends ConsumerWidget {
               _NoticeCard(
                 notice: n,
                 onOpen: _opener(context, n, services),
-                onDone: () {
-                  store!.markNoticeRead(n.id);
-                  services?.changed();
-                },
+                // Read here now, and on the server at the next contact.
+                onDone: () => services != null ? services.notices.markRead(n.id) : store!.markNoticeRead(n.id),
               ),
           ],
         ];
@@ -121,7 +119,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
 VoidCallback? _opener(BuildContext context, LocalNotice n, PatientServices? services) {
   if (services == null) return null;
   if (n.patientId case final patient?) return () => unawaited(context.push('/patients/$patient'));
-  if (n.kind == 'problem_reversal_decided' && n.recordId != null) {
+  if (n.kind == noticeReversalDecided && n.recordId != null) {
     final problem = services.problems.problem(n.recordId!);
     if (problem != null) {
       return () => unawaited(context.push('/patients/${problem.patientId}/problems/${problem.id}'));

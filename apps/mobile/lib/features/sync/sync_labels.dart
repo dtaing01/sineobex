@@ -91,6 +91,7 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   'id_link_kept' => 'Another new card was made for the same patient at about the same time. Yours is the valid one.',
   'id_link_conflict' => 'Two new cards were made for one patient. The newer one is the valid one.',
   'problem_reversal_decided' => 'A Program Admin answered your request about a problem marked Resolved by mistake.',
+  'conflict_resolved' => 'Someone chose the other value for a change you made. Yours stays in the record’s history.',
   _ => 'Something changed after it synced.',
 };
 

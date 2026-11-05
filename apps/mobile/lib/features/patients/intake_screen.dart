@@ -223,7 +223,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     _noticeReason.text = text('noticeReason');
     _preferred.text = text('preferred');
     _aliases.addAll([...?(d['aliases'] as List<Object?>?)?.whereType<String>()]);
-    _legalNameDropped = d['legalNameTyped'] == true;
+    _legalNameDropped = d[PatientRepository.draftLegalNameDropped] == true;
     _birth = BirthEntry.fromDraft(d['birth'], todayOf(ref));
     _descriptor.text = text('descriptor');
     _area.text = text('area');
@@ -246,9 +246,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   bool get _legalNameTyped => _given.text.trim().isNotEmpty || _family.text.trim().isNotEmpty;
 
-  /// The draft: what was typed, kept in the encrypted database (11.1), never in plain storage. Never
-  /// the legal name (design 2.9-11: the phone keeps a legal name only in a chart); only that one was
-  /// typed, so the form can ask for it again.
+  /// The draft: what was typed, kept in the encrypted database (11.1), never in plain storage. The
+  /// legal name travels only under [PatientRepository.draftLegalKeys], which `saveDraft` leaves out
+  /// (design 2.9-11: the phone keeps a legal name only in a chart), marking the draft so the form
+  /// asks for it again.
   Map<String, Object?> _draft() => {
     'consent': _consent?.name,
     'method': _method,
@@ -257,7 +258,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     'noticeReason': _noticeReason.text,
     'preferred': _preferred.text,
     'aliases': _aliases,
-    'legalNameTyped': _legalNameTyped,
+    // Only under these keys, which saveDraft leaves out (marking the draft instead).
+    'legalGiven': _given.text,
+    'legalFamily': _family.text,
     'birth': _birth.toDraft(),
     'descriptor': _descriptor.text,
     'area': _area.text,
