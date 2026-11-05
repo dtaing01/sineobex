@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/auth/session_controller.dart';
+import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
 import 'package:sineobex_field/sync/device_identity.dart';
@@ -38,6 +39,12 @@ void main() {
   RefresherFactory? refreshers;
   var refreshInterval = const Duration(minutes: 15);
 
+  /// Requests to these paths wait until their completer completes.
+  final holds = <String, Completer<void>>{};
+
+  /// Runs at sign-out right after the server's copies were cleared, before the session ends.
+  Future<void> Function()? afterClear;
+
   LocalUser me() {
     final all = demoUser(teams: 2);
     return LocalUser(
@@ -55,13 +62,13 @@ void main() {
       vault: vault,
       store: store,
       fetchMe: (_) async => me(),
-      localData: DeferredLocalData(() => sync),
+      localData: _AfterClear(DeferredLocalData(() => sync), () async => afterClear?.call()),
     );
     sync = SyncController(
       session: session,
       databaseDirectory: () async => dir.path,
       deviceStore: store,
-      teamApi: (teamId) => SineobexApi(Uplink(server.transportFor(userId, teamId), log: requests)),
+      teamApi: (teamId) => SineobexApi(_Held(Uplink(server.transportFor(userId, teamId), log: requests), holds)),
       deviceApi: SineobexApi(Uplink(server.transportFor('', ''), log: requests)),
       boot: boot,
       platform: RegisterDevicePlatform.android,
@@ -85,6 +92,8 @@ void main() {
     requests.clear();
     refreshers = null;
     refreshInterval = const Duration(minutes: 15);
+    holds.clear();
+    afterClear = null;
     server = FakeSyncServer(now: () => wall);
     store = MemorySecureStore();
     vaultStore = _HeldStore(store);
@@ -269,6 +278,74 @@ void main() {
     expect(firstSeen, [0]);
     expect(await store.read(marker), isNull);
     expect(sync.store!.unsynced().total, 1);
+  });
+
+  // Review P3: the open file was cleared in place, so an index page or a chart that arrived
+  // before the session closed it was written back, legal name and a new 24-hour scope included.
+  test('downloads still on their way at “Sign out anyway” write nothing back', () async {
+    // A field role, which holds the team index.
+    refreshers = (t) => patientRefreshers(
+      OpenTeam(
+        userId: t.userId,
+        teamId: t.teamId,
+        store: t.store,
+        api: t.api,
+        clock: t.clock,
+        permissions: FakeSyncServer.healthcareStaff.toList(),
+      ),
+      idLinkBaseUrl: 'http://localhost:3100',
+    );
+    sync.dispose();
+    await launch();
+    final p = server.seedPatient(preferredName: 'Del', legalName: {'given': 'Demo', 'family': 'Afterclear'});
+    await signIn();
+    await sync.refreshNow();
+    final services = PatientServices.of(sync.store!)!;
+    expect(services.index.state.present, isTrue);
+    sync.store!.createEncounter(kind: 'medical');
+    final key = session.databaseKey!;
+
+    // A new patient moves the index on; its page and a chart opened a moment ago are on their way.
+    server.seedPatient(preferredName: 'Quill', legalName: {'given': 'Demo', 'family': 'Afterclear'});
+    holds['/v1/patients/index'] = Completer<void>();
+    holds['/v1/patients/charts'] = Completer<void>();
+    final indexRun = sync.refreshNow().then<Object?>((_) => null, onError: (Object e) => e);
+    // A chart download that finds its database closed fails; it writes nothing.
+    final chartRun = services.charts
+        .fetch([p], reason: FetchChartsReason.opened, opened: true)
+        .then<void>((_) {}, onError: (Object _) {});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    Object? refreshError;
+    afterClear = () async {
+      // Both answers arrive after the clear, before the session has ended.
+      for (final h in holds.values) {
+        h.complete();
+      }
+      refreshError = await indexRun;
+      await chartRun;
+    };
+    await session.signOut(keepUnsynced: true);
+    expect(refreshError, isNull, reason: 'a refresher that finds its database closed fails quietly');
+
+    final db = LocalDatabase.open(LocalDatabase.fileFor(dir.path, userId, 'team-0'), key);
+    try {
+      int n(String sql) => db.db.select(sql).first.values.first! as int;
+      expect(
+        [
+          n('SELECT count(*) FROM team_index'),
+          n('SELECT count(*) FROM team_index_staging'),
+          n('SELECT count(*) FROM patient_names'),
+          n('SELECT count(*) FROM records WHERE patient_id IS NOT NULL'),
+          n('SELECT count(*) FROM cache_scopes'),
+          n("SELECT count(*) FROM kv WHERE key LIKE 'index.%'"),
+          n("SELECT count(*) FROM fields WHERE value_json LIKE '%Afterclear%'"),
+          n('SELECT count(*) FROM outbox'),
+        ],
+        [0, 0, 0, 0, 0, 0, 0, 1],
+      );
+    } finally {
+      db.close();
+    }
   });
 
   test('the open team’s refreshers run at open, after each sync, and on their own timer', () async {
@@ -655,6 +732,42 @@ void main() {
     expect(session.state, isA<SignedOut>());
     expect(server.devices[device]!.status, 'wiped');
   });
+}
+
+/// Holds each request to a path in [holds] until its completer completes (an answer still on its
+/// way).
+class _Held implements ApiTransport {
+  _Held(this.inner, this.holds);
+  final ApiTransport inner;
+  final Map<String, Completer<void>> holds;
+
+  @override
+  Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    await holds[path]?.future;
+    return inner.send(method, path, query: query, body: body);
+  }
+}
+
+/// [LocalData] that runs [after] once the server's copies are cleared, before the session ends.
+class _AfterClear implements LocalData {
+  _AfterClear(this.inner, this.after);
+  final LocalData inner;
+  final Future<void> Function() after;
+
+  @override
+  Future<bool> hasAny(String userId) => inner.hasAny(userId);
+  @override
+  Future<int?> unsynced(String userId, Uint8List key) => inner.unsynced(userId, key);
+  @override
+  Future<void> erase(String userId) => inner.erase(userId);
+  @override
+  Future<void> clearServerCopies(String userId, Uint8List key) async {
+    await inner.clearServerCopies(userId, key);
+    await after();
+  }
+
+  @override
+  Future<void> markServerCopiesStale(String userId) => inner.markServerCopiesStale(userId);
 }
 
 class _Refresher implements AfterSyncRefresher {

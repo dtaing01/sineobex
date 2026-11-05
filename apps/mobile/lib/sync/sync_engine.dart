@@ -232,8 +232,9 @@ class SyncEngine {
       if (store.frozen) return;
       try {
         await r.refresh(reason);
-      } on Exception {
-        // Best effort: what didn't download is asked for again later.
+      } on Object {
+        // Best effort: what didn't download is asked for again later. A refresher whose database
+        // closed while it waited (a lock, a sign-out) throws a StateError, which ends here too.
       }
     }
   }

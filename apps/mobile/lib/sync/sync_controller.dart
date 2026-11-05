@@ -701,14 +701,15 @@ class SyncController extends ChangeNotifier implements LocalData {
   /// Sign-out with the key in memory ("Log out anyway" included): the server's copies go from every
   /// team database of the user, the open one too, and local work stays (design 6.3, D20). A file
   /// that can't be opened now is marked, so the next open clears it first.
+  ///
+  /// The open file is closed first and cleared through a connection of its own, as the others are:
+  /// a download still on its way (an index page, a chart opened a moment ago) then finds its
+  /// connection closed and can't write the server's data back after the clear (review P3). The
+  /// session ends right after this, so nothing opens the file again meanwhile.
   @override
   Future<void> clearServerCopies(String userId, Uint8List key) async {
     for (final path in LocalDatabase.filesForUser(await databaseDirectory(), userId)) {
-      final open = _store;
-      if (open != null && open.path == path) {
-        open.clearServerData();
-        continue;
-      }
+      if (_store?.path == path) _close();
       try {
         final db = LocalDatabase.open(path, key);
         try {
