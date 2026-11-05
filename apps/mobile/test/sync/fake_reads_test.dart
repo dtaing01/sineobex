@@ -87,9 +87,11 @@ void main() {
       );
       final raw = await server.handle(alex, team, 'POST', '/v1/patients/index', const <String, Object?>{});
       expect(jsonEncode(raw), isNot(contains('check the card')));
+      // IndexDuplicateHint: the status, and nothing else.
+      final entries = ((raw! as Map<String, Object?>)['entries']! as List<Object?>).cast<Map<String, Object?>>();
+      expect(entries.firstWhere((e) => e['patientId'] == p)['duplicate'], {'status': 'not_sure'});
       final index = await api.downloadTeamIndex(body: const TeamIndexRequest());
-      final entry = index.entries.firstWhere((e) => e.patientId == p);
-      expect([entry.duplicate?.status, entry.duplicate?.note], [DuplicateHintStatus.notSure, null]);
+      expect(index.entries.firstWhere((e) => e.patientId == p).duplicate?.status, DuplicateHintStatus.notSure);
       final open = await api.getPatient(patientId: p);
       expect(open.duplicate?.note, 'Demo: Ysolde, check the card');
     });
@@ -338,7 +340,7 @@ void main() {
         [decided.status, decided.patientId, decided.current.value, decided.current.version],
         [FieldReviewViewStatus.decided, p, 'Demo: Oak Street lot', 2],
       );
-      expect(decided.current.changedBy, blair);
+      expect([decided.current.changedBy, decided.currentBy?.userId, decided.patient], [blair, blair, null]);
       expect((await api.getPatient(patientId: p)).reviews, isEmpty);
       final again = await refused(
         api.decideFieldReview(
@@ -393,6 +395,37 @@ void main() {
       final decided = await server.handle(alex, team, 'POST', path, body) as Map<String, Object?>;
       expect(decided['currentBy'], {'userId': 'seed-user', 'displayName': 'Demo user'});
       expect(FieldReviewView.fromJson(decided).status, FieldReviewViewStatus.decided);
+    });
+
+    test('a merge undo takes the merged record’s values out of the kept chart’s reviews and reopens its own', () async {
+      // Review finding S1 (R2, 0ca21e5), mirrored for the merge and undo hooks.
+      const casey = 'c0000000-0000-4000-8000-00000000000c';
+      String reviewOf(Map<String, Object?> r) => (r['details']! as Map<String, Object?>)['reviewId']! as String;
+      final kept = server.seedPatient(usualArea: 'Demo: Elm Street underpass');
+      final merged = server.seedPatient(preferredName: 'Smit', usualArea: 'Demo: river path');
+      final own = reviewOf(await unseen(blair, merged, 'usualArea', 'Demo: bus shelter'));
+      final mergeId = server.merge(merged, kept);
+      expect(server.reviews[own]!.status, 'obsolete');
+
+      final area = reviewOf(await unseen(casey, kept, 'usualArea', 'Demo: Oak Street lot'));
+      // Sent to the merged record, kept beside the kept chart's values.
+      expect(reviewOf(await unseen(blair, merged, 'usualArea', 'Demo: south lot')), area);
+      final name = reviewOf(await unseen(blair, merged, 'preferredName', 'Smitty'));
+      final fromMerged = server.history.lastWhere((h) => h['value'] == 'Demo: south lot')['id']! as String;
+
+      server.undoMerge(mergeId);
+      final chart = await api.getPatient(patientId: kept);
+      expect(chart.reviews.single.id, area);
+      expect(chart.reviews.single.alternates.map((a) => a.value), ['Demo: Oak Street lot']);
+      expect([server.reviews[name]!.status, server.reviews[own]!.status], ['obsolete', 'open']);
+      final withdrawn = await refused(
+        api.decideFieldReview(
+          reviewId: area,
+          body: DecideFieldReview(keep: DecideFieldReviewKeep.alternate, historyId: fromMerged, baseVersion: 1),
+        ),
+      );
+      expect([withdrawn.status, withdrawn.code], [422, 'not_an_alternate']);
+      expect((await api.getPatient(patientId: merged)).reviews.single.id, own);
     });
 
     test('legal name and birth: the review’s own permission, a recent sign-in and a comment', () async {

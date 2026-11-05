@@ -197,11 +197,18 @@ class FakeSyncServer {
   String merge(String mergedId, String intoId) {
     final merged = records[mergedId]!;
     final survivor = canonicalOf(intoId);
+    // The merged records' open reviews are moot: re-matching raises every real difference against
+    // the survivor. Undo opens them again (merges.ts).
+    final subtree = _subtree(mergedId);
+    final obsoleted = [
+      for (final r in reviews.values)
+        if (r.status == 'open' && subtree.contains(r.recordId)) r..status = 'obsolete',
+    ];
     merged
       ..status = 'merged'
       ..mergedInto = survivor;
     final id = _uuid();
-    merges[id] = FakeMerge(id, mergedId, survivor, now().toUtc());
+    merges[id] = FakeMerge(id, mergedId, survivor, now().toUtc())..reviewsObsoleted.addAll(obsoleted.map((r) => r.id));
     for (final p in pairs) {
       if ((p.a == mergedId || p.b == mergedId) && (p.status == 'open' || p.status == 'not_sure')) {
         p.status = 'superseded';
@@ -212,15 +219,61 @@ class FakeSyncServer {
   }
 
   /// Undoes a merge: the merged record is its own again, with everything stored under its ID,
-  /// late arrivals included; its cards are its own again (they were never retired).
+  /// late arrivals included; its cards are its own again (they were never retired). Values edits
+  /// sent to it while merged put into the survivor's open reviews are withdrawn; a review left with
+  /// nothing to choose is moot; the merged records' own reviews open again (merges.ts, review
+  /// finding S1). History stays as it is.
   void undoMerge(String mergeId) {
     final m = merges[mergeId]!;
     if (m.undoneAt != null) throw StateError('already_undone');
     m.undoneAt = now().toUtc();
+    final subtree = _subtree(m.mergedId);
+    for (final h in history) {
+      final review = reviews[h['reviewId']];
+      final sentTo = receipts[h['changeId']]?.recordId;
+      if (review == null ||
+          review.status != 'open' ||
+          h['kind'] != 'kept_both' ||
+          h['entity'] != entityPatient ||
+          subtree.contains(h['recordId']) ||
+          !subtree.contains(sentTo)) {
+        continue;
+      }
+      review.withdrawn.add(h['id']! as String);
+      if (_alternatesOf(review).isEmpty) review.status = 'obsolete';
+    }
     records[m.mergedId]!
       ..status = 'active'
       ..mergedInto = null;
+    for (final id in m.reviewsObsoleted) {
+      final r = reviews[id]!;
+      final another = reviews.values.any(
+        (o) => o.status == 'open' && o.entity == r.entity && o.recordId == r.recordId && o.field == r.field,
+      );
+      if (r.status == 'obsolete' && !another) r.status = 'open';
+    }
   }
+
+  /// [patientId] and every record merged into it, at any depth.
+  Set<String> _subtree(String patientId) => {
+    for (final r in records.values)
+      if (r.entity == entityPatient && _chain(r.id).contains(patientId)) r.id,
+  };
+
+  /// A record and the survivors its merges lead to.
+  List<String> _chain(String id) {
+    final chain = [id];
+    for (var next = records[id]?.mergedInto; next != null && chain.length < 21; next = records[next]?.mergedInto) {
+      chain.add(next);
+    }
+    return chain;
+  }
+
+  /// The values a review still offers: those kept for it, less any a merge undo withdrew.
+  List<Map<String, Object?>> _alternatesOf(FakeReview r) => [
+    for (final h in history)
+      if (h['reviewId'] == r.id && h['kind'] == 'kept_both' && !r.withdrawn.contains(h['id'])) h,
+  ];
 
   /// A problem entry merged into another (an admin's problem merge, design 9.4).
   void mergeProblem(String mergedId, String intoId) => records[mergedId]!.mergedInto = intoId;
@@ -1789,9 +1842,8 @@ class FakeSyncServer {
       'current': current,
       if (patientId == null) 'currentBy': current['changedBy'] == null ? null : _user(current['changedBy'] as String?),
       'alternates': [
-        for (final h in history)
-          if (h['reviewId'] == r.id && h['kind'] == 'kept_both')
-            {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['deviceTime']},
+        for (final h in _alternatesOf(r))
+          {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['deviceTime']},
       ],
       'openedAt': _iso(r.openedAt),
       'status': r.status,
@@ -1932,9 +1984,8 @@ class FakeSyncServer {
     var version = current['version']! as int;
     String? correctionId;
     if (keep == 'alternate') {
-      final alternate = history
-          .where((h) => h['id'] == historyId && h['reviewId'] == review.id && h['kind'] == 'kept_both')
-          .firstOrNull;
+      // A value a merge undo withdrew (it came from the other person) is no longer one to keep.
+      final alternate = _alternatesOf(review).where((h) => h['id'] == historyId).firstOrNull;
       if (alternate == null) {
         throw const ApiException(422, 'not_an_alternate', 'That value isn’t one of this review’s.');
       }
@@ -2250,8 +2301,11 @@ class FakeReview {
   final String needs;
   final DateTime openedAt;
 
-  /// open or decided.
+  /// open, decided or obsolete (a merge, or a merge undo, left nothing to choose).
   String status = 'open';
+
+  /// History IDs a merge undo took out: they came from the other person.
+  final withdrawn = <String>{};
   String? decidedBy;
 
   /// `{kept, historyId}`, and the comment, as field_reviews stores a decision.
@@ -2294,6 +2348,9 @@ class FakeMerge {
   final String survivorId;
   final DateTime mergedAt;
   DateTime? undoneAt;
+
+  /// The merged records' reviews it made obsolete, which undo opens again.
+  final reviewsObsoleted = <String>[];
 }
 
 class FakeIdLink {
