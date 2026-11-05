@@ -709,10 +709,48 @@ export const UndoMergeResult = z
     merge: MergeView,
     revertedFields: z.array(z.string()),
     keptFields: z.array(z.string()),
-    reviewsClosed: z.number().int(),
+    reviewsClosed: z.number().int().openapi({
+      description:
+        'Open reviews on the kept chart closed because only the merged record’s values were left to choose',
+    }),
+    reviewsReopened: z.number().int().openapi({
+      description: 'The merged record’s own open reviews, which the merge had closed, open again',
+    }),
+    decidedReviews: z
+      .array(
+        z.object({
+          reviewId: Uuid,
+          field: z.string(),
+          decidedAt: DateTime,
+          decidedBy: UserRef,
+          keptMergedValue: z.boolean().openapi({
+            description:
+              'The kept chart took the merged record’s value. Undo leaves it there: check it and correct it by hand',
+          }),
+        }),
+      )
+      .openapi({
+        description:
+          'Reviews on the kept chart that offered the merged record’s values and were decided while merged',
+      }),
     redirectedEdits: z
-      .array(z.object({ historyId: HistoryId, field: z.string(), at: DateTime, by: UserRef }))
-      .openapi({ description: 'Edits sent to the merged record and applied to the survivor: move by hand' }),
+      .array(
+        z.object({
+          historyId: HistoryId,
+          field: z.string(),
+          at: DateTime,
+          by: UserRef,
+          outcome: z.enum(['applied', 'kept_both', 'history_only']).openapi({
+            description:
+              'applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); ' +
+              'history_only: kept in its history',
+          }),
+        }),
+      )
+      .openapi({
+        description:
+          'Edits sent to the merged record while merged, which went to the kept chart: move by hand',
+      }),
     restoredLinks: z.array(z.object({ linkId: Uuid, tokenRef: z.string(), issuedOn: Uuid })),
     linksIssuedWhileMerged: z.array(
       z.object({

@@ -157,14 +157,17 @@ interface HistoryRow {
   reviewId?: string | null;
 }
 
-async function appendPatientHistory(tx: Tx, e: HistoryRow): Promise<void> {
-  await tx`
+/** Appends one patient history row; returns its ID. */
+async function appendPatientHistory(tx: Tx, e: HistoryRow): Promise<string> {
+  const [row] = await tx<{ id: string }[]>`
     insert into sineobex.field_history
       (team_id, entity, record_id, field, version, value, previous_value, kind, changed_by, approved_by,
        change_id, review_id)
     values (${e.teamId}, 'patient', ${e.recordId}, ${e.field}, ${e.version}, ${tx.json((e.value ?? null) as never)},
       ${tx.json((e.previousValue ?? null) as never)}, ${e.kind}, ${e.changedBy}, ${e.approvedBy},
-      ${e.changeId ?? null}, ${e.reviewId ?? null})`;
+      ${e.changeId ?? null}, ${e.reviewId ?? null})
+    returning id::text as id`;
+  return row!.id;
 }
 
 async function loadPatients(tx: Tx, ids: readonly string[]): Promise<Map<string, PatientRow>> {
@@ -239,6 +242,8 @@ export async function mergeRecords(
   const allergy = await groupHasAllergy(tx, survivorId);
   const filled: Record<string, number> = {};
   const reviewsOpened: string[] = [];
+  // The merged record's values this merge put into the survivor's reviews, for its undo (8.5).
+  const alternates: string[] = [];
   for (const field of MERGE_FIELDS) {
     const cur = kept[field];
     const alt = offered[field];
@@ -289,7 +294,7 @@ export async function mergeRecords(
       mergeId,
     });
     if (reviewId.opened) reviewsOpened.push(reviewId.id);
-    await appendPatientHistory(tx, {
+    const alternate = await appendPatientHistory(tx, {
       teamId,
       recordId: survivorId,
       field,
@@ -302,13 +307,17 @@ export async function mergeRecords(
       changeId: merged.fieldMeta[field]?.changeId ?? null,
       reviewId: reviewId.id,
     });
+    alternates.push(alternate);
   }
 
   // 5. ID links: nothing changes (D39). 6. The merged records' open reviews are obsolete: step 4
-  // re-raised every real difference against the survivor.
-  await tx`
-    update sineobex.field_reviews set status = 'obsolete', decided_at = now()
-    where team_id = ${teamId} and record_id = any (${subtree}::uuid[]) and status = 'open'`;
+  // re-raised every real difference against the survivor. Undo opens them again.
+  const obsoleted = (
+    await tx<{ id: string }[]>`
+      update sineobex.field_reviews set status = 'obsolete', decided_at = now()
+      where team_id = ${teamId} and record_id = any (${subtree}::uuid[]) and status = 'open'
+      returning id`
+  ).map((r) => r.id);
 
   // 7. Pairs this merge settles leave the queue, restorable by undo: those whose sides now share
   // the survivor, and those naming a record that is no longer canonical, which nobody could decide
@@ -323,9 +332,10 @@ export async function mergeRecords(
   // 8. The merge row and the pair; the index version moves through the triggers.
   await tx`
     insert into sineobex.patient_merges
-      (id, team_id, pair_id, survivor_id, merged_id, filled_fields, reviews_opened, decision_id, merged_by)
+      (id, team_id, pair_id, survivor_id, merged_id, filled_fields, reviews_opened, alternate_history_ids,
+       reviews_obsoleted, decision_id, merged_by)
     values (${mergeId}, ${teamId}, ${pairId}, ${survivorId}, ${mergedId}, ${tx.json(filled)}, ${reviewsOpened}::uuid[],
-      ${decisionId}, ${reviewer})`;
+      ${alternates}::bigint[], ${obsoleted}::uuid[], ${decisionId}, ${reviewer})`;
   await tx`
     update sineobex.duplicate_pairs set status = 'merged', decided_at = now(), decided_by = ${reviewer}
     where team_id = ${teamId} and id = ${pairId}`;
@@ -586,10 +596,12 @@ export async function undoMerge(
         mergedAt: Date;
         undoneAt: Date | null;
         filledFields: Record<string, number>;
-        reviewsOpened: string[];
+        alternateHistoryIds: string[];
+        reviewsObsoleted: string[];
       }[]
     >`
-      select id, pair_id, survivor_id, merged_id, merged_at, undone_at, filled_fields, reviews_opened
+      select id, pair_id, survivor_id, merged_id, merged_at, undone_at, filled_fields,
+             alternate_history_ids::text[] as alternate_history_ids, reviews_obsoleted
       from sineobex.patient_merges
       where team_id = sineobex.current_team_id() and id = ${mergeId}
       for update`;
@@ -672,11 +684,65 @@ export async function undoMerge(
       revertedFields.push(field);
     }
 
-    // 3. Reviews this merge opened and nobody decided are moot.
-    const closed = await tx`
-      update sineobex.field_reviews set status = 'obsolete', decided_at = now()
-      where team_id = ${teamId} and id = any (${merge.reviewsOpened}::uuid[]) and status = 'open'
-      returning id`;
+    // 3. The merged record's values leave the survivor's reviews: those the merge put there, and
+    // those edits sent to a record of the subtree while merged put there (2.7). History is
+    // append-only, so a review lists the rows it no longer offers. An open review left with nothing
+    // to choose is moot; one that still holds another value stays open with it. Decided ones stay
+    // decided and are listed, saying when the chart kept the merged record's value.
+    const fromMerged = await tx<{ id: string; reviewId: string }[]>`
+      select h.id::text as id, h.review_id
+      from sineobex.field_history h
+      where h.team_id = ${teamId} and h.entity = 'patient' and h.kind = 'kept_both' and h.review_id is not null
+        and (h.id = any (${merge.alternateHistoryIds}::bigint[])
+          or (h.device_id is not null and h.recorded_at >= ${merge.mergedAt}
+              and h.record_id <> all (${subtree}::uuid[])
+              and exists (select 1 from sineobex.sync_changes c
+                          where c.change_id = h.change_id and c.record_id = any (${subtree}::uuid[]))))
+      order by h.id`;
+    const mergedValues = new Set(fromMerged.map((r) => r.id));
+    const touched = [...new Set(fromMerged.map((r) => r.reviewId))];
+    const narrowed = await tx<{ id: string }[]>`
+      with w (review_id, ids) as (
+        select h.review_id, array_agg(h.id order by h.id) from sineobex.field_history h
+        where h.team_id = ${teamId} and h.id = any (${[...mergedValues]}::bigint[])
+        group by h.review_id
+      )
+      update sineobex.field_reviews r set withdrawn_history_ids = r.withdrawn_history_ids || w.ids
+      from w
+      where r.team_id = ${teamId} and r.id = w.review_id and r.status = 'open'
+      returning r.id`;
+    const closed = await tx<{ id: string }[]>`
+      update sineobex.field_reviews r set status = 'obsolete', decided_at = now()
+      where r.team_id = ${teamId} and r.id = any (${narrowed.map((r) => r.id)}::uuid[]) and r.status = 'open'
+        and not exists (
+          select 1 from sineobex.field_history h
+          where h.team_id = r.team_id and h.review_id = r.id and h.kind = 'kept_both'
+            and h.id <> all (r.withdrawn_history_ids))
+      returning r.id`;
+    const decided = await tx<
+      {
+        id: string;
+        field: string;
+        decidedAt: Date;
+        decidedBy: string;
+        displayName: string;
+        decision: { kept?: string; historyId?: string | null } | null;
+      }[]
+    >`
+      select r.id, r.field, r.decided_at, r.decided_by, u.display_name, r.decision
+      from sineobex.field_reviews r join sineobex.users u on u.id = r.decided_by
+      where r.team_id = ${teamId} and r.id = any (${touched}::uuid[]) and r.status = 'decided'
+      order by r.decided_at, r.id`;
+    // The merged records' own reviews this merge made obsolete are theirs again. Nothing could open
+    // one on a merged record meanwhile (its edits went to the survivor); the check keeps one open.
+    const reopened = await tx<{ id: string }[]>`
+      update sineobex.field_reviews r set status = 'open', decided_at = null
+      where r.team_id = ${teamId} and r.id = any (${merge.reviewsObsoleted}::uuid[]) and r.status = 'obsolete'
+        and not exists (
+          select 1 from sineobex.field_reviews o
+          where o.team_id = r.team_id and o.entity = r.entity and o.record_id = r.record_id
+            and o.field = r.field and o.status = 'open')
+      returning r.id`;
 
     // 4. ID links (D39): a card of the subtree that a regeneration on the group retired while the
     // merge was live is active again. No subtree row gained an active link meanwhile (issuing
@@ -748,17 +814,27 @@ export async function undoMerge(
       });
     }
 
-    // Edits sent to a record of the subtree while merged were applied to the survivor (2.7): the
-    // one thing undo can't decide, so the admin moves them by hand.
+    // Edits sent to a record of the subtree while merged went to the survivor (2.7): written to its
+    // chart, or kept beside its value (withdrawn above). The one thing undo can't decide, so the
+    // admin moves them by hand. A merge's own rows carry no device.
     const redirected = await tx<
-      { historyId: string; field: string; recordedAt: Date; changedBy: string; displayName: string }[]
+      {
+        historyId: string;
+        field: string;
+        kind: 'redirected' | 'kept_both';
+        reviewId: string | null;
+        recordedAt: Date;
+        changedBy: string;
+        displayName: string;
+      }[]
     >`
-      select h.id::text as history_id, h.field, h.recorded_at, h.changed_by, u.display_name
+      select h.id::text as history_id, h.field, h.kind, h.review_id, h.recorded_at, h.changed_by, u.display_name
       from sineobex.field_history h
       join sineobex.sync_changes c on c.change_id = h.change_id
       join sineobex.users u on u.id = h.changed_by
-      where h.team_id = ${teamId} and h.entity = 'patient' and h.kind = 'redirected'
-        and h.recorded_at >= ${merge.mergedAt} and c.record_id = any (${subtree}::uuid[])
+      where h.team_id = ${teamId} and h.entity = 'patient' and h.kind in ('redirected', 'kept_both')
+        and h.device_id is not null and h.recorded_at >= ${merge.mergedAt}
+        and h.record_id <> all (${subtree}::uuid[]) and c.record_id = any (${subtree}::uuid[])
       order by h.id`;
 
     const [view] = await mergeViews(tx, scope, [mergeId]);
@@ -767,11 +843,21 @@ export async function undoMerge(
       revertedFields,
       keptFields,
       reviewsClosed: closed.length,
+      reviewsReopened: reopened.length,
+      decidedReviews: decided.map((r) => ({
+        reviewId: r.id,
+        field: r.field,
+        decidedAt: r.decidedAt.toISOString(),
+        decidedBy: { userId: r.decidedBy, displayName: r.displayName },
+        keptMergedValue:
+          r.decision?.kept === 'alternate' && mergedValues.has(String(r.decision.historyId ?? '')),
+      })),
       redirectedEdits: redirected.map((r) => ({
         historyId: r.historyId,
         field: r.field,
         at: r.recordedAt.toISOString(),
         by: { userId: r.changedBy, displayName: r.displayName },
+        outcome: r.kind === 'redirected' ? 'applied' : r.reviewId ? 'kept_both' : 'history_only',
       })),
       restoredLinks: restored.map((l) => ({ linkId: l.id, tokenRef: l.tokenRef, issuedOn: l.patientId })),
       linksIssuedWhileMerged: issuedWhileMerged.map((l) => ({

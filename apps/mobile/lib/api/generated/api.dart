@@ -1005,6 +1005,24 @@ enum TeamStatusChangeStatus {
   String toJson() => wire;
 }
 
+/// applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); history_only: kept in its history
+enum UndoMergeResultRedirectedEditsItemOutcome {
+  applied('applied'),
+  keptBoth('kept_both'),
+  historyOnly('history_only'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const UndoMergeResultRedirectedEditsItemOutcome(this.wire);
+  final String wire;
+
+  static UndoMergeResultRedirectedEditsItemOutcome fromJson(String value) =>
+      UndoMergeResultRedirectedEditsItemOutcome.values.firstWhere((e) => e.wire == value, orElse: () => UndoMergeResultRedirectedEditsItemOutcome.unknown);
+
+  String toJson() => wire;
+}
+
 class Acknowledgement {
   const Acknowledgement({
     required this.kind,
@@ -4858,6 +4876,7 @@ class UndoMerge {
 
 class UndoMergeResult {
   const UndoMergeResult({
+    required this.decidedReviews,
     required this.keptFields,
     required this.linksIssuedWhileMerged,
     required this.merge,
@@ -4865,18 +4884,25 @@ class UndoMergeResult {
     required this.restoredLinks,
     required this.revertedFields,
     required this.reviewsClosed,
+    required this.reviewsReopened,
   });
 
+  /// Reviews on the kept chart that offered the merged record’s values and were decided while merged
+  final List<UndoMergeResultDecidedReviewsItem> decidedReviews;
   final List<String> keptFields;
   final List<UndoMergeResultLinksIssuedWhileMergedItem> linksIssuedWhileMerged;
   final MergeView merge;
-  /// Edits sent to the merged record and applied to the survivor: move by hand
+  /// Edits sent to the merged record while merged, which went to the kept chart: move by hand
   final List<UndoMergeResultRedirectedEditsItem> redirectedEdits;
   final List<UndoMergeResultRestoredLinksItem> restoredLinks;
   final List<String> revertedFields;
+  /// Open reviews on the kept chart closed because only the merged record’s values were left to choose
   final int reviewsClosed;
+  /// The merged record’s own open reviews, which the merge had closed, open again
+  final int reviewsReopened;
 
   factory UndoMergeResult.fromJson(Map<String, dynamic> json) => UndoMergeResult(
+        decidedReviews: (json['decidedReviews'] as List<dynamic>).map((e) => UndoMergeResultDecidedReviewsItem.fromJson(e as Map<String, dynamic>)).toList(),
         keptFields: (json['keptFields'] as List<dynamic>).map((e) => e as String).toList(),
         linksIssuedWhileMerged: (json['linksIssuedWhileMerged'] as List<dynamic>).map((e) => UndoMergeResultLinksIssuedWhileMergedItem.fromJson(e as Map<String, dynamic>)).toList(),
         merge: MergeView.fromJson(json['merge'] as Map<String, dynamic>),
@@ -4884,9 +4910,11 @@ class UndoMergeResult {
         restoredLinks: (json['restoredLinks'] as List<dynamic>).map((e) => UndoMergeResultRestoredLinksItem.fromJson(e as Map<String, dynamic>)).toList(),
         revertedFields: (json['revertedFields'] as List<dynamic>).map((e) => e as String).toList(),
         reviewsClosed: (json['reviewsClosed'] as num).toInt(),
+        reviewsReopened: (json['reviewsReopened'] as num).toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+        'decidedReviews': decidedReviews.map((e) => e.toJson()).toList(),
         'keptFields': keptFields.map((e) => e).toList(),
         'linksIssuedWhileMerged': linksIssuedWhileMerged.map((e) => e.toJson()).toList(),
         'merge': merge.toJson(),
@@ -4894,6 +4922,40 @@ class UndoMergeResult {
         'restoredLinks': restoredLinks.map((e) => e.toJson()).toList(),
         'revertedFields': revertedFields.map((e) => e).toList(),
         'reviewsClosed': reviewsClosed,
+        'reviewsReopened': reviewsReopened,
+      };
+}
+
+class UndoMergeResultDecidedReviewsItem {
+  const UndoMergeResultDecidedReviewsItem({
+    required this.decidedAt,
+    required this.decidedBy,
+    required this.field,
+    required this.keptMergedValue,
+    required this.reviewId,
+  });
+
+  final DateTime decidedAt;
+  final UserRef decidedBy;
+  final String field;
+  /// The kept chart took the merged record’s value. Undo leaves it there: check it and correct it by hand
+  final bool keptMergedValue;
+  final String reviewId;
+
+  factory UndoMergeResultDecidedReviewsItem.fromJson(Map<String, dynamic> json) => UndoMergeResultDecidedReviewsItem(
+        decidedAt: DateTime.parse(json['decidedAt'] as String),
+        decidedBy: UserRef.fromJson(json['decidedBy'] as Map<String, dynamic>),
+        field: json['field'] as String,
+        keptMergedValue: json['keptMergedValue'] as bool,
+        reviewId: json['reviewId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'decidedAt': decidedAt.toUtc().toIso8601String(),
+        'decidedBy': decidedBy.toJson(),
+        'field': field,
+        'keptMergedValue': keptMergedValue,
+        'reviewId': reviewId,
       };
 }
 
@@ -4935,6 +4997,7 @@ class UndoMergeResultRedirectedEditsItem {
     required this.by,
     required this.field,
     required this.historyId,
+    required this.outcome,
   });
 
   final DateTime at;
@@ -4942,12 +5005,15 @@ class UndoMergeResultRedirectedEditsItem {
   final String field;
   /// A field history entry
   final String historyId;
+  /// applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); history_only: kept in its history
+  final UndoMergeResultRedirectedEditsItemOutcome outcome;
 
   factory UndoMergeResultRedirectedEditsItem.fromJson(Map<String, dynamic> json) => UndoMergeResultRedirectedEditsItem(
         at: DateTime.parse(json['at'] as String),
         by: UserRef.fromJson(json['by'] as Map<String, dynamic>),
         field: json['field'] as String,
         historyId: json['historyId'] as String,
+        outcome: UndoMergeResultRedirectedEditsItemOutcome.fromJson(json['outcome'] as String),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -4955,6 +5021,7 @@ class UndoMergeResultRedirectedEditsItem {
         'by': by.toJson(),
         'field': field,
         'historyId': historyId,
+        'outcome': outcome.toJson(),
       };
 }
 

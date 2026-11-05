@@ -443,8 +443,10 @@ async function loadGroupCharts(
         >`
     select h.id::text, h.review_id, h.value, h.changed_by, h.device_time
     from sineobex.field_history h
+    join sineobex.field_reviews r on r.team_id = h.team_id and r.id = h.review_id
     where h.team_id = sineobex.current_team_id() and h.kind = 'kept_both'
       and h.review_id = any (${reviews.map((r) => r.id)}::uuid[])
+      and h.id <> all (r.withdrawn_history_ids)
     order by h.id`;
   const hints = await duplicateHints(tx, ids);
   const users = await userRefs(tx, [

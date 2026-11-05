@@ -90,8 +90,11 @@ async function reviewViews(tx: Tx, rows: ReviewRow[]): Promise<FieldReviewViewVa
     }[]
   >`
     select h.id::text as id, h.review_id, h.value, h.changed_by, u.display_name, h.device_time
-    from sineobex.field_history h join sineobex.users u on u.id = h.changed_by
+    from sineobex.field_history h
+    join sineobex.field_reviews r on r.id = h.review_id
+    join sineobex.users u on u.id = h.changed_by
     where h.review_id = any(${rows.map((r) => r.id)}::uuid[]) and h.kind = 'kept_both'
+      and h.id <> all (r.withdrawn_history_ids)
     order by h.id`;
   const records = new Map<string, StoredRecord | null>();
   for (const r of rows) {
@@ -212,9 +215,12 @@ export async function decideFieldReview(
     let version = current.version;
     let correctionId: string | null = null;
     if (input.keep === 'alternate') {
+      // A value a merge undo withdrew (it came from the other person) is no longer one to keep.
       const [alternate] = await tx<{ value: unknown; changedBy: string }[]>`
-        select value, changed_by from sineobex.field_history
-        where id = ${input.historyId!}::bigint and review_id = ${review.id} and kind = 'kept_both'`;
+        select h.value, h.changed_by from sineobex.field_history h
+        join sineobex.field_reviews r on r.id = h.review_id
+        where h.id = ${input.historyId!}::bigint and h.review_id = ${review.id} and h.kind = 'kept_both'
+          and h.id <> all (r.withdrawn_history_ids)`;
       if (!alternate) throw invalid('not_an_alternate', 'That value isn’t one of this review’s.');
       if (!recognisableAfter(rec, review.field, alternate.value)) {
         throw conflict(

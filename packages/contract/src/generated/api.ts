@@ -2078,6 +2078,17 @@ export interface components {
             comment: string;
         };
         UndoMergeResult: {
+            /** @description Reviews on the kept chart that offered the merged record’s values and were decided while merged */
+            decidedReviews: {
+                /** Format: date-time */
+                decidedAt: string;
+                decidedBy: components["schemas"]["UserRef"];
+                field: string;
+                /** @description The kept chart took the merged record’s value. Undo leaves it there: check it and correct it by hand */
+                keptMergedValue: boolean;
+                /** Format: uuid */
+                reviewId: string;
+            }[];
             keptFields: string[];
             linksIssuedWhileMerged: {
                 /** Format: date-time */
@@ -2090,7 +2101,7 @@ export interface components {
                 tokenRef: string;
             }[];
             merge: components["schemas"]["MergeView"];
-            /** @description Edits sent to the merged record and applied to the survivor: move by hand */
+            /** @description Edits sent to the merged record while merged, which went to the kept chart: move by hand */
             redirectedEdits: {
                 /** Format: date-time */
                 at: string;
@@ -2098,6 +2109,11 @@ export interface components {
                 field: string;
                 /** @description A field history entry */
                 historyId: string;
+                /**
+                 * @description applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); history_only: kept in its history
+                 * @enum {string}
+                 */
+                outcome: "applied" | "kept_both" | "history_only";
             }[];
             restoredLinks: {
                 /** Format: uuid */
@@ -2107,7 +2123,10 @@ export interface components {
                 tokenRef: string;
             }[];
             revertedFields: string[];
+            /** @description Open reviews on the kept chart closed because only the merged record’s values were left to choose */
             reviewsClosed: number;
+            /** @description The merged record’s own open reviews, which the merge had closed, open again */
+            reviewsReopened: number;
         };
         UserRef: {
             displayName: string;

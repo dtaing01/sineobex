@@ -4134,6 +4134,40 @@
       },
       "UndoMergeResult": {
         "properties": {
+          "decidedReviews": {
+            "description": "Reviews on the kept chart that offered the merged record’s values and were decided while merged",
+            "items": {
+              "properties": {
+                "decidedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "decidedBy": {
+                  "$ref": "#/components/schemas/UserRef"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "keptMergedValue": {
+                  "description": "The kept chart took the merged record’s value. Undo leaves it there: check it and correct it by hand",
+                  "type": "boolean"
+                },
+                "reviewId": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reviewId",
+                "field",
+                "decidedAt",
+                "decidedBy",
+                "keptMergedValue"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "keptFields": {
             "items": {
               "type": "string"
@@ -4177,7 +4211,7 @@
             "$ref": "#/components/schemas/MergeView"
           },
           "redirectedEdits": {
-            "description": "Edits sent to the merged record and applied to the survivor: move by hand",
+            "description": "Edits sent to the merged record while merged, which went to the kept chart: move by hand",
             "items": {
               "properties": {
                 "at": {
@@ -4194,13 +4228,23 @@
                   "description": "A field history entry",
                   "pattern": "^\\d{1,19}$",
                   "type": "string"
+                },
+                "outcome": {
+                  "description": "applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); history_only: kept in its history",
+                  "enum": [
+                    "applied",
+                    "kept_both",
+                    "history_only"
+                  ],
+                  "type": "string"
                 }
               },
               "required": [
                 "historyId",
                 "field",
                 "at",
-                "by"
+                "by",
+                "outcome"
               ],
               "type": "object"
             },
@@ -4237,6 +4281,11 @@
             "type": "array"
           },
           "reviewsClosed": {
+            "description": "Open reviews on the kept chart closed because only the merged record’s values were left to choose",
+            "type": "integer"
+          },
+          "reviewsReopened": {
+            "description": "The merged record’s own open reviews, which the merge had closed, open again",
             "type": "integer"
           }
         },
@@ -4245,6 +4294,8 @@
           "revertedFields",
           "keptFields",
           "reviewsClosed",
+          "reviewsReopened",
+          "decidedReviews",
           "redirectedEdits",
           "restoredLinks",
           "linksIssuedWhileMerged"
