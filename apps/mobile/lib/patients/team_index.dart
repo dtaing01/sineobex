@@ -125,15 +125,29 @@ class TeamIndex {
   /// [indexLifetime], or refreshed "later" than the phone's corrected clock (wound back), goes with
   /// every server copy on the phone. Staged pages older than [stagingLifetime] go too, whatever the
   /// role and whether or not an index is here. Returns whether the index went now.
+  ///
+  /// "Later than the clock" counts the latest time a check has seen too ([_seenKey]): after a
+  /// restart nothing corrects the phone's clock until the next sync, and a clock wound back to a
+  /// day after the refresh would otherwise keep a week-old index (review P6).
   bool expireIfStale() {
     _dropStaleStaging();
     final at = state.refreshedAt;
     if (at == null) return false;
     final now = _now();
-    if (now.difference(at) <= indexLifetime && !now.isBefore(at.subtract(clockSkewAllowance))) return false;
+    final seen = DateTime.tryParse(store.kv(_seenKey) ?? '');
+    final latest = seen != null && seen.isAfter(at) ? seen : at;
+    if (now.difference(at) <= indexLifetime && !now.isBefore(latest.subtract(clockSkewAllowance))) {
+      // Moved on in steps of a minute, so a search doesn't write each time.
+      if (now.difference(latest) >= const Duration(minutes: 1)) store.setKv(_seenKey, now.toUtc().toIso8601String());
+      return false;
+    }
     _remove(IndexRemoval.expired);
     return true;
   }
+
+  /// The latest time [expireIfStale] has seen, in `kv` with the index's bookkeeping (it goes with
+  /// the index).
+  static const _seenKey = '${indexKvPrefix}latestSeenAt';
 
   void _remove(IndexRemoval why) {
     store.clearServerData();

@@ -163,6 +163,24 @@ void main() {
     expect(indexRows(), 0);
   });
 
+  // Review P6: after a restart nothing corrects the clock, and a clock wound back to a day after
+  // the refresh kept a week-old index.
+  test('a clock wound back after a restart, to after the refresh, still counts as wound back', () async {
+    seed(3);
+    await refresher.refresh(RefreshReason.manual);
+    final at = services.index.state.refreshedAt!;
+    server.offline = true;
+    advance(const Duration(days: 3));
+    expect(services.index.expireIfStale(), isFalse);
+    expect(services.index.state.present, isTrue);
+    phone.boot.reboot();
+    phone.wall = at.add(const Duration(days: 1));
+    await phone.clock.check();
+    expect(phone.clock.stamp().correctedTime, isNull, reason: 'nothing corrects the clock yet');
+    expect(services.index.expireIfStale(), isTrue);
+    expect([services.index.state.removed, indexRows()], [IndexRemoval.expired, 0]);
+  });
+
   test('403 index_not_permitted deletes the index and every server copy without local work', () async {
     final ids = seed(3);
     await refresher.refresh(RefreshReason.manual);
