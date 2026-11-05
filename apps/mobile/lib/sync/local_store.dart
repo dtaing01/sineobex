@@ -358,6 +358,10 @@ class LocalStore {
   /// Run for every confirmed change, in its transaction (see [confirm]).
   final onConfirmed = <ConfirmHook>[];
 
+  /// Run for every change the server refuses, in the transaction that marks it (see [reject]):
+  /// lib/patients/ marks a refused card unusable there.
+  final onRejected = <void Function(OutboxEntry entry)>[];
+
   Database get _db => _local.db;
   int get _nowMs => _now().toUtc().millisecondsSinceEpoch;
 
@@ -1199,13 +1203,25 @@ class LocalStore {
     }
   }
 
-  /// Kept, marked Rejected, until someone resolves it (module 9). Never purged.
+  /// Kept, marked Rejected, until someone resolves it (module 9). Never purged. Every [onRejected]
+  /// hook runs in the same transaction.
   void reject(OutboxEntry e, {required String reason, String? message, Map<String, Object?>? details}) {
-    _db.execute(
-      "UPDATE outbox SET state = 'rejected', reason = ?, message = ?, details_json = ? WHERE change_id = ? "
-      "AND state = 'pending'",
-      [reason, message, details == null ? null : jsonEncode(details), e.changeId],
-    );
+    _tx(() {
+      _db.execute(
+        "UPDATE outbox SET state = 'rejected', reason = ?, message = ?, details_json = ? WHERE change_id = ? "
+        "AND state = 'pending'",
+        [reason, message, details == null ? null : jsonEncode(details), e.changeId],
+      );
+      if (_db.updatedRows == 0) return;
+      for (final hook in onRejected) {
+        // As in [confirm]: a failing hook loses only its own bookkeeping, never the rejection.
+        try {
+          _tx(() => hook(e));
+        } on Object {
+          // Nothing of the hook was written.
+        }
+      }
+    });
   }
 
   /// The field holds a different value on the server. Both are shown side by side.

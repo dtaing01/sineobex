@@ -137,6 +137,102 @@ void main() {
     expect(a.services.idLinks.workingCards(kept).single.id, fixed);
   });
 
+  // Review P2: a refused or held card counted as working, so the next card named it as the one it
+  // replaced. The server never stored it: it saw a conflict, told three people, and the valid card
+  // stayed blocked on this phone.
+  group('a card the server never stored is never the one a new card replaces', () {
+    List<String> cardNotices() => [
+      for (final n in server.notices)
+        if (n.kind.startsWith('id_link_')) n.kind,
+    ];
+
+    test('the fix for a card refused after a merge names the server’s card', () async {
+      final a = phone(alex);
+      final kept = server.seedPatient(preferredName: 'Del');
+      final merged = server.seedPatient(preferredName: 'Delly');
+      final old = seedCard(merged);
+      await a.services.patients.open(merged);
+      server.offline = true;
+      final card = a.services.idLinks.makeCard(merged, reason: 'lost');
+      server.merge(merged, kept);
+      server.offline = false;
+      await a.phone.engine.syncAll(force: true);
+      final refused = a.phone.store.needsAttention().single;
+      // Unusable from the refusal on, in the table itself.
+      expect(
+        a.phone.store.database.select('SELECT state FROM id_links WHERE id = ?', [card]).single['state'],
+        'rejected',
+      );
+      await a.services.charts.open(merged);
+      expect(a.services.idLinks.workingCards(kept).single.id, old, reason: 'the server’s card works again');
+
+      final fixed = a.services.idLinks.replaceRejected(refused.changeId, reason: 'lost');
+      expect((a.phone.store.outbox().last.value! as Map<String, Object?>)['replacesLinkId'], old);
+      await a.phone.engine.syncAll(force: true);
+      expect(cardNotices(), isEmpty, reason: 'no conflict happened');
+      expect([server.idLinks[fixed]!.status, server.idLinks[old]!.retiredReason], ['active', 'regenerated']);
+      expect(a.services.idLinks.workingCards(kept).single.id, fixed);
+    });
+
+    test('Make a new card while a refused card waits names the server’s card, refreshed or not', () async {
+      for (final refresh in [true, false]) {
+        final a = phone(alex);
+        final p = server.seedPatient(preferredName: 'Del');
+        final other = server.seedPatient(preferredName: 'Delly');
+        final old = seedCard(p);
+        await a.services.patients.open(p);
+        server.offline = true;
+        final card = a.services.idLinks.makeCard(p, reason: 'lost');
+        server.offline = false;
+        // Refused: the link ID is taken on the server (record_exists).
+        server.seed(entityIdLink, {
+          'patientId': other,
+          'token': newIdLinkToken(),
+          'replacesLinkId': null,
+          'reason': 'first_card',
+        }, id: card);
+        await a.phone.engine.syncAll(force: true);
+        expect(a.phone.store.needsAttention().single.recordId, card);
+        if (refresh) {
+          await a.services.charts.open(p);
+          expect(a.services.idLinks.workingCards(p).single.id, old, reason: 'the server’s card works after a refresh');
+        }
+
+        final next = a.services.idLinks.makeCard(p, reason: 'lost');
+        expect((a.phone.store.outbox().last.value! as Map<String, Object?>)['replacesLinkId'], old);
+        await a.phone.engine.syncAll(force: true);
+        expect(cardNotices(), isEmpty, reason: 'refreshed: $refresh');
+        expect([server.idLinks[next]!.status, server.idLinks[old]!.retiredReason], ['active', 'regenerated']);
+      }
+    });
+
+    test('a card held for review leaves the server’s card as it is, and the next card replaces that', () async {
+      final a = phone(alex);
+      final p = server.seedPatient(preferredName: 'Del');
+      final old = seedCard(p);
+      await a.services.patients.open(p);
+      // The role lost patients.edit: the server holds the card for a Program Admin.
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      final held = a.services.idLinks.makeCard(p, reason: 'lost');
+      await a.phone.engine.syncAll(force: true);
+      expect(server.quarantine, hasLength(1));
+      expect(a.services.idLinks.cards(p).firstWhere((c) => c.id == held).inReview, isTrue);
+      await a.services.charts.open(p);
+      final cards = {for (final c in a.services.idLinks.cards(p)) c.id: c};
+      expect(cards[old]!.state, IdCardState.active, reason: 'the held card was never stored');
+      expect(cards[held]!.standing, isFalse);
+
+      server.permissions[alex] = FakeSyncServer.healthcareStaff;
+      final next = a.services.idLinks.makeCard(p, reason: 'lost');
+      expect((a.phone.store.outbox().last.value! as Map<String, Object?>)['replacesLinkId'], old);
+      expect(a.services.idLinks.cards(p).firstWhere((c) => c.id == held).state, IdCardState.pending);
+      await a.phone.engine.syncAll(force: true);
+      expect(cardNotices(), isEmpty);
+      expect([server.idLinks[next]!.status, server.idLinks[old]!.retiredReason], ['active', 'regenerated']);
+      expect(a.services.idLinks.cards(p).firstWhere((c) => c.id == next).state, IdCardState.active);
+    });
+  });
+
   test('two cards after a merge both open the combined chart and both copy (D39)', () async {
     final a = phone(alex);
     final kept = server.seedPatient(preferredName: 'Del');

@@ -78,6 +78,12 @@ class IdCard {
 
   /// Opens the chart, as far as this phone knows.
   bool get working => state == IdCardState.pending || state == IdCardState.active;
+
+  /// Active on the server, or on its way there ahead of anything made now: what a new card names as
+  /// the one it replaces, and a card made here that keeps the group's others blocked. A card the
+  /// server refused, or holds for a Program Admin, was never stored there (review P2): naming it
+  /// would make the server see a conflict that never happened.
+  bool get standing => state == IdCardState.active || (state == IdCardState.pending && !inReview);
 }
 
 /// How a copy went.
@@ -124,12 +130,15 @@ class IdLinks {
     if (url.isNotEmpty && baseUrlOf(store) != url) store.setKv(_baseKey, url);
   }
 
-  /// Registers the receipt hook. Called once per store.
-  void install() => store.onConfirmed.add(_onConfirmed);
+  /// Registers the receipt hooks. Called once per store.
+  void install() {
+    store.onConfirmed.add(_onConfirmed);
+    store.onRejected.add(_onRejected);
+  }
 
   // ---- reading ----
 
-  List<Row> _rows(Iterable<String> patientIds) {
+  static List<Row> _rows(LocalStore store, Iterable<String> patientIds) {
     final ids = patientIds.toList();
     if (ids.isEmpty) return const [];
     return store.database.select(
@@ -139,7 +148,9 @@ class IdLinks {
     );
   }
 
-  IdCard _card(Row r) {
+  IdCard _card(Row r) => _cardOf(store, r);
+
+  static IdCard _cardOf(LocalStore store, Row r) {
     final changeId = r['change_id'] as String?;
     final entry = changeId == null ? null : store.entry(changeId);
     var state = IdCardState.values.byName(r['state'] as String);
@@ -169,7 +180,16 @@ class IdLinks {
   }
 
   /// Every card of [patientId]'s group this phone knows, newest first.
-  List<IdCard> cards(String patientId) => [for (final r in _rows(patientGroup(store, patientId))) _card(r)];
+  List<IdCard> cards(String patientId) => _cardsOf(store, patientGroup(store, patientId));
+
+  static List<IdCard> _cardsOf(LocalStore store, Iterable<String> group) => [
+    for (final r in _rows(store, group)) _cardOf(store, r),
+  ];
+
+  /// A card made here is still on its way to the server, so the group's other cards stay blocked
+  /// here: one the server refused or holds for review doesn't count.
+  static bool _madeHereWaits(LocalStore store, Iterable<String> group, {String? except}) =>
+      _cardsOf(store, group).any((c) => c.id != except && c.state == IdCardState.pending && c.standing);
 
   /// The cards that open the chart now, as far as this phone knows: usually one; two after a merge
   /// until the next new card (D39).
@@ -180,21 +200,22 @@ class IdLinks {
 
   // ---- making a card ----
 
-  /// The newest card this phone sees working for the group: what a new card replaces
-  /// (`replacesLinkId`), or null when it sees none.
+  /// What a new card replaces (`replacesLinkId`): the newest card of the group that is active on the
+  /// server or on its way there ([IdCard.standing]). With none, the newest card this phone blocked:
+  /// the card that blocked it was refused or is held for review, so it is still the server's
+  /// active one. Null when the phone sees no card.
   String? _replaces(Set<String> group) {
-    final working = [
-      for (final r in _rows(group))
-        if (r['state'] == 'active' || r['state'] == 'pending') r,
-    ];
-    return working.isEmpty ? null : working.first['id'] as String;
+    final cards = _cardsOf(store, group);
+    return (cards.where((c) => c.standing).firstOrNull ??
+            cards.where((c) => c.state == IdCardState.blocked).firstOrNull)
+        ?.id;
   }
 
   /// Makes a new card (design 10.4, step 3) for [patientId]'s group, with [reason] (one of
   /// [cardReasons]; `first_card` for the first). In one transaction: the token, the sync create
-  /// naming the newest card it replaces, the pending card, and every working card of the group
-  /// blocked here. The new card can be copied at once. Throws [ChartingPaused] while the clock
-  /// check fails (D35: card conflicts are decided by device time).
+  /// naming the card it replaces, the pending card, and every standing card of the group blocked
+  /// here. The new card can be copied at once. Throws [ChartingPaused] while the clock check fails
+  /// (D35: card conflicts are decided by device time).
   String makeCard(String patientId, {required String reason}) {
     if (!cardReasons.contains(reason)) throw ArgumentError('unknown card reason');
     final canonical = store.canonicalPatient(patientId);
@@ -209,18 +230,12 @@ class IdLinks {
         'reason': reason,
       });
       final changeId = store.outbox().lastWhere((e) => e.recordId == linkId && e.op == 'create').changeId;
-      final ids = group.toList();
-      store.database
-        ..execute(
-          "UPDATE id_links SET state = 'blocked', updated_at = ? WHERE state IN ('active', 'pending') "
-          'AND patient_id IN (${List.filled(ids.length, '?').join(', ')})',
-          [_nowMs, ...ids],
-        )
-        ..execute(
-          'INSERT INTO id_links (id, patient_id, token, state, replaces, change_id, effective_at, updated_at) '
-          "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)",
-          [linkId, canonical, token, replaces, changeId, _nowMs, _nowMs],
-        );
+      _blockStanding(group);
+      store.database.execute(
+        'INSERT INTO id_links (id, patient_id, token, state, replaces, change_id, effective_at, updated_at) '
+        "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)",
+        [linkId, canonical, token, replaces, changeId, _nowMs, _nowMs],
+      );
       return linkId;
     });
   }
@@ -239,6 +254,11 @@ class IdLinks {
     final group = patientGroup(store, canonical);
     final token = newIdLinkToken(_random);
     return store.transaction(() {
+      // Unusable before anything reads the group: the new card must never name it (review P2).
+      store.database.execute("UPDATE id_links SET state = 'rejected', updated_at = ? WHERE id = ?", [
+        _nowMs,
+        refused.recordId,
+      ]);
       final replaces = _replaces(group);
       final linkId = store.replaceRejected(
         changeId,
@@ -246,21 +266,23 @@ class IdLinks {
         value: {'patientId': canonical, 'token': token, 'replacesLinkId': replaces, 'reason': reason},
       );
       final fix = store.outbox().lastWhere((e) => e.recordId == linkId && e.op == 'create').changeId;
-      final ids = group.toList();
-      store.database
-        ..execute("UPDATE id_links SET state = 'rejected', updated_at = ? WHERE id = ?", [_nowMs, refused.recordId])
-        ..execute(
-          "UPDATE id_links SET state = 'blocked', updated_at = ? WHERE state IN ('active', 'pending') "
-          'AND patient_id IN (${List.filled(ids.length, '?').join(', ')})',
-          [_nowMs, ...ids],
-        )
-        ..execute(
-          'INSERT INTO id_links (id, patient_id, token, state, replaces, change_id, effective_at, updated_at) '
-          "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)",
-          [linkId, canonical, token, replaces, fix, _nowMs, _nowMs],
-        );
+      _blockStanding(group);
+      store.database.execute(
+        'INSERT INTO id_links (id, patient_id, token, state, replaces, change_id, effective_at, updated_at) '
+        "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)",
+        [linkId, canonical, token, replaces, fix, _nowMs, _nowMs],
+      );
       return linkId;
     });
+  }
+
+  /// Blocks here every card of [group] that a new card made now replaces on the server.
+  void _blockStanding(Set<String> group) {
+    for (final c in _cardsOf(store, group)) {
+      if (c.standing) {
+        store.database.execute("UPDATE id_links SET state = 'blocked', updated_at = ? WHERE id = ?", [_nowMs, c.id]);
+      }
+    }
   }
 
   int get _nowMs => _now().toUtc().millisecondsSinceEpoch;
@@ -307,13 +329,19 @@ class IdLinks {
     for (final id in retired) {
       db.execute("UPDATE id_links SET state = 'retired', updated_at = ? WHERE id = ?", [_nowMs, id]);
     }
-    // A newer card made here since still blocks this one until its own receipt.
-    final newer = db.select(
-      "SELECT 1 FROM id_links WHERE state = 'pending' AND id <> ? AND coalesce(effective_at, 0) >= "
-      '(SELECT coalesce(effective_at, 0) FROM id_links WHERE id = ?) '
-      'AND patient_id IN (${List.filled(group.length, '?').join(', ')})',
-      [mine, mine, ...group],
-    ).isNotEmpty;
+    // A newer card made here since still blocks this one until its own receipt; one the server
+    // refused or holds for review never will (review P2).
+    final mineAt =
+        db.select('SELECT coalesce(effective_at, 0) AS at FROM id_links WHERE id = ?', [mine]).firstOrNull?['at']
+            as int? ??
+        0;
+    final newer = _cardsOf(store, group).any(
+      (c) =>
+          c.id != mine &&
+          c.state == IdCardState.pending &&
+          c.standing &&
+          (c.effectiveAt?.millisecondsSinceEpoch ?? 0) >= mineAt,
+    );
     db.execute('UPDATE id_links SET state = ?, updated_at = ? WHERE id = ?', [
       won ? (newer ? 'blocked' : 'active') : 'retired',
       _nowMs,
@@ -343,6 +371,16 @@ class IdLinks {
       "UPDATE id_links SET state = 'retired', updated_at = ? WHERE state = 'blocked' AND id NOT IN (?, ?) "
       'AND patient_id IN (${List.filled(group.length, '?').join(', ')})${newer ? ' AND 0' : ''}',
       [_nowMs, mine, winner ?? mine, ...group],
+    );
+  }
+
+  /// The server refused a card made here: it is unusable from now on, whatever becomes of its
+  /// outbox entry, so nothing counts it as a card the server has (review P2).
+  void _onRejected(OutboxEntry e) {
+    if (e.entity != entityIdLink || e.op != 'create') return;
+    store.database.execute(
+      "UPDATE id_links SET state = 'rejected', updated_at = ? WHERE id = ? AND state = 'pending'",
+      [_nowMs, e.recordId],
     );
   }
 
@@ -385,17 +423,20 @@ class IdLinks {
     final group = patientGroup(store, canonical).toList();
     final inGroup = 'patient_id IN (${List.filled(group.length, '?').join(', ')})';
     store.transaction(() {
-      final madeHere = db.select("SELECT 1 FROM id_links WHERE state = 'pending' AND $inGroup", group).isNotEmpty;
+      // Only a card on its way to the server keeps the server's cards blocked: one it refused or
+      // holds for review leaves them as the server lists them (review P2).
+      final madeHere = _madeHereWaits(store, group);
       final listed = {for (final c in active) c.id};
       for (final c in active) {
-        final row = db.select('SELECT state FROM id_links WHERE id = ?', [c.id]).firstOrNull;
+        final row = db.select('SELECT * FROM id_links WHERE id = ?', [c.id]).firstOrNull;
         final state = madeHere && (row == null || row['state'] == 'blocked') ? 'blocked' : 'active';
         if (row == null) {
           db.execute(
             'INSERT INTO id_links (id, patient_id, token, state, effective_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
             [c.id, c.issuedOn, c.token, state, c.effectiveAt.toUtc().millisecondsSinceEpoch, now],
           );
-        } else if (row['state'] != 'pending') {
+        } else if (row['state'] != 'pending' || !_cardOf(store, row).standing) {
+          // A card made here and held for review that an admin let through is active now.
           db.execute(
             'UPDATE id_links SET state = ?, token = coalesce(?, token), effective_at = ?, updated_at = ? WHERE id = ?',
             [state, c.token, c.effectiveAt.toUtc().millisecondsSinceEpoch, now, c.id],
