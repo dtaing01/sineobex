@@ -270,6 +270,48 @@ describe('phase 3 sync: problems', () => {
       expect((await row(merged)).status).toBe('new');
       expect((await kinds(survivor)).at(-1)).toBe('redirected');
     });
+
+    it('a conflict on an entry merged into another shows the survivor, on a retry too, and its card settles it', async () => {
+      // Review finding S2: the survivor was Resolved at 10:05; a phone still holding the merged
+      // entry says Ongoing at 14:30, and gets the problem card with the survivor's status.
+      const survivor = await problem(['new', 'resolved'], '10:05');
+      const merged = await problem(['new'], '09:00');
+      await h.scratch.owner`update sineobex.problems set merged_into = ${survivor} where id = ${merged}`;
+      const mine = await status(phoneB, merged, 'ongoing', 1, '14:30');
+      const [first] = await asB(mine);
+      expect(first).toMatchObject({
+        status: 'conflict',
+        serverVersion: 2,
+        server: { value: { status: 'resolved', encounterId: null }, version: 2 },
+      });
+      expect((await asB(mine))[0], 'a retry gets the first answer').toEqual(first);
+
+      // An answer from a version the card never showed is still a conflict...
+      const stale = await status(phoneB, merged, 'ongoing', 1, '14:31', {
+        conflictOf: mine.changeId,
+        resolution: 'keep_server',
+      });
+      expect((await asB(stale))[0]).toMatchObject({ status: 'conflict', serverVersion: 2 });
+      // ...and Keep Resolved, at the version shown, settles both: the person's status is history.
+      const keep = await status(phoneB, merged, 'ongoing', 2, '14:32', {
+        conflictOf: stale.changeId,
+        resolution: 'keep_server',
+      });
+      const [settled] = await asB(keep);
+      expect(settled).toMatchObject({
+        status: 'accepted',
+        serverVersion: 2,
+        details: { redirectedTo: survivor },
+      });
+      expect((await asB(keep))[0], 'a retry gets the first answer').toEqual(settled);
+      const open = await h.scratch.owner<{ changeId: string; by: string | null }[]>`
+        select change_id, resolved_by_change as by from sineobex.sync_changes
+        where change_id in (${mine.changeId}, ${stale.changeId}) order by device_seq`;
+      expect(open.map((o) => o.by)).toEqual([keep.changeId, keep.changeId]);
+      expect(await row(survivor)).toMatchObject({ status: 'resolved', version: 2 });
+      expect((await kinds(survivor)).at(-1)).toBe('kept_both');
+      expect(await row(merged)).toMatchObject({ status: 'new', version: 1 });
+    });
   });
 
   describe('creating problems', () => {

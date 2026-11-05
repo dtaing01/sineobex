@@ -757,13 +757,13 @@ class FakeSyncServer {
       return _rejected('permission');
     }
     // A set naming a merged record applies to its survivor, as one that never saw the survivor's
-    // value (design 2.7).
+    // value (design 2.7), unless it answers a conflict that showed the survivor's value.
     final redirect = _redirect(named, field);
     final rec = redirect == null ? named : records[redirect['redirectedTo']]!;
     final cur = rec.state(field);
-    final saw =
-        redirect == null &&
-        (c['baseVersion'] == cur['version'] || _followsCurrent(actor, c, rec, field, cur['version']! as int));
+    final saw = redirect == null
+        ? c['baseVersion'] == cur['version'] || _followsCurrent(actor, c, rec, field, cur['version']! as int)
+        : c['baseVersion'] == cur['version'] && _answersConflictOn(actor, c, rec.id);
     final s = _SetContext(actor, c, rules, rec, field, value, cur, saw, redirect);
     final outcome = switch (cls) {
       FieldClass.draft => _draftSet(s),
@@ -772,7 +772,8 @@ class FakeSyncServer {
       FieldClass.setOnce => _setOnceSet(s),
       FieldClass.status => _statusSet(s),
     };
-    if (redirect != null && outcome['status'] == 'accepted') {
+    // A conflict keeps its survivor on the receipt, so a retry shows the survivor again.
+    if (redirect != null && outcome['status'] != 'rejected') {
       return {
         ...outcome,
         'details': {...?outcome['details'] as Map<String, Object?>?, ...redirect},
@@ -796,6 +797,18 @@ class FakeSyncServer {
       return {'redirectedTo': to.id};
     }
     return null;
+  }
+
+  /// apply.ts answersConflictOn: [c] answers the person's own conflict on this field of this record,
+  /// and that conflict showed [survivorId]'s value (the problem card of a merged entry).
+  bool _answersConflictOn(_Actor actor, Map<String, Object?> c, String survivorId) {
+    final shown = receipts[c['conflictOf']];
+    return shown != null &&
+        shown.status == 'conflict' &&
+        shown.userId == actor.userId &&
+        shown.recordId == c['recordId'] &&
+        shown.field == c['field'] &&
+        shown.details?['redirectedTo'] == survivorId;
   }
 
   /// D16, with the exception of design 2.2 step 7: a change that follows the person's own earlier
@@ -1929,10 +1942,11 @@ class _Receipt {
   Map<String, Object?> result(FakeSyncServer s, String changeId) {
     Map<String, Object?> current(String id) =>
         s.records[id]?.state(field ?? '') ?? {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
+    // A redirected change was answered with the survivor's field, a conflict included.
+    final on = details?['redirectedTo'] as String? ?? recordId;
     switch (status) {
       case 'accepted':
         final kept = details?['outcome'] == 'kept_both' || details?['outcome'] == 'history_only';
-        final on = details?['redirectedTo'] as String? ?? recordId;
         return {
           'changeId': changeId,
           'status': 'accepted',
@@ -1942,7 +1956,7 @@ class _Receipt {
           'details': ?details,
         };
       case 'conflict':
-        final f = current(recordId);
+        final f = current(on);
         return {'changeId': changeId, 'status': 'conflict', 'serverVersion': f['version'], 'server': f};
       default:
         return {

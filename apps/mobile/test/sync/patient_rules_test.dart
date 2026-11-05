@@ -545,6 +545,39 @@ void main() {
       );
       expect(server.merges[mergeId]!.mergedId, merged);
     });
+
+    test('a problem merged into a Resolved one: the card shows the survivor, on a retry too, and settles', () async {
+      // Review finding S2: every answer on this card used to be a conflict again.
+      Map<String, Object?> status(String s) => {'status': s, 'encounterId': null};
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final merged = server.seed(entityProblem, {'patientId': patient, 'title': 'Cough', 'status': 'new'}, at: start);
+      final survivor = server.seed(entityProblem, {'patientId': patient, 'title': 'Cough', 'status': 'new'}, at: start);
+      await p.engine.syncAll();
+      expect(await p.engine.openServerRecord(entityProblem, merged), isTrue);
+      server.mergeProblem(merged, survivor);
+      server.serverEdit(survivor, 'status', status('resolved'), by: blair);
+      p.advance(const Duration(hours: 1));
+      serverTime = serverTime.add(const Duration(hours: 1));
+      p.store.setField(merged, 'status', status('ongoing'));
+
+      // The first answer is lost; the stored one shows the survivor's status, as the first did.
+      server.dropPushResponses = 1;
+      expect(await p.engine.syncAll(force: true), isA<SyncOffline>());
+      expect((await sync(p)).conflicts, 1);
+      final card = p.store.needsAttention().single;
+      expect([card.recordId, card.server!.value, card.server!.version], [merged, status('resolved'), 2]);
+
+      // Keep Resolved: the person's status stays in history and the card goes away.
+      expect(p.store.resolveConflict(card.changeId, keepMine: false), isTrue);
+      final settled = await sync(p);
+      expect([settled.confirmed, settled.conflicts, settled.rejected], [1, 0, 0]);
+      expect(p.store.needsAttention(), isEmpty);
+      expect(server.receipts[card.changeId]!.resolved, isTrue);
+      expect([server.records[survivor]!.status, server.records[survivor]!.fields['status']!.version], ['resolved', 2]);
+      expect([server.history.last['recordId'], server.history.last['kind']], [survivor, 'kept_both']);
+      expect(server.records[merged]!.status, 'new');
+    });
   });
 
   group('caps and taken IDs (rule 8)', () {

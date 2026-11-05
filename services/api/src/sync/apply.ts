@@ -158,10 +158,11 @@ export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultV
       ? fieldState(record, r.field)
       : { value: null, version: 0, changedBy: null, changedAt: null };
   };
+  // A redirected change was answered with the survivor's field, a conflict included.
+  const on = typeof r.details?.redirectedTo === 'string' ? r.details.redirectedTo : r.recordId;
   if (r.status === 'accepted') {
     const details = r.details ?? undefined;
     const kept = details?.outcome === 'kept_both' || details?.outcome === 'history_only';
-    const on = typeof details?.redirectedTo === 'string' ? details.redirectedTo : r.recordId;
     return toResult(
       r.changeId,
       {
@@ -181,7 +182,7 @@ export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultV
       r.valueHash,
     );
   }
-  return toResult(r.changeId, { status: 'conflict', server: await current(r.recordId) });
+  return toResult(r.changeId, { status: 'conflict', server: await current(on) });
 }
 
 /**
@@ -331,14 +332,12 @@ async function storeReceipt(tx: Tx, actor: ApplyActor, c: SyncChangeInput, hash:
   const serverVersion =
     o.status === 'accepted' ? o.serverVersion : o.status === 'conflict' ? o.server.version : null;
   const reason = o.status === 'rejected' ? o.reason : null;
-  // An accepted receipt keeps its details too (kept both, redirected, a link's outcome), so a
-  // retry gets the same answer (design 2.5).
+  // An accepted receipt keeps its details too (kept both, redirected, a link's outcome), and a
+  // conflict the survivor it was shown, so a retry gets the same answer (design 2.5).
   const details =
     o.status === 'rejected'
       ? { ...o.details, ...(o.quarantined ? { quarantined: true } : {}) }
-      : o.status === 'accepted'
-        ? (o.details ?? null)
-        : null;
+      : (o.details ?? null);
   // An admin accepting a quarantined change replaces the receipt its push got (quarantined,
   // rejected or in conflict). An accepted receipt is final.
   await tx`
@@ -515,17 +514,42 @@ async function set(ctx: ChangeContext, rules: EntityRules): Promise<Outcome> {
 
   // A set naming a merged record applies to its survivor, as one that never saw the survivor's
   // value (design 2.7): a blank fills, the same value is a no-op, a different one is kept both.
+  // The one exception is the answer to a conflict that showed the survivor's value: the person
+  // saw it there, at the version the answer names.
   const redirect = rules.redirect ? await rules.redirect(tx, named, field) : null;
   const rec = redirect?.to ?? named;
   const cur = fieldState(rec, field);
-  const saw =
-    !redirect &&
-    (c.baseVersion === cur.version || (await followsCurrent(tx, actor, c, rec, field, cur.version)));
+  const saw = redirect
+    ? c.baseVersion === cur.version && (await answersConflictOn(tx, actor, c, rec.id))
+    : c.baseVersion === cur.version || (await followsCurrent(tx, actor, c, rec, field, cur.version));
   const outcome = await applyField(cls, { ...ctx, rules, rec, field, value, cur, saw, redirect });
-  if (redirect && outcome.status === 'accepted') {
+  if (redirect && outcome.status !== 'rejected') {
     return { ...outcome, details: { ...outcome.details, ...redirect.details } };
   }
   return outcome;
+}
+
+/**
+ * The change answers the person's own conflict on this field of this record, and that conflict
+ * showed [survivorId]'s value (its receipt was redirected there): the problem card of a merged
+ * entry, whose every answer would otherwise be a conflict again (review finding S2).
+ */
+async function answersConflictOn(
+  tx: Tx,
+  actor: ApplyActor,
+  c: SyncChangeInput,
+  survivorId: string,
+): Promise<boolean> {
+  if (!c.conflictOf) return false;
+  const shown = await findReceipt(tx, c.conflictOf);
+  return (
+    shown !== null &&
+    shown.status === 'conflict' &&
+    shown.userId === actor.authorId &&
+    shown.recordId === c.recordId &&
+    shown.field === c.field &&
+    shown.details?.redirectedTo === survivorId
+  );
 }
 
 /**

@@ -301,7 +301,12 @@ export type Outcome =
       details?: Record<string, unknown>;
     }
   | { status: 'rejected'; reason: RejectReasonName; details?: Record<string, unknown>; quarantined?: boolean }
-  | { status: 'conflict'; server: FieldStateValue };
+  | {
+      status: 'conflict';
+      server: FieldStateValue;
+      /** Kept on the receipt only (a redirect's survivor, so a retry shows it); never sent. */
+      details?: Record<string, unknown>;
+    };
 
 export const rejected = (reason: RejectReasonName, details?: Record<string, unknown>): Outcome => ({
   status: 'rejected',
