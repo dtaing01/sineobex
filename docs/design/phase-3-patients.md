@@ -30,11 +30,11 @@ this table is their state. Update it as units land.
 | W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
 | P2 Phone patients domain | Done | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | — |
-| P3 Phone screens | Not started; needs P2's interfaces | — | All of row P3 |
+| P3 Phone screens | Done | `apps/mobile/lib/features/patients/**` (Patients tab, intake and edit, duplicate panel and sheet, profile, ID card, problem, add problem, field review sheet), tab shell and wiring (`app.dart`, `app_providers.dart`), Needs attention texts and notices, Home line, `allergy_badge`, `status_chip`, `birth_field`; widget tests in three themes, at 200% text and 320 wide | Field review decision and History go through P2 wrappers, with fake routes (review list) |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
-| Review | Not started | — | Adversarial review of the whole phase once P3, W1 and W2 land; then the phase is Done |
+| **Review** | **In progress**: server and portal; phone and the fake's fidelity; then the screens | — | Every confirmed finding fixed with a regression test |
 
-Order from here: P3 (building on P2); the review last.
+Order from here: the review and its fixes, then the phase closes (section 15 row D).
 
 ### As built: where the code departs from, or reads, this design
 
@@ -156,6 +156,17 @@ Later units build on the code, not on the text above, where they differ.
   `saveDraft` drops `legalGiven`, `legalFamily` and `legalName` and keeps `legalNameDropped`), and
   the phone pulls notices after sync (`NoticesRefresher`; reads go back through
   `ServerNotices.markRead`, queued by notice ID while offline).
+- **Phone screens (P3).** Routes carry UUIDs only; a typed name and "Add what you typed" travel in
+  the route's `extra`. `/v1/me`'s `idLinkBaseUrl` reaches `patientRefreshers` through an
+  `IdLinkBase` provider. Pins (Keep for today, Select, Kept for today) are not built (Oct 22
+  amendment). The sign-out dialog names the new categories in its percent form ("2 of 5" waits for
+  `sync_flow_test.dart`'s owner). The Home patient-list line sits under the sync card. An
+  `encounter_missing` status has its sentence but no attach-to-encounter button until phase 4. Match
+  reasons name the kind of name that matched, not its text (the row already shows the aliases). The
+  privacy notice starts as "They took it" and the preferred-language order and minors' guidance
+  (shown, not enforced) are PLAN-OPEN. The widget harness reads `problem_codes.json` from the file;
+  a separate test loads it through `rootBundle`. Every PHI text field has a `phi.` key and
+  suggestions, autocorrect and personalised learning off.
 - **Portal patients (W1).** Search and the ID card panel need JavaScript: their actions run in the
   browser so earlier results and card links never travel back in a request body. Card links reach
   the browser only through `GET /id-link` (logged), never with the chart; since W1's review, chart
