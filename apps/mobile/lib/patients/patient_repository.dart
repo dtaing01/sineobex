@@ -4,8 +4,17 @@ import 'package:uuid/data.dart';
 import 'package:uuid/rng.dart';
 import 'package:uuid/uuid.dart';
 
-import '../api/generated/api.dart' show ConsentView, DuplicateHint, FieldReviewView, PatientChartMergedFromItem;
+import '../api/generated/api.dart'
+    show
+        ConsentView,
+        DecideFieldReview,
+        DecideFieldReviewKeep,
+        DuplicateHint,
+        FieldHistoryPage,
+        FieldReviewView,
+        PatientChartMergedFromItem;
 import '../api/transport.dart';
+import '../auth/auth_provider.dart' show AuthErrorCode, AuthException;
 import '../sync/entities.dart'
     show allergyCategories, allergySeverities, isBlankField, livingSituations, patientFieldNames;
 import '../sync/local_store.dart';
@@ -321,6 +330,81 @@ String? _text(String? s) {
   return t == null || t.isEmpty ? null : t;
 }
 
+/// Why a request that only works online (a field review's decision, a chart's history) didn't go
+/// through, for the screen to put in words (review P10).
+enum OnlineProblem {
+  /// No connection: "This needs a connection. Try again when the phone is online."
+  offline,
+
+  /// The role may not do this, or not for this review (403).
+  notAllowed,
+
+  /// A legal name or birth decision needs a recent sign-in (403 `reauth_required`), or the session
+  /// ended.
+  signInAgain,
+
+  /// The review or the patient isn't there (404).
+  notFound,
+
+  /// Someone decided the review already (409 `already_decided`).
+  alreadyDecided,
+
+  /// The field changed since the review was shown (409 `field_changed`): open the chart again and
+  /// look at it afresh.
+  fieldChanged,
+
+  /// Keeping a legal name or birth needs a comment (422 `comment_required`).
+  commentRequired,
+
+  /// Keeping that value would leave the person with no name or description (409
+  /// `nothing_to_recognise`).
+  nothingToRecognise,
+
+  /// The request didn't fit (422): a value that isn't one of the review's, an unknown field or
+  /// page cursor.
+  invalid,
+
+  /// The server failed. Try again.
+  failed,
+}
+
+/// An online-only request that didn't go through, and why. Never holds a value.
+class OnlineRequestFailed implements Exception {
+  const OnlineRequestFailed(this.problem, {this.version});
+  final OnlineProblem problem;
+
+  /// For [OnlineProblem.fieldChanged]: the field's version on the server now.
+  final int? version;
+
+  @override
+  String toString() => 'OnlineRequestFailed(${problem.name})';
+}
+
+/// [request]'s answer, or [OnlineRequestFailed] with why there is none.
+Future<T> _online<T>(Future<T> Function() request) async {
+  try {
+    return await request();
+  } on NetworkException {
+    throw const OnlineRequestFailed(OnlineProblem.offline);
+  } on AuthException catch (e) {
+    throw OnlineRequestFailed(e.code == AuthErrorCode.unavailable ? OnlineProblem.offline : OnlineProblem.signInAgain);
+  } on ApiException catch (e) {
+    final problem = switch ((e.status, e.code)) {
+      (401, _) || (403, 'reauth_required') => OnlineProblem.signInAgain,
+      (403, _) => OnlineProblem.notAllowed,
+      (404, _) => OnlineProblem.notFound,
+      (_, 'already_decided') => OnlineProblem.alreadyDecided,
+      (_, 'field_changed') => OnlineProblem.fieldChanged,
+      (_, 'nothing_to_recognise') => OnlineProblem.nothingToRecognise,
+      (_, 'comment_required') => OnlineProblem.commentRequired,
+      (400 || 409 || 422, _) => OnlineProblem.invalid,
+      _ => OnlineProblem.failed,
+    };
+    final version = e.details?['version'];
+    throw OnlineRequestFailed(problem, version: version is num ? version.toInt() : null);
+  }
+}
+
 /// Patients for one team's store.
 class PatientRepository {
   PatientRepository(
@@ -542,6 +626,52 @@ class PatientRepository {
       lastSeenOn: meta?.lastSeenOn,
       mergedFrom: meta?.mergedFrom ?? const [],
       downloadFailed: charts.downloadFailed(canonical),
+    );
+  }
+
+  // ---- online only: field reviews and history (review P10) ----
+
+  /// "Two values recorded" decided (design 3.2): keeps the chart's current value ([keepCurrent]) or
+  /// the review's alternate [historyId], as of the version the person was shown, with a [comment]
+  /// (required for a legal name or birth). Online only. The chart is then opened again, so it shows
+  /// the value kept, and returned. Throws [OnlineRequestFailed] with why it didn't go through, and
+  /// [ChartingPaused] while the store is frozen.
+  Future<PatientView?> decideFieldReview(
+    FieldReviewView review, {
+    required bool keepCurrent,
+    String? historyId,
+    String? comment,
+  }) async {
+    if (store.frozen) throw ChartingPaused(store.frozenMessage!);
+    if (!keepCurrent && historyId == null) throw ArgumentError('keeping another value names it (historyId)');
+    final decided = await _online(
+      () => charts.api.decideFieldReview(
+        reviewId: review.id,
+        body: DecideFieldReview(
+          keep: keepCurrent ? DecideFieldReviewKeep.current : DecideFieldReviewKeep.alternate,
+          historyId: keepCurrent ? null : historyId,
+          baseVersion: review.current.version,
+          comment: _text(comment),
+        ),
+      ),
+    );
+    final patientId = store.canonicalPatient(decided.patientId);
+    try {
+      return await open(patientId);
+    } on ApiException {
+      // Decided all the same: the chart already on screen, as the phone holds it.
+      return read(patientId);
+    }
+  }
+
+  /// Every change to the chart's fields, newest first, a page at a time (design 11.7): [field]
+  /// narrows it to one field, [after] is the last page's `nextAfterId`. Online only; the server
+  /// logs the read. Throws [OnlineRequestFailed] ([OnlineProblem.offline] without a connection),
+  /// and [ChartingPaused] while the store is frozen.
+  Future<FieldHistoryPage> history(String patientId, {String? field, String? after}) async {
+    if (store.frozen) throw ChartingPaused(store.frozenMessage!);
+    return _online(
+      () => charts.api.getPatientHistory(patientId: store.canonicalPatient(patientId), field: field, afterId: after),
     );
   }
 
