@@ -245,7 +245,15 @@ describe('an index page', () => {
     const withPair = await page(staff.token, { have: afterEdit });
     expect(withPair.status).toBe('page');
     const entry = withPair.entries.find((e) => e.patientId === p1)!;
-    expect(entry.duplicate).toEqual({ status: 'not_sure', note: 'Demo: check ID card at next visit' });
+    // The reviewer's note is free text that may hold a legal name: the chart shows it, the index
+    // on every field phone never carries it (D40; review finding P7).
+    expect(entry.duplicate).toEqual({ status: 'not_sure' });
+    expect(JSON.stringify(withPair)).not.toContain('check ID card');
+    const chart = await h.request(`/v1/patients/${p1}`, { token: staff.token, teamId });
+    expect(((await chart.json()) as { duplicate: unknown }).duplicate).toEqual({
+      status: 'not_sure',
+      note: 'Demo: check ID card at next visit',
+    });
   });
 
   it('shows the fields with an open review', async () => {

@@ -24,7 +24,8 @@ const isoDay = (d: Date) => d.toISOString().slice(0, 10);
  * `patient.index_downloaded {version, after, next, count}` (D33); `unchanged` writes nothing.
  *
  * An entry holds only the PRD's list plus bookkeeping: never a legal name or anything derived from
- * one (D40), living situation, language, consents, problems, notes, tokens or history.
+ * one (D40), living situation, language, consents, problems, notes (a duplicate pair's included),
+ * tokens or history.
  */
 export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Promise<TeamIndexPageValue> {
   return scope.tx(async (tx, audit) => {
@@ -108,6 +109,7 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
         if (name !== r.preferredName && !aliases.some((a) => a.alias === name))
           aliases.push({ id: null, alias: name, kind: 'merged_name' });
       }
+      const hint = hints.get(r.id);
       return {
         patientId: r.id,
         preferredName: r.preferredName,
@@ -119,7 +121,8 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
         allergyScreen: r.allergyScreen,
         allergies: r.allergies,
         idLinks: r.idLinks,
-        duplicate: hints.get(r.id) ?? null,
+        // Never the reviewer's note: free text may hold a legal name (D40). Charts carry it.
+        duplicate: hint ? { status: hint.status } : null,
         reviews: r.reviews,
         versions: {
           preferredName: r.fieldVersions.preferredName ?? 0,

@@ -805,11 +805,7 @@
             ]
           },
           "status": {
-            "enum": [
-              "open",
-              "not_sure"
-            ],
-            "type": "string"
+            "$ref": "#/components/schemas/DuplicateHintStatus"
           }
         },
         "required": [
@@ -817,6 +813,13 @@
           "note"
         ],
         "type": "object"
+      },
+      "DuplicateHintStatus": {
+        "enum": [
+          "open",
+          "not_sure"
+        ],
+        "type": "string"
       },
       "DuplicatePage": {
         "properties": {
@@ -1583,6 +1586,17 @@
         ],
         "type": "object"
       },
+      "IndexDuplicateHint": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DuplicateHintStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "IndexEntry": {
         "properties": {
           "aliases": {
@@ -1661,7 +1675,7 @@
           "duplicate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DuplicateHint"
+                "$ref": "#/components/schemas/IndexDuplicateHint"
               },
               {
                 "type": "null"

@@ -173,15 +173,23 @@ export const PatientRedirect = z
   .object({ mergedId: Uuid, survivorId: Uuid, mergedAt: DateTime })
   .openapi('PatientRedirect');
 
+export const DuplicateHintStatus = z.enum(['open', 'not_sure']).openapi('DuplicateHintStatus');
+
 export const DuplicateHint = z
   .object({
-    status: z.enum(['open', 'not_sure']),
+    status: DuplicateHintStatus,
     note: z
       .string()
       .nullable()
       .openapi({ description: 'The reviewer’s Not sure note, shown to field staff' }),
   })
   .openapi('DuplicateHint');
+
+/**
+ * The index's hint carries no note: a reviewer's free text may hold a legal name, and the index
+ * sits on every field phone (D40). Charts keep the note.
+ */
+export const IndexDuplicateHint = z.object({ status: DuplicateHintStatus }).openapi('IndexDuplicateHint');
 
 export const ConsentView = z
   .object({
@@ -401,7 +409,7 @@ export const IndexEntry = z
       z.object({ id: Uuid, substance: z.string(), category: AllergyCategory, severity: AllergySeverity }),
     ),
     idLinks: z.array(z.object({ id: Uuid, effectiveAt: DateTime })),
-    duplicate: z.union([DuplicateHint, z.null()]),
+    duplicate: z.union([IndexDuplicateHint, z.null()]),
     reviews: z.array(z.string()).openapi({ description: 'Fields with an open review' }),
     versions: z.object({
       preferredName: z.number().int(),

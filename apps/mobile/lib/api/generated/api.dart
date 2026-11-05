@@ -2479,6 +2479,22 @@ class IdentityCorrection {
       };
 }
 
+class IndexDuplicateHint {
+  const IndexDuplicateHint({
+    required this.status,
+  });
+
+  final DuplicateHintStatus status;
+
+  factory IndexDuplicateHint.fromJson(Map<String, dynamic> json) => IndexDuplicateHint(
+        status: DuplicateHintStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'status': status.toJson(),
+      };
+}
+
 class IndexEntry {
   const IndexEntry({
     required this.aliases,
@@ -2500,7 +2516,7 @@ class IndexEntry {
   final List<IndexEntryAllergiesItem> allergies;
   final AllergyScreen allergyScreen;
   final BirthView? birth;
-  final DuplicateHint? duplicate;
+  final IndexDuplicateHint? duplicate;
   final List<IndexEntryIdLinksItem> idLinks;
   /// A calendar date, YYYY-MM-DD
   final String? lastSeenOn;
@@ -2517,7 +2533,7 @@ class IndexEntry {
         allergies: (json['allergies'] as List<dynamic>).map((e) => IndexEntryAllergiesItem.fromJson(e as Map<String, dynamic>)).toList(),
         allergyScreen: AllergyScreen.fromJson(json['allergyScreen'] as String),
         birth: json['birth'] == null ? null : BirthView.fromJson(json['birth'] as Map<String, dynamic>),
-        duplicate: json['duplicate'] == null ? null : DuplicateHint.fromJson(json['duplicate'] as Map<String, dynamic>),
+        duplicate: json['duplicate'] == null ? null : IndexDuplicateHint.fromJson(json['duplicate'] as Map<String, dynamic>),
         idLinks: (json['idLinks'] as List<dynamic>).map((e) => IndexEntryIdLinksItem.fromJson(e as Map<String, dynamic>)).toList(),
         lastSeenOn: json['lastSeenOn'] == null ? null : json['lastSeenOn'] as String,
         patientId: json['patientId'] as String,

@@ -1120,9 +1120,10 @@ export interface components {
         DuplicateHint: {
             /** @description The reviewer’s Not sure note, shown to field staff */
             note: string | null;
-            /** @enum {string} */
-            status: "open" | "not_sure";
+            status: components["schemas"]["DuplicateHintStatus"];
         };
+        /** @enum {string} */
+        DuplicateHintStatus: "open" | "not_sure";
         DuplicatePage: {
             /**
              * Format: uuid
@@ -1331,6 +1332,9 @@ export interface components {
             /** @description Active links only, for patients.edit */
             url?: string;
         };
+        IndexDuplicateHint: {
+            status: components["schemas"]["DuplicateHintStatus"];
+        };
         IndexEntry: {
             aliases: {
                 alias: string;
@@ -1354,7 +1358,7 @@ export interface components {
             }[];
             allergyScreen: components["schemas"]["AllergyScreen"];
             birth: components["schemas"]["BirthView"] | null;
-            duplicate: components["schemas"]["DuplicateHint"] | null;
+            duplicate: components["schemas"]["IndexDuplicateHint"] | null;
             idLinks: {
                 /** Format: date-time */
                 effectiveAt: string;
