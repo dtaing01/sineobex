@@ -159,6 +159,10 @@ test('a field review decided from the queue by keyboard, and the history shows t
   const form = page.getByRole('form').filter({ has: page.getByRole('radio', { name: choice }) });
   await expect(form).toHaveCount(1);
   await expect(form).toContainText('Recorded by');
+  // The queue names whose chart each review is on (review finding W1).
+  const section = page.getByRole('region').filter({ has: form });
+  await expect(section.getByRole('heading', { level: 2 })).toContainText('Usually found, Ken');
+  await expect(section.getByRole('link', { name: /^Open the chart of Ken/ })).toHaveCount(1);
   await expectAccessible(page, '/team/reviews');
 
   // No choice: nothing changes, and the error summary takes focus.

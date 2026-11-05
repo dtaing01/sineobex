@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ReviewForm } from '@/components/ReviewForm';
+import { who } from '@/components/SideBySide';
 import { api, unwrap } from '@/lib/api';
 import { teamToday } from '@/lib/dob';
 import { formatDateTime, syncFieldLabel } from '@/lib/labels';
@@ -67,7 +68,9 @@ export default async function ReviewsPage({
         </p>
       )}
       {queue.reviews.map((review, i) => {
-        const name = `${i + 1}. ${syncFieldLabel(review.field)}`;
+        // The API names the patient as the role may see them; the chart link says whose it opens.
+        const patient = review.patient ? who(review.patient) : null;
+        const name = `${i + 1}. ${syncFieldLabel(review.field)}${patient ? `, ${patient}` : ''}`;
         return (
           <section key={review.id} aria-labelledby={`r-${review.id}`} className="px-panel">
             <h2 id={`r-${review.id}`} className="px-h2">
@@ -75,9 +78,11 @@ export default async function ReviewsPage({
             </h2>
             <p>
               Opened {formatDateTime(review.openedAt)}.{' '}
+              {review.currentBy && <>The chart’s value was recorded by {review.currentBy.displayName}. </>}
               {/* No prefetch on any link to a patient page: loading one logs a view nobody made. */}
               <Link href={`/patients/${review.patientId}`} prefetch={false}>
-                Open the chart<span className="sr-only"> for review {i + 1}</span>
+                Open the chart
+                <span className="sr-only">{patient ? ` of ${patient}` : ` for review ${i + 1}`}</span>
               </Link>
             </p>
             <ReviewForm review={review} today={today} back="/team/reviews" name={name} />

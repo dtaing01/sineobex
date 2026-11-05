@@ -116,9 +116,32 @@ function UndoResult({ undone, names }: { undone: Undone; names: MergeNames }) {
         )}
         {undone.reviewsClosed > 0 && (
           <li>
-            {undone.reviewsClosed} {undone.reviewsClosed === 1 ? 'review' : 'reviews'} the merge opened{' '}
-            {undone.reviewsClosed === 1 ? 'was' : 'were'} closed.
+            {undone.reviewsClosed} {undone.reviewsClosed === 1 ? 'review' : 'reviews'} on {names.survivor}{' '}
+            offered only {names.merged}’s values and {undone.reviewsClosed === 1 ? 'was' : 'were'} closed.
           </li>
+        )}
+        {undone.reviewsReopened > 0 && (
+          <li>
+            {undone.reviewsReopened} {undone.reviewsReopened === 1 ? 'review' : 'reviews'} on {names.merged}{' '}
+            that the merge had closed {undone.reviewsReopened === 1 ? 'is' : 'are'} open again.
+          </li>
+        )}
+        {/* A value chosen while merged stays (design 8.5): the admin is told, and checks it. */}
+        {undone.decidedReviews.map((r) =>
+          r.keptMergedValue ? (
+            <li key={r.reviewId}>
+              <strong>
+                Check {syncFieldLabel(r.field)} on {names.survivor}.
+              </strong>{' '}
+              {r.decidedBy.displayName} chose {names.merged}’s value on {formatDateTime(r.decidedAt)}, while
+              the charts were merged, and it stays. Correct it if it isn’t {names.survivor}’s.
+            </li>
+          ) : (
+            <li key={r.reviewId}>
+              {syncFieldLabel(r.field)} on {names.survivor} was decided while merged (
+              {r.decidedBy.displayName}, {formatDateTime(r.decidedAt)}) and kept {names.survivor}’s value.
+            </li>
+          ),
         )}
         {undone.restoredLinks.map((l) => (
           <li key={l.linkId}>
@@ -138,13 +161,18 @@ function UndoResult({ undone, names }: { undone: Undone; names: MergeNames }) {
       {undone.redirectedEdits.length > 0 && (
         <>
           <p>
-            These edits were sent to {names.merged} while it was merged, and went onto {names.survivor}. If
-            they belong to {names.merged}, make them again on its chart:
+            These edits were sent to {names.merged} while it was merged. If they belong to {names.merged},
+            make them again on its chart:
           </p>
           <ul className="px-list">
             {undone.redirectedEdits.map((e) => (
               <li key={e.historyId}>
-                {syncFieldLabel(e.field)}, {formatDateTime(e.at)} by {e.by.displayName}
+                {syncFieldLabel(e.field)}, {formatDateTime(e.at)} by {e.by.displayName}:{' '}
+                {e.outcome === 'applied'
+                  ? `written to ${names.survivor}`
+                  : e.outcome === 'kept_both'
+                    ? `offered in a review on ${names.survivor}, now taken out`
+                    : `kept in ${names.survivor}’s history only`}
               </li>
             ))}
           </ul>
