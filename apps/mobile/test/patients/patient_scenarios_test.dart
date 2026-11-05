@@ -582,6 +582,41 @@ void main() {
     },
   );
 
+  // Review P5: clearing kept the survivor's chart for work on the merged record, then deleted the
+  // redirect between them, so the next purge found the chart unused and deleted it.
+  test('a chart kept for work on a merged record at sign-out survives the next purge', () async {
+    final a = phone(alex);
+    final kept = server.seedPatient(preferredName: 'Del', legalName: {'given': 'Demo', 'family': 'Keptchart'});
+    final merged = server.seedPatient(preferredName: 'Delly');
+    server.seed(entityAllergy, {'patientId': kept, 'substance': 'Demo: penicillin', 'severity': 'severe'});
+    await a.services.patients.open(merged);
+    server.merge(merged, kept);
+    // Work on the record the phone knew, sent in a push the server never answers; the refresh then
+    // teaches the phone the merge.
+    a.store.createRecord(entityAlias, {'patientId': merged, 'alias': 'Smitty'});
+    server.stopAfter = 0;
+    await a.phone.engine.syncAll(force: true);
+    server.stopAfter = null;
+    await a.services.charts.fetch([merged], reason: FetchChartsReason.refresh);
+    expect(a.store.canonicalPatient(merged), kept);
+    final chart = a.store.recordIdsOfPatient(kept);
+    expect(chart, hasLength(2));
+    int names() =>
+        a.store.database.select('SELECT count(*) AS n FROM patient_names WHERE patient_id = ?', [kept]).first['n']!
+            as int;
+    expect(names(), greaterThan(0));
+
+    a.store.clearServerData(); // "Log out anyway"
+    a.store.purge(); // the next confirmation, Save & Close, or swap
+    expect(a.store.recordIdsOfPatient(kept), chart);
+    expect(names(), greaterThan(0));
+    expect(a.store.canonicalPatient(merged), kept);
+    // The work sends, and the chart goes with its last reason.
+    await a.phone.engine.syncAll(force: true);
+    expect(a.store.outbox(), isEmpty);
+    expect(a.store.recordIdsOfPatient(kept), isEmpty);
+  });
+
   // Review P1: the new create carries none of the refused record's later edits, and nothing named
   // the new record, so the edits were deleted unsent at its receipt and the notes refused for good.
   group('Attach to another patient sends what waited on the refused record', () {

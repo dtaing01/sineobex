@@ -1938,11 +1938,12 @@ class LocalStore {
   }
 
   /// Deletes the server's data from this phone and keeps local work (design 2.9-7, 6.3): the team
-  /// index, its staging and its search names; every redirect and scope; and the charts no local
-  /// work is about, with their search names and ID links. A chart local work keeps stays whole, its
-  /// names included, as in the purge: the worker must still find offline the patient whose work
-  /// waits. Never an outbox entry. Called at sign-out, at the index's 7-day expiry, on a 403 for
-  /// the index, and first at open when the file was marked stale.
+  /// index, its staging and its search names; every scope; every redirect but those between a
+  /// patient with waiting work and the chart that holds them; and the charts no local work is
+  /// about, with their search names and ID links. A chart local work keeps stays whole, its names
+  /// and redirect included, as in the purge: the worker must still find offline the patient whose
+  /// work waits. Never an outbox entry. Called at sign-out, at the index's 7-day expiry, on a 403
+  /// for the index, and first at open when the file was marked stale.
   void clearServerData() {
     _tx(() {
       final work = localWorkPatients();
@@ -1969,8 +1970,13 @@ class LocalStore {
             [p],
           );
       }
+      // A redirect that ties waiting work to the chart it keeps stays (review P5): without it the next
+      // purge no longer finds the survivor's chart in use and deletes it, names and all.
+      for (final r in _db.select('SELECT merged_id, survivor_id FROM patient_redirects')) {
+        if (keep.contains(r['merged_id']) || keep.contains(r['survivor_id'])) continue;
+        _db.execute('DELETE FROM patient_redirects WHERE merged_id = ?', [r['merged_id']]);
+      }
       _db
-        ..execute('DELETE FROM patient_redirects')
         ..execute('DELETE FROM cache_scopes')
         ..execute("DELETE FROM kv WHERE key LIKE '$indexKvPrefix%'");
     });
