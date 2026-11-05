@@ -178,6 +178,38 @@ describe('field reviews', () => {
       ]);
     });
 
+    it('names the patient and who recorded the chart’s value, so the queue can say whose it is', async () => {
+      const p = await createPatient(h, teamId, admin.userId, {
+        preferredName: 'Demo Wynn',
+        legalName: { given: 'Wynnifred', family: values[4] },
+        usualArea: values[0],
+      });
+      const { reviewId } = await openReview(p.id, 'usualArea', values[1]);
+      const asEditor = await call('/v1/team/field-reviews?status=open', editor);
+      const view = asEditor.body.reviews.find((r) => r.id === reviewId)! as ReviewView & {
+        patient?: Record<string, unknown>;
+        currentBy?: unknown;
+      };
+      // The portal's projected summary, as the duplicate and reversal queues carry it.
+      expect(view.patient).toMatchObject({
+        preferredName: 'Demo Wynn',
+        legalName: { given: 'Wynnifred', family: values[4] },
+        usualArea: values[0],
+      });
+      expect(view.currentBy).toEqual({ userId: admin.userId, displayName: 'Alex (demo)' });
+
+      // A decision's answer says who recorded the value too; a chart's reviews are as they were.
+      const decided = await decide(reviewId, editor, { keep: 'current', baseVersion: 1 });
+      expect(decided.body).toMatchObject({ currentBy: { userId: admin.userId, displayName: 'Alex (demo)' } });
+      expect(decided.body).not.toHaveProperty('patient');
+      await openReview(p.id, 'visualDescriptor', values[2]);
+      const chart = await call(`/v1/patients/${p.id}`, editor);
+      const embedded = (chart.body as unknown as { reviews: Record<string, unknown>[] }).reviews;
+      expect(embedded).toHaveLength(1);
+      expect(embedded[0]).not.toHaveProperty('patient');
+      expect(embedded[0]).not.toHaveProperty('currentBy');
+    });
+
     it('pages by afterId, and never shows another team’s reviews', async () => {
       const p = await createPatient(h, teamId, editor.userId, { usualArea: values[0] });
       await openReview(p.id, 'usualArea', values[1]);

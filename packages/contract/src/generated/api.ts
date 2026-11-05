@@ -1232,12 +1232,15 @@ export interface components {
                 value?: unknown;
             }[];
             current: components["schemas"]["FieldState"];
+            /** @description Who recorded the chart’s value; null when nobody did. In the team list and a decision’s answer */
+            currentBy?: components["schemas"]["UserRef"] | null;
             field: string;
             /** Format: uuid */
             id: string;
             needs: components["schemas"]["ReviewNeeds"];
             /** Format: date-time */
             openedAt: string;
+            patient?: components["schemas"]["PatientSummary"];
             /** Format: uuid */
             patientId: string;
             /** @enum {string} */

@@ -227,6 +227,13 @@ export const FieldReviewView = z
     field: z.string(),
     needs: ReviewNeeds,
     current: FieldState,
+    currentBy: z.union([UserRef, z.null()]).optional().openapi({
+      description:
+        'Who recorded the chart’s value; null when nobody did. In the team list and a decision’s answer',
+    }),
+    // Who the review is about, as the role may see them: in the team list only, so the queue can
+    // name the patient. A chart's reviews are already inside the chart.
+    patient: PatientSummary.optional(),
     alternates: z.array(
       z.object({ historyId: HistoryId, value: z.unknown(), by: UserRef, deviceTime: DateTime.nullable() }),
     ),

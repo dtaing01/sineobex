@@ -2165,30 +2165,37 @@ class FieldReviewView {
   const FieldReviewView({
     required this.alternates,
     required this.current,
+    this.currentBy,
     required this.field,
     required this.id,
     required this.needs,
     required this.openedAt,
+    this.patient,
     required this.patientId,
     required this.status,
   });
 
   final List<FieldReviewViewAlternatesItem> alternates;
   final FieldState current;
+  /// Who recorded the chart’s value; null when nobody did. In the team list and a decision’s answer
+  final UserRef? currentBy;
   final String field;
   final String id;
   final ReviewNeeds needs;
   final DateTime openedAt;
+  final PatientSummary? patient;
   final String patientId;
   final FieldReviewViewStatus status;
 
   factory FieldReviewView.fromJson(Map<String, dynamic> json) => FieldReviewView(
         alternates: (json['alternates'] as List<dynamic>).map((e) => FieldReviewViewAlternatesItem.fromJson(e as Map<String, dynamic>)).toList(),
         current: FieldState.fromJson(json['current'] as Map<String, dynamic>),
+        currentBy: json['currentBy'] == null ? null : UserRef.fromJson(json['currentBy'] as Map<String, dynamic>),
         field: json['field'] as String,
         id: json['id'] as String,
         needs: ReviewNeeds.fromJson(json['needs'] as String),
         openedAt: DateTime.parse(json['openedAt'] as String),
+        patient: json['patient'] == null ? null : PatientSummary.fromJson(json['patient'] as Map<String, dynamic>),
         patientId: json['patientId'] as String,
         status: FieldReviewViewStatus.fromJson(json['status'] as String),
       );
@@ -2196,10 +2203,12 @@ class FieldReviewView {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'alternates': alternates.map((e) => e.toJson()).toList(),
         'current': current.toJson(),
+        if (currentBy != null) 'currentBy': currentBy == null ? null : currentBy!.toJson(),
         'field': field,
         'id': id,
         'needs': needs.toJson(),
         'openedAt': openedAt.toUtc().toIso8601String(),
+        if (patient != null) 'patient': patient!.toJson(),
         'patientId': patientId,
         'status': status.toJson(),
       };

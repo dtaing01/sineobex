@@ -7,6 +7,7 @@ import { loadPatient, writePatient } from '../sync/entities/patient.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
 import { fieldState, jsonb, sameValue, type StoredRecord } from '../sync/records.ts';
 import { rematchPatient } from './duplicates.ts';
+import { loadSummaries, projectSummary } from './projection.ts';
 import { recognisableAfter } from './recognisable.ts';
 import type {
   DecideFieldReviewInput,
@@ -76,8 +77,16 @@ interface ReviewRow {
   openedAt: Date;
 }
 
-/** Reviews as the queue and the review sheet show them: the chart's value beside the alternates. */
-async function reviewViews(tx: Tx, rows: ReviewRow[]): Promise<FieldReviewViewValue[]> {
+/**
+ * Reviews as the queue and the review sheet show them: the chart's value and who recorded it
+ * beside the alternates. `scope` adds who each review is about (the team list's projected summary),
+ * so the queue can name the patient.
+ */
+async function reviewViews(
+  tx: Tx,
+  rows: ReviewRow[],
+  scope: TeamScope | null = null,
+): Promise<FieldReviewViewValue[]> {
   if (rows.length === 0) return [];
   const alternates = await tx<
     {
@@ -100,14 +109,40 @@ async function reviewViews(tx: Tx, rows: ReviewRow[]): Promise<FieldReviewViewVa
   for (const r of rows) {
     if (!records.has(r.recordId)) records.set(r.recordId, await loadPatient(tx, r.recordId, false));
   }
+  const currents = new Map(
+    rows.map((r) => {
+      const rec = records.get(r.recordId);
+      const empty = { value: null, version: 0, changedBy: null, changedAt: null };
+      return [r.id, rec ? fieldState(rec, r.field) : empty];
+    }),
+  );
+  const writers = [...new Set([...currents.values()].flatMap((c) => (c.changedBy ? [c.changedBy] : [])))];
+  const names = new Map(
+    (
+      await tx<{ id: string; displayName: string }[]>`
+        select id, display_name from sineobex.users where id = any (${writers}::uuid[])`
+    ).map((u) => [u.id, u.displayName]),
+  );
+  const summaries = scope
+    ? await loadSummaries(
+        tx,
+        scope,
+        rows.map((r) => r.canonicalId),
+      )
+    : null;
   return rows.map((r) => {
-    const rec = records.get(r.recordId);
+    const current = currents.get(r.id)!;
+    const summary = summaries?.get(r.canonicalId);
     return {
       id: r.id,
       patientId: r.canonicalId,
       field: r.field,
       needs: r.needs,
-      current: rec ? fieldState(rec, r.field) : { value: null, version: 0, changedBy: null, changedAt: null },
+      current,
+      currentBy: current.changedBy
+        ? { userId: current.changedBy, displayName: names.get(current.changedBy) ?? '' }
+        : null,
+      ...(summary && scope ? { patient: projectSummary(scope, summary, 'portal') } : {}),
       alternates: alternates
         .filter((a) => a.reviewId === r.id)
         .map((a) => ({
@@ -127,8 +162,9 @@ const reviewColumns = (tx: Tx) => tx`
 
 /**
  * GET /v1/team/field-reviews (phase 3 design 3.2): reviews the caller may decide (their `needs`
- * is a permission the caller holds), oldest first. Audited as `field_review.viewed {count}` and
- * `patient.viewed {source: 'field_review'}` per patient on the page.
+ * is a permission the caller holds), oldest first, each with the patient's projected summary so the
+ * queue can name them. Audited as `field_review.viewed {count}` and `patient.viewed {source:
+ * 'field_review'}` per patient on the page.
  */
 export async function listFieldReviews(
   scope: TeamScope,
@@ -158,7 +194,7 @@ export async function listFieldReviews(
       await audit({ action: 'patient.viewed', patientId, details: { source: 'field_review' } });
     }
     return {
-      reviews: await reviewViews(tx, page),
+      reviews: await reviewViews(tx, page, scope),
       nextAfterId: rows.length > page.length ? page.at(-1)!.id : null,
     };
   });
