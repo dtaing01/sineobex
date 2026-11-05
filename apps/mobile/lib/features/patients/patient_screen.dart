@@ -57,6 +57,9 @@ class _Profile extends ConsumerStatefulWidget {
 class _ProfileState extends ConsumerState<_Profile> {
   bool _opening = true;
   bool _missing = false;
+
+  /// Why the open couldn't be logged (a frozen store): the chart is never read, so never shown.
+  String? _refused;
   String? _problem;
   String? _copied;
   TypedDetails? _typed;
@@ -82,10 +85,11 @@ class _ProfileState extends ConsumerState<_Profile> {
         _missing = view == null;
       });
     } on ChartingPaused catch (e) {
+      // The view couldn't be logged, so the chart isn't shown (D21).
       if (mounted) {
         setState(() {
           _opening = false;
-          _problem = e.message;
+          _refused = e.message;
         });
       }
     } on ApiException {
@@ -264,16 +268,15 @@ class _ProfileState extends ConsumerState<_Profile> {
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, _s]),
         builder: (context, _) {
+          if (_refused case final message?) {
+            return Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: ErrorMessage(message));
+          }
           final view = _opening || _missing ? null : _s.patients.read(_id);
           if (_opening && view == null) return const Center(child: CircularProgressIndicator());
           if (view == null) {
-            return Padding(
-              padding: const EdgeInsets.all(FieldSpace.s4),
-              child: _problem != null
-                  ? ErrorMessage(_problem!)
-                  : const NoticeMessage(
-                      'This patient isn’t on this phone. Search again when the phone is back online.',
-                    ),
+            return const Padding(
+              padding: EdgeInsets.all(FieldSpace.s4),
+              child: NoticeMessage('This patient isn’t on this phone. Search again when the phone is back online.'),
             );
           }
           return _body(context, view, sync.snapshot.offline, sync.snapshot.clock.paused, teamName);

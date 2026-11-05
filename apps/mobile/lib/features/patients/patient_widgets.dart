@@ -331,7 +331,8 @@ class _ReasonDialogState extends State<_ReasonDialog> {
 }
 
 /// The open team's patient services and what to show when there are none: locked, no team, or a
-/// role without patient records.
+/// role without patient records. While the team's store is frozen for a hand-over nothing from it
+/// shows: a frozen store can't log a view, and what can't be logged isn't shown (D21).
 class PatientsGate extends ConsumerWidget {
   const PatientsGate({super.key, required this.title, required this.builder});
   final String title;
@@ -355,7 +356,23 @@ class PatientsGate extends ConsumerWidget {
         ),
       );
     }
-    return builder(context, services);
+    // The controller itself, not the provider: a screen under another one still hears it, and a
+    // chart already on screen goes when the store freezes. The screen's own state goes with it,
+    // so lists read before the freeze (Opened recently, a search run) are never shown again.
+    final sync = ref.watch(syncControllerProvider);
+    return ListenableBuilder(
+      listenable: sync,
+      builder: (context, _) {
+        final frozen = services.store.frozenMessage;
+        if (frozen != null) {
+          return Scaffold(
+            appBar: AppBar(title: Text(title)),
+            body: Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: ErrorMessage(frozen)),
+          );
+        }
+        return builder(context, services);
+      },
+    );
   }
 }
 

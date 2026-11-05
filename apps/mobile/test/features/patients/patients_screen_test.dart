@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/features/patients/patients_screen.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 
@@ -139,5 +140,39 @@ void main() {
     expectNoLegalName(tester);
     await expectScreenOk(tester);
     handle.dispose();
+  });
+
+  testWidgets('a freeze for a hand-over: an Opened-recently row shows no chart, and the list goes (V1)', (
+    tester,
+  ) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await tester.runAsync(() => h.patients.patients.open(p1Id));
+    await openPatientsTab(tester);
+    final row = find.bySemanticsLabel(RegExp('^Del, also known as'));
+    expect(row, findsOneWidget);
+    h.server.offline = true;
+    final store = h.sync.store!;
+    final before = auditEvents(store).length;
+    // The row read before the freeze is still on screen until the controller next tells its
+    // listeners; tapping it opens nothing.
+    store.freeze(frozen);
+    await tapOn(tester, row);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('Legal name: Delbert Smithfield', skipOffstage: false), findsNothing);
+    expectNoLegalName(tester);
+    expect(auditEvents(store), hasLength(before));
+
+    // Back on the tab once the controller has spoken: the list read before the freeze is gone.
+    final context = tester.element(find.byType(Navigator).first);
+    GoRouter.of(context).pop();
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('Opened recently on this phone'), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('^Del, also known as'), skipOffstage: false), findsNothing);
+    expect(auditEvents(store), hasLength(before));
   });
 }

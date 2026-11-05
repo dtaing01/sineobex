@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/api/transport.dart' show NetworkException;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 
@@ -143,5 +144,74 @@ void main() {
     expect(save.onPressed, isNull);
     await expectGuidelines(tester);
     handle.dispose();
+  });
+
+  group('a store frozen for a hand-over shows no chart, because it can log no view (V1)', () {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+
+    for (final run in runs) {
+      testWidgets('opening the chart says why, reads nothing and logs nothing (${runName(run)})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signIn(tester, theme: run.theme, scale: run.scale, narrow: run.narrow);
+        seedP1(h.server);
+        await syncAndRefresh(tester, h);
+        h.server.offline = true;
+        final store = h.sync.store!..freeze(frozen);
+        final before = auditEvents(store).length;
+        await go(tester, '/patients/$p1Id');
+        expect(find.text(frozen), findsOneWidget);
+        expect(find.text('Del'), findsNothing);
+        expectNoLegalName(tester);
+        expect(auditEvents(store), hasLength(before));
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('a freeze while the open waits for the server: the chart is never read', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      // The chart is on the phone from an earlier open.
+      await tester.runAsync(() => h.patients.patients.open(p1Id));
+      final store = h.sync.store!;
+      final before = auditEvents(store).length;
+      // The hand-over starts while the screen asks the server for the chart, and the signal goes.
+      h.server.onRequest = (path) {
+        if (path != '/v1/patients/charts') return;
+        store.freeze(frozen);
+        throw const NetworkException('offline');
+      };
+      await go(tester, '/patients/$p1Id');
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.text('Del'), findsNothing);
+      expectNoLegalName(tester);
+      expect(auditEvents(store), hasLength(before));
+
+      // Access comes back before the hand-over ends. The view that was refused was never logged,
+      // so the chart still isn't shown: it shows when it is opened again.
+      h.server.onRequest = null;
+      store.unfreeze();
+      await tester.runAsync(() => h.sync.syncNow());
+      await settle(tester);
+      expect(find.text('Del'), findsNothing);
+      expectNoLegalName(tester);
+    });
+
+    testWidgets('a chart on screen goes when the store freezes', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Legal name: Delbert Smithfield'));
+      h.server.offline = true;
+      h.sync.store!.freeze(frozen);
+      // The controller tells its listeners after a freeze (here, a sync that finds no signal).
+      await tester.runAsync(() => h.sync.syncNow());
+      await settle(tester);
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.text('Del'), findsNothing);
+      expectNoLegalName(tester);
+    });
   });
 }
