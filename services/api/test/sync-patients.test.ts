@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { idLinkTokenRef } from '../src/patients/id-links.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { createPatient, expectAudit, auditMark, mergeDirect, type NewPatient } from './patient-fixtures.ts';
 import {
@@ -502,6 +503,20 @@ describe('phase 3 sync: patient-side records', () => {
         hash: held.valueHash,
       });
       expect(await count('patient_id_links', `patient_id in ('${survivor.id}', '${merged.id}')`)).toBe(0);
+
+      // Review finding S7: the queue showed the card's token, which opens the patient's card page.
+      // It names the token as audit events do; accepting the item still applies the token sent.
+      const { token, ...rest } = held.value as { token: string };
+      const queue = await call(h, `/v1/team/quarantine?userId=${billing.id}`, {
+        token: t.adminToken,
+        teamId: t.teamId,
+      });
+      expect(queue.status).toBe(200);
+      expect(JSON.stringify(queue.body)).not.toContain(token);
+      const item = (queue.body.items as { changeId: string; value: unknown }[]).find(
+        (i) => i.changeId === held.changeId,
+      );
+      expect(item!.value).toEqual({ ...rest, tokenRef: await idLinkTokenRef(token) });
     });
   });
 

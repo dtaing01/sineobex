@@ -1,6 +1,7 @@
 import type { TeamScope } from '../auth/context.ts';
 import { PERMISSION_KEYS } from '../auth/permissions.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
+import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
   applyInSavepoint,
   changeOwners,
@@ -99,6 +100,8 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
         details: { itemId: r.id },
       });
     }
+    const values = new Map<string, unknown>();
+    for (const r of page) values.set(r.id, await shownValue(r));
     const items = page.map((r) => ({
       id: r.id,
       user: { userId: r.userId, displayName: r.userName },
@@ -108,7 +111,7 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       recordId: r.recordId,
       op: r.op,
       field: r.field,
-      value: r.value,
+      value: values.get(r.id),
       deviceTime: r.deviceTime.toISOString(),
       reason: r.reason,
       status: r.status,
@@ -119,6 +122,21 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
     }));
     return { items, nextAfterId: rows.length > page.length ? page.at(-1)!.id : null, people };
   });
+}
+
+/**
+ * An item's value as the queue shows it. A held ID link create carries the card's token, which
+ * opens the patient's card page, so it is named the way audit events name it (review finding S7);
+ * accepting the item applies the value as it was sent. Values were never schema-checked, so the
+ * token is replaced only when it is a string, and dropped otherwise.
+ */
+async function shownValue(r: Pick<QuarantineRow, 'entity' | 'op' | 'value'>): Promise<unknown> {
+  const v = r.value;
+  if (r.entity !== 'id_link' || r.op !== 'create' || typeof v !== 'object' || v === null || !('token' in v)) {
+    return v;
+  }
+  const { token, ...rest } = v as { token: unknown };
+  return typeof token === 'string' ? { ...rest, tokenRef: await idLinkTokenRef(token) } : rest;
 }
 
 /**
