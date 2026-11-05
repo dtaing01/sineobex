@@ -6,6 +6,7 @@ import '../sync/local_store.dart';
 import '../sync/sync_engine.dart';
 import 'id_links.dart';
 import 'patient_search.dart' show writeSearchNames;
+import 'team_index.dart' show TeamIndex;
 
 /// Charts kept on the phone (design section 7): the charts a person opened or worked on, for 24
 /// hours, downloaded in D24-style batches. Phase 7 adds a route as one more [CacheSource]; the purge
@@ -68,7 +69,8 @@ class ChartMeta {
     'allergyIds': [for (final a in e.allergies) a.id],
     'birth': e.birth?.toJson(),
     'lastSeenOn': e.lastSeenOn,
-    'duplicate': e.duplicate?.toJson(),
+    // Never the reviewer's note: an index entry carries the hint only (D40, review P7).
+    'duplicate': TeamIndex.indexEntryJson(e)['duplicate'],
     'reviewFields': e.reviews,
   });
 

@@ -198,9 +198,27 @@ class TeamIndex {
         'INSERT INTO team_index_staging (after, version, entries_json, staged_at) VALUES (?, ?, ?, ?) '
         'ON CONFLICT (after) DO UPDATE SET version = excluded.version, entries_json = excluded.entries_json, '
         'staged_at = excluded.staged_at',
-        [after, page.version, jsonEncode(page.toJson()), _now().toUtc().millisecondsSinceEpoch],
+        [
+          after,
+          page.version,
+          jsonEncode({
+            ...page.toJson(),
+            'entries': [for (final e in page.entries) indexEntryJson(e)],
+          }),
+          _now().toUtc().millisecondsSinceEpoch,
+        ],
       ),
     );
+  }
+
+  /// An index entry as the phone keeps it: the duplicate hint without the reviewer's Not sure note,
+  /// free text that can carry a legal name (D40, review P7). The server leaves it out of the index;
+  /// the phone drops it as well, whatever a server sends. The note shows from a full chart only.
+  static Map<String, Object?> indexEntryJson(api.IndexEntry e) {
+    final json = e.toJson();
+    final hint = json['duplicate'];
+    if (hint is Map<String, Object?>) json['duplicate'] = {...hint}..remove('note');
+    return json;
   }
 
   /// The staged download: its pages in order, and the cursor to resume from (null when complete).
@@ -251,7 +269,7 @@ class TeamIndex {
             final date = birth?.date;
             insert.execute([
               e.patientId,
-              jsonEncode(e.toJson()),
+              jsonEncode(indexEntryJson(e)),
               e.preferredName,
               birth?.year ?? (date == null ? null : int.parse(date.substring(0, 4))),
               date,

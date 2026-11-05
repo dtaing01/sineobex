@@ -797,9 +797,15 @@ class PatientSearcher {
     }
     aliases.addAll(meta?.mergedNames ?? const []);
     final screen = (f['allergyScreen'] ?? e?['allergyScreen']) as String?;
-    final duplicate = e?['duplicate'] is Map<String, Object?>
-        ? DuplicateHint.fromJson(e!['duplicate']! as Map<String, Object?>)
-        : meta?.duplicate;
+    // The index's hint (the newer word on whether a review is open) with the reviewer's note only
+    // from a full chart that says the same: the index never carries the note (D40, review P7).
+    final chartHint = meta != null && !meta.partial ? meta.duplicate : null;
+    final indexHint = e?['duplicate'] is Map<String, Object?>
+        ? DuplicateHint.fromJson({...e!['duplicate']! as Map<String, Object?>}..remove('note'))
+        : null;
+    final duplicate = indexHint == null
+        ? meta?.duplicate
+        : DuplicateHint(status: indexHint.status, note: chartHint?.status == indexHint.status ? chartHint?.note : null);
     final waiting = pending ?? _pendingCreates();
     return FoundPatient(
       patientId: r.group.patientId,

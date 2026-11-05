@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart' as api;
 import 'package:sineobex_field/patients/patient_providers.dart';
+import 'package:sineobex_field/patients/patient_repository.dart' show ChartCopy;
+import 'package:sineobex_field/patients/patient_search.dart' show FoundPatient;
 import 'package:sineobex_field/patients/team_index.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -243,6 +245,44 @@ void main() {
     advance(const Duration(minutes: 2));
     expect(theirs.index.expireIfStale(), isFalse, reason: 'no index went');
     expect(stagedPages(), 0);
+  });
+
+  // Review P7: the reviewer's Not sure note is free text that can carry a legal name (D40). It
+  // shows from a full chart only; the index, its staging and a copy opened from it never hold it.
+  test('a Not sure note never rests in the index; its hint still shows, the note from the chart', () async {
+    final ids = seed(2);
+    const note = 'Demo: check the card at the next visit';
+    server.pairs.add(
+      FakePair('d1d1d1d1-0000-4000-8000-000000000001', ids[0], ids[1], 0.9, ['staff'])
+        ..status = 'not_sure'
+        ..note = note,
+    );
+    await refresher.refresh(RefreshReason.manual);
+    String all(String sql) => [for (final r in phone.db.db.select(sql)) r.values.join()].join();
+    expect(all('SELECT entry_json FROM team_index'), allOf(contains('not_sure'), isNot(contains('next visit'))));
+    // Whatever a server sends, a staged page drops it too.
+    services.index.stage('', await phone.engine.api.downloadTeamIndex(body: const api.TeamIndexRequest(limit: 100)));
+    expect(all('SELECT entries_json FROM team_index_staging'), isNot(contains('next visit')));
+    phone.db.db.execute('DELETE FROM team_index_staging');
+
+    FoundPatient hit(String id) => services.search.searchOnPhone('Demo').hits.firstWhere((h) => h.patientId == id);
+    expect(
+      [hit(ids[0]).possibleDuplicate, hit(ids[0]).duplicate?.status, hit(ids[0]).duplicate?.note],
+      [true, api.DuplicateHintStatus.notSure, null],
+    );
+    // Opened from the index while offline: the hint without the note.
+    server.offline = true;
+    final partial = (await services.patients.open(ids[1]))!;
+    expect(
+      [partial.copy, partial.duplicate?.status, partial.duplicate?.note],
+      [ChartCopy.partial, api.DuplicateHintStatus.notSure, null],
+    );
+    // The full chart carries it, and search shows it from there.
+    server.offline = false;
+    final full = (await services.patients.open(ids[0]))!;
+    expect([full.copy, full.duplicate?.note], [ChartCopy.full, note]);
+    expect(hit(ids[0]).duplicate?.note, note);
+    expect(all('SELECT entry_json FROM team_index'), isNot(contains('next visit')));
   });
 
   test('a role the cached permissions say may not hold it never asks, and an old index goes', () async {
