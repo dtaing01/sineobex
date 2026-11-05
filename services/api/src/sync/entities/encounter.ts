@@ -18,6 +18,10 @@ import { valueParents } from './values.ts';
  * patient of the team (phase 3 design 2.3, migration 0013): checked as a parent of the create and
  * of a `set patientId`, so the foreign key never answers first, and with the team lock taken
  * first, because the insert's foreign key check takes FOR KEY SHARE on the patient row (D32).
+ *
+ * Every set takes the team lock first too. A `set patientId` holds it while it locks the encounter
+ * row; any other set locks that row and then waits for the same lock at its audit event, so taking
+ * it later would deadlock the two (review finding S3).
  */
 
 type Value = z.infer<typeof EncounterCreate>;
@@ -48,9 +52,7 @@ export const encounterRules: EntityRules<Value> = {
   auditPrefix: 'encounter',
   permission: () => 'encounters.chart',
   takesTeamLock: (c) =>
-    c.op === 'create'
-      ? namesPatient((c.value as { patientId?: unknown } | null)?.patientId)
-      : c.op === 'set' && c.field === 'patientId' && namesPatient(c.value),
+    c.op === 'create' ? namesPatient((c.value as { patientId?: unknown } | null)?.patientId) : c.op === 'set',
   create: EncounterCreate,
   parents: (v) => valueParents('encounter', 'create', undefined, v),
   parentsOfSet: (field, v) => valueParents('encounter', 'set', field, v),

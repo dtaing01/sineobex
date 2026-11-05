@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
-import { createPatient } from './patient-fixtures.ts';
+import { createPatient, logSpy } from './patient-fixtures.ts';
 import {
   createEncounter,
   FakePhone,
@@ -19,13 +19,14 @@ import {
 type Change = Awaited<ReturnType<FakePhone['change']>>;
 
 describe('phase 3 sync: lock order', () => {
+  const spy = logSpy();
   let h: Harness;
   let t: Team;
   let phoneA: FakePhone;
   let phoneB: FakePhone;
 
   beforeAll(async () => {
-    h = await createHarness();
+    h = await createHarness({ log: spy.log });
     t = await setupTeam(h);
     phoneA = await FakePhone.create();
     phoneB = await FakePhone.create();
@@ -116,9 +117,8 @@ describe('phase 3 sync: lock order', () => {
   });
 
   it('an encounter edit never deadlocks with a patient-side write naming the encounter', async () => {
-    // A location edit takes no team lock, so it locks the encounter row before its audit event
-    // waits for the team's chain. A writer holding that lock may insert a problem naming the
-    // encounter, whose foreign key check takes FOR KEY SHARE: the edit's row lock must allow it.
+    // A writer holding the team lock may insert a problem naming the encounter, whose foreign key
+    // check takes FOR KEY SHARE; the edit, waiting for that lock, has not locked the row yet.
     const p = await createPatient(h, t.teamId, t.aId);
     const encounterId = await createEncounter(h, t.teamId, t.aId, p.id);
     const writer = await h.scratch.owner.reserve();
@@ -146,6 +146,63 @@ describe('phase 3 sync: lock order', () => {
     } finally {
       writer.release();
     }
+  });
+
+  it('every encounter edit takes the team lock before the encounter row', async () => {
+    // Review finding S3: a status edit locked the row, then waited for the team lock at its audit
+    // event, while a patient move held the team lock and waited for the row.
+    const p = await createPatient(h, t.teamId, t.aId);
+    const encounterId = await createEncounter(h, t.teamId, t.aId, p.id);
+    const mover = await h.scratch.owner.reserve();
+    try {
+      await mover`begin`;
+      await mover`set local lock_timeout = '3s'`;
+      await mover`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${t.teamId}::uuid::text, 0))`;
+      const edit = await phoneA.change({
+        entity: 'encounter',
+        recordId: encounterId,
+        op: 'set',
+        field: 'status',
+        value: 'completed',
+        baseVersion: 1,
+      });
+      const pushing = asA(edit);
+      await pushWaitsForTeamLock();
+      // What `set patientId` does next under the team lock.
+      await mover`select id from sineobex.encounters where id = ${encounterId} for no key update`;
+      await mover`commit`;
+      expect(await pushing).toEqual([expect.objectContaining({ status: 'accepted', serverVersion: 2 })]);
+    } finally {
+      mover.release();
+    }
+  });
+
+  it('two phones editing one encounter at once, one its status and one its patient, are both answered', async () => {
+    const p1 = await createPatient(h, t.teamId, t.aId);
+    const p2 = await createPatient(h, t.teamId, t.aId);
+    const failedBefore = spy.lines.filter((l) => l.includes('sync.change_failed')).length;
+    for (let i = 0; i < 20; i++) {
+      const encounterId = await createEncounter(h, t.teamId, t.aId, p1.id);
+      const status = await phoneA.change({
+        entity: 'encounter',
+        recordId: encounterId,
+        op: 'set',
+        field: 'status',
+        value: 'completed',
+        baseVersion: 1,
+      });
+      const move = await phoneB.change({
+        entity: 'encounter',
+        recordId: encounterId,
+        op: 'set',
+        field: 'patientId',
+        value: p2.id,
+        baseVersion: 1,
+      });
+      const answered = await Promise.all([asA(status), asB(move)]);
+      expect(answered.map((r) => r.map((x) => x.status))).toEqual([['accepted'], ['accepted']]);
+    }
+    expect(spy.lines.filter((l) => l.includes('sync.change_failed')).length).toBe(failedBefore);
   });
 
   it('merges and pushes naming the merged patient finish in either order, without a deadlock', async () => {

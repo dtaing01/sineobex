@@ -10,8 +10,9 @@ import type { Tx } from '../db/database.ts';
  * the foreign key), and lets duplicate matching see a concurrent create. Advisory locks are
  * re-entrant within a session, so append_audit taking it again later is free.
  *
- * Every patient-side change in a push, an encounter create or `set patientId` that names a patient,
- * and every online route that touches patient-side rows call this as their first statement.
+ * Every patient-side change in a push, an encounter create that names a patient, every encounter
+ * set (one of them, `set patientId`, locks the row under it), and every online route that touches
+ * patient-side rows call this as their first statement.
  */
 export async function lockTeamWrites(tx: Tx, teamId: string): Promise<void> {
   // The uuid's own text form, exactly as append_audit builds the key ('sineobex.audit:' || chain).
