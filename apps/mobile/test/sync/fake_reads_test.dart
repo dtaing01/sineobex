@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
+import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/entities.dart';
 
 import 'fake_server.dart';
@@ -199,6 +200,243 @@ void main() {
     expect(mine.single.kind, 'id_link_kept');
     await api.markNoticeRead(noticeId: mine.single.id);
     expect((await api.listNotices()).single.readAt, isNotNull);
+  });
+
+  group('field reviews and history (review finding P10: the routes the phone calls)', () {
+    const blair = 'b0000000-0000-4000-8000-00000000000b';
+    const admin = 'ad000000-0000-4000-8000-0000000000ad';
+    var seq = 0;
+    var ids = 0;
+    String id() => 'e0e00000-0000-4000-8000-${(++ids).toString().padLeft(12, '0')}';
+
+    setUp(() {
+      seq = 0;
+      server.permissions[admin] = {...FakeSyncServer.healthcareStaff, 'patients.correct_identity'};
+    });
+
+    /// A set pushed by [user] that never saw the chart's value (baseVersion 0).
+    Future<Map<String, Object?>> unseen(
+      String user,
+      String recordId,
+      String field,
+      Object? value, {
+      String entity = entityPatient,
+    }) async {
+      final device = 'dev-$user';
+      await server.handle(user, team, 'POST', '/v1/devices', {
+        'deviceId': device,
+        'platform': 'android',
+        'appVersion': 'test',
+        'publicKey': 'key-$user',
+      });
+      final at = now.toIso8601String();
+      final res = await server.handle(user, team, 'POST', '/v1/sync/push', {
+        'deviceId': device,
+        'clock': {'deviceTime': at},
+        'unsynced': {'counts': <String, Object?>{}},
+        'changes': [
+          {
+            'changeId': id(),
+            'seq': ++seq,
+            'entity': entity,
+            'recordId': recordId,
+            'op': 'set',
+            'field': field,
+            'value': value,
+            'valueHash': valueHash(value),
+            'baseVersion': 0,
+            'deviceTime': at,
+            'clockVerified': true,
+          },
+        ],
+      }) as Map<String, Object?>;
+      return (res['results']! as List<Object?>).single! as Map<String, Object?>;
+    }
+
+    Future<ApiException> refused(Future<Object?> call) async {
+      try {
+        await call;
+      } on ApiException catch (e) {
+        return e;
+      }
+      fail('expected a refusal');
+    }
+
+    SineobexApi as(String user) => SineobexApi(server.transportFor(user, team));
+
+    test('a decision keeps an alternate as its author’s, approved by the reviewer, once', () async {
+      final p = server.seedPatient(usualArea: 'Demo: Elm Street underpass');
+      final kept = await unseen(blair, p, 'usualArea', 'Demo: Oak Street lot');
+      final reviewId = (kept['details']! as Map<String, Object?>)['reviewId']! as String;
+      final chart = await api.getPatient(patientId: p);
+      final open = chart.reviews.single;
+      expect([open.id, open.patientId, open.current.version], [reviewId, p, 1]);
+      final alternate = open.alternates.single;
+
+      final stale = await refused(
+        api.decideFieldReview(
+          reviewId: reviewId,
+          body: DecideFieldReview(
+            keep: DecideFieldReviewKeep.alternate,
+            historyId: alternate.historyId,
+            baseVersion: 0,
+          ),
+        ),
+      );
+      expect(
+        [stale.status, stale.code, stale.details],
+        [
+          409,
+          'field_changed',
+          {'field': 'usualArea', 'version': 1},
+        ],
+      );
+      final unreadable = await refused(
+        server.handle(alex, team, 'POST', '/v1/team/field-reviews/$reviewId/decision', {
+          'keep': 'alternate',
+          'baseVersion': 1,
+        }),
+      );
+      expect(
+        [unreadable.status, (unreadable.details!['fields']! as List).single],
+        [
+          422,
+          {'path': 'historyId', 'problem': 'custom'},
+        ],
+      );
+      final notOne = await refused(
+        api.decideFieldReview(
+          reviewId: reviewId,
+          body: const DecideFieldReview(keep: DecideFieldReviewKeep.alternate, historyId: '1', baseVersion: 1),
+        ),
+      );
+      expect([notOne.status, notOne.code], [422, 'not_an_alternate']);
+
+      final decided = await api.decideFieldReview(
+        reviewId: reviewId,
+        body: DecideFieldReview(keep: DecideFieldReviewKeep.alternate, historyId: alternate.historyId, baseVersion: 1),
+      );
+      expect(
+        [decided.status, decided.patientId, decided.current.value, decided.current.version],
+        [FieldReviewViewStatus.decided, p, 'Demo: Oak Street lot', 2],
+      );
+      expect(decided.current.changedBy, blair);
+      expect((await api.getPatient(patientId: p)).reviews, isEmpty);
+      final again = await refused(
+        api.decideFieldReview(
+          reviewId: reviewId,
+          body: const DecideFieldReview(keep: DecideFieldReviewKeep.current, baseVersion: 2),
+        ),
+      );
+      expect([again.status, again.code], [409, 'already_decided']);
+      final logged = server.serverAudit.where((a) => a['action'] == 'field_review.decided').single;
+      expect(logged['patientId'], p);
+      expect(logged['details'], {
+        'reviewId': reviewId,
+        'field': 'usualArea',
+        'kept': 'alternate',
+        'historyId': alternate.historyId,
+        'version': 2,
+      });
+
+      final history = await api.getPatientHistory(patientId: p, field: 'usualArea');
+      expect(history.entries.map((e) => (e.kind, e.version, e.changedBy.userId, e.approvedBy?.userId)), [
+        (HistoryKind.reviewDecided, 2, blair, alex),
+        (HistoryKind.keptBoth, 1, blair, null),
+        (HistoryKind.created, 1, 'seed-user', null),
+      ]);
+      expect(history.entries.first.reviewId, reviewId);
+    });
+
+    test('legal name and birth: the review’s own permission, a recent sign-in and a comment', () async {
+      final p = server.seedPatient(legalName: const {'given': 'Ysolde', 'family': null});
+      final kept = await unseen(blair, p, 'legalName', const {'given': 'Ysolda', 'family': 'Varrowick'});
+      final reviewId = (kept['details']! as Map<String, Object?>)['reviewId']! as String;
+      final historyId = server.history.last['id']! as String;
+      final body = DecideFieldReview(keep: DecideFieldReviewKeep.alternate, historyId: historyId, baseVersion: 1);
+
+      final staff = await refused(api.decideFieldReview(reviewId: reviewId, body: body));
+      expect([staff.status, staff.code], [403, 'forbidden']);
+      server.staleSignIn.add(admin);
+      final stale = await refused(as(admin).decideFieldReview(reviewId: reviewId, body: body));
+      expect([stale.status, stale.code], [403, 'reauth_required']);
+      server.staleSignIn.clear();
+      final bare = await refused(as(admin).decideFieldReview(reviewId: reviewId, body: body));
+      expect([bare.status, bare.code], [422, 'comment_required']);
+      final missing = await refused(
+        as(admin).decideFieldReview(reviewId: 'f0000000-0000-4000-8000-00000000000f', body: body),
+      );
+      expect([missing.status, missing.code], [404, 'not_found']);
+
+      final decided = await as(admin).decideFieldReview(
+        reviewId: reviewId,
+        body: DecideFieldReview(
+          keep: DecideFieldReviewKeep.alternate,
+          historyId: historyId,
+          baseVersion: 1,
+          comment: '  Patient showed a card  ',
+        ),
+      );
+      expect(decided.current.value, {'given': 'Ysolda', 'family': 'Varrowick'});
+      final entry = (await as(admin).getPatientHistory(patientId: p, field: 'legalName')).entries.first;
+      expect(
+        [entry.kind, entry.approvedBy?.userId, entry.correctionId, entry.deviceTime],
+        [HistoryKind.reviewDecided, admin, isNotNull, null],
+      );
+      final details =
+          server.serverAudit.lastWhere((a) => a['action'] == 'field_review.decided')['details']!
+              as Map<String, Object?>;
+      expect(details['commentSha256'], hasLength(64));
+      expect(details['correctionId'], entry.correctionId);
+    });
+
+    test(
+      'history: the group’s records, problems with their permissions, never a card, newest first in pages',
+      () async {
+        final p = chart();
+        final merged = server.seedPatient(preferredName: 'Smit');
+        server.merge(merged, p);
+        final allergy = server.records.values.singleWhere((r) => r.entity == entityAllergy).id;
+        await unseen(blair, allergy, 'enteredInError', const {
+          'reason': 'Demo: another patient',
+        }, entity: entityAllergy);
+        // Each is kept both on the survivor: 60 history rows of the group.
+        for (var i = 0; i < 60; i++) {
+          await unseen(blair, merged, 'preferredName', 'Smit $i');
+        }
+        final first = await api.getPatientHistory(patientId: merged);
+        expect(first.entries, hasLength(FakeSyncServer.historyPage));
+        final ids = [for (final e in first.entries) int.parse(e.id)];
+        expect(ids, [...ids]..sort((a, b) => b.compareTo(a)));
+        final rest = await api.getPatientHistory(patientId: p, afterId: first.nextAfterId);
+        expect(rest.nextAfterId, isNull);
+        final all = [...first.entries, ...rest.entries];
+        // Both records' created fields, two problems, the allergy's retraction and the 60 kept.
+        expect(all, hasLength(9 + 9 + 2 + 1 + 60));
+        expect(all.map((e) => e.entity).toSet(), {entityPatient, entityAllergy, entityProblem});
+        expect(all.where((e) => e.kind == HistoryKind.keptBoth).map((e) => e.recordId).toSet(), {p});
+        expect(
+          jsonEncode(await server.handle(alex, team, 'GET', '/v1/patients/$p/history', null)),
+          isNot(contains('EEEE')),
+        );
+        final audited = server.serverAudit.where((a) => a['action'] == 'patient.history_viewed').toList();
+        expect(audited.map((a) => a['patientId']).toSet(), {p});
+        expect((audited.first['details']! as Map<String, Object?>)['count'], FakeSyncServer.historyPage);
+
+        // A role without view_sensitive gets no sensitive problem; one without the problem list none.
+        expect((await api.getPatientHistory(patientId: p, field: 'status')).entries, hasLength(2));
+        server.permissions[alex] = FakeSyncServer.healthcareStaff.difference({'patients.view_sensitive'});
+        var page = await api.getPatientHistory(patientId: p, field: 'status');
+        expect(page.entries.map((e) => e.recordId).toSet(), hasLength(1));
+        server.permissions[alex] = FakeSyncServer.chw;
+        page = await api.getPatientHistory(patientId: p, field: 'status');
+        expect(page.entries, isEmpty);
+        server.permissions[alex] = const {'checkins.create'};
+        expect((await refused(api.getPatientHistory(patientId: p))).status, 403);
+        server.permissions.remove(alex);
+        expect((await refused(api.getPatientHistory(patientId: 'f0000000-0000-4000-8000-00000000000f'))).status, 404);
+      },
+    );
   });
 }
 

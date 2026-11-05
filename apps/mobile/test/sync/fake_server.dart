@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/patients/access.dart';
@@ -97,6 +98,10 @@ class FakeSyncServer {
   /// Refuses the sign-in with this 403 code (team suspended, MFA needed) without touching what
   /// the device-key check says.
   String? refuseCode;
+
+  /// People whose sign-in is older than RECENT_AUTH_MINUTES: an identity decision is refused with
+  /// 403 reauth_required until they sign in again.
+  final staleSignIn = <String>{};
 
   /// The server commits a push, then the answer never arrives (killed app, dropped connection).
   int dropPushResponses = 0;
@@ -231,12 +236,13 @@ class FakeSyncServer {
     }
   }
 
-  /// A Program Admin accepts a change held for review (review.ts decideQuarantine): applied with the
-  /// whole catalog, and the receipt the push got is replaced. Returns what applying it answered.
-  Map<String, Object?> acceptHeld(String changeId) {
+  /// A Program Admin ([by]) accepts a change held for review (review.ts decideQuarantine): applied
+  /// with the whole catalog, approved by them, and the receipt the push got is replaced. Returns what
+  /// applying it answered.
+  Map<String, Object?> acceptHeld(String changeId, {String by = 'admin-user'}) {
     final c = quarantine[changeId]!;
     final h = held[changeId]!;
-    final outcome = _decide(_Actor(h.userId, 'admin', _allPermissions, holdForReview: false), c);
+    final outcome = _decide(_Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by), c);
     if (outcome['status'] != 'accepted') return outcome;
     quarantine.remove(changeId);
     held.remove(changeId);
@@ -285,7 +291,14 @@ class FakeSyncServer {
 
   // ---- requests ----
 
-  Future<Object?> handle(String userId, String teamId, String method, String path, Object? rawBody) async {
+  Future<Object?> handle(
+    String userId,
+    String teamId,
+    String method,
+    String path,
+    Object? rawBody, {
+    Map<String, String>? query,
+  }) async {
     if (offline) throw const NetworkException('offline');
     onRequest?.call(path);
     // Round-trip through JSON, as HTTP would, with the API's body limit (app.ts).
@@ -314,6 +327,16 @@ class FakeSyncServer {
         ('POST', '/v1/patients/match') => _match(userId, body!),
         ('GET', _) when _chartPath.hasMatch(path) => _chart(userId, _chartPath.firstMatch(path)![1]!),
         ('POST', _) when _noticeRead.hasMatch(path) => _markRead(userId, _noticeRead.firstMatch(path)![1]!),
+        ('GET', _) when _historyPath.hasMatch(path) => _historyOf(
+          userId,
+          _historyPath.firstMatch(path)![1]!,
+          query ?? {},
+        ),
+        ('POST', _) when _reviewDecision.hasMatch(path) => _decideReview(
+          userId,
+          _reviewDecision.firstMatch(path)![1]!,
+          body!,
+        ),
         ('GET', '/v1/time') => {'epochMs': now().millisecondsSinceEpoch, 'serverTime': now().toUtc().toIso8601String()},
         _ => throw ApiException(404, 'not_found', 'no route $method $path'),
       };
@@ -833,10 +856,20 @@ class FakeSyncServer {
 
   /// Writes the value: the field's next version and its history (`redirected` for a redirected
   /// change), then what the write sets off (matching again on a name).
-  Map<String, Object?> _writeValue(_SetContext s, String kind) {
+  Map<String, Object?> _writeValue(_SetContext s, String kind, {String? approvedBy}) {
     final version = (s.cur['version']! as int) + 1;
     _write(s.rec, s.field, s.value, version, s.actor.userId, _when(s.c), s.c['changeId'] as String?);
-    _history(s.rec, s.field, version, s.value, s.cur['value'], s.redirect != null ? 'redirected' : kind, s.actor, s.c);
+    _history(
+      s.rec,
+      s.field,
+      version,
+      s.value,
+      s.cur['value'],
+      s.redirect != null ? 'redirected' : kind,
+      s.actor,
+      s.c,
+      approvedBy: approvedBy,
+    );
     if (s.rec.entity == entityPatient && const {'preferredName', 'legalName', 'birth'}.contains(s.field)) {
       _rematch(s.rec.id, 'edit');
     }
@@ -862,6 +895,9 @@ class FakeSyncServer {
     }
   }
 
+  /// One field history row (field_history): `at` is the corrected device time the rules compare,
+  /// `deviceTime` the phone's own, `recordedAt` the server's; `approvedBy` whoever chose or accepted
+  /// it for the person (records.ts historyOf).
   void _history(
     FakeRecord rec,
     String field,
@@ -872,9 +908,12 @@ class FakeSyncServer {
     _Actor actor,
     Map<String, Object?> c, {
     String? reviewId,
+    String? approvedBy,
   }) => history.add({
     'id': '${history.length + 1}',
     'at': _when(c),
+    'deviceTime': c['deviceTime'],
+    'recordedAt': _iso(now()),
     'entity': rec.entity,
     'recordId': rec.id,
     'field': field,
@@ -883,6 +922,7 @@ class FakeSyncServer {
     'value': value,
     'previous': previous,
     'by': actor.userId,
+    'approvedBy': approvedBy ?? actor.approvedBy,
     'changeId': c['changeId'],
     'reviewId': ?reviewId,
   });
@@ -897,7 +937,7 @@ class FakeSyncServer {
           .where((r) => r.status == 'open' && r.entity == s.rec.entity && r.recordId == s.rec.id && r.field == s.field)
           .firstOrNull;
       reviewId = open?.id ?? _uuid();
-      reviews[reviewId] ??= FakeReview(reviewId, s.rec.entity, s.rec.id, s.field, needs);
+      reviews[reviewId] ??= FakeReview(reviewId, s.rec.entity, s.rec.id, s.field, needs, openedAt: now().toUtc());
     }
     _history(
       s.rec,
@@ -922,7 +962,17 @@ class FakeSyncServer {
   /// The person looked at both values and kept the server's: theirs is kept in history.
   Map<String, Object?> _keepServer(_SetContext s) {
     if (!s.saw) return _conflict(s);
-    _history(s.rec, s.field, s.cur['version']! as int, s.value, s.cur['value'], 'kept_both', s.actor, s.c);
+    _history(
+      s.rec,
+      s.field,
+      s.cur['version']! as int,
+      s.value,
+      s.cur['value'],
+      'kept_both',
+      s.actor,
+      s.c,
+      approvedBy: s.actor.decider,
+    );
     return _accepted(s.cur['version']! as int);
   }
 
@@ -944,7 +994,9 @@ class FakeSyncServer {
     final resolution = s.c['resolution'];
     if (resolution == 'keep_server') return _keepServer(s);
     if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
-    if (resolution == 'replace') return s.saw ? _writeValue(s, 'replaced_after_review') : _conflict(s);
+    if (resolution == 'replace') {
+      return s.saw ? _writeValue(s, 'replaced_after_review', approvedBy: s.actor.decider) : _conflict(s);
+    }
     if (s.saw) return _writeValue(s, 'set');
     if (isBlankValue(s.cur['value'])) return _writeValue(s, 'filled_blank');
     // "A field that already holds a different value is never overwritten silently."
@@ -1365,23 +1417,10 @@ class FakeSyncServer {
             if (urls) 'url': idLinkUrl(idLinkBaseUrl, l.token),
           },
       ],
+      // A chart names the record each review is on.
       'reviews': [
         for (final r in reviews.values)
-          if (r.status == 'open' && canonicalOf(r.recordId) == canonicalId)
-            {
-              'id': r.id,
-              'patientId': r.recordId,
-              'field': r.field,
-              'needs': r.needs,
-              'current': records[r.recordId]!.state(r.field),
-              'alternates': [
-                for (final h in history)
-                  if (h['reviewId'] == r.id)
-                    {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['at']},
-              ],
-              'openedAt': _iso(now()),
-              'status': r.status,
-            },
+          if (r.status == 'open' && canonicalOf(r.recordId) == canonicalId) _reviewView(r, patientId: r.recordId),
       ],
       'duplicate': _hint(canonicalId),
       'projection': ['c1', if (problemsShown) 'prob', if (sensitive) 'sens', if (urls) 'url'].join('+'),
@@ -1629,6 +1668,245 @@ class FakeSyncServer {
     return {'ok': true};
   }
 
+  // ---- field reviews and history (design 3.1, 3.2; services/api/src/patients) ----
+
+  static final _historyPath = RegExp(r'^/v1/patients/([0-9a-fA-F-]{36})/history$');
+  static final _reviewDecision = RegExp(r'^/v1/team/field-reviews/([^/]+)/decision$');
+  static final _uuidPattern = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+  static final _historyIdPattern = RegExp(r'^\d{1,19}$');
+
+  /// History entries per page (history.ts HISTORY_PAGE).
+  static const historyPage = 50;
+
+  /// A request the route's schema refuses: 422 with the paths that failed, as app.ts answers.
+  static Never _unreadable(List<(String, String)> problems) => throw ApiException(
+    422,
+    'validation_failed',
+    'Some fields are missing or invalid.',
+    details: {
+      'fields': [
+        for (final (path, problem) in problems) {'path': path, 'problem': problem},
+      ],
+    },
+  );
+
+  /// A review as FieldReviewView shows it (field-reviews.ts reviewViews): the chart's value beside
+  /// the values kept for it. A decision names the canonical patient ([patientId] left out); a chart
+  /// names the record the review is on.
+  Map<String, Object?> _reviewView(FakeReview r, {String? patientId}) => {
+    'id': r.id,
+    'patientId': patientId ?? canonicalOf(r.recordId),
+    'field': r.field,
+    'needs': r.needs,
+    'current': records[r.recordId]!.state(r.field),
+    'alternates': [
+      for (final h in history)
+        if (h['reviewId'] == r.id && h['kind'] == 'kept_both')
+          {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['deviceTime']},
+    ],
+    'openedAt': _iso(r.openedAt),
+    'status': r.status,
+  };
+
+  /// GET /v1/patients/{id}/history (history.ts fieldHistory): every recorded value of the group's
+  /// patient records, street names, allergies and problems (problems with the problem list's
+  /// permissions, sensitive ones only with view_sensitive), newest first, [historyPage] at a time.
+  /// ID links are left out: a link's create holds its token. Audited as `patient.history_viewed`.
+  Map<String, Object?> _historyOf(String userId, String patientId, Map<String, String> query) {
+    final field = query['field'];
+    final afterId = query['afterId'];
+    final unreadable = [
+      if (field != null && !RegExp(r'^[a-z][a-zA-Z]{0,40}$').hasMatch(field)) ('field', 'invalid_format'),
+      if (afterId != null && !_historyIdPattern.hasMatch(afterId)) ('afterId', 'invalid_format'),
+    ];
+    if (unreadable.isNotEmpty) _unreadable(unreadable);
+    _require(userId, 'patients.view');
+    if (records[patientId]?.entity != entityPatient) {
+      throw const ApiException(404, 'not_found', 'That patient was not found.');
+    }
+    final canonical = canonicalOf(patientId);
+    final perms = permissionsOf(userId);
+    final problems = mayViewProblems(perms);
+    final sensitive = problems && perms.contains('patients.view_sensitive');
+    final members = {for (final r in groupOf(canonical)) r.id};
+    bool shown(Map<String, Object?> h) {
+      final r = records[h['recordId']];
+      if (r == null || r.entity != h['entity']) return false;
+      return switch (r.entity) {
+        entityPatient => members.contains(r.id),
+        entityAlias || entityAllergy => members.contains(r.patientId),
+        entityProblem => problems && members.contains(r.patientId) && (sensitive || r.attributes['sensitive'] != true),
+        _ => false,
+      };
+    }
+
+    final after = afterId == null ? null : BigInt.parse(afterId);
+    final rows = [
+      for (final h in history.reversed)
+        if (shown(h) &&
+            (field == null || h['field'] == field) &&
+            (after == null || BigInt.parse(h['id']! as String) < after))
+          h,
+    ];
+    final page = rows.take(historyPage).toList();
+    serverAudit.add({
+      'action': 'patient.history_viewed',
+      'userId': userId,
+      'patientId': canonical,
+      'entityId': canonical,
+      'details': {'field': field, 'count': page.length},
+    });
+    return {
+      'entries': [
+        for (final h in page)
+          {
+            'id': h['id'],
+            'entity': h['entity'],
+            'recordId': h['recordId'],
+            'field': h['field'],
+            'version': h['version'],
+            'value': h['value'],
+            'previousValue': h['previous'],
+            'kind': h['kind'],
+            'changedBy': _user(h['by'] as String?),
+            'approvedBy': h['approvedBy'] == null ? null : _user(h['approvedBy'] as String?),
+            'deviceTime': h['deviceTime'],
+            'recordedAt': h['recordedAt'],
+            'reviewId': h['reviewId'],
+            'correctionId': h['correctionId'],
+          },
+      ],
+      'nextAfterId': rows.length > historyPage ? page.last['id'] : null,
+    };
+  }
+
+  /// POST /v1/team/field-reviews/{reviewId}/decision (field-reviews.ts decideFieldReview): keep
+  /// the chart's value or one kept for the review. Needs patients.edit or correct_identity to ask,
+  /// then the review's own `needs`, and for patients.correct_identity a recent sign-in. Legal name
+  /// and birth need a comment. A stale baseVersion is 409 field_changed; an alternate that would
+  /// leave nobody recognisable 409 nothing_to_recognise. Audited as `field_review.decided`.
+  Map<String, Object?> _decideReview(String userId, String reviewId, Map<String, Object?> b) {
+    // The route's schemas (ReviewParam, DecideFieldReview) answer before anything else.
+    final keep = b['keep'];
+    final historyId = b['historyId'];
+    final rawComment = b['comment'];
+    final comment = rawComment is String ? rawComment.trim() : null;
+    final base = b['baseVersion'];
+    final unreadable = [
+      if (!_uuidPattern.hasMatch(reviewId)) ('reviewId', 'invalid_format'),
+      if (keep != 'current' && keep != 'alternate') ('keep', 'invalid_value'),
+      if (historyId != null && (historyId is! String || !_historyIdPattern.hasMatch(historyId)))
+        ('historyId', 'invalid_format'),
+      if (rawComment != null && comment == null) ('comment', 'invalid_type'),
+      if (comment != null && comment.length < 3) ('comment', 'too_small'),
+      if (comment != null && comment.length > 500) ('comment', 'too_big'),
+      if (base is! int) ('baseVersion', 'invalid_type') else if (base < 0) ('baseVersion', 'too_small'),
+    ];
+    // DecideFieldReview's refinement runs only on an otherwise readable body.
+    if (unreadable.isEmpty && keep == 'alternate' && historyId == null) unreadable.add(('historyId', 'custom'));
+    if (unreadable.isNotEmpty) _unreadable(unreadable);
+
+    final perms = permissionsOf(userId);
+    if (!perms.contains('patients.edit') && !perms.contains('patients.correct_identity')) {
+      throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
+    }
+    final review = reviews[reviewId];
+    if (review == null) throw const ApiException(404, 'not_found', 'That review was not found.');
+    if (!perms.contains(review.needs)) throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
+    if (review.needs == 'patients.correct_identity' && staleSignIn.contains(userId)) {
+      throw const ApiException(403, 'reauth_required', 'Sign in again to confirm it is you.');
+    }
+    if (review.status != 'open') throw const ApiException(409, 'already_decided', 'This review was already decided.');
+    final identity = identityFields.contains(review.field);
+    if (identity && comment == null) {
+      throw const ApiException(
+        422,
+        'comment_required',
+        'Say why: a legal name or birth date is changed with a reason.',
+      );
+    }
+    final rec = records[review.recordId]!;
+    final current = rec.state(review.field);
+    // Versions only: the reviewer re-reads the chart through the audited GET.
+    if (base != current['version']) {
+      throw ApiException(
+        409,
+        'field_changed',
+        'This field changed since you opened the review. Look again.',
+        details: {'field': review.field, 'version': current['version']},
+      );
+    }
+
+    var version = current['version']! as int;
+    String? correctionId;
+    if (keep == 'alternate') {
+      final alternate = history
+          .where((h) => h['id'] == historyId && h['reviewId'] == review.id && h['kind'] == 'kept_both')
+          .firstOrNull;
+      if (alternate == null) {
+        throw const ApiException(422, 'not_an_alternate', 'That value isn’t one of this review’s.');
+      }
+      final values = {for (final MapEntry(:key, :value) in rec.fields.entries) key: value.value};
+      if (!recognisableAfter(values, review.field, alternate['value'])) {
+        throw const ApiException(
+          409,
+          'nothing_to_recognise',
+          'Keeping that value would leave no name or description. Keep the chart’s value.',
+        );
+      }
+      if (!_same(current['value'], alternate['value'])) {
+        version++;
+        // Recorded as the person who saw that value, approved by the reviewer.
+        final by = alternate['by']! as String;
+        final at = _iso(now());
+        _write(rec, review.field, alternate['value'], version, by, at, null);
+        if (identity) correctionId = _uuid();
+        history.add({
+          'id': '${history.length + 1}',
+          'at': at,
+          'deviceTime': null,
+          'recordedAt': at,
+          'entity': entityPatient,
+          'recordId': rec.id,
+          'field': review.field,
+          'version': version,
+          'kind': 'review_decided',
+          'value': alternate['value'],
+          'previous': current['value'],
+          'by': by,
+          'approvedBy': userId,
+          'changeId': null,
+          'reviewId': review.id,
+          'correctionId': ?correctionId,
+        });
+        if (const {'preferredName', 'legalName', 'birth'}.contains(review.field)) {
+          _rematch(rec.id, identity ? 'correction' : 'edit');
+        }
+      }
+    }
+    review
+      ..status = 'decided'
+      ..decidedBy = userId
+      ..decision = {'kept': keep, 'historyId': historyId}
+      ..comment = comment;
+    serverAudit.add({
+      'action': 'field_review.decided',
+      'userId': userId,
+      'patientId': canonicalOf(rec.id),
+      'entityId': rec.id,
+      'details': {
+        'reviewId': review.id,
+        'field': review.field,
+        'kept': keep,
+        'historyId': historyId,
+        'version': version,
+        'correctionId': ?correctionId,
+        if (comment != null) 'commentSha256': crypto.sha256.convert(utf8.encode(comment)).toString(),
+      },
+    });
+    return _reviewView(review);
+  }
+
   // ---- reads ----
 
   Map<String, Object?> _fetch(Map<String, Object?> b) {
@@ -1723,13 +2001,19 @@ class FakeSyncServer {
 }
 
 class _Actor {
-  _Actor(this.userId, this.deviceId, this.permissions, {required this.holdForReview});
+  _Actor(this.userId, this.deviceId, this.permissions, {required this.holdForReview, this.approvedBy});
   final String userId;
   final String deviceId;
   final Set<String> permissions;
 
   /// A push holds what it may not apply; an admin's accept fails instead.
   final bool holdForReview;
+
+  /// The Program Admin who accepted a held change for [userId].
+  final String? approvedBy;
+
+  /// Who chose between two values: the approver, or the person themselves.
+  String get decider => approvedBy ?? userId;
 }
 
 class _SetContext {
@@ -1757,7 +2041,7 @@ class _Transport implements ApiTransport {
 
   @override
   Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) =>
-      server.handle(userId, teamId, method, path, body);
+      server.handle(userId, teamId, method, path, body, query: query);
 }
 
 class _Device {
@@ -1826,13 +2110,22 @@ class FakeRecord {
 }
 
 class FakeReview {
-  FakeReview(this.id, this.entity, this.recordId, this.field, this.needs);
+  FakeReview(this.id, this.entity, this.recordId, this.field, this.needs, {DateTime? openedAt})
+    : openedAt = openedAt ?? DateTime.utc(2026);
   final String id;
   final String entity;
   final String recordId;
   final String field;
   final String needs;
+  final DateTime openedAt;
+
+  /// open or decided.
   String status = 'open';
+  String? decidedBy;
+
+  /// `{kept, historyId}`, and the comment, as field_reviews stores a decision.
+  Map<String, Object?>? decision;
+  String? comment;
 }
 
 class FakePair {
