@@ -347,4 +347,18 @@ void main() {
     phone.store.clearServerData();
     expect(services.patients.draft(), {'preferredName': 'Smitty'});
   });
+
+  // Screens review V4: after Declines, Back offered to keep a draft, which then held the person's
+  // details, though no record may be kept of someone who declines (11.2).
+  test('a declined intake keeps no draft, and the one kept before goes', () {
+    services.patients.saveDraft({'consent': 'agrees', 'preferred': 'Smitty', 'area': 'Demo: by the library steps'});
+    expect(services.patients.draft(), isNotNull);
+    services.patients.saveDraft({
+      PatientRepository.draftConsentKey: PatientRepository.draftConsentDeclines,
+      'preferred': 'Smitty',
+      'area': 'Demo: by the library steps',
+    });
+    expect(services.patients.draft(), isNull);
+    expect(tablesHolding(RegExp('Smitty|library steps')), isEmpty);
+  });
 }

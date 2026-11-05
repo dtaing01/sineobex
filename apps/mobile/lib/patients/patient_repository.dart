@@ -623,6 +623,10 @@ class PatientRepository {
   /// Set in a saved draft when a legal name was typed and not kept, so the form asks for it again.
   static const draftLegalNameDropped = 'legalNameDropped';
 
+  /// A draft's consent answer, and the answer that keeps no draft at all.
+  static const draftConsentKey = 'consent';
+  static const draftConsentDeclines = 'declines';
+
   /// The intake left before Create, kept in the encrypted database (11.1), as [saveDraft] stored
   /// it: what was typed, never a legal name, with [draftLegalNameDropped] true when one was typed.
   Map<String, Object?>? draft() {
@@ -636,7 +640,12 @@ class PatientRepository {
   /// lives in `kv`, which outlives scopes, the purge and sign-out, so an abandoned draft would keep
   /// someone's legal name on the phone with no chart to hold it (D40, 2.9-11). The form gets
   /// [draftLegalNameDropped] instead and asks again.
+  ///
+  /// A person who declines is not registered and nothing about them is kept (11.2): a draft whose
+  /// [draftConsentKey] is [draftConsentDeclines] is not stored, and any draft already kept goes
+  /// (screens review V4).
   void saveDraft(Map<String, Object?> draft) {
+    if (draft[draftConsentKey] == draftConsentDeclines) return discardDraft();
     bool typed(Object? v) =>
         (v is String && v.trim().isNotEmpty) || (v is Map && v.values.any(typed)) || (v is List && v.any(typed));
     final dropped = draft[draftLegalNameDropped] == true || draftLegalKeys.any((k) => typed(draft[k]));
