@@ -286,7 +286,8 @@ async function canonicalOf(tx: Tx, patientId: string): Promise<string | null> {
 
 /**
  * Every link of the group, newest first: the active ones with their URL (both routes need
- * patients.edit), the retired ones as history. `auditViews` logs each URL shown.
+ * patients.edit), the retired ones as history. `auditViews` logs the read (`patient.viewed
+ * {source: 'id_card'}`) and each URL shown.
  */
 async function linkState(
   tx: Tx,
@@ -322,6 +323,14 @@ async function linkState(
   });
   const active = rows.filter((r) => r.status === 'active');
   if (auditViews) {
+    // The cards' history is part of the chart, so the read is logged even with no active card.
+    await audit({
+      action: 'patient.viewed',
+      entity: 'patient',
+      entityId: canonicalId,
+      patientId: canonicalId,
+      details: { source: 'id_card' },
+    });
     for (const r of active) {
       await audit({
         action: 'id_link.viewed',
@@ -338,7 +347,8 @@ async function linkState(
 /**
  * GET /v1/patients/{patientId}/id-link: the group's active links (usually one; one per merged
  * record that had a card until the next regeneration, D39) and their history. A merged ID answers
- * its survivor's. Audited as `id_link.viewed {linkId, tokenRef}` per active link shown.
+ * its survivor's. Audited as `patient.viewed {source: 'id_card'}` once, and `id_link.viewed
+ * {linkId, tokenRef}` per active link shown.
  */
 export async function getIdLinks(scope: TeamScope, patientId: string): Promise<IdLinkStateValue> {
   return scope.tx(async (tx, audit) => {

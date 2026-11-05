@@ -680,6 +680,28 @@ describe('ID links', () => {
       expect(await activeInGroup(survivor.id)).toEqual([next.body.active[0]!.id]);
     });
 
+    it('logs every read as a view of the patient, with no active card too', async () => {
+      const p = await createPatient(h, teamId, jordan.userId);
+      const none = await auditMark(h);
+      expect((await get(p.id)).body).toEqual({ active: [], history: [] });
+      const [first] = await expectAudit(h, 'patient.viewed', { after: none, patientId: p.id, count: 1 });
+      expect(first!.details).toEqual({ source: 'id_card' });
+
+      // Only a retired card: its history is still the patient's.
+      const card = (await post(p.id, jordan, { replacesLinkId: null })).body.active[0]!;
+      tokenOf(card.url);
+      await h.scratch.owner`
+        update sineobex.patient_id_links set status = 'retired', retired_reason = 'superseded_by_newer',
+          retired_at = now()
+        where id = ${card.id}`;
+      const retired = await auditMark(h);
+      const state = await get(p.id);
+      expect(state.body.active).toEqual([]);
+      expect(state.body.history.map((l) => l.id)).toEqual([card.id]);
+      await expectAudit(h, 'patient.viewed', { after: retired, patientId: p.id, count: 1 });
+      await expectAudit(h, 'id_link.viewed', { after: retired, count: 0 });
+    });
+
     it('answers 404 for a patient the team doesn’t have', async () => {
       const elsewhere = await createPatient(h, otherTeamId, otherIssuer.userId);
       for (const id of [randomUUID(), elsewhere.id]) {
