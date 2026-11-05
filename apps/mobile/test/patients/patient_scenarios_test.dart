@@ -486,6 +486,22 @@ void main() {
     expect(server.serverAudit.where((e) => e['action'] != 'patient.index_downloaded'), isEmpty);
   });
 
+  // Screens review V1: the profile caught the refusal from open() and then rendered read(), which
+  // had no check, so a frozen store showed the chart, legal name included, with nothing logged.
+  test('a frozen store shows no chart: read() refuses as open() does', () async {
+    final a = phone(alex);
+    final p = server.seedPatient(preferredName: 'Del', legalName: {'given': 'Demo', 'family': 'Frozenread'});
+    await a.services.patients.open(p);
+    expect(a.services.patients.read(p)!.legalName?.family, 'Frozenread');
+    a.store.freeze('Your access to this team ended.');
+    final waiting = a.store.outbox().length;
+    await expectLater(a.services.patients.open(p), throwsA(isA<ChartingPaused>()));
+    PatientView? shown;
+    expect(() => shown = a.services.patients.read(p), throwsA(isA<ChartingPaused>()));
+    expect(shown, isNull);
+    expect(a.store.outbox(), hasLength(waiting));
+  });
+
   test('notices from the server: fetched once, stored once, read on the server; nothing while frozen', () async {
     final a = phone(alex), b = phone(blair);
     var fetches = 0, reads = 0;

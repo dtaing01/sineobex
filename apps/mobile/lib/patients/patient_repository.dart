@@ -400,8 +400,11 @@ class PatientRepository {
   }
 
   /// The chart as the phone holds it now, for a chart already opened (and audited) on screen. Null
-  /// when the phone holds no record of it.
+  /// when the phone holds no record of it. Throws [ChartingPaused] while the store is frozen (a
+  /// removal's hand-over, D21): a read then can't be logged, so nothing is shown, as in search. A
+  /// screen that caught the refusal from [open] must not get the chart here instead (review V1).
   PatientView? read(String patientId) {
+    if (store.frozen) throw ChartingPaused(store.frozenMessage!);
     final canonical = store.canonicalPatient(patientId);
     final group = patientGroup(store, canonical);
     final rec =
