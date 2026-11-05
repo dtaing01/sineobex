@@ -32,7 +32,7 @@ this table is their state. Update it as units land.
 | P2 Phone patients domain | Done | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | — |
 | P3 Phone screens | Done | `apps/mobile/lib/features/patients/**` (Patients tab, intake and edit, duplicate panel and sheet, profile, ID card, problem, add problem, field review sheet), tab shell and wiring (`app.dart`, `app_providers.dart`), Needs attention texts and notices, Home line, `allergy_badge`, `status_chip`, `birth_field`; widget tests in three themes, at 200% text and 320 wide | Field review decision and History go through P2 wrappers, with fake routes (review list) |
 | D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
-| **Review** | **In progress**: server and portal; phone and the fake's fidelity; then the screens | — | Every confirmed finding fixed with a regression test |
+| **Review** | **In progress**: two reviews reported (table below); the screens review is running | — | Fix units R1, R2, R3, then R5; each finding with a regression test |
 
 Order from here: the review and its fixes, then the phase closes (section 15 row D).
 
@@ -181,6 +181,40 @@ Later units build on the code, not on the text above, where they differ.
   recorded the current value.
 - **Portal shell (W0).** `/c` shows signed-in and signed-out visitors the same page and never reads
   the fragment; removing the token from the address bar and history is left to phase 9 (scanning).
+
+### Review (Nov 5): findings, and the unit fixing each
+
+Two reviews (server and portal; phone and the fake) reported these, each proved with a failing test
+(scratch tests under the coordinator's scratchpad, `review/` and `review-tests/`). The screens review
+is still running. Every fix lands with a regression test that fails with the fix reverted.
+
+| # | Sev | Finding | Fix | Unit |
+|---|---|---|---|---|
+| S1 | High | Undoing a merge leaves the merged record's values on the kept chart: a review the merge joined stays open with M's value; a redirected edit kept both opens a review undo ignores; a review decided during the merge keeps M's value and the undo answer lists nothing | Record what the merge and redirected changes added to reviews; undo detaches or closes them and lists them, with decided reviews | R2 |
+| S2 | High | A status conflict on a merged problem can never be settled (a redirected change never "saw"), and its replay answers with the merged problem, not the survivor | Settle when `baseVersion` matches the survivor's version; conflict receipts store `redirectedTo` | R1 |
+| S3 | Medium | Encounter `set status` and `set patientId` on one encounter deadlock (D32: team lock first) | Every encounter set takes the team lock first | R1 |
+| S4 | Medium | The audit log's patient search misses events naming the patient only in `details.patientIds` (searches, match checks, listings) and events under a merged record's ID | Match `details->'patientIds'` and the patient's group | R2 |
+| S5 | Medium | `/v1/patients/match` and the field review list give names and births to a role with `patients.edit` but not `patients.view` | Require `patients.view` too | R2 |
+| S6 | Low | `baseVersion` past the integer range or a year-0000 time stops a phone's queue for good | Bound both in the wire schema (and the phone's registry) | R1 |
+| S7 | Low | A held ID link create shows its token in the quarantine queue | Show the token reference instead | R1 |
+| S8 | Low | Reading ID cards logs nothing when the patient has no active card | Log one view per request | R2 |
+| S9 | Low | Pair page and reversal page chart links lack `prefetch={false}` | Add it | coordinator |
+| P1 | High | `replaceRejected` / `attachToPatient` folds waiting edits into a create that doesn't carry them and deletes them at its receipt (an allergy marked in error arrives active); creates naming the replaced record are released to fail | Re-send waiting edits as sets on the new record; keep dependents held | R3 |
+| P2 | Medium | A refused or held card counts as working: a new card names it as replaced, so the server records a false conflict, notifies three people and the valid card stays blocked | Working cards exclude refused, superseded and held creates; mark the refused row first | R3 |
+| P3 | Medium | Index pages and charts downloading during "Sign out anyway" are written back after `clearServerData` | Close the store before clearing (or an epoch every write checks); refreshers catch `Object` | R3 |
+| P4 | Medium | Staged index pages outlive losing the index (role change, 403, expiry) | Clear staging whenever index data exists; staging expires | R3 |
+| P5 | Medium | `clearServerData` keeps the survivor's chart for local work on a merged patient, then deletes the redirect, so the next purge deletes the chart | Keep redirects that touch kept charts | R3 |
+| P6 | Low | Winding the clock back after a restart keeps the index past 7 days | A high-water mark of the latest time seen | R3 |
+| P7 | Low | A reviewer's Not sure note travels in every phone's index, and free text there can carry a legal name (D40) | The note leaves the index; it shows from the chart only | R2 (server), R1 (fake), R3 (phone) |
+| P8 | Low | Fake differences: no `id_link_conflict` or `conflict_resolved` notices; a flagged clock doesn't force `clockVerified: false`; held-change details differ; `/v1/sync/records` shows sensitive problems and audits nothing; notices aren't the newest 100; a reused change ID replays instead of `change_id_reused` | Mirror each | R1 |
+| P9 | Medium | Android clears a copied card link when the app goes to the background, so it can never be pasted into another app (design 10.4 read too literally) | Clear 60 seconds after copying, as on iOS, with the clip marked sensitive | R3 |
+| P10 | Low | Field review decision and History are called from the screens, bypassing the domain layer, and the fake has neither route | Domain wrappers (R3), fake routes (R1), screens use them (R5) | R1, R3, R5 |
+| W1 | Low | The reviews queue can't name its patient (field review entries carry IDs only) | `FieldReviewView` gains the projected patient summary; the portal names the patient | R2, coordinator |
+
+Units: **R1** server sync and the fake (`services/api/src/sync/**`, `apps/mobile/test/sync/fake_server.dart`);
+**R2** server patients, routes and contract (`services/api/src/patients/**`, `routes/{patients,audit-log,field-reviews}`);
+**R3** phone sync and domain (`apps/mobile/lib/{sync,patients,auth,security}/**`, Android `MainActivity.kt`);
+**R5** phone screens, after the screens review.
 
 ### Questions that need a person (each has a default in code, marked PLAN-OPEN)
 
