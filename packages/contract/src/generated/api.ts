@@ -1947,10 +1947,13 @@ export interface components {
             conflictOf?: string;
             /**
              * Format: date-time
-             * @description Device time corrected by the last measured offset
+             * @description Device time corrected by the last measured offset; from 1970 through 9999 (UTC)
              */
             correctedTime?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description From 1970 through 9999 (UTC)
+             */
             deviceTime: string;
             entity: components["schemas"]["ChangeEntity"];
             field?: string;

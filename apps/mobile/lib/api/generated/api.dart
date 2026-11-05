@@ -4481,8 +4481,9 @@ class SyncChange {
   final bool? clockVerified;
   /// The conflicted change this one resolves
   final String? conflictOf;
-  /// Device time corrected by the last measured offset
+  /// Device time corrected by the last measured offset; from 1970 through 9999 (UTC)
   final DateTime? correctedTime;
+  /// From 1970 through 9999 (UTC)
   final DateTime deviceTime;
   final ChangeEntity entity;
   final String? field;

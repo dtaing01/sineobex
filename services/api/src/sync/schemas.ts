@@ -4,6 +4,23 @@ import { Reason, Uuid } from '../routes/schemas.ts';
 /** Wire format for module 9's change log, receipts, devices and quarantine. */
 
 export const DateTime = z.string().datetime({ offset: true });
+
+/** The column type of every version a change names: Postgres `integer`. */
+export const MAX_VERSION = 2_147_483_647;
+const EARLIEST_PHONE_TIME = Date.UTC(1970, 0, 1);
+const LATEST_PHONE_TIME = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
+/**
+ * A time a phone stamped that the server stores. A phone's clock counts from the Unix epoch (a
+ * reset one reads 1970), and Postgres holds no year 0000 nor, from an offset, a time past 9999
+ * (review finding S6). Outside these, the schema refuses the change by name: the phone keeps it as
+ * one it can't send, and the rest of its queue goes on, where the insert would fail every retry.
+ */
+export const isPhoneTime = (text: string) => {
+  const t = Date.parse(text);
+  return t >= EARLIEST_PHONE_TIME && t <= LATEST_PHONE_TIME;
+};
+const PhoneTime = DateTime.refine(isPhoneTime, { message: 'outside_1970_to_9999' });
 const Hash = z
   .string()
   .regex(/^[0-9a-f]{64}$/)
@@ -58,6 +75,7 @@ export const SyncChange = z
       .number()
       .int()
       .min(0)
+      .max(MAX_VERSION)
       .default(0)
       .openapi({ description: 'The field version the user saw' }),
     follows: Uuid.optional().openapi({
@@ -66,9 +84,9 @@ export const SyncChange = z
     supersedes: Uuid.optional().openapi({ description: 'A rejected change this one fixes' }),
     conflictOf: Uuid.optional().openapi({ description: 'The conflicted change this one resolves' }),
     resolution: z.enum(['replace', 'keep_server']).optional(),
-    deviceTime: DateTime,
-    correctedTime: DateTime.optional().openapi({
-      description: 'Device time corrected by the last measured offset',
+    deviceTime: PhoneTime.openapi({ description: 'From 1970 through 9999 (UTC)' }),
+    correctedTime: PhoneTime.optional().openapi({
+      description: 'Device time corrected by the last measured offset; from 1970 through 9999 (UTC)',
     }),
     clockVerified: z.boolean().default(false),
   })

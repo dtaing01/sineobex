@@ -364,6 +364,47 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       ]);
     });
 
+    it('a base version or a time Postgres can’t hold is refused by name, and the rest of the queue goes on', async () => {
+      // Review finding S6: these reached the receipt's insert, failed there with SQLSTATE class 22,
+      // which no savepoint turns into a rejection, and stopped the phone's queue on every retry.
+      const { noteId } = await syncedDraft();
+      const set = (field: string, more: Record<string, unknown> = {}) =>
+        phoneA.change({ entity: 'encounter_note', recordId: noteId, op: 'set', field, value: 'ok', ...more });
+      const unreadable = [
+        await set('data.a', { baseVersion: 2_147_483_648 }),
+        await set('data.b', { deviceTime: '0000-01-01T00:00:00.000Z', clockVerified: false }),
+        // An offset that carries a time into year 0000, or past 9999.
+        await set('data.c', { correctedTime: '0001-01-01T00:30:00+01:00' }),
+        await set('data.d', { deviceTime: '9999-12-31T23:30:00-01:00' }),
+      ];
+      const fine = await set('data.e');
+      // The phone reports its oldest unsynced change, which can be one of those.
+      const oldest = '0000-01-01T00:00:00.000Z';
+      const refused = await push(h, phoneA, t.aToken, t.teamId, [...unreadable, fine], { oldest });
+      expect(refused.status).toBe(422);
+      expect(refused.body.error?.details?.fields).toEqual([
+        { path: 'changes.0.baseVersion', problem: 'too_big' },
+        { path: 'changes.1.deviceTime', problem: 'custom' },
+        { path: 'changes.2.correctedTime', problem: 'custom' },
+        { path: 'changes.3.deviceTime', problem: 'custom' },
+      ]);
+      // The phone keeps those as rejections it can't send, and sends the rest.
+      const rest = await push(h, phoneA, t.aToken, t.teamId, [fine], { oldest });
+      expect(rest.status).toBe(200);
+      expect(results(rest.body).map((x) => x.status)).toEqual(['accepted']);
+      const [device] = await h.scratch.owner<{ oldest: Date | null }[]>`
+        select oldest_unsynced_at as oldest from sineobex.devices where id = ${phoneA.deviceId}`;
+      expect(device!.oldest).toBeNull();
+
+      // The edges are a phone's: a reset clock reads the epoch, and the largest version fits.
+      const edges = [
+        await set('data.f', { deviceTime: '1970-01-01T00:00:00.000Z', baseVersion: 2_147_483_647 }),
+        await set('data.g', { correctedTime: '9999-12-31T23:59:59.999Z' }),
+      ];
+      const stored = await push(h, phoneA, t.aToken, t.teamId, edges);
+      expect(results(stored.body).map((x) => x.status)).toEqual(['accepted', 'accepted']);
+    });
+
     it('fixing a rejected create also settles the edits that were rejected with it', async () => {
       const note = await phoneA.change({
         entity: 'encounter_note',

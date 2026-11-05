@@ -3718,6 +3718,7 @@
           "baseVersion": {
             "default": 0,
             "description": "The field version the user saw",
+            "maximum": 2147483647,
             "minimum": 0,
             "type": "integer"
           },
@@ -3735,11 +3736,12 @@
             "type": "string"
           },
           "correctedTime": {
-            "description": "Device time corrected by the last measured offset",
+            "description": "Device time corrected by the last measured offset; from 1970 through 9999 (UTC)",
             "format": "date-time",
             "type": "string"
           },
           "deviceTime": {
+            "description": "From 1970 through 9999 (UTC)",
             "format": "date-time",
             "type": "string"
           },

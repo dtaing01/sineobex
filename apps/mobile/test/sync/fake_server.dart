@@ -388,12 +388,28 @@ class FakeSyncServer {
     return {...base, 'results': results};
   }
 
+  /// The largest version a change may name (schemas.ts MAX_VERSION, Postgres `integer`).
+  static const maxVersion = 2147483647;
+
+  /// schemas.ts isPhoneTime: from the Unix epoch through the last moment of 9999, in UTC.
+  static bool isPhoneTime(Object? text) {
+    final t = text is String ? DateTime.tryParse(text) : null;
+    return t != null && !t.isBefore(DateTime.utc(1970)) && !t.isAfter(DateTime.utc(9999, 12, 31, 23, 59, 59, 999));
+  }
+
   /// SyncChange's request schema: one bad change fails the whole push with 422, as the API does.
+  /// A base version past `integer`, or a time Postgres can't hold, is named too (review finding S6).
   void _validatePush(List<Map<String, Object?>> changes) {
     final problems = <Object?>[
-      for (final (i, c) in changes.indexed)
+      for (final (i, c) in changes.indexed) ...[
         if (malformed.contains(c['changeId']) || (c['field'] is String && (c['field']! as String).length > 200))
           {'path': 'changes.$i.field', 'problem': 'too_big'},
+        if (c['baseVersion'] is int && (c['baseVersion']! as int) > maxVersion)
+          {'path': 'changes.$i.baseVersion', 'problem': 'too_big'},
+        if (!isPhoneTime(c['deviceTime'])) {'path': 'changes.$i.deviceTime', 'problem': 'custom'},
+        if (c['correctedTime'] != null && !isPhoneTime(c['correctedTime']))
+          {'path': 'changes.$i.correctedTime', 'problem': 'custom'},
+      ],
     ];
     if (problems.isNotEmpty) {
       throw ApiException(

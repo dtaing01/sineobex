@@ -13,7 +13,7 @@ import {
 } from './apply.ts';
 import { takesTeamLock } from './entities/index.ts';
 import { lockTeamWrites } from './locks.ts';
-import type { SyncChangeInput, SyncResultValue } from './schemas.ts';
+import { isPhoneTime, type SyncChangeInput, type SyncResultValue } from './schemas.ts';
 
 /** Charting pauses beyond this offset (module 9, decided Oct 12). The phone enforces it; the server flags it. */
 export const CLOCK_LIMIT_MS = 5 * 60_000;
@@ -40,6 +40,10 @@ export async function push(scope: TeamScope, input: PushInput) {
     Math.min(INT32, now.getTime() - new Date(input.clock.deviceTime).getTime()),
   );
   const flagged = Math.abs(offsetMs) > CLOCK_LIMIT_MS;
+  // The phone's oldest unsynced change can be one the schema refused for its time (review finding
+  // S6). The report is only for the devices page: a time Postgres can't hold is left out, never
+  // allowed to fail the push.
+  const oldest = input.unsynced.oldest && isPhoneTime(input.unsynced.oldest) ? input.unsynced.oldest : null;
 
   const device = await scope.tx(async (tx, audit) => {
     const rows = await tx<DeviceRow[]>`
@@ -55,7 +59,7 @@ export async function push(scope: TeamScope, input: PushInput) {
         clock_offset_ms = ${offsetMs},
         clock_flagged_at = ${flagged ? (d.clockFlaggedAt ?? now) : null},
         unsynced_counts = ${tx.json(input.unsynced.counts)},
-        oldest_unsynced_at = ${input.unsynced.oldest ? new Date(input.unsynced.oldest) : null}
+        oldest_unsynced_at = ${oldest ? new Date(oldest) : null}
       where id = ${d.id}`;
     if (flagged && !d.clockFlaggedAt) {
       await audit({

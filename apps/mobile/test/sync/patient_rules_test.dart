@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -621,6 +622,72 @@ void main() {
       });
       expect((r['details']! as Map)['problem'], 'too_many_allergies');
     });
+  });
+
+  test('a base version or a time Postgres can’t hold is refused by name, and the rest goes on (S6)', () async {
+    final patient = server.seedPatient(usualArea: 'Demo: Elm Street underpass');
+    await server.handle(alex, team, 'POST', '/v1/devices', {
+      'deviceId': 'dev-$alex',
+      'platform': 'android',
+      'appVersion': 'test',
+      'publicKey': 'key-$alex',
+    });
+    final at = serverTime.toIso8601String();
+    Map<String, Object?> set(String value, [Map<String, Object?> more = const {}]) => {
+      'changeId': uuid(),
+      'seq': ++seq,
+      'entity': entityPatient,
+      'recordId': patient,
+      'op': 'set',
+      'field': 'usualArea',
+      'value': value,
+      'valueHash': valueHash(value),
+      'baseVersion': 1,
+      'deviceTime': at,
+      'clockVerified': true,
+      ...more,
+    };
+    Future<Object?> send(List<Map<String, Object?>> changes) => server.handle(alex, team, 'POST', '/v1/sync/push', {
+      'deviceId': 'dev-$alex',
+      'clock': {'deviceTime': at},
+      'unsynced': {'counts': <String, Object?>{}, 'oldest': '0000-01-01T00:00:00.000Z'},
+      'changes': changes,
+    });
+    final fine = set('Demo: Oak Street lot');
+    final unreadable = [
+      set('Demo: a', {'baseVersion': 2147483648}),
+      set('Demo: b', {'deviceTime': '0000-01-01T00:00:00.000Z', 'clockVerified': false}),
+      set('Demo: c', {'correctedTime': '0001-01-01T00:30:00+01:00'}),
+      set('Demo: d', {'deviceTime': '9999-12-31T23:30:00-01:00'}),
+    ];
+    try {
+      await send([...unreadable, fine]);
+      fail('the push should be refused');
+    } on ApiException catch (e) {
+      expect(
+        [e.status, e.details?['fields']],
+        [
+          422,
+          [
+            {'path': 'changes.0.baseVersion', 'problem': 'too_big'},
+            {'path': 'changes.1.deviceTime', 'problem': 'custom'},
+            {'path': 'changes.2.correctedTime', 'problem': 'custom'},
+            {'path': 'changes.3.deviceTime', 'problem': 'custom'},
+          ],
+        ],
+      );
+    }
+    final rest = await send([fine]) as Map<String, Object?>;
+    expect(((rest['results']! as List).single! as Map)['status'], 'accepted');
+    // The edges are a phone's: a reset clock reads the epoch, and the largest version fits.
+    final edges = await send([
+      set('Demo: e', {'deviceTime': '1970-01-01T00:00:00.000Z', 'baseVersion': 2147483647}),
+      set('Demo: f', {'correctedTime': '9999-12-31T23:59:59.999Z'}),
+    ]) as Map<String, Object?>;
+    expect(
+      [for (final r in (edges['results']! as List).cast<Map<String, Object?>>()) r['status']],
+      ['accepted', 'accepted'],
+    );
   });
 
   test('an offline search listing 50 patients joins the audit chain with its criteria (rule 9)', () async {
