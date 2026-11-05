@@ -1457,11 +1457,12 @@ class LocalStore {
   }
 
   /// A fix that is a new record (design 2.9-5): a card made on the kept chart after one for a
-  /// merged patient was refused, a problem added as new. [value] is the new record's create; it
-  /// supersedes the refused change, so confirming it settles that one (`_deleteSettled` follows
-  /// the link). A refused create's record is never on the server, so it goes here, and whatever
-  /// waited on it goes with the new create; a refused or conflicting set falls back to the
-  /// server's value. Returns the new record's ID.
+  /// merged patient was refused, a street name, allergy or problem attached to another patient.
+  /// [value] is the new record's create; it supersedes the refused change, so confirming it settles
+  /// that one (`_deleteSettled` follows the link). A refused create's record is never on the
+  /// server, so it goes here, and what waited on it is sent again after the new create
+  /// ([_resendDependants]); a refused or conflicting set falls back to the server's value. Returns
+  /// the new record's ID.
   String replaceRejected(String changeId, {required String entity, required Map<String, Object?> value, String? id}) {
     final x = entry(changeId);
     if (x == null || (x.state != ChangeState.rejected && x.state != ChangeState.conflict)) {
@@ -1469,6 +1470,11 @@ class LocalStore {
     }
     final rules = rulesFor(entity);
     if (rules == null || !rules.patientSide) throw ArgumentError('not a patient-side record: $entity');
+    // What names the refused record is made again naming the new one, so the new one must be the
+    // same kind. A patient is fixed in place (fixRejected): an encounter's patient is a set.
+    if (x.op == 'create' && (entity != x.entity || entity == entityPatient)) {
+      throw ArgumentError('a refused $entity create is replaced by a new record of its own kind');
+    }
     if (id != null && !isUuid(id)) throw ArgumentError('record IDs are UUIDs');
     _guardFor(entity);
     _checkCreate(rules, value);
@@ -1484,11 +1490,8 @@ class LocalStore {
       );
       _insertCreated(rules, recordId, value, fix);
       if (x.op == 'create') {
-        _db.execute(
-          "UPDATE outbox SET state = 'superseded', supersedes = ? WHERE state IN ('pending', 'rejected', 'conflict') "
-          'AND record_id = ?',
-          [fix, x.recordId],
-        );
+        _supersede(x.changeId, by: fix);
+        _resendDependants(x, recordId, fix);
         _db.execute('DELETE FROM records WHERE id = ? AND origin = ?', [x.recordId, 'local']);
       } else {
         _foldField(x.recordId, x.field!, fix);
@@ -1505,6 +1508,96 @@ class LocalStore {
       return recordId;
     });
   }
+
+  void _supersede(String changeId, {required String by}) =>
+      _db.execute("UPDATE outbox SET state = 'superseded', supersedes = ? WHERE change_id = ?", [by, changeId]);
+
+  /// What waited on [x], a refused create that [replacement] replaces (its create is [fix]), sent
+  /// again after [fix] in the order it was made (review P1): the refused record's own edits as edits
+  /// of [replacement]; every create naming the refused record (a note on a problem, a recurrence
+  /// or a reversal request) made again naming [replacement] instead, followed by its own record's
+  /// edits; and so on for what names those. Each is a new change with its own receipt, superseding
+  /// the one it repeats, so none is folded into a create that doesn't carry its value, and none is
+  /// sent toward a record that will never exist. The waiting ones were never on the server: their
+  /// record, or one they name, was refused.
+  void _resendDependants(OutboxEntry x, String replacement, String fix) {
+    final waiting = _db
+        .select("SELECT * FROM outbox WHERE state IN ('pending', 'rejected', 'conflict') ORDER BY seq")
+        .map(OutboxEntry.fromRow)
+        .toList();
+    // The records made again: the refused one as [replacement], and every record whose create names
+    // one made again, as itself. A fix made earlier may have put a parent's create after its child's.
+    final remade = {x.recordId: replacement};
+    for (var grew = true; grew;) {
+      grew = false;
+      for (final e in waiting) {
+        if (e.op == 'create' &&
+            !remade.containsKey(e.recordId) &&
+            parentsOf(entity: e.entity, op: e.op, value: e.value).any((p) => remade.containsKey(p.id))) {
+          remade[e.recordId] = e.recordId;
+          grew = true;
+        }
+      }
+    }
+    // The newest change made here for each record ('id') and field ('id|field'), which the next
+    // edit of it follows.
+    final last = {replacement: fix};
+    for (final e in waiting) {
+      final target = remade[e.recordId];
+      if (target == null || e.changeId == x.changeId) continue;
+      final rules = rulesFor(e.entity)!;
+      if (e.op == 'create') {
+        final value = _repoint(e.entity, e.value! as Map<String, Object?>, x.recordId, replacement);
+        _checkCreate(rules, value);
+        final create = _append(
+          entity: e.entity,
+          recordId: target,
+          op: 'create',
+          value: value,
+          baseVersion: 0,
+          supersedes: e.changeId,
+        );
+        _supersede(e.changeId, by: create);
+        _db
+          ..execute('UPDATE records SET attributes_json = ?, patient_id = coalesce(?, patient_id) WHERE id = ?', [
+            jsonEncode(rules.attributes(value)),
+            rules.patientSide ? _patientOfChange(e.entity, 'create', target, null, value) : null,
+            target,
+          ])
+          ..execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [create, target]);
+        for (final MapEntry(key: name, value: v) in rules.createdFields(value).entries) {
+          _putField(target, name, v, serverVersion: 0, pending: create);
+        }
+        _touch(target, status: rules.initialStatus(value));
+        last[target] = create;
+      } else if (e.op == 'set') {
+        final field = e.field!;
+        final resent = _append(
+          entity: e.entity,
+          recordId: target,
+          op: 'set',
+          field: field,
+          value: e.value,
+          baseVersion: 0,
+          follows: last['$target|$field'] ?? last[target],
+          supersedes: e.changeId,
+        );
+        _supersede(e.changeId, by: resent);
+        _putField(target, field, e.value, serverVersion: 0, pending: resent);
+        _touch(target, status: rules.statusAfter(field, e.value));
+        last['$target|$field'] = resent;
+      }
+    }
+  }
+
+  /// [value] with each reference to the record [from] made a reference to [to]: only keys that name
+  /// a record (a note's `problemId`, a problem's `recurrenceOf`), never text that happens to match.
+  static Map<String, Object?> _repoint(String entity, Map<String, Object?> value, String from, String to) => {
+    for (final MapEntry(:key, value: v) in value.entries)
+      key: v == from && parentsOf(entity: entity, op: 'create', value: {...value, key: to}).any((p) => p.id == to)
+          ? to
+          : v,
+  };
 
   /// Opens the server's copy of a record here (someone else's draft, a refresh of one this phone
   /// holds open, or part of a chart). Fields with local edits keep the person's value and the

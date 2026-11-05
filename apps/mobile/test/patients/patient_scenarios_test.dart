@@ -581,4 +581,108 @@ void main() {
       expect(() => a.services.patients.attachToPatient(refused.changeId, right), throwsStateError);
     },
   );
+
+  // Review P1: the new create carries none of the refused record's later edits, and nothing named
+  // the new record, so the edits were deleted unsent at its receipt and the notes refused for good.
+  group('Attach to another patient sends what waited on the refused record', () {
+    const ghost = '9e9e9e9e-0000-4000-8000-000000000099';
+
+    test('an allergy marked entered in error before it synced arrives entered in error', () async {
+      final a = phone(alex);
+      final right = server.seedPatient(preferredName: 'Del');
+      server.offline = true;
+      final allergy = a.store.createRecord(entityAllergy, {'patientId': ghost, 'substance': 'Demo: penicillin'});
+      final create = a.store.outbox().single;
+      a.services.patients.allergyEnteredInError(allergy, 'Wrong patient');
+      server.offline = false;
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.entry(create.changeId)!.reason, 'stale_reference');
+
+      final fixed = a.services.patients.attachToPatient(create.changeId, right);
+      expect(a.store.record(fixed)!.status, 'entered_in_error', reason: 'never on the new chart’s badge');
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.outbox(), isEmpty);
+      expect(server.records[fixed]!.status, 'entered_in_error');
+      expect((server.records[fixed]!.fields['enteredInError']!.value! as Map)['reason'], 'Wrong patient');
+    });
+
+    test('a problem moved to Resolved, and a note on it, arrive on the new problem', () async {
+      final a = phone(alex);
+      final right = server.seedPatient(preferredName: 'Del');
+      server.offline = true;
+      final problem = a.store.createRecord(entityProblem, {
+        'patientId': ghost,
+        'title': 'Demo: cough',
+        'status': 'new',
+      });
+      final create = a.store.outbox().single;
+      a.store.setField(problem, 'status', {'status': 'ongoing', 'encounterId': null});
+      final early = a.store.createRecord(entityProblemNote, {'problemId': problem, 'text': 'Demo: worse at night'});
+      a.store.setField(problem, 'status', {'status': 'resolved', 'encounterId': null});
+      server.offline = false;
+      // Sent together: the server refuses all four, the notes as problem_missing.
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.needsAttention(), hasLength(4));
+      // A note written after the refusal waits behind it.
+      final late = a.store.createRecord(entityProblemNote, {'problemId': problem, 'text': 'Demo: better today'});
+      expect(a.store.heldCount(), 1);
+
+      final fixed = a.services.patients.attachToPatient(create.changeId, right);
+      expect(a.store.needsAttention(), isEmpty);
+      // In the order they were made, after the new problem.
+      expect(
+        [for (final e in a.store.sendable()) '${e.entity}:${e.op}:${e.field ?? ''}:${e.recordId == fixed}'],
+        [
+          'problem:create::true',
+          'problem:set:status:true',
+          'problem_note:create::false',
+          'problem:set:status:true',
+          'problem_note:create::false',
+        ],
+      );
+      expect(
+        (a.store.outbox().firstWhere((e) => e.recordId == early && e.state == ChangeState.pending).value!
+            as Map)['problemId'],
+        fixed,
+      );
+      expect(a.store.record(early)!.patientId, right);
+
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.outbox(), isEmpty, reason: 'nothing refused for good, nothing left behind');
+      expect(server.records[fixed]!.status, 'resolved');
+      expect(server.records[early]!.attributes['problemId'], fixed);
+      expect(server.records[late]!.attributes['problemId'], fixed);
+      expect(server.records[problem], isNull);
+    });
+
+    test('a recurrence of the refused problem names the new one, and waits for its own patient', () async {
+      final a = phone(alex);
+      final right = server.seedPatient(preferredName: 'Del');
+      server.offline = true;
+      final problem = a.store.createRecord(entityProblem, {'patientId': ghost, 'title': 'Demo: burn', 'status': 'new'});
+      final create = a.store.outbox().single;
+      a.store.setField(problem, 'status', {'status': 'resolved', 'encounterId': null});
+      final again = a.store.createRecord(entityProblem, {
+        'patientId': ghost,
+        'title': 'Demo: burn',
+        'status': 'new',
+        'recurrenceOf': problem,
+      });
+      server.offline = false;
+      await a.phone.engine.syncAll(force: true);
+      final fixed = a.services.patients.attachToPatient(create.changeId, right);
+      await a.phone.engine.syncAll(force: true);
+      expect(server.records[fixed]!.status, 'resolved');
+      // The recurrence names the new problem; its own patient is still missing, so it asks again.
+      final refused = a.store.needsAttention().single;
+      expect(
+        [refused.recordId, refused.reason, (refused.value! as Map)['recurrenceOf']],
+        [again, 'stale_reference', fixed],
+      );
+      final recurrence = a.services.patients.attachToPatient(refused.changeId, right);
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.outbox(), isEmpty);
+      expect(server.records[recurrence]!.attributes['recurrenceOf'], fixed);
+    });
+  });
 }

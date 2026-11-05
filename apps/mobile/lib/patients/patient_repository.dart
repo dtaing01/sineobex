@@ -720,8 +720,11 @@ class PatientRepository {
   /// **Attach to another patient** (Needs attention, for a create refused because its patient is
   /// missing on the server): the same street name, allergy, consent or problem, made again for
   /// [patientId] and sent as the fix of the refused one (`replaceRejected`), which settles it once
-  /// confirmed. A street name's own search row moves with it. A card is never moved: its fix is a
-  /// new card ([IdLinks.replaceRejected]). Returns the new record's ID.
+  /// confirmed. What waited on it goes again after it: its own edits (an allergy marked entered in
+  /// error, a problem moved to Resolved) as edits of the new record, and notes, recurrences and
+  /// reversal requests naming a problem made again naming the new problem. A street name's own
+  /// search row moves with it. A card is never moved: its fix is a new card
+  /// ([IdLinks.replaceRejected]). Returns the new record's ID.
   String attachToPatient(String changeId, String patientId) {
     final refused = store.entry(changeId);
     if (refused == null || refused.op != 'create') throw StateError('not a refused create');
