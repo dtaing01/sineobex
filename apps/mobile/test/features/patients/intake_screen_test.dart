@@ -178,6 +178,73 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a list-only chart keeps what it can’t take yet offered, until the full chart opens (V7)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Del');
+    await type(tester, 'alias', 'Demo Red');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+    await tapOn(tester, find.text('Vehicle'));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('This is them'));
+    await tapOn(tester, find.text('Open the chart'));
+    await expectShown(tester, find.text('List only: the full chart opens when the phone reconnects.'));
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(find.textContaining('Living situation: Vehicle. Adds when the full chart opens.'), findsOneWidget);
+    await expectScreenOk(tester);
+
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
+    expect(find.text('Added. The rest adds when the full chart opens.'), findsOneWidget);
+    final store = h.sync.store!;
+    expect(store.outbox().where((e) => e.entity == entityAlias), hasLength(1));
+    expect(store.outbox().where((e) => e.field == 'livingSituation'), isEmpty);
+    // Only what waits is still offered, and there is nothing to add until the full chart opens.
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(find.textContaining('Street names: Demo Red'), findsNothing);
+    expect(find.textContaining('Living situation: Vehicle. Adds when the full chart opens.'), findsOneWidget);
+    final add = find.widgetWithText(FilledButton, 'Add what you typed');
+    expect(tester.widget<FilledButton>(add).onPressed, isNull);
+    await expectScreenOk(tester);
+
+    // Back online: the full chart downloads, and the living situation adds.
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    await settle(tester);
+    expect(find.text('List only: the full chart opens when the phone reconnects.'), findsNothing);
+    // The first confirmation has gone.
+    await tester.pump(const Duration(seconds: 5));
+    await settle(tester);
+    await tapOn(tester, add);
+    expect(find.text('Added to the chart'), findsOneWidget);
+    final living = store.outbox().singleWhere((e) => e.entity == entityPatient && e.field == 'livingSituation');
+    expect(living.value, {'kind': 'vehicle'});
+    expect(find.text('Add what you typed?'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('Add what you typed that fails keeps the offer (V7)', (tester) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Del');
+    await type(tester, 'usualArea', 'Demo: by the library steps');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('This is them'));
+    await tapOn(tester, find.text('Open the chart'));
+    await expectShown(tester, find.text('Add what you typed?'));
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    h.sync.store!.freeze(frozen);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
+    await expectShown(tester, find.text(frozen));
+    expect(find.text('Added to the chart'), findsNothing);
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(h.sync.store!.outbox().where((e) => e.field == 'usualArea'), isEmpty);
+  });
+
   testWidgets('Back with anything typed keeps a draft, without the legal name, to continue', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await offlineIntake(tester);

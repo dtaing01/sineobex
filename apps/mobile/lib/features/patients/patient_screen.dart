@@ -157,21 +157,42 @@ class _ProfileState extends ConsumerState<_Profile> {
     }
   }
 
+  /// What of [t] this chart can't take yet: a list-only chart takes street names and the list's
+  /// own fields, and the rest waits for the full chart.
+  static TypedDetails _waiting(PatientView v, TypedDetails t) => TypedDetails(
+    usualArea: v.editableFields.contains('usualArea') ? null : t.usualArea,
+    livingSituation: v.editableFields.contains('livingSituation') ? null : t.livingSituation,
+  );
+
+  /// **Add what you typed**: what the chart can take now, in one transaction. What waits for the
+  /// full chart stays offered; nothing is dropped, and nothing is cleared unless it was added.
   Future<void> _addTyped(PatientView v, TypedDetails t) async {
-    await _run('Added to the chart', () {
-      final have = {for (final a in v.aliases) a.alias.toLowerCase()};
-      for (final a in t.aliases) {
-        if (!have.contains(a.toLowerCase())) _s.patients.addAlias(_id, a);
-      }
-      final changes = <String, Object?>{
-        if (t.usualArea != null && t.usualArea != v.usualArea && v.editableFields.contains('usualArea'))
-          'usualArea': t.usualArea,
-        if (t.livingSituation != null && v.editableFields.contains('livingSituation'))
-          'livingSituation': t.livingSituation,
-      };
-      if (changes.isNotEmpty) _s.patients.update(_id, changes);
+    final waiting = _waiting(v, t);
+    try {
+      _s.store.transaction(() {
+        final have = {for (final a in v.aliases) a.alias.toLowerCase()};
+        for (final a in t.aliases) {
+          if (!have.contains(a.toLowerCase())) _s.patients.addAlias(_id, a);
+        }
+        final changes = <String, Object?>{
+          if (t.usualArea != null && waiting.usualArea == null && t.usualArea != v.usualArea) 'usualArea': t.usualArea,
+          if (t.livingSituation != null && waiting.livingSituation == null) 'livingSituation': t.livingSituation,
+        };
+        if (changes.isNotEmpty) _s.patients.update(_id, changes);
+      });
+    } on LocalValidationError catch (e) {
+      if (mounted) setState(() => _problem = e.message);
+      return;
+    } on ChartingPaused catch (e) {
+      if (mounted) setState(() => _problem = e.message);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _problem = null;
+      _typed = waiting.isEmpty ? null : waiting;
     });
-    if (mounted) setState(() => _typed = null);
+    showDone(context, waiting.isEmpty ? 'Added to the chart' : 'Added. The rest adds when the full chart opens.');
   }
 
   Future<void> _addAlias() async {
@@ -436,24 +457,38 @@ class _ProfileState extends ConsumerState<_Profile> {
         ],
         if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s2)],
         if (_typed case final t? when mayEdit) ...[
-          StatusBanner(
-            icon: LucideIcons.squarePen,
-            tone: ChipTone.info,
-            text: 'Add what you typed?',
-            detail: [
-              if (t.aliases.isNotEmpty) 'Street names: ${t.aliases.join(', ')}',
-              if (t.usualArea != null) 'Usually found: ${t.usualArea}',
-              if (t.livingSituation != null)
-                'Living situation: ${livingSituationText((kind: t.livingSituation!['kind']! as String, other: t.livingSituation!['other'] as String?))}',
-            ].join('\n'),
-            action: Wrap(
-              spacing: FieldSpace.s2,
-              runSpacing: FieldSpace.s2,
-              children: [
-                FilledButton(onPressed: () => unawaited(_addTyped(v, t)), child: const Text('Add what you typed')),
-                OutlinedButton(onPressed: () => setState(() => _typed = null), child: const Text('Not now')),
-              ],
-            ),
+          Builder(
+            builder: (context) {
+              final waiting = _waiting(v, t);
+              String later(bool waits) => waits ? '. Adds when the full chart opens.' : '';
+              final addsNow =
+                  t.aliases.isNotEmpty ||
+                  (t.usualArea != null && waiting.usualArea == null) ||
+                  (t.livingSituation != null && waiting.livingSituation == null);
+              return StatusBanner(
+                icon: LucideIcons.squarePen,
+                tone: ChipTone.info,
+                text: 'Add what you typed?',
+                detail: [
+                  if (t.aliases.isNotEmpty) 'Street names: ${t.aliases.join(', ')}',
+                  if (t.usualArea != null) 'Usually found: ${t.usualArea}${later(waiting.usualArea != null)}',
+                  if (t.livingSituation != null)
+                    'Living situation: ${livingSituationText((kind: t.livingSituation!['kind']! as String, other: t.livingSituation!['other'] as String?))}'
+                        '${later(waiting.livingSituation != null)}',
+                ].join('\n'),
+                action: Wrap(
+                  spacing: FieldSpace.s2,
+                  runSpacing: FieldSpace.s2,
+                  children: [
+                    FilledButton(
+                      onPressed: addsNow ? () => unawaited(_addTyped(v, t)) : null,
+                      child: const Text('Add what you typed'),
+                    ),
+                    OutlinedButton(onPressed: () => setState(() => _typed = null), child: const Text('Not now')),
+                  ],
+                ),
+              );
+            },
           ),
           const SizedBox(height: FieldSpace.s2),
         ],
