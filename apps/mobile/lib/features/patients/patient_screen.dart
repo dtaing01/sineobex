@@ -655,12 +655,14 @@ class _ProblemRow extends StatelessWidget {
       if (p.sensitive) 'sensitive',
       if (p.notSynced) 'not synced yet',
     ].join(', ');
+    void open() => unawaited(context.push('/patients/$patientId/problems/${p.id}'));
     return Semantics(
       button: true,
       label: label,
       excludeSemantics: true,
+      onTap: open,
       child: InkWell(
-        onTap: () => unawaited(context.push('/patients/$patientId/problems/${p.id}')),
+        onTap: open,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: FieldTap.min),
           child: Padding(

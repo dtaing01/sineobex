@@ -66,10 +66,13 @@ class PatientRow extends StatelessWidget {
     ];
     final why = matchReasonTexts(p.reasons);
     final seen = isoDay(p.lastSeenOn);
+    // The tap is on this node itself: excluding the row's own semantics drops the InkWell's, and
+    // Switch Access and Voice Access need an action to activate the button.
     return Semantics(
       button: true,
       label: rowLabel(p, today),
       excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: c.surface,
         shape: RoundedRectangleBorder(

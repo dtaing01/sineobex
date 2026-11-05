@@ -86,6 +86,22 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a problem row on the profile is a button Switch Access can activate (V6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    seedP1(h.server);
+    h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'ongoing'});
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    final row = find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing'));
+    await reveal(tester, row);
+    expect(tester.getSemantics(row), isSemantics(isButton: true, hasTapAction: true));
+    tester.semantics.tap(find.semantics.byLabel(RegExp(r'^Demo: cough, Ongoing')));
+    await settle(tester);
+    expect(find.byType(ProblemScreen), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('a role without encounters.chart reads problems and changes nothing', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester, permissions: const ['patients.view', 'patients.edit', 'billing.view_codes']);

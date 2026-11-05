@@ -74,6 +74,25 @@ void main() {
     });
   }
 
+  testWidgets('a code result is a button Switch Access can activate (V6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await addProblem(tester);
+    await type(tester, 'codeSearch', 'burn left forearm first');
+    await settle(tester);
+    const label = 'Burn of first degree of left forearm, initial encounter, code T22.112A';
+    final result = find.bySemanticsLabel(label);
+    await reveal(tester, result);
+    expect(tester.getSemantics(result), isSemantics(isButton: true, hasTapAction: true));
+    tester.semantics.tap(find.semantics.byLabel(label));
+    await settle(tester);
+    expect(
+      (await fieldNamed(tester, 'problemTitle')).controller!.text,
+      'Burn of first degree of left forearm, initial encounter',
+    );
+    await expectShown(tester, find.text('Burn of first degree of left forearm, initial encounter (T22.112A)'));
+    handle.dispose();
+  });
+
   testWidgets('the curated list ships as an asset the app can load', (tester) async {
     final codes = await tester.runAsync(ProblemCodes.load);
     expect(codes!.codes.length, greaterThan(400));

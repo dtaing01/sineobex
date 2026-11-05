@@ -142,6 +142,25 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a result row is a button Switch Access and Voice Access can activate (V6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Smity');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await settle(tester);
+    final row = find.bySemanticsLabel(RegExp('^Del, also known as'));
+    await reveal(tester, row);
+    expect(tester.getSemantics(row), isSemantics(isButton: true, hasTapAction: true));
+    tester.semantics.tap(find.semantics.byLabel(RegExp('^Del, also known as')));
+    await settle(tester);
+    await expectShown(tester, find.text('List only: the full chart opens when the phone reconnects.'));
+    handle.dispose();
+  });
+
   group('a lock with patient screens under others reads nothing from the closed database (V12)', () {
     Future<void> lockWithoutErrors(WidgetTester tester, AppHarness h) async {
       await tester.runAsync(h.session.lock);

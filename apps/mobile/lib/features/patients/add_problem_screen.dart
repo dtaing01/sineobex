@@ -77,6 +77,13 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
     return null;
   }
 
+  void _choose(ProblemCode c) => setState(() {
+    _code = c;
+    _sameComingBack = null;
+    if (_title.text.trim().isEmpty) _title.text = c.title;
+    if (c.sensitive) _sensitive = true;
+  });
+
   Future<void> _pickOnset() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -189,13 +196,9 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
                   button: true,
                   label: '${c.title}, code ${c.code}',
                   excludeSemantics: true,
+                  onTap: () => _choose(c),
                   child: InkWell(
-                    onTap: () => setState(() {
-                      _code = c;
-                      _sameComingBack = null;
-                      if (_title.text.trim().isEmpty) _title.text = c.title;
-                      if (c.sensitive) _sensitive = true;
-                    }),
+                    onTap: () => _choose(c),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(minHeight: FieldTap.min),
                       child: Padding(
