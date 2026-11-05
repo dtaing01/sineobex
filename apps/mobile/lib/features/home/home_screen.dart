@@ -33,7 +33,8 @@ class HomeScreen extends ConsumerWidget {
           // Notices need no fix, but they wait in Needs attention until read.
           final notices = sync.store?.notices(unreadOnly: true).length ?? 0;
           final waiting = snapshot.attention.length + notices;
-          final index = services?.index.state;
+          // Services whose database a lock just closed (Home under another screen) read nothing.
+          final index = services != null && identical(services.store, sync.store) ? services.index.state : null;
           return ListView(
             padding: const EdgeInsets.all(FieldSpace.s4),
             children: [

@@ -6,6 +6,7 @@ import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
 import '../../patients/patient_providers.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
+import '../../sync/sync_controller.dart' show SyncController;
 
 /// Pieces every patient screen shares.
 
@@ -330,6 +331,10 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   );
 }
 
+/// [services] still read the database the controller holds open. A lock, a sign-out or a team switch
+/// closes it, and a screen under another one rebuilds before its route goes: it must read nothing.
+bool servicesOpen(SyncController sync, PatientServices services) => identical(sync.store, services.store);
+
 /// The open team's patient services and what to show when there are none: locked, no team, or a
 /// role without patient records. While the team's store is frozen for a hand-over nothing from it
 /// shows: a frozen store can't log a view, and what can't be logged isn't shown (D21).
@@ -363,6 +368,8 @@ class PatientsGate extends ConsumerWidget {
     return ListenableBuilder(
       listenable: sync,
       builder: (context, _) {
+        // A lock or sign-out closed the database these services read; the route goes next frame.
+        if (!servicesOpen(sync, services)) return const SizedBox.shrink();
         final frozen = services.store.frozenMessage;
         if (frozen != null) {
           return Scaffold(

@@ -142,6 +142,48 @@ void main() {
     handle.dispose();
   });
 
+  group('a lock with patient screens under others reads nothing from the closed database (V12)', () {
+    Future<void> lockWithoutErrors(WidgetTester tester, AppHarness h) async {
+      await tester.runAsync(h.session.lock);
+      await tester.pump();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Unlock'), findsWidgets);
+    }
+
+    testWidgets('the Patients tab under a profile', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await tester.runAsync(() => h.patients.patients.open(p1Id));
+      await openPatientsTab(tester);
+      await go(tester, '/patients/$p1Id');
+      await lockWithoutErrors(tester, h);
+    });
+
+    testWidgets('Home under a profile', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await lockWithoutErrors(tester, h);
+    });
+
+    testWidgets('a profile under its problem, and under its ID card', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final cough = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'new'});
+      await syncAndRefresh(tester, h);
+      await openPatientsTab(tester);
+      await go(tester, '/patients/$p1Id');
+      await go(tester, '/patients/$p1Id/problems/$cough');
+      await go(tester, '/patients/$p1Id/card');
+      await lockWithoutErrors(tester, h);
+    });
+  });
+
   testWidgets('a freeze for a hand-over: an Opened-recently row shows no chart, and the list goes (V1)', (
     tester,
   ) async {

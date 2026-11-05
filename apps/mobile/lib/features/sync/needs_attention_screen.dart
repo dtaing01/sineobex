@@ -27,17 +27,19 @@ class NeedsAttentionScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sync = ref.watch(syncControllerProvider);
     final session = ref.watch(sessionProvider);
-    final services = ref.watch(patientServicesProvider);
+    final watched = ref.watch(patientServicesProvider);
     final me = switch (session.state) {
       Unlocked(:final user) => user.userId,
       _ => null,
     };
     return ListenableBuilder(
-      listenable: Listenable.merge([sync, ?services]),
+      listenable: Listenable.merge([sync, ?watched]),
       builder: (context, _) {
         final snapshot = sync.snapshot;
         final items = snapshot.attention;
         final store = sync.store;
+        // Services whose database a lock or a team switch just closed read nothing.
+        final services = watched != null && identical(watched.store, store) ? watched : null;
         final notices = store?.notices(unreadOnly: true) ?? const <LocalNotice>[];
         final messenger = ScaffoldMessenger.of(context);
         void outOfDate() =>
