@@ -366,6 +366,35 @@ void main() {
       expect(history.entries.first.reviewId, reviewId);
     });
 
+    test('a decision and the match check need patients.view too; a decision names who recorded the value', () async {
+      // Review findings S5 (R2, 03b38d8) and W1 (R2, b99733e), mirrored.
+      const editOnly = 'c0000000-0000-4000-8000-00000000000c';
+      server.permissions[editOnly] = const {'patients.edit'};
+      final p = server.seedPatient(usualArea: 'Demo: Elm Street underpass');
+      final kept = await unseen(blair, p, 'usualArea', 'Demo: Oak Street lot');
+      final reviewId = (kept['details']! as Map<String, Object?>)['reviewId']! as String;
+      const body = {'keep': 'current', 'baseVersion': 1};
+      final path = '/v1/team/field-reviews/$reviewId/decision';
+      for (final call in [
+        server.handle(editOnly, team, 'POST', path, body),
+        server.handle(editOnly, team, 'POST', '/v1/patients/match', const {
+          'preferredName': 'Demo',
+          'surface': 'phone',
+        }),
+      ]) {
+        final e = await refused(call);
+        expect([e.status, e.code], [403, 'forbidden']);
+      }
+      expect(server.reviews[reviewId]!.status, 'open');
+
+      // A chart's reviews are the chart's: no recorder there.
+      final chart = await server.handle(alex, team, 'GET', '/v1/patients/$p', null) as Map<String, Object?>;
+      expect((chart['reviews']! as List<Object?>).single, isNot(contains('currentBy')));
+      final decided = await server.handle(alex, team, 'POST', path, body) as Map<String, Object?>;
+      expect(decided['currentBy'], {'userId': 'seed-user', 'displayName': 'Demo user'});
+      expect(FieldReviewView.fromJson(decided).status, FieldReviewViewStatus.decided);
+    });
+
     test('legal name and birth: the review’s own permission, a recent sign-in and a comment', () async {
       final p = server.seedPatient(legalName: const {'given': 'Ysolde', 'family': null});
       final kept = await unseen(blair, p, 'legalName', const {'given': 'Ysolda', 'family': 'Varrowick'});

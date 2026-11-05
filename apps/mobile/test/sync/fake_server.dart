@@ -1687,6 +1687,8 @@ class FakeSyncServer {
 
   /// POST /v1/patients/match (match.ts): the intake's check before saving.
   Map<String, Object?> _match(String userId, Map<String, Object?> b) {
+    // The candidates are names and births: a role refused search is refused them here too (S5).
+    _require(userId, 'patients.view');
     _require(userId, 'patients.edit');
     final legal = b['legalName'] as Map<String, Object?>?;
     final birth = b['birth'] as Map<String, Object?>?;
@@ -1774,22 +1776,27 @@ class FakeSyncServer {
   );
 
   /// A review as FieldReviewView shows it (field-reviews.ts reviewViews): the chart's value beside
-  /// the values kept for it. A decision names the canonical patient ([patientId] left out); a chart
-  /// names the record the review is on.
-  Map<String, Object?> _reviewView(FakeReview r, {String? patientId}) => {
-    'id': r.id,
-    'patientId': patientId ?? canonicalOf(r.recordId),
-    'field': r.field,
-    'needs': r.needs,
-    'current': records[r.recordId]!.state(r.field),
-    'alternates': [
-      for (final h in history)
-        if (h['reviewId'] == r.id && h['kind'] == 'kept_both')
-          {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['deviceTime']},
-    ],
-    'openedAt': _iso(r.openedAt),
-    'status': r.status,
-  };
+  /// the values kept for it. A decision names the canonical patient and who recorded the chart's
+  /// value (`currentBy`, review finding W1); a chart names the record the review is on, and no
+  /// recorder ([patientId] given).
+  Map<String, Object?> _reviewView(FakeReview r, {String? patientId}) {
+    final current = records[r.recordId]!.state(r.field);
+    return {
+      'id': r.id,
+      'patientId': patientId ?? canonicalOf(r.recordId),
+      'field': r.field,
+      'needs': r.needs,
+      'current': current,
+      if (patientId == null) 'currentBy': current['changedBy'] == null ? null : _user(current['changedBy'] as String?),
+      'alternates': [
+        for (final h in history)
+          if (h['reviewId'] == r.id && h['kind'] == 'kept_both')
+            {'historyId': h['id'], 'value': h['value'], 'by': _user(h['by'] as String?), 'deviceTime': h['deviceTime']},
+      ],
+      'openedAt': _iso(r.openedAt),
+      'status': r.status,
+    };
+  }
 
   /// GET /v1/patients/{id}/history (history.ts fieldHistory): every recorded value of the group's
   /// patient records, street names, allergies and problems (problems with the problem list's
@@ -1889,6 +1896,8 @@ class FakeSyncServer {
     if (unreadable.isEmpty && keep == 'alternate' && historyId == null) unreadable.add(('historyId', 'custom'));
     if (unreadable.isNotEmpty) _unreadable(unreadable);
 
+    // The answer holds the chart's values, so patients.view as well as a key that decides (S5).
+    _require(userId, 'patients.view');
     final perms = permissionsOf(userId);
     if (!perms.contains('patients.edit') && !perms.contains('patients.correct_identity')) {
       throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
