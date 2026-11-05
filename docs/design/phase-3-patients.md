@@ -228,6 +228,27 @@ Screens review (at a29bde0; scratch tests R1–R12 in the coordinator's scratchp
 | V11 | Low | The note counter announces every keystroke past 90% | Announce once on crossing 90% and at the limit | R5 |
 | V12 | Low | On lock, a screen under another rebuilds against the closed database and throws | Builders return nothing when the store changed | R5 |
 
+**Fixed so far** (each with a regression test that fails with the fix reverted): S1 `0ca21e5`,
+S4 `d9efc0c`, S5 `eaade7c` (and the correction route, `ff85705`), S8 `79421f2`, P7 server
+`f6f2d68`, W1 `bd6c49f` and `950bd2e`, S9 `3f7f2cc`.
+
+How R2's fixes read the design: migration 0016 records the alternates a merge wrote
+(`patient_merges.alternate_history_ids`), the merged record's reviews it closed
+(`reviews_obsoleted`) and the alternates a review no longer offers
+(`field_reviews.withdrawn_history_ids`; history stays append-only). Undo withdraws every alternate
+that came from the merged record (the merge's own rows and kept-both rows of changes redirected from
+its subtree); a review left with nothing to choose becomes obsolete, one still holding another value
+stays open (8.5 step 3, amended), and the merged record's own reviews the merge closed open again
+(new). A value decided while merged stays, and the undo answer lists it (`decidedReviews`,
+`keptMergedValue`) so the admin checks it; `redirectedEdits` lists applied, kept-both and history-only
+edits with their `outcome`. The match check, the review list and decision, and identity corrections
+need `patients.view` as well (4.1). An index entry's `duplicate` is `{status}` only; charts keep the
+note (6.1). Every ID card read logs `patient.viewed {source: 'id_card'}` (10.6). Accepted as they
+stand: an allergy recorded for the merged record while merged clears the kept chart's "no known
+allergies", and undo neither reverts nor lists it (the cautious direction: the chart reads "not
+asked"); the audit search widens to a patient's current group only, so events from a merge since
+undone, and index pages, aren't matched (the phase 10 access report decides whether it needs more).
+
 Units: **R1** server sync and the fake (`services/api/src/sync/**`, `apps/mobile/test/sync/fake_server.dart`);
 **R2** server patients, routes and contract (`services/api/src/patients/**`, `routes/{patients,audit-log,field-reviews}`);
 **R3** phone sync and domain (`apps/mobile/lib/{sync,patients,auth,security}/**`, Android `MainActivity.kt`);
