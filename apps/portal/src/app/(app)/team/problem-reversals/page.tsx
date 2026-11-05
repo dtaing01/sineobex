@@ -123,7 +123,10 @@ export default async function ProblemReversalsPage({
               </h2>
               <p>
                 {r.requestedBy.displayName} added this again on {formatDateTime(r.requestedAt)}, saying it
-                never went away. <Link href={`/patients/${r.patientId}`}>Open chart: {who(r.patient)}</Link>
+                never went away.{' '}
+                <Link href={`/patients/${r.patientId}`} prefetch={false}>
+                  Open chart: {who(r.patient)}
+                </Link>
               </p>
               <ul className={styles.entries}>
                 <Entry heading="The original entry" problem={r.original} />

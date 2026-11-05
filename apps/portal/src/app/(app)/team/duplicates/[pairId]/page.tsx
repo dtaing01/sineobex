@@ -78,9 +78,13 @@ export default async function ComparePage({ params }: { params: Promise<{ pairId
       <SideBySide detail={detail} today={teamToday()} />
       <p>
         Full charts:{' '}
-        <Link href={`/patients/${pair.a.patientId}`}>Record A, {recordName(pair.a.summary)}</Link>
+        <Link href={`/patients/${pair.a.patientId}`} prefetch={false}>
+          Record A, {recordName(pair.a.summary)}
+        </Link>
         {' · '}
-        <Link href={`/patients/${pair.b.patientId}`}>Record B, {recordName(pair.b.summary)}</Link>
+        <Link href={`/patients/${pair.b.patientId}`} prefetch={false}>
+          Record B, {recordName(pair.b.summary)}
+        </Link>
       </p>
       <section aria-labelledby="decisions" className="px-doc">
         <h2 id="decisions" className="px-h2">
