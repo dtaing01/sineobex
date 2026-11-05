@@ -37,7 +37,7 @@ class FakeSyncServer {
 
   /// Whose each change in [quarantine] is and why it is held. Nothing here is decided: it waits,
   /// unless a test accepts it ([acceptHeld]).
-  final held = <String, ({String userId, String reason})>{};
+  final held = <String, ({String userId, String deviceId, String reason, String? waitsOn})>{};
 
   /// Offline reads appended to the audit chain (AuditAppend entries), with their fields.
   final audit = <Map<String, Object?>>[];
@@ -246,10 +246,9 @@ class FakeSyncServer {
     if (outcome['status'] != 'accepted') return outcome;
     quarantine.remove(changeId);
     held.remove(changeId);
-    final previous = receipts[changeId];
     receipts[changeId] = _Receipt(
       userId: h.userId,
-      deviceId: previous?.deviceId ?? 'quarantine',
+      deviceId: h.deviceId,
       seq: c['seq']! as int,
       entity: c['entity']! as String,
       recordId: c['recordId']! as String,
@@ -319,7 +318,7 @@ class FakeSyncServer {
       result = switch ((method, path)) {
         ('POST', '/v1/devices') => _register(userId, teamId, body!),
         ('POST', '/v1/sync/push') => _push(userId, teamId, body!),
-        ('POST', '/v1/sync/records') => _fetch(body!),
+        ('POST', '/v1/sync/records') => _fetch(userId, body!),
         ('GET', '/v1/team/notices') => _notices(userId),
         ('POST', '/v1/patients/index') => _index(userId, body!),
         ('POST', '/v1/patients/charts') => _charts(userId, body!),
@@ -365,7 +364,8 @@ class FakeSyncServer {
       throw const ApiException(409, 'device_not_registered', 'Register this phone before syncing.');
     }
     final deviceTime = DateTime.parse((b['clock']! as Map<String, Object?>)['deviceTime']! as String);
-    final offsetMs = now().difference(deviceTime).inMilliseconds;
+    final offsetMs = now().difference(deviceTime).inMilliseconds.clamp(-maxVersion, maxVersion);
+    final flagged = offsetMs.abs() > 5 * 60000;
     // Every push replaces the phone's report, as push.ts does: the admin's devices page shows it.
     final unsynced = b['unsynced']! as Map<String, Object?>;
     device
@@ -373,7 +373,7 @@ class FakeSyncServer {
       ..oldestUnsynced = unsynced['oldest'] as String?;
     final base = {
       'serverTime': now().toUtc().toIso8601String(),
-      'clock': {'offsetMs': offsetMs, 'flagged': offsetMs.abs() > 5 * 60000},
+      'clock': {'offsetMs': offsetMs, 'flagged': flagged},
       'device': {'status': device.status},
     };
     if (device.status != 'active') return {...base, 'results': <Object?>[]};
@@ -383,12 +383,15 @@ class FakeSyncServer {
     final results = <Map<String, Object?>>[];
     for (final c in changes) {
       if (stopAfter != null && results.length >= stopAfter!) break;
-      results.add(_one(userId, b['deviceId']! as String, c));
+      // A time the server just measured as more than 5 minutes off is never stored as verified,
+      // whatever the phone claims (push.ts, review finding P8).
+      results.add(_one(userId, b['deviceId']! as String, flagged ? {...c, 'clockVerified': false} : c));
     }
     return {...base, 'results': results};
   }
 
-  /// The largest version a change may name (schemas.ts MAX_VERSION, Postgres `integer`).
+  /// The largest version a change may name (schemas.ts MAX_VERSION, Postgres `integer`), and the
+  /// largest clock offset a push records.
   static const maxVersion = 2147483647;
 
   /// schemas.ts isPhoneTime: from the Unix epoch through the last moment of 9999, in UTC.
@@ -421,21 +424,53 @@ class FakeSyncServer {
     }
   }
 
-  /// apply.ts precheck, then the stored receipt for a change it already has, then decide().
+  /// push.ts processOne: apply.ts precheck (a damaged value is answered, never stored); the
+  /// stored answer for a change already here, unless its ID is someone else's (another person's or
+  /// phone's receipt, or a change held for them: `change_id_reused`, review finding P8); the
+  /// person's own change handed over after removal, which only an admin's decision applies; then
+  /// decide(), or the lasting rejection precheck found.
   Map<String, Object?> _one(String userId, String deviceId, Map<String, Object?> c) {
     final id = c['changeId']! as String;
     final hash = valueHash(c['value']);
-    if (!c.containsKey('value')) return _store(userId, deviceId, c, hash, _invalid('value_missing'));
-    final unstorable = storableProblem(c['value']);
-    if (unstorable != null) {
-      return _store(userId, deviceId, c, hash, _invalid(unstorable == 'too large' ? 'too_large' : 'unstorable_value'));
+    final unstorable = c.containsKey('value') ? storableProblem(c['value']) : null;
+    final lasting = !c.containsKey('value')
+        ? _invalid('value_missing')
+        : unstorable == null
+        ? null
+        : _invalid(unstorable == 'too large' ? 'too_large' : 'unstorable_value');
+    if (lasting == null && hash != c['valueHash']) {
+      return {'changeId': id, 'status': 'rejected', 'reason': 'hash_mismatch'};
     }
-    if (hash != c['valueHash']) return {'changeId': id, 'status': 'rejected', 'reason': 'hash_mismatch'};
     final existing = receipts[id];
-    if (existing != null) return existing.result(this, id);
+    if (existing != null) {
+      return existing.userId == userId && existing.deviceId == deviceId ? existing.result(this, id) : _reused(id);
+    }
+    final h = held[id];
+    if (h != null) {
+      if (h.userId != userId || h.deviceId != deviceId) return _reused(id);
+      return {
+        'changeId': id,
+        'status': 'rejected',
+        'reason': 'permission',
+        'message': 'rejected: permission',
+        'details': {'problem': 'held_for_review', 'decision': 'pending'},
+        'quarantined': true,
+        'hash': valueHash(quarantine[id]!['value']),
+      };
+    }
+    if (lasting != null) return _store(userId, deviceId, c, c['valueHash']! as String, lasting);
     final outcome = _decide(_Actor(userId, deviceId, permissionsOf(userId), holdForReview: true), c);
     return _store(userId, deviceId, c, hash, outcome);
   }
+
+  /// push.ts reused: never stored, so the holder's change keeps its ID.
+  static Map<String, Object?> _reused(String changeId) => {
+    'changeId': changeId,
+    'status': 'rejected',
+    'reason': 'validation',
+    'message': 'This change ID was already used. The app will make a new one.',
+    'details': {'problem': 'change_id_reused'},
+  };
 
   static final _allPermissions = {...healthcareStaff, 'patients.reverse_resolved', 'patients.correct_identity'};
 
@@ -453,25 +488,27 @@ class FakeSyncServer {
     }
     final op = c['op'];
     if (!actor.permissions.contains(rules.permission(op == 'set' ? 'set' : 'create', c['field'] as String?))) {
-      return actor.holdForReview ? _hold(actor.userId, c, 'permission') : _rejected('permission');
+      return actor.holdForReview ? _hold(actor, c, 'permission') : _rejected('permission');
     }
     if (op != 'create' && op != 'set') return _invalid('append_only_for_audit');
     final outcome = op == 'create' ? _create(actor, c, rules) : _set(actor, c, rules);
     if (actor.holdForReview && outcome['status'] == 'rejected') {
       // Known only once the record is: a problem marked entered in error by someone else.
-      if (outcome['reason'] == 'permission') return _hold(actor.userId, c, 'permission');
+      if (outcome['reason'] == 'permission') return _hold(actor, c, 'permission');
       if (outcome['reason'] == 'stale_reference') {
         final waitsOn = _heldCreate(actor.userId, c, rules);
-        if (waitsOn != null) return _hold(actor.userId, c, 'awaiting_review', {'waitsOn': waitsOn});
+        if (waitsOn != null) return _hold(actor, c, 'awaiting_review', waitsOn: waitsOn);
       }
     }
     return outcome;
   }
 
-  Map<String, Object?> _hold(String userId, Map<String, Object?> c, String reason, [Map<String, Object?>? details]) {
+  /// apply.ts hold: what it waits on goes to the audit event, not to the phone, whose answer carries
+  /// no details (review finding P8).
+  Map<String, Object?> _hold(_Actor actor, Map<String, Object?> c, String reason, {String? waitsOn}) {
     quarantine[c['changeId']! as String] = c;
-    held[c['changeId']! as String] = (userId: userId, reason: reason);
-    return {'status': 'rejected', 'reason': reason, 'quarantined': true, 'details': ?details};
+    held[c['changeId']! as String] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
+    return {'status': 'rejected', 'reason': reason, 'quarantined': true};
   }
 
   /// The person's own create, held for review, of a record [c] needs: the record it changes, or a
@@ -625,6 +662,7 @@ class FakeSyncServer {
       entity: rules.entity,
       createdAt: DateTime.parse(at),
       author: actor.userId,
+      clockVerified: c['clockVerified'] == true,
       attributes: rules.attributes(v),
       status: rules.initialStatus(v),
       patientId: switch (rules.entity) {
@@ -712,6 +750,9 @@ class FakeSyncServer {
 
   // ---- the ID link handshake (design 10.4) ----
 
+  /// Not an active member of the team any more.
+  bool _removed(String userId) => removedUsers.contains(userId) || removedFromTeam.any((k) => k.startsWith('$userId/'));
+
   Map<String, Object?> _idLinkHandshake(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final patientId = v['patientId']! as String;
     final patient = records[patientId]!;
@@ -757,7 +798,14 @@ class FakeSyncServer {
         ..add(
           FakeNotice(_uuid(), won ? rival.issuedBy : actor.userId, 'id_link_superseded', entityIdLink, loser, now()),
         )
-        ..add(FakeNotice(_uuid(), won ? actor.userId : rival.issuedBy, 'id_link_kept', entityIdLink, winner, now()));
+        ..add(FakeNotice(_uuid(), won ? actor.userId : rival.issuedBy, 'id_link_kept', entityIdLink, winner, now()))
+        // Everyone who manages the team's people hears of the conflict, naming the valid card
+        // (id-links.ts, review finding P8).
+        ..addAll([
+          for (final MapEntry(key: user, value: perms) in permissions.entries)
+            if (perms.contains('team.manage_users') && !_removed(user))
+              FakeNotice(_uuid(), user, 'id_link_conflict', entityIdLink, winner, now()),
+        ]);
     }
     return _accepted(
       1,
@@ -976,8 +1024,14 @@ class FakeSyncServer {
   }
 
   /// The person looked at both values and kept the server's: theirs is kept in history.
-  Map<String, Object?> _keepServer(_SetContext s) {
+  /// On a draft ([notifyAuthor]), the record's author is told when the kept value was someone
+  /// else's (fields.ts keepServer, review finding P8); a problem's status tells nobody.
+  Map<String, Object?> _keepServer(_SetContext s, {bool notifyAuthor = false}) {
     if (!s.saw) return _conflict(s);
+    final changedBy = s.cur['changedBy'];
+    if (notifyAuthor && changedBy != null && changedBy != s.actor.userId && s.rec.author != s.actor.decider) {
+      notices.add(FakeNotice(_uuid(), s.rec.author, 'conflict_resolved', s.rec.entity, s.rec.id, now()));
+    }
     _history(
       s.rec,
       s.field,
@@ -1008,7 +1062,7 @@ class FakeSyncServer {
       return _invalid('too_many_fields');
     }
     final resolution = s.c['resolution'];
-    if (resolution == 'keep_server') return _keepServer(s);
+    if (resolution == 'keep_server') return _keepServer(s, notifyAuthor: true);
     if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
     if (resolution == 'replace') {
       return s.saw ? _writeValue(s, 'replaced_after_review', approvedBy: s.actor.decider) : _conflict(s);
@@ -1359,7 +1413,7 @@ class FakeSyncServer {
     return {
       'patient': _snapshot(p, {
         'registeredAt': _iso(p.createdAt),
-        'clockVerified': true,
+        'clockVerified': p.clockVerified,
         'lastSeenAt': _iso(p.createdAt),
       }, patientFieldNames),
       'canonicalId': canonicalId,
@@ -1669,9 +1723,16 @@ class FakeSyncServer {
     return {'checkId': checkId, 'candidates': candidates};
   }
 
-  List<Object?> _notices(String userId) => [
-    for (final n in notices)
-      if (n.userId == userId)
+  /// The person's newest 100 notices, newest first (review.ts listNotices, review finding P8).
+  static const noticeLimit = 100;
+
+  List<Object?> _notices(String userId) {
+    final mine = [
+      for (final (i, n) in notices.indexed)
+        if (n.userId == userId) (i, n),
+    ]..sort((a, b) => b.$2.createdAt != a.$2.createdAt ? b.$2.createdAt.compareTo(a.$2.createdAt) : b.$1 - a.$1);
+    return [
+      for (final (_, n) in mine.take(noticeLimit))
         {
           'id': n.id,
           'kind': n.kind,
@@ -1680,7 +1741,8 @@ class FakeSyncServer {
           'createdAt': _iso(n.createdAt),
           'readAt': n.readAt == null ? null : _iso(n.readAt!),
         },
-  ];
+    ];
+  }
 
   Map<String, Object?> _markRead(String userId, String id) {
     for (final n in notices.where((n) => n.id == id && n.userId == userId)) {
@@ -1930,15 +1992,42 @@ class FakeSyncServer {
 
   // ---- reads ----
 
-  Map<String, Object?> _fetch(Map<String, Object?> b) {
+  /// POST /v1/sync/records (routes/sync.ts requireRead, review.ts fetchRecords): each kind of record
+  /// needs its read permission, refused for the whole request; a sensitive problem, or its note,
+  /// is missing to a role without patients.view_sensitive; each read is logged, a patient-side one
+  /// as a view of the patient (review finding P8).
+  Map<String, Object?> _fetch(String userId, Map<String, Object?> b) {
+    final refs = (b['records']! as List<Object?>).cast<Map<String, Object?>>();
+    final perms = permissionsOf(userId);
+    for (final entity in {for (final ref in refs) ref['entity']}) {
+      final may = switch (entity) {
+        entityEncounter || entityNote => perms.contains('encounters.chart'),
+        entityProblem || entityProblemNote => mayViewProblems(perms),
+        _ => perms.contains('patients.view'),
+      };
+      if (!may) throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
+    }
+    bool sensitive(FakeRecord r) => switch (r.entity) {
+      entityProblem => r.attributes['sensitive'] == true,
+      entityProblemNote => records[r.attributes['problemId']]?.attributes['sensitive'] == true,
+      _ => false,
+    };
     final out = <Object?>[];
     final missing = <Object?>[];
-    for (final ref in (b['records']! as List<Object?>).cast<Map<String, Object?>>()) {
+    for (final ref in refs) {
       final r = records[ref['id']];
-      if (r == null) {
+      if (r == null || r.entity != ref['entity'] || (sensitive(r) && !perms.contains('patients.view_sensitive'))) {
         missing.add(ref);
         continue;
       }
+      final encounterSide = r.entity == entityEncounter || r.entity == entityNote;
+      serverAudit.add({
+        'action': encounterSide ? (r.entity == entityNote ? 'note.viewed' : 'encounter.viewed') : 'patient.viewed',
+        'userId': userId,
+        'patientId': r.patientId,
+        'entityId': r.id,
+        'details': {'source': 'sync'},
+      });
       final at = now().toUtc().toIso8601String();
       out.add({
         'entity': r.entity,
@@ -2010,7 +2099,14 @@ class FakeSyncServer {
             results.add({'changeId': c['changeId'], 'status': 'recorded', 'hash': hash});
             continue;
           }
-          _hold(device.userId, c, 'access_removed');
+          // devices.ts: an ID someone else's held change already has is theirs; nothing of this
+          // phone's is stored, and "quarantined" would have it wipe the change.
+          final other = held[c['changeId']];
+          if (other != null && (other.userId != device.userId || other.deviceId != deviceId)) {
+            results.add({'changeId': c['changeId'], 'status': 'rejected', 'reason': 'validation'});
+            continue;
+          }
+          if (other == null) _hold(_Actor(device.userId, deviceId, const {}, holdForReview: true), c, 'access_removed');
           results.add({'changeId': c['changeId'], 'status': 'quarantined', 'hash': hash});
         }
         return {'results': results};
@@ -2096,8 +2192,13 @@ class FakeRecord {
     required this.fields,
     this.status = 'active',
     this.patientId,
+    this.clockVerified = true,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.utc(2026);
+
+  /// Whether its creating change's time was verified, as the server stored it (a push measured
+  /// more than 5 minutes off stores none as verified).
+  final bool clockVerified;
 
   /// When the server stored it (registeredAt for a patient, recordedAt for an allergy).
   final DateTime createdAt;

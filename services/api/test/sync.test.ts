@@ -1191,12 +1191,17 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         value: { kind: 'non_medical' },
       });
       const r = await push(h, phone, t.chwToken, t.teamId, [encounter]);
-      expect(results(r.body)[0]).toMatchObject({
+      expect(results(r.body)[0]).toEqual({
+        changeId: encounter.changeId,
         status: 'rejected',
         reason: 'permission',
+        message: expect.any(String),
         quarantined: true,
         hash: encounter.valueHash,
       });
+      // A retry gets the first answer: the receipt's own note that the change is held stays its own.
+      const retry = await push(h, phone, t.chwToken, t.teamId, [encounter]);
+      expect(results(retry.body)).toEqual(results(r.body));
       expect(await count('encounters', `id = '${encounter.recordId}'`)).toBe(0);
 
       const item = (await queuePage({ userId: t.chwId })).items.find(

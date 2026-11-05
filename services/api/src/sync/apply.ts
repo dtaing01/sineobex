@@ -175,10 +175,17 @@ export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultV
     );
   }
   if (r.status === 'rejected') {
-    const quarantined = r.details?.quarantined === true;
+    // `quarantined` is the receipt's own note (settle leaves a held change to the admin); the
+    // first answer gave it as the result's flag, not in its details (review finding P8).
+    const { quarantined, ...details } = r.details ?? {};
     return toResult(
       r.changeId,
-      { status: 'rejected', reason: r.reason ?? 'validation', details: r.details ?? undefined, quarantined },
+      {
+        status: 'rejected',
+        reason: r.reason ?? 'validation',
+        ...(Object.keys(details).length > 0 ? { details } : {}),
+        quarantined: quarantined === true,
+      },
       r.valueHash,
     );
   }
