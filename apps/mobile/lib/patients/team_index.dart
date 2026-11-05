@@ -123,8 +123,10 @@ class TeamIndex {
 
   /// Checked at open, on every timer tick and before every search (6.3): an index not refreshed for
   /// [indexLifetime], or refreshed "later" than the phone's corrected clock (wound back), goes with
-  /// every server copy on the phone. Returns whether it went now.
+  /// every server copy on the phone. Staged pages older than [stagingLifetime] go too, whatever the
+  /// role and whether or not an index is here. Returns whether the index went now.
   bool expireIfStale() {
+    _dropStaleStaging();
     final at = state.refreshedAt;
     if (at == null) return false;
     final now = _now();
@@ -141,9 +143,35 @@ class TeamIndex {
 
   /// The server refused the index to this role (403 `index_not_permitted`), or the cached
   /// permissions say it may not hold one: the index and every server copy without local work go.
+  /// With no index here, a download the role started earlier and never finished goes: its staged
+  /// pages hold patients' names (review P4).
   void notPermitted() {
     if (state.present || store.database.select('SELECT 1 FROM team_index LIMIT 1').isNotEmpty) {
       _remove(IndexRemoval.notPermitted);
+    } else {
+      _dropStaging();
+    }
+  }
+
+  /// Deletes every staged page and the index's bookkeeping in `kv`.
+  void _dropStaging() => store.transaction(() {
+    store.database
+      ..execute('DELETE FROM team_index_staging')
+      ..execute("DELETE FROM kv WHERE key LIKE '$indexKvPrefix%'");
+  });
+
+  /// Staging is a download in progress: older than [stagingLifetime] (or staged "later" than the
+  /// phone's clock, which was wound back) it is never resumed, so it goes now rather than wait for
+  /// a download that may never come (a role that lost the index, a phone that stays offline).
+  void _dropStaleStaging() {
+    final row = store.database
+        .select('SELECT min(staged_at) AS oldest, max(staged_at) AS newest FROM team_index_staging')
+        .first;
+    final oldest = row['oldest'] as int?, newest = row['newest'] as int?;
+    if (oldest == null || newest == null) return;
+    final now = _now().toUtc().millisecondsSinceEpoch;
+    if (now - oldest > stagingLifetime.inMilliseconds || newest - now > clockSkewAllowance.inMilliseconds) {
+      store.transaction(() => store.database.execute('DELETE FROM team_index_staging'));
     }
   }
 

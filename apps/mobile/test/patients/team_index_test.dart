@@ -180,6 +180,53 @@ void main() {
     expect(store().record(ids[1]), isNotNull);
   });
 
+  // Review P4: staging was dropped only inside a later download, and notPermitted cleared only a
+  // complete index, so a role that lost the index kept a cut-off download's names for good.
+  test('a cut-off first download goes when the role loses the index, staged names and all', () async {
+    seed(150);
+    cutAfter(1);
+    await refresher.refresh(RefreshReason.manual);
+    expect([stagedPages(), indexRows()], [1, 0]);
+    server
+      ..offline = false
+      ..onRequest = null;
+    // The role changes to one that may not hold the index (Billing/Data).
+    const billing = ['patients.view', 'billing.view_codes'];
+    final theirs = servicesFor(billing);
+    await TeamIndexRefresher(theirs.index, phone.engine.api, wallNow: () => phone.wall).refresh(RefreshReason.manual);
+    expect(stagedPages(), 0);
+    expect(phone.db.db.select("SELECT 1 FROM kv WHERE key LIKE 'index.%'"), isEmpty);
+    expect(theirs.index.state.downloading, isFalse);
+  });
+
+  test('a 403 for the index drops a cut-off download’s staged pages', () async {
+    seed(150);
+    cutAfter(1);
+    await refresher.refresh(RefreshReason.manual);
+    expect(stagedPages(), 1);
+    server
+      ..offline = false
+      ..onRequest = null
+      ..permissions[alex] = {'patients.view', 'billing.view_codes'};
+    // The phone still thinks it may hold the index; the server says otherwise.
+    await refresher.refresh(RefreshReason.manual);
+    expect(stagedPages(), 0);
+  });
+
+  test('staging expires after an hour without a download to discard it, whatever the role', () async {
+    seed(150);
+    cutAfter(1);
+    await refresher.refresh(RefreshReason.manual);
+    expect(stagedPages(), 1);
+    final theirs = servicesFor(const ['patients.view', 'billing.view_codes']);
+    advance(const Duration(minutes: 59));
+    expect(theirs.index.expireIfStale(), isFalse);
+    expect(stagedPages(), 1);
+    advance(const Duration(minutes: 2));
+    expect(theirs.index.expireIfStale(), isFalse, reason: 'no index went');
+    expect(stagedPages(), 0);
+  });
+
   test('a role the cached permissions say may not hold it never asks, and an old index goes', () async {
     seed(3);
     await refresher.refresh(RefreshReason.manual);
