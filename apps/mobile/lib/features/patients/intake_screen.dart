@@ -649,17 +649,21 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _saveError = null;
     });
     try {
-      final changes = _changes();
-      if (changes.isNotEmpty) _s.patients.update(id, changes);
-      for (final a in _existingAliases) {
-        if (a.removal != null && a.view.id != null) _s.patients.removeAlias(a.view.id!, a.removal!);
-      }
-      for (final a in _aliases) {
-        _s.patients.addAlias(id, a);
-      }
-      for (final a in _allergies) {
-        _s.patients.addAllergy(id, a);
-      }
+      // All of it or none: a refusal part way leaves nothing queued, so trying again can't send a
+      // street name or an allergy twice.
+      _s.store.transaction(() {
+        final changes = _changes();
+        if (changes.isNotEmpty) _s.patients.update(id, changes);
+        for (final a in _existingAliases) {
+          if (a.removal != null && a.view.id != null) _s.patients.removeAlias(a.view.id!, a.removal!);
+        }
+        for (final a in _aliases) {
+          _s.patients.addAlias(id, a);
+        }
+        for (final a in _allergies) {
+          _s.patients.addAllergy(id, a);
+        }
+      });
       _aliases.clear();
       _allergies.clear();
       if (!mounted) return;
@@ -736,9 +740,19 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   // The form
   // ---------------------------------------------------------------------------------------------
 
+  /// The sync limits on a street name and an allergy's substance (`entities.dart`).
+  static const _aliasMax = 60;
+  static const _substanceMax = 120;
+
   void _addAlias() {
     final a = _aliasInput.text.trim();
     if (a.isEmpty) return;
+    // Refused here, where it was typed, not part way through saving.
+    if (a.length > _aliasMax) {
+      setState(() => _saveError = 'A street name is 1 to $_aliasMax characters.');
+      _aliasFocus.requestFocus();
+      return;
+    }
     if (_aliases.length + _existingAliases.where((x) => x.removal == null).length >= 20) {
       setState(() => _saveError = 'A person can have up to 20 street names.');
       return;
@@ -746,6 +760,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     setState(() {
       _aliases.add(a);
       _aliasInput.clear();
+      _saveError = null;
     });
     _aliasFocus.requestFocus();
     unawaited(_check());
@@ -753,8 +768,12 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   void _addAllergy() {
     final substance = _substance.text.trim();
-    if (substance.isEmpty) {
-      setState(() => _saveError = 'Name the allergy before adding it.');
+    if (substance.isEmpty || substance.length > _substanceMax) {
+      setState(
+        () => _saveError = substance.isEmpty
+            ? 'Name the allergy before adding it.'
+            : 'Name the allergy in up to $_substanceMax characters.',
+      );
       _substanceFocus.requestFocus();
       return;
     }

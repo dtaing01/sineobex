@@ -90,6 +90,73 @@ void main() {
     handle.dispose();
   });
 
+  group('Update and save is one transaction, and lengths are checked when added (V9)', () {
+    Future<AppHarness> editDel(WidgetTester tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Edit'));
+      return h;
+    }
+
+    List<OutboxEntry> aliases(AppHarness h, String alias) => [
+      for (final e in h.sync.store!.outbox())
+        if (e.entity == entityAlias && (e.value! as Map)['alias'] == alias) e,
+    ];
+
+    testWidgets('a street name over 60 characters is refused when added, not part way through saving', (tester) async {
+      final h = await editDel(tester);
+      await type(tester, 'alias', 'Demo Ace');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+      await type(tester, 'alias', 'Demo ${'x' * 60}');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+      await expectShown(tester, find.text('A street name is 1 to 60 characters.'));
+      expect(find.bySemanticsLabel(RegExp('^Remove street name Demo xxx')), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Update and save'));
+      expect(aliases(h, 'Demo Ace'), hasLength(1));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityAlias), hasLength(1));
+    });
+
+    testWidgets('an allergy named in over 120 characters is refused when added', (tester) async {
+      final h = await editDel(tester);
+      await tapOn(tester, find.text('Add allergy'));
+      await type(tester, 'allergySubstance', 'Demo ${'x' * 120}');
+      await tapOn(tester, find.text('Add this allergy'));
+      await expectShown(tester, find.text('Name the allergy in up to 120 characters.'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Update and save'));
+      // Still on the form: the started allergy is still to fix.
+      expect(find.text('Edit details'), findsOneWidget);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityAllergy), isEmpty);
+    });
+
+    testWidgets('a refusal part way leaves nothing queued, so trying again sends each change once', (tester) async {
+      final h = await editDel(tester);
+      await type(tester, 'usualArea', 'Demo: by the library steps');
+      await type(tester, 'alias', 'Demo Ace');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+      // The hand-over starts right after the first change of the save is written.
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final store = h.sync.store!;
+      void freeze() => store.freeze(frozen);
+      h.patients.addListener(freeze);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Update and save'));
+      h.patients.removeListener(freeze);
+      await expectShown(tester, find.text(frozen));
+      expect(store.outbox().where((e) => e.entity == entityPatient && e.op == 'set'), isEmpty);
+      expect(aliases(h, 'Demo Ace'), isEmpty);
+
+      // Access is back; the same save again.
+      store.unfreeze();
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Update and save'));
+      expect(find.byType(PatientScreen), findsOneWidget);
+      final changed = store.outbox().where((e) => e.entity == entityPatient && e.op == 'set').toList();
+      expect(changed, hasLength(1));
+      expect(changed.single.field, 'usualArea');
+      expect(aliases(h, 'Demo Ace'), hasLength(1));
+    });
+  });
+
   testWidgets('an estimate refined by more than 3 years says an admin will check it', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);
