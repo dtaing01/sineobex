@@ -1,0 +1,26 @@
+{
+  "name": "@sineobex/contract",
+  "private": true,
+  "type": "module",
+  "description": "The API contract: OpenAPI spec generated from the API's route schemas, TS types for the portal, and the Dart client for the phone.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.json": "./openapi.json"
+  },
+  "scripts": {
+    "generate": "tsx scripts/generate.ts && tsx scripts/gen-patient-data.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@sineobex/api": "workspace:*",
+    "@types/node": "22.20.5",
+    "openapi-typescript": "7.13.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}

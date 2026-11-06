@@ -1,0 +1,5 @@
+# Build output from scripts/build.mjs
+functions/api/bundle.js
+functions/api/bundle.js.map
+.temp/
+.branches/

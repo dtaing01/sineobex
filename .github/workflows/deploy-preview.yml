@@ -1,0 +1,155 @@
+# Deploys the preview build (made-up patients only) from main: migrations and seed on the Supabase
+# database, the API as a Supabase Edge Function, and the portal and website on Vercel.
+# Every job skips with a notice until its secrets are configured (docs/setup.md lists them).
+# The pilot never deploys from here: it runs on AWS (deploy-aws.yml) against a fresh database.
+name: Deploy preview
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-preview
+  cancel-in-progress: false
+
+jobs:
+  config:
+    name: Check preview configuration
+    runs-on: ubuntu-latest
+    outputs:
+      supabase: ${{ steps.check.outputs.supabase }}
+      vercel: ${{ steps.check.outputs.vercel }}
+    steps:
+      - id: check
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+          PREVIEW_API_DATABASE_URL: ${{ secrets.PREVIEW_API_DATABASE_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        run: |
+          if [[ -n "$SUPABASE_ACCESS_TOKEN" && -n "$SUPABASE_PROJECT_REF" && -n "$PREVIEW_DATABASE_URL" && -n "$PREVIEW_API_DATABASE_URL" ]]; then
+            echo "supabase=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "supabase=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Supabase preview not configured; skipping database and API deploy. See docs/setup.md."
+          fi
+          if [[ -n "$VERCEL_TOKEN" && -n "$VERCEL_ORG_ID" ]]; then
+            echo "vercel=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vercel=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel not configured; skipping portal and website deploy. See docs/setup.md."
+          fi
+
+  database:
+    name: Migrate and seed the preview database
+    needs: config
+    if: needs.config.outputs.supabase == 'true'
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate (marks the database "preview" on first run; refuses if it is marked anything else)
+        env:
+          DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+        run: pnpm db:migrate --environment preview
+      - name: Seed made-up patients (refuses outside demo databases)
+        env:
+          DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+        run: pnpm db:seed
+
+  api:
+    name: Deploy the API Edge Function
+    needs: [config, database]
+    if: needs.config.outputs.supabase == 'true'
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sineobex/api build
+        env:
+          RELEASE: ${{ github.sha }}
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: 2.119.0
+      - name: Set function secrets and deploy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          API_DATABASE_URL: ${{ secrets.PREVIEW_API_DATABASE_URL }}
+          PORTAL_ORIGIN: ${{ vars.PREVIEW_PORTAL_ORIGIN }}
+        run: |
+          supabase secrets set --project-ref "$REF" \
+            APP_ENV=preview \
+            DATABASE_URL="$API_DATABASE_URL" \
+            OIDC_ISSUER="https://${REF}.supabase.co/auth/v1" \
+            OIDC_AUDIENCE=authenticated \
+            OIDC_JWKS_URL="https://${REF}.supabase.co/auth/v1/.well-known/jwks.json" \
+            MFA_MODE=aal \
+            CORS_ORIGINS="${PORTAL_ORIGIN}" \
+            RELEASE="${GITHUB_SHA}"
+          supabase functions deploy api --project-ref "$REF" --workdir services/api --use-api
+      - name: Check the deployed API answers and says it is a demo
+        env:
+          REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          body=$(curl -fsS --retry 5 --retry-delay 3 "https://${REF}.supabase.co/functions/v1/api/v1/health")
+          echo "$body"
+          grep -q '"demo":true' <<<"$body"
+
+  web:
+    name: Deploy ${{ matrix.app }} to Vercel
+    needs: config
+    if: needs.config.outputs.vercel == 'true'
+    runs-on: ubuntu-latest
+    environment: preview
+    strategy:
+      matrix:
+        include:
+          - app: portal
+            project_var: VERCEL_PORTAL_PROJECT_ID
+          - app: website
+            project_var: VERCEL_WEBSITE_PROJECT_ID
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Build and deploy with the Vercel CLI
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars[matrix.project_var] }}
+        run: |
+          if [[ -z "$VERCEL_PROJECT_ID" ]]; then
+            echo "::notice::${{ matrix.project_var }} is not set; skipping ${{ matrix.app }}."
+            exit 0
+          fi
+          npx --yes vercel@62.4.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@62.4.0 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@62.4.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"

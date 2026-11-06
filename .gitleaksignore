@@ -1,0 +1,6 @@
+# False positive, confirmed 2026-10-20. gitleaks' generic-api-key rule matched the
+# *name* of a Keychain entry ('sineobex.db.key.v1') in a file deleted by the Oct 8
+# reset. The value is a lookup label, not a key; the real database key was generated
+# on the device and never committed. Nothing to rotate. Scoped to this one commit,
+# file, rule and line so any new finding still fails the scan.
+471b0180a11e0ee7f437b725465c397aebe69088:app/lib/core/security/db_key.dart:generic-api-key:14

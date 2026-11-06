@@ -1,0 +1,158 @@
+{
+  "note": "Hand-written (phase 3 design 11.3). parseBirth(input, mode, today) in apps/mobile/lib/patients/dob.dart and apps/portal/src/lib/dob.ts must give every answer. Month first (US pilot). A two-digit year always means the past: the latest year ending in those digits whose full date is not after today; for a year alone, the latest such year before the current one. Ask once (needsConfirmation) when a two-digit year was expanded, day and month were both 12 or less and different, or the age is under 14 or over 100. Age mode stores an estimated year: the current year minus the age. Errors are codes; `message` is pinned only where the design fixes the wording.",
+  "today": "2026-10-22",
+  "readBackFormats": {
+    "day": "<Month> <d>, <yyyy> · age <n>",
+    "year": "Born in <yyyy> · about <n> (year only)",
+    "estimated": "About <n> years old · born around <yyyy>"
+  },
+  "errors": ["unreadable", "bad_year", "invalid_month", "invalid_day", "future", "before_1900"],
+  "cases": [
+    {
+      "input": "3/7/46",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-07" },
+      "readBack": "March 7, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "03-07-46",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-07" },
+      "readBack": "March 7, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "030746",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-07" },
+      "readBack": "March 7, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "7/3/46",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-07-03" },
+      "readBack": "July 3, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "3/7/1946",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-07" },
+      "readBack": "March 7, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "03071946",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-07" },
+      "readBack": "March 7, 1946 · age 80",
+      "needsConfirmation": true
+    },
+    {
+      "input": "3/15/1946",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-15" },
+      "readBack": "March 15, 1946 · age 80",
+      "needsConfirmation": false
+    },
+    {
+      "input": "3/3/1946",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1946-03-03" },
+      "readBack": "March 3, 1946 · age 80",
+      "needsConfirmation": false
+    },
+    {
+      "input": "12/25/26",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1926-12-25" },
+      "readBack": "December 25, 1926 · age 99",
+      "needsConfirmation": true
+    },
+    {
+      "input": "10/22/26",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "2026-10-22" },
+      "readBack": "October 22, 2026 · age 0",
+      "needsConfirmation": true
+    },
+    {
+      "input": "10/23/26",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1926-10-23" },
+      "readBack": "October 23, 1926 · age 99",
+      "needsConfirmation": true
+    },
+    {
+      "input": "2/29/80",
+      "mode": "date",
+      "birth": { "precision": "day", "date": "1980-02-29" },
+      "readBack": "February 29, 1980 · age 46",
+      "needsConfirmation": true
+    },
+    {
+      "input": "1946",
+      "mode": "date",
+      "birth": { "precision": "year", "year": 1946 },
+      "readBack": "Born in 1946 · about 80 (year only)",
+      "needsConfirmation": false
+    },
+    {
+      "input": "46",
+      "mode": "date",
+      "birth": { "precision": "year", "year": 1946 },
+      "readBack": "Born in 1946 · about 80 (year only)",
+      "needsConfirmation": true
+    },
+    {
+      "input": "24",
+      "mode": "date",
+      "birth": { "precision": "year", "year": 2024 },
+      "readBack": "Born in 2024 · about 2 (year only)",
+      "needsConfirmation": true
+    },
+    {
+      "input": "26",
+      "mode": "date",
+      "birth": { "precision": "year", "year": 1926 },
+      "readBack": "Born in 1926 · about 100 (year only)",
+      "needsConfirmation": true
+    },
+    {
+      "input": "2/30/80",
+      "mode": "date",
+      "error": "invalid_day",
+      "message": "February has 28 or 29 days."
+    },
+    { "input": "13/7/1946", "mode": "date", "error": "invalid_month" },
+    { "input": "11/1/2026", "mode": "date", "error": "future" },
+    { "input": "1/1/1899", "mode": "date", "error": "before_1900" },
+    { "input": "3/7/946", "mode": "date", "error": "bad_year" },
+    { "input": "March", "mode": "date", "error": "unreadable" },
+    {
+      "input": "46",
+      "mode": "age",
+      "birth": { "precision": "estimated", "year": 1980 },
+      "readBack": "About 46 years old · born around 1980",
+      "needsConfirmation": false
+    },
+    {
+      "input": "12",
+      "mode": "age",
+      "birth": { "precision": "estimated", "year": 2014 },
+      "readBack": "About 12 years old · born around 2014",
+      "needsConfirmation": true
+    },
+    {
+      "input": "101",
+      "mode": "age",
+      "birth": { "precision": "estimated", "year": 1925 },
+      "readBack": "About 101 years old · born around 1925",
+      "needsConfirmation": true
+    },
+    { "input": "130", "mode": "age", "error": "before_1900" },
+    { "input": "about forty", "mode": "age", "error": "unreadable" }
+  ]
+}

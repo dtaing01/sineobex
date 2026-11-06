@@ -1,0 +1,94 @@
+/* Sineobex Field tokens, copied unchanged from the design system artifact (https://claude.ai/artifact/5HMw4MtUiGeuP21s91i21V), Oct 14 install.
+   Update by re-copying; never edit values here. Theme selection for the website lives in globals.css. */
+:root,
+[data-theme='day'] {
+  --ground: #eef1ef;
+  --surface: #ffffff;
+  --surface-sunken: #e3e8e6;
+  --ink: #121a19;
+  --ink-muted: #4a5755;
+  --line: #c9d1ce;
+  --line-strong: #7b8784;
+  --accent: #0a6b66;
+  --on-accent: #ffffff;
+  --accent-soft: #d6ece9;
+  --hivis: #e8590c;
+  --ink-on-hivis: #121a19;
+  --critical: #b42318;
+  --critical-soft: #fbe4e1;
+  --warning: #8a5300;
+  --warning-soft: #fcefd3;
+  --good: #1e6b35;
+  --good-soft: #ddf0e2;
+  --info: #2251a3;
+  --info-soft: #e1eaf8;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 -4px 24px rgba(18, 26, 25, 0.16);
+}
+[data-theme='night'] {
+  --ground: #0f1514;
+  --surface: #18201f;
+  --surface-sunken: #0a0f0e;
+  --ink: #eef2f1;
+  --ink-muted: #a5b1ae;
+  --line: #2c3634;
+  --line-strong: #6e7b78;
+  --accent: #4fc2b8;
+  --on-accent: #06201e;
+  --accent-soft: #10302d;
+  --hivis: #ff7a2e;
+  --ink-on-hivis: #121a19;
+  --critical: #ff8a80;
+  --critical-soft: #3a1512;
+  --warning: #f5b83d;
+  --warning-soft: #33250a;
+  --good: #6fd08c;
+  --good-soft: #12301b;
+  --info: #8db4f5;
+  --info-soft: #132440;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.6);
+}
+[data-theme='contrast'] {
+  --ground: #ffffff;
+  --surface: #ffffff;
+  --surface-sunken: #ecefee;
+  --ink: #000000;
+  --ink-muted: #28302f;
+  --line: #8e9896;
+  --line-strong: #3d4645;
+  --accent: #00504b;
+  --on-accent: #ffffff;
+  --accent-soft: #d3ebe8;
+  --hivis: #e8590c;
+  --ink-on-hivis: #000000;
+  --critical: #8a1208;
+  --critical-soft: #fbe1dd;
+  --warning: #5a3600;
+  --warning-soft: #fbebc8;
+  --good: #0e4620;
+  --good-soft: #d6eedc;
+  --info: #123a7c;
+  --info-soft: #dce6f7;
+  --focus-ring: var(--accent);
+  --shadow-sheet: 0 0 0 2px #000000;
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --tap-min: 48px;
+  --tap-lg: 56px;
+  --screen-phone: 390px;
+  --font-sans: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, sans-serif;
+  --font-label: 'Barlow Condensed', 'Arial Narrow', sans-serif-condensed, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}

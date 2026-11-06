@@ -1,0 +1,10 @@
+/* The original entry beside the new one; one column when there is no room for two. The shared
+   .px-cards grid needs 260 px per card, which scrolls sideways at 320 px (WCAG 1.4.10). */
+.entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+}

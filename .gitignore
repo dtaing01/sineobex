@@ -1,0 +1,27 @@
+# Dependencies and build output
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+cdk.out/
+.turbo/
+
+# Local environment. Never commit secrets; see .env.example files.
+.env
+.env.*
+!.env.example
+
+# Test output
+playwright-report/
+test-results/
+.vitest-cache/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

@@ -1,0 +1,1541 @@
+{
+  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused.",
+  "today": "2026-10-22",
+  "valid": [
+    {
+      "name": "intake with a preferred name only",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake with every field",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Smitty",
+        "legalName": {
+          "given": "Del",
+          "family": null
+        },
+        "visualDescriptor": "Demo: tall, grey beard, red cap",
+        "birth": {
+          "precision": "day",
+          "date": "1946-07-03"
+        },
+        "livingSituation": {
+          "kind": "unsheltered"
+        },
+        "usualArea": "Demo: by the made-up Elm St underpass",
+        "preferredLanguage": "en",
+        "allergyScreen": "not_asked",
+        "idCardChoice": "wants",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        },
+        "matchCheck": {
+          "checkId": "cccc0000-0000-4000-8000-000000000001",
+          "where": "phone",
+          "indexVersion": "41.idx1",
+          "shown": [
+            "5eed0000-0000-4000-8000-000000000001"
+          ],
+          "dismissed": [
+            "5eed0000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake known only by what they look like",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "visualDescriptor": "Demo: man in blue wheelchair",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake with a legal family name only",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "legalName": {
+          "given": null,
+          "family": "Okoye"
+        },
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake when consent can not be given now",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Ray",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "unable",
+          "method": "not_applicable",
+          "scriptVersion": "2026-10-1",
+          "language": "en",
+          "reason": "Asleep, ask at next visit"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "not_offered",
+          "reason": "Asleep, ask at next visit"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake with a birth date tomorrow (clock slack)",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "birth": {
+          "precision": "day",
+          "date": "2026-10-23"
+        },
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "intake with an estimated birth year",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "birth": {
+          "precision": "estimated",
+          "year": 1980
+        },
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "parents": []
+    },
+    {
+      "name": "preferred name",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "Smitty",
+      "parents": []
+    },
+    {
+      "name": "preferred name cleared",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": null,
+      "parents": []
+    },
+    {
+      "name": "legal name, given only",
+      "entity": "patient",
+      "op": "set",
+      "field": "legalName",
+      "value": {
+        "given": "Del",
+        "family": null
+      },
+      "parents": []
+    },
+    {
+      "name": "birth, a day",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "day",
+        "date": "1946-03-07"
+      },
+      "parents": []
+    },
+    {
+      "name": "birth, a year",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "year",
+        "year": 1946
+      },
+      "parents": []
+    },
+    {
+      "name": "birth, from an age",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "estimated",
+        "year": 1980
+      },
+      "parents": []
+    },
+    {
+      "name": "living situation, other with its text",
+      "entity": "patient",
+      "op": "set",
+      "field": "livingSituation",
+      "value": {
+        "kind": "other",
+        "other": "Demo: a tent by the river"
+      },
+      "parents": []
+    },
+    {
+      "name": "living situation cleared",
+      "entity": "patient",
+      "op": "set",
+      "field": "livingSituation",
+      "value": null,
+      "parents": []
+    },
+    {
+      "name": "usual area",
+      "entity": "patient",
+      "op": "set",
+      "field": "usualArea",
+      "value": "Demo: by the library steps",
+      "parents": []
+    },
+    {
+      "name": "preferred language with a region",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredLanguage",
+      "value": "es-MX",
+      "parents": []
+    },
+    {
+      "name": "no known allergies",
+      "entity": "patient",
+      "op": "set",
+      "field": "allergyScreen",
+      "value": "none_known",
+      "parents": []
+    },
+    {
+      "name": "wants an ID card",
+      "entity": "patient",
+      "op": "set",
+      "field": "idCardChoice",
+      "value": "wants",
+      "parents": []
+    },
+    {
+      "name": "a street name",
+      "entity": "patient_alias",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "alias": "Smitty"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a street name removed",
+      "entity": "patient_alias",
+      "op": "set",
+      "field": "removal",
+      "value": {
+        "reason": "Wrong patient"
+      },
+      "parents": []
+    },
+    {
+      "name": "an allergy",
+      "entity": "patient_allergy",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "substance": "penicillin",
+        "category": "drug",
+        "severity": "severe"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an allergy recorded in an encounter",
+      "entity": "patient_allergy",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "substance": "peanuts",
+        "category": "food",
+        "reaction": "Hives",
+        "severity": "moderate",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an allergy entered in error",
+      "entity": "patient_allergy",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Wrong patient"
+      },
+      "parents": []
+    },
+    {
+      "name": "consent recorded at a later visit",
+      "entity": "patient_consent",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "kind": "care_and_record",
+        "decision": "given",
+        "method": "written",
+        "scriptVersion": "2026-10-1",
+        "language": "es"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "privacy notice declined",
+      "entity": "patient_consent",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "kind": "privacy_notice",
+        "decision": "declined",
+        "method": "verbal",
+        "scriptVersion": "2026-10-1",
+        "language": "en"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a problem",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Cough",
+        "status": "new"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a coded problem from an encounter that came back",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Burn of first degree of left forearm, initial encounter",
+        "code": {
+          "system": "icd10cm",
+          "code": "T22.112A",
+          "display": "Burn of first degree of left forearm, initial encounter"
+        },
+        "status": "ongoing",
+        "sensitive": false,
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001",
+        "onsetDate": "2026-10-20",
+        "recurrenceOf": "9b0b0000-0000-4000-8000-000000000002"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "problem",
+          "id": "9b0b0000-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "name": "a problem resolved by mistake",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Cellulitis of left lower limb",
+        "code": {
+          "system": "icd10cm",
+          "code": "L03.116"
+        },
+        "status": "new",
+        "resolvedInErrorOf": "9b0b0000-0000-4000-8000-000000000002"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "problem",
+          "id": "9b0b0000-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "name": "a status seen in an encounter",
+      "entity": "problem",
+      "op": "set",
+      "field": "status",
+      "value": {
+        "status": "resolved",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a status seen outside an encounter",
+      "entity": "problem",
+      "op": "set",
+      "field": "status",
+      "value": {
+        "status": "ongoing",
+        "encounterId": null
+      },
+      "parents": []
+    },
+    {
+      "name": "a problem entered in error",
+      "entity": "problem",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Added to the wrong chart"
+      },
+      "parents": []
+    },
+    {
+      "name": "a note on a problem",
+      "entity": "problem_note",
+      "op": "create",
+      "value": {
+        "problemId": "9b0b0000-0000-4000-8000-000000000001",
+        "text": "Dressing changed.\nHealing well."
+      },
+      "parents": [
+        {
+          "entity": "problem",
+          "id": "9b0b0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a note in an encounter",
+      "entity": "problem_note",
+      "op": "create",
+      "value": {
+        "problemId": "9b0b0000-0000-4000-8000-000000000001",
+        "text": "Seen again",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "problem",
+          "id": "9b0b0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a first card",
+      "entity": "id_link",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "token": "---------------------w",
+        "replacesLinkId": null,
+        "reason": "first_card"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a card replacing a lost one",
+      "entity": "id_link",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "token": "AAAAAAAAAAAAAAAAAAAAAA",
+        "replacesLinkId": "1d1d0000-0000-4000-8000-000000000001",
+        "reason": "lost"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an encounter on a patient",
+      "entity": "encounter",
+      "op": "create",
+      "value": {
+        "kind": "medical",
+        "patientId": "5eed0000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an encounter on nobody yet",
+      "entity": "encounter",
+      "op": "create",
+      "value": {
+        "kind": "non_medical"
+      },
+      "parents": []
+    },
+    {
+      "name": "an encounter moved to a patient",
+      "entity": "encounter",
+      "op": "set",
+      "field": "patientId",
+      "value": "5eed0000-0000-4000-8000-000000000002",
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "name": "an encounter taken off its patient",
+      "entity": "encounter",
+      "op": "set",
+      "field": "patientId",
+      "value": null,
+      "parents": []
+    },
+    {
+      "name": "an offline search showing 50 patients",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "patient.searched",
+        "patientIds": [
+          "aaaa0000-0000-4000-8000-000000000001",
+          "aaaa0000-0000-4000-8000-000000000002",
+          "aaaa0000-0000-4000-8000-000000000003",
+          "aaaa0000-0000-4000-8000-000000000004",
+          "aaaa0000-0000-4000-8000-000000000005",
+          "aaaa0000-0000-4000-8000-000000000006",
+          "aaaa0000-0000-4000-8000-000000000007",
+          "aaaa0000-0000-4000-8000-000000000008",
+          "aaaa0000-0000-4000-8000-000000000009",
+          "aaaa0000-0000-4000-8000-000000000010",
+          "aaaa0000-0000-4000-8000-000000000011",
+          "aaaa0000-0000-4000-8000-000000000012",
+          "aaaa0000-0000-4000-8000-000000000013",
+          "aaaa0000-0000-4000-8000-000000000014",
+          "aaaa0000-0000-4000-8000-000000000015",
+          "aaaa0000-0000-4000-8000-000000000016",
+          "aaaa0000-0000-4000-8000-000000000017",
+          "aaaa0000-0000-4000-8000-000000000018",
+          "aaaa0000-0000-4000-8000-000000000019",
+          "aaaa0000-0000-4000-8000-000000000020",
+          "aaaa0000-0000-4000-8000-000000000021",
+          "aaaa0000-0000-4000-8000-000000000022",
+          "aaaa0000-0000-4000-8000-000000000023",
+          "aaaa0000-0000-4000-8000-000000000024",
+          "aaaa0000-0000-4000-8000-000000000025",
+          "aaaa0000-0000-4000-8000-000000000026",
+          "aaaa0000-0000-4000-8000-000000000027",
+          "aaaa0000-0000-4000-8000-000000000028",
+          "aaaa0000-0000-4000-8000-000000000029",
+          "aaaa0000-0000-4000-8000-000000000030",
+          "aaaa0000-0000-4000-8000-000000000031",
+          "aaaa0000-0000-4000-8000-000000000032",
+          "aaaa0000-0000-4000-8000-000000000033",
+          "aaaa0000-0000-4000-8000-000000000034",
+          "aaaa0000-0000-4000-8000-000000000035",
+          "aaaa0000-0000-4000-8000-000000000036",
+          "aaaa0000-0000-4000-8000-000000000037",
+          "aaaa0000-0000-4000-8000-000000000038",
+          "aaaa0000-0000-4000-8000-000000000039",
+          "aaaa0000-0000-4000-8000-000000000040",
+          "aaaa0000-0000-4000-8000-000000000041",
+          "aaaa0000-0000-4000-8000-000000000042",
+          "aaaa0000-0000-4000-8000-000000000043",
+          "aaaa0000-0000-4000-8000-000000000044",
+          "aaaa0000-0000-4000-8000-000000000045",
+          "aaaa0000-0000-4000-8000-000000000046",
+          "aaaa0000-0000-4000-8000-000000000047",
+          "aaaa0000-0000-4000-8000-000000000048",
+          "aaaa0000-0000-4000-8000-000000000049",
+          "aaaa0000-0000-4000-8000-000000000050"
+        ],
+        "resultCount": 55,
+        "criteria": [
+          "name"
+        ],
+        "source": "team_index"
+      },
+      "parents": []
+    },
+    {
+      "name": "an offline match check",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "patient.match_checked",
+        "checkId": "cccc0000-0000-4000-8000-000000000001",
+        "patientIds": [
+          "5eed0000-0000-4000-8000-000000000001"
+        ],
+        "source": "local"
+      },
+      "parents": []
+    },
+    {
+      "name": "an ID link copied",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "id_link.copied",
+        "entity": "id_link",
+        "entityId": "1d1d0000-0000-4000-8000-000000000001",
+        "patientId": "5eed0000-0000-4000-8000-000000000001"
+      },
+      "parents": []
+    }
+  ],
+  "invalid": [
+    {
+      "name": "preferred name with a leading space",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": " Del",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "preferred name with a trailing space",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "Del ",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "preferred name with a trailing newline",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "Del\n",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "untrimmed preferred name in an intake",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": " Del",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "paths": [
+          "preferredName"
+        ]
+      }
+    },
+    {
+      "name": "empty preferred name",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "preferred name of 81 characters",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "intake without consent",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "paths": [
+          "consent"
+        ]
+      }
+    },
+    {
+      "name": "intake with a key the schema does not know",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "nickname": "Smitty",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "unable to consent without a reason",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "unable",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "paths": [
+          "consent.reason"
+        ]
+      }
+    },
+    {
+      "name": "privacy notice not offered without a reason",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "not_offered"
+        }
+      },
+      "expect": {
+        "paths": [
+          "privacyNotice.reason"
+        ]
+      }
+    },
+    {
+      "name": "consent read from an unknown script",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "Script 1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "paths": [
+          "consent.scriptVersion"
+        ]
+      }
+    },
+    {
+      "name": "February 30",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "day",
+        "date": "1946-02-30"
+      },
+      "expect": {
+        "paths": [
+          "date"
+        ]
+      }
+    },
+    {
+      "name": "born before 1900",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "day",
+        "date": "1899-12-31"
+      },
+      "expect": {
+        "paths": [
+          "date"
+        ]
+      }
+    },
+    {
+      "name": "a birth precision that does not exist",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "decade",
+        "year": 1940
+      },
+      "expect": {
+        "paths": [
+          "precision"
+        ]
+      }
+    },
+    {
+      "name": "a day birth with a year instead of a date",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "day",
+        "year": 1946
+      },
+      "expect": {
+        "paths": [
+          "",
+          "date"
+        ]
+      }
+    },
+    {
+      "name": "a legal name with neither part",
+      "entity": "patient",
+      "op": "set",
+      "field": "legalName",
+      "value": {
+        "given": null,
+        "family": null
+      },
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a language that is not a tag",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredLanguage",
+      "value": "Spanish",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "allergy screen cleared",
+      "entity": "patient",
+      "op": "set",
+      "field": "allergyScreen",
+      "value": null,
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a living situation that is not on the list",
+      "entity": "patient",
+      "op": "set",
+      "field": "livingSituation",
+      "value": {
+        "kind": "doubled_up"
+      },
+      "expect": {
+        "paths": [
+          "kind"
+        ]
+      }
+    },
+    {
+      "name": "intake with nothing to recognise",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "problem": "nothing_to_recognise"
+      }
+    },
+    {
+      "name": "intake born the day after tomorrow",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Del",
+        "birth": {
+          "precision": "day",
+          "date": "2026-10-24"
+        },
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "given",
+          "method": "verbal",
+          "scriptVersion": "2026-10-1",
+          "language": "en"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "acknowledged"
+        }
+      },
+      "expect": {
+        "problem": "birth_in_future"
+      }
+    },
+    {
+      "name": "born next year",
+      "entity": "patient",
+      "op": "set",
+      "field": "birth",
+      "value": {
+        "precision": "year",
+        "year": 2027
+      },
+      "expect": {
+        "problem": "birth_in_future"
+      }
+    },
+    {
+      "name": "other without its text",
+      "entity": "patient",
+      "op": "set",
+      "field": "livingSituation",
+      "value": {
+        "kind": "other"
+      },
+      "expect": {
+        "problem": "living_other_text"
+      }
+    },
+    {
+      "name": "text without other",
+      "entity": "patient",
+      "op": "set",
+      "field": "livingSituation",
+      "value": {
+        "kind": "housed",
+        "other": "Demo: with a cousin"
+      },
+      "expect": {
+        "problem": "living_other_text"
+      }
+    },
+    {
+      "name": "a street name of 61 characters",
+      "entity": "patient_alias",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "alias": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
+      },
+      "expect": {
+        "paths": [
+          "alias"
+        ]
+      }
+    },
+    {
+      "name": "an untrimmed street name",
+      "entity": "patient_alias",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "alias": "Smitty "
+      },
+      "expect": {
+        "paths": [
+          "alias"
+        ]
+      }
+    },
+    {
+      "name": "a removal reason too short",
+      "entity": "patient_alias",
+      "op": "set",
+      "field": "removal",
+      "value": {
+        "reason": "no"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a street name for no patient",
+      "entity": "patient_alias",
+      "op": "create",
+      "value": {
+        "patientId": "P1",
+        "alias": "Smitty"
+      },
+      "expect": {
+        "paths": [
+          "patientId"
+        ]
+      }
+    },
+    {
+      "name": "an allergy category that does not exist",
+      "entity": "patient_allergy",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "substance": "birch",
+        "category": "pollen"
+      },
+      "expect": {
+        "paths": [
+          "category"
+        ]
+      }
+    },
+    {
+      "name": "an allergy with no substance",
+      "entity": "patient_allergy",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "substance": ""
+      },
+      "expect": {
+        "paths": [
+          "substance"
+        ]
+      }
+    },
+    {
+      "name": "a consent kind that does not exist",
+      "entity": "patient_consent",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "kind": "photo",
+        "decision": "given",
+        "method": "verbal",
+        "scriptVersion": "2026-10-1",
+        "language": "en"
+      },
+      "expect": {
+        "paths": [
+          "kind"
+        ]
+      }
+    },
+    {
+      "name": "a privacy-notice decision on a care consent",
+      "entity": "patient_consent",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "kind": "care_and_record",
+        "decision": "acknowledged",
+        "method": "verbal",
+        "scriptVersion": "2026-10-1",
+        "language": "en"
+      },
+      "expect": {
+        "paths": [
+          "decision"
+        ]
+      }
+    },
+    {
+      "name": "a new problem already resolved",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Cough",
+        "status": "resolved"
+      },
+      "expect": {
+        "paths": [
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "a recurrence and a reversal at once",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Cough",
+        "status": "new",
+        "recurrenceOf": "9b0b0000-0000-4000-8000-000000000002",
+        "resolvedInErrorOf": "9b0b0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "resolvedInErrorOf"
+        ]
+      }
+    },
+    {
+      "name": "a code in lower case",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Burn",
+        "code": {
+          "system": "icd10cm",
+          "code": "t22.112a"
+        },
+        "status": "new"
+      },
+      "expect": {
+        "paths": [
+          "code.code"
+        ]
+      }
+    },
+    {
+      "name": "a code system other than ICD-10-CM",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Burn",
+        "code": {
+          "system": "snomed",
+          "code": "T22.112A"
+        },
+        "status": "new"
+      },
+      "expect": {
+        "paths": [
+          "code.system"
+        ]
+      }
+    },
+    {
+      "name": "a status without its encounter",
+      "entity": "problem",
+      "op": "set",
+      "field": "status",
+      "value": {
+        "status": "ongoing"
+      },
+      "expect": {
+        "paths": [
+          "encounterId"
+        ]
+      }
+    },
+    {
+      "name": "a title of 201 characters",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "status": "new"
+      },
+      "expect": {
+        "paths": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "an empty note",
+      "entity": "problem_note",
+      "op": "create",
+      "value": {
+        "problemId": "9b0b0000-0000-4000-8000-000000000001",
+        "text": ""
+      },
+      "expect": {
+        "paths": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "a note ending in a newline",
+      "entity": "problem_note",
+      "op": "create",
+      "value": {
+        "problemId": "9b0b0000-0000-4000-8000-000000000001",
+        "text": "Seen again\n"
+      },
+      "expect": {
+        "paths": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "a note of 4,001 characters",
+      "entity": "problem_note",
+      "op": "create",
+      "value": {
+        "problemId": "9b0b0000-0000-4000-8000-000000000001",
+        "text": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      },
+      "expect": {
+        "paths": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "a token one character short",
+      "entity": "id_link",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "token": "AAAAAAAAAAAAAAAAAAAAA",
+        "replacesLinkId": null,
+        "reason": "first_card"
+      },
+      "expect": {
+        "paths": [
+          "token"
+        ]
+      }
+    },
+    {
+      "name": "a card reason that does not exist",
+      "entity": "id_link",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "token": "---------------------w",
+        "replacesLinkId": null,
+        "reason": "misplaced"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a card without saying what it replaces",
+      "entity": "id_link",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "token": "---------------------w",
+        "reason": "lost"
+      },
+      "expect": {
+        "paths": [
+          "replacesLinkId"
+        ]
+      }
+    },
+    {
+      "name": "an offline search showing 51 patients",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "patient.searched",
+        "patientIds": [
+          "aaaa0000-0000-4000-8000-000000000001",
+          "aaaa0000-0000-4000-8000-000000000002",
+          "aaaa0000-0000-4000-8000-000000000003",
+          "aaaa0000-0000-4000-8000-000000000004",
+          "aaaa0000-0000-4000-8000-000000000005",
+          "aaaa0000-0000-4000-8000-000000000006",
+          "aaaa0000-0000-4000-8000-000000000007",
+          "aaaa0000-0000-4000-8000-000000000008",
+          "aaaa0000-0000-4000-8000-000000000009",
+          "aaaa0000-0000-4000-8000-000000000010",
+          "aaaa0000-0000-4000-8000-000000000011",
+          "aaaa0000-0000-4000-8000-000000000012",
+          "aaaa0000-0000-4000-8000-000000000013",
+          "aaaa0000-0000-4000-8000-000000000014",
+          "aaaa0000-0000-4000-8000-000000000015",
+          "aaaa0000-0000-4000-8000-000000000016",
+          "aaaa0000-0000-4000-8000-000000000017",
+          "aaaa0000-0000-4000-8000-000000000018",
+          "aaaa0000-0000-4000-8000-000000000019",
+          "aaaa0000-0000-4000-8000-000000000020",
+          "aaaa0000-0000-4000-8000-000000000021",
+          "aaaa0000-0000-4000-8000-000000000022",
+          "aaaa0000-0000-4000-8000-000000000023",
+          "aaaa0000-0000-4000-8000-000000000024",
+          "aaaa0000-0000-4000-8000-000000000025",
+          "aaaa0000-0000-4000-8000-000000000026",
+          "aaaa0000-0000-4000-8000-000000000027",
+          "aaaa0000-0000-4000-8000-000000000028",
+          "aaaa0000-0000-4000-8000-000000000029",
+          "aaaa0000-0000-4000-8000-000000000030",
+          "aaaa0000-0000-4000-8000-000000000031",
+          "aaaa0000-0000-4000-8000-000000000032",
+          "aaaa0000-0000-4000-8000-000000000033",
+          "aaaa0000-0000-4000-8000-000000000034",
+          "aaaa0000-0000-4000-8000-000000000035",
+          "aaaa0000-0000-4000-8000-000000000036",
+          "aaaa0000-0000-4000-8000-000000000037",
+          "aaaa0000-0000-4000-8000-000000000038",
+          "aaaa0000-0000-4000-8000-000000000039",
+          "aaaa0000-0000-4000-8000-000000000040",
+          "aaaa0000-0000-4000-8000-000000000041",
+          "aaaa0000-0000-4000-8000-000000000042",
+          "aaaa0000-0000-4000-8000-000000000043",
+          "aaaa0000-0000-4000-8000-000000000044",
+          "aaaa0000-0000-4000-8000-000000000045",
+          "aaaa0000-0000-4000-8000-000000000046",
+          "aaaa0000-0000-4000-8000-000000000047",
+          "aaaa0000-0000-4000-8000-000000000048",
+          "aaaa0000-0000-4000-8000-000000000049",
+          "aaaa0000-0000-4000-8000-000000000050",
+          "aaaa0000-0000-4000-8000-000000000051"
+        ],
+        "resultCount": 55,
+        "criteria": [
+          "name"
+        ]
+      },
+      "expect": {
+        "paths": [
+          "patientIds"
+        ]
+      }
+    },
+    {
+      "name": "an offline search carrying its text",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "patient.searched",
+        "patientIds": [
+          "5eed0000-0000-4000-8000-000000000001"
+        ],
+        "criteria": [
+          "name"
+        ],
+        "query": "Smity"
+      },
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a search criterion that is not on the list",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "patient.searched",
+        "criteria": [
+          "phone"
+        ]
+      },
+      "expect": {
+        "paths": [
+          "criteria.0"
+        ]
+      }
+    }
+  ]
+}
