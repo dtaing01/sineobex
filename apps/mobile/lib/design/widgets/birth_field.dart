@@ -67,6 +67,7 @@ class BirthField extends StatefulWidget {
     this.onFocusLost,
     this.helper,
     this.fieldKey = const ValueKey('phi.birth'),
+    this.enabled = true,
   });
 
   final DateTime today;
@@ -83,6 +84,9 @@ class BirthField extends StatefulWidget {
 
   /// PHI fields carry a `phi.` key (design 13.5).
   final Key fieldKey;
+
+  /// Off where the birth can't be saved (a list-only chart): [helper] says why.
+  final bool enabled;
 
   @override
   State<BirthField> createState() => _BirthFieldState();
@@ -162,7 +166,7 @@ class _BirthFieldState extends State<BirthField> {
             ],
             selected: {_entry.mode},
             showSelectedIcon: false,
-            onSelectionChanged: (s) => _mode(s.first),
+            onSelectionChanged: widget.enabled ? (s) => _mode(s.first) : null,
             style: SegmentedButton.styleFrom(minimumSize: const Size(FieldTap.min, FieldTap.min)),
           ),
           const SizedBox(height: FieldSpace.s2),
@@ -171,6 +175,7 @@ class _BirthFieldState extends State<BirthField> {
           key: widget.fieldKey,
           controller: _controller,
           focusNode: _focus,
+          enabled: widget.enabled,
           keyboardType: age ? TextInputType.number : TextInputType.datetime,
           autocorrect: false,
           enableSuggestions: false,

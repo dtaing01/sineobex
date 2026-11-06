@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
+import 'package:sineobex_field/patients/dob.dart' show BirthMode;
 import 'package:sineobex_field/sync/local_store.dart';
 
 import 'patient_kit.dart';
@@ -67,6 +68,24 @@ void main() {
     expect(changed, hasLength(1));
     expect(changed.single.field, 'usualArea');
     expect(changed.single.baseVersion, 1);
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+
+  testWidgets('a list-only chart’s birth can’t be typed, so it can’t be dropped (V8)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    final id = h.server.seedPatient(preferredName: 'Demo Wren', birth: {'precision': 'year', 'year': 1950});
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await go(tester, '/patients/$id');
+    await expectShown(tester, find.text('List only: the full chart opens when the phone reconnects.'));
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Edit'));
+    final birth = await fieldNamed(tester, 'birth');
+    expect(birth.enabled, isFalse);
+    expect(birth.decoration!.helperText, 'This needs the full chart. Connect to download it.');
+    final age = tester.widget<SegmentedButton<BirthMode>>(find.byType(SegmentedButton<BirthMode>));
+    expect(age.onSelectionChanged, isNull);
     await expectScreenOk(tester);
     handle.dispose();
   });

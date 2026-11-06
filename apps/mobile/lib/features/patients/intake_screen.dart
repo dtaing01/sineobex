@@ -1195,6 +1195,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           today: today,
           initial: _birth,
           focusNode: _birthFocus,
+          // A list-only chart can't take a birth: off, with the reason, never typed and dropped.
+          enabled: _editable('birth'),
           helper: !_editable('birth')
               ? _needsFull
               : current is BirthYear
