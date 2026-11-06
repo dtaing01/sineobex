@@ -151,6 +151,47 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('two likely matches: Create asks about each, and records only the ones answered (V10)', (tester) async {
+    final h = await signIn(tester);
+    seedP1(h.server);
+    final other = h.server.seedPatient(preferredName: 'Smitty', birth: {'precision': 'day', 'date': '1946-07-03'});
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Smitty');
+    await type(tester, 'birth', '7/3/46');
+    await tester.pump(const Duration(milliseconds: 900));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('Yes, that’s right'));
+    await expectShown(tester, find.text('2 possible matches'));
+    expect(find.text('Likely the same person', skipOffstage: false), findsNWidgets(2));
+
+    String question() => tester.widget<Text>(find.textContaining('Is this ')).data!;
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final first = question();
+    await tapOn(tester, find.text('No, create a new patient'));
+    // Asked about the other one, and nothing created yet.
+    expect(find.textContaining('Is this '), findsOneWidget);
+    expect(question(), isNot(first));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    // Back: the second is still a possible match, not recorded as Not them.
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    await expectShown(tester, find.text('1 possible match'));
+
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    expect(question(), isNot(first));
+    await tapOn(tester, find.text('No, create a new patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+    final dismissed = ((create.value! as Map)['matchCheck']! as Map)['dismissed']! as List;
+    expect(dismissed.toSet(), {p1Id, other});
+    expect(find.byType(PatientScreen), findsOneWidget);
+  });
+
   testWidgets('This is them opens the chart and offers to add what was typed', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await offlineIntake(tester);

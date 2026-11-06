@@ -551,17 +551,18 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         for (final c in run?.candidates ?? const <FoundPatient>[])
           if (c.band == MatchBand.likely && !_dismissed.contains(c.patientId)) c,
       ];
-      if (likely.isNotEmpty) {
+      // One question per likely match: each "No" records Not them for the one it asked about.
+      for (final candidate in likely) {
         // The question, not a spinner, while the worker decides.
         setState(() => _saving = false);
-        final answer = await askSamePerson(context, likely.first, todayOf(ref));
+        final answer = await askSamePerson(context, candidate, todayOf(ref));
         if (!mounted || answer == null) return;
         if (answer == SamePersonAnswer.open) {
-          await _thisIsThem(likely.first);
+          await _thisIsThem(candidate);
           return;
         }
         setState(() {
-          _dismissed.addAll(likely.map((c) => c.patientId));
+          _dismissed.add(candidate.patientId);
           _saving = true;
         });
       }
