@@ -188,8 +188,8 @@ class IdLinks {
 
   /// A card made here is still on its way to the server, so the group's other cards stay blocked
   /// here: one the server refused or holds for review doesn't count.
-  static bool _madeHereWaits(LocalStore store, Iterable<String> group, {String? except}) =>
-      _cardsOf(store, group).any((c) => c.id != except && c.state == IdCardState.pending && c.standing);
+  static bool _madeHereWaits(LocalStore store, Iterable<String> group) =>
+      _cardsOf(store, group).any((c) => c.state == IdCardState.pending && c.standing);
 
   /// The cards that open the chart now, as far as this phone knows: usually one; two after a merge
   /// until the next new card (D39).
