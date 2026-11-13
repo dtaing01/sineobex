@@ -420,6 +420,25 @@ void main() {
       expect(find.text('Continue the patient you were adding?'), findsNothing);
     });
 
+    testWidgets('declining a new intake at once leaves an earlier intake’s draft alone (V4)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      await tapOn(tester, find.text('Keep draft'));
+      expect(h.patients.patients.draft()!['preferred'], 'Demo Rook');
+
+      // Someone else, who declines before anything is typed: New patient, not Continue.
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      await tapOn(tester, find.text('Declines').first);
+      await tester.pump(const Duration(seconds: 2));
+      await tapOn(tester, find.text('Close without saving'));
+      // The form only discards a draft it continued or wrote.
+      expect(h.patients.patients.draft()!['preferred'], 'Demo Rook');
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+    });
+
     testWidgets('a preferred name filled in from the legal given name stays out of the draft (V5)', (tester) async {
       final h = await newIntake(tester);
       await tapOn(tester, find.text('Agrees'));

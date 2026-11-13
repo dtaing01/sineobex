@@ -257,7 +257,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     final d = _s.patients.draft();
     if (d == null) return;
     String text(String key) => d[key] is String ? d[key]! as String : '';
-    _consent = _Consent.values.where((c) => c.name == d['consent']).firstOrNull;
+    _consent = _Consent.values.where((c) => c.name == d[PatientRepository.draftConsentKey]).firstOrNull;
     _method = d['method'] == 'written' ? 'written' : 'verbal';
     _unable = UnableReason.values.where((u) => u.name == d['unable']).firstOrNull;
     _notice = PrivacyNoticeDecision.values.where((n) => n.name == d['notice']).firstOrNull ?? _notice;
@@ -300,7 +300,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   /// asks for it again. A name the form filled in (from the legal given name, or from a search) may
   /// be a legal name too, so it stays out unless the worker changed it, and the draft says so.
   Map<String, Object?> _draft() => {
-    'consent': _consent?.name,
+    // A declined intake is never saved from here ([_saveDraftNow]); should one ever be, this is the
+    // answer `saveDraft` refuses.
+    PatientRepository.draftConsentKey: _declined ? PatientRepository.draftConsentDeclines : _consent?.name,
     'method': _method,
     'unable': _unable?.name,
     'notice': _notice.name,
