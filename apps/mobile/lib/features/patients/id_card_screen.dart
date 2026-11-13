@@ -102,6 +102,7 @@ class _IdCardState extends ConsumerState<_IdCard> {
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, _s]),
         builder: (context, _) {
+          if (unreadable(sync, _s) case final instead?) return instead;
           final v = _s.patients.read(widget.patientId);
           if (v == null) {
             return const Padding(padding: EdgeInsets.all(FieldSpace.s4), child: NoticeMessage('Open the chart first.'));

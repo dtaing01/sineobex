@@ -212,6 +212,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, _s]),
         builder: (context, _) {
+          if (unreadable(sync, _s) case final instead?) return instead;
           final run = _run;
           final hits = run?.hits ?? const <FoundPatient>[];
           final onPhone = run?.source == ListSource.phone;

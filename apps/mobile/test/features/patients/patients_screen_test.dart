@@ -203,6 +203,26 @@ void main() {
     });
   });
 
+  testWidgets('a freeze for a hand-over: the lists go at the tab’s next rebuild, whatever causes it (V1)', (
+    tester,
+  ) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await tester.runAsync(() => h.patients.patients.open(p1Id));
+    await openPatientsTab(tester);
+    expect(find.bySemanticsLabel(RegExp('^Del, also known as')), findsOneWidget);
+    // The hand-over starts, and before the controller says so a download ends.
+    h.sync.store!.freeze(frozen);
+    h.patients.changed();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('Opened recently on this phone'), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('^Del, also known as'), skipOffstage: false), findsNothing);
+  });
+
   testWidgets('a freeze for a hand-over: an Opened-recently row shows no chart, and the list goes (V1)', (
     tester,
   ) async {
@@ -226,7 +246,8 @@ void main() {
     expectNoLegalName(tester);
     expect(auditEvents(store), hasLength(before));
 
-    // Back on the tab once the controller has spoken: the list read before the freeze is gone.
+    // Back on the tab once the controller has spoken: the list read before the freeze is gone, and
+    // the tab's own state with it.
     final context = tester.element(find.byType(Navigator).first);
     GoRouter.of(context).pop();
     await tester.runAsync(() => h.sync.syncNow());
@@ -235,5 +256,13 @@ void main() {
     expect(find.text('Opened recently on this phone'), findsNothing);
     expect(find.bySemanticsLabel(RegExp('^Del, also known as'), skipOffstage: false), findsNothing);
     expect(auditEvents(store), hasLength(before));
+
+    // Access comes back: the tab starts over, and the list it shows now is read, and logged, afresh.
+    store.unfreeze();
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.text(frozen), findsNothing);
+    expect(find.text('Opened recently on this phone'), findsOneWidget);
+    expect(auditEvents(store).sublist(before), ['patient.searched']);
   });
 }

@@ -289,9 +289,8 @@ class _ProfileState extends ConsumerState<_Profile> {
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, _s]),
         builder: (context, _) {
-          if (_refused case final message?) {
-            return Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: ErrorMessage(message));
-          }
+          if (unreadable(sync, _s) case final instead?) return instead;
+          if (_refused case final message?) return FrozenNotice(message);
           final view = _opening || _missing ? null : _s.patients.read(_id);
           if (_opening && view == null) return const Center(child: CircularProgressIndicator());
           if (view == null) {

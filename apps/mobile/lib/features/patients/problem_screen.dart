@@ -178,6 +178,7 @@ class _ProblemState extends ConsumerState<_Problem> {
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, _s]),
         builder: (context, _) {
+          if (unreadable(sync, _s) case final instead?) return instead;
           final p = _s.problems.problem(widget.problemId);
           if (p == null) {
             return const Padding(

@@ -72,6 +72,30 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('the edit form, legal name and all, goes when the store freezes for a hand-over (V1)', (tester) async {
+    final handle = tester.ensureSemantics();
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Edit'));
+    await expectShown(
+      tester,
+      find.bySemanticsLabel('Legal name, Delbert Smithfield, locked. Only a Program Admin can correct this.'),
+    );
+    h.server.offline = true;
+    h.sync.store!.freeze(frozen);
+    // The controller tells its listeners after a freeze (here, a sync that finds no signal).
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('Update and save'), findsNothing);
+    expectNoLegalName(tester);
+    handle.dispose();
+  });
+
   testWidgets('a list-only chart’s birth can’t be typed, so it can’t be dropped (V8)', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);

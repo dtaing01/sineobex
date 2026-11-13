@@ -348,6 +348,27 @@ class _ReasonDialogState extends State<_ReasonDialog> {
 /// closes it, and a screen under another one rebuilds before its route goes: it must read nothing.
 bool servicesOpen(SyncController sync, PatientServices services) => identical(sync.store, services.store);
 
+/// What a patient screen's body shows in place of reading the store, or null when it may read:
+/// nothing when the database closed under it, and the reason while the store is frozen for a
+/// hand-over. A frozen store can log no view, so nothing from it is shown (D21) and the chart's
+/// `read` refuses. Every builder that reads asks this first, whatever made it rebuild: the gate
+/// above hears only the controller, and a screen also rebuilds for its services and its own state.
+Widget? unreadable(SyncController sync, PatientServices services) {
+  if (!servicesOpen(sync, services)) return const SizedBox.shrink();
+  final frozen = services.store.frozenMessage;
+  return frozen == null ? null : FrozenNotice(frozen);
+}
+
+/// Why nothing of the team's patients shows: its store is frozen (the person's access ended).
+class FrozenNotice extends StatelessWidget {
+  const FrozenNotice(this.message, {super.key});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) =>
+      Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: ErrorMessage(message));
+}
+
 /// The open team's patient services and what to show when there are none: locked, no team, or a
 /// role without patient records. While the team's store is frozen for a hand-over nothing from it
 /// shows: a frozen store can't log a view, and what can't be logged isn't shown (D21).
@@ -387,7 +408,7 @@ class PatientsGate extends ConsumerWidget {
         if (frozen != null) {
           return Scaffold(
             appBar: AppBar(title: Text(title)),
-            body: Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: ErrorMessage(frozen)),
+            body: FrozenNotice(frozen),
           );
         }
         return builder(context, services);

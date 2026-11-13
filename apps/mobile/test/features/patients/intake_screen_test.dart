@@ -267,23 +267,40 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('Add what you typed that fails keeps the offer (V7)', (tester) async {
-    final h = await offlineIntake(tester);
+  testWidgets('Add what you typed that is refused adds nothing and keeps the offer (V7)', (tester) async {
+    final h = await signIn(tester);
+    // Someone one street name short of all a chart can hold.
+    final wren = h.server.seedPatient(preferredName: 'Demo Wren');
+    for (var i = 1; i <= 19; i++) {
+      h.server.seed(entityAlias, {'patientId': wren, 'alias': 'Demo name $i'});
+    }
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
     await tapOn(tester, find.text('Agrees'));
-    await type(tester, 'preferredName', 'Del');
+    await type(tester, 'preferredName', 'Demo Wren');
+    for (final name in ['Demo Extra', 'Demo Spare']) {
+      await type(tester, 'alias', name);
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+    }
     await type(tester, 'usualArea', 'Demo: by the library steps');
     FocusManager.instance.primaryFocus?.unfocus();
     await settle(tester);
     await tapOn(tester, find.text('This is them'));
     await tapOn(tester, find.text('Open the chart'));
     await expectShown(tester, find.text('Add what you typed?'));
-    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
-    h.sync.store!.freeze(frozen);
     await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
-    await expectShown(tester, find.text(frozen));
+    // The second street name is one too many.
+    await expectShown(tester, find.text('A person can have up to 20 street names.'));
     expect(find.text('Added to the chart'), findsNothing);
+    // Nothing of it was added, the first street name neither, and it is all still offered.
+    final store = h.sync.store!;
+    expect(store.outbox().where((e) => e.entity == entityAlias), isEmpty);
+    expect(store.outbox().where((e) => e.field == 'usualArea'), isEmpty);
     await expectShown(tester, find.text('Add what you typed?'));
-    expect(h.sync.store!.outbox().where((e) => e.field == 'usualArea'), isEmpty);
+    expect(find.textContaining('Street names: Demo Extra, Demo Spare'), findsOneWidget);
+    expect(find.textContaining('Usually found: Demo: by the library steps'), findsOneWidget);
   });
 
   testWidgets('Back with anything typed keeps a draft, without the legal name, to continue', (tester) async {

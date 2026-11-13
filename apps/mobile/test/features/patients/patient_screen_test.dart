@@ -213,5 +213,49 @@ void main() {
       expect(find.text('Del'), findsNothing);
       expectNoLegalName(tester);
     });
+
+    // The chart's read refuses while frozen. A screen rebuilds for more than the controller (its
+    // services, its own state), and none of those may reach the read.
+    testWidgets('a rebuild for the patient services while frozen reads nothing, on any chart screen', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final cough = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'new'});
+      await syncAndRefresh(tester, h);
+      await openPatientsTab(tester);
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Legal name: Delbert Smithfield'));
+      for (final over in [null, '/patients/$p1Id/problems/$cough', '/patients/$p1Id/card']) {
+        if (over != null) await go(tester, over);
+        // The hand-over starts, and before the controller says so a download ends.
+        h.sync.store!.freeze(frozen);
+        h.patients.changed();
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: 'over ${over ?? 'nothing'}');
+        expect(find.text(frozen), findsOneWidget);
+        expect(find.text('Del'), findsNothing);
+        expect(find.text('Demo: cough'), findsNothing);
+        expectNoLegalName(tester);
+        // Access is back, for the next screen.
+        h.sync.store!.unfreeze();
+        h.patients.changed();
+        await settle(tester);
+      }
+    });
+
+    testWidgets('a change refused by the freeze shows why in place of the chart', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      h.sync.store!.freeze(frozen);
+      await tapOn(tester, find.text('Add street name'));
+      await type(tester, 'newAlias', 'Demo Red');
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Add'));
+      expect(tester.takeException(), isNull);
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.text('Del'), findsNothing);
+      expectNoLegalName(tester);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityAlias), isEmpty);
+    });
   });
 }
