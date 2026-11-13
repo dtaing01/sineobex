@@ -199,6 +199,37 @@ Each is a single configuration point or code path, so changing it later is small
 | A remote wipe for a phone that is never unlocked again | At the lock screen the phone asks with its device key and deletes the team's database file (no key needed). Handing unsynced work to quarantine needs the key, so it waits for an unlock | A lost phone may never be unlocked by its owner again; deleting what can't be read anyway is the safe default |
 | Who is told when someone keeps the server's value in a conflict | The note's author, when the kept value came from someone other than the person choosing, and the author isn't the one choosing | The Oct 19 rule says "the note's author is told"; telling people about their own choices is noise |
 
+### Phase 3 (patients)
+
+The full list, with the reasoning, is section 14.1 of `docs/design/phase-3-patients.md`; the numbers in the markers refer to it.
+
+| Open question | Default built | Who decides |
+|---|---|---|
+| Consent wording; is verbal consent enough; minors; what withdrawal means | Script version `2026-10-1`; verbal allowed; "unable" allowed with a reason; "declines" creates no record and keeps no draft; guidance for under-18s is shown, not enforced | Counsel |
+| The privacy notice answer an intake starts from | "They took it"; the acknowledgement is recorded and never blocks registering the person | Counsel |
+| Search text in the audit log (D41) | Never stored; the log holds who, when, the criteria, the count and the patients shown | Counsel |
+| Which diagnosis codes are sensitive | F01–F99, O00–O9A, Z30–Z39, B20, Z21, A50–A64, Z71.4x; 42 CFR Part 2 may widen it | Counsel |
+| Problem code system and list | ICD-10-CM, about 400 curated codes on the phone (from a GitHub mirror of the CDC FY2026 tabular), uncoded problems allowed | Brooke and Mercy |
+| Living situation options | The ten in design 11.4 | Brooke and Mercy (the Google Doc Contents tab owns option lists) |
+| Which languages lead the preferred-language list | Detroit's most common | Brooke and Mercy |
+| Match weights and thresholds; nickname data | Design 5.3; `carltonnorthern/nicknames` at a pinned commit plus a local supplement | Tuned on pilot data |
+| Day-month order in typed dates; the age range that asks for confirmation | Month first; under 14 or over 100 | Brooke and Mercy; a team setting later |
+| The ID link host (`ID_LINK_BASE_URL`) | Required in pilot and production; cards never expire, so the host is permanent | The team, before the pilot |
+| Does an unverified clock decide an ID link conflict | Yes: the newer card wins, and the admin's notice says which clock was unverified | The team |
+| How long after its device time an intake still counts as made online | 10 minutes (`OFFLINE_AFTER_MINUTES`) | The team |
+| A way for a team to keep the patient list off a field role | None; it follows `patients.view` plus a field permission (D37) | The team; a setting, not a permission |
+| May staff reopen a pair a reviewer kept separate | No; a staff flag on such a pair is refused | The team |
+| Undo limits; ID cards at undo | Only the latest merge on a group; redirected edits are listed, not moved; no undo for a problem merge; every card comes back as it stood, and one made while merged stays with the kept chart | The team |
+| Merge survivor default | The older record | The team |
+| Who decides a field review; who marks an allergy entered in error | `patients.edit` for ordinary fields and `patients.correct_identity` for identity fields; `encounters.chart` with a reason | The team |
+| Portal intake and demographic edits | Not in phase 3: consent is given in person, and demographics have one write path | The team |
+| Index timing and lifetime | After syncs (at most every 2 minutes) and every 15 minutes while unlocked; pages of 500; 7 days | The team |
+| Search rate limit | None in the API; recommended at the gateway in phase 12 | The team |
+| App-layer encryption of stored ID card tokens | Not in phase 3 (KMS at rest; a token is a pointer, not a credential) | Phase 12 risk analysis |
+| A human-readable chart number; contact phone, gender identity, pronouns | None in phase 3 (the UUID is the patient ID; a contact phone arrives with phase 7) | The team |
+| What a history entry can say about how a change was made | "On a phone" when the entry has a device time; it can't say "offline" | Phase 4, if the history should carry it |
+| **Android's clipboard rule** (departs from the PRD, module 13) | A copied ID link clears after 60 seconds on both platforms, not "as the user leaves the app" on Android, which made the link impossible to paste into a printing app | The project lead: change the PRD, or restore the rule and add a share sheet |
+
 ---
 
 ## 7. What this repository cannot finish on its own
