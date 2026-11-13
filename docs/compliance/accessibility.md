@@ -12,6 +12,9 @@
 | Phone | Text and control colour pairs meet 4.5:1 in Day and Night run and 7:1 in High contrast | `apps/mobile/test/design/contrast_test.dart` |
 | Phone | Tap targets at least 48 px, labelled controls, and text contrast on rendered screens (Flutter's guideline matchers) | `apps/mobile/test/design/demo_banner_test.dart` and every new screen test |
 | Phone | The Demo data only banner is announced by screen readers, not only drawn | same |
+| Phone | Each patient screen (Patients tab, New patient and Edit details, profile, ID card, problem, Add problem, field review, Needs attention) runs its main scenario in Day, Night run and High contrast with the guideline matchers, at 200% text with no overflow, and on a 320 px wide phone | `apps/mobile/test/features/patients/` |
+| Phone | Rows and chips that act as buttons carry a tap action for Switch Access and Voice Access; results and saved dates are announced once per search or change, never per keystroke | same |
+| Portal | Each patient page (search, profile, ID card panel, corrections, history, reviews, duplicates queue and pair, merges, problem reversals) passes axe in the three themes and reflows at 320 px; keyboard-only decisions; error summaries take focus | `apps/portal/e2e/{patients,corrections,id-card,duplicates,problems}.spec.ts` |
 
 ## What automated checks cannot prove
 
