@@ -3,6 +3,10 @@ import 'package:flutter/services.dart';
 import '../sync/device_channel.dart';
 
 /// How long a copied ID link stays on the clipboard (design 10.4: "It clears in 60 seconds").
+// PLAN-OPEN: Android's clipboard rule (design 14.3, #17). The PRD (module 13) clears a copied link
+// "as the user leaves the app" on Android. That makes it impossible to paste the link into the app
+// that prints the card, which is what Copy is for, so both platforms clear after this time
+// instead. The project lead confirms, or the PRD's rule comes back.
 const secureCopyLifetime = Duration(seconds: 60);
 
 /// Copies [text] (an ID link, never a name or health detail) through the app's native channel, as
