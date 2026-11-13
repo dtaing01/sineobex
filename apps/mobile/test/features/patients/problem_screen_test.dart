@@ -76,7 +76,9 @@ void main() {
     await type(tester, 'problemNote', 'x' * 3700);
     final counter = find.text('3,700 of 4,000 characters');
     await expectShown(tester, counter);
-    expect(tester.getSemantics(counter), isSemantics(isLiveRegion: true));
+    // Read when explored; the crossing itself is what's said (below, V11).
+    expect(tester.getSemantics(counter), isSemantics(isLiveRegion: false));
+    await expectShown(tester, find.text('Near the 4,000-character limit.'));
     await type(tester, 'problemNote', 'Demo: worse at night');
     await tapOn(tester, find.widgetWithText(FilledButton, 'Add note'));
     final note = h.sync.store!.outbox().singleWhere((e) => e.entity == entityProblemNote);
@@ -84,6 +86,63 @@ void main() {
     await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Note by you, not synced yet: Demo: worse at night')));
     await expectScreenOk(tester);
     handle.dispose();
+  });
+
+  group('the note counter is said once on crossing 90% and once at the limit, never per keystroke (V11)', () {
+    /// The labels of every live region on screen: what a screen reader would read out as it changes.
+    List<String> liveLabels(WidgetTester tester) => [
+      for (final node
+          in find.semantics.byPredicate((n) => n.getSemanticsData().flagsCollection.isLiveRegion).evaluate())
+        node.label,
+    ];
+
+    Future<void> openCough(WidgetTester tester, {required bool announces}) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures(supportsAnnounce: announces);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final h = await signIn(tester);
+      seedP1(h.server);
+      h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'ongoing'});
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await reveal(tester, find.byKey(const ValueKey('phi.problemNote')));
+    }
+
+    testWidgets('where the platform takes announcements (iOS)', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openCough(tester, announces: true);
+      tester.takeAnnouncements();
+      final live = <List<String>>[];
+      for (final n in [3500, 3600, 3601, 3602]) {
+        await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * n);
+        await tester.pump();
+        live.add(liveLabels(tester));
+      }
+      expect(tester.takeAnnouncements().map((a) => a.message), ['Near the 4,000-character limit.']);
+      // Nothing on screen is a live region whose words change as they type.
+      expect(live.map((l) => l.join('|')).toSet(), hasLength(1), reason: '$live');
+      await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * 4000);
+      await tester.pump();
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'At the 4,000-character limit: the note can’t be longer.',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('where it doesn’t (Android): the band line is the live region', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openCough(tester, announces: false);
+      final live = <String, List<String>>{};
+      for (final n in [3600, 3601, 3602]) {
+        await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * n);
+        await tester.pump();
+        live['$n'] = liveLabels(tester);
+      }
+      expect(tester.takeAnnouncements(), isEmpty);
+      expect(live['3600'], contains('Near the 4,000-character limit.'));
+      expect(live.values.map((l) => l.join('|')).toSet(), hasLength(1), reason: '$live');
+      handle.dispose();
+    });
   });
 
   testWidgets('a problem row on the profile is a button Switch Access can activate (V6)', (tester) async {

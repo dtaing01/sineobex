@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -48,12 +49,42 @@ class _ProblemState extends ConsumerState<_Problem> {
 
   static const _noteMax = 4000;
 
+  /// How close the note is to its limit: 0 under 90%, 1 from 90%, 2 at the limit. Crossing up into
+  /// a band is said once (design 12.1: the counter is announced at 90%), never at each keystroke.
+  int _noteBand = 0;
+
   PatientServices get _s => widget.services;
+
+  @override
+  void initState() {
+    super.initState();
+    _note.addListener(_noteChanged);
+  }
 
   @override
   void dispose() {
     _note.dispose();
     super.dispose();
+  }
+
+  static int _bandOf(int n) => n >= _noteMax ? 2 : (n >= _noteMax * 0.9 ? 1 : 0);
+
+  static String? _bandText(int band) => switch (band) {
+    1 => 'Near the 4,000-character limit.',
+    2 => 'At the 4,000-character limit: the note can’t be longer.',
+    _ => null,
+  };
+
+  void _noteChanged() {
+    final band = _bandOf(_note.text.length);
+    if (band == _noteBand) return;
+    final up = band > _noteBand;
+    _noteBand = band;
+    // Where the platform takes announcements (iOS), one now; elsewhere (Android) the band line is a
+    // live region, and its words change only here.
+    if (up && MediaQuery.supportsAnnounceOf(context)) {
+      unawaited(SemanticsService.sendAnnouncement(View.of(context), _bandText(band)!, Directionality.of(context)));
+    }
   }
 
   void _do(String done, void Function() change) {
@@ -241,6 +272,7 @@ class _ProblemState extends ConsumerState<_Problem> {
                   listenable: _note,
                   builder: (context, _) {
                     final n = _note.text.length;
+                    final band = _bandText(_bandOf(n));
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -251,15 +283,22 @@ class _ProblemState extends ConsumerState<_Problem> {
                           maxLines: 6,
                           minLines: 3,
                           maxLength: _noteMax,
+                          // Its own counter below, said only when it crosses into a band.
+                          showCounter: false,
                           capitalization: TextCapitalization.sentences,
                           textInputAction: TextInputAction.newline,
                         ),
-                        // The counter is announced only near the limit (design 12.1: at 90%).
-                        if (n >= _noteMax * 0.9)
+                        // Shown near the limit (design 12.1: from 90%); read when explored, never live.
+                        if (band != null) ...[
+                          Text('${count(n)} of 4,000 characters', style: text.bodyMedium),
+                          // Its own node: merged with the counter, a live region would change at
+                          // every keystroke.
                           Semantics(
-                            liveRegion: true,
-                            child: Text('${count(n)} of 4,000 characters', style: text.bodyMedium),
+                            container: true,
+                            liveRegion: !MediaQuery.supportsAnnounceOf(context),
+                            child: Text(band, style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
                           ),
+                        ],
                         const SizedBox(height: FieldSpace.s2),
                         FilledButton(
                           onPressed: _note.text.trim().isEmpty ? null : () => _addNote(p),

@@ -40,6 +40,7 @@ class PhiField extends StatelessWidget {
     this.suffix,
     this.enabled = true,
     this.capitalization = TextCapitalization.words,
+    this.showCounter = true,
   });
 
   /// The key is `phi.<name>`.
@@ -62,6 +63,10 @@ class PhiField extends StatelessWidget {
   final bool enabled;
   final TextCapitalization capitalization;
 
+  /// Material's "12/200" counter under a field with [maxLength]. It is a live region while the
+  /// field has focus, read at every keystroke; a screen with its own counter turns it off.
+  final bool showCounter;
+
   @override
   Widget build(BuildContext context) => TextField(
     key: ValueKey('phi.$name'),
@@ -75,6 +80,7 @@ class PhiField extends StatelessWidget {
     textInputAction: textInputAction,
     keyboardType: keyboardType ?? (maxLines == 1 ? TextInputType.text : TextInputType.multiline),
     maxLength: maxLength,
+    buildCounter: showCounter ? null : _noCounter,
     maxLines: maxLines,
     minLines: minLines,
     onChanged: onChanged,
@@ -93,6 +99,13 @@ class PhiField extends StatelessWidget {
     ),
   );
 }
+
+Widget? _noCounter(
+  BuildContext context, {
+  required int currentLength,
+  required int? maxLength,
+  required bool isFocused,
+}) => null;
 
 /// A section heading, read as a heading.
 class SectionHeading extends StatelessWidget {
