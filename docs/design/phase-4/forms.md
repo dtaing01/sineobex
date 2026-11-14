@@ -47,8 +47,9 @@ Names used:
    differences that were declared on purpose.
 9. **Red flags, disposition and follow-up are one short note per Medical encounter**, not a
    section repeated in every Medical form (6.2).
-10. **The Focused Exam is sixteen modules included in the General note type.** A module is a file
-    of its own, so each system is one or two transcription cards.
+10. **The Focused Exam is sixteen systems, written as modules included in the General note
+    type.** A module is a file of its own, one per piece of the specification, so each is one
+    transcription card.
 
 ## 1. Ground truth: what the code has today
 
@@ -223,7 +224,7 @@ needs one.
 - `MAX_NOTE_FIELDS` rises from 300 to 1,000 (`services/api/src/sync/records.ts:31`). A General
   note with every exam system charted can pass 300. The definition bounds the paths a note can
   have, and `repeat.max` bounds its entries, so the purpose of the limit (no unbounded history)
-  still holds. This change is part of lifecycle card L1-3.
+  still holds. This change is part of lifecycle card L1-note-answers.
 - A `text` field's `maxLength` is at most 4,000. A resolved definition is at most 256 KiB.
 - A section's `repeat.max` is at most 20. The phone holds to it. The server checks one answer at
   a time and does not count entries; the 1,000 limit is its bound.
@@ -372,7 +373,7 @@ is built from `handoffLines` on the server (lifecycle 5.7).
    `packages/forms/` and `packages/contract/test-vectors/`
    (`tools/phi-guard-rules.mjs:4-10`), so copied text and made-up people in vectors are scanned.
 2. Its definition is written by hand as JSON, following the recipe
-   `docs/plan/patterns/form-definition.md` (a new recipe, card F0-9).
+   `docs/plan/patterns/form-definition.md`.
 3. Every place the definition differs from the text on purpose is listed in
    `definitions/spec/<piece>.diff.json`, with the reason and where the decision comes from: an
    Oct 19 change, a rule in PRD main, or a default from an inventory's ambiguity list. The file
@@ -674,7 +675,7 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus:
 
 ### 8.4 The portal
 
-`apps/portal/src/app/(app)/encounters/[encounterId]/NoteView.tsx` (lifecycle card L6-1) draws the
+`apps/portal/src/app/(app)/encounters/[encounterId]/NoteView.tsx` (lifecycle card L6-visit-page) draws the
 `read` model. It has no knowledge of kinds beyond what the model says: a label, a display value,
 and for a corrected value the old one, who, when and why. Axe runs on it in three themes with
 the rest of the visit page.
@@ -763,126 +764,41 @@ the rest of the visit page.
 5. **A definition is 256 KiB at most** and the General note type with sixteen modules is the
    largest. If it passes the limit, split the exam into a note type of its own.
 
-## 11. Units and card index
+## 11. Units
 
-Units own disjoint files and land in this order. F0 first, alone. The merged order with the
-lifecycle units is in `docs/design/phase-4-encounters.md`.
+The cards are in one index for the whole phase, `docs/plan/phase-4-encounters/README.md`, with
+their levels, files and order. This part's units, and what each owns:
 
 | Unit | Owns | Depends on |
 |---|---|---|
-| **F0** The package, the format and the export | `packages/forms/` except `definitions/` and `src/interp/`; the Forms drift step | — |
-| **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/forms/test/conformance.test.ts`, `packages/contract/test-vectors/forms-conformance.json` | F0 |
-| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (the eleven function files), `apps/mobile/test/forms/` | F1 (the vectors) |
-| **F3** The server | `db/migrations/0017_note_type_versions.sql`, `services/api/src/forms/`, `services/api/src/routes/forms.ts`, their tests | F0, F1 |
-| **F4** Definitions on the phone | `apps/mobile/lib/forms/definition_store.dart`, `forms_api.dart`, `forms_providers.dart`, their tests | F2, F3 |
-| **F5** The renderer | `apps/mobile/lib/features/forms/`, `apps/mobile/test/features/forms/` | F2 |
-| **F6** The definitions | `packages/forms/definitions/`, `definitions.lock.json`, the generated files | F0, F1 |
-| **F7** Flows | named files in F5's and the lifecycle's folders (below) | F5, F6, lifecycle L4 |
+| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/` and `scripts/`: the schema, the types, the resolver, the validator, the lock, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
+| **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/contract/test-vectors/forms-conformance.json` and its two readers | F0 |
+| **E** The export | `packages/forms/scripts/`, the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
+| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the golden test | F1 (the vectors), E (the golden file) |
+| **F3** Definitions on the server | `db/migrations/0017_note_type_versions.sql`, `packages/forms/src/install.ts`, `services/api/src/forms/`, `services/api/src/routes/forms.ts` | F0, E |
+| **F4** Definitions on the phone | `apps/mobile/lib/forms/definition_store.dart`, `forms_api.dart`, `forms_providers.dart`; one level X card adds the calls in `lib/auth` and `lib/sync` | F2, F3 |
+| **F5** The renderer | `apps/mobile/lib/features/forms/`, its tests | F2 |
+| **F6** The definitions | `packages/forms/definitions/`, `definitions.lock.json` | F0, E |
+| **F7** Flows | `apps/mobile/lib/encounters/{red_flags,expand_quick}.dart`, and named edits to F5's and the lifecycle's screens | F5, F6, lifecycle L4 |
 
-### Cards
-
-**F0 The package, the format and the export**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F0-1 The package skeleton and the hand-written types | T | `packages/forms/package.json`, `tsconfig.json`, `src/types.ts` | — |
-| F0-2 The JSON Schema for a note type, a module and a list | X | `schema/definition.schema.json`, `test/schema.test.ts` | F0-1 |
-| F0-3 The resolver: includes and lists copied in | T | `src/resolve.ts`, `test/resolve.test.ts` | F0-2 |
-| F0-4 The semantic validator, one rule at a time from 4.2 | T | `src/validate.ts`, `test/validate.test.ts` | F0-3 |
-| F0-5 The lock and the version rules | T | `src/lock.ts`, `src/versions.ts`, `test/lock.test.ts` | F0-3 |
-| F0-6 The spec check | T | `src/spec-check.ts`, `test/spec-check.test.ts` | F0-3 |
-| F0-7 The export script: `presets.json`, the phone asset, the golden file | T | `scripts/export.ts`, `apps/mobile/pubspec.yaml` | F0-4, F1 |
-| F0-8 The Forms drift step | X | `tools/ci-local.sh`, `.github/workflows/ci.yml` | F0-7 |
-| F0-9 The recipe for transcribing a piece | X | `docs/plan/patterns/form-definition.md` | F0-4 |
-
-**F1 The interpreter in TypeScript**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F1-1 The conformance vectors | X | `packages/contract/test-vectors/forms-conformance.json` | F0-2 |
-| F1-2 `fieldAt` and paths | T | `src/interp/field-at.ts` | F1-1 |
-| F1-3 `checkAnswer` | T | `src/interp/check-answer.ts` | F1-2 |
-| F1-4 Conditions and `effectiveAnswers` | T | `src/interp/conditions.ts`, `src/interp/effective.ts` | F1-2 |
-| F1-5 `finishCheck` | T | `src/interp/finish.ts` | F1-4 |
-| F1-6 `normalAnswers` | T | `src/interp/normal.ts` | F1-4 |
-| F1-7 `recapLines` | T | `src/interp/recap.ts` | F1-4 |
-| F1-8 `readModel` | T | `src/interp/read-model.ts` | F1-4 |
-| F1-9 `visibleAnswers` | T | `src/interp/visible.ts` | F1-4 |
-| F1-10 `handoffLines`, `suggestions`, `expandQuick` | T | `src/interp/handoff.ts`, `src/interp/suggestions.ts`, `src/interp/expand.ts` | F1-4 |
-
-**F2 The interpreter in Dart**: the same nine cards as F1-2 to F1-10, each level T, each one file
-under `apps/mobile/lib/forms/` and reading the same vectors, numbered F2-1 to F2-9; then
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F2-10 The golden test | T | `apps/mobile/test/forms/golden_test.dart` | F2-1 to F2-9, F0-7 |
-
-**F3 The server**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F3-1 Migration 0017 | X | `db/migrations/0017_note_type_versions.sql`, `db/test/note-type-versions.test.ts` | — |
-| F3-2 `installPresets`, called at team creation and in the seed | T | `services/api/src/forms/install.ts`, `db/seed/seed.ts`, `test/forms-install.test.ts` | F3-1, F0-7 |
-| F3-3 `definitionFor` and the two routes | T | `services/api/src/forms/definitions.ts`, `services/api/src/routes/forms.ts`, `test/forms-routes.test.ts` | F3-2 |
-| F3-4 Mount the routes; the permissions test rows; regenerate the contract | R | `services/api/src/app.ts`, `test/permissions.test.ts`, generated files | F3-3 |
-
-**F4 Definitions on the phone**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F4-1 The definition store: bundle, cache, hash check | T | `apps/mobile/lib/forms/definition_store.dart`, `apps/mobile/test/forms/definition_store_test.dart` | F2 |
-| F4-2 Fetch the list and missing definitions after `/v1/me` and at sync | T | `apps/mobile/lib/forms/forms_api.dart`, `forms_providers.dart` | F4-1, F3-4 |
-| F4-3 Delete the cache at sign-out and wipe | R | `apps/mobile/lib/forms/definition_store.dart`, the named sign-out hook | F4-1 |
-
-**F5 The renderer**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F5-1 `field_host.dart` | R | `field_host.dart`, its test | F2 |
-| F5-2 to F5-15 One card per kind, in this order: info, text, flag, choice, number, date, time, duration, group, grid, region, problem, photo, action | S for info, text, flag, date, time, duration, photo; R for choice, number, group, grid, region, problem, action | the kind's file and its test | F5-1 |
-| F5-16 `note_form.dart`: sections, recap headers, repeating entries | R | `note_form.dart`, its test | F5-2 to F5-15 |
-| F5-17 One-tap Normal on a section | R | `note_form.dart`, its test | F5-16 |
-| F5-18 `note_read_view.dart` | R | `note_read_view.dart`, its test | F2 |
-| F5-19 The generated smoke test over every preset | T | `apps/mobile/test/features/forms/presets_smoke_test.dart` | F5-16, F0-7 |
-
-**F6 The definitions** (each card: the definition file, its `spec/<piece>.txt` and
-`spec/<piece>.diff.json`; the planner prepares the two spec files and the list of decisions for
-the piece before the card is handed out)
-
-| Card | Level | What | Needs |
-|---|---|---|---|
-| F6-1 to F6-10 | S | The ten shared lists of 4.4, one card each | F0-4 |
-| F6-11 | R | `red_flags_disposition` (SPEC 36 to 62) | F6-1 to F6-10 |
-| F6-12 to F6-24 | S, or R where the inventory marks a piece as not plain | The 13 pieces of `forms-inventory.md` section 8 | F6-1 to F6-10 |
-| F6-25 to F6-47 | S, or R for the pieces the focused-exam inventory's section 7 lists as needing the designer's shape (MSK, neurologic, skin, the three sensitive exams, lymphatic, the pulse grids) | The 23 pieces of `forms-inventory-focused-exam.md` section 7, one module each | F6-1 to F6-10 |
-| F6-48 | R | The General note type's exam picker and its sixteen includes; `mapsTo` on the quick form | F6-12 to F6-47 |
-| F6-49 | X | Release: write the lock, run the export, commit the generated files | F6-48 |
-
-**F7 Flows**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| F7-1 Add the red flags note to a Medical encounter; the fifth hard stop | T | `apps/mobile/lib/encounters/encounter_repository.dart`, its test | F6-11, L4-3 |
-| F7-2 Expand a quick form part into its full module | T | `apps/mobile/lib/encounters/expand_quick.dart`, its test | F6-48, L4-2 |
-| F7-3 The `open_note_type` and `add_referral` actions | R | `apps/mobile/lib/features/forms/action_field.dart`, `apps/mobile/lib/features/encounters/note_screen.dart` | F5, L5-5 |
-| F7-4 The `show_handoff` action and the handoff lines on the phone | R | `apps/mobile/lib/features/encounters/handoff_screen.dart` | F5, L5-9 |
-
-Counts for this part: 108 cards. X: 6. T: 32. R: 33. S: 37. Inside F5: 7 S, 11 R and 1 T.
-Inside F6: 10 S for the lists; of the 36 pieces, 20 S and 16 R (5 of the note type pieces and
-11 of the exam pieces are not plain transcription); 2 more R and 1 X.
+`installPresets` lives in the forms package, not in the API, because the seed calls it and the
+database package cannot import the API (`db/package.json`; `services/api/package.json:26`). The
+forms package needs `canonicalJson` and `sha256Hex` for a definition's hash, and they exist only
+in the API's sync folder (`services/api/src/sync/canonical.ts`), so F0 carries its own copy,
+pinned by the same vector file, `packages/contract/test-vectors/canonical-json.json`.
 
 ## What this part needs from the lifecycle part
 
 | Needed | Where the lifecycle part gives it |
 |---|---|
-| A note keeps its key and version, and both are checked when the note is created | lifecycle 4.4, card L1-3 |
+| A note keeps its key and version, and both are checked when the note is created | lifecycle 4.4, card L1-note-create |
 | The server calls `checkAnswer` for every answer, and the fake does the same | lifecycle 4.4, 4.9 rule 14 |
-| `MAX_NOTE_FIELDS` raised to 1,000 | lifecycle card L1-3 |
+| `MAX_NOTE_FIELDS` raised to 1,000 | lifecycle card L1-note-answers |
 | Complete calls `finishCheck` on the phone and on the server | lifecycle 3.3, 4.6 |
 | A fifth hard stop: the author of the Red flags note completes it with their Medical notes | lifecycle 3.3 |
 | The visit read and the chart's recent visits carry `read` for each note, built by `readModel` | lifecycle 5.1, 5.2 |
 | Sensitive content is filtered by `visibleAnswers` everywhere a note is read | lifecycle 6.4 |
-| The frame around a note's form calls `note_form.dart` and passes answers to the domain layer | lifecycle 9.5, card L5-5 |
+| The frame around a note's form calls `note_form.dart` and passes answers to the domain layer | lifecycle 9.5, card L5-note-screen |
 | An empty draft counts for nothing, so the Red flags note stays out of the way until answered | lifecycle 3.1 |
 | The hash a signer sends covers `effectiveAnswers`, and a finished note keeps only those | lifecycle 4.5 |
 | A note records whether it is a Medical note, from its type, when it is created | lifecycle 2.2 |

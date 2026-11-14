@@ -1112,7 +1112,7 @@ take the same lock first.
 - **Phase 2's own tests** chart on made-up note types (`vitals`, `wound_care`) with free paths and
   set `status` to `completed` (`services/api/test/sync.test.ts`,
   `apps/mobile/test/sync/local_store_test.dart`, `sync_scenarios_test.dart`, `live_api_test.dart`,
-  `apps/mobile/test/features/sync_flow_test.dart`). Card L1-0 gives them a test-only note type,
+  `apps/mobile/test/features/sync_flow_test.dart`). Card L1-legacy-tests gives them a test-only note type,
   installed by the API fixtures, the fake and the phone tests, with the paths those suites use,
   and rewrites their status tests as sign-offs. It lands before any rule here changes.
 - **Two notes of one type** in one encounter are allowed. Two phones can each add Wound care
@@ -1484,7 +1484,7 @@ The chart answer (`services/api/src/patients/charts.ts`, `projection.ts`, `schem
 On the phone both ride in the patient record's `_chart` field (D44), under the chart's 24-hour
 cache, so the profile shows the timeline and the last three visits offline. The file that builds
 that field names its keys by hand (`apps/mobile/lib/patients/chart_cache.dart:40-56`, `:145`):
-card L4-11 adds `timeline`, `recentVisits` and the referral snapshots to it.
+card L4-chart-cache adds `timeline`, `recentVisits` and the referral snapshots to it.
 
 ### 5.3 Co-sign
 
@@ -2203,165 +2203,46 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 6. **Card count.** See 13: about a third of this part's cards are level X. A small
    model can't shorten that third.
 
-## 13. Units and card index
+## 13. Units
 
-Units own disjoint files and land in this order. L0 lands first, alone, with CI green. The forms
-part's units are in `forms.md`; the merged order and the final card numbers are in
-`docs/design/phase-4-encounters.md`. Levels are those of `docs/plan/README.md`: **S** small model
-alone, **T** tests written first by the planner, **R** reviewer reads the result, **X** strong
-model only.
+The cards are in one index for the whole phase, `docs/plan/phase-4-encounters/README.md`, with
+their levels, files and order. This part's units, and what each owns:
 
 | Unit | Owns | Depends on |
 |---|---|---|
-| **L0** Schema and core rules | `db/migrations/0018` to `0021`, their `db/test` files, the three vector files of 3.12 and `encounters-done-when.json`, `services/api/src/encounters/{rules,content-hash,signed-under}.ts`, `apps/mobile/lib/encounters/{rules,content_hash}.dart` | the forms part's definition format (for `noteTypeKey` and versions) |
-| **L1** Server sync | `services/api/src/sync/**` (changes), `services/api/src/sync/entities/{note-signoff,note-addendum,note-correction,referral}.ts`, `services/api/src/encounters/signer.ts`, `services/api/test/sync-{encounters,signoffs,corrections,referrals}.test.ts` | L0; the forms part's `checkAnswer`, `finishCheck`, `visibleAnswers` |
-| **L2** Server routes | `services/api/src/routes/encounters.ts`, `services/api/src/encounters/{read,queues,cosign,attest,assign,incomplete,handoff}.ts`, the timeline in `services/api/src/patients/{charts,projection}.ts`, `services/api/test/encounters-*.test.ts`, the generated contract | L1 |
-| **L3** Phone sync layer | `apps/mobile/lib/sync/{entities,local_store}.dart`, `apps/mobile/test/sync/{fake_server,fake_parity_test,fake_reads_test,store_encounters_test}.dart` | L0, L1 (the fake mirrors it) |
-| **L4** Phone domain | `apps/mobile/lib/encounters/` (all but the two core files of L0), `apps/mobile/test/encounters/` | L3, the generated client from L2 |
-| **L5** Phone screens | `apps/mobile/lib/features/encounters/`, `apps/mobile/test/features/encounters/`, and named edits to `patient_screen.dart`, `home_screen.dart`, `app.dart`, `sync_labels.dart`, `needs_attention_screen.dart` | L4; the forms part's renderer |
-| **L6** Portal | `apps/portal/src/app/(app)/encounters/`, `team/{cosign,attestation,incomplete-notes}/`, `apps/portal/src/app/actions/encounters.ts`, `apps/portal/e2e/{encounters,attestation}.spec.ts`, the Timeline on the patient page | L2 |
-| **L7** Done when | `apps/mobile/test/encounters/{done_when_test,live_encounters_test}.dart`, `services/api/test/encounters-done-when.test.ts`, the line in `tools/live-sync.sh` | all |
+| **L0** Schema and core rules | `db/migrations/0018` to `0021`, their `db/test` files, the three vector files of 3.12 and their readers, `services/api/src/encounters/{rules,content-hash,signed-under}.ts`, `apps/mobile/lib/encounters/{rules,content_hash}.dart` | forms F1 and F2 for `effectiveAnswers` (the content hash) |
+| **L1** Server sync | `services/api/src/sync/**` (changes), `services/api/src/sync/entities/{note-signoff,note-addendum,note-correction,referral}.ts`, `services/api/src/encounters/signer.ts`, `services/api/test/sync-{encounters,signoffs,corrections,referrals}.test.ts`, and phase 2's sync tests, which move to a test-only note type (4.4) | L0; forms F1 (`checkAnswer`, `finishCheck`, `effectiveAnswers`, `visibleAnswers`) and F3 (stored definitions) |
+| **L2** Server routes | `services/api/src/routes/encounters.ts`, `services/api/src/encounters/{read,timeline,queues,cosign,attest,assign,incomplete,counts,handoff}.ts`, the timeline and recent visits in `services/api/src/patients/{charts,projection,schemas}.ts`, `services/api/test/encounters-*.test.ts` | L1; forms F1 (`readModel`, `handoffLines`) |
+| **L3** The phone's sync layer | `apps/mobile/lib/sync/{entities,local_store}.dart`, `apps/mobile/test/sync/{fake_server,fake_parity_test,fake_reads_test,store_encounters_test}.dart` | L0, L1 (the fake mirrors it); forms F2 and F4 (the fake reads definitions from the conformance file and the bundled presets) |
+| **L4** The phone's domain layer | `apps/mobile/lib/encounters/` (all but the two core files of L0 and the two of forms F7), `apps/mobile/test/encounters/`, and named edits to `apps/mobile/lib/patients/{chart_cache,problems}.dart` | L3, the generated client from L2 |
+| **L5** The phone's screens | `apps/mobile/lib/features/encounters/`, its tests, and named edits to `patient_screen.dart`, `home_screen.dart`, `app.dart`, `sync_labels.dart`, `needs_attention_screen.dart` | L4; forms F5 (the renderer and the read view, which F5 owns) |
+| **L6** The portal | `apps/portal/src/app/(app)/encounters/`, `team/{cosign,attestation,incomplete-notes}/`, `apps/portal/src/app/actions/encounters.ts`, `apps/portal/e2e/{encounters,attestation}.spec.ts`, the Timeline on the patient page, the navigation links in `layout.tsx` | L2 |
+| **L7** The Done when | `packages/contract/test-vectors/encounters-done-when.json`, `apps/mobile/test/encounters/{done_when_test,live_encounters_test}.dart`, `services/api/test/encounters-done-when.test.ts`, the line in `tools/live-sync.sh` | all |
 
-### Cards
-
-One line each: the card, its level, the files it changes, what it needs first. No card changes
-more than three source files.
-
-**L0 Schema and core rules**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L0-1 Migration 0018: encounter and note columns, the status trigger, the finished-note guard | X | `0018_encounter_lifecycle.sql`, `db/test/encounter-lifecycle.test.ts` | — |
-| L0-2 Migration 0019: sign-offs, addenda, corrections | X | `0019_note_signoffs.sql`, `db/test/note-signoffs.test.ts` | L0-1 |
-| L0-3 Migration 0020: attestations, assignments, `patient_of_change` | X | `0020_note_attestations.sql`, `db/test/note-attestations.test.ts` | L0-2 |
-| L0-4 Migration 0021: referrals, and the chart table row | X | `0021_referrals.sql`, `db/test/referrals.test.ts`, `services/api/src/patients/charts.ts` | L0-1 |
-| L0-5 Write the vector files: every row of the tables in 3.1, 3.4, 3.5, 3.6, 3.9, 4.4, 4.5 | X | the three vector files | — |
-| L0-6 `rules.ts`: `signoffEffect`, `reopenEffect`, `correctionEffect`, `encounterStatus`, `envelopeLocked`, `isOverdue` | T | `services/api/src/encounters/rules.ts`, `services/api/test/encounter-rules.test.ts` | L0-5 |
-| L0-7 `content-hash.ts`: `noteContentHash` | T | `services/api/src/encounters/content-hash.ts` | L0-5 |
-| L0-8 `signed-under.ts`: `signedUnder` | T | `services/api/src/encounters/signed-under.ts` | L0-5 |
-| L0-9 `rules.dart`, the same functions | T | `apps/mobile/lib/encounters/rules.dart`, `apps/mobile/test/encounters/rules_test.dart` | L0-5 |
-| L0-10 `content_hash.dart` | T | `apps/mobile/lib/encounters/content_hash.dart`, `apps/mobile/test/encounters/content_hash_test.dart` | L0-5 |
-
-**L1 Server sync** (all X)
-
-| Card | Files | Needs |
-|---|---|---|
-| L1-1 The team lock for every encounter-side change; `loadSigner`; the `needsCapability` hook and the Medical gate | `entities/encounter.ts`, `entities/note.ts`, `apply.ts`, `encounters/signer.ts` | L0 |
-| L1-2 The encounter: new fields, `status` removed, `kind` rules, the envelope lock, last seen | `records.ts`, `entities/encounter.ts`, `entities/fields.ts` | L1-1 |
-| L1-3 The note: create on any encounter, answers checked by `checkAnswer`, `MAX_NOTE_FIELDS` raised to 1,000, late changes kept, reopen | `records.ts`, `entities/note.ts`, `entities/fields.ts` | L1-2, forms |
-| L1-4 `note_signoff` | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` | L1-3 |
-| L1-5 `note_addendum` and `note_correction` | `entities/note-addendum.ts`, `entities/note-correction.ts`, `entities/index.ts` | L1-4 |
-| L1-6 `referral` | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` | L1-1 |
-| L1-7 Sensitive content: `/v1/sync/records` filters by `visibleAnswers`; a set to a hidden answer is held | `routes/sync.ts`, `sync/review.ts`, `entities/note.ts` | L1-3, forms |
-| L1-8 The problem create's `encounterId` and `source` | `entities/problem.ts`, `entities/values.ts` | L1-1 |
-| L1-9 Regenerate the contract and `sync-values.json` | generated files | L1-1 to L1-8 |
-
-**L2 Server routes**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L2-1 Read a visit | T | `routes/encounters.ts`, `encounters/read.ts`, `test/encounters-read.test.ts` | L1 |
-| L2-2 The timeline in the chart answer | R | `patients/charts.ts`, `patients/projection.ts`, `test/patients-charts.test.ts` | L1 |
-| L2-3 Co-sign | T | `routes/encounters.ts`, `encounters/cosign.ts`, `test/encounters-cosign.test.ts` | L2-1 |
-| L2-4 The two queues | T | `routes/encounters.ts`, `encounters/queues.ts`, `test/encounters-queues.test.ts` | L2-1 |
-| L2-5 Attest | T | `routes/encounters.ts`, `encounters/attest.ts`, `test/encounters-attest.test.ts` | L2-4 |
-| L2-6 Assign a note | T | `routes/encounters.ts`, `encounters/assign.ts`, `test/encounters-assign.test.ts` | L2-1 |
-| L2-7 Notes to finish, and the team's incomplete notes | T | `routes/encounters.ts`, `encounters/incomplete.ts`, `test/encounters-incomplete.test.ts` | L2-1 |
-| L2-8 The EMS handoff PDF | R | `routes/encounters.ts`, `encounters/handoff.ts`, `test/encounters-handoff.test.ts` | L2-1, forms |
-| L2-9 A row in the permissions test for each new route | R | `test/permissions.test.ts` | L2-1 to L2-8 |
-| L2-10 Mount the routes; regenerate the contract | S | `app.ts`, generated files | L2-1 to L2-8 |
-| L2-11 Seed made-up visits for the preview | S | `db/seed/demo-encounters.ts`, `db/seed/seed.ts` | L1 |
-
-**L3 Phone sync layer** (all X)
-
-| Card | Files | Needs |
-|---|---|---|
-| L3-1 The registry: changed and new entities | `lib/sync/entities.dart` | L1 |
-| L3-2 The store: `finishNotes`, the lock by effect, receipts settle the effect, the clock guard | `lib/sync/local_store.dart`, `test/sync/store_encounters_test.dart` | L3-1 |
-| L3-3 The fake: rules 1 to 6 and 13 of 4.9 | `test/sync/fake_server.dart` | L3-1 |
-| L3-4 The fake: rules 7 to 12 and 14 | `test/sync/fake_server.dart` | L3-3 |
-| L3-5 A parity case for each of the fourteen rules | `test/sync/fake_parity_test.dart`, `test/sync/fake_reads_test.dart` | L3-4 |
-
-**L4 Phone domain**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L4-1 Models, and reading a visit from the store with its read logged | T | `encounter_models.dart`, `encounter_repository.dart`, `test/encounters/visit_read_test.dart` | L3 |
-| L4-2 Start an encounter, add a note, switch kind | T | `encounter_repository.dart`, `test/encounters/start_test.dart` | L4-1 |
-| L4-3 Complete: the hard stops, then `finishNotes` | T | `encounter_repository.dart`, `test/encounters/complete_test.dart` | L4-2, forms |
-| L4-4 Reopen, addendum, correction | T | `note_actions.dart`, `test/encounters/note_actions_test.dart` | L4-3 |
-| L4-5 Referrals | T | `referrals.dart`, `test/encounters/referrals_test.dart` | L3 |
-| L4-6 Notes to finish: the phone's drafts merged with the server's list | T | `notes_to_finish.dart`, `test/encounters/notes_to_finish_test.dart` | L4-1 |
-| L4-7 Online: the queues, co-sign, attest | T | `encounter_api.dart`, `test/encounters/encounter_api_test.dart` | L2 |
-| L4-8 The timeline: the chart's list merged with unconfirmed visits | T | `timeline.dart`, `test/encounters/timeline_test.dart` | L4-1 |
-| L4-9 Problems made or changed in an encounter carry its ID | R | `lib/patients/problems.dart`, `test/patients/problems_test.dart` | L1-8 |
-| L4-10 Close a finished note once its sign-off is confirmed | T | `encounter_providers.dart`, `test/encounters/close_after_confirm_test.dart` | L4-3 |
-
-**L5 Phone screens** (paths under `apps/mobile/lib/features/encounters/` unless named)
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L5-1 The labels file | S | `encounter_labels.dart` | — |
-| L5-2 Start, and the new encounter steps | R | `start_sheet.dart`, `new_encounter_screen.dart`, `lib/app.dart` | L4-2 |
-| L5-3 Medical or Non-Medical, and the switch | R | `kind_screen.dart` | L5-2 |
-| L5-4 The encounter screen and the note type list | R | `encounter_screen.dart`, `note_type_list.dart` | L5-3, forms |
-| L5-5 The frame around a note's form | R | `note_screen.dart` | L5-4, forms |
-| L5-6 The summary, and Complete | R | `summary_screen.dart` | L5-5, L4-3 |
-| L5-7 The visit read view | R | `visit_screen.dart`, `note_read_view.dart` | L4-1, forms |
-| L5-8 The correction sheet and the addendum sheet | R | `correction_sheet.dart`, `addendum_sheet.dart` | L5-7, L4-4 |
-| L5-9 The EMS handoff page | R | `handoff_screen.dart` | L5-5, forms |
-| L5-10 Home: Notes to finish | R | `notes_to_finish_screen.dart`, `lib/features/home/home_screen.dart` | L4-6 |
-| L5-11 Home: the queues, with Co-sign and Attest | R | `queue_screen.dart`, `lib/features/home/home_screen.dart` | L4-7, L5-7 |
-| L5-12 The referrals sheet | R | `referrals_sheet.dart` | L4-5 |
-| L5-13 The profile: + Encounter, + Referral and the timeline | R | `timeline_section.dart`, `lib/features/patients/patient_screen.dart` | L4-8, L5-12 |
-| L5-14 Needs attention: the new sentences and the two buttons | R | `lib/features/sync/sync_labels.dart`, `lib/features/sync/needs_attention_screen.dart` | L3 |
-| L5-15 Use my location | R | `location_field.dart`, `apps/mobile/pubspec.yaml` | L5-2 |
-
-Each L5 card includes its widget test file under `apps/mobile/test/features/encounters/`.
-
-**L6 Portal** (paths under `apps/portal/src/app/(app)/` unless named)
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L6-1 The visit page | R | `encounters/[encounterId]/page.tsx`, `encounters/[encounterId]/NoteView.tsx` | L2-1, forms |
-| L6-2 The Timeline and the referrals on the patient page | R | `patients/[patientId]/Timeline.tsx`, `patients/[patientId]/page.tsx` | L2-2 |
-| L6-3 The two queue pages | R | `team/cosign/page.tsx`, `team/attestation/page.tsx` | L2-4 |
-| L6-4 The Co-sign and Attest actions | R | `apps/portal/src/app/actions/encounters.ts`, `encounters/[encounterId]/SignActions.tsx` | L2-3, L2-5 |
-| L6-5 Notes not complete, and the Home counts | R | `team/incomplete-notes/page.tsx`, `home/page.tsx` | L2-7 |
-| L6-6 The Assign form | R | `encounters/[encounterId]/AssignForm.tsx`, `apps/portal/src/app/actions/encounters.ts` | L2-6 |
-| L6-7 The EMS handoff link | S | `encounters/[encounterId]/page.tsx` | L2-8 |
-| L6-8 End-to-end tests with axe in three themes, and reflow | R | `apps/portal/e2e/encounters.spec.ts`, `apps/portal/e2e/attestation.spec.ts` | L6-1 to L6-7 |
-
-**L7 Done when**
-
-| Card | Level | Files | Needs |
-|---|---|---|---|
-| L7-1 The shared steps | X | `packages/contract/test-vectors/encounters-done-when.json` | L0 |
-| L7-2 The server half | T | `services/api/test/encounters-done-when.test.ts` | L2 |
-| L7-3 The phone against its test server | T | `apps/mobile/test/encounters/done_when_test.dart` | L4 |
-| L7-4 The phone against the real API | X | `apps/mobile/test/encounters/live_encounters_test.dart`, `tools/live-sync.sh` | L7-3 |
-| L7-5 The story on the screens | R | `apps/mobile/test/features/encounters/done_when_flow_test.dart` | L5 |
-
-Counts for this part: 73 cards. X: 21. T: 22. R: 26. S: 4.
+This part is 94 of the phase's 220 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
+core, the phone's store and the phone's test server are where the X cards are, and a small model
+cannot shorten that third.
 
 ## What this part needs from the forms part
 
 The lifecycle treats a note's answers as data it does not understand. It needs these from
-`packages/forms` and its generated Dart and TypeScript, each a pure function with no database or
-network in it:
+`packages/forms` (TypeScript) and its hand-written Dart twin in `apps/mobile/lib/forms/`, each a
+pure function with no database or network in it (forms 7.1 has the signatures):
 
 | Needed | Used by |
 |---|---|
-| A registry of note types: for each key and version, the kinds it is offered for (`medical`, `non_medical`), its `sensitivity`, and its sections with `sensitiveExam` | 3.10, 4.3, 4.4, 6.4, 9.4 |
-| `checkAnswer(definition, path, value)`: null, or the problem with an answer (an unknown path, a wrong type, an unknown option, out of range) | 4.4, 4.7 |
-| `finishCheck(definition, answers)`: the list of what stops Complete (a required answer, consent for a sensitive exam, a contradictory disposition), each with the section it is in | 3.3, 3.4, 4.6, 9.6 |
-| `visibleAnswers(definition, answers, reader)`: the answers a reader may see | 5.1, 6.4 |
+| For each note type and version: the kinds it is offered for (so whether it is a Medical note), its `sensitivity`, its timeline `group`, and its sections with `sensitiveExam`, `treatmentRecord` and `needs` | 3.1, 4.2, 4.4, 5.2, 6.4, 9.1, 9.4 |
+| `checkAnswer(definition, path, value)`: null, or the problem with an answer (an unknown path, a wrong type, an unknown option, out of range, a blocked pair) | 4.4, 4.7 |
+| `effectiveAnswers(definition, answers)`: the answers that count | 4.5, 4.6 |
+| `finishCheck(definition, answers)`: what stops Complete (a required answer that is visible and empty, which covers consent for a sensitive exam), each with the section it is in | 3.3, 3.4, 4.6, 4.7, 9.6 |
+| `visibleAnswers(definition, answers, reader)`: the answers a reader may see, or null for a note they may not see | 5.1, 6.4 |
 | `recapLines(definition, answers)`: one line per section, nothing from a sensitive exam | 8.1 |
-| `handoffLines(definition, answers)`: the EMS handoff summary | 5.7, 9.8 |
-| Suggestion rules: an answer that suggests a note type | 9.6 |
-| A problem-search field kind that stores the code, the label and the status tapped | 8.3 |
-| The form widget for a draft note, and the read widget that shows a corrected answer with the old value struck through | 9.5, 9.7 |
+| `readModel(definition, answers, corrections)`: a note laid out for reading | 5.1, 5.2, 9.7 |
+| `handoffLines(definitions, answersByNote)`: the EMS handoff summary | 5.7, 9.8 |
+| `suggestions(definition, answers)`: note types suggested by the options picked | 9.6 |
+| A problem field that stores a code and a label, with the status tapped as an ordinary field beside it | 8.3 |
+| The form widget for a draft note, and the read widget that draws a read model with corrected answers struck through | 9.5, 9.7 |
 | Stable answer paths: a path means the same field in every version of a note type, and a note keeps the version it was written on | 2.6, 4.5, 8.1 |
 
-`finishCheck`, `visibleAnswers` and `checkAnswer` run on the server and on the phone, so each
-needs a shared vector file, as the functions of 3.12 have.
+Every function that runs on both sides is pinned by the forms part's conformance vectors
+(forms 7.2).
