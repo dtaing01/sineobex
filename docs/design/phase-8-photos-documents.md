@@ -1,7 +1,7 @@
-> Draft plan (Nov 14), written before phase 4 was built. Check section 2 against the code before building, and write the task cards when the phase starts.
+> Draft plan (Nov 14), checked against the reviewed phase 4 design and the designs of the phases before it. Check section 2 against the code before building, and write the task cards when the phase starts.
 
 # Phase 8: Photos and documents
-How to read the citations: "PRD 573" is line 573 of the product spec's main tab; "BP 110" is line 110 of its Build plan tab; "D20" is a decision in `IMPLEMENTATION_PLAN.md`. Code is cited by file. A photo or a document page is called an **attachment** here; its bytes are the **file**.
+How to read the citations: "PRD 573" is line 573 of the product spec's main tab; "BP 110" is line 110 of its Build plan tab; "D20" is a decision in `IMPLEMENTATION_PLAN.md`. "lifecycle 4.5" and "forms 2.3" are sections of `docs/design/phase-4/lifecycle.md` and `forms.md`. Code is cited by file. A photo or a document page is called an **attachment** here; its bytes are the **file**.
 
 ## 1. Scope and Done when
 **Done when** (BP 111, plan phase table): five wound photos taken offline upload after reconnecting and never appear in the camera roll.
@@ -27,7 +27,8 @@ How to read the citations: "PRD 573" is line 573 of the product spec's main tab;
 | "Wound history with dated photos and sizes" as a profile panel (PRD 728) | This phase supplies the list route and the viewer; the panel's sizes come from phase 4 notes. One card here places photos in it |
 | Export, download, share or print of a file | Not offered on mobile (PRD 602); desktop exports are phase 10 |
 | Video, audio, image annotation, OCR; malware scanning of desktop uploads | V2 or later; scanning in phase 12 (section 12, risk 6) |
-| The wound form, its body map and the "photo set" field definition | Phase 4 (`docs/design/phase-4/forms-inventory.md` rows 143, 278, 330) |
+| The wound form, its body regions, and the `photo` field kind with its `max` | Phase 4 (forms 2.2, 2.3; `docs/design/phase-4/forms-inventory.md` rows 143, 278, 330). This phase fills the placeholder that kind draws (forms 6.8) |
+| Any change to what a signature covers, to corrections or to addenda | Phase 4 owns them (lifecycle 3.6, 4.5). Section 5.6 says how a photo sits beside them |
 ## 2. Ground truth
 **What the code has today.**
 | Fact | Where |
@@ -44,20 +45,23 @@ How to read the citations: "PRD 573" is line 573 of the product spec's main tab;
 | The phone has no camera, picker, share or image-cache package | `apps/mobile/pubspec.yaml` |
 | 23 permission keys; derived rules live beside them and are pinned by `access.json` | `services/api/src/auth/permissions.ts`, `packages/contract/test-vectors/access.json` |
 | `Deps` has no blob store yet, though D3 names one | `services/api/src/types.ts` |
-| Migrations end at `0016`; phase 4 reserves `0017`–`0021` | `db/migrations/`, the task text |
+| Migrations end at `0016`; phase 4 takes `0017`–`0021`, and phases 5 to 7 may take more | `db/migrations/`, lifecycle 2.1 |
+| `patient_of_change` names every synced entity by hand; `lockTeamWrites` is the first statement of every online writer | `db/migrations/0009_patients.sql` (line 430), `services/api/src/sync/locks.ts` |
 | There is no `apps/mobile/integration_test/` and no iOS build in CI | `ls apps/mobile`, plan risk 5 |
 
-**What earlier, unbuilt phases must have delivered.**
+**What earlier, unbuilt phases must have delivered.** Phase 4 is designed and reviewed, not built; its names are used here as its design gives them.
 
 | Phase | Thing this phase needs | If it is missing |
 |---|---|---|
-| 4 Encounters | Notes with an author, a state and Save & Close (`docs/design/phase-4/lifecycle.md` 33–55); a "photo set" field type in form definitions with a `max`; the rule "a change that reaches a finished note is kept, never refused" (lifecycle point 6); the note's sensitivity class used by the chart projection | Wound photos cannot be attached. Profile photos and documents still work |
-| 4 Encounters | The sign-off hash function (lifecycle point 3). This phase adds one input to it (section 6.4) | Decide in phase 4's review whether attachments are inside the signed hash |
+| 4 Encounters, forms | The `photo` field kind with a `max`. It stores nothing and draws "Photos arrive in a later release" (forms 2.2, 2.3, 6.8; `apps/mobile/lib/features/forms/photo_field.dart`, card F5-photo). A repeating section's entry ID is the second part of a path: `e` and seven characters (forms 2.3). `fieldAt`, `effectiveAnswers` and `visibleAnswers` (forms 7.1) | Wound photos cannot be attached. Profile photos and documents still work |
+| 4 Encounters, lifecycle | The note is the unit, with an author and a state (D55). `encounter_notes.medical`, the Medical gate and whoever acts as a note's author (lifecycle 2.2, 3.8, 4.2; D56). A late change to a finished note is kept, never refused (lifecycle 3.6). A refusal only for what the worker can fix (lifecycle 4.1, D59) | The rules of 5.6 and 6.2 have nothing to stand on |
+| 4 Encounters, lifecycle | `noteContentHash` (lifecycle 4.5, D57). This phase leaves it as it is: a photo is not in it (5.6) | Nothing |
+| 4 Encounters, lifecycle | The chart answer's `timeline` and `recentVisits`, riding in `_chart`, whose keys `chart_cache.dart` names by hand (lifecycle 5.2, D67). The visit read and the portal's visit page (lifecycle 5.1, 9.11). `GET /v1/me/counts`, which names no patient (lifecycle 5.6) | The attachment list is read from its own route only |
 | 5 Admin configuration | Nothing required. If team settings exist, the cap and the size limits become settings instead of constants | Constants stand |
 | 7 Routes | Nothing. Photos are not in the route cache (section 11) | |
 ## 3. The design in one page
 1. **An attachment is two things with two receipts.** A small synced record (who, what, which note, and the SHA-256 of the file) goes through the existing change protocol. The bytes go through upload routes. The phone deletes the file only when both are confirmed. Reason: the record is small and reuses every sync rule; the bytes need chunks.
-2. **The file's hash is inside the record's value.** So the change's own hash-confirmed receipt fixes which file the server expects, and a signature on a note can cover its photos before the bytes arrive.
+2. **The file's hash is inside the record's value.** So the change's own hash-confirmed receipt fixes which file the server expects, before the bytes arrive, and a recorded photo can never be swapped for another.
 3. **Chunks are 64 KiB and go through our API, never straight to storage.** Reason: D4 (phones talk only to the API), every write is permission-checked and audited, and a 64 KiB request fits D24's weak-link budget. S3 multipart cannot take parts under 5 MiB, so the API stages chunks as small objects and assembles them (section 12, departure 1).
 4. **The server confirms what it stored, not what it received.** After writing the final object it reads it back from storage, hashes it, and only then writes the receipt row with its audit event. Reason: the promise is about the stored copy (PRD 573, 608).
 5. **Attachments are append-only.** No field of one is overwritten. "Current profile photo", "photos on this wound" and "pages of this document" are worked out from the rows. Removing one is a one-way mark, "entered in error". Reason: two phones offline cannot conflict.
@@ -65,13 +69,12 @@ How to read the citations: "PRD 573" is line 573 of the product spec's main tab;
 7. **On the phone a file is sealed in 64 KiB segments with its own random key, and that key lives only in the SQLCipher database.** Reason: the existing key hierarchy then covers files with no new keystore item; destroying the user's key, or deleting one row, makes a file unreadable even if flash keeps its blocks.
 8. **Capture is our own native code and returns bytes in memory.** No plugin that writes a temporary JPEG, no system camera app, no picker. Reason: PRD 598, "nothing in plain files"; the system camera saves to the gallery on some phones.
 9. **Old files are never kept on a phone.** A stored file is viewed online, held in memory, and logged on the server at fetch. Reason: least PHI on the phone, and a read that cannot be logged is refused.
-10. **No new permission keys.** Wound photos follow `encounters.chart`; profile photos and documents follow `patients.edit`; viewing follows `patients.view` (section 7.1).
-
+10. **No new permission keys.** A wound photo follows its note: phase 4's Medical gate to add one, phase 4's `visibleAnswers` to see one. Profile photos and documents follow `patients.edit` and `patients.view` (section 7.1).
+11. **A photo hangs on a note's `photo` field; it is not an answer.** It names the note and the field's path, entry included. It has its own author, time and file hash, as an addendum has its own author. So it is outside what a signature covers, a correction cannot touch it, and phase 4's hash, sign-off and correction stay exactly as designed (5.6).
 ## 4. Data model
-Migrations take **the next free numbers** after phase 4's, named by what they add: `<n>_attachments.sql`, and `<n+1>_attachment_sync_names.sql` only if phase 4 left a list of entity names in SQL to extend (today `0009_patients.sql` line 458 has one; check at build time).
-
-### 4.1 `<n>_attachments.sql` (tables, policies, trigger: level X)
-`sineobex.attachments`: one row per photo or document page. **Append-only**, except the three `entered_in_error_*` columns, which a trigger lets move from null to a value once.
+One migration, taking **the next free number** after the phases before it: `<n>_attachments.sql`. It also replaces `patient_of_change` with the same body plus `attachment`, as phase 4's `0020` does for its entities (lifecycle 2.4).
+### 4.1 `<n>_attachments.sql` (tables, policies, triggers: level X)
+`sineobex.attachments`: one row per photo or document page. `wound_photo` is the kind of every photo taken in a note's `photo` field, in any note type. **Append-only**, except the three `entered_in_error_*` columns, which a trigger lets move from null to a value once.
 
 | Column | Type | Meaning and constraint |
 |---|---|---|
@@ -79,9 +82,9 @@ Migrations take **the next free numbers** after phase 4's, named by what they ad
 | `team_id` | uuid not null | FK teams. Leads every index |
 | `patient_id` | uuid not null | FK patients. Reads group by `canonical_id` (D27); add this table to the schema test that lists every table with a `patient_id` |
 | `kind` | text not null | `wound_photo`, `profile_photo`, `document` (check) |
-| `note_id` | uuid null | FK encounter notes. Required for `wound_photo`, null otherwise (check) |
+| `note_id` | uuid null | FK `encounter_notes`, on `(team_id, note_id)`. Required for `wound_photo`, null otherwise (check) |
 | `encounter_id` | uuid null | Filled by the server from the note |
-| `field_path` | text null | The form's photo-set field, for example `wounds.1.photos`. Required for `wound_photo`; ≤ 120 chars; same pattern as data paths |
+| `field_path` | text null | The path of the note's `photo` field as phase 4 writes paths (forms 2.3): section, then the entry ID in a repeating section, then the field. For example `wounds.e3k9x2ab.photos`. Two to four parts. Required for `wound_photo` |
 | `group_id` | uuid null | Documents only: pages of one paper share it |
 | `page` | smallint null | Documents only: 1–50 |
 | `doc_type` | text null | Documents only: `discharge_papers`, `outside_lab`, `identification`, `insurance`, `consent_form`, `other` (check; section 11) |
@@ -95,7 +98,8 @@ Migrations take **the next free numbers** after phase 4's, named by what they ad
 | `rotation` | smallint not null default 0 | 0, 90, 180, 270: how to turn the image when showing it |
 | `source` | text not null | `phone`, `portal` |
 | `over_cap` | boolean not null default false | Arrived when its photo set already held `max` (section 5.3) |
-| `late` | boolean not null default false | Arrived after its note was finished |
+| `late` | boolean not null default false | Arrived after its note was finished (5.6) |
+| `unplaced` | boolean not null default false | Its `field_path` is not a `photo` field of the note's definition (6.2) |
 | `created_by`, `device_id`, `change_id` | uuid | Who, which phone (null for portal), which change |
 | `device_time`, `corrected_time`, `clock_verified`, `created_at` | as on other synced rows | Capture time and server receipt time |
 | `entered_in_error_at`, `_by`, `_reason` | timestamptz, uuid, text null | Set once, together. Reason is one of `wrong_patient`, `not_clinical`, `unreadable`, `duplicate`, `other` |
@@ -117,11 +121,9 @@ Indexes: `(team_id, patient_id, kind, corrected_time desc)`, `(team_id, note_id)
 
 `sineobex.attachment_blobs`: **the receipt. Append-only** (UPDATE and DELETE blocked by trigger and grants, as in `0003_audit.sql`). PK `attachment_id`; `team_id`; `storage_key` (`<team_id>/<attachment_id>`, no patient details); `sha256` (hash of the bytes read back from storage); `byte_size`; `stored_at`. A row here means the file is in storage and its hash was checked.
 
-**Row-level security**, all four tables: `enable row level security; force row level security;` and one policy `using (team_id = current_setting('app.team_id')::uuid) with check (same)`, exactly as `0009_patients.sql` does. `attachment_chunks` gets `team_id` too so it needs no join.
-
+**Row-level security**, all four tables: `enable row level security; force row level security;` and the team policy block of `0004_sync.sql` lines 185–195, with composite foreign keys on `(team_id, ...)` as `0009_patients.sql` has, the rule phase 4 states for every new table (lifecycle 2). `attachment_chunks` gets `team_id` too so it needs no join.
 ### 4.2 Phone tables (SQLCipher schema, next version; `apps/mobile/lib/sync/local_db.dart`, level X)
-`attachment_files`: `attachment_id` text PK; `kind`; `patient_id`; `parent_id` (note, or patient); `sha256`; `byte_size`; `chunk_count`; `file_key` blob(32); `state` (section 5.1); `have_json` (chunk indexes the server reported); `attempts` int; `last_problem` text (a code, never a message with details); `created_at`; `stored_at`. The sealed file is `att/<attachment_id>.sxa` beside the database. Server copies of attachment **metadata** ride in the patient record's `_chart` field (D44), never in a table of their own, and never with bytes.
-
+`attachment_files`: `attachment_id` text PK; `kind`; `patient_id`; `parent_id` (note, or patient); `sha256`; `byte_size`; `chunk_count`; `file_key` blob(32); `state` (section 5.1); `have_json` (chunk indexes the server reported); `attempts` int; `last_problem` text (a code, never a message with details); `created_at`; `stored_at`. The sealed file is `att/<attachment_id>.sxa` beside the database. Server copies of attachment **metadata** ride in the patient record's `_chart` field (D44) under one more key, `attachments`, beside phase 4's `timeline` and `recentVisits` (lifecycle 5.2). Never in a table of their own, and never with bytes.
 ## 5. Rules
 ### 5.1 The file on the phone
 | State | Meaning | Next | Who or what moves it |
@@ -132,21 +134,20 @@ Indexes: `(team_id, patient_id, kind, corrected_time desc)`, `(team_id, note_id)
 | `damaged` | The phone re-hashed its own file after a server mismatch and it no longer matches | stays | Needs attention. Never deleted automatically. The person retakes, or marks it entered in error |
 
 A file whose create was **rejected for validation** stays `sealed` and waits on the rejection like any dependent (PRD 564). The fix re-points the file row to the replacement record (`replaceRejected` in `local_store.dart`).
-
 ### 5.2 The record on the server
 | From | To | By | Rule |
 |---|---|---|---|
 | (none) | awaiting file | sync create, or portal create | Section 6.2 |
 | awaiting file | stored | the complete route | A row in `attachment_blobs` |
-| any | entered in error | the creator on the phone (sync `set`), or a member holding the kind's create key in the portal | One way. The file is kept in storage and hidden from the chart; an admin with `team.view_audit` still sees that it existed |
+| any | entered in error | the creator on the phone (sync `set`), or a member who may add that kind, in the portal (7.1) | One way. Allowed before and after the note is finished. The file is kept in storage and hidden from the chart; an admin with `team.view_audit` still sees that it existed |
 
 There is no delete and no replace. A retake is a new attachment; the first is marked entered in error with reason `unreadable`.
-
 ### 5.3 Derived values (sums, never stored)
 | Value | Rule |
 |---|---|
 | Photos in a set | Attachments with that `note_id` and `field_path`, not entered in error |
-| Cap | The form field's `max` (default 5, PRD 486, 404). A hard stop on the phone. The server never refuses for it: it accepts and sets `over_cap` |
+| Photos a note shows | Its sets whose field is visible and whose entry was not removed: the paths `effectiveAnswers` would keep (forms 7.1). The rest are kept and not shown, as a hidden answer is |
+| Cap | The `photo` field's `max`, read with `fieldAt` (5 per wound, PRD 486, 404). A hard stop on the phone. The server never refuses for it: it accepts and sets `over_cap` |
 | Current profile photo | The newest `profile_photo` by `corrected_time`, then by `id`, not entered in error |
 | A document | All pages with one `group_id`, ordered by `page`, then `corrected_time` |
 ### 5.4 Pure functions
@@ -162,7 +163,7 @@ TypeScript in `services/api/src/attachments/rules.ts`, Dart in `apps/mobile/lib/
 | `completeDecision` (TS, mirrored in the fake) | `{expected: {sha256, byteSize, count}, chunks: [{idx, byteSize}]}` | `ready`, or `chunks_missing` with the list | same |
 | `photosLeft` | `activeCount`, `max` | int ≥ 0 | `attachment-rules.json` |
 | `currentProfilePhoto` | list of `{id, correctedTime, enteredInError}` | id or null | same |
-| `attachmentAccess` | `permissions`, `kind`, `action` (`create`, `view`, `mark_error`), `noteClass` | bool (section 7.1) | `access.json` (extended) |
+| `attachmentAccess` | `permissions`, `kind`, `action` (`create`, `view`, `mark_error`), and for a wound photo `{noteMedical, chartsMedical, pathVisible, actsAsAuthor}` | bool (section 7.1). It holds no note rule of its own: `pathVisible` is phase 4's `visibleAnswers` asked about the photo's path | `access.json` (extended) |
 | `validateAttachmentValue` | the create value | list of problem codes | `attachment-rules.json` |
 | `sniffMime` | first 16 bytes | `image/jpeg`, `image/png`, `application/pdf` or null | `mime-sniff.json` |
 | `stripJpegMetadata` (Dart; TS for the portal) | JPEG bytes | JPEG bytes without APP1–APP15 and COM segments; throws if not a JPEG | `jpeg-strip.json` (hex) |
@@ -170,32 +171,44 @@ TypeScript in `services/api/src/attachments/rules.ts`, Dart in `apps/mobile/lib/
 | `sealSegment`, `openSegment` (Dart only) | key, index, final flag, bytes | bytes | `sealed-file.json` (known answers) |
 ### 5.5 The sealed file format (Dart, `apps/mobile/lib/attachments/sealed_file.dart`)
 Header: the 4 bytes `SXA1`. Then one segment per upload chunk: AES-256-GCM over 65 536 plaintext bytes (the last is shorter), key = the file's own random 256-bit key, nonce = 8 zero bytes then the segment index as a big-endian u32, associated data = index then one byte `1` for the last segment and `0` otherwise, followed by the 16-byte tag. So chunk `i` can be read and decrypted alone, a truncated or reordered file fails to open, and plaintext never touches disk. The write goes to `<id>.sxa.part`, is flushed, then renamed; a `.part` file found at start-up is deleted (its record was never made).
-
+### 5.6 A photo and its note (what phase 4 owns, and what this phase adds)
+| Question | Answer |
+|---|---|
+| How does a photo attach? | By `note_id` and `field_path`. The path is the `photo` field's own path, so in Wound care it carries the wound's entry ID. The field itself still stores no answer (forms 2.3): no change to `checkAnswer`, `effectiveAnswers` or any definition |
+| Two phones add photos to one wound offline | Each photo is its own record. Nothing conflicts |
+| The entry or the note does not exist yet on the server | The note is a parent, so the photo waits for it (6.2). An entry is only a path part: the photo is accepted, and shown once the entry's `entryAt` answer counts |
+| Is a photo inside what a signature covers? | No. `noteContentHash` (lifecycle 4.5) is unchanged, and so are the sign-off, co-sign and attest. A photo is fixed by its own record: append-only, with its author, time and the hash of its file. PLAN-OPEN 11 #10 |
+| What does the signer see? | The summary screen (lifecycle 9.6) lists each photo set with its count. A photo that arrives after the screen drew does not stop the sign-off |
+| A photo added after the note is finished | The phone does not offer it: the field is disabled like every field of a finished note. If one arrives late from a second phone it is accepted with `late: true`, shown below the note with its author and time, and both people are told, as for a late edit (lifecycle 3.6) |
+| What can a correction do to a photo? | Nothing directly: a correction changes answers (lifecycle 3.6), and a photo is not one. A correction that removes an entry or hides the field hides that set's photos with it; they are kept. A wrong photo on a finished note is marked entered in error by its creator, with a reason code. That mark is the photo's correction: one way, audited, the file kept |
+| What can an addendum do? | An addendum is text (lifecycle 4.7). It carries no photo. It can say why a photo was marked, or point to a late one |
+| Co-sign and attest | Unchanged. A reader who sees every answer that counts also sees every photo of the note (7.1), so nothing new can stall a queue |
 ## 6. Sync
 ### 6.1 One new entity: `attachment`
-Registered like the phase 3 entities (`services/api/src/sync/entities/attachment.ts`, `entities.dart`, the fake). Category for the unsynced summary: `photos`.
+Registered like the phase 3 entities and phase 4's four (`services/api/src/sync/entities/attachment.ts`, `entities.dart`, the fake). Category for the unsynced summary: `photos`. No new reject reason: a refused rule is `validation` with a `details.problem`, as in phase 4 (lifecycle 4.1).
 
 | Op | Field | Value | Permission (`attachmentAccess`) |
 |---|---|---|---|
-| `create` | | `{patientId, kind, noteId?, fieldPath?, groupId?, page?, docType?, docDate?, mime, byteSize, sha256, chunkSize, width?, height?, rotation}` | `create` for the kind |
+| `create` | | `{patientId, kind, noteId?, fieldPath?, groupId?, page?, docType?, docDate?, mime, byteSize, sha256, chunkSize, width?, height?, rotation}` | `create` for the kind; on a Medical note, the Medical gate |
 | `set` | `enteredInError` | `{reason}` | `mark_error`: the creator only, on a phone |
 
-Parents: the patient always; the note for a wound photo. Takes the team write lock (it names a patient, D32). Clock pause: wound photos pause with notes; profile photos and documents do not (D35's split).
-
+Parents: the patient always; the note for a wound photo. `takesTeamLock` is true for every change, as for phase 4's entities (lifecycle 4.2). **The Medical gate** (lifecycle 4.2): a photo on a note whose `medical` is true needs a credential with `chartMedical`, loaded with `loadSigner`. The phone offers the field only to such a credential, so the gate is met only when a credential was lowered offline; the change is then held for a Program Admin, never refused. Clock pause: wound photos pause with notes; profile photos and documents do not (D35's split).
 ### 6.2 What the server answers
 | Case | Answer | Then |
 |---|---|---|
 | Valid create | `accepted`, hash of the value | Row inserted; audit `attachment.created`; the upload may open |
 | Same change again | The stored receipt (existing rule) | |
-| Value fails `validateAttachmentValue` (bad hash text, size, mime, chunk count, kind and parent mismatch) | `rejected`, `validation`, `details.problem` = the code | Needs attention; the file stays sealed |
+| Value fails `validateAttachmentValue` (bad hash text, size, mime, chunk count, kind and parent mismatch) | `rejected`, `validation`, `details.problem` = the code | The phone checks the same function before it saves, so this is a build fault. The worker's fix is **Send again**: `replaceRejected` with the value built again from the sealed file. The file stays sealed until then |
+| `fieldPath` is not a `photo` field of the note's definition | `accepted`, `details.problem: 'not_a_photo_field'`; `unplaced` set | Shown below the note with a notice. The worker could not fix a refusal |
+| Reading the definition throws | Stored `validation`, `definition_error` (lifecycle 4.1) | The queue moves on |
 | Patient or note unknown | `rejected`, `stale_reference`, `patient_missing` or `encounter_note_missing` (existing parent rule) | Held with its parent's own change, or Needs attention |
 | Patient merged | `accepted`, stored as sent; `details.redirectedTo` (D27) | |
 | Photo set already at `max` | `accepted`, `details.overCap: true` | Shown with a notice; never refused |
-| Note already finished | `accepted`, `details.outcome: 'late'` | Both people told, as phase 4 rule 6 |
-| No permission, or the user was removed | `rejected`, `permission`, `quarantined: true`, stored hash (existing rule, D17) | The change leaves the phone; **the file does not**: it uploads into quarantine (6.3) |
+| Note already finished | `accepted`, `details.outcome: 'late'` | Both people told, as for a late edit (lifecycle 3.6; 5.6) |
+| No permission, the Medical gate, or the user was removed | `rejected`, `permission`, `quarantined: true`, stored hash (existing rule, D17): held for a Program Admin | The change leaves the phone; **the file does not**: it uploads into quarantine (6.3) |
 | `set enteredInError` by its creator | `accepted` | Audit `attachment.entered_in_error` |
 | `set enteredInError` already set | `accepted`, `details.outcome: 'already'` | No second event |
-| `set enteredInError` by someone else | `rejected`, `permission`, quarantined | |
+| `set enteredInError` by someone else | `accepted`, stored with no effect, `details.problem: 'not_creator'`; the sender gets a notice | As phase 4's `not_author`: the phone never offers it, and the worker could not fix a refusal |
 | A database constraint fails | Stored `server_constraint` rejection (D42) | The queue moves on |
 ### 6.3 The upload, after the record
 The uploader (`apps/mobile/lib/attachments/uploader.dart`) runs after every push round, oldest file first, one file at a time, one chunk per request. `fileStep` decides each move.
@@ -212,23 +225,26 @@ The uploader (`apps/mobile/lib/attachments/uploader.dart`) runs after every push
 | D21 hand-over | The wipe waits for every change ID **and** every file to be confirmed. Chunks go to the device-key routes (section 7) |
 | Remote wipe, tenth wrong PIN | Unchanged: the key is destroyed, so file keys are gone. The team's `att/` directory is deleted with the database file |
 | `LocalStore.purge` | Calls the attachments purge with the set of records in use; a chart with a file not yet stored counts as local work |
-| Phase 4 sign-off hash | Gains the note's attachments as a sorted list of `{id, sha256}`. A photo added after signing is `late` |
+| Phase 4's `noteContentHash`, sign-off and correction | Unchanged (5.6) |
+| The sync read, `/v1/sync/records` | `attachment` gets its own read rule, as phase 4's entities do (lifecycle 6.4 rule 7): a row is given to whoever `attachmentAccess` lets view it, and is absent otherwise |
 ### 6.5 What the fake must mirror (`apps/mobile/test/sync/fake_server.dart`, level X; plan risk 7, D52)
-Every row of 6.2; `completeDecision`; chunk hash checking; "open is idempotent"; "complete is idempotent"; mismatch clears staging; the quarantine origin. The blob half lives in a new `apps/mobile/test/sync/fake_blob_server.dart`, treated as level X too. `fake_parity_test.dart` gains one case per rule, each pinned to the real API's answer.
+Every row of 6.2, the Medical gate and the read rule included; `completeDecision`; chunk hash checking; "open is idempotent"; "complete is idempotent"; mismatch clears staging; the quarantine origin. The blob half lives in a new `apps/mobile/test/sync/fake_blob_server.dart`, treated as level X too. `fake_parity_test.dart` gains one case per rule, each pinned to the real API's answer.
 
 ### 6.6 What a phone holds
 | Thing | How it gets there | When it leaves |
 |---|---|---|
-| A sealed file and its key | Capture | Both receipts, and the parent out of use (note closed or signed, form closed): PRD 572, 573 |
+| A sealed file and its key | Capture | Both receipts, and the parent out of use (the note saved and closed or finished, the form closed): PRD 572, 573 |
 | Attachment metadata of a cached chart (ids, kinds, times, stored or not) | With the chart, in `_chart` | With the chart (D30, D44) |
 | Bytes of a stored file | Never on disk. Fetched online into memory to view | When the viewer closes, at lock, at background |
 ## 7. API routes that only work online
 ### 7.1 Permissions (`attachmentAccess`, existing keys only)
 | Action | Wound photo | Profile photo | Document |
 |---|---|---|---|
-| Create | `encounters.chart` | `patients.edit` | `patients.edit` |
-| View file or list | `patients.view` and `encounters.chart`; plus the note's own class (`patients.view_sensitive`, `patients.view_sensitive_exams`) when phase 4's projection asks for it | `patients.view` | `patients.view` |
-| Mark entered in error (portal) | `encounters.chart` | `patients.edit` | `patients.edit` |
+| Create | `encounters.chart`, and on a Medical note a credential with `chartMedical` (the Medical gate, 6.1) | `patients.edit` | `patients.edit` |
+| View file or list row | `patients.view` and `encounters.chart`, and the reader would see an answer at the photo's path: `visibleAnswers` (forms 7.1, lifecycle 6.4) keeps it. Whoever acts as the note's author sees it | `patients.view` | `patients.view` |
+| Mark entered in error (portal) | As create | `patients.edit` | `patients.edit` |
+
+So a photo in a sensitive note type, a substance use treatment section or a sensitive exam section is read under phase 4's rule for that content, decided in phase 4's one function. A photo the reader may not see is **absent**: no row in the list, the chart or the sync read, and `404` from the content route. A photo in a sensitive exam section never shows in the wound history or the profile, for any reader (PRD main 415); it shows in the visit only. A reader of Medical notes through `billing.view_codes` alone sees no photo (PLAN-OPEN 11 #3).
 ### 7.2 Routes
 | Path | Key | Request → answer | Refusals | Audit |
 |---|---|---|---|---|
@@ -236,12 +252,14 @@ Every row of 6.2; `completeDecision`; chunk hash checking; "open is idempotent";
 | `PUT /v1/attachments/{id}/chunks/{index}` | Same | body: raw bytes, header `x-chunk-sha256` → `{index, sha256}` | 409 `chunk_hash_mismatch`; 413 `chunk_too_large`; 400 `chunk_out_of_range`; 409 `already_stored` (treated as success by the phone, which then calls complete) | None: staging holds no chart data (section 9) |
 | `POST /v1/attachments/{id}/complete` | Same | none → `{state: 'stored', sha256, byteSize}` | 409 `chunks_missing {missing}`; 409 `hash_mismatch` | `attachment.stored`, or `attachment.upload_refused` |
 | `POST /v1/devices/{deviceId}/quarantine/attachments/{id}/upload`, `.../chunks/{index}`, `.../complete` | The device key, as the existing quarantine route | As above | As above, plus the device-key refusals | Same events, `origin: 'quarantine'` |
-| `GET /v1/patients/{patientId}/attachments` | `patients.view`; rows filtered by `attachmentAccess` | → metadata rows with `stored: bool` | 403 | `attachment.listed` (`patientId`, count) |
-| `GET /v1/attachments/{id}/content` | `attachmentAccess(view)` | → the bytes, `Cache-Control: no-store`, `Content-Disposition: inline` | 403; 404; 409 `not_stored_yet` | `attachment.viewed`, committed before the first byte is sent |
+| `GET /v1/patients/{patientId}/attachments` | `patients.view`; rows filtered by `attachmentAccess` | → metadata rows with `stored: bool`. The same rows ride in the chart answer as `attachments` (4.2) | 403 | `attachment.listed` (`patientId`, count) |
+| `GET /v1/attachments/{id}/content` | `attachmentAccess(view)` | → the bytes, `Cache-Control: no-store`, `Content-Disposition: inline` | 404 (unknown, or not for this reader); 409 `not_stored_yet` | `attachment.viewed`, committed before the first byte is sent |
 | `POST /v1/attachments` | `attachmentAccess(create)`; documents and profile photos only | The create value → the row | 400 with the validation codes; 403 | `attachment.created` (`source: 'portal'`) |
-| `POST /v1/attachments/{id}/entered-in-error` | 7.1 | `{reason}` → the row | 403; 409 `already` | `attachment.entered_in_error` |
+| `POST /v1/attachments/{id}/entered-in-error` | 7.1 | `{reason}` → the row. Already marked: the row again, no second event | 403 | `attachment.entered_in_error` |
 
-**Complete, in order.** (1) Lock the session row. If a blob row exists, answer `stored` again. (2) `completeDecision`. (3) Read the staged chunks in order, check size and SHA-256 against the session. On mismatch: delete staged objects and chunk rows, audit `attachment.upload_refused`, answer `hash_mismatch`. (4) Put the final object at `storageKey`. (5) Get it back from storage and hash it. (6) In one transaction: insert `attachment_blobs`, set the session `stored`, write `attachment.stored`. (7) Delete staged objects, best effort; `open` on a stored session deletes leftovers. An object can exist without a receipt row (harmless, overwritten on retry). A receipt row never exists without a checked object.
+**The team lock.** Every route here that writes a row calls `lockTeamWrites` as the first statement of its transaction, as every online writer does (lifecycle 5; `services/api/src/sync/locks.ts`): open, chunk, complete, the portal create and entered in error, and the device-key variants. Storage calls run outside that transaction, so the lock is held for one small write, never for a file's transfer. Phase 4's routes are not changed: the visit read (lifecycle 5.1) keeps its shape, and a screen joins photos to a note by `noteId` and `fieldPath`.
+
+**Complete, in order.** (1) Read the session. If a blob row exists, answer `stored` again. (2) `completeDecision`. (3) Read the staged chunks in order, check size and SHA-256 against the session. On mismatch: delete staged objects and chunk rows, audit `attachment.upload_refused`, answer `hash_mismatch`. (4) Put the final object at `storageKey`. (5) Get it back from storage and hash it. (6) In one transaction: take the team lock, lock the session row and check again that no blob row exists, insert `attachment_blobs`, set the session `stored`, write `attachment.stored`. (7) Delete staged objects, best effort; `open` on a stored session deletes leftovers. An object can exist without a receipt row (harmless, overwritten on retry). A receipt row never exists without a checked object.
 
 **Storage interface** (`services/api/src/blobs/store.ts`, added to `Deps` as `blobs`): `put(key, bytes)`, `get(key) → bytes | null`, `delete(key)`, `deletePrefix(prefix)`. Two implementations: memory (tests, local) and S3 API with SigV4 over `fetch` (one class for Supabase Storage and S3; it runs on Node and Deno, D3). Config: `BLOB_ENDPOINT`, `BLOB_REGION`, `BLOB_BUCKET`, and two secrets; rows for `docs/setup.md`.
 
@@ -251,25 +269,25 @@ Every screen passes the accessibility checks in Day, Night run and High contrast
 ### 8.1 Phone (`apps/mobile/lib/features/attachments/`)
 | Screen | Shows | States | Wording |
 |---|---|---|---|
-| Photo set field (inside a phase 4 form) | Button, count, a row of the set's photos | Empty; 1–4; full; clock paused | Button "TAKE WOUND PHOTO"; "Photos: Up to 5" (field spec rows 116, 306–307, via `forms-inventory.md` 143, 278). Full: "This wound has 5 photos. That’s the most a visit can hold." |
+| Photo field (phase 4's `photo` kind; replaces the placeholder in `features/forms/photo_field.dart`) | Button, count, a row of the set's photos | Empty; 1–4; full; clock paused; disabled on a finished note | Button "TAKE WOUND PHOTO"; "Photos: Up to 5" (field spec rows 116, 306–307, via `forms-inventory.md` 143, 278). Full: "This wound has 5 photos. That’s the most a visit can hold." |
 | Capture | Live preview, shutter, flash, close | Asking for the camera; refused; ready; saving; no space | Refused: "Sineobex needs the camera to add photos. Turn it on in Settings." No space: "This phone is out of space. The photo wasn’t saved." |
 | Review (after each shot) | The photo just taken | | Buttons "Retake photo", "Add another photo", "Submit photo" (field spec row 117) |
 | Photo tile | Image if the file is still here; otherwise a plain tile with its state | "On this phone", "Sending 3 of 12", "Saved", "Needs attention", "Marked entered in error" | A person is never shown a hash or a byte count |
 | Viewer | One image, full screen, pinch to zoom; capture time and author | Local file; online fetch; offline and not here | Offline: "This photo is saved on the server. Connect to see it." No share, save or copy control exists |
 | Profile header photo | A plain covered tile until tapped (PRD 721) | No photo; covered; shown; offline | "Tap to show photo". Add or replace: "Take profile photo" |
 | Documents (profile) | A list by date and type, page count | Empty; list; offline | "Add document" opens type, optional date, then Capture for each page: "Add another page", "Done" |
-| Needs attention row | A damaged or refused file | | "A photo couldn’t be saved to the chart. Take it again if you can." |
+| Needs attention row | A damaged or refused file | Refused record: "Send again". Damaged file: retake, or "Mark entered in error" | "A photo couldn’t be saved to the chart. Take it again if you can." |
 | Log-out alert line | Stored of total | | "Photos: 2 of 6" (PRD 575) |
 
-The viewer and tiles draw with `Image.memory` only. The image cache is cleared when the app locks or goes to the background (`apps/mobile/lib/security/idle_lock.dart` gains a callback).
+The photo field stays a plain widget, as phase 4 requires of every field widget (forms 8.1): it is given its tiles and two callbacks by the note form's host, and touches no store. Phase 4's read view and summary screen (lifecycle 9.6, 9.7) show each set under its field, and late or unplaced photos below the note. The viewer and tiles draw with `Image.memory` only. The image cache is cleared when the app locks or goes to the background (`apps/mobile/lib/security/idle_lock.dart` gains a callback).
 
-### 8.2 Portal (`apps/portal/src/app/(app)/patients/[id]/`)
+### 8.2 Portal (`apps/portal/src/app/(app)/patients/[patientId]/`)
 | Page | Shows | States | Notes |
 |---|---|---|---|
 | Documents tab | List; viewer; "Upload document" (type, date, file); "Mark entered in error" with a reason | Empty; uploading with progress; failed with "Try again" (the chosen file stays in the form, PRD 606); refused type or size | JPEG, PNG, PDF; 20 MiB. The route handler hashes, creates, chunks and completes server-side; nothing is written to disk or browser storage |
-| Photos in wound history | Dated photos per wound | "Still on the phone of the person who took it" for a record with no file yet | Sizes come from phase 4 |
+| Photos in wound history, and under each note on phase 4's visit page (lifecycle 9.11) | Dated photos per wound | "Still on the phone of the person who took it" for a record with no file yet | Sizes come from phase 4. No photo from a sensitive exam section in the history |
 | Profile header | Covered until clicked; the click fetches, and the fetch is the logged read | | |
-| File route `/patients/[id]/files/[attachmentId]` | Proxies `GET .../content` | | `no-store`; generic page title; the URL holds two UUIDs and nothing else |
+| File route `/patients/[patientId]/files/[attachmentId]` | Proxies `GET .../content` | | `no-store`; generic page title; the URL holds two UUIDs and nothing else |
 | Team devices page | `photos` in each phone's unsynced counts | | Existing page, one more label |
 
 There is no download button, and the image element sets `draggable=false`. A browser can still save an image; that is PRD 602's stated desktop risk, and exports are phase 10's (section 12).
@@ -277,7 +295,7 @@ There is no download button, and the image element sets `draggable=false`. A bro
 ## 9. Audit events and PHI rules
 | Event | When | Details (IDs, counts and hashes only, D33) |
 |---|---|---|
-| `attachment.created` | Sync create or portal create, same transaction | `attachmentId`, `patientId`, `kind`, `noteId`, `source`, `byteSize`, `overCap`, `late` |
+| `attachment.created` | Sync create or portal create, same transaction | `attachmentId`, `patientId`, `kind`, `noteId`, `source`, `byteSize`, `overCap`, `late`, `unplaced` |
 | `attachment.upload_opened` | First open of a session | `attachmentId`, `origin`, `chunkCount` |
 | `attachment.stored` | The receipt row's transaction | `attachmentId`, `byteSize`, `chunkCount`, `sha256`, `origin` |
 | `attachment.upload_refused` | Whole-file mismatch | `attachmentId`, `problem` |
@@ -285,7 +303,7 @@ There is no download button, and the image element sets `draggable=false`. A bro
 | `attachment.viewed` | Content route; and offline on the phone through `LocalStore.appendAudit` when someone opens a local file | `attachmentId`, `patientId`, `kind` |
 | `attachment.entered_in_error` | Either path | `attachmentId`, `reason` (a code) |
 
-Rules that apply: no file name, document type text, note text or patient name in details, logs or URLs. Storage keys and local file names are UUIDs. Chunk writes are not audited one by one: they are staging, not chart data, and the session's open and stored events bracket them (a reading of "every action", stated in section 12). A content read whose audit insert fails sends no bytes. API logs for these routes carry `requestId`, `attachmentId`, index and sizes only. Images never enter crash reports, notifications or `kv`.
+Rules that apply: no file name, document type text, note text or patient name in details, logs or URLs. Storage keys and local file names are UUIDs. Chunk writes are not audited one by one: they are staging, not chart data, and the session's open and stored events bracket them (a reading of "every action", stated in section 12). A content read whose audit insert fails sends no bytes. API logs for these routes carry `requestId`, `attachmentId`, index and sizes only. Images never enter crash reports, notifications or `kv`. Home gains no count from this phase: the Needs attention row is counted from the phone's own store, so opening Home still writes no patient into the audit log (lifecycle 5.6, 9.9).
 
 ## 10. Tests
 ### 10.1 The Done when, step by step
@@ -316,7 +334,10 @@ Runs against the fake (host test), against the real API (`tools/live-sync.sh`), 
 | Storage full (PRD 608) | Sealed-file test with a writer that fails midway: no `.sxa`, no record, the person is told |
 | No plaintext on disk | Step 2; `tools/leak-guard.mjs` (below) |
 | Nothing reaches the camera roll, a share sheet or a backup | 10.3 |
-| Permissions | `access.json` vectors; API tests per route and role; a Billing/Data role gets 403 on a wound photo |
+| Permissions | `access.json` vectors; API tests per route and role. A Billing/Data role, and a reader without the key for a sensitive exam section, get no row and a 404 for that photo; the note's acting author gets it |
+| A photo is outside the signature | API and fake: a photo added between the summary screen and the sign-off leaves `noteContentHash` equal and the sign-off lands; a photo on a finished note is `late`; a correction that removes the entry hides its photos and deletes none |
+| The Medical gate; no refusal a worker cannot fix | API and fake: a lowered credential's photo is held for an admin and its bytes reach quarantine; `not_a_photo_field` and `not_creator` are accepted with a notice |
+| The team lock comes first | API test per writing route: a held team lock makes the route wait; no storage call runs inside the transaction |
 | Row-level security | DB test: another team's `app.team_id` sees no row in the four tables |
 | The fake agrees with the API | `fake_parity_test.dart` cases for 6.2 and the three upload answers |
 | Both runtimes | Blob store test against memory and against a local S3-API server in CI (the Supabase stack already used by the live job, if it exposes storage; otherwise section 12, risk 4) |
@@ -336,14 +357,15 @@ Runs against the fake (host test), against the real API (`tools/live-sync.sh`), 
 |---|---|---|---|---|
 | 1 | How long are photos and documents kept? (PRD 489, 727) | Kept. Nothing is deleted; entered in error hides | The only choice that loses nothing | Counsel |
 | 2 | Is the cap per encounter or per wound? (PRD 486 says encounter; the field spec gives 5 on the quick form only) | The form field's `max`, default 5 per photo set, so per wound in Wound care | Matches phase 4's default A33 | Brooke and Mercy |
-| 3 | May Billing/Data and Logistics see wound photos? | No: `patients.view` and `encounters.chart` | Minimum necessary; D38 narrows nothing else | The project lead |
+| 3 | May a reader of Medical notes through `billing.view_codes` alone see wound photos? Phase 4 lets that reader see the note's answers (lifecycle 6.4) | No: a photo needs `encounters.chart` on top of phase 4's rule for its path | Minimum necessary: coding needs the answers, not the image | The project lead |
 | 4 | Which key adds a document or a profile photo? | `patients.edit` | It is demographic paperwork, and CHWs hold it | The project lead |
 | 5 | Document types | Six (4.1) | PRD 727 names two; the rest are the common papers | Brooke and Mercy |
 | 6 | Are any photos kept on the phone for offline viewing (route cache, profile photo)? | None | Least PHI on the phone | Brooke and Mercy, then the project lead |
 | 7 | "Blurred until tapped" (PRD 721) | A plain covered tile; the tap fetches and logs | Bytes are not fetched, so nothing is disclosed, until someone asks | The team |
 | 8 | Image size and limits | Long edge 2048 px, quality 80; 8 MiB per phone file; 20 MiB per desktop file; 50 pages per document | Enough for wound detail at about 1 MB a photo | Brooke and Mercy (detail), the team (cost) |
-| 9 | Who may mark an attachment entered in error? | Its creator on the phone; any holder of the kind's create key in the portal | What only the author does works offline (phase 4 rule 5) | Brooke and Mercy |
-| 10 | Is a photo part of what a signature covers? | Yes, by hash | A signed note should not change silently | Brooke and Mercy, with counsel |
+| 9 | Who may mark an attachment entered in error? | Its creator on the phone; anyone who may add that kind, in the portal | What only the author does works offline (D60) | Brooke and Mercy |
+| 10 | Is a photo part of what a signature covers? | No. Phase 4's hash covers the answers, the patient and the assessment (D57) and is left alone. A photo is fixed by its own append-only record and file hash, and one added later is marked `late` | Phase 4 owns the hash. Putting photos in it would make a teammate's photo refuse a sign-off, and would let a note be signed over a file that never arrives. If the answer is yes: version 2 of the hash with a sorted list of `{id, sha256}`, in phase 4's files | Brooke and Mercy, with counsel |
+| 13 | May a photo be added on purpose to a finished note, as an addendum is? | No: only a late arrival from a second phone | The PRD's addendum is a dated entry of text (PRD 459) | Brooke and Mercy |
 | 11 | Uploads in the background, app closed | No: only while the app is open and unlocked | The file key needs the unlock; no background PHI handling | The team |
 | 12 | Consent for a photo | Nothing new: registration consent covers charting | The PRD names no photo consent | Counsel |
 
@@ -355,8 +377,9 @@ Runs against the fake (host test), against the real API (`tools/live-sync.sh`), 
 2. **Phones never talk to storage.** No presigned URLs (D4, and every write audited).
 3. **Purge waits for the note to close** (PRD 572) even though PRD 573 says "then the local file is deleted". 572 is read as governing: staff should not lose sight of a photo mid-encounter.
 4. **Chunk writes are not audit events.** The session's open and stored events are.
-5. **The cap is never enforced by refusing on the server.** A refusal there would be one the worker cannot fix.
+5. **The cap is never enforced by refusing on the server.** A refusal there would be one the worker cannot fix (D59). The same reading makes `not_a_photo_field` and `not_creator` accepted with a notice.
 6. **Hash of the plaintext file.** The phone's file encryption is local; the server hashes the same bytes the phone hashed before sealing.
+7. **A signature does not cover photos** (5.6, section 11 #10). The PRD says a signed note is locked (PRD 452); a photo cannot change, and one added later is marked.
 
 **Risks.**
 1. **Native camera code is new, and iOS has no CI build** (plan risk 5). It is the one place a leak could be introduced unseen. Mitigation: it is small, level X, guarded by `leak-guard`, and checked on a device before the pilot.
@@ -367,84 +390,89 @@ Runs against the fake (host test), against the real API (`tools/live-sync.sh`), 
 6. **Desktop uploads are untrusted files.** Type is checked by signature, size is capped, files are served `inline` with `nosniff`. No malware scan until phase 12.
 7. **A browser can save a displayed image.** Stated by PRD 602; not solvable in a web app.
 8. **Flash storage keeps deleted blocks.** Mitigated by the per-file key: deleting the row is the erase.
-9. **Phase 4 may be built differently from its design.** The photo-set field, the note class and the sign-off hash are the three joins; check them first (section 2).
+9. **Phase 4 may be built differently from its design.** The `photo` field and its paths, `visibleAnswers`, the Medical gate and the `_chart` keys are the four joins; check them first (section 2).
+10. **A photo's visibility is asked of phase 4's function, by path.** If `visibleAnswers` cannot answer for a path that holds no answer, phase 4's unit F1 gains a small `pathVisible(def, path, reader)` built on it, with vectors; this phase must not copy the rule.
 
 ## 13. Units and a first card list
-Units own disjoint files. U0 lands first, alone, with CI green. Then U1 and U2 (server), U3 then U4 (phone core), U5 beside them, then U6 and U7, then U8. "Tests" are extra to the three source files. **Level X units, plainly:** U0's migration and `Deps` cards, all of U1, all of U3, the receipt cards of U2, U5 (native), and U8's `tools/` and `.github` cards.
+Units own disjoint files, except the shared files named below. U0 lands first, alone, with CI green. Then U1 and U2 (server), U3 then U4 (phone core), U5 beside them, then U6 and U7, then U8. Card IDs are a unit and a short name, and levels follow `docs/plan/README.md`: anything under `services/api/src/sync`, `auth` or `db`, `apps/mobile/lib/sync`, `security` or `auth`, the phone's test server, a migration with a policy or trigger, `.github` or `tools` is level X; a screen or a widget is R; S only where a machine check catches every mistake. Each unit with T cards has one tests card (level X) that writes those cards' test files first. No card changes more than three source files; tests are extra. Paths are short as in phase 4's index: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `vectors/` is `packages/contract/test-vectors/`, `portal/` is `apps/portal/src/app/(app)/`.
 
-| # | Card | Level | Files | Needs |
-|---|---|---|---|---|
-| | **U0 Schema, contract and core rules (first, alone)** | | | |
-| 0.1 | Vector files for chunks, steps, rules, mime, JPEG strip | T | `packages/contract/test-vectors/attachment-*.json`, `mime-sniff.json`, `jpeg-strip.json` | |
-| 0.2 | Migration: four tables, policies, append-only triggers | X | `db/migrations/<n>_attachments.sql` | |
-| 0.3 | Migration: entity names in SQL, if any remain | X | `db/migrations/<n+1>_attachment_sync_names.sql` | 0.2 |
-| 0.4 | TS chunk functions | T | `services/api/src/attachments/rules.ts` | 0.1 |
-| 0.5 | TS step, purge, complete and cap functions | T | `services/api/src/attachments/rules.ts` | 0.4 |
-| 0.6 | TS value validation, mime sniff, storage keys | T | `services/api/src/attachments/validate.ts` | 0.1 |
-| 0.7 | `attachmentAccess` and its vectors | X | `services/api/src/auth/permissions.ts`, `access.json` | 0.1 |
-| 0.8 | Blob store interface, memory store, `Deps.blobs` | X | `services/api/src/blobs/store.ts`, `services/api/src/types.ts`, test harness | |
-| 0.9 | Route and value schemas, routes answering 501, contract regenerated | T | `services/api/src/routes/attachments.ts`, `services/api/src/attachments/schemas.ts`, `services/api/src/app.ts` | 0.6 |
-| 0.10 | Test fixtures: a demo JPEG maker, `createAttachment`, `expectStored` | S | `services/api/test/attachment-fixtures.ts` | 0.9 |
-| | **U1 Server sync entity (level X throughout)** | | | |
-| 1.1 | `attachment` entity: create, parents, lock, permission | X | `services/api/src/sync/entities/attachment.ts`, `index.ts`, `schemas.ts` | U0 |
-| 1.2 | `over_cap`, `late`, merged-patient details on the receipt | X | `entities/attachment.ts` | 1.1 |
-| 1.3 | `set enteredInError`, one way | X | `entities/attachment.ts` | 1.1 |
-| 1.4 | Attachment list inside the chart bundle (`_chart`) | X | the chart projection file phase 4 leaves, `services/api/src/patients/` | 1.1 |
-| | **U2 Server upload, receipt and reads** | | | |
-| 2.1 | Open a session from an accepted create | T | `services/api/src/attachments/sessions.ts` | U0 |
-| 2.2 | Open a session from a quarantined create | X | `sessions.ts` | 2.1 |
-| 2.3 | Put a chunk: hash, size, range, replace | T | `services/api/src/attachments/chunks.ts` | 2.1 |
-| 2.4 | Complete: assemble, read back, receipt and audit in one transaction | X | `services/api/src/attachments/complete.ts` | 2.3 |
-| 2.5 | Device-key variants of the three routes | X | `services/api/src/routes/devices.ts`, `sessions.ts` | 2.2, 2.4 |
-| 2.6 | List route with `attachment.listed` | T | `services/api/src/attachments/reads.ts` | U0 |
-| 2.7 | Content route: audit first, then bytes, `no-store` | T | `reads.ts` | 2.4 |
-| 2.8 | Portal create route | T | `services/api/src/attachments/create.ts` | U0 |
-| 2.9 | Entered-in-error route | T | `create.ts` | 2.8 |
-| 2.10 | S3-API blob store with SigV4 | X | `services/api/src/blobs/s3.ts`, `config.ts`, both entry files | 0.8 |
-| 2.11 | Demo seed: three attachments with generated images | S | `db/seed/` | 2.4 |
-| | **U3 Phone store and fake (level X throughout)** | | | |
-| 3.1 | Local schema: `attachment_files` | X | `apps/mobile/lib/sync/local_db.dart` | U0 |
-| 3.2 | Entity registry: `attachment`, category `photos`, clock rule | X | `apps/mobile/lib/sync/entities.dart` | U0 |
-| 3.3 | `unsynced`, `hasUnsynced`, purge hook, file re-point on a fix | X | `apps/mobile/lib/sync/local_store.dart` | 3.1, 3.2 |
-| 3.4 | Engine: run the uploader after a push; hand-over waits for files | X | `apps/mobile/lib/sync/sync_engine.dart`, `sync_controller.dart` | 3.3, 4.6 |
-| 3.5 | Fake: the `attachment` entity rules | X | `apps/mobile/test/sync/fake_server.dart` | U1 |
-| 3.6 | Fake blob server and parity cases | X | `apps/mobile/test/sync/fake_blob_server.dart`, `fake_parity_test.dart` | U2 |
-| | **U4 Phone attachments domain (`apps/mobile/lib/attachments/`)** | | | |
-| 4.1 | Dart chunk, step, purge, cap functions | T | `rules.dart` | 0.1 |
-| 4.2 | Dart value validation, mime sniff, `attachmentAccess` | T | `validate.dart`, `apps/mobile/lib/patients/access.dart` | 0.1, 0.7 |
-| 4.3 | `stripJpegMetadata` | T | `jpeg.dart` | 0.1 |
-| 4.4 | Sealed file: segments, write through `.part`, read one segment | T | `sealed_file.dart` | 0.1 |
-| 4.5 | File vault: directory, start-up sweep, delete on wipe | T | `file_vault.dart` | 4.4, 3.1 |
-| 4.6 | Uploader: open, send, complete, rehash, driven by `fileStep` | T | `uploader.dart` | 4.1, 4.5, 3.6 |
-| 4.7 | Repository: capture to record and file in one step; list; mark error | T | `attachment_repository.dart` | 3.3, 4.3, 4.5 |
-| 4.8 | Online viewer source: fetch to memory; offline audit for local views | T | `attachment_reader.dart` | 4.7 |
-| 4.9 | Providers and the capture-source interface with a fake for tests | S | `attachment_providers.dart`, `capture_source.dart` | 4.7 |
-| | **U5 Native capture (level X: a strong model or a person)** | | | |
-| 5.1 | Android: CameraX in-memory capture, platform view, `CAMERA` permission | X | `CaptureChannel.kt`, `MainActivity.kt`, `AndroidManifest.xml` | |
-| 5.2 | iOS: AVFoundation in-memory capture, platform view, usage text, file protection | X | `CaptureChannel.swift`, `AppDelegate.swift`, `Info.plist` | |
-| 5.3 | Dart channel wrapper implementing the capture source | T | `apps/mobile/lib/attachments/capture_channel.dart` | 4.9, 5.1 |
-| | **U6 Phone screens (`apps/mobile/lib/features/attachments/`)** | | | |
-| 6.1 | Capture screen and its refusals | R | `capture_screen.dart` | 5.3 |
-| 6.2 | Review screen: Retake, Add another, Submit | R | `review_screen.dart` | 6.1 |
-| 6.3 | Photo tile with its five states | R | `photo_tile.dart`, `attachment_labels.dart` | 4.7 |
-| 6.4 | Photo set field for phase 4 forms, with the cap | R | `photo_set_field.dart`, the form field registry | 6.2, 6.3 |
-| 6.5 | Viewer; image cache cleared at lock | R | `viewer_screen.dart`, `apps/mobile/lib/security/idle_lock.dart` (X: reviewed twice) | 4.8 |
-| 6.6 | Profile header photo, covered until tapped | R | `profile_photo.dart`, the profile screen | 6.5 |
-| 6.7 | Documents list and add flow | R | `documents_screen.dart`, `add_document_screen.dart` | 6.2 |
-| 6.8 | Needs attention row and the "Photos: 2 of 6" line | R | the sync feature's list and log-out alert | 3.3 |
-| | **U7 Portal** | | | |
-| 7.1 | File route: proxy, `no-store`, generic title | T | `apps/portal/src/app/(app)/patients/[id]/files/[attachmentId]/route.ts` | 2.7 |
-| 7.2 | Upload action: hash, create, chunk, complete, in memory | T | `apps/portal/src/app/actions/attachments.ts`, `apps/portal/src/lib/chunks.ts` | 2.4, 2.8 |
-| 7.3 | Documents tab with upload and mark-in-error | R | `patients/[id]/documents/page.tsx`, its form component | 7.1, 7.2 |
-| 7.4 | Covered profile photo; photos in wound history | R | the profile page, `photo-strip.tsx` | 7.1 |
-| 7.5 | `photos` on the devices page; labels | S | the devices page, `apps/portal/src/lib/labels.ts` | |
-| 7.6 | Playwright: upload, view, mark, axe in three themes, no browser storage | T | `apps/portal/e2e/documents.spec.ts` | 7.3 |
-| | **U8 Leak guards and the Done when** | | | |
-| 8.1 | `leak-guard`: banned packages, calls and manifest keys | X | `tools/leak-guard.mjs`, `tools/ci-local.sh` | U5 |
-| 8.2 | Done-when host test against the fake (steps 1, 2, 4–8) | T | `apps/mobile/test/attachments/done_when_test.dart` | U4, U3 |
-| 8.3 | Done-when in the live job against the real API | X | `tools/live-sync.sh`, its Dart driver | 8.2, U2 |
-| 8.4 | Android emulator test of step 3, and its CI job | X | `apps/mobile/integration_test/camera_roll_test.dart`, `.github/workflows/` | 5.1, 6.2 |
-| 8.5 | iOS device checklist and the compliance page | S | `docs/compliance/photo-handling.md` | 5.2 |
-| 8.6 | Plan: decisions, section 6 rows, phase status, setup rows | S | `IMPLEMENTATION_PLAN.md`, `docs/setup.md`, this file's Status | all |
+**Files another phase or unit also edits, and the order:** `api/app.ts`, `api-test/permissions.test.ts`, `db/seed/seed.ts`, `api/patients/{charts,projection,schemas}.ts`, `phone/patients/chart_cache.dart`, `phone/features/forms/photo_field.dart` and `field_host.dart`, the note read view and summary screen, `phone/features/sync/*`, the portal's `NoteView.tsx` (all after phase 4's cards for them); `api/routes/attachments.ts` (U0-routes, then each U2 card wires its own route); the generated contract (U0-contract, U1-contract).
 
-**Count: 63 cards.** S 6, T 24, R 10, X 23.
+| Card | Level | Files, and what it does | Needs |
+|---|---|---|---|
+| | | **U0 Schema, contract and core rules (first, alone)** | |
+| U0-vectors-upload, U0-vectors-rules | X | `vectors/attachment-chunks.json`, `attachment-steps.json`, `sealed-file.json`; then `attachment-rules.json`, `mime-sniff.json`, `jpeg-strip.json` | |
+| U0-migration | X | `db/migrations/<n>_attachments.sql`: four tables, policies, append-only triggers, `patient_of_change`; its DB test | |
+| U0-access | X | `api/auth/permissions.ts`, `vectors/access.json`: `attachmentAccess` | U0-vectors-rules |
+| U0-blob-store | X | `api/blobs/store.ts`, `api/types.ts` (`Deps.blobs`), the test harness | |
+| U0-tests | X | The test files of this unit's T cards, and `api-test/attachment-fixtures.ts` (a demo JPEG maker, `createAttachment`, `expectStored`) | the cards above |
+| U0-rules-chunks, U0-rules-steps | T | `api/attachments/rules.ts`: chunk functions; then step, purge, complete and cap functions | U0-tests |
+| U0-validate | T | `api/attachments/validate.ts`: value validation, mime sniff, storage keys | U0-tests |
+| U0-routes | T | `api/routes/attachments.ts`, `api/attachments/schemas.ts`, `api/app.ts`: schemas, routes answering 501, a row per route in `api-test/permissions.test.ts` | U0-validate |
+| U0-contract | S | The generated contract | U0-routes |
+| | | **U1 Server sync entity (level X throughout)** | |
+| U1-entity | X | `api/sync/entities/attachment.ts`, `entities/index.ts`, `api/sync/schemas.ts`: create, parents, the team lock, permission, the Medical gate | U0 |
+| U1-details, U1-entered-in-error | X | `entities/attachment.ts`: `over_cap`, `late`, `unplaced`, merged patient, a throwing definition stored; then the one-way mark and `not_creator` | U1-entity |
+| U1-sync-read | X | `api/routes/sync.ts`: the read rule for `attachment` | U1-entity, U0-access |
+| U1-chart | X | `api/patients/charts.ts`, `projection.ts`, `schemas.ts`: the `attachments` key, filtered | U1-entity |
+| U1-contract | X | The generated contract and `vectors/sync-values.json` | the U1 cards above |
+| | | **U2 Server upload, receipt and reads (`api/attachments/`)** | |
+| U2-tests | X | `api-test/attachments-{sessions,chunks,reads,create}.test.ts` | U0 |
+| U2-open | T | `sessions.ts`: open a session from an accepted create | U2-tests |
+| U2-open-quarantine | X | `sessions.ts`: open a session from a quarantined create | U2-open |
+| U2-chunk | T | `chunks.ts`: hash, size, range, replace; the lock held for the row only | U2-open |
+| U2-complete | X | `complete.ts`: assemble, read back, receipt and audit in one transaction | U2-chunk |
+| U2-device-routes | X | `api/routes/devices.ts`, `sessions.ts`: the device-key variants | U2-open-quarantine, U2-complete |
+| U2-list, U2-content | T | `reads.ts`: the list with `attachment.listed`; then content: audit first, then bytes, `no-store`, 404 when hidden | U2-tests; U2-complete |
+| U2-portal-create, U2-entered-in-error | T | `create.ts`: the portal create; then the mark, idempotent | U2-tests |
+| U2-s3-store, U2-s3-config | X | `api/blobs/s3.ts` (SigV4 over `fetch`); then `api/config.ts` and the two entry files | U0-blob-store |
+| U2-seed | S | `db/seed/demo-attachments.ts`, `db/seed/seed.ts`: three attachments with generated images | U2-complete |
+| | | **U3 Phone store and test server (level X throughout)** | |
+| U3-local-schema | X | `phone/sync/local_db.dart`: `attachment_files` | U0 |
+| U3-registry | X | `phone/sync/entities.dart`: `attachment`, category `photos`, the clock rule | U0 |
+| U3-store | X | `phone/sync/local_store.dart`: `unsynced`, `hasUnsynced`, the purge hook, the file re-point on a fix | U3-local-schema, U3-registry |
+| U3-fake-entity | X | `phone-test/sync/fake_server.dart`: every row of 6.2 | U1 |
+| U3-fake-blobs | X | `phone-test/sync/fake_blob_server.dart`, `fake_parity_test.dart` | U2 |
+| U3-engine | X | `phone/sync/sync_engine.dart`, `sync_controller.dart`: run the uploader after a push; the hand-over waits for files | U3-store, U4-uploader |
+| | | **U4 Phone attachments domain (`phone/attachments/`)** | |
+| U4-tests | X | The test files of this unit's T cards, under `phone-test/attachments/` | U0, U3-store |
+| U4-rules | T | `rules.dart`: chunk, step, purge and cap functions | U4-tests |
+| U4-validate | T | `validate.dart`, `phone/patients/access.dart`: validation, mime sniff, `attachmentAccess` | U4-tests, U0-access |
+| U4-jpeg | T | `jpeg.dart`: `stripJpegMetadata` | U4-tests |
+| U4-sealed-file | X | `sealed_file.dart`: segments, the write through `.part`, read one segment (encryption) | U0-vectors-upload |
+| U4-file-vault | T | `file_vault.dart`: directory, start-up sweep, delete on wipe | U4-sealed-file, U3-local-schema |
+| U4-uploader | T | `uploader.dart`: open, send, complete, rehash, driven by `fileStep` | U4-rules, U4-file-vault, U3-fake-blobs |
+| U4-repository | T | `attachment_repository.dart`: capture to record and file in one step; list; mark error | U3-store, U4-jpeg, U4-file-vault |
+| U4-reader | T | `attachment_reader.dart`: fetch to memory; offline audit for local views | U4-repository |
+| U4-providers | T | `attachment_providers.dart`, `capture_source.dart`: the capture-source interface, with a fake for tests | U4-repository |
+| U4-chart-cache | R | `phone/patients/chart_cache.dart`, its test: keeps `attachments` | U1-chart |
+| | | **U5 Native capture (level X: the frontier model or a person)** | |
+| U5-android, U5-ios | X | `CaptureChannel.kt`, `MainActivity.kt`, `AndroidManifest.xml`; `CaptureChannel.swift`, `AppDelegate.swift`, `Info.plist`: in-memory capture, platform view, camera permission, file protection | |
+| U5-channel | X | `phone/attachments/capture_channel.dart`: the capture source over the channel | U4-providers, U5-android |
+| | | **U6 Phone screens (`phone/features/attachments/`; level R, each with its widget test)** | |
+| U6-labels | S | `attachment_labels.dart` | |
+| U6-capture, U6-review | R | `capture_screen.dart` and its refusals; `review_screen.dart`: Retake, Add another, Submit | U5-channel, U6-labels |
+| U6-tile | R | `photo_tile.dart`: its five states | U4-repository, U6-labels |
+| U6-photo-field | R | `phone/features/forms/photo_field.dart`, `field_host.dart`: the placeholder becomes the field, with the cap | U6-review, U6-tile |
+| U6-note-photos | R | `note_photos.dart`, phase 4's read view and summary screen: sets under their fields, late and unplaced photos below | U6-tile |
+| U6-viewer | R | `viewer_screen.dart` | U4-reader |
+| U6-lock-clears-images | X | `phone/security/idle_lock.dart`: a callback that clears the image cache at lock and in the background | U6-viewer |
+| U6-profile-photo | R | `profile_photo.dart`, `phone/features/patients/patient_screen.dart`: covered until tapped | U6-viewer |
+| U6-documents | R | `documents_screen.dart`, `add_document_screen.dart` | U6-review |
+| U6-needs-attention | R | `phone/features/sync/sync_labels.dart`, `needs_attention_screen.dart`, `sign_out_dialog.dart`: the row, Send again, "Photos: 2 of 6" | U3-store |
+| | | **U7 Portal** | |
+| U7-tests | X | The test files of U7-file-route and U7-upload, and `apps/portal/e2e/documents.spec.ts` (upload, view, mark; axe in three themes; no browser storage) | U2 |
+| U7-file-route | T | `portal/patients/[patientId]/files/[attachmentId]/route.ts`: proxy, `no-store`, generic title | U7-tests |
+| U7-upload | T | `apps/portal/src/app/actions/attachments.ts`, `apps/portal/src/lib/chunks.ts`: hash, create, chunk, complete, in memory | U7-tests |
+| U7-documents | R | `portal/patients/[patientId]/documents/page.tsx`, its form component | U7-file-route, U7-upload |
+| U7-photos | R | `portal/patients/[patientId]/page.tsx`, `PhotoStrip.tsx`, phase 4's `NoteView.tsx`: the covered profile photo, wound history, photos under a note | U7-file-route |
+| U7-devices | R | The devices page, `apps/portal/src/lib/labels.ts`: `photos` | |
+| | | **U8 Leak guards and the Done when** | |
+| U8-leak-guard | X | `tools/leak-guard.mjs`, `tools/ci-local.sh`, the CI workflow | U5 |
+| U8-done-when-phone | X | `phone-test/attachments/done_when_test.dart`: steps 1, 2, 4–8 against the test server | U4, U3 |
+| U8-live | X | `tools/live-sync.sh`, its Dart driver: the Done when against the real API | U8-done-when-phone, U2 |
+| U8-emulator | X | `apps/mobile/integration_test/camera_roll_test.dart`, `.github/workflows/`: step 3 | U5-android, U6-review |
+| U8-compliance | R | `docs/compliance/photo-handling.md`: the iOS device checklist | U5-ios |
+| U8-plan | R | `IMPLEMENTATION_PLAN.md`, `docs/setup.md`, this file's Status | all |
+
+**Count: 73 cards.** S 3, T 20, R 15, X 35. By unit: U0 11, U1 6, U2 13, U3 6, U4 11, U5 3, U6 11, U7 6, U8 6. The small model types the code of 38; the frontier model or a person writes the other 35, the tests of every T card among them.

@@ -1,7 +1,7 @@
-> Draft plan (Nov 14), written before phase 4 was built. Check section 2 against the code before building, and write the task cards when the phase starts.
+> Draft plan (Nov 14), checked against the reviewed phase 4 design and the designs of the phases before it. Check section 2 against the code before building, and write the task cards when the phase starts.
 
 # Phase 5: Admin configuration
-PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies of the product spec). Code citations are paths on the pull request branch.
+PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies of the product spec). Code citations are paths on the pull request branch. "forms" and "lifecycle" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`).
 
 ## 1. Scope and Done when
 **Done when** (`build-plan.md:91`, `IMPLEMENTATION_PLAN.md:161`): an admin adds a Labs item, a bundle and a secondary flag, and a phone sees all three after its next sync.
@@ -23,7 +23,7 @@ PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies 
 | Stock counts, the Orders tab, suggest then confirm, deduction, the restock reminder itself, bag owners, the allergy check | Phase 6 (`build-plan.md:93-98`) |
 | The bag check and the route packing list (they read this phase's mappings); ranking the route builder and the continuity queue by flags | Phases 7 and 9 (`main.md:476`, `:478`) |
 | Alert rules, geofence radius, resource directory settings | Phase 6 (alerts); V2 (`main.md:190-191`) |
-| A free-form form builder (branching rules, layout); barcode scanning; pack-to-unit conversion | V2 or deferred (`main.md:479`, `:127`). Phase 5 edits note types through a fixed list of operations (5.4) |
+| A free-form form builder (conditions, layout, new kinds of field); barcode scanning; pack-to-unit conversion | V2 or deferred (`main.md:479`, `:127`). Phase 5 edits note types through a fixed list of operations (5.4) |
 
 ## 2. Ground truth
 What the code has today:
@@ -31,46 +31,51 @@ What the code has today:
 | Fact | Where |
 |---|---|
 | `team.manage_presets` exists: "Change note types, bundles, the item catalog, flags, mappings and alert rules". Only Program Admins hold it among standard roles. | `services/api/src/auth/permissions.ts:14`; `db/migrations/0002_identity_access.sql:76-97` |
-| No table for items, bundles, flags, mappings, bags or note types. The last migration is `0016_merge_review_undo.sql`. | `db/migrations/` |
+| No table for items, bundles, flags, mappings, bags or note types. The last migration is `0016_merge_review_undo.sql`. Phase 4 takes 0017 to 0021, so this phase expects 0022 and 0023. | `db/migrations/`; lifecycle 2.1 |
 | `patients.priority_flag_key text` exists, is never read or written, and carries the comment "phase 5 adds the team flag table and the FK". | `db/migrations/0009_patients.sql:58` |
 | `encounter_notes` stores `note_type_key` and a nullable `note_type_version`. | `db/migrations/0004_sync.sql:60-61` |
 | Problems carry an optional ICD-10-CM `code` with a format check. | `db/migrations/0010_problems.sql:13-14` |
 | The team policy block (row-level security on `team_id`) and the revoke of update and delete on history tables. | `db/migrations/0004_sync.sql:185-198` |
 | An admin route opens `teamScope(c, deps, {permissions, recentAuth})`, writes inside `scope.tx(async (tx, audit) => …)` and audits in that transaction. A refusal writes `access.denied`. | `services/api/src/routes/roles.ts:141-192`; `services/api/src/auth/context.ts:230-256` |
+| Every online route that writes calls `lockTeamWrites(tx, teamId)` as its first statement. It is the audit chain's own lock, so it adds no waiting. | `services/api/src/sync/locks.ts:17`; lifecycle 5 |
 | The phone refreshes server data after each sync through `AfterSyncRefresher`; the team index is the model (a table in the team database, replaced from a read route). | `apps/mobile/lib/sync/sync_engine.dart:89`; `apps/mobile/lib/patients/team_index.dart:330`; `apps/mobile/lib/sync/local_db.dart:256` |
 | Synced entities are registered with their permission, parents and field rules; the phone test server mirrors them by hand. | `services/api/src/sync/entities/index.ts`; `apps/mobile/test/sync/fake_server.dart` |
 | Every table with a `patient_id` must be listed in `CHART_TABLES`. | `services/api/src/patients/charts.ts:24-37` |
 | Portal admin pages so far: `devices`, `duplicates`, `members`, `merges`, `problem-reversals`, `quarantine`, `reviews`, `roles`. None for presets. | `apps/portal/src/app/(app)/team/` |
-| `packages/forms` does not exist. Shared vectors live in `packages/contract/test-vectors/`. | `packages/`; `docs/design/phase-4/lifecycle.md:140-148` |
+| `packages/forms` does not exist. Shared vectors live in `packages/contract/test-vectors/`. The seed (`db/seed/`) cannot import the API, so anything the seed installs lives in a package. | `packages/`; lifecycle 1.6; forms 11 |
 
-What must be delivered first (not built on Nov 14; the phase 4 forms design does not yet specify the storage, so each row is a check):
+What phase 4 delivers first (designed and reviewed, not built on Nov 14). Phase 4 owns each of these; this design uses its names:
 
-| From | Thing | Phase 5 needs |
+| From | Thing | What phase 5 does with it |
 |---|---|---|
-| Phase 4, forms part (migration 0017, D13) | `note_type_versions`, one row per team, key and version, with the definition as JSON; platform presets installed for each team | Rows are append-only. If there is no head row per note type, unit E adds one (4.3) |
-| Phase 4, forms part | The definition schema in `packages/forms` | Stable ids for sections, fields and options; a `locked` mark on fields that rules depend on; option lists shared by id (`main.md:410`) |
-| Phase 4, both parts | The read route that gives a phone its note types and the phone's cache of them; a note keeps its `note_type_version` from creation to signing | The route serves any stored version by key and version; the phone keeps every version a note it holds was written on (6.4) |
-| Phase 4 | The encounter and chart screens on the phone | The flag row (8.2) sits on the chart header |
+| forms 3.1 (migration 0017, D62) | `note_type_versions (team_id, key, version, definition, hash, origin, preset_version, created_at)`: the resolved definition per team, key and version; append-only by trigger; `origin` is `preset` or `team` | Writes `origin = 'team'` rows. Adds the head table `note_types` for what a team offers (4.3); phase 4 has none and offers every installed key |
+| forms 2.1, 2.2 | A resolved definition: sections and fields by `id` (a path is section id, then field ids), options by `code`. Lists and modules are copied in. Marks: `sensitiveExam`, `treatmentRecord`, `needs`, `required`, `noNormal`; on the type `kinds`, `group`, `sensitivity`, `quick`, `auto`. There is no `locked` or `hidden` mark | Edits resolved definitions only. What may not be edited is worked out from the marks (5.4) |
+| forms 2.6, 6.8 | A note is always read, completed and corrected on the version it was created on. A new version may add, remove or reword; a path or option code is never reused; a reworded option is declared in `renames`. Mappings are keyed by note type key, path and option code | Every edit goes through phase 4's validator. Mappings use those three keys (4.4) |
+| forms 3.2, 11 | `installPresets(tx, teamId)` in `packages/forms/src/install.ts`: runs at team creation, in the seed and at the start of `GET /v1/forms/note-types`; from phase 5 on it skips a key whose newest row is `team` | Card P4-install makes it follow 5.2 |
+| forms 3.3, 3.4 | `GET /v1/forms/note-types` (the keys a team offers) and `/{key}/{version}`; the phone asks at each sync, starts a note only on a listed version and keeps the definition of every note it holds | The list reads `note_types` (card P4-offered). Nothing changes on the phone |
+| lifecycle 3.1, D56 | Medical is a property of a note, through its type (`kinds`); `encounter_notes.medical`. A Non-Medical note is never signed | A type's `kinds` never changes after creation (5.4) |
+| lifecycle 4.1, 4.2, D59 | A refusal only for what the worker can fix; a permission failure on a push is held for a Program Admin; a rule that throws is a stored rejection; every change takes the team lock | The flag change follows all four (6.2) |
+| lifecycle 5.2, 9.1, 9.9 | The chart answer rides in the patient record's `_chart` field (`chart_cache.dart`); the patient profile is `patient_screen.dart`; Home's counts name no patient | Flags join the chart answer and the profile (8.2); Team setup names no patient |
 
 ## 3. The design in one page
-1. **Every setting is a preset: a head row plus append-only versions with a JSON body.** One pair of tables holds eight kinds. One shape means one set of rules, one route file and one portal pattern, repeated.
-2. **Presets are written only online, in the portal, never through the change protocol.** Admins work on desktop (`main.md:185`), so no phone can hold a refused preset change.
+1. **Every setting is a preset: a head row plus append-only versions with a JSON body.** One pair of tables holds eight kinds. One shape means one set of rules, one route file and one portal pattern, repeated. Note types keep phase 4's table and gain a head of the same shape.
+2. **Presets are written only online, in the portal, never through the change protocol.** Admins work on desktop (`main.md:185`), so no phone can hold a refused preset change. Every write takes the team write lock first.
 3. **A phone gets presets from one read route, by revision, after every sync, and keeps them in its team database.** Presets hold no patient data, so they stay until the team database is wiped. Everything works offline from that copy.
 4. **Nothing is deleted. Remove means archive.** Old notes, orders and reports can always resolve an id. This is stricter than the PRD, which archives only what was used (`main.md:387`).
 5. **What a count or a rank means never changes after creation**: an item's unit, a category's behaviour and a flag's tier are fixed. To change one, archive and add. An old order then never changes meaning.
 6. **Records made against an older version are kept, never refused.** A record stores the preset id and the version it was made on. A phone offline cannot know about an edit or an archive.
 7. **A platform update touches only copies the team never edited.** An edited copy gets an offer the admin may take. An archived copy stays archived.
-8. **Note types are edited by a fixed list of operations, applied by one pure function on the server.** The server never accepts a definition built by a browser, and a locked field cannot be hidden.
-9. **A patient's flags are append-only changes; the current flags are worked out from them.** Two phones offline cannot conflict, and "who set it and why" (`main.md:320`) is the record itself.
+8. **Note types are edited by a fixed list of operations, applied by one pure function on the server.** The server never accepts a definition built by a browser. No operation can change a mark that phase 4's rules read (who may read, what is required, what is Medical), and the result passes phase 4's validator before it is stored.
+9. **A patient's flags are append-only changes; the current flags are worked out from them.** Two phones offline cannot conflict, and "who set it and why" (`main.md:320`) is the record itself. No flag change is refused for something its sender cannot fix (D59).
 10. **No new permission keys.** Writing presets needs `team.manage_presets`. Flagging a patient needs `patients.edit`. Seeing a sensitive flag needs `patients.view_sensitive`.
 
 ## 4. Data model
-Migrations take the next free numbers after phase 4. All are plain SQL, additive, one transaction. Both add policies, so both are level X.
+Migrations take the next free numbers after phase 4 (0022 and 0023 if nothing lands between). All are plain SQL, additive, one transaction. Both add policies, so both are level X.
 
 | File | Adds |
 |---|---|
-| `<next>_team_presets.sql` | `team_presets`, `team_preset_versions`, `team_preset_state`; the note type head (4.3) if phase 4 has none |
-| `<next>_patient_flag_changes.sql` | `patient_flag_changes`; `patient_of_change` learns the new entity (as phase 4's 0020 does) |
+| `0022_team_presets.sql` | `team_presets`, `team_preset_versions`, `team_preset_state`; the note type head `note_types` (4.3) |
+| `0023_patient_flag_changes.sql` | `patient_flag_changes`; `patient_of_change` learns the new entity (as phase 4's 0020 does) |
 
 ### 4.1 `team_presets` (head; the API may update, never delete)
 | Column | Type | Meaning and constraint |
@@ -99,10 +104,10 @@ Migrations take the next free numbers after phase 4. All are plain SQL, additive
 | `created_by` | uuid | Null when `source = 'platform'` |
 | `created_at` | timestamptz not null | Server time |
 
-`team_preset_state`: `team_id uuid primary key`, `revision bigint not null default 0`. Every preset write adds 1 and stamps the head row, inside the team's audit-chain lock (D32), so revisions are in order with no gaps. Security block for all three: the team policy of `0004_sync.sql:185-195`; `revoke delete` on all three; `revoke update` on `team_preset_versions`.
+`team_preset_state`: `team_id uuid primary key`, `revision bigint not null default 0`. Every preset write adds 1 and stamps the head row, after `lockTeamWrites` (the team's write lock, D32), so revisions are in order with no gaps. Security block for all three: the team policy of `0004_sync.sql:185-195`; `revoke delete` on all three; `revoke update` on `team_preset_versions`.
 
 ### 4.3 Note types
-Phase 4 owns `note_type_versions`. Phase 5 needs a head row per team and key with the same columns as 4.1 from `state` to `updated_at`. If phase 4 delivered one, unit E adds only the missing columns. If not, `<next>_team_presets.sql` adds `note_types (team_id, key, name, state, current_version, origin_key, origin_version, platform_latest, customized, revision, …)` with primary key `(team_id, key)`, filled from the existing versions. It shares `team_preset_state.revision`.
+Phase 4 owns `note_type_versions` (forms 3.1) and this phase changes none of its columns. A team's edit is a new row there with `origin = 'team'`, the next `version`, and `hash = sha256Hex(canonicalJson(definition))`. `0022_team_presets.sql` adds the head phase 4 left to this phase: `note_types (team_id, key, title, state, current_version, platform_latest, customized, revision, updated_by, updated_at)`, primary key `(team_id, key)`, filled from the existing versions. `title` is a copy of the definition's `title`. `platform_latest` is compared with the `preset_version` of the newest `preset` row. The head shares `team_preset_state.revision`. A key the team makes is `t_` and 12 hex characters, made by the server; it fits phase 4's key pattern.
 
 ### 4.4 Body shapes (zod schemas in `packages/presets/src/schemas.ts`; `id` fields are preset ids of the same team)
 | Kind | Body | Fixed after creation |
@@ -111,12 +116,12 @@ Phase 4 owns `note_type_versions`. Phase 5 needs a head row per team and key wit
 | `item` | `{name, categoryId, unit: text 1-20, medical: bool, captureLot: bool, result: null \| {type:'choice', options: text[2..12]} \| {type:'number', unit: text}}` | `unit`, `result.type` |
 | `bundle` | `{name, medical: bool, lines: [{itemId, qty: int 1-99, core: bool}] (1-40, no item twice)}` | none |
 | `flag` | `{name, tier: 'primary' \| 'secondary', criteria: text 0-500, color: one of 8 palette names, rank: int, sensitive: bool}` | `tier` |
-| `field_supply_map` | `{name, noteTypeKey, fieldId, when: {equals: value} \| {includes: optionId} \| {answered: true}, lines: [{itemId, qty: int 1-99 \| {fromField: fieldId}}] (1-10)}` | `noteTypeKey`, `fieldId` |
+| `field_supply_map` | `{name, noteTypeKey, path, when: {equals: value} \| {includes: optionCode} \| {answered: true}, lines: [{itemId, qty: int 1-99 \| {fromPath: path}}] (1-10)}`. A path is written without an entry part, as `mapsTo` is (forms 2.2) | `noteTypeKey`, `path` |
 | `condition_supply_map` | `{name, codes: text[1..20] (ICD-10-CM, the format of `0010_problems.sql:14`), lines: [{itemId, qtyPerPatient: int 1-99}] (1-10)}` | none |
 | `bag` | `{name, minimums: [{itemId, min: int 1-999}] (0-200, no item twice)}` | none |
 | `settings` | `{bagMinimumsOn: bool, newBagMinimums: [{itemId, min}], problemCheckDays: int 7-365}` | none |
 
-Rules the schema cannot hold are in `validatePreset` (5.3): an item's category exists; `result` is set exactly when the category's behaviour is `lab`; `medical` is true when the behaviour is `medication` or `lab`; a bundle holding a `medication` item is `medical` (`main.md:447`); a `primary` flag is never `sensitive`.
+Rules the schema cannot hold are in `validatePreset` (5.3): an item's category exists; `result` is set exactly when the category's behaviour is `lab`; `medical` is true when the behaviour is `medication` or `lab`; a bundle holding a `medication` item is `medical` (`main.md:447`); a `primary` flag is never `sensitive`; a mapping's `path` is a `choice`, `number` or `flag` field of the note type's current version (`fieldAt`, forms 7.1), and its option code is one of that field's.
 
 ### 4.5 `patient_flag_changes` (append-only; a synced entity)
 | Column | Type | Meaning and constraint |
@@ -156,7 +161,9 @@ An archived preset is never offered for new work. It stays readable everywhere, 
 | Row is `active`, not customized, platform is newer | `update`: version + 1, `source = 'platform'`, `origin_version` moves |
 | Row is customized or archived, platform is newer | `offer`: only `platform_latest` moves. The body is untouched |
 
-The installer runs for a new team and for every team at deploy, as phase 4's note type installer does. It is idempotent. Platform data is `packages/presets/data/platform.json`, each entry with `originKey`, `platformVersion` and a body that names other entries by `originKey`.
+The installer is `installTeamPresets(tx, teamId)` in `packages/presets/src/install.ts` (a package, because the seed calls it). It runs where phase 4's `installPresets` runs (forms 3.2): when a team is created, in the seed, and at the start of `GET /v1/presets`, so a team gets a platform update the first time a phone asks. It is idempotent, and when it writes it takes the team lock and audits in that transaction. In the route, an entry that fails is logged by key and skipped: a throw would fail every phone's pull. Platform data is `packages/presets/data/platform.json`, each entry with `originKey`, `platformVersion` and a body that names other entries by `originKey`.
+
+Note types follow the same table through phase 4's `installPresets`, which card P4-install changes: it compares `preset_version`, not `version`, because a team's version 3 may not be the platform's; `update` inserts the platform definition as the team's next version with `origin = 'preset'`; `offer` moves only `note_types.platform_latest`. This is forms 3.2's rule ("skips a key whose newest row has `origin = 'team'`") with the archived case added.
 
 ### 5.3 The pure functions
 Each has no database or network in it. TypeScript lives in `packages/presets/src/`, Dart in `apps/mobile/lib/presets/`. Each is pinned by one vector file in `packages/contract/test-vectors/` that both sides read, as `access.json` is today.
@@ -169,70 +176,77 @@ Each has no database or network in it. TypeScript lives in `packages/presets/src
 | `preset-rules.json` | `reorderRanks` | current `[{id, rank}]`, ordered ids | `[{id, rank}]` for flags whose rank changes (rank = position times 10) | no |
 | `platform-update.json` | `platformUpdateEffect` | 5.2 | `install`, `skip`, `update`, `offer` | no |
 | `flag-current.json` | `currentFlags` | changes `[{flagId, action, effectiveAt, id}]`, flags by id, `maySeeSensitive` | `{primary: id or null, secondary: id[] by rank then name}` | yes |
-| `supply-suggest.json` | `suggestSupplies` | active maps, items by id, `noteTypeKey`, the note's answers | `[{itemId, qty, mapId}]`, summed per item | yes |
+| `supply-suggest.json` | `suggestSupplies` | active maps, items by id, `noteTypeKey`, the note's answers that count (`effectiveAnswers`, forms 7.1) | `[{itemId, qty, mapId}]`, summed per item | yes |
 | `supply-suggest.json` | `bundleLines` | bundle body, items by id, multiplier | `[{itemId, qty, checked}]`; lines whose item is archived are left out | yes |
-| `note-type-edit.json` | `applyNoteTypeEdit` (5.4) | definition, one operation | a new definition, or `{refuse: code}` | no |
+| `note-type-edit.json` | `applyNoteTypeEdit` (5.4) | a resolved definition, one operation, the ids every earlier version used | a new definition, or `{refuse: code}` | no |
 
 `currentFlags`: order changes by `effectiveAt`, then `id`. Primary is the flag of the last primary-tier change if its action is `set`, else none. A secondary flag is carried when its own last change is `set`. Archived flags are left out. Sensitive flags are left out unless `maySeeSensitive`.
-`suggestSupplies`: a map fires when the note's type matches and the answer at `fieldId` equals the value, includes the option, or is present. `{fromField}` reads a whole number from 0 to 99 from the answers; anything else gives 0, and a line with 0 is left out. A map that names an archived item skips that line. Phase 6 calls it; phase 5 pins it.
+`suggestSupplies`: a map fires when the note's type matches and the answer at `path` equals the value, includes the option code, or is present. In a repeating section it fires once for each entry (each wound). `{fromPath}` reads a whole number from 0 to 99 from the answers, in the same entry; anything else gives 0, and a line with 0 is left out. A hidden field's answer does not count, so it never fires. A map that names an archived item skips that line. Phase 6 calls it; phase 5 pins it.
 
 ### 5.4 Note type edits
-`PUT` sends `{baseVersion, ops}`. The server loads the current definition, applies each operation in order with `applyNoteTypeEdit`, validates the result with phase 4's schema and stores it as the next version.
+`PUT` sends `{baseVersion, ops}`. The server loads the current resolved definition from `note_type_versions`, applies each operation in order with `applyNoteTypeEdit`, checks the result with phase 4's schema and validator (the 256 KiB limit and the version rules of forms 2.6 included) and inserts it as the next version with `origin = 'team'`. A released row is never changed.
 
 | Operation | Refused when |
 |---|---|
-| `rename_type {name}` | empty or over 80 characters |
-| `set_hidden {target: section or field id, hidden}` | the target is `locked` (`locked`). Red flags, disposition and sensitive-exam consent are locked (`main.md:409`, `:415`) |
-| `rename_label {target, label}` | `locked` |
-| `add_option {listId, label}`, `rename_option`, `retire_option {listId, optionId, retired}`, `move_option` | the list is `locked`; a retire would leave fewer than one option |
-| `add_field {sectionId, type: text, yes_no, choice, multi_choice, number; label; options}` | over 40 team fields in a type |
-| `add_section {label, afterSectionId}` | over 10 team sections |
+| `rename_type {title}` | empty or over 80 characters |
+| `set_hidden {path, hidden}`: hidden leaves a section or field out of the new version; shown copies it back, unchanged, from the last version that had it | the target is protected (`protected`); another field's `showWhen` or `mapsTo` names it (`in_use`) |
+| `rename_label {path, label}` | `protected` |
+| `add_option {path, label}`, `rename_option {path, code, label}`, `retire_option {path, code}`, `move_option` | the field is protected; the option carries `exclusive`, `normal`, `unable`, `other`, `suggests` or `sensitiveExam` (`protected`); a retire would leave no option. A rename is added to the version's `renames` list, as forms 2.6 asks |
+| `add_field {sectionId, kind: 'text' \| 'choice' \| 'number', label, …}` (Yes or No is a `choice` with two options) | over 40 team fields in a type; the section has `needs` |
+| `add_section {title, afterSectionId}` | over 10 team sections |
 
-Three rules hold in every case. An id is made by the server and never reused. Nothing is taken out of a definition: a hidden field and a retired option stay, so any note on any version reads against any later version. A shared option list is edited once and every note type that uses it gets its next version in the same transaction (`main.md:410`). Add a note type: a copy of an existing one, or a blank one with a name and Medical or Non-Medical. Remove and restore follow 5.1; a team's own unused note type is archived too (decision 4).
+**Protected**, worked out from phase 4's marks (forms 2.2), since a definition has no `locked` mark: every part of a note type with `auto` (Red flags, disposition and follow-up, `main.md:409`); a field with `required` or `noNormal` (the red-flag question, sensitive-exam consent and chaperone, `main.md:415`); a section with `needs`; a field of kind `action`, `problem`, `photo` or `info`.
+
+Five rules hold in every case, each pinned in `note-type-edit.json`:
+1. **No operation writes a mark.** `sensitiveExam`, `treatmentRecord`, `needs`, `required`, `noNormal`, `showWhen`, `handoff`, `mapsTo` and an option's marks are copied as they are. A field added to a marked section is covered by the section's mark, because `visibleAnswers` reads the section (lifecycle 6.4).
+2. **`kinds`, `group`, `sensitivity`, `quick` and `auto` never change after creation.** Medical is a property of the note through its type (D56), and a reader's rights follow `sensitivity`.
+3. **An id or a code is made by the server (`t_` and a number) and never reused in that note type**, hidden or retired ones included, so a mapping or a report never reads a new meaning under an old key.
+4. **A note is read on its own version** (forms 2.6), so what is hidden or retired stays readable in every note that has it.
+5. **One master list per field** (`main.md:410`). The database holds resolved definitions, with no list to edit once. So an option operation on a field is also applied to every field of the team's note types that `mapsTo` it, and to the field it maps to; each note type changed gets its next version in the same transaction (PLAN-OPEN 17).
+
+Add a note type: a copy of an existing one (its `kinds`, `group`, `sensitivity` and marks come with it; `auto` and `quick` types cannot be copied), or a blank one with a title, Medical or Non-Medical (`kinds`), and a timeline group. Remove and restore follow 5.1 on `note_types.state`; a team's own unused note type is archived too (decision 4). The `auto` note type cannot be removed (`not_removable`): the server refuses to finish a Medical note without it (lifecycle 3.3).
 
 ## 6. Sync
 ### 6.1 What a phone holds, how it gets it, when it leaves
 | Data | How it arrives | Held in | Leaves when |
 |---|---|---|---|
 | Every preset of the team at its current version, archived ones included (for names) | `GET /v1/presets?since=<revision>` after each sync that reached the server, at unlock and on pull to refresh (`PresetsRefresher`, an `AfterSyncRefresher`) | Table `presets (kind, id, version, state, origin_key, body_json)` and `kv` key `presets_revision` in the team database | The team database is wiped (removal, remote wipe, tenth wrong PIN, full sign-out). Never purged by age: it holds no patient data |
-| Note type versions | Phase 4's route and cache | Phase 4's table | Phase 4's rule, plus: a version stays while a held note names it |
-| A patient's flag changes | With the chart, through `/v1/sync/records`, like problems | `records` and `fields` (D30) | With the chart (the 24-hour cache rule) |
+| Note type versions | Phase 4's routes, asked at each sync (forms 3.3, 3.4). An archived type leaves the list | Phase 4's files (`definition_store.dart`) | Phase 4's rule: the phone keeps the definition of every note it holds |
+| A patient's flag changes | With the chart, as problems are: records through `/v1/sync/records`, and the chart answer's `flags` (section 7) kept in the patient record's `_chart` field as phase 4's `timeline` is (lifecycle 5.2). A change made on this phone leaves through the outbox | `records` (D30) | With the chart (the 24-hour cache rule); never before its own hash-confirmed receipt |
 
 The pull answers `{revision, presets: [{id, kind, state, version, originKey, body}]}` with every head whose `revision > since`. `since` absent means everything. The phone writes the rows and the new revision in one local transaction, so a pull cut short is repeated whole. If `since` is greater than the server's revision (a restored database), the server answers `{reset: true}` with everything and the phone replaces the table. A phone that has never pulled shows "Your team’s setup hasn’t downloaded yet. Connect to finish." where a preset list would be.
 
 ### 6.2 The new synced entity: `patient_flag_change`
-Create only. No fields can be edited, so it has no field versions. Reads: `/v1/sync/records` leaves out changes for a sensitive flag when the reader lacks `patients.view_sensitive`, as the projection does for sensitive sections today (`services/api/src/patients/projection.ts`).
+Create only. No fields can be edited, so it has no field versions. `takesTeamLock` is true, as for every phase 4 entity (lifecycle 4.2). No new reject reason: a refused rule is `validation` with a `details.problem` (lifecycle 4.1). A refusal is kept for what the worker can fix (D59); there is one. `/v1/sync/records` gives an entity it has no rule for to anyone with `patients.view` (`services/api/src/routes/sync.ts:73-85`), so this entity gets its own read rule: a change for a sensitive flag is absent for a reader without `patients.view_sensitive`.
 
 | Case | Server answer | Mirror in the phone test server |
 |---|---|---|
-| Valid; author holds `patients.edit` (checked per entity, D25) | Accepted; receipt with the hash | yes |
-| Same id and same hash again | Accepted again (idempotent), as every entity | yes |
+| Valid; author holds `patients.edit` (checked per entity, D25) | Accepted; receipt with the hash. The same id and hash again is accepted again, as for every entity | yes |
 | The flag is archived, or archived since | Accepted and kept (decision 6) | yes |
-| `flag_id` is not a flag of this team | Rejected `flag_unknown`; goes to Needs attention; the queue continues | yes |
+| `flag_id` is not a flag of this team (a build fault: the phone offers only flags the server sent) | Refused `validation`, problem `unknown_flag`. The worker's fix: **Choose the flag again**; the store sends the same record with the flag chosen, as phase 4 settles `unknown_note_type`. The rule checks this before the insert, so the foreign key never throws; the rule reads no definition and calls no code that can throw. The queue continues | yes |
 | The patient is unknown to the server yet | Held as a dependent of the patient create (the existing parent rule) | yes |
 | The patient was merged | Stored as sent; reads group by `canonical_id` (D27) | yes |
-| The author lacks `patients.edit` | Rejected `permission_denied`, audited `access.denied`; quarantine rules as today | yes |
-| A sensitive flag set by someone without `patients.view_sensitive` | Rejected `permission_denied`. The phone never offers it (8.2) | yes |
-| `reason` empty or over 500 characters | Rejected by the wire schema, naming the change (D51) | yes |
+| The author lacks `patients.edit`, or sets a sensitive flag without `patients.view_sensitive` (a role lowered while offline; the phone never offers either) | Held for a Program Admin, as every permission failure on a push is (`services/api/src/sync/apply.ts:403-423`; lifecycle 4.2). Audited `access.denied`. Never refused: the worker has nothing to fix | yes |
+| `reason` empty or over 500 characters | The wire schema's answer, naming the change (D51). The sheet cannot send one | yes |
 
 ### 6.3 Rules the phone test server must mirror (`apps/mobile/test/sync/fake_server.dart`, level X)
-Three things: `GET /v1/presets` (`since`, the `reset` answer, archived rows included, membership only); every row of 6.2 with the same rejection codes; the sensitive filter on reads. `fake_parity_test.dart` gains one case per row.
+Three things: `GET /v1/presets` (`since`, the `reset` answer, archived rows included, membership only); every row of 6.2 with the same answers and problems; the sensitive filter on reads. `fake_parity_test.dart` gains one case per row.
 
 ### 6.4 Records written against an older version
 | Record | Stores | When the preset changed or was archived meanwhile |
 |---|---|---|
-| A note (phase 4) | `note_type_key`, `note_type_version` | It stays on its version until signed, on any phone. The server accepts it. An archived note type cannot start a new note; open drafts finish |
+| A note (phase 4) | `note_type_key`, `note_type_version` | It is read, completed and corrected on its own version, always (forms 2.6). The rows stay, so the server never answers `unknown_note_type` for an archived type or an older version. An archived note type leaves the list, so no new note starts on it once a phone has synced; open drafts finish |
 | An order or a dispense line (phase 6) | `item_id`, `item_version`; for a lab, the result | Accepted. The count means the same, because the unit is fixed |
 | A bundle that was applied (phase 6) | `bundle_id`, `bundle_version`, and its lines as item lines | Accepted. The lines are what count; the bundle is provenance |
-| A suggestion from a mapping (phase 6) | `map_id` on the line | Accepted. A map whose field is hidden or whose option is retired no longer fires on new notes |
+| A suggestion from a mapping (phase 6) | `map_id` on the line | Accepted. A map whose path is hidden or whose option is retired no longer fires on notes of the new version, and still fires on notes of an older one |
 | A flag change | `flag_id` | Accepted (6.2). An archived flag drops out of `currentFlags` and stays in the history |
 
 ## 7. API routes that only work online
-All are in `services/api/src/routes/presets.ts` and `note-types-admin.ts`, opened with `teamScope` as `routes/roles.ts:141` does. "Admin" below means `team.manage_presets`. Every write takes the team lock, bumps the revision and audits in the same transaction. A refusal for a missing key writes `access.denied` (`auth/context.ts:230-241`).
+All are in `services/api/src/routes/presets.ts` and `note-types-admin.ts`, opened with `teamScope` as `routes/roles.ts:141` does. "Admin" below means `team.manage_presets`. Every route that writes calls `lockTeamWrites` as its first statement, as every online writer does (lifecycle 5), then bumps the revision and audits in the same transaction. Every refusal here is shown to the person at a desk who can fix it; none reaches a phone's queue. A refusal for a missing key writes `access.denied` (`auth/context.ts:230-241`).
 
 | Route | Key | Request and answer | Refusals | Audit event |
 |---|---|---|---|---|
-| `GET /v1/presets?since=` | active membership | `{revision, presets[]}` or `{reset: true, …}` (6.1) | not a member: 403 | none (11, row 9) |
+| `GET /v1/presets?since=` | active membership | `{revision, presets[]}` or `{reset: true, …}` (6.1). Names no patient. Runs the installer first (5.2) | not a member: 403 | none (11, row 9); `preset.platform_installed` when the installer wrote |
 | `GET /v1/admin/presets/{kind}` | Admin | `[{id, name, state, version, customized, updateOnOffer, referencedBy, body}]` | 403 | none |
 | `POST /v1/admin/presets/{kind}` | Admin | `{body}` gives 201 `{id, version: 1, revision}` | 422 `invalid` with paths; 409 `name_taken`, `reference_archived` | `preset.created` |
 | `PUT /v1/admin/presets/{kind}/{id}` | Admin | `{baseVersion, body}` gives `{version, revision}` | 409 `stale` with `currentVersion`, `archived`; 422 `invalid`, `fixed_field`, `no_change` | `preset.updated` |
@@ -241,14 +255,15 @@ All are in `services/api/src/routes/presets.ts` and `note-types-admin.ts`, opene
 | `POST /v1/admin/presets/{kind}/{id}/take-update` | Admin | `{baseVersion}` gives `{version, revision}` | 409 `stale`, `no_update` | `preset.platform_update_taken` |
 | `GET /v1/admin/presets/{kind}/{id}/versions` | Admin | `[{version, source, createdBy, createdAt, body}]` | 404 | none |
 | `POST /v1/admin/preset-order/flag` | Admin | `{tier, ids}` gives `{changed}` | 422 `ids_mismatch` unless `ids` is exactly the tier's active flags | `preset.reordered` |
-| `GET /v1/admin/note-types` | Admin | heads with the current definition | 403 | none |
-| `POST /v1/admin/note-types` | Admin | `{name, copyOf}` or `{name, medical}` gives 201 `{key, version: 1}` | 409 `name_taken`; 404 `copyOf` | `note_type.created` |
-| `PUT /v1/admin/note-types/{key}` | Admin | `{baseVersion, ops}` gives `{version, alsoPublished: keys}` | 409 `stale`, `archived`; 422 `{opIndex, code}` | `note_type.published`, one per type |
+| `GET /v1/admin/note-types` | Admin | heads with the current resolved definition and, for each section, field and option, whether it is protected (5.4). The portal reads definitions only here (forms 3.5) | 403 | none |
+| `POST /v1/admin/note-types` | Admin | `{title, copyOf}` or `{title, medical, group}` gives 201 `{key, version: 1}` | 409 `name_taken`; 404 `copyOf`; 422 `not_copyable` | `note_type.created` |
+| `PUT /v1/admin/note-types/{key}` | Admin | `{baseVersion, ops}` gives `{version, alsoPublished: keys}` | 409 `stale`, `archived`; 422 `{opIndex, code}`, or `invalid` from phase 4's validator | `note_type.published`, one per type |
 | `POST /v1/admin/note-types/{key}/archive`, `/restore`, `/take-update` | Admin | as for presets | as for presets | `note_type.archived`, `.restored`, `.platform_update_taken` |
-| `POST /v1/patients/{id}/flags` | `patients.edit`; plus `patients.view_sensitive` for a sensitive flag | `{flagId, action, reason}` gives 201 `{id}` | 404 patient; 422 `flag_unknown`; 403 | `patient.flag_changed` |
+| `GET /v1/forms/note-types` (phase 4's, forms 3.3) | as today | lists only keys whose `note_types.state` is `active`; `/{key}/{version}` still serves every stored version | as today | as today |
+| `POST /v1/patients/{id}/flags` | `patients.edit`; plus `patients.view_sensitive` for a sensitive flag | `{flagId, action, reason}` gives 201 `{id}` | 404 patient; 422 `unknown_flag`; 403 | `patient.flag_changed` |
 | `POST /v1/patients/search` (exists) gains `flagIds` | as today | filters by current flags, both tiers (`main.md:120`) | a sensitive flag id without `patients.view_sensitive`: 403 | the existing search event, plus the count of flag ids |
 
-Ids in paths are preset ids and note type keys, never a name. The chart read (`services/api/src/patients/projection.ts`) gains `flags: {primary, secondary[], history[]}` filtered by `currentFlags`.
+Ids in paths are preset ids and note type keys, never a name. The chart answer (`services/api/src/patients/projection.ts`, `schemas.ts`) gains `flags: {primary, secondary[], history[]}` filtered by `currentFlags`, beside phase 4's `timeline` and `recentVisits`. A sensitive flag and its history are absent for a reader without the key, never blanked.
 
 ## 8. Screens
 Every screen passes the accessibility checks in Day, Night run and High contrast and reflows at 320 px. A flag is never shown by colour alone: its name is always beside the colour.
@@ -264,38 +279,39 @@ Every screen passes the accessibility checks in Day, Night run and High contrast
 | `/field-supplies` | Note type, field, answer, items and quantities (`main.md:424-431`) | Hint: "Map the answer that means something was given, not the question that asks about it." Warning row when the field is hidden or the option retired |
 | `/condition-supplies` | Condition codes, items, quantity per patient; "Check problems not updated in [90] days" (`main.md:476`) | |
 | `/bag-minimums` | The page name is the PRD's (`main.md:477`): a switch for the team, the template for new bags, each bag with its minimums, Add bag | "Bag minimums are off. Nobody is reminded to restock." |
-| `/note-types`, `/note-types/[key]` | List with Use as is, Edit, Remove, Add; editor of sections, fields and options with Hide, Rename, Retire, Add; Publish | Locked rows say "Every Medical note keeps this." After Publish: "Version 4 is live. Notes already started stay on the version they began on." |
+| `/note-types`, `/note-types/[key]` | List with Use as is, Edit, Remove, Add; editor of sections, fields and options with Hide, Show again, Rename, Retire, Add; Publish. Add asks for Medical or Non-Medical and a timeline group | Protected rows say "This part can’t be changed." A note type can’t change between Medical and Non-Medical: "Add a new note type instead." After Publish: "Version 4 is live. Notes already started stay on the version they began on." |
 
 Shared on every page: the Removed list with Restore; version history (who, when, platform or team); the update offer "Sineobex updated this preset. Your edited copy hasn’t changed." with Review and Replace with the new version; the stale refusal "Someone else changed this while you were editing. Reload to see their version."; the referenced refusal "Still used by 2 bundles and 1 mapping. Take it out of those first."; and under every free-text box "Don’t put patient names here."
 
-The chart header shows the primary flag and the secondary flags. A Flags panel lists the history (flag, set or cleared, who, when, why) and has a form: flag, reason (required), Save. The patient list gains two filters, Risk level and Conditions. Sensitive flags are absent for a reader without `patients.view_sensitive`.
+The portal's patient page (`patients/[patientId]/page.tsx`, which phase 4 gives a timeline) shows the primary flag and the secondary flags in its header. A Flags panel lists the history (flag, set or cleared, who, when, why) and has a form: flag, reason (required), Save. The patient list gains two filters, Risk level and Conditions. Sensitive flags are absent for a reader without `patients.view_sensitive`.
 
 ### 8.2 Phone
 | Screen | Shows | States |
 |---|---|---|
-| Team setup (from Home; read only) | Orders items by category, bundles with their lines, flags by tier, "Updated 10:42" | Not downloaded yet (6.1); offline shows the held copy |
-| Chart header (phase 4's screen) | Primary flag chip and secondary flag chips | No flags: nothing shown |
-| Change flags sheet | Risk level (one, or None) and Conditions (several); a reason box, required; Save | Works offline; Save is disabled until a reason is typed; sensitive flags listed only with `patients.view_sensitive` |
+| Team setup (a row on Home, `home_screen.dart`, below phase 4's tiles; read only; names no patient, so opening it audits nothing) | Orders items by category, bundles with their lines, flags by tier, "Updated 10:42" | Not downloaded yet (6.1); offline shows the held copy |
+| The patient profile's header (`patient_screen.dart`, lifecycle 9.1) | Primary flag chip and secondary flag chips, beside phase 4's quick actions | No flags: nothing shown |
+| Change flags sheet | Risk level (one, or None) and Conditions (several); a reason box, required; Save | Works offline; Save is disabled until a reason is typed; shown only with `patients.edit`; sensitive flags listed only with `patients.view_sensitive` |
+| Needs attention (lifecycle 9.13) | `sync_labels.dart` gains one sentence for `unknown_flag`: "This flag isn’t on your team’s list. Choose the flag again." Button: Choose a flag | A held change shows "Sent for review", as phase 4's do |
 
 ## 9. Audit events and the PHI rules
 | Event | Entity, id | Details |
 |---|---|---|
 | `preset.created`, `.updated`, `.archived`, `.restored`, `.platform_update_taken` | `preset`, preset id | `kind`, `version`, `revision`, changed top-level field names; never a value |
 | `preset.reordered` | `preset`, none | `tier`, count changed |
-| `preset.platform_installed` | `team`, team id | counts of `install`, `update`, `offer` by kind; actor is the system |
+| `preset.platform_installed` | `team`, team id | counts of `install`, `update`, `offer` by kind; actor is the system. Note types keep phase 4's `forms.presets_installed` |
 | `note_type.created`, `.published`, `.archived`, `.restored`, `.platform_update_taken` | `note_type`, key | `version`, operation names and count |
-| `patient.flag_changed` | `patient`, patient id | change id, flag id, `action`, tier; never the reason |
+| `patient.flag_changed` | `patient`, patient id | change id, flag id, `action`, tier; never the reason. Written in the change's transaction, from a push and from the route |
 | `access.denied` | as today | permission and route |
 
 - Preset bodies are admin text, not patient data, but an admin can type anything. Audit details carry field names and counts only, and the portal warns under every free-text box (8.1).
 - A flag reason is patient detail. It lives only in `patient_flag_changes` and the phone's encrypted store. It is never in audit details, logs, notices, URLs or page titles.
 - A sensitive flag on a patient is a sensitive detail (`main.md:121`): filtered on the server by `patients.view_sensitive`, in sync reads, the chart read and search.
-- The phone's `presets` table and the `presets_revision` key hold no patient data, and nothing derived from a legal name (D40). Platform and seed presets pass the PHI guard; demo additions start "Demo:".
+- Team setup, `GET /v1/presets` and the note type routes name no patient, so none writes a patient into the audit log (as phase 4's Home counts). The phone's `presets` table and the `presets_revision` key hold no patient data, and nothing derived from a legal name (D40). Platform and seed presets pass the PHI guard; demo additions start "Demo:".
 - A reason and a search by flag travel in POST bodies.
 
 ## 10. Tests
 ### 10.1 The Done when
-Runs as `services/api/test/presets-done-when.test.ts`, `apps/mobile/test/presets/done_when_presets_test.dart` (against the fake), `live_presets_test.dart` (real API, under the lock) and `apps/portal/e2e/presets.spec.ts`. Steps and names come from `packages/contract/test-vectors/done-when.json`.
+Runs as `services/api/test/presets-done-when.test.ts`, `apps/mobile/test/presets/done_when_presets_test.dart` (against the fake), `live_presets_test.dart` (real API, under the lock) and `apps/portal/e2e/presets.spec.ts`. Steps and names come from `packages/contract/test-vectors/presets-done-when.json`.
 
 | Step | Asserts |
 |---|---|
@@ -316,10 +332,11 @@ Runs as `services/api/test/presets-done-when.test.ts`, `apps/mobile/test/presets
 | Every admin route refuses without `team.manage_presets` and logs it | `presets-permissions.test.ts`, one case per route |
 | A platform update never overwrites an edited or archived copy | `presets-install.test.ts`: edit, raise the platform version, install, compare bodies |
 | A fixed field cannot change; a referenced preset cannot be archived; every body's ids point at presets of the same team | `presets-routes.test.ts`; `presets-refs.test.ts` (a walk over all kinds) |
-| A draft begun on version 1 completes after version 2 is published; another phone can open it | `note-type-versions.test.ts`; phone `note_type_version_test.dart` |
-| A locked field cannot be hidden; nothing leaves a definition | `note-type-edit.json` |
+| A draft begun on version 1 completes, and is later corrected, on version 1 after version 2 is published; another phone can open it; an archived type leaves the list and its drafts finish | `note-type-versions.test.ts`; phone `note_type_version_test.dart` |
+| No operation changes a mark, `kinds`, `group` or `sensitivity`; a protected part cannot be hidden or reworded; no id or code is reused; every result passes phase 4's validator; what `visibleAnswers` gives each reader of forms 7.1 is the same before and after any edit | `note-type-edit.json`, one case per mark; `note-types-admin.test.ts` |
+| Every route that writes takes the team lock first | `presets-revision.test.ts` (two writers); `patients-flags-route.test.ts` |
+| A flag change is never refused for what its sender cannot fix: a lowered role is held, an unknown flag is settled by choosing again | `sync-flag-change.test.ts`; `fake_parity_test.dart` |
 | A pull cut short leaves the old copy whole; `reset` replaces it | `presets_refresher_test.dart` |
-| Flag changes: every row of 6.2, on the API and on the fake | `sync-flag-change.test.ts`; `fake_parity_test.dart` |
 | Two phones offline flag the same patient: both changes kept, the later one current | `sync_scenarios_test.dart`, new scenario |
 | A sensitive flag never reaches a reader without the key | `patients-flags-sensitive.test.ts` (records, chart, search) |
 | Screens | Playwright with axe in three themes and 320 px for each page; phone widget tests in three themes, offline |
@@ -342,108 +359,120 @@ Runs as `services/api/test/presets-done-when.test.ts`, `apps/mobile/test/presets
 | 13 | Does a condition mapping match a code family (L30 and all below it)? | No, exact codes only | Brooke and Mercy |
 | 14 | Are bags defined in this phase? | Yes: a name and minimums. Phase 6 adds stock and owners | Project lead |
 | 15 | Naloxone and safer-use supplies: Medical or not? | The item’s `medical` switch (`IMPLEMENTATION_PLAN.md:207`) | Brooke and Mercy |
-| 16 | Is flagging patients part of this phase? | Yes (unit F). It can move to the start of phase 7 without touching units A to E | Project lead |
+| 16 | Is flagging patients part of this phase? | Yes (unit P5). It can move to the start of phase 7 without touching units P0 to P4 | Project lead |
+| 17 | How does a team's edit keep "one master list per field" (`main.md:410`) when stored definitions have no lists? | An option edit follows `mapsTo` between the quick form and the full modules (5.4, rule 5). Other fields that shared a list are edited one by one | Project lead; Brooke and Mercy |
+| 18 | May an admin hide a required field, a consent or chaperone field, or anything in the Red flags note? May an edit change who may read a section? | No to both: these parts are protected and no operation writes a mark (5.4). A note type never changes between Medical and Non-Medical, nor its timeline group or sensitivity; add a new one (D56) | Brooke and Mercy; counsel |
+| 19 | A flag change from someone whose role was lowered while offline | Held for a Program Admin, never refused (D59) | Project lead |
 
 Questions with no default; each blocks only the card named:
 
-1. The contents of the 18 platform bundles and the starter item list (`main.md:439` gives names only). Brooke and Mercy. Blocks card A8; until then it ships the items the PRD names.
-2. Which field in each note type is the action field for the default mappings (`main.md:431`). Brooke and Mercy. Blocks card A9.
+1. The contents of the 18 platform bundles and the starter item list (`main.md:439` gives names only). Brooke and Mercy. Blocks card P0-data-catalog; until then it ships the items the PRD names.
+2. Which field in each note type is the action field for the default mappings (`main.md:431`). Brooke and Mercy. Blocks card P0-data-maps.
 3. Whether a flag about substance use falls under 42 CFR Part 2 (`main.md:435`). Counsel. Until answered the platform ships no such flag.
 
 ## 12. Risks and departures from the PRD
 ### 12.1 Risks
 1. **Ids inside a JSON body have no foreign key.** Only the API checks them. `presets-refs.test.ts` walks every body, and `referenced` stops an archive from leaving a dangling id.
-2. **Phase 4 is not built.** Unit E and cards A9, C6 and F9 depend on shapes this design assumes (section 2). If the definition has no stable ids or no `locked` mark, unit E waits for them; units A to D do not.
+2. **Phase 4 is designed, not built.** Unit P4 and cards P0-data-maps, P2-setup-screen and P5-phone-sheet depend on what section 2 lists. If the build changes a mark, the validator or `installPresets`, unit P4 is checked again; units P0 to P3 do not depend on them.
 3. **Body shapes will grow.** A new field must be optional with a default in both parsers. A phone skips a kind it does not know and ignores a field it does not know (pinned in `preset-bodies.json`).
 4. **A phone offline for days works from old presets.** By design (decision 6). Team setup shows when the copy was last updated.
 5. **The fake can drift from the API** (plan risk 7). Every row of 6.2 and 6.3 is a parity case.
 6. **A custom role may lack the key the PRD implies.** The standard Logistics role holds `patients.view_sensitive` (`0002_identity_access.sql:90-92`), so it sees a pregnancy flag as `main.md:121` says. A custom role without the key does not; the design keeps to the key.
 7. **An admin can type a patient’s name into criteria or a bag name.** The hint is the only guard; audit details never carry the text.
-8. **One shared option list publishes many note types at once.** One transaction, one audit event per type, one revision step.
+8. **One option edit can publish several note types at once** (5.4, rule 5). One transaction, one audit event per type, one revision step.
+9. **A team's edit is the one place a definition is not checked against the specification by machine** (D64). The fixed operations, the protected parts and phase 4's validator are the defence; the edit vectors hold one case per mark.
 
 ### 12.2 Departures and readings
-- "Archived rather than deleted" applies to used note types (`main.md:387`); this design archives everything (decision 4). "Edit" a note type is read as the operations of 5.4, not a free form builder. A locked field stays (`main.md:409`).
+- "Archived rather than deleted" applies to used note types (`main.md:387`); this design archives everything (decision 4). "Edit" a note type is read as the operations of 5.4, not a free form builder. A protected part stays (`main.md:409`, `:415`). Phase 4 lets a new platform version remove anything (forms 2.6); a team's edit may remove less.
 - "Remove" a bundle (`main.md:128`) is refused while a mapping or another preset points at it; the admin removes those first.
 - Bags are defined here though shared bags are phase 6 (`build-plan.md:95`), because bag minimums need a bag to hang on.
-- `patients.priority_flag_key` (`0009_patients.sql:58`) is left unused. Flags are worked out from changes, so there is no value two phones could overwrite. The commit that lands unit F corrects the comment in a new migration, not in 0009.
+- `patients.priority_flag_key` (`0009_patients.sql:58`) is left unused. Flags are worked out from changes, so there is no value two phones could overwrite. The commit that lands unit P5 corrects the comment in a new migration, not in 0009.
 - The build plan lists flags as configuration only. This design also lets staff flag a patient (default 16), because a flag nobody can set is not visible to anyone.
 - Mappings fire "on the action field" (`main.md:431`); the app cannot tell which field that is, so it is guidance on the page plus the platform’s own choices.
 
 ## 13. Units and first card list
-Units own disjoint files. A lands first, alone, with CI green. Then B. Then C and D run together; E after phase 4’s forms part; F after B and phase 4’s chart screen; G last. Level X units and cards: A1, C1, C2, F1, F4, F5 and G1. "+c" means the contract is regenerated in the same card.
+Units: P0 schema and core rules, P1 API, P2 phone cache, P3 portal presets, P4 note type editing, P5 flags on patients, P6 the Done when and the close. The names share nothing with phase 4's units (F, E, L). A card's ID is its unit and a short name. Each unit with T cards has one `tests` card (level X) that writes those cards' test files and vectors first. P0 lands first, alone, with CI green. Then P1. Then P2 and P3 together. P4 after P1 and phase 4's F3. P5 after P1, P2 and phase 4's L2 and L5. P6 last. Levels follow `docs/plan/README.md`: an always-X path is X, a screen or a page is R, and S is kept for a card whose every mistake a machine check catches. A contract card regenerates the contract after its unit's routes. Files phase 4 also edits, phase 4's cards first: `api/app.ts`, `api/routes/owner.ts`, `db/seed/seed.ts`, `api-test/permissions.test.ts`, `forms/src/install.ts`, `api/forms/definitions.ts`, `api/patients/projection.ts` and `schemas.ts`, the fake, `home_screen.dart`, `patient_screen.dart`, `chart_cache.dart`, `sync_labels.dart`, the generated contract. Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `forms/` is `packages/forms/`, `presets/` is `packages/presets/`, `vectors/` is `packages/contract/test-vectors/`, `portal/` is `apps/portal/src/app/(app)/team/presets/`, `parts/` is `apps/portal/src/components/presets/`.
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| **Unit A: schema and core rules** (`db/migrations/`, `packages/presets/`, `services/api/src/presets/install.ts`) | | | |
-| A1 Preset tables, policies and revokes, with the DB test | X | `db/migrations/<next>_team_presets.sql` | phase 4 merged |
-| A2 Package and schemas: category, item, bundle | S | `packages/presets/src/schemas.ts`, `preset-bodies.json` | none |
-| A3 Schemas: flag, both mappings, bag, settings | S | `packages/presets/src/schemas.ts`, `preset-bodies.json` | A2 |
-| A4 `validatePreset` | T | `packages/presets/src/validate.ts` | A3 |
-| A5 `presetWriteEffect` and `reorderRanks` | T | `packages/presets/src/rules.ts` | A2 |
-| A6 `platformUpdateEffect` | T | `packages/presets/src/platform.ts` | A2 |
-| A7 `suggestSupplies` and `bundleLines` (TypeScript) | T | `packages/presets/src/supplies.ts` | A3 |
-| A8 Platform data: categories, flags, settings, starter items, 18 bundles | S | `packages/presets/data/platform.json` | A4; question 1 |
-| A9 Platform data: default field and condition mappings | S | `packages/presets/data/platform.json` | A8; question 2; phase 4 field ids |
-| A10 The installer, at team creation and at start-up | T | `services/api/src/presets/install.ts`, `routes/owner.ts`, `entry/bootstrap.ts` | A1, A6, A8 |
-| **Unit B: API** (`services/api/src/presets/`, `services/api/src/routes/presets.ts`) | | | |
-| B1 Store: load refs, write a version, bump the revision under the team lock | T | `services/api/src/presets/store.ts` | A |
-| B2 `GET /v1/presets` +c | T | `routes/presets.ts`, `app.ts` | B1 |
-| B3 Admin list and create +c | T | `routes/presets.ts` | B1 |
-| B4 Edit +c | T | `routes/presets.ts` | B3 |
-| B5 Archive and restore +c | T | `routes/presets.ts`, `presets/store.ts` | B3 |
-| B6 Take update and versions +c | T | `routes/presets.ts` | B4 |
-| B7 Flag order +c | T | `routes/presets.ts` | B4 |
-| B8 Demo presets in the seed | S | the seed data file (recipe `seed-data.md`) | B3 |
-| B9 API half of the Done when, steps 2 to 5 | T | test only | B3 |
-| **Unit C: phone cache** (`apps/mobile/lib/presets/`, `apps/mobile/lib/features/presets/`) | | | |
-| C1 `presets` table in the team database | X | `apps/mobile/lib/sync/local_db.dart` | B2 |
-| C2 The test server answers `GET /v1/presets`; parity case | X | `apps/mobile/test/sync/fake_server.dart` | B2 |
-| C3 Body models and parsers | S | `lib/presets/models.dart` | A3 |
-| C4 `PresetStore` and `PresetsRefresher` | T | `lib/presets/preset_store.dart`, `presets_refresher.dart`, `lib/patients/patient_providers.dart` | C1, C2, C3 |
-| C5 `suggestSupplies` and `bundleLines` (Dart) | T | `lib/presets/supplies.dart` | C3, A7 |
-| C6 Team setup screen and its Home entry | R | `lib/features/presets/team_setup_screen.dart`, the Home screen | C4 |
-| C7 Phone half of the Done when, steps 1, 6, 7 | T | test only | C6 |
-| **Unit D: portal presets** (`apps/portal/src/app/(app)/team/presets/`, `apps/portal/src/components/presets/`) | | | |
-| D1 Hub page, nav link, API helpers | R | `team/presets/page.tsx`, `(app)/layout.tsx`, `lib/presets.ts` | B3 |
-| D2 Shared parts: item lines field, Removed list, refusal messages | R | `components/presets/ItemLines.tsx`, `RemovedList.tsx`, `refusals.ts` | D1 |
-| D3 Categories page | R | `categories/page.tsx`, `actions.ts` | D2 |
-| D4 Items list and add | R | `items/page.tsx`, `actions.ts` | D3 |
-| D5 Item edit | R | `items/[id]/page.tsx` | D4 |
-| D6 Bundles list and add | R | `bundles/page.tsx`, `actions.ts` | D4 |
-| D7 Bundle edit | R | `bundles/[id]/page.tsx` | D6 |
-| D8 Flags page with Move up and Move down | R | `flags/page.tsx`, `actions.ts` | D2, B7 |
-| D9 Flag edit | R | `flags/[id]/page.tsx` | D8 |
-| D10 Field-to-supply page | R | `field-supplies/page.tsx`, `actions.ts` | D4; phase 4 definitions |
-| D11 Condition-to-supply page and the status-check days | R | `condition-supplies/page.tsx`, `actions.ts` | D4 |
-| D12 Bag minimums page | R | `bag-minimums/page.tsx`, `actions.ts` | D4 |
-| D13 Update offer and version history | R | `components/presets/UpdateOffer.tsx`, `VersionHistory.tsx` | D2, B6 |
-| D14 Portal half of the Done when | S | `apps/portal/e2e/presets.spec.ts` | D4, D6, D8 |
-| **Unit E: note type editing** (`packages/forms/src/edit*.ts`, `services/api/src/presets/note-types.ts`, `routes/note-types-admin.ts`, `team/presets/note-types/`) | | | |
-| E1 `applyNoteTypeEdit`: rename, hide, relabel | T | `packages/forms/src/edit.ts` | phase 4 forms |
-| E2 Option operations | T | `packages/forms/src/edit-options.ts` | E1 |
-| E3 Add field and add section | T | `packages/forms/src/edit-add.ts` | E1 |
-| E4 Admin list and publish, with the shared-list fan-out +c | T | `presets/note-types.ts`, `routes/note-types-admin.ts` | E2, B1 |
-| E5 Add, archive, restore, take update +c | T | `presets/note-types.ts`, `routes/note-types-admin.ts` | E4 |
-| E6 Phase 4’s installer uses `platformUpdateEffect` | T | phase 4’s installer file | A6 |
-| E7 Older versions: API and phone tests of 10.2 | T | tests only | E4 |
-| E8 Note types list page | R | `note-types/page.tsx`, `actions.ts` | E5, D2 |
-| E9 Editor: sections and fields | R | `note-types/[key]/page.tsx`, `actions.ts` | E8 |
-| E10 Editor: options, add field, add section | R | `note-types/[key]/OptionEditor.tsx`, `AddField.tsx` | E9 |
-| **Unit F: flags on patients** (`services/api/src/sync/entities/patient-flag-change.ts`, `lib/presets/flags.dart`, the chart files named) | | | |
-| F1 `patient_flag_changes`, policy, revokes, `patient_of_change` | X | `db/migrations/<next>_patient_flag_changes.sql` | A1 |
-| F2 `currentFlags` (TypeScript) | T | `packages/presets/src/flags.ts` | A3 |
-| F3 `currentFlags` (Dart) | T | `lib/presets/flags.dart` | C3, F2 |
-| F4 The synced entity on the server | X | `sync/entities/patient-flag-change.ts`, `sync/entities/index.ts`, `patients/charts.ts` | F1 |
-| F5 The entity on the phone and in the test server | X | `lib/sync/entities.dart`, `test/sync/fake_server.dart` | F4 |
-| F6 Chart read: flags, with the sensitive filter +c | T | `patients/projection.ts` | F2, F4 |
-| F7 `POST /v1/patients/{id}/flags` +c | T | `routes/patients.ts` | F4 |
-| F8 Search by flag ids +c | T | `patients/search.ts`, `routes/patients.ts` | F6 |
-| F9 Phone: flag chips and the Change flags sheet | R | `lib/features/patients/flag_sheet.dart`, the chart header | F3, F5, C4 |
-| F10 Portal: Flags panel on the chart | R | `components/FlagsPanel.tsx`, the chart page, its `actions.ts` | F7 |
-| F11 Portal: list filters by both tiers | R | the patients list page | F8 |
-| **Unit G: close**  | | | |
-| G1 Live test against the real API, step 8 included | X | `tools/live-sync.sh`, `apps/mobile/test/presets/live_presets_test.dart` | C7, F9 |
-| G2 Recipe "add a preset kind" | S | `docs/plan/patterns/preset-kind.md` | B, C, D |
-| G3 Compliance docs, the D-table, section 6 rows, the PR description | S | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` | all |
+| P0-migration | X | `db/migrations/0022_team_presets.sql`, `db/test/team-presets.test.ts` | phase 4's F3-migration |
+| P0-package | R | `presets/package.json`, `presets/tsconfig.json`, `pnpm-lock.yaml` | — |
+| P0-tests | X | `vectors/{preset-bodies,preset-validate,preset-rules,platform-update,supply-suggest}.json`, their readers under `presets/test/`, `presets/test/install.test.ts` | P0-package |
+| P0-schemas-catalog | T | `presets/src/schemas.ts` (category, item, bundle) | P0-tests |
+| P0-schemas-rest | T | `presets/src/schemas.ts` (flag, both mappings, bag, settings) | P0-schemas-catalog |
+| P0-validate | T | `presets/src/validate.ts` | P0-schemas-rest |
+| P0-rules | T | `presets/src/rules.ts` (`presetWriteEffect`, `reorderRanks`) | P0-schemas-catalog |
+| P0-platform | T | `presets/src/platform.ts` | P0-tests |
+| P0-supplies | T | `presets/src/supplies.ts` (`suggestSupplies`, `bundleLines`) | P0-schemas-rest |
+| P0-data-catalog | R | `presets/data/platform.json` (categories, flags, settings, starter items, 18 bundles) | P0-validate; question 1 |
+| P0-data-maps | R | `presets/data/platform.json` (default mappings) | P0-data-catalog; question 2; phase 4's F6 |
+| P0-install | T | `presets/src/install.ts`, `api/routes/owner.ts`, `db/seed/seed.ts` | P0-migration, P0-platform, P0-data-catalog |
+| P1-tests | X | `api-test/presets-{store,pull,routes,revision,audit,install,refs}.test.ts` | P0 |
+| P1-store | T | `api/presets/store.ts` (load refs, write a version, bump the revision after the team lock) | P1-tests |
+| P1-pull | T | `api/routes/presets.ts`, `api/app.ts` (the register line) | P1-store |
+| P1-create | T | `api/routes/presets.ts` (admin list and create) | P1-store |
+| P1-edit | T | `api/routes/presets.ts` | P1-create |
+| P1-archive | T | `api/routes/presets.ts`, `api/presets/store.ts` (archive, restore) | P1-create |
+| P1-update | T | `api/routes/presets.ts` (take update, versions) | P1-edit |
+| P1-order | T | `api/routes/presets.ts` (flag order) | P1-edit |
+| P1-permissions | R | `api-test/permissions.test.ts` | the route cards above |
+| P1-contract | S | The generated contract | P1-permissions |
+| P1-seed | S | `db/seed/demo-presets.ts`, `db/seed/seed.ts` (recipe `seed-data.md`; the PHI guard checks it) | P1-create |
+| P2-tests | X | `phone-test/presets/{models,preset_store,presets_refresher,supplies}_test.dart` | P1-contract |
+| P2-local-db | X | `phone/sync/local_db.dart` (the `presets` table) | P1-contract |
+| P2-fake | X | `phone-test/sync/fake_server.dart`, `fake_parity_test.dart` (`GET /v1/presets`) | P1-contract |
+| P2-models | T | `phone/presets/models.dart` | P2-tests |
+| P2-store | T | `phone/presets/preset_store.dart`, `presets_refresher.dart`, `phone/patients/patient_providers.dart` | P2-local-db, P2-fake, P2-models |
+| P2-supplies | T | `phone/presets/supplies.dart` | P2-models, P0-supplies |
+| P2-setup-screen | R | `phone/features/presets/team_setup_screen.dart`, `phone/features/home/home_screen.dart`, their widget test | P2-store |
+| P3-hub | R | `portal/page.tsx`, `(app)/layout.tsx`, `apps/portal/src/lib/presets.ts` | P1-contract |
+| P3-parts | R | `parts/ItemLines.tsx`, `RemovedList.tsx`, `refusals.ts` | P3-hub |
+| P3-categories | R | `portal/categories/page.tsx`, `actions.ts` | P3-parts |
+| P3-items | R | `portal/items/page.tsx`, `actions.ts` | P3-categories |
+| P3-item-edit | R | `portal/items/[id]/page.tsx` | P3-items |
+| P3-bundles | R | `portal/bundles/page.tsx`, `actions.ts` | P3-items |
+| P3-bundle-edit | R | `portal/bundles/[id]/page.tsx` | P3-bundles |
+| P3-flags | R | `portal/flags/page.tsx`, `actions.ts` (Move up, Move down) | P3-parts |
+| P3-flag-edit | R | `portal/flags/[id]/page.tsx` | P3-flags |
+| P3-field-supplies | R | `portal/field-supplies/page.tsx`, `actions.ts` | P3-items; phase 4's F3 |
+| P3-condition-supplies | R | `portal/condition-supplies/page.tsx`, `actions.ts` | P3-items |
+| P3-bag-minimums | R | `portal/bag-minimums/page.tsx`, `actions.ts` | P3-items |
+| P3-history | R | `parts/UpdateOffer.tsx`, `VersionHistory.tsx` | P3-parts |
+| P3-e2e | R | `apps/portal/e2e/presets.spec.ts` (the portal half of the Done when, with axe) | P3-items, P3-bundles, P3-flags |
+| P4-tests | X | `vectors/note-type-edit.json`, `forms/test/{edit,install-update}.test.ts`, `api-test/{note-types-admin,note-type-versions}.test.ts`, `phone-test/forms/note_type_version_test.dart` | phase 4's F3 and L1; P1-store |
+| P4-edit-basic | T | `forms/src/edit.ts` (rename, hide and show, relabel, the protected rule) | P4-tests |
+| P4-edit-options | T | `forms/src/edit-options.ts` | P4-edit-basic |
+| P4-edit-add | T | `forms/src/edit-add.ts` | P4-edit-basic |
+| P4-install | T | `forms/src/install.ts` (5.2: `platformUpdateEffect`, `preset_version`, `platform_latest`) | P4-tests, P0-platform |
+| P4-offered | T | `api/forms/definitions.ts` (the list reads `note_types`) | P4-tests |
+| P4-publish | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts`, `api/app.ts` (list, publish, the `mapsTo` fan-out) | P4-edit-options, P4-edit-add |
+| P4-lifecycle | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts` (add, archive, restore, take update) | P4-publish, P4-install |
+| P4-permissions | R | `api-test/permissions.test.ts` | P4-lifecycle |
+| P4-contract | S | The generated contract | P4-permissions |
+| P4-list-page | R | `portal/note-types/page.tsx`, `actions.ts` | P4-contract, P3-parts |
+| P4-editor | R | `portal/note-types/[key]/page.tsx`, `actions.ts` (sections and fields) | P4-list-page |
+| P4-editor-options | R | `portal/note-types/[key]/OptionEditor.tsx`, `AddField.tsx` | P4-editor |
+| P5-migration | X | `db/migrations/0023_patient_flag_changes.sql`, `db/test/patient-flag-changes.test.ts` | P0-migration |
+| P5-tests | X | `vectors/flag-current.json`, its two readers, `api-test/{sync-flag-change,patients-flags-route,patients-flags-sensitive}.test.ts`, the new scenario in `sync_scenarios_test.dart` | P5-migration |
+| P5-current-ts | T | `presets/src/flags.ts` | P5-tests |
+| P5-current-dart | T | `phone/presets/flags.dart` | P5-tests, P2-models |
+| P5-entity | X | `api/sync/entities/patient-flag-change.ts`, `api/sync/entities/index.ts`, `api/patients/charts.ts` (`CHART_TABLES`) | P5-tests |
+| P5-read-rule | X | `api/routes/sync.ts` (the entity's read rule, 6.2) | P5-entity |
+| P5-phone-entity | X | `phone/sync/entities.dart`, `phone-test/sync/fake_server.dart`, `fake_parity_test.dart` | P5-read-rule |
+| P5-chart-read | T | `api/patients/projection.ts`, `schemas.ts` (`flags`, with the sensitive filter) | P5-current-ts, P5-entity |
+| P5-route | T | `api/routes/patients.ts`, `api/patients/flags.ts` (`POST …/flags`) | P5-entity |
+| P5-search | T | `api/patients/search.ts`, `api/routes/patients.ts` | P5-chart-read |
+| P5-permissions | R | `api-test/permissions.test.ts` | P5-route, P5-search |
+| P5-contract | S | The generated contract | P5-permissions |
+| P5-chart-cache | R | `phone/patients/chart_cache.dart`, its test (keeps `flags`) | P5-contract |
+| P5-phone-sheet | R | `phone/features/patients/flag_sheet.dart`, `patient_screen.dart`, `phone/features/sync/sync_labels.dart` | P5-current-dart, P5-phone-entity, P5-chart-cache, P2-store |
+| P5-portal-panel | R | `parts/FlagsPanel.tsx`, `patients/[patientId]/page.tsx`, its `actions.ts` | P5-contract |
+| P5-portal-filters | R | `patients/page.tsx`, `SearchForm.tsx` | P5-contract |
+| P6-vectors | X | `vectors/presets-done-when.json` | P0 |
+| P6-server | T | `api-test/presets-done-when.test.ts` (steps 2 to 5) | P1, P6-vectors |
+| P6-phone | T | `phone-test/presets/done_when_presets_test.dart` (steps 1, 6, 7, 8, against the fake) | P2, P5-phone-sheet |
+| P6-live | X | `phone-test/presets/live_presets_test.dart`, `tools/live-sync.sh` | P6-phone |
+| P6-recipe | R | `docs/plan/patterns/preset-kind.md` | P1, P2, P3 |
+| P6-docs | R | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` (the D-table, section 6 rows), the PR description | all |
 
-**Count: 64 cards. S 9, T 28, R 20, X 7.**
+**Count: 79 cards. S 4, T 31, R 30, X 14.** By unit: P0 12, P1 11, P2 7, P3 14, P4 13, P5 16, P6 6. No card changes more than three source files.
