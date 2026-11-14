@@ -11,8 +11,7 @@
     "start": "node dist/node.js",
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "openapi": "tsx scripts/openapi.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
