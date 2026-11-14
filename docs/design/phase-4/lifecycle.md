@@ -11,7 +11,7 @@ definitions, their generation from the field specification, the renderer and fie
 Who builds from this: a small local model, one task card at a time (`docs/plan/README.md`), with a
 strong model or a person writing the tests for the safety-critical cards first. So the judgment
 sits in a few places the small model does not write: the migrations, the sync core, the phone
-store and the fake server (all level X), and three small pure functions that are written twice
+store and the fake server (all level X), and a few small pure functions that are written twice
 (TypeScript and Dart) and pinned by shared test vectors. Everything else follows a pattern.
 
 Names used for the PRD files:
@@ -760,22 +760,127 @@ Encounters and notes already stop while the clock check fails (D35,
 their device time is what the record shows. A referral does not stop: its date is typed by the
 person, and it registers something said in the street, like an alias or an allergy (D35).
 
-### 3.12 The small core: three pure functions, pinned by vectors
+### 3.12 The small core: pure functions, pinned by vectors
 
 The rules above are data. Each function is written once in TypeScript and once in Dart, has no
 database or network in it, and is tested against one JSON file that both sides read, as
-`packages/contract/test-vectors/access.json` and `sync-values.json` are today.
+`packages/contract/test-vectors/access.json` is today (`docs/plan/patterns/shared-vectors.md`).
+The sync core and the routes (level X and T) only load the inputs and write what a function says.
 
-| Vector file (in `packages/contract/test-vectors/`) | Function | TypeScript | Dart |
+| Vector file (in `packages/contract/test-vectors/`) | Functions | TypeScript | Dart |
 |---|---|---|---|
 | `note-content-hash.json` | `noteContentHash` (4.5) | `services/api/src/encounters/content-hash.ts` | `apps/mobile/lib/encounters/content_hash.dart` |
-| `note-lifecycle.json` | `signoffEffect` (3.4), `reopenEffect` and `correctionEffect` (3.6), `encounterStatus` and `envelopeLocked` (3.1), `isOverdue` (3.9) | `services/api/src/encounters/rules.ts` | `apps/mobile/lib/encounters/rules.dart` |
+| `note-lifecycle.json` | the nine functions below | `services/api/src/encounters/rules.ts` | `apps/mobile/lib/encounters/rules.dart` |
 | `signed-under.json` | `signedUnder` (3.5) | `services/api/src/encounters/signed-under.ts` | none: the phone never decides this |
 
-`signoffEffect` takes `{noteStatus, everSigned, kind, act, actsAsAuthor, canSign,
-needsAttestation, hashMatches, finishOk}` and returns `{refuse}` or
-`{effect, statusAfter, attestationAfter}`. Every row of the table in 3.4 is a vector. The sync
-core (level X) only loads the inputs and writes what the function says.
+Each vector file has the shape the recipe gives: a `note`, and for `note-lifecycle.json` one list
+of cases per function, each case `{ "name", "input", "expected" }`. The planner writes the vector
+files and both readers (`services/api/test/encounter-rules.test.ts`,
+`apps/mobile/test/encounters/rules_test.dart`) first. The functions are then T cards.
+
+The types the nine functions share:
+
+```ts
+type NoteStatus = 'draft' | 'completed' | 'signed';
+type Attestation = 'not_needed' | 'waiting' | 'attested';
+type Kind = 'medical' | 'non_medical';
+```
+
+**`signoffEffect`** (3.4), for the acts `complete` and `sign`:
+
+```ts
+signoffEffect(i: {
+  noteStatus: NoteStatus; kind: Kind; act: 'complete' | 'sign';
+  actsAsAuthor: boolean; canSign: boolean; needsAttestation: boolean;
+  hashMatches: boolean; finishOk: boolean;
+}): { refuse: 'not_author' | 'sign_not_medical' | 'content_changed' | 'incomplete' }
+  | { effect: 'none' }
+  | { effect: 'completed' | 'signed' | 'saved_unsigned'; statusAfter: NoteStatus; attestationAfter: Attestation }
+```
+
+The checks run in this order, and the first that applies decides:
+
+1. `noteStatus` is not `draft`: `{ effect: 'none' }`.
+2. `actsAsAuthor` is false: refuse `not_author`.
+3. `act` is `sign` and `kind` is `non_medical`: refuse `sign_not_medical`.
+4. `hashMatches` is false: refuse `content_changed`.
+5. `finishOk` is false: refuse `incomplete`.
+6. `kind` is `non_medical`, or `act` is `complete`: `completed`, status `completed`, `not_needed`.
+7. `canSign` is true: `signed`, status `signed`, `waiting` if `needsAttestation`, else
+   `not_needed`.
+8. Otherwise: `saved_unsigned`, status `completed`, `not_needed`.
+
+**`reopenEffect`** (the table in 4.4):
+
+```ts
+reopenEffect(i: { noteStatus: NoteStatus; everSigned: boolean; kind: Kind; actsAsAuthor: boolean }):
+  'apply' | 'nothing' | 'keep_in_history' | { refuse: 'not_author' }
+```
+
+1. `draft`: `nothing`. 2. `signed`, or `everSigned`: `keep_in_history`. 3. `non_medical`:
+`keep_in_history`. 4. `actsAsAuthor`: `apply`. 5. Otherwise refuse `not_author`.
+
+**`correctionEffect`** (the table in 3.6), called only for a finished note:
+
+```ts
+correctionEffect(i: {
+  noteStatus: 'completed' | 'signed'; attestation: Attestation;
+  correctorCanSign: boolean; correctorNeedsAttestation: boolean;
+}): { statusAfter: 'completed' | 'signed'; attestationAfter: Attestation; clearSignoff: boolean }
+```
+
+1. `completed`: unchanged, `clearSignoff` false.
+2. `signed` and the corrector cannot sign: `completed`, `not_needed`, `clearSignoff` true.
+3. `signed` and the corrector needs attestation: `signed`, `waiting`, false.
+4. `signed` and the corrector signs with nothing held: unchanged, false. A note that was waiting
+   stays waiting: an attending who corrects one answer has not attested the rest.
+
+**`cosignEffect`** (5.3) and **`attestEffect`** (5.4), one call per note:
+
+```ts
+cosignEffect(i: {
+  noteStatus: NoteStatus; kind: Kind; actsAsAuthor: boolean; canSign: boolean;
+  needsAttestation: boolean; seesEverySection: boolean; hashMatches: boolean;
+}): { refuse: 'not_waiting' | 'is_author' | 'cannot_sign' | 'cannot_see_all' | 'content_changed' }
+  | { statusAfter: 'signed'; attestationAfter: Attestation }
+
+attestEffect(i: {
+  noteStatus: NoteStatus; attestation: Attestation; actsAsAuthor: boolean; canAttest: boolean;
+  seesEverySection: boolean; hashMatches: boolean;
+}): { refuse: 'not_waiting' | 'is_author' | 'cannot_attest' | 'cannot_see_all' | 'content_changed' }
+  | { attestationAfter: 'attested' }
+```
+
+Each checks in the order its refusals are listed. `not_waiting` for a co-sign: the note is not
+`completed`, or the encounter is not Medical. For an attest: the note is not `signed`, or its
+`attestation` is not `waiting`.
+
+**`mayAssign`** (3.8, 5.5):
+
+```ts
+mayAssign(i: {
+  actingAuthorActive: boolean; assigneeActive: boolean; assigneeCanChart: boolean;
+  assigneeRank: number; neededRank: number; noteHasHiddenSection: boolean;
+}): 'ok' | { refuse: 'author_active' | 'assignee_not_member' | 'assignee_cannot_chart' | 'credential_too_low' | 'cannot_see_all' }
+```
+
+`noteHasHiddenSection` is true when the note has a section the assignee could not see without
+being its author. Whoever acts as a note's author sees all of it (6.4), so the check is about
+what the assignee's role allows today, before the assignment.
+
+**`encounterStatus`**, **`envelopeLocked`** and **`isOverdue`**:
+
+```ts
+encounterStatus(noteStatuses: NoteStatus[]): NoteStatus    // the rule of 2.2: [] is 'draft'
+envelopeLocked(noteStatuses: NoteStatus[]): boolean        // true when any note is not 'draft'
+isOverdue(i: { noteStatus: NoteStatus; startedAt: string; startedVerified: boolean;
+               receivedAt: string | null; now: string }): boolean
+```
+
+`isOverdue` is true when the note is a draft and more than 24 hours lie between `now` and
+`startedAt`, or `receivedAt` when the start time was not verified and a receipt time exists
+(3.9). Times are ISO 8601 strings in UTC. The phone passes `receivedAt: null` for an encounter
+the server has not confirmed.
 
 ## 4. Sync
 
