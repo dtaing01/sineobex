@@ -1593,8 +1593,8 @@ reporting are V2.
 - **The list** is part of the chart: the chart answer carries the group's referrals (5.2), newest
   first by `referredOn`. Each row shows the date, the details, who recorded it, and "at a visit"
   when it has an encounter.
-- **A mistake** is marked entered in error with a reason, as an allergy is. It stays in the
-  list, struck through. Nothing is deleted.
+- **A mistake** is marked entered in error with a reason, by the person who recorded it or by
+  anyone who charts (4.7). It stays in the list, struck through. Nothing is deleted.
 - **The portal** shows the same list on the patient page, read-only in phase 4.
 
 ## 8. The recap, the chart after Complete, and the problem list
@@ -1621,26 +1621,31 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
 - The profile's timeline shows the visit at the top. Until its sign-offs are confirmed it says
   "Waiting to send". The timeline is the chart's `timeline` (5.2) merged with the encounters the
   phone holds and the server has not confirmed yet.
-- **When a finished note leaves the phone.** A screen-level listener calls the store's
-  `closeRecord` for a note once its sign-off is confirmed, and for the encounter once every one
-  of the person's notes on it is closed. The purge then removes what is confirmed
+- **When a finished note leaves the phone.** The domain layer calls the store's `closeRecord`
+  for a note once its sign-off is confirmed, and for the encounter once every one of the
+  person's notes on it is closed. The purge then removes what is confirmed
   (`apps/mobile/lib/sync/local_store.dart:1895-1922`). Data still leaves the phone only after a
   hash-confirmed receipt: nothing here touches the purge.
-- **Opening a visit that has left the phone** needs a connection: the visit screen loads it
-  through the record refresh. Offline it says "This visit isn't on this phone. Connect to open
-  it."
+- **A draft nobody has touched for 7 days** is closed the same way, if nothing of it waits in
+  the outbox (3.2). It stays on the server and opens again online.
+- **Reading a visit that has left the phone.** The last three visits of a chart the phone holds
+  are read offline, from the chart's `recentVisits` (5.2). An older visit is asked from the
+  server (5.1) and shown from memory; offline it says "This visit isn't on this phone. Connect
+  to open it." Adding an addendum or a correction to a visit that is not on the phone needs a
+  connection first: the phone fetches the notes it will change through the sync read.
 
 ### 8.3 Problems made or changed in an encounter
 
 Phase 3 left two hooks (1.1, 1.2): `problems.source` and the `encounterId` of a status.
 
-- The General note's Assessment has a problem search with a status (field spec, lines 31-37). The
+- The General note's Assessment has a problem search with a status (field spec, lines 31-33). The
   forms part gives it a field kind that stores what was picked in the note: the code, the label
   and the status as tapped.
 - Under it sits **Add to the problem list**. It creates a `problem` record through the phase 3
   path (`PatientRepository`, `apps/mobile/lib/patients/problems.dart`), with the encounter's ID.
-  The problem create's value gains an optional `encounterId`; the server sets
-  `source = 'encounter'` when it is present (`services/api/src/sync/entities/problem.ts:185-197`).
+  A problem create already carries an optional `encounterId`, stored as `created_encounter_id`
+  (`services/api/src/sync/entities/values.ts:217`; `problem.ts:183-193`). Phase 4 only sets
+  `source = 'encounter'` when it is present.
 - Changing a problem's status from inside an encounter sends the status with that encounter's ID
   (`services/api/src/sync/entities/values.ts:230-232`). The phone passes the ID when the Problems
   screens are opened from an encounter, and `null` otherwise, as today.
@@ -1682,8 +1687,10 @@ once the store is frozen; every phone screen tested offline. Wording lives in
 - A **Timeline** section: one row per visit and per referral, newest first (PRD main 725). A
   visit row shows the date, Medical or Non-Medical, and its note types as chips with each note's
   state in words (Draft, Complete, Waiting for a co-signer, Signed, Waiting for attestation,
-  Attested). It opens the visit (9.7). The type filter of PRD main 725 is one row of chips above
-  the list, built from the note types present.
+  Attested). It opens the visit (9.7). The type filter is one row of chips above the list with
+  the PRD's seven names: Clinical, Psych, Social, Referrals, Outreach, Harm reduction, Wound (PRD
+  main 725). Each note type belongs to one of them (forms 2.2); a referral row belongs to
+  Referrals. Under the first 50 visits, **Show earlier visits** asks the server for more (5.2).
 
 ### 9.2 Start
 
@@ -1708,11 +1715,12 @@ and creates nothing (D35).
 
 Two large buttons, each with one line under it: "Medical: clinical notes, orders, signing" and
 "Non-Medical: outreach, supplies, social needs" (PRD main 379). A person whose credential cannot
-chart Medical (6.2) is not shown this screen: the encounter is Non-Medical.
+chart Medical (6.2) is not shown this screen: their encounter starts Non-Medical.
 
-The encounter's header has **Switch to Medical** while no note is finished, for a credential
-that may. It changes `kind` and keeps every answer (PRD main 379). **Switch to Non-Medical**
-shows only when every note's type allows it.
+The encounter's header has **Switch to Medical** on a Non-Medical encounter, for a credential
+that may chart Medical. It changes `kind` and keeps every answer (PRD main 379). On an encounter
+with no patient it first asks who the patient is (3.10). There is no switch back: a Medical
+encounter with only Non-Medical notes needs none (3.10).
 
 ### 9.4 Note types
 
@@ -1721,7 +1729,9 @@ offered for the encounter's kind, from the forms part's registry. Tapping one cr
 and opens its form. If the encounter already has a draft of that type, the app opens that draft.
 
 The encounter screen lists its notes, each collapsed to its recap line, with **Add another note
-type** below (PRD main 97). A note by a teammate shows their name.
+type** below (PRD main 97). A note by a teammate shows their name. A draft the person authors
+has **Remove this note** in its menu: it blanks every answer, after asking, and the note then
+counts for nothing (3.1). Empty drafts are not listed.
 
 ### 9.5 The note form
 
@@ -1741,14 +1751,20 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
 
 1. The recap of each note (8.1), each under its note type's name.
 2. **Assessment**: a text box of up to 4,000 characters (the encounter's `summary`), with a
-   counter that speaks at 90% and at the limit, as phase 3's note counter does.
+   counter that speaks at 90% and at the limit, as phase 3's note counter does. Once the visit
+   has a finished note the assessment is locked (3.1): it is shown with who wrote it, and the
+   box under it is **Add to the assessment**, which makes an addendum to the visit when the
+   person completes.
 3. **Suggested next steps**: chips from the forms part's suggestion rules (PRD main 433), each
    adding a note type.
 4. **Add referral** (7).
-5. What stops Complete, when anything does, as a list. Each line names the note and the section,
+5. **Follow-up**: what the notes say about follow-up, as recorded. "Follow-up tasks created in
+   one tap" (PRD main 433) needs tasks, which arrive in phase 7; the answers are stored now and
+   phase 7 makes the tasks from them (12.3).
+6. What stops Complete, when anything does, as a list. Each line names the note and the section,
    and jumps to it: "Wound care: record consent for the exam."
-6. The signing sentence (3.5), when the button signs.
-7. **Save & Close** and the Complete button, worded by the table in 3.3.
+7. The signing sentence (3.5), when a note will be signed.
+8. **Save & Close** and the Complete button, worded by the table in 3.3.
 
 Complete finishes the person's own notes. If a teammate's draft is in the same encounter, a line
 says so: "{name}'s note stays a draft until they complete it." After Complete, the chart opens
@@ -1757,7 +1773,9 @@ says so: "{name}'s note stays a draft until they complete it." After Complete, t
 ### 9.7 The visit
 
 Opened from the timeline or from Notes to finish. A draft the person may edit opens as the form
-(9.5). Everything else opens as the read view:
+(9.5). Everything else opens as the read view, drawn from a read model: the phone's own, for a
+visit it holds; the chart's `recentVisits`, offline, for the last three; the server's (5.1),
+online, for the rest (8.2). The view:
 
 - The envelope: date and time ("time not verified" when it was not), place, Medical or
   Non-Medical, the assessment.
@@ -1769,6 +1787,8 @@ Opened from the timeline or from Notes to finish. A draft the person may edit op
 - Actions, each shown only when the server would accept it: **Add addendum**; **Correct** on an
   answer, for the acting author; **Reopen**, for a note waiting for a co-signer that was never
   signed; **Co-sign** and **Attest**, online only, greyed with "Connect to co-sign" offline.
+  A note the person cannot co-sign or attest because it holds something they may not see says
+  so: "This note has a part you can't open. Ask a Program Admin."
 
 **The correction sheet**: the field's label and current value, the field's own input for the new
 value, a reason (3 to 500 characters), and a switch "The patient asked for this change". With
@@ -1815,7 +1835,9 @@ in error**, which asks for a reason.
 new Timeline section (links carry `prefetch={false}`,
 `apps/portal/src/lib/patient-links.test.ts`). It shows what 9.7 shows, read-only, from
 `GET /v1/encounters/{encounterId}`. Its actions: **Co-sign**, **Attest**, **Assign** (9.12) and
-**Export EMS handoff (PDF)** when the visit has one. The page title is "Visit".
+**Export EMS handoff (PDF)** when the visit has one; the export asks for a fresh sign-in first
+(5.7). The page title is "Visit". Under the patient page's first 50 visits, **Show earlier
+visits** loads more (5.2).
 
 ### 9.12 Portal: notes not complete, and assigning
 
@@ -1838,7 +1860,11 @@ new Timeline section (links carry `prefetch={false}`,
 | `not_author` | "Only the note’s author can do this." |
 | `note_not_finished` | "This note isn’t finished yet, so it can be edited directly." |
 | `field_changed` | "Someone corrected this answer first. Open the note and check it." |
-| `note_type_needs_medical` | "This note type needs a Medical encounter." |
+| `note_type_needs_medical` | "This note type needs a Medical encounter. Switch the visit to Medical." |
+| `medical_note_needs_patient` | "A clinical note needs a patient. Choose who this visit is for." |
+| `encounter_note_missing`, `note_signoff_missing` | "The note this belongs to isn’t on the team’s list." |
+
+A sign-off that was held for a Program Admin shows on its note as "Sent for review" (4.8).
 
 And three notices, shown on Home as phase 2's notices are:
 
@@ -1866,9 +1892,9 @@ referral's details or a name.
 | Action | When | Details |
 |---|---|---|
 | `encounter.created`, `encounter.updated` | existing | existing, plus `kind` on a switch |
-| `encounter.late_change_kept` | an envelope change after a finished note | `field`, `changeId` |
+| `encounter.kept_in_history` | an envelope change after a finished note (the action `keepInHistory` writes today) | `field`, `changeId`, `problem` |
 | `note.created`, `note.updated` | existing | existing |
-| `note.late_change_kept` | a change to a finished note | `field`, `changeId` |
+| `note.kept_in_history` | a change to a finished note | `field`, `changeId`, `problem` |
 | `note.completed` | a sign-off with effect `completed` | `act`, `effect`, `signoffId`, `clockVerified`, `changeId` |
 | `note.signed` | effect `signed` | the same, plus `credential`, `claimedCredential` when it differs, `needsAttestation` |
 | `note.saved_unsigned` | effect `saved_unsigned` | the same |
@@ -1882,8 +1908,9 @@ referral's details or a name.
 | `addendum.added` | 4.7 | `encounterId`, `noteId` |
 | `referral.created`, `referral.entered_in_error` | 4.7 | `encounterId` |
 | `encounter.viewed`, `note.viewed` | a visit read, online or offline | `noteIds` |
+| `chart.timeline_viewed` | 5.2, earlier visits | `count` |
 | `cosign_queue.viewed`, `attestation_queue.viewed`, `notes_to_finish.viewed`, `incomplete_notes.viewed` | 5.4, 5.6 | `patientIds`, `count` |
-| `ems_handoff.shown`, `ems_handoff.exported` | 9.8, 5.7 | `encounterId` |
+| `ems_handoff.shown`, `ems_handoff.exported` | 9.8 (offline: a new entry in the closed list of 4.8), 5.7 | `encounterId` |
 
 Every event names its patient in the audit row's patient column, so the audit search by patient
 finds it (D53). A refused online request is logged with the reason's name.
@@ -1922,10 +1949,10 @@ The steps live in one shared file, `packages/contract/test-vectors/encounters-do
 | 1 | Offline. A resident starts a Medical encounter for a made-up patient and adds General / primary care, Wound care and Social needs. The app adds the Red flags and disposition note by itself. | One encounter and four draft notes in the store. Nothing sent. |
 | 2 | They fill in answers and press Save & Close. The app is killed and started again, still offline. | The drafts are on the phone with every answer. Notes to finish says 4. |
 | 3 | The phone reconnects. | The server holds one draft encounter with four draft notes. Each change has a hash-confirmed receipt. The drafts are still on the phone (3.2). |
-| 4 | Offline again, later. They open the visit from Notes to finish, write the assessment and press Complete and sign. | Four sign-offs wait in the outbox. The notes are read-only. The patient's chart opens with the visit marked "Waiting to send". |
-| 5 | The phone reconnects. | Four `note_signoffs` rows with effect `signed`. The notes are `signed` with `attestation = 'waiting'`. The encounter is `signed`. One audit event per sign-off, each in its change's transaction. |
+| 4 | Offline again, later. They open the visit from Notes to finish, answer the red-flag question, write the assessment and press Complete and sign. | Four sign-offs wait in the outbox: `sign` for General, Wound care and Red flags, `complete` for Social needs, which is a Non-Medical note. The notes are read-only. The patient's chart opens with the visit marked "Waiting to send". |
+| 5 | The phone reconnects. | Four `note_signoffs` rows: three with effect `signed`, one `completed`. The three Medical notes are `signed` with `attestation = 'waiting'`; the Social needs note is `completed`. The encounter is `signed`. One audit event per sign-off, each in its change's transaction. |
 | 6 | The phone's sync finishes. | The notes and the encounter have left the phone. Notes to finish is gone. |
-| 7 | An attending, online, opens the attestation queue and attests the visit in one action. | The queue lists one visit with four notes, then none. Four `note_attestations` rows. `attestation = 'attested'`. Audit events `attestation_queue.viewed` and `note.attested`. The resident has one `note_attested` notice for the visit. |
+| 7 | An attending, online, opens the attestation queue and attests the visit in one action. | The queue lists one visit with three notes, then none. Three `note_attestations` rows. `attestation = 'attested'`. Audit events `attestation_queue.viewed` and `note.attested`. The resident has one `note_attested` notice for the visit. |
 
 The screens get the same story as widget tests
 (`apps/mobile/test/features/encounters/done_when_flow_test.dart`), offline, and the attending's
@@ -1982,12 +2009,17 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 8 | Can a co-signer send a note back to its author? | No. The author reopens it while it was never signed (3.6) | Brooke and Mercy |
 | 9 | How is a wrong free-text assessment fixed after Complete? | By an addendum, not a field correction (3.6) | Brooke and Mercy |
 | 10 | What does a patient's amendment request need beyond the logged decision? (HIPAA §164.526: a written answer in 60 days, a statement of disagreement) | Only the logged request and decision are built (3.6) | Counsel |
-| 11 | Can a Medical encounter have no patient? | No. A visit with no patient is Non-Medical (3.10) | Brooke and Mercy |
+| 11 | Can a Medical note be written for someone who is not registered? | No. A Medical note needs a patient; a visit can be given one at any time (3.10) | Brooke and Mercy |
 | 12 | Where does the EMS handoff PDF come from? | The portal. The phone shows it full-screen only (5.7) | The team |
-| 13 | Who sees a sensitive exam section? | Whoever acts as the note's author, and holders of `patients.view_sensitive_exams` (6.4) | Counsel, Brooke and Mercy |
+| 13 | Who sees a sensitive exam section, and who may co-sign or attest a note that has one? | Whoever acts as the note's author, and holders of `patients.view_sensitive_exams`. A co-signer or attester needs the key too, so a team gives its attendings a role that has it; until then such a note waits (6.4) | Counsel, Brooke and Mercy |
 | 14 | The Brief call note preset (PRD main 390) | Not built: the field spec has no fields for it | Brooke and Mercy |
 | 15 | Is the GPS position stored, and how exact? | Captured only on a tap, stored as the phone gives it (9.2) | Counsel, the team |
 | 16 | How do a note's problem statuses (New, Chronic, Improving, Worse) map to the problem list's (New, Ongoing, Resolved)? | New to New; the others to Ongoing; nothing resolves (8.3) | Brooke and Mercy |
+| 17 | How many recent visits ride with a chart, to be read offline? | Three (5.2) | The team |
+| 18 | Who may export the EMS handoff as a PDF? PRD main 413 lets a clinician; PRD main 602 keeps exports to Admin and Billing/Data | Whoever may read the Red flags note, with a fresh sign-in, a stamp of who and when, and an audit event (5.7) | Counsel, the team |
+| 19 | Is a Social needs or Outreach note inside a Medical visit signed and attested? | No. A Non-Medical note is completed, never signed (3.1) | Brooke and Mercy, the billing partner |
+| 20 | Who reads the substance use treatment part of a Harm reduction note? | The note's author, and people with `patients.view_sensitive` and a clinical credential (6.4) | Counsel (42 CFR Part 2) |
+| 21 | Do roles without `encounters.chart` or `billing.view_codes` read Medical notes? | No, as D37 decided for the problem list (6.4) | The project lead |
 
 ### 12.2 Questions that need a person and have no default
 
@@ -1999,6 +2031,9 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
    has seven credentials (1.3). An RN today is `none`, and charts Non-Medical only.
 4. **Retention of drafts that are never completed.** They stay drafts for ever, flagged as
    overdue. Whether an admin may close one unfinished is not decided.
+5. **A visit charted on the wrong patient, found after a note is finished.** The app has no way
+   to move it. Each answer can be corrected and an addendum can say what happened. Whether a
+   Program Admin needs a way to void or move a visit is not decided.
 
 ### 12.3 Where this design departs from the PRD, or reads it a particular way
 
@@ -2019,6 +2054,20 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
    an attending's phone Home screen, or on desktop" and says nothing about offline (3.7).
 6. **The route lead's part of the 24-hour alert waits for phase 7**, and push notifications for
    phase 6 (3.9).
+7. **Medical is a property of the note, not only of the encounter.** PRD main 379 describes
+   Medical and Non-Medical as kinds of encounter. One visit holds several care types (PRD main
+   97), and a clinician and an outreach worker chart it together, so the gate, the signature and
+   the attestation follow each note's type. The encounter's kind decides what is offered (3.1).
+8. **The kind never goes back to Non-Medical.** The PRD describes only the switch to Medical
+   (PRD main 379). A Medical encounter with only Non-Medical notes needs no switch (3.10).
+9. **Recent notes offline are the last three visits of a chart the phone holds**, carried with
+   the chart for 24 hours (5.2). The PRD's route cache (PRD main 533) arrives with routes, in
+   phase 7.
+10. **Follow-up tasks and Home's counts wait for phase 7.** "Follow-up tasks created in one tap"
+    (PRD main 384, 433), today's encounter count and recent patient activity (PRD main 744) need
+    tasks and routes. The follow-up answers are stored now.
+11. **After the first finished note, an assessment is added, not edited.** A later author's
+    assessment is an addendum to the visit (3.1, 9.6).
 
 ### 12.4 Risks
 
@@ -2030,10 +2079,14 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 3. **The status trigger and the finished-note guard put rules in the database.** They are the
    second line, as row-level security is. The first line is still the API, and the guard's error
    class is chosen so that a bug in it becomes a stored rejection, never a stuck queue (2.2).
-4. **The membership history decides credentials.** `signedUnder` trusts
+4. **Attestation can stall on a sensitive exam.** Only a holder of
+   `patients.view_sensitive_exams` can co-sign or attest a note with a GU, breast or rectal exam,
+   and of the standard roles that is Program Admin alone (6.4, rule 4). The queue says why a note
+   waits; the team has to make the role.
+5. **The membership history decides credentials.** `signedUnder` trusts
    `membership_changes`. If a credential is changed by hand in the database, signatures made
    offline before the change are recorded under the wrong one.
-5. **Card count.** This part alone is 73 cards, and 21 of them are level X. A small
+6. **Card count.** See 13: about a third of this part's cards are level X. A small
    model can't shorten that third.
 
 ## 13. Units and card index
