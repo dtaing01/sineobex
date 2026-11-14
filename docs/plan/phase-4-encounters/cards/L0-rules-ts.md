@@ -2,7 +2,7 @@
 
 ## Goal
 
-`services/api/src/encounters/rules.ts` exists and exports nine pure functions that give the
+`services/api/src/encounters/rules.ts` exists and exports ten pure functions that give the
 answer the vector file expects for every case.
 
 ## Level
@@ -18,7 +18,7 @@ T. The planner wrote the tests first. The job is to make them pass without chang
 ## Read first
 
 - `docs/design/phase-4/lifecycle.md`, section 3.12 only, from the heading "3.12 The small core"
-  to the heading "4. Sync" (about 120 lines). It gives every signature and the order of the
+  to the heading "4. Sync" (about 130 lines). It gives every signature and the order of the
   checks.
 - `services/api/test/encounter-rules.test.ts`, all of it (about 60 lines) (made by L0-vectors):
   how the functions are called.
@@ -46,7 +46,6 @@ functions with a comment that names their vector file).
     */
    export type NoteStatus = 'draft' | 'completed' | 'signed';
    export type Attestation = 'not_needed' | 'waiting' | 'attested';
-   export type Kind = 'medical' | 'non_medical';
    ```
 
 2. Write `signoffEffect` with the signature in section 3.12. Write the eight checks as eight
@@ -60,15 +59,19 @@ functions with a comment that names their vector file).
    is true, else `'not_needed'`.
 6. Write `mayAssign`: five checks in the order of its refusals. `credential_too_low` is
    `assigneeRank < neededRank`. `cannot_see_all` is `noteHasHiddenSection`.
-7. Write `encounterStatus`: an empty list is `'draft'`; any `'draft'` in the list is `'draft'`;
-   otherwise any `'completed'` is `'completed'`; otherwise `'signed'`.
-8. Write `envelopeLocked`: true when any status in the list is not `'draft'`.
+7. Write `noteIsEmpty`: true when every value of the map is `null`, `""`, an empty array or an
+   object with no keys. An empty map is empty.
+8. Write `encounterStatus`. First leave out every note whose `status` is `'draft'` and whose
+   `empty` is true. Then, of the notes left: none, or any `'draft'`, is `'draft'`; otherwise a
+   note that is `'completed'` and `medical` is `'completed'`; otherwise any `'signed'` note is
+   `'signed'`; otherwise `'completed'`. Then write `envelopeLocked`: true when any status in the
+   list is not `'draft'`.
 9. Write `isOverdue`. Use `Date.parse` on the strings. The start is `receivedAt` when
    `startedVerified` is false and `receivedAt` is not null; otherwise `startedAt`. The answer is
    true only when `noteStatus` is `'draft'` and `now` minus the start is more than
    `INCOMPLETE_AFTER_HOURS * 3600 * 1000`. Export the constant:
    `export const INCOMPLETE_AFTER_HOURS = 24;`
-10. Export every function by name. No default export. No other imports.
+10. Export every function by name. No default export. No imports.
 
 ## Tests
 

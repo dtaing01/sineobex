@@ -27,8 +27,9 @@ Names used:
 1. **A note type is one JSON file per version.** Once released, a version file is never edited,
    like a migration. A change is a new version file. A lock file of hashes fails the build if a
    released file changes.
-2. **Fourteen kinds of field cover the whole specification** (2.3). A new option, field or
-   section is a data change. A new kind of field is the only thing that needs code.
+2. **Fourteen kinds of field cover the specification** (2.3), with one thing left for later: the
+   link from a skin finding to an earlier one (6.8). A new option, field or section is a data
+   change. A new kind of field is the only thing that needs code.
 3. **Answers are a flat map from a path to a value**, as phase 2 already stores them. A path has
    at most four parts. Repeating entries (wounds, skin findings) get their own path part, so two
    phones adding entries offline never touch the same field.
@@ -101,10 +102,11 @@ type NoteType = {
   key: string;                       // ^[a-z][a-z0-9_]{1,60}$
   version: number;                   // 1, 2, 3, ...
   title: string;                     // "Wound care"
-  kinds: ('medical' | 'non_medical')[];   // which encounters offer it
+  kinds: ('medical' | 'non_medical')[];   // which encounters offer it; offered for Medical only = a Medical note type
+  group: 'clinical' | 'psych' | 'social' | 'outreach' | 'harm_reduction' | 'wound';   // its timeline filter
   sensitivity: 'none' | 'sensitive'; // 'sensitive': needs patients.view_sensitive to read
   quick?: true;                      // the Quick encounter
-  auto?: 'medical';                  // added by itself to every Medical encounter (6.2)
+  auto?: 'medical';                  // added by itself with the first Medical note of an encounter (6.2)
   sections: (Section | Include)[];
 };
 
@@ -115,6 +117,8 @@ type Section = {
   title: string;
   showWhen?: Condition;
   sensitiveExam?: true;              // needs patients.view_sensitive_exams to read
+  treatmentRecord?: true;            // substance use treatment: needs a clinical credential to read
+  needs?: 'orderMedications';        // shown to, and changed by, a credential with this capability only
   normal?: true;                     // offers one-tap Normal
   repeat?: { max: number; itemTitle: string };   // "Wound {n}"; entries are added one at a time
   fields: Field[];
@@ -196,13 +200,16 @@ written relative to the entry, starting with `./`.
 `sides: true` adds a last path part, `right` or `left`.
 
 A **repeating section** adds a second path part, the entry's ID: the letter `e` and seven
-characters from `a-z0-9`, made on the phone. An entry exists when its `_at` answer does: the
-time it was added, which also gives the order. Removing an entry sets its `_removed` answer to
-`true`; its other answers stay in the note's history and stop counting. Two phones that each add
-a wound offline write to different paths, so nothing conflicts.
+characters from `a-z0-9`, made on the phone. An entry exists when its `entryAt` answer does: the
+time it was added, which also gives the order. Removing an entry sets its `entryRemoved` answer
+to `true`; its other answers stop counting. Two phones that each add a wound offline write to
+different paths, so nothing conflicts. `entryAt` and `entryRemoved` are reserved: no field may
+use them as an ID. (A path part must start with a lower-case letter,
+`services/api/src/sync/records.ts:43`, so these cannot start with an underscore.)
 
-Every path has at most four parts (`services/api/src/sync/records.ts:43`). The validator refuses a definition that
-could produce a fifth: a grid with sides inside a repeating section, for example. Nothing in SPEC
+Every path has at most four parts, and every part matches the pattern of
+`services/api/src/sync/records.ts:43`. The validator works out every path a definition can
+produce and refuses a definition with a part that does not match, or with a fifth part: a grid with sides inside a repeating section, for example. Nothing in SPEC
 needs one.
 
 ### 2.4 Limits
@@ -353,7 +360,10 @@ is built from `handoffLines` on the server (lifecycle 5.7).
    `docs/plan/patterns/form-definition.md` (a new recipe, card F0-9).
 3. Every place the definition differs from the text on purpose is listed in
    `definitions/spec/<piece>.diff.json`, with the reason and where the decision comes from: an
-   Oct 19 change, a rule in PRD main, or a default from an inventory's ambiguity list.
+   Oct 19 change, a rule in PRD main, or a default from an inventory's ambiguity list. The file
+   has three lists: `notOptions` (bracketed words in the lines that are not options), `added`
+   (option labels that are not in the lines) and `differences`
+   (`docs/plan/patterns/form-definition-example.md` shows one).
 4. `pnpm forms:export` resolves, validates and writes the generated files.
 
 ### 4.2 What the export checks (each failure names the file and the rule)
@@ -361,7 +371,7 @@ is built from `handoffLines` on the server (lifecycle 5.7).
 | Check | What it catches |
 |---|---|
 | The JSON Schema | A misspelt key, a missing label, a wrong type |
-| The semantic validator (`src/validate.ts`) | Two fields with one ID; a condition that names no field; a list that does not exist; a path of five parts; an option code used twice; an exclusive option in a choose-one field; a `required` field that can never be visible; a `mapsTo` that names no field |
+| The semantic validator (`src/validate.ts`) | Two fields with one ID; a reserved ID (`entryAt`, `entryRemoved`); a condition that names no field; a list that does not exist; a path of five parts, or a path part the server would refuse; an option code used twice; an exclusive option in a choose-one field; a `required` field that can never be visible; a `mapsTo` that names no field |
 | The lock (`definitions.lock.json`) | A released version file, module or list whose content changed |
 | Version rules (2.6) | A path or code reused for another meaning |
 | The spec check (`src/spec-check.ts`) | An option in SPEC that is in no definition, and an option in a definition that is not in SPEC, unless `<piece>.diff.json` declares it |
@@ -409,8 +419,9 @@ transcription.
 | Decision | Why | Source |
 |---|---|---|
 | Nine note types ship: `general_primary_care`, `wound_care`, `harm_reduction`, `psychological`, `sexual_reproductive`, `social_needs`, `outreach`, `quick_encounter`, `red_flags_disposition` | Eight categories (PRD main 408). Outreach is split from Social needs so staff can add either alone (inventory A8). Red flags get their own note (6.2). The Focused Exam is not a note type: it lives inside General (PRD main 414). | inventories |
-| Medical only: General, Wound care, Harm reduction, Psychological, Sexual and reproductive, Quick encounter, Red flags. Non-Medical only: Outreach. Both: Social needs. | PRD main 379, 409. Harm reduction is the open one (PRD main 447). | inventory A7 |
-| Sensitive note types: `harm_reduction`, `psychological`, `sexual_reproductive` | PRD main 435, 121 | lifecycle 6.4 |
+| Medical note types, offered in Medical encounters only: General, Wound care, Harm reduction, Psychological, Sexual and reproductive, Quick encounter, Red flags. Non-Medical note types, offered in every encounter: Social needs and Outreach. | PRD main 379, 409. A Non-Medical note is never signed (lifecycle 3.1). Harm reduction is the open one (PRD main 447). | inventory A7 |
+| Sensitive note types: `harm_reduction`, `psychological`, `sexual_reproductive`. The treatment section of Harm reduction (SPEC 139 to 148) is also marked `treatmentRecord`. | PRD main 435, 121; PRD main 145 for treatment records | lifecycle 6.4 |
+| Timeline groups: General, Quick encounter, Red flags and Sexual and reproductive are `clinical`; Wound care is `wound`; Harm reduction is `harm_reduction`; Psychological is `psych`; Social needs is `social`; Outreach is `outreach` | The PRD's seven filter names, the seventh being referrals (PRD main 725) | lifecycle 9.1 |
 | Sensitive exam sections: GU, Breast, Rectal. Each gets Performed, Chaperone present and Patient consented, the last `required`, all three `noNormal`. | PRD main 415. SPEC gives chaperone and consent for GU only (focused-exam inventory, section 6). | PRD main 415 wins |
 | Every ambiguity in the inventories takes the default written beside it | 60 or so small choices that need the clinical team. Each default is one line in a `.diff.json`, so changing one later is a data change and a new version. | 10.1 |
 | The Oct 19 field changes (PRD main 103) are applied in the definitions, each declared in its piece's `.diff.json` | SPEC still shows the old version for most of them (inventory section 6, both files) | PRD main 103 |
@@ -430,23 +441,25 @@ and the `open_note_type` action (6.7).
 ### 6.2 Red flags, disposition and follow-up
 
 "The quick form ... keeps red flags and disposition, like every Medical form" (PRD main 409).
-SPEC writes them once, inside General (SPEC 36 to 62). Copying that section into every Medical
-note type would ask the same question three times in a three-note visit.
+SPEC writes them once, inside General (SPEC 36 to 60). Copying that section into every Medical
+note type would ask the same question three times in a three-note visit. (The Encounter Summary
+text box that follows, SPEC 61 to 62, is the visit's assessment, lifecycle 9.6, and not a field
+of any note.)
 
 So they are one note type, `red_flags_disposition`, with `auto: 'medical'`:
 
-- The phone adds it to a Medical encounter when the first Medical note is created, with the same
-  author. It shows last on the encounter screen and on the summary screen.
-- Completing a Medical encounter needs it among the notes being finished or already finished.
-  This is a fifth hard stop in lifecycle 3.3.
+- The phone adds it to an encounter when the first Medical note is created there, with that
+  note's author as its author. It shows last on the encounter screen and on the summary screen.
+  Until it has an answer it is an empty draft, and an empty draft counts for nothing (lifecycle
+  3.1).
+- When its author completes a Medical note, this note is completed with it and is not skipped as
+  empty. Its red-flag question is `required`, so the finish check asks for it (lifecycle 3.3,
+  hard stop 5). A second clinician who charts on the same visit is not asked again.
 - Red flags answered Yes opens the EMS branch by `showWhen`: EMS activated, patient agrees to
   transport, the reason if not, and the time EMS was called (PRD main 413). The time is
   `required` while EMS activated is Yes.
 - Disposition is choose-many with `excludes` pairs (PRD main 102). Inventory A21 lists the pairs
   built by default.
-- A switch to Non-Medical is allowed only while this note has no answers; the phone then removes
-  it from the encounter screen. It stays in the database as an empty draft, which the incomplete
-  list ignores (a draft with no answers on a Non-Medical encounter is not counted).
 
 ### 6.3 The Focused Exam
 
@@ -479,6 +492,9 @@ re-entering what they filled in" (PRD main 409).
   writes each mapped answer into it. The interpreter's `expandQuick` returns the answers; the
   phone writes them as ordinary changes. The quick form's own answers stay.
 - HPI is Yes, No or Unknown, and Yes opens a text box (PRD main 409, 422).
+- Its Medication section "needs an ordering credential" (PRD main 409). The section is marked
+  `needs: 'orderMedications'`: the renderer shows it only to a credential that may order, and
+  the server holds a change to it from anyone else (lifecycle 6.4, rule 5).
 - Medication delivery set to Yes "creates a delivery task" (PRD main 418). The answer is
   recorded now. The task is created in phase 7, which builds tasks.
 
@@ -507,6 +523,10 @@ in the diabetic foot exam" (PRD main 416). In the Skin and Diabetic foot section
 field with `open_note_type: 'wound_care'` shows when one of those findings is picked. It opens
 the encounter's Wound care draft, or creates one. The Skin finding itself stores only its type.
 
+Skin findings also ask "Same lesion as documented before?" (PRD main 416). In phase 4 the answer
+is a choice (Yes, No, Unknown) stored with the finding. Linking it to the earlier finding waits
+(6.8).
+
 ### 6.8 What waits for a later phase
 
 | In SPEC or PRD main | In phase 4 | Arrives |
@@ -517,6 +537,9 @@ the encounter's Wound care draft, or creates one. The Skin finding itself stores
 | Resource search and recommended resources (SPEC 259 to 265) | An `info` field: "The resource directory is coming." (PRD main 514) | V2 |
 | Referral status per resource (SPEC 266) | Left out (PRD main 113) | V2 |
 | Dictation | Left out (PRD main 412) | V2 |
+| A link from a skin finding to the earlier finding it continues (PRD main 416) | The Yes, No or Unknown answer only | When earlier notes can be picked from: phase 7 or later |
+| Follow-up tasks created in one tap (PRD main 384, 433) | The follow-up answers are recorded and shown on the summary screen | Phase 7 |
+| Connect to resource in Harm reduction (PRD main 399; SPEC 148) | The button opens Add referral | The directory is V2 (PRD main 514) |
 | The drawn body map | A list of regions grouped by front and back, with side and surface (10.1 #3) | To decide |
 
 ## 7. The interpreter: one set of rules, pinned twice
@@ -530,12 +553,12 @@ Each is pure: a definition and a note's answers in, plain data out. TypeScript i
 |---|---|---|
 | `fieldAt(def, path)` | The field, option or cell a path points at, or null | everything below |
 | `checkAnswer(def, path, value)` | null, or one problem: `unknown_path`, `wrong_type`, `unknown_option`, `out_of_range`, `too_long`, `excluded_pair`, `exclusive_with_others` | The server on every answer (lifecycle 4.4); the phone before it saves |
-| `effectiveAnswers(def, answers)` | The answers that count: visible fields only, removed entries dropped | every function below, the recap, exports |
+| `effectiveAnswers(def, answers)` | The answers that count: visible fields only, removed entries dropped | every function below, the recap, exports, and the hash a signer sends (lifecycle 4.5) |
 | `finishCheck(def, answers)` | A list of `{ section, path, problem }`: a visible required field that is empty | Complete (lifecycle 3.3, 4.6) |
 | `normalAnswers(def, sectionId, answers)` | The answers one-tap Normal would add | 6.3 |
 | `recapLines(def, answers)` | One line per section that has an answer | lifecycle 8.1 |
 | `readModel(def, answers, corrections)` | Sections, labels and display values, with corrected values marked | The visit read (3.5), the phone's read view |
-| `visibleAnswers(def, answers, reader)` | The answers a reader may see | lifecycle 6.4 |
+| `visibleAnswers(def, answers, reader)` | The answers a reader may see. `reader` says whether they act as the author, hold `patients.view_sensitive`, hold `patients.view_sensitive_exams`, may read Medical notes, have a clinical credential and an ordering credential, and which diagnosis codes are sensitive | lifecycle 6.4 |
 | `handoffLines(defs, answersByNote)` | The EMS handoff summary: the fields marked `handoff` | lifecycle 5.7, 9.8 |
 | `suggestions(def, answers)` | Note type keys suggested by the options picked | lifecycle 9.6 |
 | `expandQuick(quickDef, answers, fullDef)` | The answers to write into the full note | 6.4 |
@@ -545,13 +568,17 @@ use `checkAnswer`.
 
 Rules the functions share, stated once:
 
-- A hidden field's answer does not count, and is not deleted. If the field becomes visible again
-  the answer is back. The renderer does not clear hidden answers: each clear would be a change to
-  sync for no gain.
+- In a draft, a hidden field's answer does not count, and is not deleted. If the field becomes
+  visible again the answer is back. The renderer does not clear hidden answers: each clear would
+  be a change to sync. When the note is finished, the answers that do not count are moved to its
+  history, so a finished note holds exactly what was signed (lifecycle 4.5).
 - An exclusive option and another option in one value is `exclusive_with_others`. The widget
   never produces it; the server refuses it.
 - The server checks one answer at a time and cannot refuse an answer for being in a hidden field:
-  changes arrive in any order. Visibility is applied when reading.
+  changes arrive in any order. Visibility is applied when reading and when signing.
+- On the phone the domain layer calls `checkAnswer` before the store's `setField`. On the server
+  the sync rules call it once the note is loaded (lifecycle 4.4). The phone's sync registry holds
+  no definitions and checks only that a path has the right shape.
 
 ### 7.2 The vectors (written by the planner, level X)
 
@@ -656,17 +683,17 @@ the rest of the visit page.
 | 7 | The contents of the full safety assessment and the mental status exam (SPEC 164, 166, which are empty) | One text box each | Brooke and Mercy |
 | 8 | Chaperone and consent for Breast and Rectal (SPEC gives them for GU only) | All three sensitive exams get them (PRD main 415) | Brooke and Mercy |
 | 9 | The label of the psych note type (three names in the PRD) | "Behavioral health"; key `psychological` | Brooke and Mercy |
+| 10 | May the field specification's lines be copied into the repository, piece by piece? | Yes: the spec check needs them (4.1). Without them, every transcription card is read against SPEC by a reviewer instead. The example that names a real organization (SPEC 263 to 265) is left out of the copy | The project lead |
+| 11 | Which timeline filter each note type belongs to | The mapping in section 5 | Brooke and Mercy |
 
 ### 10.2 Questions that need a person and have no default
 
 1. **The MSK test list for each region but the shoulder** (PRD main 414).
 2. **The result options for Testing History** (PRD main 103 adds "a date and result per test";
    no list exists).
-3. **Whether the field specification may be copied into the repository** piece by piece (4.1).
-   The spec check depends on it. Without it, every transcription card is read against SPEC by a
-   reviewer instead, and the cards carry the text.
-4. **A real organization's name in an example** (SPEC 263 to 265). The example is not
-   transcribed and its lines are left out of the copied piece.
+3. **The content of the full safety assessment and the mental status exam.** SPEC has the two
+   buttons and no fields (SPEC 164 to 166). Each ships as one text box until the clinical team
+   supplies the lists.
 
 ### 10.3 Where this design departs from the PRD or the plan, or reads them a particular way
 
@@ -681,6 +708,10 @@ the rest of the visit page.
 5. **The portal shows a note through a server-built read model**, so "the same form on desktop"
    is a read view in phase 4. Charting on the desktop is not in this phase's scope
    (`IMPLEMENTATION_PLAN.md`, phase 4).
+6. **The build plan says the definitions are "generated from the Google Doc Contents tab"**
+   (Build plan 81). They are transcribed by hand, one piece per card, and checked against the
+   tab's own lines by machine (4.2). The tab is not regular enough to generate from: it never
+   says whether a row of buttons is choose-one or choose-many (inventory A1).
 
 ### 10.4 Risks
 
@@ -816,8 +847,10 @@ Inside F6: 10 S for the lists; of the 36 pieces, 20 S and 16 R (5 of the note ty
 | The server calls `checkAnswer` for every answer, and the fake does the same | lifecycle 4.4, 4.9 rule 14 |
 | `MAX_NOTE_FIELDS` raised to 1,000 | lifecycle card L1-3 |
 | Complete calls `finishCheck` on the phone and on the server | lifecycle 3.3, 4.6 |
-| A fifth hard stop: a Medical encounter needs its red flags note | lifecycle 3.3 (to add) |
-| The visit read carries `read` for each note, built by `readModel` | lifecycle 5.1 (to add) |
+| A fifth hard stop: the author of the Red flags note completes it with their Medical notes | lifecycle 3.3 |
+| The visit read and the chart's recent visits carry `read` for each note, built by `readModel` | lifecycle 5.1, 5.2 |
 | Sensitive content is filtered by `visibleAnswers` everywhere a note is read | lifecycle 6.4 |
 | The frame around a note's form calls `note_form.dart` and passes answers to the domain layer | lifecycle 9.5, card L5-5 |
-| An empty auto note on a Non-Medical encounter is not counted as incomplete | lifecycle 3.9 (to add) |
+| An empty draft counts for nothing, so the Red flags note stays out of the way until answered | lifecycle 3.1 |
+| The hash a signer sends covers `effectiveAnswers`, and a finished note keeps only those | lifecycle 4.5 |
+| A note records whether it is a Medical note, from its type, when it is created | lifecycle 2.2 |
