@@ -1,8 +1,8 @@
-> **Draft (Nov 14), not yet reviewed.** Sections 1 to 3 were written by a planning agent, sections 4 to 13 by the coordinating session. No second reader has checked it against the PRD and the code yet: do not build from it.
+> **Reviewed (Nov 14).** Four reviewers checked this design and the forms part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 12 lists what a person still has to decide. Nothing is built yet.
 
 # Phase 4 design, part 2: the encounter lifecycle, sync and screens
 
-Status: complete as a draft; waiting for the phase review and for the forms part.
+Status: designed and reviewed; not built. The cards are in `docs/plan/phase-4-encounters/README.md`.
 
 This part covers how an encounter is stored, saved, completed, signed, attested, corrected and
 synced, and the screens around it. The other part (`docs/design/phase-4/forms.md`) covers the form
@@ -535,10 +535,10 @@ Hard stops on the phone, before anything is written (PRD main 562):
    note being completed now does not count: completing again is its fix (3.4).
 3. Charting is not paused for the clock.
 4. If one of the notes is a Medical note, the encounter names a patient (3.10).
-5. If one of the notes is a Medical note and the person authors the encounter's Red flags and
-   disposition note, that note is finished with the others and is not skipped as an empty
-   draft: its finish check then asks for the red-flag answer (forms 6.2). A second clinician on
-   the same visit is not held up by the first one's Red flags note.
+5. If one of the notes is a Medical note, the visit has a finished Red flags and disposition
+   note, or the person's own is finished with the others. Their own is then not skipped as an
+   empty draft, so its finish check asks for the red-flag answer (forms 6.2). A second clinician
+   is not held up by a colleague's unfinished Red flags note: the app gives them their own.
 
 Then, in one transaction on the phone, one sign-off is made per note. A note whose earlier
 sign-off was refused gets that sign-off sent again, corrected, and not a second one (4.8).
@@ -570,7 +570,7 @@ corrected by the receipt if the server decided otherwise.
 | draft, Medical note | `sign` | same, but the credential cannot sign | `saved_unsigned` | Waiting for a co-signer |
 | draft | any | the hash does not match | refused: `content_changed` | Draft |
 | draft | any | the finish check fails | refused: `incomplete` | Draft |
-| draft, Medical note | any | the sender's own Red flags note of this visit is still a draft | refused: `red_flags_first` | Draft |
+| draft, Medical note | any | the visit has no finished Red flags note | refused: `red_flags_first` | Draft |
 | draft | any | the sender does not act as the author | `none` | Unchanged; the sender is told |
 | draft, Non-Medical note | `sign` | treated as `complete` | `completed` | Complete |
 | already finished | any | none | `none` | Unchanged |
@@ -865,7 +865,7 @@ type Attestation = 'not_needed' | 'waiting' | 'attested';
 signoffEffect(i: {
   noteStatus: NoteStatus; medicalNote: boolean; act: 'complete' | 'sign';
   actsAsAuthor: boolean; canSign: boolean; needsAttestation: boolean;
-  hashMatches: boolean; finishOk: boolean; ownRedFlagsOpen: boolean;
+  hashMatches: boolean; finishOk: boolean; redFlagsDone: boolean;
 }): { refuse: 'content_changed' | 'incomplete' | 'red_flags_first' }
   | { effect: 'none'; reason: 'already_finished' | 'not_author' }
   | { effect: 'completed' | 'signed' | 'saved_unsigned'; statusAfter: NoteStatus; attestationAfter: Attestation }
@@ -877,7 +877,8 @@ The checks run in this order, and the first that applies decides:
 2. `actsAsAuthor` is false: effect `none`, reason `not_author`.
 3. `hashMatches` is false: refuse `content_changed`.
 4. `finishOk` is false: refuse `incomplete`.
-5. `medicalNote` and `ownRedFlagsOpen`: refuse `red_flags_first`.
+5. `medicalNote` and not `redFlagsDone`: refuse `red_flags_first`. `redFlagsDone` is true when
+   the visit has a finished Red flags note, or this note is one.
 6. `medicalNote` is false, or `act` is `complete`: `completed`, status `completed`,
    `not_needed`. So `sign` on a Non-Medical note is treated as `complete`.
 7. `canSign` is true: `signed`, status `signed`, `waiting` if `needsAttestation`, else
@@ -992,7 +993,7 @@ the person is told. That leaves seven problems, each with the store call that se
 |---|---|---|
 | `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again. `finishNotes` sends the same sign-off record again (4.8). |
 | `incomplete` | a sign-off on a note that fails the finish check; a correction that would leave the note failing it | Fill in what is missing and complete, or correct, again. The same record is sent again. |
-| `red_flags_first` | a sign-off of a Medical note while the sender's own Red flags note in that visit is a draft | Complete again: the Red flags note goes first (4.6). |
+| `red_flags_first` | a sign-off of a Medical note on a visit with no finished Red flags note | Complete again: the Red flags note goes first (4.6). |
 | `field_changed` | a correction whose answer changed since the person looked | Look again. **Correct again** sends the same correction record with the value and version now seen; **Leave it** sends it with the answer's current value, which the server stores as no change. |
 | `medical_note_needs_patient` | a Medical note on a visit with no patient | Name the patient (always possible, 3.1). The store then sends the note's create again, and what waited behind it (D49). |
 | `unknown_note_type` | a note on a key or version the team does not have | Choose the note type again. The phone only offers listed versions (forms 3.4), so this is a build fault. |
@@ -1212,9 +1213,8 @@ What the server does, in the change's transaction, under the team lock:
 1. Load the note for update, its encounter, and the note type definition.
 2. Work out the inputs of `signoffEffect` (3.12): `medicalNote` (3.1), `actsAsAuthor` (3.8),
    `hashMatches` (4.5), `finishOk` (the forms part's `finishCheck` returns nothing),
-   `ownRedFlagsOpen` (the sender authors another note of this visit that is the Red flags note
-   and is still a draft, forms 6.2), and from `signedUnder` (3.5) `canSign` and
-   `needsAttestation`.
+   `redFlagsDone` (the visit has a finished Red flags note, or this note is one, forms 6.2),
+   and from `signedUnder` (3.5) `canSign` and `needsAttestation`.
 3. Call `signoffEffect`. The sync code holds no rule of its own: it writes what the function says.
 4. **Refuse**: `rejected('validation', { problem })`. Nothing is written but the stored rejection.
 5. **Effect `none`** (the note is already finished, or the sender does not act as its author):
@@ -1233,7 +1233,7 @@ The receipt is `accepted` with `details: { effect, status, attestation, hashMatc
 phone writes that onto its copy of the note (4.8).
 
 **The Red flags note goes first.** `finishNotes` puts the sign-off of the person's Red flags
-note ahead of their other sign-offs of that visit, so `ownRedFlagsOpen` is false when the others
+note ahead of their other sign-offs of that visit, so `redFlagsDone` is true when the others
 arrive. If the Red flags sign-off is refused, the others are refused with `red_flags_first`, and
 one Complete fixes all of them. This is the server's half of hard stop 5 (3.3); hard stop 4 is
 the refusal of a Medical note on a visit with no patient (4.4).
@@ -1745,8 +1745,9 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
 Phase 3 left two hooks (1.1, 1.2): `problems.source` and the `encounterId` of a status.
 
 - The General note's Assessment has a problem search with a status (field spec, lines 31-33). The
-  forms part gives it a field kind that stores what was picked in the note: the code, the label
-  and the status as tapped.
+  forms part gives it a field kind that stores the diagnosis picked, its code and its label; the
+  status tapped is an ordinary field beside it, and the section repeats, one entry per
+  diagnosis.
 - Under it sits **Add to the problem list**. It creates a `problem` record through the phase 3
   path (`PatientRepository`, `apps/mobile/lib/patients/problems.dart`), with the encounter's ID.
   A problem create already carries an optional `encounterId`, stored as `created_encounter_id`
@@ -1859,7 +1860,11 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
 
 "Every encounter ends on a summary screen" (PRD main 433). From top to bottom:
 
-1. The recap of each note (8.1), each under its note type's name.
+1. The recap of each note (8.1), each under its note type's name. Above a recap, a line for
+   each answer that someone else changed since the person last had the note open: "{name}
+   changed Dressing applied." The screen works out each note's hash as it draws it and hands
+   those hashes to Complete, which stops if a note has changed since: "This note changed. Read
+   it again." (4.8).
 2. **Assessment**: a text box of up to 4,000 characters (the encounter's `summary`), with a
    counter that speaks at 90% and at the limit, as phase 3's note counter does. Once the visit
    has a finished note the assessment is locked (3.1): it is shown with who wrote it, and the
@@ -2067,6 +2072,10 @@ The steps live in one shared file, `packages/contract/test-vectors/encounters-do
 | 5 | The phone reconnects. | Four `note_signoffs` rows: three with effect `signed`, one `completed`. The three Medical notes are `signed` with `attestation = 'waiting'`; the Social needs note is `completed`. The encounter is `signed`. One audit event per sign-off, each in its change's transaction. |
 | 6 | The phone's sync finishes. | The notes and the encounter have left the phone. Notes to finish is gone. |
 | 7 | An attending, online, opens the attestation queue and attests the visit in one action. | The queue lists one visit with three notes, then none. Three `note_attestations` rows. `attestation = 'attested'`. Audit events `attestation_queue.viewed` and `note.attested`. The resident has one `note_attested` notice for the visit. |
+
+The attending in the story holds the Healthcare Staff role. No note in it has a sensitive exam,
+so no extra key is needed to attest (6.4, rule 4); a second, shorter test attests a note with a
+GU exam as a Program Admin and is refused as Healthcare Staff.
 
 The screens get the same story as widget tests
 (`apps/mobile/test/features/encounters/done_when_flow_test.dart`), offline, and the attending's

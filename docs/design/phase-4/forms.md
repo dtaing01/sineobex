@@ -1,4 +1,4 @@
-> **Draft (Nov 14), not yet reviewed.** No second reader has checked it against the PRD and the code yet: do not build from it.
+> **Reviewed (Nov 14).** Four reviewers checked this design and the lifecycle part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 10 lists what a person still has to decide. Nothing is built yet.
 
 # Phase 4 design, part 1: forms and note types
 
@@ -469,13 +469,15 @@ of any note.)
 
 So they are one note type, `red_flags_disposition`, with `auto: 'medical'`:
 
-- The phone adds it to an encounter when the first Medical note is created there, with that
-  note's author as its author. It shows last on the encounter screen and on the summary screen.
-  Until it has an answer it is an empty draft, and an empty draft counts for nothing (lifecycle
-  3.1).
-- When its author completes a Medical note, this note is completed with it and is not skipped as
-  empty. Its red-flag question is `required`, so the finish check asks for it (lifecycle 3.3,
-  hard stop 5). A second clinician who charts on the same visit is not asked again.
+- The phone adds it for a person when they create a Medical note on a visit that has no finished
+  Red flags note and none of their own. It shows last on the encounter screen and on the summary
+  screen. Until it has an answer it is an empty draft, and an empty draft counts for nothing
+  (lifecycle 3.1).
+- When its author completes a Medical note, this note is completed first and is not skipped as
+  empty. Its red-flag question is `required`, so the finish check asks for it. The server
+  refuses to finish a Medical note on a visit with no finished Red flags note (lifecycle 3.3,
+  hard stop 5; 4.6).
+- A second clinician on a visit whose Red flags note is already finished is not asked again.
 - Red flags answered Yes opens the EMS branch by `showWhen`: EMS activated, patient agrees to
   transport, the reason if not, and the time EMS was called (PRD main 413). The time is
   `required` while EMS activated is Yes.
