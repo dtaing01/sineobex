@@ -10,7 +10,7 @@ written to the audit log as `access.denied`.
 
 ## Level
 
-**R**: it touches a permission, so a reviewer reads the diff. The tests come from one table
+**R**: it touches a permission, so the auditor reads the diff. The tests come from one table
 (`ROUTES`), and the card says exactly which keys go in the row.
 
 The product allows **no new permission keys** (plan decision D37). There are 23, in
@@ -115,13 +115,13 @@ cd services/api && pnpm -s vitest run test/permissions.test.ts
 It must print `Test Files  1 passed (1)` and no `failed` line; the last line is `Duration ...`.
 At this commit the `Tests` line reads `67 passed (67)`; each new row adds two.
 
-## Check before you report
+## What the auditor checks
 
 1. Is the permission check the first statement of the handler, before any query?
 2. Is every key one of the existing 23, spelled exactly?
 3. Is `services/api/src/auth/**` unchanged?
 4. Does the route have a row in `ROUTES`, with a body the schema accepts?
-5. Did the `Tests` count in `permissions.test.ts` go up by two for each row you added?
+5. Did the `Tests` count in `permissions.test.ts` go up by two for each row added?
 6. If the route returns chart values, does it also require `patients.view`?
 7. Does the refusal log `c.req.routePath`, not the real URL?
 

@@ -112,9 +112,9 @@ Each `flutter test` ends with `All tests passed!` (the live tests are skipped wi
 `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh`:
 only that run shows the fake and the real API giving the same answers to the same scenarios.
 
-## Check before you report
+## What the auditor checks
 
-1. Is there an API test that pins the same answer, and did you read it?
+1. Is there an API test that pins the same answer?
 2. Does the parity test compare the whole answer, so that an extra key fails it?
 3. Did the parity test fail before the fake changed, and again with the old behaviour put back?
 4. Does the fake's doc comment name the server file and function it mirrors?

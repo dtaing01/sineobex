@@ -56,7 +56,7 @@ There is no code to copy. These are the parts that do the work. Read them only i
 
    A route or schema change touches only the first three. A change in `packages/contract/data/`
    touches only the last seven. If nothing changed, the contract was already up to date: that is
-   fine, say so in the report.
+   fine, say so in your reply.
 4. Run `git diff --stat` on the changed generated files. Check the size is what the card expects:
    one new route adds one path to `openapi.json` and one method to `api.dart`. If routes or types
    the card did not mention disappeared or changed, stop and report.
@@ -117,11 +117,11 @@ pnpm -s typecheck
 Passes when it ends with no error. It fails here when the portal uses a route or a field that the
 new contract no longer has.
 
-## Check before you report
+## What the auditor checks
 
-1. Did you run `pnpm contract:generate` after the last change to a route, a schema or a data file?
+1. Was `pnpm contract:generate` run after the last change to a route, a schema or a data file?
 2. Does `git status --short` show no changed generated file outside the list in step 3?
-3. Did you leave every generated file exactly as the command wrote it (no hand edit, no formatter)?
+3. Is every generated file exactly as the command wrote it (no hand edit, no formatter)?
 4. Are the generated files in the same commit as the change that caused them?
 5. Does the drift check command print nothing after the commit?
 6. Do the contract tests say `3 passed (3)`?

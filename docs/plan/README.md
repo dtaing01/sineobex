@@ -93,6 +93,8 @@ What a card leaves out, on purpose:
   2,600 (200 lines), the tool's own instructions 1,500. About 9,000 are left for the answer.
 - Give it three things, in this order: `docs/plan/implementer-rules.md`, the card, the lines
   under **Read first**. Nothing else.
+- Turn off automatic commits in the tool that drives it, if it has them. The audit starts from
+  the uncommitted change (`git diff --stat`), and the auditor commits.
 - One card per session. Start a new session for the next card.
 
 ## The loop
@@ -128,6 +130,7 @@ builds, and checks:
 - For every sync, audit and permission rule: the test bites (below).
 - The phone's test server answers as the API does, for every rule the unit changed.
 - No patient details in a log, a URL, a title, a notification or the phone's key-value store.
+- The **What the auditor checks** list of every recipe the unit's cards read.
 
 When the audit finds a defect: if it is small and local, the auditor fixes it and says so in the
 commit. If the same defect shows twice, the card or the recipe is wrong: fix that, so the next

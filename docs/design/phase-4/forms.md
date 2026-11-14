@@ -43,7 +43,7 @@ Names used:
    both, and a generated golden file pins both on every real note type.
 7. **The portal has no interpreter.** The API hands it a note already laid out for reading.
 8. **Transcription is checked by a machine.** Each piece of SPEC is copied into the repository
-   beside the definition made from it, and a script compares the two. A reviewer reads only the
+   beside the definition made from it, and a script compares the two. The auditor reads only the
    differences that were declared on purpose.
 9. **Red flags, disposition and follow-up are one short note per Medical encounter**, not a
    section repeated in every Medical form (6.2).
@@ -720,7 +720,7 @@ the rest of the visit page.
 | 7 | The contents of the full safety assessment and the mental status exam (SPEC 164, 166, which are empty) | One text box each | Brooke and Mercy |
 | 8 | Chaperone and consent for Breast and Rectal (SPEC gives them for GU only) | All three sensitive exams get them (PRD main 415) | Brooke and Mercy |
 | 9 | The label of the psych note type (three names in the PRD) | "Behavioral health"; key `psychological` | Brooke and Mercy |
-| 10 | May the field specification's lines be copied into the repository, piece by piece? | Yes: the spec check needs them (4.1). Without them, every transcription card is read against SPEC by a reviewer instead. The example that names a real organization (SPEC 263 to 265) is left out of the copy | The project lead |
+| 10 | May the field specification's lines be copied into the repository, piece by piece? | Yes: the spec check needs them (4.1). Without them, every transcription card is read against SPEC by the auditor instead. The example that names a real organization (SPEC 263 to 265) is left out of the copy | The project lead |
 | 11 | Which timeline filter each note type belongs to | The mapping in section 5 | Brooke and Mercy |
 
 ### 10.2 Questions that need a person and have no default

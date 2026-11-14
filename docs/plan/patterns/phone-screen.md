@@ -10,7 +10,7 @@ method to save (see [phone-domain.md](phone-domain.md)). It holds no rules of it
 
 ## Level
 
-**R**. A screen is wording, accessibility and what a role sees: a reviewer reads the diff and
+**R**. A screen is wording, accessibility and what a role sees: the auditor reads the diff and
 looks at the screen. The card gives every word the screen shows.
 
 A small model must not:
@@ -118,7 +118,7 @@ flutter analyze --fatal-infos                               # last line: "No iss
 
 For the example, the first command ends `+9: All tests passed!`.
 
-## Check before you report
+## What the auditor checks
 
 1. Does the public widget return a `PatientsGate`, so a frozen store shows only the notice?
 2. Is every text field a `PhiField`?

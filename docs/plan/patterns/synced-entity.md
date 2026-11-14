@@ -54,7 +54,7 @@ names what fails if it is forgotten.
 1. **Migration** (see `migration.md`): the table with `team_id`, `device_id`, `change_id`,
    `clock_verified`, row-level security, and a new version of `patient_of_change` with a branch for
    the entity. Fails: the entity's insert in `sync-patients.test.ts`. No test was found that
-   catches a missing `patient_of_change` branch: the reviewer checks it.
+   catches a missing `patient_of_change` branch: the second review checks it.
 2. **`schemas.ts`**: add the name to `PATIENT_ENTITIES`. From here `pnpm -s typecheck` fails until
    steps 3 and 5 are done (`CREATE_SCHEMAS`, `FIELD_SCHEMAS` and `RULES` are exhaustive records).
 3. **`values.ts`**: add `<Name>Create` (`.strict()`, `Trimmed` for text, no `.trim()` or other
@@ -128,7 +128,7 @@ starts with `Duration`. Each `flutter test` ends with `All tests passed!`. The c
 runs `tools/live-sync.sh` and `tools/ci-local.sh` under the lock (`CLAUDE.md`): the live run is
 what proves the phone and the real API agree.
 
-## Check before you report
+## What the auditor checks
 
 1. Is the permission key one that already exists, and the same on the server, the phone registry and the fake?
 2. Does the create write its audit event through `storeCreate`, in the same transaction, with no typed text in the details?

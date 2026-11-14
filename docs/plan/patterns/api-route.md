@@ -11,7 +11,7 @@ sync, and `services/api/src/sync/**` is level X.
 ## Level
 
 Usually **T**. A route enforces a permission and writes an audit event, so the planner writes its
-tests first and a reviewer reads the diff. The card gives the path, the schema fields, the
+tests first and the auditor reads the diff. The card gives the path, the schema fields, the
 permission key, the error codes and the audit action in full.
 
 Level X parts a small model must not do:
@@ -124,15 +124,15 @@ pnpm -s lint && pnpm -s format:check && pnpm -s typecheck
 Each vitest run must print `Test Files  1 passed (1)` and no `failed` line; the last line printed
 is `Duration ...`. The lint line must exit with status 0 (`echo $?` prints `0`).
 
-## Check before you report
+## What the auditor checks
 
 1. Does the handler call `teamScope` with a permission before anything else?
 2. Is every SQL statement and the audit event inside the same `scope.tx`?
 3. Does every query filter by `team_id = ${scope.team.teamId}`?
 4. Is the permission key one that already exists in `services/api/src/auth/permissions.ts`?
 5. Are names and search text absent from the path, the query and the audit details?
-6. Did you add the route to `ROUTES` in `permissions.test.ts`?
-7. Did you run `pnpm contract:generate` and keep its output, unedited?
+6. Is the route in `ROUTES` in `permissions.test.ts`?
+7. Was `pnpm contract:generate` run, and is its output kept, unedited?
 8. Are `services/api/src/auth/**`, `src/db/**` and `src/sync/**` unchanged?
 
 ## Mistakes to avoid

@@ -122,7 +122,7 @@ tool/format_check.sh                            # exits 0; its last line reports
 flutter analyze --fatal-infos                   # last line: "No issues found!" and a time
 ```
 
-## Check before you report
+## What the auditor checks
 
 1. Does the method use only `LocalStore` calls that already exist, with no edit under
    `lib/sync/`, `lib/security/` or `lib/auth/`?

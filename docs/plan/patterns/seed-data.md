@@ -82,7 +82,7 @@ environment. Lines 15-61: the demo staff (do not add to them).
 - a string shaped like a Medicare Beneficiary Identifier.
 
 The rules are in `tools/phi-guard-rules.mjs` lines 12-41. The guard does not know whether a name
-belongs to a real person. That part is the card's and the reviewer's job.
+belongs to a real person. That part is the card's and the auditor's job.
 
 ## Tests to write
 
@@ -117,18 +117,18 @@ pnpm -s lint && pnpm -s format:check && pnpm -s typecheck
 
 Passes when it ends with no error line.
 
-The portal end-to-end tests read the seed too. Do not run them for this card; the reviewer runs
+The portal end-to-end tests read the seed too. Do not run them for this card; the auditor runs
 the full local CI under the shared lock.
 
-## Check before you report
+## What the auditor checks
 
-1. Is every name, descriptor and text exactly what the card gave, with nothing made up by you?
+1. Is every name, descriptor and text exactly what the card gave, with nothing added?
 2. Does every descriptor, usual area and other free text start with "Demo:"?
 3. Is the new `n` (and each new `k`) unused, and is patient 41 still the last entry?
-4. Is there no phone number, email, address or ID-shaped number in what you added?
+4. Is there no phone number, email, address or ID-shaped number in what was added?
 5. Does `node tools/phi-guard.mjs` end with `files clean`, with no `phi-guard: allow` added?
 6. Does the seed test pass (the seed runs twice without an error)?
-7. Did you leave `DEMO_STAFF`, the SQL in `seedDemoPatients` and the existing entries unchanged?
+7. Are `DEMO_STAFF`, the SQL in `seedDemoPatients` and the existing entries unchanged?
 
 ## Mistakes to avoid
 

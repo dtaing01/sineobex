@@ -11,7 +11,7 @@ SQL files. `db/src/migrate.ts` (`migrate`, line 58) applies every pending file i
 ## Level
 
 **T** for the small changes below: the card gives the SQL in full and the planner wrote the test
-first. A merged migration can never be edited, so a reviewer reads every one before it merges.
+first. A merged migration can never be edited, so the auditor reads every one before it merges.
 
 **X (the frontier model only)** when the migration does any of these. `docs/plan/README.md` lists them as
 always level X:
@@ -119,7 +119,7 @@ Each vitest run ends with a summary. It must contain `Test Files  1 passed (1)` 
 line. The last line printed is `Duration ...`. The PHI guard reads only files git tracks, so
 `git add` your new files before running it; its last line is `PHI guard: <n> files clean`.
 
-## Check before you report
+## What the auditor checks
 
 1. Is the file number one higher than the highest that was there, with no number used twice?
 2. Does the file contain only the statements the card gave, plus the `set search_path` line?

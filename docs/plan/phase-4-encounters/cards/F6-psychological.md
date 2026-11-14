@@ -17,7 +17,7 @@ of the field specification, and the export accepts it.
 ## Files
 
 - `packages/forms/definitions/note-types/psychological/v1.json` (new)
-- The generated files the export rewrites. Commit them. Never edit them by hand.
+- The generated files the export rewrites. Keep them in the change. Never edit them by hand.
 
 ## Steps
 
@@ -28,7 +28,7 @@ of the field specification, and the export accepts it.
      "group": "psych", "sensitivity": "sensitive", "sections": [] }
    ```
 
-2. Add four sections, in this order, each with `"spec": "psychological"`:
+2. Sections table. Add these four sections, in this order, each with `"spec": "psychological"`:
 
    | `id` | `title` |
    |---|---|
@@ -37,8 +37,8 @@ of the field specification, and the export accepts it.
    | `mse` | Mental status exam |
    | `plan` | Intervention and outcome |
 
-3. Add these fields, in this order. Type each option from the line of `psychological.txt` named,
-   with its label exactly as written and its code by the recipe's rule.
+3. Decisions table. Add these fields, in this order. Type each option from the line of
+   `psychological.txt` named, with its label exactly as written and its code by the recipe's rule.
 
    | Section | `id` | Label | Kind | Options | Also |
    |---|---|---|---|---|---|

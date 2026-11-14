@@ -13,7 +13,7 @@ This recipe is for events the API writes online. Events a phone records offline 
 
 ## Level
 
-**T**. The audit rule is a safety rule: the planner writes the test first, and a reviewer reads
+**T**. The audit rule is a safety rule: the planner writes the test first, and the auditor reads
 the diff. The card gives the action name and the exact `details` keys.
 
 Level X parts a small model must not touch:
@@ -108,7 +108,7 @@ cd ../.. && node tools/phi-guard.mjs
 The vitest run must print `Test Files  1 passed (1)` and no `failed` line; its last line is
 `Duration ...`. The PHI guard's last line is `PHI guard: <n> files clean`.
 
-## Check before you report
+## What the auditor checks
 
 1. Is the `audit(...)` call inside the same `scope.tx` callback as the SQL it records?
 2. Is it awaited?

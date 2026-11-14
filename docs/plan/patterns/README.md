@@ -12,9 +12,14 @@ line ranges are from. Read `docs/plan/README.md` first: it defines the card leve
 - The card gives the particulars: the names, the fields, the SQL, the wording, the files to
   change and the tests to write or to make pass.
 - Where the card and the recipe disagree, the card wins for particulars. If the card asks for
-  something the recipe says a small model must not do, stop and report: do not choose.
-- A recipe's line ranges go stale as the code changes. If the lines no longer show what the
-  recipe says, find the code by the names it gives, and say so in the card's report.
+  something the recipe says a small model must not do, the implementer stops and reports: it
+  does not choose.
+- Each recipe ends with **What the auditor checks**. The planner copies the lines that apply
+  into the card's **Audit** list. The auditor goes through the whole list when it reads the
+  unit's diff.
+- A recipe's line ranges go stale as the code changes. The planner checks them when it writes a
+  card, and corrects the recipe in the same commit. An implementer who finds that the lines do
+  not show what the card says stops and reports: it does not go looking for the code.
 
 ## Server
 

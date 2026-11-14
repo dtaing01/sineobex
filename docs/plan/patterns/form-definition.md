@@ -1,7 +1,7 @@
 # Recipe: turn a piece of the field specification into a form definition
 
 Written with the phase 4 design (`docs/design/phase-4/forms.md`, sections 2 and 4). The package
-it describes, `packages/forms`, is built by cards F0-1 to F0-7. Use this recipe after they land.
+it describes, `packages/forms`, is built by units F0 and E. Use this recipe after they land.
 
 ## When to use this
 
@@ -13,7 +13,7 @@ field is.
 ## Level
 
 **S** for a plain piece: the export's checks catch a missing option, an extra option and a broken
-file. **R** when the card says so (a repeating section, a grid, a sensitive exam): a reviewer
+file. **R** when the card says so (a repeating section, a grid, a sensitive exam): the auditor
 reads the result against the specification.
 
 A small model must not: change `packages/forms/src/**`, `packages/forms/schema/**` or
@@ -72,8 +72,8 @@ specification's lines, the Decisions table, the definition and the diff file. Re
      the Decisions table names that option.
 6. **Leave the piece's other files alone.** `<piece>.txt`, `<piece>.shape.json` and
    `<piece>.diff.json` are already there. They hold the decisions. Do not edit them.
-7. **Run the export** (below). Fix what it reports. Its messages name the file, the field and
-   the rule.
+7. **Run the export**, the first command under the card's **Run**. Fix what it reports. Its
+   messages name the file, the field and the rule.
 
 ## Tests to write
 
@@ -93,23 +93,23 @@ npx prettier --write packages/forms/definitions
 
 The export's last line is `forms: <n> note types, <m> modules, <k> lists, 0 problems`. The
 vitest run prints `Test Files  <n> passed (<n>)`. `flutter test` ends with `All tests passed!`.
-Commit the definition, the diff file and every generated file the export changed, together.
+The definition, the diff file and every generated file the export changed go in one commit.
 
-## Check before you report
+## What the auditor checks
 
 1. Does every button in the piece's lines appear as an option, with the same words?
 2. Is there no option, field or condition that is in neither the lines nor the card?
 3. Is every `id` and every `code` lower case with `_`, and unique among its siblings?
 4. Does every `showWhen` name a path that exists (section id, a dot, field id)?
-5. Did you leave out the notes to the builder, the example values and anything marked V2?
+5. Are the notes to the builder, the example values and anything marked V2 left out?
 6. Are the piece's `.txt`, `.shape.json` and `.diff.json` files unchanged?
-7. Did the export end with `0 problems`, and did you commit the generated files?
-8. Did you change only the files the card lists?
+7. Did the export end with `0 problems`, and are the generated files in the change?
+8. Are only the files the card lists changed?
 
 ## Mistakes to avoid
 
 - **Fixing the specification.** A typo, an odd capital letter or a strange order in the piece is
-  copied as it is. If something looks wrong, finish the card and say so in its Report.
+  copied as it is. If something looks wrong, finish the card and say so in your reply.
 - **Guessing choose-one or choose-many.** The specification never says. The Decisions table
   does. If a field is missing from the table, stop and report.
 - **Joining or splitting fields.** A row of buttons wrapped over three lines is one field. Two

@@ -14,7 +14,7 @@ phone's tests both read it. A side that drifts fails its own test.
 **X** when the rule lives on an always-X path, as most do: sync values and hashing
 (`services/api/src/sync/**`, `apps/mobile/lib/sync/**`), access rules (`services/api/src/auth/**`),
 and anything the phone's test server uses. The vector file and its two readers are tests. The
-planner, the frontier model, writes them, first, and a reviewer reads the expected answers against
+planner, the frontier model, writes them, first, and a second review reads the expected answers against
 the phase design.
 
 A small model must not: write or change a vector file or a reader; edit a generator; regenerate a
@@ -114,7 +114,7 @@ The vitest run prints `Test Files  1 passed (1)`; its last line starts with `Dur
 prints `canonical vectors written`. `gen-match-vectors.ts` needs a superuser Postgres; its header
 (lines 6-7) gives its command.
 
-## Check before you report
+## What the auditor checks
 
 1. Do both readers read the same file, and does neither hold its own copy of an expected answer?
 2. Does each reader fail if the list is empty or the key is misspelled?

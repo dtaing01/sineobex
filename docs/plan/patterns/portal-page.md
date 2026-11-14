@@ -13,7 +13,7 @@ API does both.
 ## Level
 
 **R.** A page is a screen's wording and accessibility, and its navigation entry follows a
-permission. A reviewer reads the diff and looks at the screen in all three themes. A small model must not: add a permission key (the PRD allows no new ones); edit
+permission. The auditor reads the diff and looks at the screen in all three themes. A small model must not: add a permission key (the PRD allows no new ones); edit
 `apps/portal/src/lib/api.ts`, `apps/portal/src/proxy.ts` or anything under
 `apps/portal/src/lib/auth/`; edit `apps/portal/e2e/helpers.ts` (a shared helper has one owner);
 edit `apps/portal/playwright.config.ts`, `tools/**` or `.github/**` (always level X).
@@ -122,7 +122,7 @@ flock "$CI_LOCK" sh -c 'ADMIN_URL=postgres://postgres:postgres@localhost:5432/po
 It passes when Playwright's summary says `<n> passed` and nothing failed. Rebuild after every
 source change: the tests run the built portal, not your working files.
 
-## Check before you report
+## What the auditor checks
 
 1. Is the page title the screen's name only, with no patient name, date or ID in it?
 2. Does every URL the page builds hold only record IDs, page numbers or fixed words?
