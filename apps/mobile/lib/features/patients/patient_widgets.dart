@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -219,6 +221,25 @@ class WideButton extends StatelessWidget {
               ? OutlinedButton(onPressed: onPressed, child: child)
               : OutlinedButton.icon(onPressed: onPressed, icon: Icon(icon), label: child));
     return SizedBox(width: double.infinity, child: button);
+  }
+}
+
+/// Whether focus should follow a control that is about to go to what replaces it. Someone on
+/// [from] with a keyboard or a switch, or using a screen reader, would be left nowhere when it goes.
+/// A finger, with the keyboard up for a field, keeps typing where it was.
+bool focusFollows(BuildContext context, FocusNode from) => from.hasFocus || MediaQuery.accessibleNavigationOf(context);
+
+/// Gives [node] the focus and brings it on screen: the control that took the place of one that
+/// went. Call it after the frame that put it there.
+void focusInView(FocusNode node) {
+  node.requestFocus();
+  final target = node.context;
+  if (target == null) return;
+  for (final edge in [
+    ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+  ]) {
+    unawaited(Scrollable.ensureVisible(target, alignmentPolicy: edge));
   }
 }
 

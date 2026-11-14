@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/patients/patient_repository.dart' show PatientRepository;
@@ -190,6 +191,85 @@ void main() {
     final dismissed = ((create.value! as Map)['matchCheck']! as Map)['dismissed']! as List;
     expect(dismissed.toSet(), {p1Id, other});
     expect(find.byType(PatientScreen), findsOneWidget);
+  });
+
+  group('focus follows what replaces a control that goes', () {
+    /// The button, chip or field around [finder] holds the keyboard's focus.
+    bool focused(WidgetTester tester, Finder finder) => Focus.of(tester.element(finder)).hasPrimaryFocus;
+
+    Future<void> pressFocused(WidgetTester tester) async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+    }
+
+    // At 200% text the card is taller than the list keeps built above the screen.
+    for (final run in [runs.first, runs.firstWhere((r) => r.scale == 2)]) {
+      testWidgets('Not them moves to its Undo, and Undo back to Not them (${runName(run)})', (tester) async {
+        await offlineIntake(tester, run: run);
+        await tapOn(tester, find.text('Agrees'));
+        await type(tester, 'preferredName', 'Smitty');
+        FocusManager.instance.primaryFocus?.unfocus();
+        await settle(tester);
+        // The card's buttons at the top of the screen: the rest of the card is above it.
+        await reveal(tester, find.text('Not them'));
+        // With a keyboard, or a switch: the button is focused, then pressed.
+        Focus.of(tester.element(find.text('Not them'))).requestFocus();
+        await tester.pump();
+        await pressFocused(tester);
+        // The line the card folded to is on screen, not left above it, and holds the focus.
+        expect(find.text('Not Del'), findsOneWidget);
+        expect(focused(tester, find.text('Undo')), isTrue);
+        await pressFocused(tester);
+        expect(find.text('Not Del'), findsNothing);
+        expect(find.text('Not them'), findsOneWidget);
+        expect(focused(tester, find.text('Not them')), isTrue);
+      });
+    }
+
+    testWidgets('a screen reader’s tap on Not them moves to Undo; a finger’s leaves the field alone', (tester) async {
+      await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Smitty');
+      await type(tester, 'visualDescriptor', 'Demo: red cap');
+      final typing = (await fieldNamed(tester, 'visualDescriptor')).focusNode!;
+      await settle(tester);
+      // A finger, with the keyboard up for another field: typing goes on where it was.
+      await tapOn(tester, find.text('Not them'));
+      await expectShown(tester, find.text('Not Del'));
+      expect(typing.hasFocus, isTrue);
+      await tapOn(tester, find.text('Undo'));
+      expect(typing.hasFocus, isTrue);
+
+      // The same tap from a screen reader or Switch Access.
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await tester.pump();
+      await tapOn(tester, find.text('Not them'));
+      expect(focused(tester, find.text('Undo')), isTrue);
+    });
+
+    testWidgets('removing a street name moves to the one before it, and to the field after the last', (tester) async {
+      await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      for (final name in ['Demo Red', 'Demo Ace']) {
+        await type(tester, 'alias', name);
+        await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+      }
+      // The words inside the row's button (the label is on the button's own node, above its focus).
+      Finder remove(String name) =>
+          find.descendant(of: find.bySemanticsLabel('Remove street name $name'), matching: find.text('Remove')).first;
+      await reveal(tester, remove('Demo Ace'));
+      Focus.of(tester.element(remove('Demo Ace'))).requestFocus();
+      await tester.pump();
+      await pressFocused(tester);
+      expect(find.text('Demo Ace'), findsNothing);
+      expect(focused(tester, remove('Demo Red')), isTrue);
+      await pressFocused(tester);
+      expect(find.text('Demo Red'), findsNothing);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('phi.alias'))).focusNode!.hasFocus, isTrue);
+    });
   });
 
   testWidgets('This is them opens the chart and offers to add what was typed', (tester) async {

@@ -10,11 +10,12 @@ import '../../patients/display.dart';
 import '../../patients/patient_search.dart';
 import 'patient_labels.dart';
 import 'patient_row.dart';
+import 'patient_widgets.dart' show focusFollows, focusInView;
 
 /// Possible matches as the intake is typed (design 8.1): an inline panel under the name fields,
 /// never a dialog, one card per candidate at or above "possible", likely ones first. Announced
 /// politely; focus stays where the worker is typing. Never a legal name (D40).
-class DuplicatePanel extends StatelessWidget {
+class DuplicatePanel extends StatefulWidget {
   const DuplicatePanel({
     super.key,
     required this.run,
@@ -35,13 +36,47 @@ class DuplicatePanel extends StatelessWidget {
   final ValueChanged<FoundPatient> onUndo;
 
   @override
+  State<DuplicatePanel> createState() => _DuplicatePanelState();
+}
+
+class _DuplicatePanelState extends State<DuplicatePanel> {
+  /// Each card's **Not them** and its folded line's **Undo**, by patient: when one goes, focus moves
+  /// to the other.
+  final _notThem = <String, FocusNode>{};
+  final _undo = <String, FocusNode>{};
+
+  @override
+  void dispose() {
+    for (final node in [..._notThem.values, ..._undo.values]) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  /// [change] swaps the control at [from] for the one at [to] (a card folds to one line, or opens
+  /// again). For someone who was on it ([focusFollows]) focus follows, and the list, which closes
+  /// up or opens out around the change, is scrolled to keep the new control on screen.
+  void _swap(FocusNode from, FocusNode to, VoidCallback change) {
+    final follow = focusFollows(context, from);
+    change();
+    if (!follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) focusInView(to);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final run = widget.run;
+    final dismissed = widget.dismissed;
     final candidates = run.candidates;
     if (candidates.isEmpty) return const SizedBox.shrink();
     final text = Theme.of(context).textTheme;
     final c = context.field;
     final at = run.listUpdatedAt;
     final open = candidates.where((p) => !dismissed.contains(p.patientId)).length;
+    FocusNode notThem(FoundPatient p) => _notThem.putIfAbsent(p.patientId, FocusNode.new);
+    FocusNode undo(FoundPatient p) => _undo.putIfAbsent(p.patientId, FocusNode.new);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -58,16 +93,22 @@ class DuplicatePanel extends StatelessWidget {
           const SizedBox(height: FieldSpace.s1),
           Text(
             'Checked against the patient list on this phone'
-            '${at == null ? '' : ' (updated ${ago(at, now)})'}. The server checks again when this syncs.',
+            '${at == null ? '' : ' (updated ${ago(at, widget.now)})'}. The server checks again when this syncs.',
             style: text.bodyMedium?.copyWith(color: c.inkMuted),
           ),
         ],
         const SizedBox(height: FieldSpace.s2),
         for (final p in candidates) ...[
           if (dismissed.contains(p.patientId))
-            _Folded(patient: p, onUndo: () => onUndo(p))
+            _Folded(patient: p, focusNode: undo(p), onUndo: () => _swap(undo(p), notThem(p), () => widget.onUndo(p)))
           else
-            _Candidate(patient: p, today: today, onThisIsThem: () => onThisIsThem(p), onNotThem: () => onNotThem(p)),
+            _Candidate(
+              patient: p,
+              today: widget.today,
+              notThemFocus: notThem(p),
+              onThisIsThem: () => widget.onThisIsThem(p),
+              onNotThem: () => _swap(notThem(p), undo(p), () => widget.onNotThem(p)),
+            ),
           const SizedBox(height: FieldSpace.s2),
         ],
       ],
@@ -76,9 +117,16 @@ class DuplicatePanel extends StatelessWidget {
 }
 
 class _Candidate extends StatelessWidget {
-  const _Candidate({required this.patient, required this.today, required this.onThisIsThem, required this.onNotThem});
+  const _Candidate({
+    required this.patient,
+    required this.today,
+    required this.notThemFocus,
+    required this.onThisIsThem,
+    required this.onNotThem,
+  });
   final FoundPatient patient;
   final DateTime today;
+  final FocusNode notThemFocus;
   final VoidCallback onThisIsThem;
   final VoidCallback onNotThem;
 
@@ -152,7 +200,7 @@ class _Candidate extends StatelessWidget {
               runSpacing: FieldSpace.s2,
               children: [
                 FilledButton(onPressed: onThisIsThem, child: const Text('This is them')),
-                OutlinedButton(onPressed: onNotThem, child: const Text('Not them')),
+                OutlinedButton(focusNode: notThemFocus, onPressed: onNotThem, child: const Text('Not them')),
               ],
             ),
           ],
@@ -164,8 +212,9 @@ class _Candidate extends StatelessWidget {
 
 /// A dismissed card, folded to one line: "Not Del · Undo".
 class _Folded extends StatelessWidget {
-  const _Folded({required this.patient, required this.onUndo});
+  const _Folded({required this.patient, required this.focusNode, required this.onUndo});
   final FoundPatient patient;
+  final FocusNode focusNode;
   final VoidCallback onUndo;
 
   @override
@@ -173,6 +222,7 @@ class _Folded extends StatelessWidget {
     children: [
       Expanded(child: Text('Not ${listName(patient)}', style: Theme.of(context).textTheme.bodyLarge)),
       TextButton(
+        focusNode: focusNode,
         onPressed: onUndo,
         child: Semantics(
           label: 'Undo: ${listName(patient)} might be them',

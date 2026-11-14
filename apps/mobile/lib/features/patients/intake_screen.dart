@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -218,6 +219,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _livingOtherFocus,
       _substanceFocus,
       _noticeReasonFocus,
+      ..._aliasRemoveFocus,
+      ..._allergyRemoveFocus,
     ]) {
       f.dispose();
     }
@@ -792,6 +795,30 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     });
   }
 
+  /// The Remove buttons of the street names and allergies being added, by place in their list.
+  final _aliasRemoveFocus = <FocusNode>[];
+  final _allergyRemoveFocus = <FocusNode>[];
+
+  FocusNode _removeFocus(List<FocusNode> nodes, int i) {
+    while (nodes.length <= i) {
+      nodes.add(FocusNode());
+    }
+    return nodes[i];
+  }
+
+  /// Removes item [i] of [items]. For someone who was on its Remove button ([focusFollows]), focus
+  /// follows to the item that took its place, to the one before it when it was the last, or to
+  /// [whenEmpty] (the list's own field).
+  void _removeAt<T>(List<T> items, int i, List<FocusNode> nodes, FocusNode whenEmpty) {
+    final follow = focusFollows(context, _removeFocus(nodes, i));
+    setState(() => items.removeAt(i));
+    if (!follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      focusInView(items.isEmpty ? whenEmpty : _removeFocus(nodes, math.min(i, items.length - 1)));
+    });
+  }
+
   Future<void> _removeExistingAlias(_ExistingAlias a) async {
     final reason = await askReason(
       context,
@@ -1124,8 +1151,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           text: a,
           action: 'Remove',
           spoken: 'Remove street name $a',
+          focusNode: _removeFocus(_aliasRemoveFocus, i),
           onPressed: () {
-            setState(() => _aliases.removeAt(i));
+            _removeAt(_aliases, i, _aliasRemoveFocus, _aliasFocus);
             unawaited(_check());
           },
         ),
@@ -1355,7 +1383,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           ].join(' · '),
           action: 'Remove',
           spoken: 'Remove allergy ${a.substance}',
-          onPressed: () => setState(() => _allergies.removeAt(i)),
+          focusNode: _removeFocus(_allergyRemoveFocus, i),
+          onPressed: () => _removeAt(_allergies, i, _allergyRemoveFocus, _substanceFocus),
         ),
       if (_allergyScreen == _Allergies.adding) ...[
         const SizedBox(height: FieldSpace.s3),
@@ -1510,11 +1539,18 @@ class _AdminOnly extends StatelessWidget {
 
 /// A row of a list on the form with its 48 px action.
 class _ListItem extends StatelessWidget {
-  const _ListItem({required this.text, required this.action, required this.spoken, required this.onPressed});
+  const _ListItem({
+    required this.text,
+    required this.action,
+    required this.spoken,
+    required this.onPressed,
+    this.focusNode,
+  });
   final String text;
   final String action;
   final String spoken;
   final VoidCallback onPressed;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1523,6 +1559,7 @@ class _ListItem extends StatelessWidget {
       children: [
         Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyLarge)),
         TextButton(
+          focusNode: focusNode,
           onPressed: onPressed,
           child: Semantics(label: spoken, excludeSemantics: true, child: Text(action)),
         ),
