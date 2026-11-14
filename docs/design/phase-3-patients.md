@@ -11,7 +11,7 @@ Done when (Build plan): **a made-up patient is found offline by a misspelled ali
 
 > **Project lead amendment (Oct 22), overriding the text below.** "Keep for today" pins are **cut from phase 3**: the PRD doesn't ask for them, and the route cache they stand in for arrives in phase 7 (plan risk 8: cut from the edges). Wherever this design mentions them: `cache_scopes.kind` is `'opened'` or `'route'` (phase 7) only; `FetchCharts.reason` is `'opened' | 'refresh'`; there is no pin action, limit, audit event, UI or test for pins; D30 reads "charts a person opened or worked on". Constant 23 in 14.1 is removed. Everything else stands.
 
-## Status (Oct 30), and how to pick the work up
+## Status (Nov 14): phase 3 is done
 
 Read `CLAUDE.md` at the repository root first: environment, commands, the CI lock, conventions.
 Then this section, then the design sections the next unit needs. Units are defined in section 15;
@@ -30,11 +30,11 @@ this table is their state. Update it as units land.
 | W1 Portal patients | Done | `/patients` (search), `/patients/[id]` (profile, ID card panel), `/patients/[id]/correct`, `/patients/[id]/history`, `/team/reviews`; `actions/{patients,reviews}.ts`; `e2e/{patients,corrections,id-card}.spec.ts` | — |
 | W2 Portal duplicates, merges, reversals | Done | `/team/duplicates`, `/team/duplicates/[pairId]` (`SideBySide`), `/team/merges`, `/team/problem-reversals`, `actions/{duplicates,problems}.ts`; `e2e/{duplicates,problems}.spec.ts` and `e2e/phone-records.ts` | — |
 | P2 Phone patients domain | Done | `apps/mobile/lib/patients/{patient_repository,team_index,patient_search,chart_cache,id_links,problems,consent_script,patient_providers}.dart`, `lib/security/secure_copy.dart` (Dart, Android, iOS); `test/patients/*` (done-when against the fake, scenarios, `live_patients_test.dart` in `tools/live-sync.sh`) | — |
-| P3 Phone screens | Done | `apps/mobile/lib/features/patients/**` (Patients tab, intake and edit, duplicate panel and sheet, profile, ID card, problem, add problem, field review sheet), tab shell and wiring (`app.dart`, `app_providers.dart`), Needs attention texts and notices, Home line, `allergy_badge`, `status_chip`, `birth_field`; widget tests in three themes, at 200% text and 320 wide | Field review decision and History go through P2 wrappers, with fake routes (review list) |
-| D Documents | Partly done | `CLAUDE.md`; D25–D43 and the phase 3 status are in `IMPLEMENTATION_PLAN.md` | Compliance docs (section 15 row D) when the phase closes |
-| **Review** | **In progress**: all three reviews reported (tables below) | — | Fix units R1, R2, R3, R5; each finding with a regression test |
+| P3 Phone screens | Done | `apps/mobile/lib/features/patients/**` (Patients tab, intake and edit, duplicate panel and sheet, profile, ID card, problem, add problem, field review sheet), tab shell and wiring (`app.dart`, `app_providers.dart`), Needs attention texts and notices, Home line, `allergy_badge`, `status_chip`, `birth_field`; widget tests in three themes, at 200% text and 320 wide | — |
+| D Documents | Done | `CLAUDE.md`; `IMPLEMENTATION_PLAN.md` (D25–D54, section 6, the phase's status); `docs/compliance/` (the access policy, the HIPAA mapping, accessibility, the risk analysis template) | — |
+| Review | Done | three reviews (server and portal; phone; phone screens), 32 findings, each fixed with a regression test that fails with the fix reverted (tables below) | — |
 
-Order from here: the review and its fixes, then the phase closes (section 15 row D).
+Nothing is left in this phase. Phase 4's design is being drafted under `docs/design/phase-4/` (not yet reviewed), and `docs/plan/README.md` says how the remaining phases are built from task cards.
 
 ### As built: where the code departs from, or reads, this design
 
@@ -235,7 +235,8 @@ Screens review (at a29bde0; scratch tests R1–R12 in the coordinator's scratchp
 | R2 server patients | S1 `0ca21e5`, S4 `d9efc0c`, S5 `eaade7c` (and the correction route, `ff85705`), S8 `79421f2`, P7 server `f6f2d68`, W1 `bd6c49f` |
 | R1 server sync and the fake | S2 `73e0eb3`, S3 `8bb79d8`, S6 `588f73e`, S7 `1665b87`, P7 fake `14c4ad2`, P8 `cd9e62a`, P10 fake routes `65c5258`, the fake's mirror of R2 `64fd2f1` and `f229cef` |
 | R3 phone sync and domain | P1 `b5540a2`, P2 `4875715`, P3 `23b1c36`, P4 `09be5e0`, P5 `59498fc`, P6 `191da37`, P7 phone `7b291df`, P9 `fb03ab3`, V1 domain `5263701`, V2 `3f4cce2`, V4 domain `5140a9d`, P10 wrappers `d7224f2` |
-| Coordinator | S9 `3f7f2cc`, W1 portal `950bd2e` |
+| R5 phone screens | V1 `7a1cc65` and `9b53c34`, V12 `e749186`, V3, V4 and V5 `8f01abc` and `685f1d7`, V6 `48e901a`, V7 `b6ef3d4`, V8 `9930c09`, V9 `e5dfdac`, V10 `b1b2bc6`, V11 `1bfc17c`, P10 screens `2c31546`, a refused conflict choice says why `568225c`, focus after an action `08e597f` and `b8e7f6f` |
+| Coordinator | S9 `3f7f2cc`, W1 portal `950bd2e`, the freeze tells the screens at once `92b7fd7` |
 
 **How the fixes were checked (Nov 14).** R1 and R3 were cut off before they reported, so each of
 their fixes was checked again from the outside: the rule was put back in the source alone (the
@@ -250,6 +251,28 @@ tests. The scripts are throwaway (`bite.sh`, `bite2.py` in the coordinator's scr
 is the one in `CLAUDE.md`: revert the rule, see it fail, restore it. A second adversarial pass over
 the fixes themselves was started and dropped: it used a whole usage window without one verifier
 finishing.
+
+How R5's fixes read the design (R5 reported its own revert check for each):
+
+- **V1, V12.** `PatientsGate` follows the sync controller and replaces every patient screen with
+  the freeze message; each screen also asks one shared check before any read, whatever caused the
+  rebuild; nothing is read through a store a lock just closed. The controller notifies its
+  listeners the moment it freezes the store, so a chart on screen goes at once (`92b7fd7`).
+- **V3, V4, V5.** The intake saves its draft a second after each change and when the app leaves
+  the screen, never into a closed or frozen store. A declined intake keeps no draft. A preferred
+  name filled in from the legal given name, or carried from a search, stays out of the draft until
+  the worker edits it (a search's text is often a legal name), and the resumed form says so.
+- **V6, V11.** Rows that act as buttons carry a tap action. The note counter is said once at 90%
+  and once at the limit.
+- **V7 to V10.** "Add what you typed" keeps what a list-only chart can't take yet; the birth field
+  is off on a list-only chart; Update and save is one transaction with lengths checked when added;
+  each likely match is asked about on its own, and only the answers are recorded.
+- **P10.** The field review sheet and History go through the domain layer, tested through the
+  fake's routes; History pages, and words entries that aren't patient fields.
+- **Left as they are:** Material's own character counter still reads each keystroke on the other
+  length-limited fields (for the phase 11 accessibility pass); after "already decided" or "the
+  value changed" the sheet asks the person to open the chart again; a role that may mark an allergy
+  entered in error but can't add one has no Add button for focus to move to.
 
 How R1's and R3's fixes read the design:
 

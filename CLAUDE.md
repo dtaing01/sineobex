@@ -10,9 +10,10 @@ session can pick it up.
 | What | Where |
 |---|---|
 | Product spec (the PRD) | [Sineobex Build & Strategy Plan](https://claude.ai/code/artifact/6f83b7b9-4134-4c36-ad0c-17a41eed3af3): the main tab is the source of truth for what each feature does; the Build plan tab sets the order. It lives outside the repo. |
-| Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D43, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
+| Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D54, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
 | The current phase's design and its unit status | `docs/design/phase-<n>-<name>.md`. Its **Status** section says which units are done, which are open and what each needs. Start there. |
 | Compliance mapping | `docs/compliance/` |
+| Task cards for a small model, and the recipes they point to | `docs/plan/` (start with its `README.md`) |
 | Deployment setup (accounts, secrets) | `docs/setup.md` |
 
 When the code and these documents disagree, find out which is right, fix the other, and say so in
@@ -136,5 +137,12 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
   otherwise cherry-pick), runs the full local CI, pushes, and tells the units that wait on it.
   Worktrees under `.claude/worktrees/` are scratch: nothing in them counts until it is on the branch.
   Remove a worktree only after its agent has stopped.
+- Usage limits, not machine time, are what runs out. Run two agents at a time at most, give each a
+  narrow job, and have each write its file or its findings to disk as it goes: six agents at once
+  has twice used a whole window without one finishing.
+- Agents never write in the PR checkout, drafts included: its commit hook rightly asks for
+  everything there to be committed and pushed.
+- To check that a fix's test fails without the fix, script it instead of spending an agent on it:
+  reverse the fix's source hunks in a scratch worktree and run the tests the fix added.
 - Shared test helpers have one owner. A bug in one is fixed by its owner (or the coordinator), on
   the branch, with a test, and every unit is told to rebase.
