@@ -414,7 +414,7 @@ Units are A0 to A6; no earlier phase uses the letter (F, E, L, P, I, W, U, B). A
 | A3-skeleton | X | `infra/package.json`, `infra/bin/app.ts`, `infra/lib/spec.ts` (`EnvSpec`) | — |
 | A3-specs | X | `infra/config/{dev,staging,prod}.ts` | A3-skeleton |
 | A3-policy-harness | X | `infra/policy/index.ts`, `infra/test/policy.test.ts`, the fixtures folder, cdk-nag's HIPAA pack | A3-skeleton |
-| A3-policy-data, A3-policy-stores, A3-policy-access, A3-policy-edge | X | `infra/policy/<check>.ts`: the 12 checks of 5.5 in its order, three a card, each with two fixtures | A3-policy-harness |
+| A3-policy-data, A3-policy-stores, A3-policy-roles, A3-policy-edge | X | `infra/policy/<check>.ts`: the 12 checks of 5.5 in its order, three a card, each with two fixtures | A3-policy-harness |
 | A3-keys | X | `infra/lib/keys.ts`: one KMS key each for data, logs, secrets | A3-skeleton |
 | A3-network | X | `infra/lib/network.ts`: VPC, two zones, private subnets, one NAT (also the way out to Firebase), S3 and Secrets endpoints | A3-skeleton |
 | A3-database | X | `infra/lib/database.ts`: RDS, parameter group (`force_ssl`), secrets, backups | A3-keys, A3-network |
