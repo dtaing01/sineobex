@@ -101,15 +101,39 @@ class _ProfileState extends ConsumerState<_Profile> {
     }
   }
 
-  Future<void> _run(String done, void Function() change) async {
+  /// Makes [change] and says [done]; false when the store refused it, with the reason on screen.
+  Future<bool> _run(String done, void Function() change) async {
     try {
       change();
       if (mounted) showDone(context, done);
+      return true;
     } on LocalValidationError catch (e) {
       if (mounted) setState(() => _problem = e.message);
     } on ChartingPaused catch (e) {
       if (mounted) setState(() => _problem = e.message);
     }
+    return false;
+  }
+
+  /// The actions of list rows that go once used (a street name's Remove, an allergy's Entered in
+  /// error), by record, and each list's own Add button, where focus goes after.
+  final _rowFocus = <String, FocusNode>{};
+  final _addAliasFocus = FocusNode();
+  final _addAllergyFocus = FocusNode();
+
+  FocusNode _rowNode(String id) => _rowFocus.putIfAbsent(id, FocusNode.new);
+
+  /// After the frame that took a row's action away: focus goes to its list's Add button.
+  void _focusAfter(FocusNode node) => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted) focusInView(node);
+  });
+
+  @override
+  void dispose() {
+    for (final node in [..._rowFocus.values, _addAliasFocus, _addAllergyFocus]) {
+      node.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _copy(PatientView v) async {
@@ -201,6 +225,7 @@ class _ProfileState extends ConsumerState<_Profile> {
   }
 
   Future<void> _removeAlias(AliasView a) async {
+    final follow = focusFollows(context, _rowNode(a.id!));
     final reason = await askReason(
       context,
       title: 'Remove “${a.alias}”?',
@@ -209,7 +234,8 @@ class _ProfileState extends ConsumerState<_Profile> {
       quick: const ['Wrong patient', 'Typed by mistake', 'They don’t use it'],
     );
     if (reason == null || !mounted) return;
-    await _run('Street name removed', () => _s.patients.removeAlias(a.id!, reason));
+    final removed = await _run('Street name removed', () => _s.patients.removeAlias(a.id!, reason));
+    if (removed && follow) _focusAfter(_addAliasFocus);
   }
 
   Future<void> _addAllergy() async {
@@ -224,6 +250,7 @@ class _ProfileState extends ConsumerState<_Profile> {
   }
 
   Future<void> _allergyInError(AllergyView a) async {
+    final follow = focusFollows(context, _rowNode(a.id));
     final reason = await askReason(
       context,
       title: 'Mark “${a.substance}” entered in error?',
@@ -232,7 +259,8 @@ class _ProfileState extends ConsumerState<_Profile> {
       quick: const ['Wrong patient', 'Typed by mistake', 'Not an allergy'],
     );
     if (reason == null || !mounted) return;
-    await _run('Marked entered in error', () => _s.patients.allergyEnteredInError(a.id, reason));
+    final marked = await _run('Marked entered in error', () => _s.patients.allergyEnteredInError(a.id, reason));
+    if (marked && follow) _focusAfter(_addAllergyFocus);
   }
 
   Future<void> _recordConsent() async {
@@ -538,6 +566,7 @@ class _ProfileState extends ConsumerState<_Profile> {
           'Allergies',
           trailing: mayEdit
               ? TextButton.icon(
+                  focusNode: _addAllergyFocus,
                   onPressed: () => unawaited(_addAllergy()),
                   icon: const Icon(LucideIcons.plus),
                   label: const Text('Add allergy'),
@@ -559,6 +588,7 @@ class _ProfileState extends ConsumerState<_Profile> {
             muted: !a.active,
             action: a.active && mayChart && v.copy != ChartCopy.partial
                 ? TextButton(
+                    focusNode: _rowNode(a.id),
                     onPressed: () => unawaited(_allergyInError(a)),
                     child: Semantics(
                       label: 'Mark allergy ${a.substance} entered in error',
@@ -574,6 +604,7 @@ class _ProfileState extends ConsumerState<_Profile> {
           'Street names',
           trailing: mayEdit
               ? TextButton.icon(
+                  focusNode: _addAliasFocus,
                   onPressed: () => unawaited(_addAlias()),
                   icon: const Icon(LucideIcons.plus),
                   label: const Text('Add street name'),
@@ -592,6 +623,7 @@ class _ProfileState extends ConsumerState<_Profile> {
             muted: !a.active,
             action: a.active && !a.mergedName && mayEdit
                 ? TextButton(
+                    focusNode: _rowNode(a.id!),
                     onPressed: () => unawaited(_removeAlias(a)),
                     child: Semantics(
                       label: 'Remove street name ${a.alias}',

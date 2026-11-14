@@ -230,11 +230,11 @@ class WideButton extends StatelessWidget {
 bool focusFollows(BuildContext context, FocusNode from) => from.hasFocus || MediaQuery.accessibleNavigationOf(context);
 
 /// Gives [node] the focus and brings it on screen: the control that took the place of one that
-/// went. Call it after the frame that put it there.
+/// went. Call it after the frame that put it there; a control that isn't there is left alone.
 void focusInView(FocusNode node) {
-  node.requestFocus();
   final target = node.context;
   if (target == null) return;
+  node.requestFocus();
   for (final edge in [
     ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
     ScrollPositionAlignmentPolicy.keepVisibleAtStart,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart' show NetworkException;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
@@ -144,6 +145,34 @@ void main() {
     expect(save.onPressed, isNull);
     await expectGuidelines(tester);
     handle.dispose();
+  });
+
+  testWidgets('focus goes to the list’s Add button once a row’s own action is used', (tester) async {
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    bool focused(Finder inside) => Focus.of(tester.element(inside)).hasPrimaryFocus;
+
+    /// With a keyboard, or a switch: [action] is focused, pressed, and the reason given.
+    Future<void> use(Finder action, {required String reason, required String confirm}) async {
+      await reveal(tester, action);
+      Focus.of(tester.element(action)).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+      await tapOn(tester, find.widgetWithText(ActionChip, reason));
+      await tapOn(tester, find.widgetWithText(FilledButton, confirm));
+    }
+
+    await use(find.text('Remove'), reason: 'Typed by mistake', confirm: 'Remove');
+    expect(h.sync.store!.outbox().where((e) => e.field == 'removal'), hasLength(1));
+    expect(find.text('Remove'), findsNothing);
+    expect(focused(find.text('Add street name')), isTrue);
+
+    await use(find.text('Entered in error'), reason: 'Not an allergy', confirm: 'Mark entered in error');
+    expect(h.sync.store!.outbox().where((e) => e.field == 'enteredInError'), hasLength(1));
+    expect(focused(find.text('Add allergy')), isTrue);
   });
 
   group('a store frozen for a hand-over shows no chart, because it can log no view (V1)', () {
