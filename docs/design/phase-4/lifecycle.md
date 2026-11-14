@@ -180,22 +180,32 @@ tables. `field_history` needs no new kind: `set`, `kept_both` and `corrected` al
 | `summary` | `text`, null or 1 to 4,000 characters | The free-text assessment written on the summary screen | PRD main 383, 433 |
 | `location_text` | `text`, null or 1 to 200 characters | The place, entered by hand | PRD main 378 |
 
-`kind` keeps its column and becomes a field a phone can change while the encounter has no finished
-note (PRD main 379: "A Non-Medical encounter can be switched to Medical partway through"). Rows
-made before this migration have no `kind` entry in `field_versions`, which reads as version 0.
+`kind` keeps its column and becomes a field a phone can set to `medical`, at any time (PRD main
+379: "A Non-Medical encounter can be switched to Medical partway through"; 3.10). Rows made before
+this migration have no `kind` entry in `field_versions`, which reads as version 0.
 
 `status` keeps its column and its three values. From now on the database works it out:
 
 ```sql
+create function sineobex.note_is_empty(p_data jsonb) returns boolean
+language sql immutable as $$
+  select not exists (
+    select 1 from jsonb_each(p_data) e
+    where e.value not in ('null'::jsonb, '""'::jsonb, '[]'::jsonb, '{}'::jsonb))
+$$;
+
 create function sineobex.encounter_status(p_encounter uuid) returns text
 language sql stable as $$
+  with n as (
+    select status, medical from sineobex.encounter_notes
+    where encounter_id = p_encounter
+      and not (status = 'draft' and sineobex.note_is_empty(data)))
   select case
-    when not exists (select 1 from sineobex.encounter_notes n where n.encounter_id = p_encounter) then 'draft'
-    when exists (select 1 from sineobex.encounter_notes n
-                 where n.encounter_id = p_encounter and n.status = 'draft') then 'draft'
-    when exists (select 1 from sineobex.encounter_notes n
-                 where n.encounter_id = p_encounter and n.status = 'completed') then 'completed'
-    else 'signed'
+    when not exists (select 1 from n) then 'draft'
+    when exists (select 1 from n where status = 'draft') then 'draft'
+    when exists (select 1 from n where status = 'completed' and medical) then 'completed'
+    when exists (select 1 from n where status = 'signed') then 'signed'
+    else 'completed'
   end
 $$;
 
@@ -207,18 +217,22 @@ begin
   return null;
 end $$;
 
-create trigger encounter_notes_status after insert or update of status on sineobex.encounter_notes
+create trigger encounter_notes_status after insert or update of status, data on sineobex.encounter_notes
   for each row execute function sineobex.refresh_encounter_status();
 ```
 
-So: `draft` while the encounter has no note or any draft note; `signed` when every note is signed;
-`completed` otherwise. A trigger, and not API code, because four code paths change a note's status
-(a sign-off, a reopen, an online co-sign, a correction by a student), and a fifth would forget.
+An empty draft does not count (3.1). Of the notes that count: `draft` while there is none, or
+any is a draft; `completed` while a Medical note waits for a co-signer; `signed` once a note is
+signed and none waits; `completed` when the encounter holds only finished Non-Medical notes. A
+trigger, and not API code, because four code paths change a note's status (a sign-off, a reopen,
+an online co-sign, a correction by a student), and a fifth would forget. It also runs when a
+note's answers change, because the first answer makes an empty draft count.
 
 **`encounter_notes`: new columns.**
 
 | Column | Type | Meaning |
 |---|---|---|
+| `medical` | `boolean not null default false` | Whether the note is a Medical note (3.1). Set from its note type when the note is created, never changed. Rows from before this migration are Non-Medical. |
 | `completed_at` | `timestamptz` | When the note last left draft (clock-corrected device time). Null while a draft. |
 | `completed_by` | `uuid` references `users` | Who finished it |
 | `first_signed_at` | `timestamptz` | Set once, at the first signature. A note that was ever signed is never reopened. |
@@ -234,8 +248,12 @@ create index encounter_notes_waiting on sineobex.encounter_notes (team_id, updat
   where attestation = 'waiting';
 ```
 
-The co-sign queue reads `status = 'completed'` through the existing
-`encounter_notes_team_status` index (`0004_sync.sql:72`) and joins the encounter for its kind.
+The co-sign queue has its own:
+
+```sql
+create index encounter_notes_cosign on sineobex.encounter_notes (team_id, completed_at)
+  where status = 'completed' and medical;
+```
 
 Check constraints, all added `not valid` as `0013_encounter_patient_fk.sql` does, so phase 2
 preview rows stay as they are and every new or changed row is checked:
@@ -245,6 +263,7 @@ check ((status = 'draft') = (completed_at is null))
 check ((completed_at is null) = (completed_by is null))
 check (status = 'signed' or attestation = 'not_needed')
 check (first_signed_at is not null or status <> 'signed')
+check (medical or status <> 'signed')
 ```
 
 `(status = 'signed') = (signoff_id is not null)` is added in 0019, once the table it points at
@@ -461,6 +480,13 @@ The encounter's own status follows from its notes (2.2).
 - The kind only ever goes from Non-Medical to Medical, at any time (PRD main 379), and never
   back. It decides which note types the apps offer. It decides nothing about a note that exists.
 
+**An empty draft does not count.** A draft note whose answers are all blank (4.5) is treated as
+if it were not there: by the encounter's status, by Complete, by the lists of notes to finish and
+by the timeline. A note type picked by mistake is undone by **Remove this note**, which blanks
+its answers (9.4). The Red flags note that the app adds by itself (forms 6.2) stays out of the
+way until someone answers it. One function, `noteIsEmpty`, says so on both sides (3.12), and the
+database has the same rule (2.2).
+
 ```
             Complete (a Non-Medical note)
    draft ──────────────────────────────▶ completed            (final)
@@ -498,7 +524,8 @@ and the author can change anything. Save & Close syncs the draft to the server" 
 ### 3.3 Complete
 
 Complete is asked on the summary screen (9.6). It finishes every draft note of the encounter for
-which the person acts as the author. A teammate's draft notes in the same encounter stay drafts.
+which the person acts as the author, except empty drafts (3.1). A teammate's draft notes in the
+same encounter stay drafts.
 
 Hard stops on the phone, before anything is written (PRD main 562):
 
@@ -508,8 +535,10 @@ Hard stops on the phone, before anything is written (PRD main 562):
    note being completed now does not count: completing again is its fix (3.4).
 3. Charting is not paused for the clock.
 4. If one of the notes is a Medical note, the encounter names a patient (3.10).
-5. If one of the notes is a Medical note, the encounter's Red flags and disposition note is
-   among the notes being finished or already finished (forms 6.2).
+5. If one of the notes is a Medical note and the person authors the encounter's Red flags and
+   disposition note, that note is finished with the others and is not skipped as an empty
+   draft: its finish check then asks for the red-flag answer (forms 6.2). A second clinician on
+   the same visit is not held up by the first one's Red flags note.
 
 Then, in one transaction on the phone, one sign-off is made per note. A note whose earlier
 sign-off was refused gets that sign-off sent again, corrected, and not a second one (4.8).
@@ -654,7 +683,9 @@ co-signer who wants changes says so to the author; the PRD describes no "return"
 
 **Addendum.** "A dated entry by its author attached below the note, such as a lab result that
 came back later" (PRD main 459). Anyone with `encounters.chart` can add one to a finished note, or
-to the visit's summary. It is append-only and changes no state. It works offline.
+to a visit that has a finished note. It is append-only and changes no state. It works offline:
+written before its note's sign-off is confirmed, it waits behind that sign-off (4.7; PRD main
+564).
 
 **Correction.** "The author picks the wrong field, enters the right value and gives a reason. The
 note shows the new value, and the old one stays visible struck through with who changed it and
@@ -713,9 +744,8 @@ says at once "this note changed, read it again", and nothing waits on the phone.
 - **Attest**: an attending reads a signed note that waits and attests it. "Attesting adds a dated
   statement below the note and doesn't change it" (PRD main 216).
 - Nobody co-signs or attests a note they act as the author of.
-- The person must be able to read every section of the note. A note with a sensitive exam cannot
-  be attested by someone without `patients.view_sensitive_exams` (6.4): an attestation of a note
-  one can't read in full would be untrue.
+- The person must be able to read every answer of the note that counts (6.4, rule 4). An
+  attestation of a note one can't read in full would be untrue.
 - Both carry the hash of the note as the person read it. If the note was corrected in between,
   the server answers `409 content_changed` and the screen loads it again.
 - The queues are team-wide: every attending sees every note that waits (PRD main 216: "an
@@ -764,8 +794,7 @@ Admin" (PRD main 99).
   (`services/api/src/sync/devices.ts:408-409`).
 - A note completed offline and not yet synced still shows as overdue to the admin. That is
   correct: the server does not hold it yet.
-- A draft with no answers on a Non-Medical encounter is not counted. It is the Red flags note
-  that the app added before the encounter was switched to Non-Medical (forms 6.2).
+- An empty draft is not counted (3.1).
 
 ### 3.10 Encounters without a patient, and switching to Medical
 
@@ -799,7 +828,7 @@ The sync core and the routes (level X and T) only load the inputs and write what
 | Vector file (in `packages/contract/test-vectors/`) | Functions | TypeScript | Dart |
 |---|---|---|---|
 | `note-content-hash.json` | `noteContentHash` (4.5) | `services/api/src/encounters/content-hash.ts` | `apps/mobile/lib/encounters/content_hash.dart` |
-| `note-lifecycle.json` | the nine functions below | `services/api/src/encounters/rules.ts` | `apps/mobile/lib/encounters/rules.dart` |
+| `note-lifecycle.json` | the ten functions below | `services/api/src/encounters/rules.ts` | `apps/mobile/lib/encounters/rules.dart` |
 | `signed-under.json` | `signedUnder` (3.5) | `services/api/src/encounters/signed-under.ts` | none: the phone never decides this |
 
 Each vector file has the shape the recipe gives: a `note`, and for `note-lifecycle.json` one list
@@ -807,7 +836,7 @@ of cases per function, each case `{ "name", "input", "expected" }`. The planner 
 files and both readers (`services/api/test/encounter-rules.test.ts`,
 `apps/mobile/test/encounters/rules_test.dart`) first. The functions are then T cards.
 
-The types the nine functions share:
+The types the ten functions share:
 
 ```ts
 type NoteStatus = 'draft' | 'completed' | 'signed';
@@ -897,14 +926,19 @@ mayAssign(i: {
 assignee could not see without being its author. Whoever acts as a note's author sees all of it (6.4), so the check is about
 what the assignee's role allows today, before the assignment.
 
-**`encounterStatus`**, **`envelopeLocked`** and **`isOverdue`**:
+**`noteIsEmpty`**, **`encounterStatus`**, **`envelopeLocked`** and **`isOverdue`**:
 
 ```ts
-encounterStatus(noteStatuses: NoteStatus[]): NoteStatus    // the rule of 2.2: [] is 'draft'
+noteIsEmpty(answers: Record<string, unknown>): boolean     // every answer is null, "", [] or {}
+encounterStatus(notes: { status: NoteStatus; medical: boolean; empty: boolean }[]): NoteStatus
 envelopeLocked(noteStatuses: NoteStatus[]): boolean        // true when any note is not 'draft'
 isOverdue(i: { noteStatus: NoteStatus; startedAt: string; startedVerified: boolean;
                receivedAt: string | null; now: string }): boolean
 ```
+
+`encounterStatus` is the rule of 2.2: leave out every note that is a draft and empty; then no
+note, or any draft, is `draft`; a Medical note that is `completed` makes it `completed`; else any
+`signed` note makes it `signed`; else `completed`.
 
 `isOverdue` is true when the note is a draft and more than 24 hours lie between `now` and
 `startedAt`, or `receivedAt` when the start time was not verified and a receipt time exists
@@ -939,7 +973,7 @@ refused rule is `validation` with a `details.problem` that names the rule, the w
 | `not_author` | a sign-off, reopen or correction from someone who does not act as the note's author | Discard it (the screens never offer this) |
 | `sign_not_medical` | `sign` on a Non-Medical note | Complete again (the screens never send this) |
 | `use_signoff` | a `set` of a note's `status` to `completed` | None: only an old build sends it |
-| `note_not_finished` | a correction to a draft | Edit the draft |
+| `note_not_finished` | a correction or an addendum to a draft | Edit the draft |
 | `field_changed` | a correction whose answer changed since the person looked | Look again, correct again |
 | `note_type_needs_medical` | a Medical note on a Non-Medical encounter | Switch the encounter to Medical, which is always possible (3.10) |
 | `medical_note_needs_patient` | a Medical note on an encounter with no patient | Name the patient, which is always possible (3.1) |
@@ -1162,10 +1196,12 @@ above. `signedUnder` reads the membership as it is now, removed or not, and its 
 
 ### 4.7 Addenda, corrections and referrals
 
-**`note_addendum`**: `{ encounterId: uuid, noteId: uuid | null, text: 1..4000 }`. Parents: the
-encounter, and the note when given. It is accepted in every state of the note: an addendum
-written on the phone a moment after Complete must not be lost because the sign-off before it was
-refused. Audit: `addendum.added`.
+**`note_addendum`**: `{ encounterId: uuid, noteId: uuid | null, text: 1..4000, signoffId: uuid |
+null }`. Parents: the encounter, the note when given, and `signoffId` when given. The phone fills
+`signoffId` with its own sign-off while that sign-off is not yet confirmed, as it does for a
+correction below, so an addendum written a moment after Complete waits behind the sign-off and is
+never lost or sent early (PRD main 564). An addendum to a draft note, or to a visit with no
+finished note, is refused with `note_not_finished`. Audit: `addendum.added`.
 
 **`note_correction`**:
 
@@ -1279,7 +1315,7 @@ case is an API test with the same name.
 | 6 | A note's `status` takes `draft` only; each row of the reopen table in 4.4 |
 | 7 | Every row of the sign-off table in 3.4, from `note-lifecycle.json`; a sign-off sent again after a refusal |
 | 8 | The content hash over the answers that count, from `note-content-hash.json`; a finished note holds only those answers |
-| 9 | An addendum is accepted in every state |
+| 9 | An addendum needs a finished note, and waits behind a refused sign-off |
 | 10 | Each check of a correction, in the order of 4.7; each row of the table in 3.6 |
 | 11 | A referral: create; `enteredInError` once, by its author or a charting role; the date rule |
 | 12 | The Medical gate holds every kind of change to a Medical note for review |
