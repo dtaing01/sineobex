@@ -491,6 +491,8 @@ Hard stops on the phone, before anything is written (PRD main 562):
 2. Nothing about this encounter or its notes waits in Needs attention.
 3. Charting is not paused for the clock.
 4. A Medical encounter names a patient (3.10).
+5. A Medical encounter has its Red flags and disposition note among the notes being finished
+   or already finished (forms 6.2).
 
 Then, in one transaction on the phone, one sign-off is made per note:
 
@@ -738,6 +740,8 @@ Admin" (PRD main 99).
   (`services/api/src/sync/devices.ts:408-409`).
 - A note completed offline and not yet synced still shows as overdue to the admin. That is
   correct: the server does not hold it yet.
+- A draft with no answers on a Non-Medical encounter is not counted. It is the Red flags note
+  that the app added before the encounter was switched to Non-Medical (forms 6.2).
 
 ### 3.10 Encounters without a patient, and switching to Medical
 
@@ -887,7 +891,7 @@ D51 for encounter sets.
   offline, and refusing the second would strand its answers. The phone opens an existing draft of
   that type before it offers to make another (9.4).
 - **Answers** (`data.<path>`): each set is checked against the note type's definition by the
-  forms part's `answerSchema(noteTypeKey, noteTypeVersion, path)`. This replaces the open pattern
+  forms part's `checkAnswer(definition, path, value)`. This replaces the open pattern
   rule (`services/api/src/sync/records.ts:21`). On a draft the draft rule applies, unchanged.
 - **A sensitive section.** A `set` of an answer in a section the sender may not see (6.4) is held
   for a Program Admin, like a missing permission. The acting author may always set their own
@@ -1005,7 +1009,7 @@ refused. Audit: `addendum.added`.
   (`apps/mobile/lib/sync/local_store.dart:976-1018`), so a correction never reaches a note that
   is still a draft because of a race.
 - Checks, in order: the note is finished, else `note_not_finished`; the sender acts as the
-  author, else `not_author`; `newValue` passes `answerSchema`; `declined` only with
+  author, else `not_author`; `newValue` passes `checkAnswer`; `declined` only with
   `requestedByPatient`; the answer's version equals `baseVersion`, else `field_changed`.
 - `declined`: the row is stored with `outcome: 'declined'` and the note is unchanged.
 - The answer already holds `newValue`: stored with `outcome: 'no_change'`.
@@ -1028,7 +1032,7 @@ given. Audit: `referral.created`, `referral.entered_in_error`.
 `apps/mobile/lib/sync/entities.dart` mirrors every rule of 4.3 to 4.7:
 
 - `encounter`: `kind`, `summary`, `locationText` settable; `status` removed.
-- `encounter_note`: `status` takes `draft` only; answers checked by the Dart `answerSchema`.
+- `encounter_note`: `status` takes `draft` only; answers checked by the Dart `checkAnswer`.
 - The four new entities, each `patientSide`, so `createRecord`
   (`apps/mobile/lib/sync/local_store.dart:623`) takes them and they join the patient's local
   work. Their parents are listed, so the hold rule covers them with no new code.
@@ -1076,7 +1080,7 @@ the same name.
 | 11 | A referral: create, entered in error, the date rule |
 | 12 | The Medical gate holds a change for review |
 | 13 | The encounter's status follows its notes (the trigger of 2.2, as code in the fake) |
-| 14 | An answer that fails `answerSchema` is refused with `validation` |
+| 14 | An answer that fails `checkAnswer` is refused with `validation` |
 
 The fake reads the same vector files, so rules 7 and 8 cannot drift.
 
@@ -1099,8 +1103,8 @@ transaction and writes its audit event in that transaction. A refused request is
 |---|---|---|---|
 | 5.1 | `GET /v1/encounters/{encounterId}` | `patients.view` | none |
 | 5.2 | `GET /v1/patients/{patientId}` (existing) gains `timeline` | `patients.view` | none |
-| 5.3 | `POST /v1/notes/{noteId}/cosign` | `encounters.chart` | `sign` |
-| 5.4 | `GET /v1/team/cosign-queue`, `GET /v1/team/attestation-queue`, `POST /v1/notes/{noteId}/attest` | `encounters.chart` | `sign` for the first; `attest` for the other two |
+| 5.3 | `POST /v1/encounters/{encounterId}/cosign` | `encounters.chart` | `sign` |
+| 5.4 | `GET /v1/team/cosign-queue`, `GET /v1/team/attestation-queue`, `POST /v1/encounters/{encounterId}/attest` | `encounters.chart` | `sign` for the first; `attest` for the other two |
 | 5.5 | `POST /v1/notes/{noteId}/assign` | `team.manage_users` | none |
 | 5.6 | `GET /v1/me/notes-to-finish`, `GET /v1/team/incomplete-notes` | `encounters.chart`; `team.manage_users` | none |
 | 5.7 | `GET /v1/encounters/{encounterId}/ems-handoff` | `patients.view` | none |
@@ -1109,7 +1113,8 @@ transaction and writes its audit event in that transaction. A refused request is
 
 Answer: the envelope (`kind`, `status`, `startedAt`, `clockVerified`, `locationText`, `summary`,
 `patientId`), and for each note: `noteTypeKey`, `noteTypeVersion`, `status`, `attestation`,
-author and acting author (ID and display name), `answers`, `signoffs`, `addenda`, `corrections`,
+author and acting author (ID and display name), `answers`, `read` (the note laid out for reading
+by the forms part's `readModel`, which the portal draws), `signoffs`, `addenda`, `corrections`,
 `attestations`, `contentHash`.
 
 - `answers` goes through the forms part's `visibleAnswers` (6.4). A note the reader may not see
@@ -1129,27 +1134,37 @@ chart on the phone.
 
 ### 5.3 Co-sign
 
-Body: `{ contentHash, statementVersion }`. Checks, in order: the note is `completed` on a Medical
-encounter, else `409 not_waiting`; the caller does not act as its author, else `403`; the
-caller's credential can sign, else `403`; the caller sees every section, else `403`; the hash
-matches, else `409 content_changed`. Then a `note_signoffs` row (`act: 'cosign'`, the server's
+A visit often has several notes (a Medical visit has at least two, forms 6.2), and "the timeline
+shows one entry per visit" (PRD main 97). So a second person signs a visit's waiting notes in one
+action, not one note at a time.
+
+Body: `{ notes: [{ noteId, contentHash }], statementVersion }`. The list must hold every note of
+the encounter that waits for a co-signer and that the caller may act on. Checks for each note, in
+order: it is `completed` on a Medical encounter, else `409 not_waiting`; the caller does not act
+as its author, else `403`; the caller's credential can sign, else `403`; the caller sees every
+section, else `403`; the hash matches, else `409 content_changed`. A `409` names the notes that
+failed, and nothing is written: the screen loads the visit again.
+
+Then, in one transaction, for each note: a `note_signoffs` row (`act: 'cosign'`, the server's
 time) and the note becomes `signed`, with `attestation` from the co-signer's credential. Audit:
-`note.cosigned`. Notice to the author: `note_cosigned`.
+one `note.cosigned` per note. Notice to each author: `note_cosigned`, one per visit.
 
 ### 5.4 The queues, and attest
 
-- `GET /v1/team/cosign-queue`: notes that are `completed` on a Medical encounter, oldest first.
-  Each row: note and encounter IDs, the patient (ID, preferred name, as the reader's projection
-  allows), the note type, the author, when it was completed, and who signed it before if it came
-  back after a correction.
-- `GET /v1/team/attestation-queue`: notes with `attestation = 'waiting'`, the same row shape.
+- `GET /v1/team/cosign-queue`: visits with a note that is `completed` on a Medical encounter,
+  oldest first. Each row is one visit: the encounter ID, the patient (ID and preferred name, as
+  the reader's projection allows), when it started, and its waiting notes (ID, note type,
+  author, when it was completed, and who signed it before if it came back after a correction).
+- `GET /v1/team/attestation-queue`: visits with a note whose `attestation` is `waiting`, the
+  same row shape.
 - Both are audited as queue views that name the patients shown in `details.patientIds` (D53):
   `cosign_queue.viewed`, `attestation_queue.viewed`.
-- `POST /v1/notes/{noteId}/attest`: body `{ contentHash, statementVersion }`. Checks: the note is
+- `POST /v1/encounters/{encounterId}/attest`: the same body as 5.3. Checks for each note: it is
   `signed` with `attestation = 'waiting'`, else `409 not_waiting`; the caller does not act as its
   author, else `403`; the credential can attest; the caller sees every section; the hash matches,
-  else `409 content_changed`. Then a `note_attestations` row and `attestation = 'attested'`.
-  Audit: `note.attested`. Notice to the signer: `note_attested`.
+  else `409 content_changed`. All or nothing, as in 5.3. Then for each note a `note_attestations`
+  row and `attestation = 'attested'`. Audit: one `note.attested` per note. Notice to each signer:
+  `note_attested`, one per visit.
 
 ### 5.5 Assign a note
 
@@ -1475,10 +1490,11 @@ is logged (`ems_handoff.shown`). It works offline.
 | **Waiting for your co-signature** | a credential that signs | The count when online; "Connect to see notes waiting for you" offline | The co-sign queue |
 | **Waiting for attestation** | a credential that attests | The same | The attestation queue |
 
-The queues list the patient's preferred name, the note type, the author and the date. A row
-opens the visit (9.7) with **Co-sign** or **Attest** at the bottom and the sentence of 3.5 above
-it. If the note changed since the list was loaded, the screen says "This note changed. Read it
-again." and loads it again.
+The queues list one row per visit: the patient's preferred name, the note types that wait, the
+author and the date. A row opens the visit (9.7) with **Co-sign** or **Attest** at the bottom
+and the sentence of 3.5 above it. One tap signs or attests every waiting note of the visit that
+the person may act on. If a note changed since the visit was loaded, the screen says "This visit
+changed. Read it again." and loads it again.
 
 ### 9.10 Referrals (phone)
 
@@ -1596,13 +1612,13 @@ The steps live in one shared file, `packages/contract/test-vectors/encounters-do
 
 | # | Step | What is asserted |
 |---|---|---|
-| 1 | Offline. A resident starts a Medical encounter for a made-up patient and adds General / primary care, Wound care and Social needs. | One encounter and three draft notes in the store. Nothing sent. |
-| 2 | They fill in answers and press Save & Close. The app is killed and started again, still offline. | The drafts are on the phone with every answer. Notes to finish says 3. |
-| 3 | The phone reconnects. | The server holds one draft encounter with three draft notes. Each change has a hash-confirmed receipt. The drafts are still on the phone (3.2). |
-| 4 | Offline again, later. They open the visit from Notes to finish, write the assessment and press Complete and sign. | Three sign-offs wait in the outbox. The notes are read-only. The patient's chart opens with the visit marked "Waiting to send". |
-| 5 | The phone reconnects. | Three `note_signoffs` rows with effect `signed`. The notes are `signed` with `attestation = 'waiting'`. The encounter is `signed`. One audit event per sign-off, each in its change's transaction. |
+| 1 | Offline. A resident starts a Medical encounter for a made-up patient and adds General / primary care, Wound care and Social needs. The app adds the Red flags and disposition note by itself. | One encounter and four draft notes in the store. Nothing sent. |
+| 2 | They fill in answers and press Save & Close. The app is killed and started again, still offline. | The drafts are on the phone with every answer. Notes to finish says 4. |
+| 3 | The phone reconnects. | The server holds one draft encounter with four draft notes. Each change has a hash-confirmed receipt. The drafts are still on the phone (3.2). |
+| 4 | Offline again, later. They open the visit from Notes to finish, write the assessment and press Complete and sign. | Four sign-offs wait in the outbox. The notes are read-only. The patient's chart opens with the visit marked "Waiting to send". |
+| 5 | The phone reconnects. | Four `note_signoffs` rows with effect `signed`. The notes are `signed` with `attestation = 'waiting'`. The encounter is `signed`. One audit event per sign-off, each in its change's transaction. |
 | 6 | The phone's sync finishes. | The notes and the encounter have left the phone. Notes to finish is gone. |
-| 7 | An attending, online, opens the attestation queue and attests each note. | The queue lists three notes, then none. Three `note_attestations` rows. `attestation = 'attested'`. Audit events `attestation_queue.viewed` and `note.attested`. The resident has three `note_attested` notices. |
+| 7 | An attending, online, opens the attestation queue and attests the visit in one action. | The queue lists one visit with four notes, then none. Four `note_attestations` rows. `attestation = 'attested'`. Audit events `attestation_queue.viewed` and `note.attested`. The resident has one `note_attested` notice for the visit. |
 
 The screens get the same story as widget tests
 (`apps/mobile/test/features/encounters/done_when_flow_test.dart`), offline, and the attending's
@@ -1724,7 +1740,7 @@ model only.
 | Unit | Owns | Depends on |
 |---|---|---|
 | **L0** Schema and core rules | `db/migrations/0018` to `0021`, their `db/test` files, the three vector files of 3.12 and `encounters-done-when.json`, `services/api/src/encounters/{rules,content-hash,signed-under}.ts`, `apps/mobile/lib/encounters/{rules,content_hash}.dart` | the forms part's definition format (for `noteTypeKey` and versions) |
-| **L1** Server sync | `services/api/src/sync/**` (changes), `services/api/src/sync/entities/{note-signoff,note-addendum,note-correction,referral}.ts`, `services/api/src/encounters/signer.ts`, `services/api/test/sync-{encounters,signoffs,corrections,referrals}.test.ts` | L0; the forms part's `answerSchema`, `finishCheck`, `visibleAnswers` |
+| **L1** Server sync | `services/api/src/sync/**` (changes), `services/api/src/sync/entities/{note-signoff,note-addendum,note-correction,referral}.ts`, `services/api/src/encounters/signer.ts`, `services/api/test/sync-{encounters,signoffs,corrections,referrals}.test.ts` | L0; the forms part's `checkAnswer`, `finishCheck`, `visibleAnswers` |
 | **L2** Server routes | `services/api/src/routes/encounters.ts`, `services/api/src/encounters/{read,queues,cosign,attest,assign,incomplete,handoff}.ts`, the timeline in `services/api/src/patients/{charts,projection}.ts`, `services/api/test/encounters-*.test.ts`, the generated contract | L1 |
 | **L3** Phone sync layer | `apps/mobile/lib/sync/{entities,local_store}.dart`, `apps/mobile/test/sync/{fake_server,fake_parity_test,fake_reads_test,store_encounters_test}.dart` | L0, L1 (the fake mirrors it) |
 | **L4** Phone domain | `apps/mobile/lib/encounters/` (all but the two core files of L0), `apps/mobile/test/encounters/` | L3, the generated client from L2 |
@@ -1758,7 +1774,7 @@ more than three source files.
 |---|---|---|
 | L1-1 The team lock for every encounter-side change; `loadSigner`; the `needsCapability` hook and the Medical gate | `entities/encounter.ts`, `entities/note.ts`, `apply.ts`, `encounters/signer.ts` | L0 |
 | L1-2 The encounter: new fields, `status` removed, `kind` rules, the envelope lock, last seen | `records.ts`, `entities/encounter.ts`, `entities/fields.ts` | L1-1 |
-| L1-3 The note: create on any encounter, answers checked by `answerSchema`, late changes kept, reopen | `records.ts`, `entities/note.ts`, `entities/fields.ts` | L1-2, forms |
+| L1-3 The note: create on any encounter, answers checked by `checkAnswer`, `MAX_NOTE_FIELDS` raised to 1,000, late changes kept, reopen | `records.ts`, `entities/note.ts`, `entities/fields.ts` | L1-2, forms |
 | L1-4 `note_signoff` | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` | L1-3 |
 | L1-5 `note_addendum` and `note_correction` | `entities/note-addendum.ts`, `entities/note-correction.ts`, `entities/index.ts` | L1-4 |
 | L1-6 `referral` | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` | L1-1 |
@@ -1863,7 +1879,7 @@ network in it:
 | Needed | Used by |
 |---|---|
 | A registry of note types: for each key and version, the kinds it is offered for (`medical`, `non_medical`), its `sensitivity`, and its sections with `sensitiveExam` | 3.10, 4.3, 4.4, 6.4, 9.4 |
-| `answerSchema(noteTypeKey, noteTypeVersion, path)`: the value an answer may hold, or null for an unknown path | 4.4, 4.7 |
+| `checkAnswer(definition, path, value)`: null, or the problem with an answer (an unknown path, a wrong type, an unknown option, out of range) | 4.4, 4.7 |
 | `finishCheck(definition, answers)`: the list of what stops Complete (a required answer, consent for a sensitive exam, a contradictory disposition), each with the section it is in | 3.3, 3.4, 4.6, 9.6 |
 | `visibleAnswers(definition, answers, reader)`: the answers a reader may see | 5.1, 6.4 |
 | `recapLines(definition, answers)`: one line per section, nothing from a sensitive exam | 8.1 |
@@ -1873,5 +1889,5 @@ network in it:
 | The form widget for a draft note, and the read widget that shows a corrected answer with the old value struck through | 9.5, 9.7 |
 | Stable answer paths: a path means the same field in every version of a note type, and a note keeps the version it was written on | 2.6, 4.5, 8.1 |
 
-`finishCheck`, `visibleAnswers` and `answerSchema` run on the server and on the phone, so each
+`finishCheck`, `visibleAnswers` and `checkAnswer` run on the server and on the phone, so each
 needs a shared vector file, as the functions of 3.12 have.
