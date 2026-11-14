@@ -9,6 +9,22 @@ as models for the rest: `F6-psychological` (level S), `L0-rules-ts` (level T) an
 `L0-migration-0018` (level X). A card is written in full when the cards it needs have landed, so
 that the files and line ranges it names exist.
 
+## Where to start
+
+Nothing here can be given to the small model on day one. The first cards are level X, and the
+level T cards need their tests written first. In order:
+
+1. A strong model does **F0-package**, **F0-schema**, **F0-canonical** and **F0-tests**. From
+   then on the small model can do the seven T cards of F0, one at a time.
+2. In parallel, a strong model does **L0-vectors** and the four **L0-migration** cards, then
+   **F1-vectors** and **F3-migration**. The small model can then do the five T cards of L0 and
+   the fourteen of F1.
+3. A strong model writes each card in full just before it is handed out, from this index, the
+   design section the row points to, and the model card of the same level. `node
+   tools/card-check.mjs` checks the result.
+4. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
+   `docs/design/phase-4-encounters.md`.
+
 ## Levels, and what they mean for this phase
 
 | Level | Cards | Who writes the code | What a strong model or a person still does |
