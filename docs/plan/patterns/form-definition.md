@@ -70,8 +70,8 @@ specification's lines, the Decisions table, the definition and the diff file. Re
      one (it does when the label starts with a digit or two labels would get one code).
    - Add `"exclusive": true`, `"other": true`, `"normal": true` or `"unable": true` only where
      the Decisions table names that option.
-6. **Create the diff file** `packages/forms/definitions/spec/<piece>.diff.json` with exactly the
-   content the card gives. It lists what differs from the specification on purpose.
+6. **Leave the piece's other files alone.** `<piece>.txt`, `<piece>.shape.json` and
+   `<piece>.diff.json` are already there. They hold the decisions. Do not edit them.
 7. **Run the export** (below). Fix what it reports. Its messages name the file, the field and
    the rule.
 
@@ -102,7 +102,7 @@ Commit the definition, the diff file and every generated file the export changed
 3. Is every `id` and every `code` lower case with `_`, and unique among its siblings?
 4. Does every `showWhen` name a path that exists (section id, a dot, field id)?
 5. Did you leave out the notes to the builder, the example values and anything marked V2?
-6. Is the diff file exactly what the card gives?
+6. Are the piece's `.txt`, `.shape.json` and `.diff.json` files unchanged?
 7. Did the export end with `0 problems`, and did you commit the generated files?
 8. Did you change only the files the card lists?
 

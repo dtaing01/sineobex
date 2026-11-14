@@ -6,7 +6,7 @@ line ranges are from. Read `docs/plan/README.md` first: it defines the card leve
 
 ## How a card uses a recipe
 
-- A card's **Pattern** section names one recipe and one example file.
+- A card's **Read first** names the lines of one recipe (usually its Steps) and one example file.
 - The recipe gives the steps, the test helpers, the commands and the mistakes to avoid. They are
   the same every time.
 - The card gives the particulars: the names, the fields, the SQL, the wording, the files to

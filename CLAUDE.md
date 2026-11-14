@@ -115,7 +115,10 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
    screens, tests mapped to the Done when, defaults, risks, and a **work breakdown into units**, each
    owning its files, in dependency order. Have it critiqued against the PRD and the code before
    anyone builds from it. Phase 3's design is the model.
-2. **Build in units.** A unit that others depend on (the schema and contract unit) lands first, alone,
+2. **Build in units.** From phase 4 on, a unit is built from task cards (`docs/plan/README.md`): a
+   small local model writes the code of each card; the frontier model writes each card, writes the
+   level X cards' code itself, writes the tests of level T cards first, and audits every card and
+   every unit. A unit that others depend on (the schema and contract unit) lands first, alone,
    with CI green. Then units run in parallel only when they own disjoint files. Keep each unit's
    **Status** row in the design doc current as it lands.
 3. **Review.** An adversarial review of the whole phase (sync safety, audit, permissions, PHI,

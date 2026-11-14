@@ -9,7 +9,7 @@ synced, and the screens around it. The other part (`docs/design/phase-4/forms.md
 definitions, their generation from the field specification, the renderer and field validation.
 
 Who builds from this: a small local model, one task card at a time (`docs/plan/README.md`), with a
-strong model or a person writing the tests for the safety-critical cards first. So the judgment
+frontier model or a person writing the tests for the safety-critical cards first. So the judgment
 sits in a few places the small model does not write: the migrations, the sync core, the phone
 store and the fake server (all level X), and a few small pure functions that are written twice
 (TypeScript and Dart) and pinned by shared test vectors. Everything else follows a pattern.
@@ -966,7 +966,7 @@ the server has not confirmed.
 ## 4. Sync
 
 Everything in this section is level X: it changes `services/api/src/sync/**`,
-`apps/mobile/lib/sync/**` and the phone's test server. A strong model builds it, a second review
+`apps/mobile/lib/sync/**` and the phone's test server. The frontier model builds it, a second review
 reads it, and each rule gets a test that is checked to bite.
 
 ### 4.1 What changes, at a glance

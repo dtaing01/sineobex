@@ -1,6 +1,8 @@
 # Building Sineobex from task cards
 
-This folder turns each remaining phase into small task cards. A card is one small change that a small local model (for example a 14B coding model) can make by following steps, without having to understand the whole system.
+Two models build the remaining phases. A small local coding model writes the code, one short task
+card at a time. A frontier model plans the work, writes the few parts that are too risky to hand
+over, and audits everything the small model wrote.
 
 Read `CLAUDE.md` at the repository root first. Its rules apply to every card.
 
@@ -8,97 +10,145 @@ Read `CLAUDE.md` at the repository root first. Its rules apply to every card.
 
 | Role | Who | Does |
 |---|---|---|
-| Planner | A strong model, or a person | Writes the phase design (`docs/design/`), writes the cards, writes the tests for every safety-critical card before the card is handed out |
-| Implementer | The small model | Does one card at a time, exactly as written |
-| Reviewer | A strong model, or a person | Reads the result of every card marked T, R or X before it is merged; runs the full local CI before anything is pushed |
-
-The implementer never plans. It does not change what a card asks for, does not edit a file the card doesn't list, and does not edit a test it was given. When a card is unclear or a step fails twice, it stops and writes what happened in the card's **Report** section.
+| Planner | The frontier model, or a person | Writes the phase design. Writes each card just before it is handed out. Writes the tests of level T cards first. Writes the code of level X cards itself. |
+| Implementer | The small local model | Writes the code of one card at a time, exactly as written. Decides nothing. |
+| Auditor | The frontier model | After each card: runs the card's commands and goes through its **Audit** list. After each unit: reads the unit's whole diff, checks that each rule's test bites, runs the full local CI. Fixes what it finds, or sends the card back. |
 
 ## Why the work is split this way
 
-The hard part of this codebase is a handful of rules that cut across many files:
+The hard part of this codebase is a handful of rules that cut across many files: a phone deletes
+data only after the server confirms it by hash; every action writes its audit event in the same
+transaction; permissions are checked in the API; the phone's test server answers exactly as the
+real API does; no patient details in logs, URLs, titles or notifications.
 
-- A phone deletes data only after the server confirms it by hash.
-- Every action writes its audit event in the same database transaction.
-- Permissions are checked in the API.
-- The phone's test server (`apps/mobile/test/sync/fake_server.dart`) must answer exactly as the real API does.
-- No patient details in logs, URLs, page titles, notifications or the phone's key-value store.
-
-A small model follows a pattern well. It breaks these rules without noticing, and a broken rule here means a lost patient record or patient details in a log. So the judgment lives in three places the small model doesn't write: the phase design, the tests, and the review.
+A small model follows a short, exact instruction well. It breaks these rules without noticing,
+and it cannot check its own work: asked "did you keep the rule?", it says yes. So a card tells it
+what to type, not what to judge, and the judging is done before the card (the design, the tests)
+and after it (the audit).
 
 ## Card levels
 
-Every card has one level. The level says how much the implementer may be trusted with it.
+| Level | Who writes the code | What stands between the code and the branch |
+|---|---|---|
+| **S** | The small model | A machine: the card's commands. The auditor reads the diff at the end of the unit. |
+| **T** | The small model | Tests the planner wrote first. The auditor reads the diff. |
+| **R** | The small model | The auditor reads the diff and looks at the screen. |
+| **X** | The frontier model | A second review. |
 
-| Level | Meaning | Who implements | Before merge |
-|---|---|---|---|
-| **S** | Follows a pattern; a mistake is caught by the card's own tests | Small model | Commands pass |
-| **T** | Enforces a rule. The planner wrote the tests first; the job is to make them pass | Small model | Reviewer reads the diff. The given tests are unchanged |
-| **R** | Touches a screen's wording, accessibility or a permission | Small model | Reviewer reads the diff and the screen |
-| **X** | Sync core, audit chain, sign-in, the lock, a migration with row-level security, the fake server's rules | Strong model only | A second review |
+A card is level S only when a machine check catches every mistake the card could contain. A
+screen, a widget or a permission is never S.
 
-These paths are always level X:
+Level X exists because auditing a small model's attempt at these would cost more than writing
+them: a wrong line there loses a patient record or opens one to the wrong person, and it does
+not show in a test the same model wrote. These paths are always level X:
 
 - `services/api/src/sync/**`, `services/api/src/auth/**`, `services/api/src/db/**`
 - `apps/mobile/lib/sync/**`, `apps/mobile/lib/security/**`, `apps/mobile/lib/auth/**`
 - `apps/mobile/test/sync/fake_server.dart`
-- `db/migrations/**` when the migration adds or changes a policy, a trigger, or anything in the audit tables
+- `db/migrations/**` when the migration adds or changes a policy, a trigger, or anything in the
+  audit tables
 - `.github/**`, `tools/**`
 
 ## What a card looks like
 
-Each card is one file: `docs/plan/phase-<n>-<name>/cards/<ID>.md`. A card's ID is its unit and a short name, for example `F6-psychological` or `L0-rules-ts`; the file starts with `# Card <ID>: <title>`. Every card has these sections, in this order, with these headings. `node tools/card-check.mjs` checks the shape of every card, and CI runs it.
+One file: `docs/plan/phase-<n>-<name>/cards/<ID>.md`. The ID is the card's unit and a short name:
+`F6-psychological`, `L0-rules-ts`. A card is short, because a small model follows a short page
+better than a long one and loses the end of a long one.
 
-1. **Goal.** One sentence: what exists after the card that didn't before.
-2. **Level.** S, T, R or X.
-3. **Depends on.** Card numbers that must be merged first.
-4. **Read first.** Files and line ranges, at most 300 lines in total. Nothing else needs reading. Each item starts with the path and says how many lines ("all of it (124 lines)" or "lines 56-73"). A file that an earlier card creates is marked "(made by <card ID>)", and that card is in **Depends on**.
-5. **Pattern.** One existing file to copy from, and the recipe in `docs/plan/patterns/` that explains it.
-6. **Files to change.** The full list. At most three source files, plus tests.
-7. **Steps.** Numbered. Each step is one edit, with the code to write given in full where it matters: signatures, SQL, field names, error codes, user-facing wording.
-8. **Tests.** For T: the test files already on the branch, and the command that runs them. For S and R: the tests to write, each with its name and what it asserts.
-9. **Run.** The exact commands, and the last line each prints when it passes.
-10. **Check before you report.** Five to eight yes/no questions about the rules that matter for this card.
-11. **Never.** What this card must not do.
-12. **If stuck.** When to stop, and what to write in the report.
-13. **Context.** About how many tokens the card, its recipe and its reading need, and the window to run it in (16,000 or 32,000).
-14. **Report.** Filled in by the implementer: what changed, the commands' last lines, anything unexpected.
+```
+# Card <ID>: <title>
 
-A card changes at most about 200 lines. If a change needs more, it is two cards.
+Level: T. Window: 16,000. Needs: L0-vectors.
+
+## Goal          One or two sentences: what exists after the card.
+## Read first    Files and line ranges. Each item starts with the path and says how many lines.
+## Files         Every file the card creates or changes.
+## Steps         Numbered. One edit each. The code to write is given where it matters.
+## Tests         The tests already on the branch (level T), or the tests to write, by name.
+## Run           The commands, and the last line each prints when it passes.
+## Audit         For the auditor, not the implementer: what to check, and how.
+```
+
+Limits, which `node tools/card-check.mjs` enforces and CI runs:
+
+- At most 90 lines (120 for level X).
+- **Read first** asks for at most 200 lines in all. A file an earlier card creates is marked
+  "(made by <card ID>)", and that card is under **Needs**.
+- At most three source files under **Files**. Tests and documents are not counted.
+- **Needs** names card IDs, or `none`. **Window** is 16,000 or 32,000 tokens.
+
+What a card leaves out, on purpose:
+
+- **Reasons.** They are in the phase design, for the planner and the auditor.
+- **General rules.** They are in `docs/plan/implementer-rules.md`, given to the small model once.
+- **Questions for the implementer to ask itself.** Checking is the auditor's job, under **Audit**.
 
 ## Setting up the small model
 
-- Give the model a context window of at least 16,000 tokens, and 32,000 if the machine can hold it. Ollama's default is far smaller, and anything past the window is cut off without warning, so the model edits a file it only half read. For Ollama: set `num_ctx` (for example `PARAMETER num_ctx 16384` in a Modelfile).
-- The budget behind the limits, for a 16,000-token window: the card about 2,500 tokens, its recipe about 2,500, the reading about 3,500 (300 lines of code), the tool's own instructions about 1,500, which leaves about 6,000 for the model's answer. A card that says it needs 32,000 must not be run in a smaller window.
-- Give it one card, the files in **Read first**, and the pattern recipe. Nothing else.
-- Run the card's commands yourself, or with a tool that shows you their real output. Don't accept "tests pass" from the model's own text.
-- One card per session. Start a new session for the next card, so nothing from the last one leaks in.
+- Give it a context window of at least 16,000 tokens, and 32,000 if the machine can hold it.
+  Many local runners default to far less, and cut off whatever is past the window without
+  warning, so the model edits a file it only half read. Set the window explicitly (for one common
+  runner: `PARAMETER num_ctx 16384` in its model file).
+- The budget for a 16,000-token window: the standing rules 600, the card 2,000, the reading
+  2,600 (200 lines), the tool's own instructions 1,500. About 9,000 are left for the answer.
+- Give it three things, in this order: `docs/plan/implementer-rules.md`, the card, the lines
+  under **Read first**. Nothing else.
+- One card per session. Start a new session for the next card.
 
 ## The loop
 
-1. Pick the lowest-numbered card whose **Depends on** cards are merged.
-2. For a T card, check that its tests are on the branch and fail for the right reason.
-3. Give the card to the implementer.
-4. Run the card's **Run** commands. If they fail, give the model the failing output once. If they fail again, stop: the card goes back to the planner.
-5. Go through **Check before you report**.
-6. For T, R and X: the reviewer reads the diff.
-7. Run `node tools/card-check.mjs` if a card was written or changed. Commit with a plain message that says what changed and why. No model names in the message beyond the attribution lines a session gives.
-8. When a unit's cards are all merged, run the full local CI (`tools/ci-local.sh`, see `CLAUDE.md`) before pushing.
-9. Tick the card in the phase's card index.
+1. Pick the next card of the phase's index whose **Needs** are on the branch. If it is not
+   written in full yet, the planner writes it now, from the index row, the design section and a
+   finished card of the same level.
+2. Level T: check that its tests are on the branch and fail because the code is missing.
+3. Hand the card to the implementer.
+4. Run the card's **Run** commands yourself. Never take "tests pass" from the model's own text.
+   If a command fails, give the model the failing output once. If it fails again, stop: the card
+   is wrong or too big, and it goes back to the planner.
+5. Audit the card (below). Commit, with a plain message that says what changed and why.
+6. When a unit's cards are all in: audit the unit, run the full local CI (`tools/ci-local.sh`,
+   see `CLAUDE.md`), push, and tick the unit in the phase's design.
+
+## The audit
+
+**After each card**, the auditor:
+
+1. Runs `git diff --stat`: only the files under **Files** changed. No test that was given was
+   edited. No generated file was edited by hand.
+2. Goes through the card's **Audit** list. It names what is specific to this card: the rule to
+   look for, the mistake a small model makes here, the command that proves a test bites.
+3. Levels T and R: reads the diff. Level R: also opens the screen in Day, Night run and High
+   contrast, at 200% text and at 320 px.
+
+**After each unit**, the auditor reads the whole diff of the unit against the design section it
+builds, and checks:
+
+- Every rule that never bends (`CLAUDE.md`) that the unit touches.
+- For every sync, audit and permission rule: the test bites (below).
+- The phone's test server answers as the API does, for every rule the unit changed.
+- No patient details in a log, a URL, a title, a notification or the phone's key-value store.
+
+When the audit finds a defect: if it is small and local, the auditor fixes it and says so in the
+commit. If the same defect shows twice, the card or the recipe is wrong: fix that, so the next
+card does not repeat it.
 
 ## Checking that a test bites
 
-A test that passes with the rule removed protects nothing. For every T card the planner checks, before handing it out and again after it is done:
+A test that passes with the rule removed protects nothing.
 
 1. Put the old behaviour back in the source file only.
 2. Run the card's tests. They must fail on the assertion that names the rule.
 3. Restore the file.
+
+Script it when a unit has many: reverse the fix's source hunks in a scratch worktree and run the
+tests the change added.
 
 ## Where things are
 
 | What | Where |
 |---|---|
 | Rules, commands, environment | `CLAUDE.md` |
+| The implementer's standing rules | `docs/plan/implementer-rules.md` |
 | What each feature does | The PRD (linked from `CLAUDE.md`); it lives outside the repository |
 | Decisions and phase status | `IMPLEMENTATION_PLAN.md` |
 | A phase's design | `docs/design/phase-<n>-<name>.md` and the files it links |
@@ -107,4 +157,5 @@ A test that passes with the rule removed protects nothing. For every T card the 
 
 ## When the plan and the code disagree
 
-The code is what runs. The planner finds out which is right, fixes the other, and says so in the commit. The implementer does neither: it stops and reports.
+The code is what runs. The planner finds out which is right, fixes the other, and says so in the
+commit. The implementer does neither: it stops and reports.

@@ -12,7 +12,7 @@ test server change in one piece of work.
 
 **X.** Almost every file is on an always-X path: `services/api/src/sync/**`,
 `apps/mobile/lib/sync/**`, `apps/mobile/test/sync/fake_server.dart`, and a migration with row-level
-security. A strong model does it; a second review follows.
+security. The frontier model does it; a second review follows.
 A small model must not: edit any file under those paths; write or change a case in
 `sync-values.json`; choose a permission key, a parent, a field class or the clock pause.
 A small model may, each under its own card, after the X work is merged:

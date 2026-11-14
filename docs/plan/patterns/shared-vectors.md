@@ -14,7 +14,7 @@ phone's tests both read it. A side that drifts fails its own test.
 **X** when the rule lives on an always-X path, as most do: sync values and hashing
 (`services/api/src/sync/**`, `apps/mobile/lib/sync/**`), access rules (`services/api/src/auth/**`),
 and anything the phone's test server uses. The vector file and its two readers are tests. The
-planner or a strong model writes them, first, and a reviewer reads the expected answers against
+planner, the frontier model, writes them, first, and a reviewer reads the expected answers against
 the phase design.
 
 A small model must not: write or change a vector file or a reader; edit a generator; regenerate a

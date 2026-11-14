@@ -18,7 +18,7 @@ behaviour the API does not have (plan risk 7). Since then the fake's agreement i
 ## Level
 
 **X.** `apps/mobile/test/sync/fake_server.dart` is always level X, and so is the server rule it
-mirrors. A strong model writes the parity test and the fake's change; a second review compares
+mirrors. The frontier model writes the parity test and the fake's change; a second review compares
 the fake to the server code line by line.
 
 A small model must not edit `fake_server.dart`, `fake_parity_test.dart`, `fake_reads_test.dart` or

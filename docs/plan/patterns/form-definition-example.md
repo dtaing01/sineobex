@@ -1,7 +1,7 @@
 # Worked example: one piece of the field specification, from lines to definition
 
 This goes with `form-definition.md`. The piece is the second half of Harm Reduction. A card gives
-you parts 1 to 3. You write parts 4 and 5.
+you parts 1 to 3. You write part 4. Part 5 is written for you, with the piece's shape file.
 
 ## 1. The piece's lines (`packages/forms/definitions/spec/harm-reduction-2.txt`)
 
@@ -120,7 +120,7 @@ not plain:
 { "id": "connect", "kind": "action", "label": "Connect to resource", "action": "add_referral" }
 ```
 
-## 5. The diff file (`packages/forms/definitions/spec/harm-reduction-2.diff.json`), given by the card
+## 5. The diff file (`packages/forms/definitions/spec/harm-reduction-2.diff.json`), already written
 
 ```json
 {

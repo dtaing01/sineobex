@@ -379,7 +379,9 @@ is built from `handoffLines` on the server (lifecycle 5.7).
    Oct 19 change, a rule in PRD main, or a default from an inventory's ambiguity list. The file
    has three lists: `notOptions` (bracketed words in the lines that are not options), `added`
    (option labels that are not in the lines) and `differences`
-   (`docs/plan/patterns/form-definition-example.md` shows one).
+   (`docs/plan/patterns/form-definition-example.md` shows one). The planner writes this file
+   and the piece's shape file (4.2) before the card is handed out. The implementer writes only
+   the definition.
 4. `pnpm forms:export` resolves, validates and writes the generated files.
 
 ### 4.2 What the export checks (each failure names the file and the rule)

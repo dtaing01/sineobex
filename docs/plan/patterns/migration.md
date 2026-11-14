@@ -13,7 +13,7 @@ SQL files. `db/src/migrate.ts` (`migrate`, line 58) applies every pending file i
 **T** for the small changes below: the card gives the SQL in full and the planner wrote the test
 first. A merged migration can never be edited, so a reviewer reads every one before it merges.
 
-**X (strong model only)** when the migration does any of these. `docs/plan/README.md` lists them as
+**X (the frontier model only)** when the migration does any of these. `docs/plan/README.md` lists them as
 always level X:
 
 - adds or changes a policy (`create policy`, `enable row level security`),

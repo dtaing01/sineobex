@@ -153,7 +153,8 @@ The ones that would change the most if answered differently:
 2. **Two interpreters and a hand-kept test server.** Every rule exists twice or three times. The
    vectors, the golden file and the parity tests are what hold them together; a rule added
    without one is plan risk 7 again.
-3. **The size.** 220 cards. 49 need a strong model, and another 131 need one to write the tests
-   first or read the result. The small model types the code of 171 cards and decides nothing.
+3. **The size.** 220 cards. The small local model types the code of 171 and decides nothing.
+   The frontier model writes the other 49 itself, writes the tests of 67 first, and audits all of
+   them.
 4. **The defaults are clinical choices made by an engineer.** Until Brooke and Mercy go through
    them, the forms are a preview.

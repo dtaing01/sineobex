@@ -14,28 +14,33 @@ that the files and line ranges it names exist.
 Nothing here can be given to the small model on day one. The first cards are level X, and the
 level T cards need their tests written first. In order:
 
-1. A strong model does **F0-package**, **F0-schema**, **F0-canonical** and **F0-tests**. From
-   then on the small model can do the seven T cards of F0, one at a time.
-2. In parallel, a strong model does **L0-vectors** and the four **L0-migration** cards, then
+1. The frontier model does **F0-schema**, **F0-canonical** and **F0-tests**; the small model can
+   do **F0-package** before them. From then on the small model can do the seven T cards of F0,
+   one at a time.
+2. In parallel, the frontier model does **L0-vectors** and the four **L0-migration** cards, then
    **F1-vectors** and **F3-migration**. The small model can then do the five T cards of L0 and
    the fourteen of F1.
-3. A strong model writes each card in full just before it is handed out, from this index, the
-   design section the row points to, and the model card of the same level. `node
+3. The frontier model writes each card in full just before it is handed out, from this index,
+   the design section the row points to, and the model card of the same level. A card is at most
+   90 lines. `node
    tools/card-check.mjs` checks the result.
 4. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
    `docs/design/phase-4-encounters.md`.
 
 ## Levels, and what they mean for this phase
 
-| Level | Cards | Who writes the code | What a strong model or a person still does |
+| Level | Cards | Who writes the code | What stands between the code and the branch |
 |---|---|---|---|
-| S | 40 | The small model | Runs the card's commands |
-| T | 67 | The small model | Writes the tests first (the `tests` card of each unit), then reads the diff |
-| R | 64 | The small model | Reads the diff and the screen |
-| X | 49 | A strong model only | All of it, with a second review |
+| S | 40 | The small local model | A machine check. The frontier model reads the diff when the unit is audited. |
+| T | 67 | The small local model | Tests the frontier model wrote first (the `tests` card of each unit), then its audit of the diff |
+| R | 64 | The small local model | The frontier model's audit of the diff and the screen |
+| X | 49 | The frontier model | A second review |
 
-220 cards. The small model writes the code of 171 of them. It decides nothing on any of them: the
-decisions are in the design, in the tests written first, and in each card's tables.
+220 cards. The small model writes the code of 171 of them and decides nothing on any of them: the
+decisions are in the design, in the tests written first, and in each card's tables. The frontier
+model writes the 49 level X cards, writes the tests of the level T cards, writes each card just
+before it is handed out, and audits every card and every unit (`docs/plan/README.md`, "The
+audit").
 
 ## Order
 
@@ -172,14 +177,14 @@ Every card is level R and includes its widget test file.
 | Card | Level | Files | Needs |
 |---|---|---|---|
 | F6-spec-pieces | X | `spec/<piece>.txt` for the 36 pieces, copied from the field specification, with `[left out]` where a line must not be copied | F0-spec-check |
-| F6-shapes-notes | X | `spec/<piece>.shape.json` for the 13 note type pieces, from `forms-inventory.md` | F6-spec-pieces, F0-shape-check |
-| F6-shapes-exam-a | X | The shape files of exam pieces 1 to 11 | F6-spec-pieces, F0-shape-check |
-| F6-shapes-exam-b | X | The shape files of exam pieces 12 to 23 | F6-spec-pieces, F0-shape-check |
+| F6-shapes-notes | X | `spec/<piece>.shape.json` and `spec/<piece>.diff.json` for the 13 note type pieces, from `forms-inventory.md` | F6-spec-pieces, F0-shape-check |
+| F6-shapes-exam-a | X | The shape and diff files of exam pieces 1 to 11 | F6-spec-pieces, F0-shape-check |
+| F6-shapes-exam-b | X | The shape and diff files of exam pieces 12 to 23 | F6-spec-pieces, F0-shape-check |
 | F6-lists | R | `lists/*.json`: the shared lists of forms 4.4 | F0-validate-flags |
 | F6-red-flags | R | `note-types/red_flags_disposition/v1.json` (field specification lines 36 to 60) | F6-lists, E-presets |
 
-The transcription cards, each level S, each one definition file and its `.diff.json`, each
-needing F6-lists, E-presets and the shape card of its piece:
+The transcription cards, each level S, each one definition file, each needing F6-lists,
+E-presets and the shape card of its piece:
 
 | Card | Piece (field specification lines) | Goes into |
 |---|---|---|
