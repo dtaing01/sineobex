@@ -228,9 +228,70 @@ Screens review (at a29bde0; scratch tests R1–R12 in the coordinator's scratchp
 | V11 | Low | The note counter announces every keystroke past 90% | Announce once on crossing 90% and at the limit | R5 |
 | V12 | Low | On lock, a screen under another rebuilds against the closed database and throws | Builders return nothing when the store changed | R5 |
 
-**Fixed so far** (each with a regression test that fails with the fix reverted): S1 `0ca21e5`,
-S4 `d9efc0c`, S5 `eaade7c` (and the correction route, `ff85705`), S8 `79421f2`, P7 server
-`f6f2d68`, W1 `bd6c49f` and `950bd2e`, S9 `3f7f2cc`.
+**Fixed** (each with a regression test that fails with the fix reverted):
+
+| Unit | Fixes and commits |
+|---|---|
+| R2 server patients | S1 `0ca21e5`, S4 `d9efc0c`, S5 `eaade7c` (and the correction route, `ff85705`), S8 `79421f2`, P7 server `f6f2d68`, W1 `bd6c49f` |
+| R1 server sync and the fake | S2 `73e0eb3`, S3 `8bb79d8`, S6 `588f73e`, S7 `1665b87`, P7 fake `14c4ad2`, P8 `cd9e62a`, P10 fake routes `65c5258`, the fake's mirror of R2 `64fd2f1` and `f229cef` |
+| R3 phone sync and domain | P1 `b5540a2`, P2 `4875715`, P3 `23b1c36`, P4 `09be5e0`, P5 `59498fc`, P6 `191da37`, P7 phone `7b291df`, P9 `fb03ab3`, V1 domain `5263701`, V2 `3f4cce2`, V4 domain `5140a9d`, P10 wrappers `d7224f2` |
+| Coordinator | S9 `3f7f2cc`, W1 portal `950bd2e` |
+
+**How the fixes were checked (Nov 14).** R1 and R3 were cut off before they reported, so each of
+their fixes was checked again from the outside: the rule was put back in the source alone (the
+fix's hunks reversed, or one line changed by hand where later commits overlapped), and the test the
+fix added was run and seen to fail on the assertion that names the defect. All 31 checks did:
+S2 (server and fake), S3, S6 (server and fake), S7, P1 (three scenarios), P2 (a held card and a
+refused one), P3, P4 (three tests), P5, P6, P7 (phone and fake), each of P8's seven rules and the
+server half of P8 (d), V1, V2 (two tests), V4, and the fake's mirror of R2's permissions, recorder
+name and undo. Not checkable this way: P9's Kotlin (no Android toolchain on the build machine; the
+pull request's Android build compiles it) and P10, which adds routes and methods and has its own
+tests. The scripts are throwaway (`bite.sh`, `bite2.py` in the coordinator's scratchpad); the method
+is the one in `CLAUDE.md`: revert the rule, see it fail, restore it. A second adversarial pass over
+the fixes themselves was started and dropped: it used a whole usage window without one verifier
+finishing.
+
+How R1's and R3's fixes read the design:
+
+- **S2.** A change redirected to a survivor counts as having seen the survivor's value only when it
+  answers the person's own conflict on that record and field, whose receipt showed that survivor,
+  at the version it names (`answersConflictOn`). Conflict receipts keep `redirectedTo`, so a retry
+  shows the survivor again.
+- **S3.** Every encounter `set` takes the team lock first (D32), on a push and when an admin
+  accepts a held one. They already serialized at the audit event, so nothing waits longer.
+- **S6.** The wire schema bounds `baseVersion` to Postgres `integer` and both times to 1970–9999
+  UTC. The push answers 422 naming each such change by path; the phone keeps those as rejections it
+  can't send and sends the rest. The phone's own report of its oldest unsynced change is dropped
+  from the devices page when it is such a time.
+- **S7.** The review queue shows a held ID link's `tokenRef`; accepting applies the value as sent.
+- **P8.** The fake now answers as the API does in the seven places listed, and
+  `fake_parity_test.dart` pins each to the API's answer. A held change's replay carries no details
+  on the server either (the first answer never did).
+- **P1.** `replaceRejected` sends again what waited on the refused record, after the new create and
+  in the order it was made: the record's own edits as edits of the new record, and creates naming
+  it (a note, a recurrence, a reversal request) made again naming the new one, each a new change
+  with its own receipt that supersedes the one it repeats. The server settles each superseded
+  rejection when its replacement is accepted. A refused create is replaced only by a record of its
+  own kind, never a patient (a patient is fixed in place).
+- **P2.** A card counts as standing only when it is active, or pending and not held for review; a
+  refused card is marked when the refusal arrives (`LocalStore.onRejected`, a new hook that runs in
+  the rejection's transaction).
+- **P3.** Sign-out closes the open database before clearing it through a connection of its own, so
+  a download still on its way fails closed. Refreshers swallow that failure.
+- **P4, P6.** Staged index pages go when the index is lost, on a 403, and after their lifetime
+  whatever the role. The index remembers the latest time it has seen (`index.latestSeenAt`), so a
+  clock wound back after a restart still expires it.
+- **P5.** Clearing server data keeps the redirect between a patient with waiting work and the chart
+  that holds it.
+- **V2.** "Being edited" is kept in memory (`beginEditing`, `endEditing`), and a store that opens
+  resets `open` on patient-side records. Encounters and notes are untouched (they carry no
+  `patient_id` on the record and stay open until Save & Close). The chart refresher keeps a chart
+  under an edit form current, since it counts as local work; the engine's refresh of open records
+  no longer fetches it.
+- **P9.** A copied ID link clears after 60 seconds on Android as on iOS, only if the clipboard still
+  holds this app's clip, and stays marked sensitive. This departs from the PRD (14.3, #17).
+- **P10.** `PatientRepository.decideFieldReview` and `history` are online only and map each server
+  answer to an `OnlineProblem` the screen puts in words; no value is ever in an exception.
 
 How R2's fixes read the design: migration 0016 records the alternates a merge wrote
 (`patient_merges.alternate_history_ids`), the merged record's reviews it closed
