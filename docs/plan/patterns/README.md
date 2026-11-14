@@ -47,3 +47,9 @@ line ranges are from. Read `docs/plan/README.md` first: it defines the card leve
 | [synced-entity.md](synced-entity.md) | Add a synced record type |
 | [fake-mirror.md](fake-mirror.md) | Mirror a server sync rule in the phone test server |
 | [shared-vectors.md](shared-vectors.md) | Add a shared test vector file read by both the API and the phone |
+
+## Forms (phase 4 onward)
+
+| Recipe | Use it to |
+|---|---|
+| [form-definition.md](form-definition.md) | Turn a piece of the field specification into a form definition; [form-definition-example.md](form-definition-example.md) is one piece worked from start to finish |
