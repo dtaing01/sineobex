@@ -528,6 +528,25 @@ void main() {
     sync.store!.createEncounter(kind: 'medical');
   });
 
+  test('screens hear of a freeze at once, before the hand-over is sent', () async {
+    // Screens review V1: a chart on screen goes when the store freezes, so the freeze itself tells
+    // the listeners. Waiting for the upload to end would leave the chart up on a dead link.
+    await signIn();
+    server.removedFromTeam.add('$userId/team-0');
+    var heardWhileFrozen = false;
+    sync.addListener(() => heardWhileFrozen = heardWhileFrozen || (sync.store?.frozen ?? false));
+    final heardBeforeUpload = <bool>[];
+    server.onRequest = (path) {
+      if (path.endsWith('/quarantine')) {
+        heardBeforeUpload.add(heardWhileFrozen);
+        throw const NetworkException('offline');
+      }
+    };
+    sync.store!.createEncounter(kind: 'medical');
+    await sync.syncNow();
+    expect(heardBeforeUpload, [true]);
+  });
+
   test('a removal keeps changes the server couldn’t read on the phone, locked, and says so', () async {
     // Review finding: the hand-over left them out and the wipe then deleted them, while the notice
     // said every unsynced record had been sent.

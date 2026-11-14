@@ -617,6 +617,9 @@ class SyncController extends ChangeNotifier implements LocalData {
       // Hand over what never synced, so no care record is lost, then wipe. Nothing new may be
       // written from now on: a change saved during the upload would miss it and be wiped.
       engine.store.freeze('Your access to this team ended. Saved records are being sent to a Program Admin.');
+      // Screens stop showing a chart the moment the store freezes (screens review V1), so they hear
+      // of it now, not when the upload ends: on a dead link it never does.
+      notifyListeners();
       final Set<String>? held;
       try {
         held = await engine.uploadToQuarantine();
