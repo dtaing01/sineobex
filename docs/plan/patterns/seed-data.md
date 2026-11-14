@@ -141,9 +141,9 @@ the full local CI under the shared lock.
 - **Changing an existing entry or reusing an ID.** End-to-end tests name seeded patients by ID
   (`apps/portal/e2e/corrections.spec.ts` line 6). Also, an existing patient is skipped on a
   second run (line 679), so an edit to one never reaches a database that is already seeded.
-- **Editing patient 1.** It is read field for field from
-  `packages/contract/test-vectors/done-when.json` (lines 74-98) so the seed, the phone's test
-  server and the tests agree. That file is not yours to change.
+- **Editing patient 1.** Lines 74-98 read it field for field from
+  `packages/contract/test-vectors/done-when.json`, so the seed, the phone's test server and the
+  tests agree. That file is not yours to change.
 - **A realistic identifier "for realism".** The guard fails the build. Silencing it with
   `phi-guard: allow` is not an implementer's choice.
 - **An insert without `on conflict … do nothing`.** The seed must change nothing on a second run.

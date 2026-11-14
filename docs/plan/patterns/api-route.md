@@ -33,7 +33,7 @@ One route, "decline a problem reversal", in four small places.
 | `problems.ts` lines 96-99 | The handler. Two lines: `teamScope` (permission, recent sign-in), then call the module function and answer with `c.json(..., 200)` |
 | `services/api/src/patients/problems-admin.ts` lines 345-379 | `declineReversal`: one `scope.tx`, the checks, the writes, the audit event, the answer |
 | `services/api/src/app.ts` lines 14 and 107 | The route file is imported and registered |
-| `services/api/test/problems-admin.test.ts` lines 38-53, 150-162, 291-331 | Setup, a `call` helper, and the route's two tests |
+| `services/api/test/problems-admin.test.ts` lines 38-53, 149-162, 291-332 | Setup, a `call` helper, and the route's two tests |
 
 For a read (GET) route, the same file shows `reversalsRoute` (lines 32-44, handler 86-89) and
 `listReversals` (`problems-admin.ts` lines 187-236).

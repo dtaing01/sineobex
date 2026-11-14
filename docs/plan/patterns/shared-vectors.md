@@ -39,7 +39,7 @@ the portal's `apps/portal/src/lib/dob.test.ts`, not the API's.)
 | `permissions.test.ts` 38-53 | One `it` per case, named after the case, comparing all answers at once |
 | `services/api/src/auth/permissions.ts` 56-73 | The TypeScript rules; the comment at line 50 names the vector file |
 | `apps/mobile/test/patients/access_test.dart` 9-22 | The phone reader: `File('../../packages/contract/test-vectors/access.json')`, a guard that the list is not empty (line 15), one `expect` per answer with `reason:` naming the case |
-| `apps/mobile/lib/patients/access.dart` 14-26 | The Dart rules; the comment at line 6 names the vector file |
+| `apps/mobile/lib/patients/access.dart` 14-28 | The Dart rules; the comment at line 6 names the vector file |
 | `services/api/test/contract-vectors.test.ts` 23-26 | `vector<T>(name)`: the helper to copy when one API test file reads several vector files |
 
 A generated file: `canonical-json.json`. Use this form when one side is the reference and the

@@ -38,7 +38,7 @@ test-server answer, stop and report.
 | `lib/patients/id_links.dart` lines 295-312 | `copy`: `store.appendAudit` runs first; the copy happens only if it did not throw |
 | `lib/patients/patient_repository.dart` lines 458-484, 490-491 | `openOnPhone`, a **display**: frozen check, then the read and `appendAudit('patient.viewed', ...)` in one `store.transaction`. `read` logs nothing itself and still refuses while frozen |
 | `lib/patients/patient_providers.dart` lines 44-46, 72-78 | Where `PatientServices` builds each domain class and exposes it |
-| `test/patients/id_links_test.dart` lines 15-41, 289-316; 54-73, 254-285 | Set-up (`FakeSyncServer`, `TestPhone`, `PatientServices`); tests: made offline, audit entry, frozen, clock pause |
+| `test/patients/id_links_test.dart` lines 15-41, 289-316; 54-73, 254-272, 274-285 | Set-up (`FakeSyncServer`, `TestPhone`, `PatientServices`); tests: made offline, audit entry, frozen, clock pause |
 
 What `LocalStore` (`lib/sync/local_store.dart`, read only) gives you:
 
@@ -117,7 +117,7 @@ Assert, for each new method:
 ```sh
 export PATH=/opt/flutter/bin:/opt/bin:$PATH
 cd apps/mobile
-flutter test test/patients/<name>_test.dart     # last line: "+<n>: All tests passed!"
+flutter test test/patients/<name>_test.dart     # last line ends "+<n>: All tests passed!"
 tool/format_check.sh                            # exits 0; its last line reports 0 changed files
 flutter analyze --fatal-infos                   # last line: "No issues found!" and a time
 ```
@@ -143,7 +143,7 @@ flutter analyze --fatal-infos                   # last line: "No issues found!" 
   copied (`id_links.dart` lines 292-294). Never catch `ChartingPaused` in the domain layer to
   carry on.
 - **Patient details in an audit entry.** `appendAudit` takes IDs, counts and criteria kinds, never
-  search terms or tokens (`local_store.dart` lines 853-854; `id_links.dart` line 292).
+  search terms or tokens (`local_store.dart` lines 854-855; `id_links.dart` line 292).
 - **A refusal without the server's code.** A refusal carries the server's `details.problem` in
   `problem:` (`problems.dart` lines 292-298); the card gives the code.
 - **Formatting generated code.** If `format_check.sh` fails, run `dart format` on your own

@@ -17,7 +17,7 @@ A small model must not:
 
 - Edit `lib/sync/**`, `lib/security/**`, `lib/auth/**` or `test/sync/fake_server.dart` (level X).
   The screen reaches the store only through a domain class on `PatientServices`.
-- Change the `redirect` in `lib/app.dart` (lines 57-60): it keeps a locked phone off every
+- Change the `redirect` in `lib/app.dart` (lines 57-62): it keeps a locked phone off every
   patient screen. You add one `GoRoute` and nothing else there.
 - Edit the shared test helpers `test/helpers/app_harness.dart` and
   `test/features/patients/patient_kit.dart`. If one lacks something, stop and report.
@@ -35,7 +35,7 @@ A small model must not:
 | `lib/features/patients/patient_widgets.dart` lines 24-80 | `PhiField`: key `phi.<name>`, autocorrect, suggestions and keyboard learning off |
 | same file, lines 396-436 | `PatientsGate`: no services, no permission, or a frozen store: the builder never runs and `FrozenNotice` shows instead |
 | `lib/app.dart` lines 107-110 | The route: `/patients/:id/problems/new`, IDs from `state.pathParameters` |
-| `lib/features/patients/patient_labels.dart` lines 5-6, 69-71 | The labels file: fixed words keyed by code (`problemStatusLabels`, `problemStatusText`) |
+| `lib/features/patients/patient_labels.dart` lines 6-7, 69-71 | The labels file: fixed words keyed by code (`problemStatusLabels`, `problemStatusText`) |
 | `test/features/patients/add_problem_screen_test.dart` lines 13-23, 29-75, 77-94 | Opening the screen offline; the five runs; a control a switch can activate |
 | `test/features/patients/patient_kit.dart` lines 30-40, 181-198 | `runs`, `runName`; `expectPrivateFields`, `expectScreenOk` |
 | `test/helpers/app_harness.dart` lines 135-140 | `expectGuidelines`: tap target size, labels, text contrast |
@@ -68,7 +68,7 @@ A small model must not:
 
    ```dart
    GoRoute(
-     path: '/patients/:id/<thing>/:thingId',
+     path: '/patients/:id/<thing>',
      builder: (_, state) => ThingScreen(patientId: state.pathParameters['id']!),
    ),
    ```
@@ -98,8 +98,8 @@ then `h.server.offline = true` **before** opening the new screen. Use `tapOn`, `
 5. **Live regions.** `isSemantics(isLiveRegion: true)` on the message
    (`intake_screen_test.dart` line 71). If a message can repeat, assert it is said once, as
    `problem_screen_test.dart` lines 91-130 do with `tester.takeAnnouncements()`.
-6. **Frozen.** `h.sync.store!.freeze(frozen)`, then `h.patients.changed()` and `tester.pump()`:
-   `find.text(frozen)` is found, the patient's details are not (`find.text('Del')`,
+6. **Frozen.** `h.sync.store!.freeze(frozen)` (`frozen` is a `const` string the test declares),
+   then `h.patients.changed()` and `tester.pump()`: `find.text(frozen)` is found, the patient's details are not (`find.text('Del')`,
    `expectNoLegalName(tester)`), and `tester.takeException()` is null
    (`patient_screen_test.dart` lines 248-266). If the screen saves, also assert nothing was queued
    (`id_card_screen_test.dart` lines 109-123).
@@ -111,7 +111,7 @@ then `h.server.offline = true` **before** opening the new screen. Use `tapOn`, `
 ```sh
 export PATH=/opt/flutter/bin:/opt/bin:$PATH
 cd apps/mobile
-flutter test test/features/<area>/<name>_screen_test.dart   # last line: "+<n>: All tests passed!"
+flutter test test/features/<area>/<name>_screen_test.dart   # last line ends "+<n>: All tests passed!"
 tool/format_check.sh                                        # exits 0; last line reports 0 changed
 flutter analyze --fatal-infos                               # last line: "No issues found!" and a time
 ```
@@ -145,6 +145,6 @@ For the example, the first command ends `+9: All tests passed!`.
 - **A bare `TextField`.** The keyboard then learns patient words. `expectPrivateFields` fails on
   any field without a `phi.` key (`patient_kit.dart` lines 181-192).
 - **Patient details in a title, snackbar or error.** `showDone` and `errorText` take fixed
-  strings only (`patient_widgets.dart` lines 246-254); so does the labels file (lines 5-6).
+  strings only (`patient_widgets.dart` lines 246-254); so does the labels file (lines 6-7).
 - **Tapping with `tester.tap` on a tall row.** At 200% text a row can be taller than the screen;
   `tapOn` taps near its top left (`patient_kit.dart` lines 172-179).

@@ -35,8 +35,8 @@ triggers (43-46), the policy (49-52) and the `revoke` (54). A small model does n
 ## The example to copy
 
 Smallest good example: `db/migrations/0014_problem_merge_correction.sql` (9 lines) with
-`db/test/problem-merge-correction.test.ts` (55 lines). The named candidate, 0016, is a fine example
-of adding columns, but most of its test is about filling in old rows, which is planner work.
+`db/test/problem-merge-correction.test.ts` (55 lines). `0016_merge_review_undo.sql` is a fine
+example of adding columns, but most of its test is about filling in old rows, which is planner work.
 
 | Where | What it does |
 |---|---|
@@ -44,7 +44,7 @@ of adding columns, but most of its test is about filling in old rows, which is p
 | line 4 | `set search_path = sineobex, public, extensions;` Every migration has this line |
 | lines 6-9 | Drops the check and adds it again with one more allowed value |
 | `0016_merge_review_undo.sql` lines 10-12, 17-18 | Adding columns: `not null default`, so existing rows stay valid |
-| `0006_quarantine_record_index.sql` line 5 | Adding an index |
+| `0006_quarantine_record_index.sql` line 6 | Adding an index |
 | `problem-merge-correction.test.ts` lines 9-29 | Setup: a scratch database, a team, a user, the rows the test needs |
 | lines 31-47 | The new thing is accepted, written as the application role (`asApp`) |
 | lines 49-54 | What must still be refused is refused |
@@ -116,7 +116,8 @@ pnpm -s vitest run test/migrate.test.ts
 ```
 
 Each vitest run ends with a summary. It must contain `Test Files  1 passed (1)` and no `failed`
-line. The last line printed is `Duration ...`.
+line. The last line printed is `Duration ...`. The PHI guard reads only files git tracks, so
+`git add` your new files before running it; its last line is `PHI guard: <n> files clean`.
 
 ## Check before you report
 

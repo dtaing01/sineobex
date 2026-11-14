@@ -1,7 +1,7 @@
 # Pattern recipes
 
 A recipe is a short page for one kind of recurring work. It shows one existing piece of code to
-copy and the steps to make another like it. Each recipe says on its first line which commit its
+copy and the steps to make another like it. Each recipe says under its title which commit its
 line ranges are from. Read `docs/plan/README.md` first: it defines the card levels S, T, R and X.
 
 ## How a card uses a recipe

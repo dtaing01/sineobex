@@ -135,7 +135,7 @@ type Common = {
   noNormal?: true;                   // one-tap Normal never fills it (chaperone, consent)
   recap?: false;                     // left out of the recap
   handoff?: true;                    // goes into the EMS handoff summary
-  mapsTo?: string;                   // "<note type key>:<path>": the full module's field (Quick encounter)
+  mapsTo?: string;                   // "<note type key>:<path>": the full module's field, without any entry part (6.4)
 };
 
 type Field = Common & (
@@ -145,14 +145,14 @@ type Field = Common & (
   | { kind: 'number'; min: number; max: number; decimals: 0 | 1 | 2; unit?: string;
       altUnit?: { unit: string; perUnit: number };          // inches: 2.54 cm each; stored in cm
       display?: 'box' | 'stepper' | 'outOf' }
-  | { kind: 'flag'; clears?: string[] }                     // a tick; when set, these sibling fields are cleared and disabled
+  | { kind: 'flag'; clears?: string[] }                     // a tick; while set, these sibling fields do not count and are disabled
   | { kind: 'date'; range: 'past' | 'future' | 'any' }
   | { kind: 'time' }
   | { kind: 'duration' }                                    // weeks and days, stored as days
-  | { kind: 'group'; layout: 'stack' | 'row'; fields: Field[] }
-  | { kind: 'grid'; rows: Option[] | { list: string } | { pickedIn: string }; cell: Field }
-  | { kind: 'region'; side?: true; surface?: true }         // a body region from the list body_region
-  | { kind: 'problem' }                                     // one diagnosis from the problem code list
+  | { kind: 'group'; layout: 'stack' | 'row'; collapsed?: true; fields: Field[] }   // collapsed: closed until tapped
+  | { kind: 'grid'; rows: Option[] | { list: string } | { pickedIn: string }; cell: Field }   // one cell per row; see 2.3
+  | { kind: 'region'; options: Option[] | { list: string }; side?: 'side' | 'side_rl'; surface?: true }   // a body region
+  | { kind: 'problem' }                                     // one diagnosis from the problem code list: its code and label
   | { kind: 'photo'; max: number }                          // phase 8; shown as a placeholder until then
   | { kind: 'action'; action: 'show_handoff' | 'add_referral' | 'open_note_type'; noteType?: string }
   | { kind: 'info' }                                        // the label is guidance; nothing is stored
@@ -177,7 +177,8 @@ type Condition =
 ```
 
 A condition's `field` is a path inside the same note type. Inside a repeating section it may be
-written relative to the entry, starting with `./`.
+written relative to the entry, starting with `./`. Inside the cell of a grid, `./` means the
+row.
 
 ### 2.3 The fourteen kinds, what each stores, and where
 
@@ -193,12 +194,16 @@ written relative to the entry, starting with `./`.
 | `time` | `HH:MM` | the field's path | "Time EMS called" |
 | `duration` | a whole number of days | the field's path | weeks and days |
 | `group` | nothing itself | its children add a path part | the vitals row, blood pressure as two numbers, a heading with several fields |
-| `grid` | one cell value per row | the field's path, then the row's code | pulses by site, reflexes, a status for each vaccine picked, findings for each node group picked |
-| `region` | codes | the field's path, then `region`, `side`, `surface` | the body map |
-| `problem` | a code, a label and what the note asks about it | the field's path, then `code`, `label`, and the sub-fields the definition lists | the diagnosis search |
+| `grid` | one cell value per row | the field's path, then the row's code. The cell's own ID is not a path part, unless the cell is a `group`: then its children's IDs follow the row's code. With `rows: { pickedIn }`, a row whose option is no longer picked does not count. | pulses by site, reflexes, a status for each vaccine picked, findings for each node group picked |
+| `region` | codes | the field's path, then `region` (a code from its options), `side` (from the list it names: `side` has Bilateral, `side_rl` does not), `surface` | the body map |
+| `problem` | a code and a label | the field's path, then `code` and `label`. What the note asks about the diagnosis (its status, the interventions) are ordinary fields beside it, and the section repeats, one entry per diagnosis. | the diagnosis search |
 | `photo`, `action`, `info` | nothing in phase 4 | | photos, buttons, guidance |
 
 `sides: true` adds a last path part, `right` or `left`.
+
+A `flag` with `clears` does not write to the fields it names. While the flag is set those fields
+do not count (`effectiveAnswers` leaves them out) and their widgets are disabled. Two phones can
+then never leave a note with "Unable to measure" ticked and a length that counts.
 
 A **repeating section** adds a second path part, the entry's ID: the letter `e` and seven
 characters from `a-z0-9`, made on the phone. An entry exists when its `entryAt` answer does: the
@@ -220,7 +225,8 @@ needs one.
   have, and `repeat.max` bounds its entries, so the purpose of the limit (no unbounded history)
   still holds. This change is part of lifecycle card L1-3.
 - A `text` field's `maxLength` is at most 4,000. A resolved definition is at most 256 KiB.
-- A section's `repeat.max` is at most 20.
+- A section's `repeat.max` is at most 20. The phone holds to it. The server checks one answer at
+  a time and does not count entries; the 1,000 limit is its bound.
 
 ### 2.5 One complete small example
 
@@ -384,14 +390,19 @@ is built from `handoffLines` on the server (lifecycle 5.7).
 | The lock (`definitions.lock.json`) | A released version file, module or list whose content changed |
 | Version rules (2.6) | A path or code reused for another meaning |
 | The spec check (`src/spec-check.ts`) | An option in SPEC that is in no definition, and an option in a definition that is not in SPEC, unless `<piece>.diff.json` declares it |
-| Field counts | A section whose number of fields differs from the inventory's count, unless declared |
+| The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: for every field its path, kind, choose-one or choose-many, the number of options, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal`. So a wrong choose-one, a wrong condition or a missing flag fails the export. |
 | Drift | Generated files that differ from what the export writes (`git diff --exit-code`, as the contract does) |
 
 **The spec check** reads the bracketed tokens of the piece (`[ New concern ]`, with SPEC's
 escapes undone as inventory 1 describes) and the plain list lines, and compares them with the
-option labels of the sections that name that piece. It is a tripwire, not a proof: it cannot
-tell a choose-one from a choose-many. Those choices are made in the inventories, field by field,
-and the card for each piece carries them.
+option labels of the sections that name that piece. It checks the words.
+
+**The shape check** checks everything else. The choices the specification does not make
+(choose-one or choose-many, what is required, which option is exclusive, what opens what) are
+made by the planner, from the inventories, and written down once as the piece's shape file. A
+transcription card shows that file as its Decisions table. The small model types the options;
+the two checks together leave it nothing to decide and nothing it can get wrong unseen. That is
+what lets a transcription card be level S.
 
 ### 4.3 How one piece of SPEC maps to data
 
@@ -486,8 +497,12 @@ a one-tap Normal" (PRD main 414).
   overwritten. It never fills a `noNormal` field.
 - "Details appear only when an answer calls for them" is `showWhen`. "Left and right are recorded
   where it matters" is `sides`. Pulses and reflexes are grids on shared scales.
-- MSK's region selector gates the rest of the system by `showWhen`. Region-specific tests are a
-  grid whose rows come from a list named by region; only the shoulder's list exists (10.2).
+- MSK is a repeating section, one entry per region examined (focused-exam inventory, default
+  16). Each entry has its region, the parts that follow it, and one tests grid per region, each
+  shown by `showWhen: { field: './region', is: '<region>' }`. Only the shoulder's grid exists
+  (10.2). One-tap Normal takes the entry it is tapped in.
+- One-tap Normal fills visible fields only: the cranial nerve groups that stay hidden while the
+  screen is "Grossly intact" are not filled.
 
 ### 6.4 The Quick encounter
 
@@ -500,6 +515,9 @@ re-entering what they filled in" (PRD main 409).
 - **Expand** on a part of the quick form creates the full note type in the same encounter and
   writes each mapped answer into it. The interpreter's `expandQuick` returns the answers; the
   phone writes them as ordinary changes. The quick form's own answers stay.
+- A full module's field can sit in a repeating section (a wound). `mapsTo` then names the path
+  without the entry part. The phone makes the new entry's ID and passes it to `expandQuick`,
+  which returns the entry's `entryAt` answer with the rest. A pure function cannot make an ID.
 - HPI is Yes, No or Unknown, and Yes opens a text box (PRD main 409, 422).
 - Its Medication section "needs an ordering credential" (PRD main 409). The section is marked
   `needs: 'orderMedications'`: the renderer shows it only to a credential that may order, and
@@ -532,7 +550,8 @@ special to this note type.
 
 "Open skin (ulcer, abscess, laceration, burn) hands off to Wound care, and so does a wound found
 in the diabetic foot exam" (PRD main 416). In the Skin and Diabetic foot sections, an `action`
-field with `open_note_type: 'wound_care'` shows when one of those findings is picked. It opens
+field with `action: 'open_note_type'` and `noteType: 'wound_care'` shows when one of those
+findings is picked. It opens
 the encounter's Wound care draft, or creates one. The Skin finding itself stores only its type.
 
 Skin findings also ask "Same lesion as documented before?" (PRD main 416). In phase 4 the answer
@@ -567,13 +586,13 @@ Each is pure: a definition and a note's answers in, plain data out. TypeScript i
 | `checkAnswer(def, path, value)` | null, or one problem: `unknown_path`, `wrong_type`, `unknown_option`, `out_of_range`, `too_long`, `excluded_pair`, `exclusive_with_others` | The server on every answer (lifecycle 4.4); the phone before it saves |
 | `effectiveAnswers(def, answers)` | The answers that count: visible fields only, removed entries dropped | every function below, the recap, exports, and the hash a signer sends (lifecycle 4.5) |
 | `finishCheck(def, answers)` | A list of `{ section, path, problem }`: a visible required field that is empty | Complete (lifecycle 3.3, 4.6) |
-| `normalAnswers(def, sectionId, answers)` | The answers one-tap Normal would add | 6.3 |
+| `normalAnswers(def, sectionId, answers, entryId?)` | The answers one-tap Normal would add: visible fields with no answer, in that section or that entry | 6.3 |
 | `recapLines(def, answers)` | One line per section that has an answer | lifecycle 8.1 |
 | `readModel(def, answers, corrections)` | Sections, labels and display values, with corrected values marked | The visit read (3.5), the phone's read view |
-| `visibleAnswers(def, answers, reader)` | The answers a reader may see. `reader` says whether they act as the author, hold `patients.view_sensitive`, hold `patients.view_sensitive_exams`, may read Medical notes, have a clinical credential and an ordering credential, and which diagnosis codes are sensitive | lifecycle 6.4 |
+| `visibleAnswers(def, answers, reader)` | The answers a reader may see, or null when the reader may not see the note at all. `reader` is `{ actsAsAuthor, viewSensitive, viewSensitiveExams, readsMedical, chartsMedical, ordersMedications, sensitiveCodes }`: five facts about the person and the list of sensitive diagnosis codes | lifecycle 6.4 |
 | `handoffLines(defs, answersByNote)` | The EMS handoff summary: the fields marked `handoff` | lifecycle 5.7, 9.8 |
 | `suggestions(def, answers)` | Note type keys suggested by the options picked | lifecycle 9.6 |
-| `expandQuick(quickDef, answers, fullDef)` | The answers to write into the full note | 6.4 |
+| `expandQuick(quickDef, answers, fullDef, newEntryIds)` | The answers to write into the full note | 6.4 |
 
 `answerSchema` in the lifecycle part is `checkAnswer` under another name; the lifecycle's cards
 use `checkAnswer`.
@@ -584,8 +603,9 @@ Rules the functions share, stated once:
   visible again the answer is back. The renderer does not clear hidden answers: each clear would
   be a change to sync. When the note is finished, the answers that do not count are moved to its
   history, so a finished note holds exactly what was signed (lifecycle 4.5).
-- An exclusive option and another option in one value is `exclusive_with_others`. The widget
-  never produces it; the server refuses it.
+- An exclusive option and another option in one value is `exclusive_with_others`, and a blocked
+  pair in one value is `excluded_pair`. The widget never produces either; the server refuses
+  both. So a contradictory disposition is caught when it is entered, not at Complete.
 - The server checks one answer at a time and cannot refuse an answer for being in a hidden field:
   changes arrive in any order. Visibility is applied when reading and when signing.
 - On the phone the domain layer calls `checkAnswer` before the store's `setField`. On the server

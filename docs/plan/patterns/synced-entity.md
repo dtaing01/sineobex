@@ -28,8 +28,8 @@ The smallest entity is a consent decision: append-only, one parent, no settable 
 
 | File and lines | What it does |
 |---|---|
-| `db/migrations/0009_patients.sql` 220-243 | The table, with `device_id`, `change_id`, `clock_verified`, and its append-only trigger |
-| `db/migrations/0009_patients.sql` 430-470 | `patient_of_change`: the patient a held change is about, per entity (used by `services/api/src/sync/review.ts` line 65) |
+| `db/migrations/0009_patients.sql` 220-244 | The table, with `device_id`, `change_id`, `clock_verified`, and its append-only trigger |
+| `db/migrations/0009_patients.sql` 430-476 | `patient_of_change`: the patient a held change is about, per entity (used by `services/api/src/sync/review.ts` line 65) |
 | `services/api/src/sync/schemas.ts` 37-50 | `PATIENT_ENTITIES`, and the `ChangeEntity` and `RecordEntity` enums built from it (OpenAPI components) |
 | `services/api/src/sync/entities/values.ts` 172-197 | `ConsentCreate`: the strict Zod schema of the create's value. Validates, never transforms (lines 12-16) |
 | `values.ts` 297-305, 308-326 | `CREATE_SCHEMAS` and `FIELD_SCHEMAS`: one row per entity |

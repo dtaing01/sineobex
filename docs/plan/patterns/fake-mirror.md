@@ -35,8 +35,8 @@ server's audit event, not to the phone (review finding P8).
 
 | File and lines | What it does |
 |---|---|
-| `services/api/src/sync/apply.ts` 424-442 | The server's `hold`: stores the change, writes `sync.quarantined` with `waitsOn` in the audit details, returns `{ status: 'rejected', reason, quarantined: true }` |
-| `services/api/test/sync.test.ts` 1360-1368 | The API test that pins the answer: `toEqual` on the whole receipt, so an extra key fails |
+| `services/api/src/sync/apply.ts` 425-443 | The server's `hold`: stores the change, writes `sync.quarantined` with `waitsOn` in the audit details, returns `{ status: 'rejected', reason, quarantined: true }` |
+| `services/api/test/sync.test.ts` 1360-1369 | The API test that pins the answer: `toEqual` on the whole receipt, so an extra key fails |
 | `apps/mobile/test/sync/fake_server.dart` 559-565 | The fake's `_hold`: the doc comment names the server file and function; `waitsOn` is kept in `held`, the answer has three keys |
 | `fake_server.dart` 530-557 | `_decide`, which calls `_hold`: the same order of checks as the server's `decide` |
 | `apps/mobile/test/sync/fake_parity_test.dart` 13-81 | The helpers: `as`, `register`, `change`, `push`, `results`, `consented` |
@@ -88,7 +88,7 @@ read routes (team index, chart, search, match); its helper `chart()` is at lines
 - Assert the retry: the same change pushed again gets the same answer.
 - Assert what the server keeps and the phone must not see, on `server.held`, `server.quarantine`,
   `server.records`, `server.receipts`, `server.notices` or `server.serverAudit`.
-- Assert what was not stored when the rule refuses (as line 221-222 does).
+- Assert what was not stored when the rule refuses (as lines 221-222 of `fake_parity_test.dart` do).
 - Bite check, scripted, in a scratch worktree (never in the PR checkout):
   1. Commit the fake's change and the test.
   2. Put the old behaviour back in `fake_server.dart` only (for the example: add

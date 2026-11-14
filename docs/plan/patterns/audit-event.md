@@ -33,7 +33,7 @@ Level X parts a small model must not touch:
 | `services/api/src/patients/history.ts` lines 25, 79-85 | The smallest call site, a **read**: one `scope.tx`, the query, then `await audit({...})` with an action, the patient and two safe details (a field name and a count) |
 | `services/api/src/patients/problems-admin.ts` lines 350, 366-376 | A **write** with a typed reason: the reason goes to its own table (lines 359-364); the event carries the row's ID and `commentSha256`, never the text |
 | `services/api/test/patient-fixtures.ts` lines 240-277 | `auditMark`, `expectAudit`, `expectAuditClean` |
-| `services/api/test/problems-admin.test.ts` lines 294, 308-309, 425-429 | The helpers in use |
+| `services/api/test/problems-admin.test.ts` lines 294, 308-309, 426-430 | The helpers in use |
 
 ## Steps
 
