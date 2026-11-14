@@ -106,6 +106,22 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a card the store refuses to make says why, and nothing is queued', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signIn(tester);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open ID card'));
+    // The hand-over starts with the screen up; the controller hasn't said so yet.
+    h.sync.store!.freeze(frozen);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Make a card'));
+    expect(tester.takeException(), isNull);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('New card made. It works on this phone now.'), findsNothing);
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityIdLink), isEmpty);
+  });
+
   testWidgets('a card made while the clock is off waits for it', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);
