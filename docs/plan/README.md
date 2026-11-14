@@ -107,7 +107,8 @@ What a card leaves out, on purpose:
    is wrong or too big, and it goes back to the planner.
 5. Audit the card (below). Commit, with a plain message that says what changed and why.
 6. When a unit's cards are all in: audit the unit, run the full local CI (`tools/ci-local.sh`,
-   see `CLAUDE.md`), push, and tick the unit in the phase's design.
+   see `CLAUDE.md`), push, and tick the unit in the phase's design, with what the audit found
+   and the commits that fixed it.
 
 ## The audit
 
