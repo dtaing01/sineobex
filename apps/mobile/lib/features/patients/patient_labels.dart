@@ -1,5 +1,7 @@
-import '../../api/generated/api.dart' show MatchReason;
+import '../../api/generated/api.dart' show FieldHistoryEntry, MatchReason;
 import '../../patients/dob.dart';
+import '../../patients/patient_repository.dart' show OnlineProblem;
+import '../../sync/entities.dart' show entityAlias, entityAllergy, entityProblem;
 
 /// Words for the patient screens (design 12.1). Fixed strings keyed by code: a patient's details
 /// appear only where a screen shows that patient, never in a title, toast or error.
@@ -103,9 +105,45 @@ const patientFieldLabels = {
   'idCardChoice': 'ID card',
 };
 
+/// One line of a chart's history (design 11.7): "Usually found: Elm St underpass → Library steps ·
+/// Jordan Lee · Oct 21 · on a phone". A street name removed, or an allergy or problem entered in
+/// error, reads with its reason; a problem's status in the problem list's words.
+///
+/// PLAN-OPEN: "phone, offline" (design 11.7): an entry says when the phone made the change, not
+/// whether it had signal, so this says "on a phone" for both, as the portal does.
+String historyLine(FieldHistoryEntry e, DateTime today) {
+  final String what;
+  if (_historyReasons[(e.entity, e.field)] case final label?) {
+    final reason = e.value is Map<String, Object?> ? (e.value! as Map<String, Object?>)['reason'] : null;
+    what = reason is String && reason.isNotEmpty ? '$label: $reason' : label;
+  } else {
+    final label = e.entity == entityProblem && e.field == 'status'
+        ? 'Problem status'
+        : (patientFieldLabels[e.field] ?? e.field);
+    what =
+        '$label: ${patientValueText(e.field, e.previousValue, today)} → '
+        '${patientValueText(e.field, e.value, today)}';
+  }
+  return [
+    what,
+    e.changedBy.displayName,
+    shortDate(e.recordedAt, today),
+    if (e.deviceTime != null) 'on a phone',
+  ].join(' · ');
+}
+
+/// History entries that are a withdrawal with a reason, by sync entity and field.
+const _historyReasons = {
+  (entityAlias, 'removal'): 'Street name removed',
+  (entityAllergy, 'enteredInError'): 'Allergy entered in error',
+  (entityProblem, 'enteredInError'): 'Problem entered in error',
+};
+
 /// A patient field's value in words: a review's values, a history entry.
 String patientValueText(String field, Object? value, DateTime today) => switch ((field, value)) {
   (_, null || '') => '(blank)',
+  // A problem's status, in a chart's history.
+  ('status', {'status': final String status}) => problemStatusText(status),
   ('birth', _) => switch (Birth.fromJson(value)) {
     final b? => readBack(b, today),
     null => '(blank)',
@@ -123,6 +161,39 @@ String patientValueText(String field, Object? value, DateTime today) => switch (
   ('preferredLanguage', final String tag) => languageText(tag),
   (_, final String s) => s,
   _ => '$value',
+};
+
+// ---- requests that only work online ----
+
+/// Why a "Which is right?" choice wasn't saved (design 3.2), one fixed sentence per reason: what
+/// happened and what to do next, never a value and never the server's code.
+String reviewProblemText(OnlineProblem problem) => switch (problem) {
+  OnlineProblem.offline => 'Saving a choice needs a connection. Try again when the phone is online.',
+  OnlineProblem.notAllowed => 'Your role can’t choose between these values. Someone who can edit patient details will.',
+  OnlineProblem.signInAgain => 'Sign in again, then save your choice.',
+  OnlineProblem.notFound => 'These values aren’t waiting for a choice any more. Open the chart again.',
+  OnlineProblem.alreadyDecided => 'Someone has already chosen. Open the chart again to see the value kept.',
+  OnlineProblem.fieldChanged => 'The value changed since this was opened. Open the chart again to see it.',
+  OnlineProblem.commentRequired => 'A Program Admin chooses a legal name or date of birth, and says why.',
+  OnlineProblem.nothingToRecognise =>
+    'Keeping that value would leave no name or description to recognise them by. Keep the value on the chart.',
+  OnlineProblem.invalid => 'That value is no longer one of the choices. Open the chart again.',
+  OnlineProblem.failed => 'The choice couldn’t be saved. Try again.',
+};
+
+/// Why a chart's history didn't load (design 11.7). The reasons that belong to a review's decision
+/// can't come back from a read; they get the plain "try again".
+String historyProblemText(OnlineProblem problem) => switch (problem) {
+  OnlineProblem.offline => 'History needs a connection. Try again when the phone is online.',
+  OnlineProblem.notAllowed => 'Your role can’t see what changed on this chart.',
+  OnlineProblem.signInAgain => 'Sign in again to see what changed.',
+  OnlineProblem.notFound => 'The server doesn’t have this chart yet. What changed shows once it has synced.',
+  OnlineProblem.alreadyDecided ||
+  OnlineProblem.fieldChanged ||
+  OnlineProblem.commentRequired ||
+  OnlineProblem.nothingToRecognise ||
+  OnlineProblem.invalid ||
+  OnlineProblem.failed => 'History couldn’t be loaded. Try again.',
 };
 
 // ---- dates ----

@@ -5,9 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../api/generated/api.dart'
-    show DecideFieldReview, DecideFieldReviewKeep, DuplicateHintStatus, FieldReviewView;
-import '../../api/transport.dart' show ApiException, NetworkException;
+import '../../api/generated/api.dart' show DuplicateHintStatus, FieldReviewView;
+import '../../api/transport.dart' show ApiException;
 import '../../app_providers.dart';
 import '../../auth/session_controller.dart';
 import '../../design/theme.dart';
@@ -243,28 +242,16 @@ class _ProfileState extends ConsumerState<_Profile> {
   }
 
   Future<void> _chooseReview(FieldReviewView review, {required bool online}) async {
-    final api = _s.charts.api;
     final decided = await showFieldReviewSheet(
       context,
+      patients: _s.patients,
       review: review,
       mayDecide: _s.mayEdit,
       online: online,
       today: todayOf(ref),
-      onSave: (keep, historyId) async {
-        await api.decideFieldReview(
-          reviewId: review.id,
-          body: DecideFieldReview(
-            keep: keep ? DecideFieldReviewKeep.current : DecideFieldReviewKeep.alternate,
-            historyId: historyId,
-            baseVersion: review.current.version,
-          ),
-        );
-      },
     );
-    if (decided == true && mounted) {
-      showDone(context, 'Choice saved');
-      unawaited(_open());
-    }
+    // The decision opened the chart again (one logged view), so it already shows the value kept.
+    if (decided == true && mounted) showDone(context, 'Choice saved');
   }
 
   Future<void> _history(PatientView v) async {
@@ -272,7 +259,7 @@ class _ProfileState extends ConsumerState<_Profile> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _HistorySheet(services: _s, patientId: v.canonicalId, today: todayOf(ref)),
+      builder: (_) => _HistorySheet(patients: _s.patients, patientId: v.canonicalId, today: todayOf(ref)),
     );
   }
 
@@ -969,10 +956,11 @@ class _ConsentDialogState extends State<_ConsentDialog> {
   );
 }
 
-/// Every change to the chart's fields, from the server (design 11.7). Online only.
+/// Every change to the chart's fields, from the server (design 11.7), newest first, a page at a
+/// time. Online only: the server logs each read.
 class _HistorySheet extends StatefulWidget {
-  const _HistorySheet({required this.services, required this.patientId, required this.today});
-  final PatientServices services;
+  const _HistorySheet({required this.patients, required this.patientId, required this.today});
+  final PatientRepository patients;
   final String patientId;
   final DateTime today;
 
@@ -981,56 +969,71 @@ class _HistorySheet extends StatefulWidget {
 }
 
 class _HistorySheetState extends State<_HistorySheet> {
-  late final Future<List<String>> _lines = _load();
+  final _lines = <String>[];
 
-  Future<List<String>> _load() async {
-    final page = await widget.services.charts.api.getPatientHistory(patientId: widget.patientId);
-    return [
-      for (final e in page.entries)
-        [
-          '${patientFieldLabels[e.field] ?? e.field}: '
-              '${patientValueText(e.field, e.previousValue, widget.today)} → '
-              '${patientValueText(e.field, e.value, widget.today)}',
-          e.changedBy.displayName,
-          shortDate(e.recordedAt, widget.today),
-          if (e.deviceTime != null) 'on a phone',
-        ].join(' · '),
-    ];
+  /// Where the next page starts; null once the last page is here.
+  String? _next;
+  bool _loading = true;
+  bool _loaded = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_fetch());
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final page = await widget.patients.history(widget.patientId, after: _next);
+      if (!mounted) return;
+      setState(() {
+        _lines.addAll(page.entries.map((e) => historyLine(e, widget.today)));
+        _next = page.nextAfterId;
+        _loaded = true;
+      });
+    } on OnlineRequestFailed catch (e) {
+      if (mounted) setState(() => _error = historyProblemText(e.problem));
+    } on ChartingPaused catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _more() {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    unawaited(_fetch());
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
-      child: FutureBuilder<List<String>>(
-        future: _lines,
-        builder: (context, snap) {
-          final text = Theme.of(context).textTheme;
-          return ListView(
-            shrinkWrap: true,
-            children: [
-              Semantics(header: true, child: Text('What changed', style: text.titleLarge)),
-              const SizedBox(height: FieldSpace.s3),
-              if (snap.connectionState != ConnectionState.done)
-                const Center(child: CircularProgressIndicator())
-              else if (snap.hasError)
-                ErrorMessage(
-                  snap.error is NetworkException
-                      ? 'History needs a connection. Try again when the phone is online.'
-                      : 'History couldn’t be loaded. Try again.',
-                )
-              else if (snap.data!.isEmpty)
-                const Text('No changes recorded yet.')
-              else
-                for (final l in snap.data!)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: FieldSpace.s2),
-                    child: Text(l, style: text.bodyLarge),
-                  ),
-            ],
-          );
-        },
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Semantics(header: true, child: Text('What changed', style: text.titleLarge)),
+            const SizedBox(height: FieldSpace.s3),
+            if (_loaded && _lines.isEmpty) const Text('No changes recorded yet.'),
+            for (final l in _lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: FieldSpace.s2),
+                child: Text(l, style: text.bodyLarge),
+              ),
+            if (_error != null) ...[ErrorMessage(_error!), const SizedBox(height: FieldSpace.s2)],
+            if (_loading)
+              const Center(child: CircularProgressIndicator())
+            else if (_next != null)
+              WideButton(label: 'Show earlier changes', onPressed: _more),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

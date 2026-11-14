@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../api/generated/api.dart' show FieldReviewView, ReviewNeeds;
-import '../../api/transport.dart' show ApiException, NetworkException;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
+import '../../patients/patient_repository.dart' show OnlineRequestFailed, PatientRepository;
+import '../../sync/local_store.dart' show ChartingPaused;
 import 'patient_labels.dart';
 
 /// "Which is right?" (design 3.2, 12.1): two values were recorded for one field and someone who
@@ -13,23 +14,24 @@ import 'patient_labels.dart';
 /// choice** works online only; offline the sheet is read-only and says why. Identity fields (legal
 /// name, birth) are a Program Admin's: the sheet says so and offers no choice.
 ///
-/// Returns true when a choice was saved.
+/// The choice goes through [patients] (`decideFieldReview`), which opens the chart again once it is
+/// saved, so the chart under the sheet shows the value kept. Returns true when a choice was saved.
 Future<bool?> showFieldReviewSheet(
   BuildContext context, {
+  required PatientRepository patients,
   required FieldReviewView review,
   required bool mayDecide,
   required bool online,
-  required Future<void> Function(bool keepCurrent, String? historyId) onSave,
   DateTime? today,
 }) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
   builder: (_) => FieldReviewSheet(
+    patients: patients,
     review: review,
     mayDecide: mayDecide,
     online: online,
-    onSave: onSave,
     today: today ?? DateTime.now(),
   ),
 );
@@ -37,19 +39,19 @@ Future<bool?> showFieldReviewSheet(
 class FieldReviewSheet extends StatefulWidget {
   const FieldReviewSheet({
     super.key,
+    required this.patients,
     required this.review,
     required this.mayDecide,
     required this.online,
-    required this.onSave,
     required this.today,
   });
 
+  final PatientRepository patients;
   final FieldReviewView review;
 
   /// The person may decide reviews of ordinary fields (`patients.edit`).
   final bool mayDecide;
   final bool online;
-  final Future<void> Function(bool keepCurrent, String? historyId) onSave;
   final DateTime today;
 
   @override
@@ -72,18 +74,12 @@ class _FieldReviewSheetState extends State<FieldReviewSheet> {
       _error = null;
     });
     try {
-      await widget.onSave(_choice == null, _choice);
+      await widget.patients.decideFieldReview(widget.review, keepCurrent: _choice == null, historyId: _choice);
       if (mounted) Navigator.of(context).pop(true);
-    } on NetworkException {
-      if (mounted) setState(() => _error = 'Connect to save a choice.');
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(
-          () => _error = e.status == 409
-              ? 'The value changed since this was opened. Open the chart again to see it.'
-              : 'The choice couldn’t be saved. Try again.',
-        );
-      }
+    } on OnlineRequestFailed catch (e) {
+      if (mounted) setState(() => _error = reviewProblemText(e.problem));
+    } on ChartingPaused catch (e) {
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
