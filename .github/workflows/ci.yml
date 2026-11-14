@@ -1,4 +1,5 @@
-# Every pull request and every push to main (Build plan, phase 0): secret scan, PHI guard,
+# Every pull request and every push to main (Build plan, phase 0): secret scan, PHI guard, task
+# card check,
 # TypeScript checks and tests, migrations and API tests on a scratch Postgres, Flutter analyze and
 # tests, portal accessibility, contract drift, and workflow lint.
 name: CI
@@ -52,6 +53,19 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: node tools/phi-guard.mjs
+
+  card-check:
+    name: Task card check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: node tools/card-check.mjs
 
   typescript:
     name: TypeScript lint, types and unit tests

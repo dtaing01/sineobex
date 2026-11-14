@@ -47,12 +47,12 @@ These paths are always level X:
 
 ## What a card looks like
 
-Each card is one file: `docs/plan/phase-<n>-<name>/cards/<nnn>-<short-name>.md`. Every card has these sections, in this order, with these headings.
+Each card is one file: `docs/plan/phase-<n>-<name>/cards/<ID>.md`. A card's ID is its unit and a short name, for example `F6-psychological` or `L0-rules-ts`; the file starts with `# Card <ID>: <title>`. Every card has these sections, in this order, with these headings. `node tools/card-check.mjs` checks the shape of every card, and CI runs it.
 
 1. **Goal.** One sentence: what exists after the card that didn't before.
 2. **Level.** S, T, R or X.
 3. **Depends on.** Card numbers that must be merged first.
-4. **Read first.** Files and line ranges, at most 300 lines in total. Nothing else needs reading.
+4. **Read first.** Files and line ranges, at most 300 lines in total. Nothing else needs reading. Each item starts with the path and says how many lines ("all of it (124 lines)" or "lines 56-73"). A file that an earlier card creates is marked "(made by <card ID>)", and that card is in **Depends on**.
 5. **Pattern.** One existing file to copy from, and the recipe in `docs/plan/patterns/` that explains it.
 6. **Files to change.** The full list. At most three source files, plus tests.
 7. **Steps.** Numbered. Each step is one edit, with the code to write given in full where it matters: signatures, SQL, field names, error codes, user-facing wording.
@@ -82,7 +82,7 @@ A card changes at most about 200 lines. If a change needs more, it is two cards.
 4. Run the card's **Run** commands. If they fail, give the model the failing output once. If they fail again, stop: the card goes back to the planner.
 5. Go through **Check before you report**.
 6. For T, R and X: the reviewer reads the diff.
-7. Commit with a plain message that says what changed and why. No model names in the message beyond the attribution lines a session gives.
+7. Run `node tools/card-check.mjs` if a card was written or changed. Commit with a plain message that says what changed and why. No model names in the message beyond the attribution lines a session gives.
 8. When a unit's cards are all merged, run the full local CI (`tools/ci-local.sh`, see `CLAUDE.md`) before pushing.
 9. Tick the card in the phase's card index.
 

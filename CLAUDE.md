@@ -71,6 +71,7 @@ that look like bugs.
 | Phone | `cd apps/mobile && tool/format_check.sh && flutter analyze --fatal-infos && flutter test` |
 | Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
 | PHI guard | `node tools/phi-guard.mjs` |
+| Task cards (after writing or changing one) | `node tools/card-check.mjs` |
 | **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome tools/ci-local.sh` |
 
 `tools/ci-local.sh` takes about 15 minutes. It must end with "All local CI checks passed" before

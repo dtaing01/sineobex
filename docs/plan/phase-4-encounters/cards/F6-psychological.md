@@ -20,7 +20,8 @@ S
 
 - `docs/plan/patterns/form-definition.md`, all of it (124 lines).
 - `docs/plan/patterns/form-definition-example.md`, all of it (142 lines).
-- `packages/forms/definitions/spec/psychological.txt`, all of it (22 lines).
+- `packages/forms/definitions/spec/psychological.txt`, all of it (22 lines) (made by
+  F6-spec-pieces).
 
 ## Pattern
 
