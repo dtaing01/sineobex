@@ -44,6 +44,16 @@ class NeedsAttentionScreen extends ConsumerWidget {
         final messenger = ScaffoldMessenger.of(context);
         void outOfDate() =>
             messenger.showSnackBar(const SnackBar(content: Text('The other value changed. Check both values again.')));
+        // A choice the store refuses (the clock check failed since the card was drawn, or the store
+        // froze for a hand-over) says why. The cards don't wait for it, so without this nobody would.
+        Future<void> choosing(Future<void> Function() choice) async {
+          try {
+            await choice();
+          } on Exception catch (x) {
+            messenger.showSnackBar(SnackBar(content: Text(errorText(x))));
+          }
+        }
+
         final cards = <Widget>[
           for (final e in items)
             if (e.state == ChangeState.conflict && store != null && e.entity == entityProblem && e.field == 'status')
@@ -55,7 +65,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
                 today: todayOf(ref),
                 onChoose: snapshot.clock.paused || services == null
                     ? null
-                    : (choice) async {
+                    : (choice) => choosing(() async {
                         final done = switch (choice) {
                           _ProblemChoice.keepResolved => services.problems.keepServer(e.changeId),
                           _ProblemChoice.cameBack =>
@@ -66,7 +76,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
                         services.changed();
                         if (!done) return outOfDate();
                         await sync.syncNow();
-                      },
+                      }),
               )
             else if (e.state == ChangeState.conflict && store != null)
               _ConflictCard(
@@ -76,9 +86,9 @@ class NeedsAttentionScreen extends ConsumerWidget {
                 // A choice writes to the chart, so it waits like the rest of charting.
                 onChoose: snapshot.clock.paused
                     ? null
-                    : (keepMine) async {
+                    : (keepMine) => choosing(() async {
                         if (!await sync.resolveConflict(e.changeId, keepMine: keepMine)) outOfDate();
-                      },
+                      }),
               )
             else
               _RejectionCard(entry: e, services: services, paused: snapshot.clock.paused),

@@ -174,6 +174,28 @@ void main() {
     });
   }
 
+  testWidgets('a conflict choice the store refuses says why, and the card stays', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signedIn(tester);
+    final store = storeOf(h);
+    final encounter = store.createEncounter(kind: 'medical');
+    final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    await syncNow(tester, h);
+    h.server.serverEdit(note, 'data.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
+    store.setField(note, 'data.temp_c', 39.1);
+    await syncNow(tester, h);
+    await tapText(tester, 'Needs attention');
+    // The hand-over starts with the card on screen; the controller hasn't said so yet.
+    store.freeze(frozen);
+    final before = store.outbox().length;
+    await tapText(tester, 'Use my value');
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text(frozen), findsOneWidget);
+    expect(store.outbox(), hasLength(before));
+    expect(find.text('Use my value'), findsOneWidget);
+  });
+
   testWidgets('waiting in the sign-out dialog finishes the sync and then signs out cleanly', (tester) async {
     final h = await signedIn(tester);
     storeOf(h).createEncounter(kind: 'medical');

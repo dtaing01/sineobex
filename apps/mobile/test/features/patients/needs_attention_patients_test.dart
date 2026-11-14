@@ -56,6 +56,34 @@ void main() {
     });
   }
 
+  testWidgets('a problem choice the store refuses says why, and the card stays', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signIn(tester);
+    seedP1(h.server);
+    final burn = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: burn', 'status': 'new'});
+    await syncAndRefresh(tester, h);
+    await tester.runAsync(() => h.patients.patients.open(p1Id));
+    h.server.serverEdit(burn, 'status', {'status': 'resolved', 'encounterId': null}, by: teammate);
+    h.wall = h.wall.add(const Duration(minutes: 1));
+    h.boot.advance(const Duration(minutes: 1));
+    h.patients.problems.move(burn, 'ongoing');
+    await syncAndRefresh(tester, h);
+    await openAttention(tester);
+    // The hand-over starts with the card on screen; the controller hasn't said so yet.
+    final store = h.sync.store!..freeze(frozen);
+    final before = store.outbox().length;
+    for (final choice in ['Keep Resolved', 'It came back: add as a new problem', 'Resolved by mistake: ask an admin']) {
+      await tapOn(tester, find.text(choice));
+      expect(tester.takeException(), isNull, reason: choice);
+      expect(find.text(frozen), findsOneWidget, reason: choice);
+      // The message has gone before the next choice.
+      await tester.pump(const Duration(seconds: 5));
+      await settle(tester);
+    }
+    expect(store.outbox(), hasLength(before));
+    await expectShown(tester, find.text('Keep Resolved'));
+  });
+
   testWidgets('a card for a merged chart: Make a new card from the kept chart', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);
