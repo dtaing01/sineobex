@@ -347,23 +347,23 @@ Index `(team_id, encounter_id, written_at)`.
 **`note_corrections`**: "the author picks the wrong field, enters the right value and gives a
 reason" (PRD main 460). A patient's amendment request uses the same row (PRD main 463), the way
 `patient_corrections` records one for identity fields (`0009_patients.sql:288-308`). Append-only.
+One row is one correction: one reason, and one to ten answers changed together (4.7).
 
 | Column | Type | Meaning |
 |---|---|---|
 | `id` | `uuid primary key` | Made on the phone |
 | `team_id`, `note_id` | `uuid not null` | Foreign key to `encounter_notes (team_id, id)` |
-| `field` | `text not null`, starts with `data.` | The answer corrected |
-| `outcome` | `text`, one of `corrected`, `declined`, `no_change` | `declined`: an amendment request refused, the note unchanged. `no_change`: the note already held that value. |
-| `old_value`, `new_value` | `jsonb` | The value replaced, and the value asked for |
+| `changes` | `jsonb not null`, an array of 1 to 10 | Each `{ field, oldValue, newValue, historyId }`. `field` starts with `data.`. `historyId` is the `corrected` row in `field_history`, or null when nothing was written. |
+| `outcome` | `text`, one of `corrected`, `declined`, `no_change`, `draft_edit`, `not_author` | `declined`: an amendment request refused, the note unchanged. `no_change`: the note already held those values. `draft_edit`: the note was a draft again, and the changes were applied as edits. `not_author`: the sender does not act as the note's author; nothing changed. |
 | `reason` | `text`, 3 to 500 characters | |
 | `requested_by_patient` | `boolean not null default false` | A HIPAA §164.526 amendment request |
-| `history_id` | `bigint` references `field_history (id)` | The `corrected` history row. Null unless `outcome = 'corrected'`. |
-| `corrector_user_id`, `corrector_name`, `corrector_credential` | | Who corrected it, as they were then |
+| `corrector_user_id`, `corrector_name`, `corrector_credential` | | Who corrected it, under the credential `signedUnder` found (3.5) |
+| `claimed_credential` | `text` | What the phone's saved profile said |
 | `corrected_at` | `timestamptz not null` | Clock-corrected device time |
 | `clock_verified`, `created_device_id`, `change_id`, `created_at` | | |
 
-Checks: `outcome <> 'declined' or requested_by_patient`;
-`(outcome = 'corrected') = (history_id is not null)`. Index `(team_id, note_id, corrected_at)`.
+Check: `outcome <> 'declined' or requested_by_patient`. Index
+`(team_id, note_id, corrected_at)`.
 
 The app role gets no `update` or `delete` on these three tables.
 
@@ -570,12 +570,13 @@ corrected by the receipt if the server decided otherwise.
 | draft, Medical note | `sign` | same, but the credential cannot sign | `saved_unsigned` | Waiting for a co-signer |
 | draft | any | the hash does not match | refused: `content_changed` | Draft |
 | draft | any | the finish check fails | refused: `incomplete` | Draft |
-| draft | any | the sender does not act as the author | refused: `not_author` | Draft |
-| draft, Non-Medical note | `sign` | | refused: `sign_not_medical` | Draft |
+| draft, Medical note | any | the sender's own Red flags note of this visit is still a draft | refused: `red_flags_first` | Draft |
+| draft | any | the sender does not act as the author | `none` | Unchanged; the sender is told |
+| draft, Non-Medical note | `sign` | treated as `complete` | `completed` | Complete |
 | already finished | any | none | `none` | Unchanged |
 | completed, Medical note | `cosign` (online, 5.3) | hash matches; a second person; can sign; can see every answer that counts | `signed` | Signed; attestation by the co-signer's credential |
 
-Three of these need a word.
+Four of these need a word.
 
 - **`saved_unsigned`** is the PRD's signing rule: "The author's credential can't sign this note
   type: saved as unsigned and routed to a co-signer instead" (PRD main 558). The phone only sends
@@ -587,7 +588,9 @@ Three of these need a word.
 - **`none`** covers the same person completing a note from two phones. The second sign-off is
   stored and changes nothing. If its hash differs from the one that finished the note, the
   receipt says so and the person is told to open the note and read what was signed.
-- **A refusal** (`content_changed`, `incomplete`) leaves the note a draft on the server and puts
+- **A sign-off from someone who does not act as the author** is stored with effect `none`. The
+  screens never send one, and the worker could not fix a refusal (4.1).
+- **A refusal** (`content_changed`, `incomplete`, `red_flags_first`) leaves the note a draft on the server and puts
   the sign-off in Needs attention. The fix is the same act again: open the note, look, Complete.
   The phone then sends the same sign-off record again with the new hash, through the store's fix
   path (`apps/mobile/lib/sync/local_store.dart:1328-1345`), so the refused one is settled and
@@ -622,17 +625,23 @@ offline signature is checked days later, so the server must know the credential 
 signing, not at the time of syncing. A resident who signs on Monday, becomes an attending on
 Tuesday and syncs on Wednesday signed as a resident, and that note needs attestation.
 
-The function `signedUnder` decides it. It is server-only and pure:
+The function `signedUnder` decides it, for a sign-off and for a correction alike (4.7). It is
+server-only and pure:
 
 | Input | From |
 |---|---|
 | `current` | The signer's membership now: credential and fields (also when they were removed since) |
 | `laterChanges` | `membership_changes` rows of kind `credential` for that membership, made after `signedAt`, oldest first (1.3) |
 | `signedAt`, `receivedAt`, `clockVerified` | The change |
+| `notBefore` | The time the server received the note's create |
 | `claimed` | The credential the phone's saved profile showed |
 
-1. The time is **trusted** when `clockVerified` is true and `signedAt` is not more than 5 minutes
-   after `receivedAt` (the clock limit, `services/api/src/sync/push.ts:19`).
+1. The time is **trusted** when `clockVerified` is true, `signedAt` is not more than 5 minutes
+   after `receivedAt` (the clock limit, `services/api/src/sync/push.ts:19`) and `signedAt` is not
+   before `notBefore`. `clockVerified` is the phone's own word
+   (`services/api/src/sync/records.ts:342`), so a time that claims to come before the note
+   existed on the server is not believed: it could date a signature to before a credential was
+   lowered.
 2. If the time is trusted and `laterChanges` is not empty, the credential and fields are the
    `old_value` of its first row: what the person held until that change.
 3. Otherwise they are `current`.
@@ -693,17 +702,22 @@ when" (PRD main 460).
 
 - Who: whoever acts as the note's author (3.8). "The original signer corrects their own note"
   (PRD main 461).
-- What: one answer (`data.<path>`) of a finished note, a new value, a reason of 3 to 500
-  characters, and the version of the answer the person was looking at.
-- The server writes the new value with history kind `corrected`, and a `note_corrections` row
-  with the old value, the reason and who.
-- If the answer already holds that value, the correction is stored as `no_change`.
-- If the answer changed since the person looked (another correction got there first), it is
-  refused with `field_changed`. The fix is to look again and correct again.
-- A correction to a draft is refused with `note_not_finished`: the author just edits it.
+- What: one to ten answers (`data.<path>`) of a finished note, changed together, each with its
+  new value and the version of the answer the person was looking at; and one reason of 3 to 500
+  characters. Several go together because one answer can open another: correcting "EMS
+  activated" to Yes makes the time required.
+- The server writes the new values with history kind `corrected`, and a `note_corrections` row
+  with the old values, the reason and who.
+- If every answer already holds its new value, the correction is stored as `no_change`.
+- If an answer changed since the person looked (another correction got there first), it is
+  refused with `field_changed`. The fix is to look again and correct again, or leave it (4.1).
+- If the note would then fail its finish check, it is refused with `incomplete`: a correction
+  can never leave a signed note without the consent a sensitive exam needs.
+- A correction that reaches a draft is applied as an edit to the draft. This happens only when
+  the note was reopened in between.
 - The free-text summary is not corrected field by field. A wrong summary gets an addendum
   (PLAN-OPEN 12.1 #9).
-- Works offline.
+- Works offline. The credential it is recorded under is found as for a signature (3.5).
 
 **After a correction, a second look.** "A co-signed note goes back to the co-signer after a
 correction" (PRD main 461).
@@ -743,7 +757,9 @@ says at once "this note changed, read it again", and nothing waits on the phone.
   attending may co-sign.
 - **Attest**: an attending reads a signed note that waits and attests it. "Attesting adds a dated
   statement below the note and doesn't change it" (PRD main 216).
-- Nobody co-signs or attests a note they act as the author of.
+- Nobody co-signs or attests a note they act as the author of. Nobody attests a note whose
+  current signature is their own: a resident who co-signed a student's note and later became an
+  attending does not attest it.
 - The person must be able to read every answer of the note that counts (6.4, rule 4). An
   attestation of a note one can't read in full would be untrue.
 - Both carry the hash of the note as the person read it. If the note was corrected in between,
@@ -849,21 +865,21 @@ type Attestation = 'not_needed' | 'waiting' | 'attested';
 signoffEffect(i: {
   noteStatus: NoteStatus; medicalNote: boolean; act: 'complete' | 'sign';
   actsAsAuthor: boolean; canSign: boolean; needsAttestation: boolean;
-  hashMatches: boolean; finishOk: boolean;
-}): { refuse: 'not_author' | 'sign_not_medical' | 'content_changed' | 'incomplete' }
-  | { effect: 'none' }
+  hashMatches: boolean; finishOk: boolean; ownRedFlagsOpen: boolean;
+}): { refuse: 'content_changed' | 'incomplete' | 'red_flags_first' }
+  | { effect: 'none'; reason: 'already_finished' | 'not_author' }
   | { effect: 'completed' | 'signed' | 'saved_unsigned'; statusAfter: NoteStatus; attestationAfter: Attestation }
 ```
 
 The checks run in this order, and the first that applies decides:
 
-1. `noteStatus` is not `draft`: `{ effect: 'none' }`.
-2. `actsAsAuthor` is false: refuse `not_author`.
-3. `act` is `sign` and `medicalNote` is false: refuse `sign_not_medical`.
-4. `hashMatches` is false: refuse `content_changed`.
-5. `finishOk` is false: refuse `incomplete`.
+1. `noteStatus` is not `draft`: effect `none`, reason `already_finished`.
+2. `actsAsAuthor` is false: effect `none`, reason `not_author`.
+3. `hashMatches` is false: refuse `content_changed`.
+4. `finishOk` is false: refuse `incomplete`.
+5. `medicalNote` and `ownRedFlagsOpen`: refuse `red_flags_first`.
 6. `medicalNote` is false, or `act` is `complete`: `completed`, status `completed`,
-   `not_needed`.
+   `not_needed`. So `sign` on a Non-Medical note is treated as `complete`.
 7. `canSign` is true: `signed`, status `signed`, `waiting` if `needsAttestation`, else
    `not_needed`.
 8. Otherwise: `saved_unsigned`, status `completed`, `not_needed`.
@@ -872,13 +888,14 @@ The checks run in this order, and the first that applies decides:
 
 ```ts
 reopenEffect(i: { noteStatus: NoteStatus; everSigned: boolean; medicalNote: boolean; actsAsAuthor: boolean }):
-  'apply' | 'nothing' | 'keep_in_history' | { refuse: 'not_author' }
+  'apply' | 'nothing' | 'keep_in_history'
 ```
 
 1. `draft`: `nothing`. 2. `signed`, or `everSigned`: `keep_in_history`. 3. Not a Medical note:
-`keep_in_history`. 4. `actsAsAuthor`: `apply`. 5. Otherwise refuse `not_author`.
+`keep_in_history`. 4. `actsAsAuthor`: `apply`. 5. Otherwise `keep_in_history`.
 
-**`correctionEffect`** (the table in 3.6), called only for a finished note:
+**`correctionEffect`** (the table in 3.6), called only for a finished note that a correction
+changes (step 9 of 4.7):
 
 ```ts
 correctionEffect(i: {
@@ -903,9 +920,9 @@ cosignEffect(i: {
   | { statusAfter: 'signed'; attestationAfter: Attestation }
 
 attestEffect(i: {
-  noteStatus: NoteStatus; attestation: Attestation; actsAsAuthor: boolean; canAttest: boolean;
-  seesAllThatCounts: boolean; hashMatches: boolean;
-}): { refuse: 'not_waiting' | 'is_author' | 'cannot_attest' | 'cannot_see_all' | 'content_changed' }
+  noteStatus: NoteStatus; attestation: Attestation; actsAsAuthor: boolean; isSigner: boolean;
+  canAttest: boolean; seesAllThatCounts: boolean; hashMatches: boolean;
+}): { refuse: 'not_waiting' | 'is_author' | 'is_signer' | 'cannot_attest' | 'cannot_see_all' | 'content_changed' }
   | { attestationAfter: 'attested' }
 ```
 
@@ -964,26 +981,44 @@ reads it, and each rule gets a test that is checked to bite.
 
 No new reject reason is added. The seven in `services/api/src/sync/schemas.ts:96-106` stay. A
 refused rule is `validation` with a `details.problem` that names the rule, the way
-`encounter_missing` does today. The new problems:
+`encounter_missing` does today.
 
-| `details.problem` | Raised by | The worker's fix |
+**A refusal is kept for what the worker can fix.** A refused change is never dropped, and an
+open one stops the worker's next route confirmation (PRD main 562). So a rule the worker cannot
+fix is not a refusal here: the change is accepted, kept in history or stored with no effect, and
+the person is told. That leaves seven problems, each with the store call that settles it:
+
+| `details.problem` | Raised by | The worker's fix, and how it is settled |
 |---|---|---|
-| `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again |
-| `incomplete` | a sign-off on a note that fails the finish check | Fill in what is missing, Complete again |
-| `not_author` | a sign-off, reopen or correction from someone who does not act as the note's author | Discard it (the screens never offer this) |
-| `sign_not_medical` | `sign` on a Non-Medical note | Complete again (the screens never send this) |
-| `use_signoff` | a `set` of a note's `status` to `completed` | None: only an old build sends it |
-| `note_not_finished` | a correction or an addendum to a draft | Edit the draft |
-| `field_changed` | a correction whose answer changed since the person looked | Look again, correct again |
-| `note_type_needs_medical` | a Medical note on a Non-Medical encounter | Switch the encounter to Medical, which is always possible (3.10) |
-| `medical_note_needs_patient` | a Medical note on an encounter with no patient | Name the patient, which is always possible (3.1) |
-| `unknown_note_type` | a note on a key or version the team does not have | None: the phone only offers listed versions (forms 3.4) |
-| `kind_cannot_go_back` | a `set` of `kind` to `non_medical` on a Medical encounter | None: the screens never send it |
+| `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again. `finishNotes` sends the same sign-off record again (4.8). |
+| `incomplete` | a sign-off on a note that fails the finish check; a correction that would leave the note failing it | Fill in what is missing and complete, or correct, again. The same record is sent again. |
+| `red_flags_first` | a sign-off of a Medical note while the sender's own Red flags note in that visit is a draft | Complete again: the Red flags note goes first (4.6). |
+| `field_changed` | a correction whose answer changed since the person looked | Look again. **Correct again** sends the same correction record with the value and version now seen; **Leave it** sends it with the answer's current value, which the server stores as no change. |
+| `medical_note_needs_patient` | a Medical note on a visit with no patient | Name the patient (always possible, 3.1). The store then sends the note's create again, and what waited behind it (D49). |
+| `unknown_note_type` | a note on a key or version the team does not have | Choose the note type again. The phone only offers listed versions (forms 3.4), so this is a build fault. |
+| a problem of `checkAnswer` (`wrong_type`, `unknown_option`, `out_of_range`, and the rest, forms 7.1) | an answer that breaks its definition | Correct the value: phase 2's fix for a refused set. |
+
+What is accepted with no effect, in place of a refusal:
+
+| Change | Answer |
+|---|---|
+| A `set` of a note's `status` to `completed` (an old build) | Kept in history, problem `use_signoff` |
+| A `set` of `kind` to `non_medical` on a Medical visit; a `set` of `patientId` to nothing | Kept in history, problems `kind_cannot_go_back`, `patient_cannot_be_removed` |
+| A sign-off, a reopen or a correction from someone who does not act as the note's author | Stored with no effect, problem `not_author`; the sender gets a notice |
+| `sign` on a Non-Medical note | Treated as `complete` |
+| A correction to a note that is a draft | Applied as an edit to the draft, by the draft rule |
 
 A create that names a note or a sign-off the team does not have is refused with the existing
 `stale_reference` (`encounter_note_missing`, `note_signoff_missing`), as any create with a
 missing parent is (`services/api/src/sync/apply.ts:494-495`). It is held instead when the
-sender's own create of that parent waits for review (`:466-482`).
+sender's own create of that parent waits for review (`:466-482`). The phone's hold rule keeps
+this from happening for a parent that is still on the phone.
+
+**A rule that throws must not stop a queue.** Only a database error of class 23 becomes a stored
+rejection today (`apply.ts:287-293`); any other error aborts the push at that change, on every
+retry. The new rules call code that reads a definition. In the sync rules a throw from
+`definitionFor`, `checkAnswer`, `finishCheck`, `effectiveAnswers` or the hash is caught and
+stored as `validation` with `definition_error`.
 
 Each problem gets one sentence in `apps/mobile/lib/features/sync/sync_labels.dart` (9.13).
 
@@ -1011,7 +1046,8 @@ export function credentialChangesAfter(tx: Tx, teamId: string, userId: string, a
 
 **The Medical gate.** A change to a Medical note needs a credential with `chartMedical` (1.3):
 the note's create, a `set` of an answer or of `status`, a sign-off and a correction. An addendum
-does not: anyone who charts may add one. The phone offers a Medical note type only to a
+does not: anyone who charts may add one. The same gate covers a section that needs a capability
+(6.4, rule 5). The phone offers a Medical note type only to a
 credential that may chart it (6.2), so the gate is reached only when a credential was lowered
 while the phone was offline. The worker has nothing to fix, so the change is **held for a
 Program Admin**, never refused: the rule answers `rejected('permission')` once the note is
@@ -1034,8 +1070,9 @@ take the same lock first.
 - **Settable fields**: `patientId`, `location`, `locationText`, `summary` (1 to 4,000 characters)
   and `kind`.
 - **`kind`** takes one value from a phone, `medical`. It applies at any time, finished notes or
-  not (3.10). A `set` to `non_medical` on a Non-Medical encounter changes nothing; on a Medical
-  encounter it is refused with `kind_cannot_go_back`.
+  not (3.10). A `set` to `non_medical` on a Medical encounter is kept in history and not
+  applied. The create of a Medical note also makes its encounter Medical (4.4), so a note is
+  never refused for the kind of its visit.
 - **`status`** is no longer in the encounter's field list
   (`services/api/src/sync/records.ts:111-117`), so a `set` of it answers as any unknown field
   does. The trigger of 2.2 owns the column.
@@ -1050,7 +1087,8 @@ take the same lock first.
   whether a later edit saw the value both read `details.outcome`
   (`services/api/src/sync/apply.ts:163-172`, `:199-205`). The sender gets a notice
   (`user_notices`, kind `late_change_kept`). One exception: a `patientId` set on an encounter
-  that has no patient still applies. This replaces `record_locked` for encounters.
+  that has no patient still applies. A patient is never taken off a visit: a `set` of
+  `patientId` to nothing is kept in history. This replaces `record_locked` for encounters.
 - **A merged patient.** A merge moves no rows (D27). An encounter keeps the patient ID it was
   made with, and every read takes the merged group, so an encounter never needs a redirect.
 - **Last seen.** When an encounter that names a patient is accepted, and when a `patientId` set
@@ -1065,8 +1103,9 @@ take the same lock first.
   phase 4 the note is the unit (the one-page summary, point 1), and a teammate adding a Social
   needs note after the clinician signed must not lose it. The checks on a create, in order: the
   key and version are in the team's `note_type_versions`, else `unknown_note_type`; for a Medical
-  note, the encounter is Medical, else `note_type_needs_medical`; it names a patient, else
-  `medical_note_needs_patient`; then the Medical gate (4.2).
+  note, the encounter names a patient, else `medical_note_needs_patient`; then the Medical gate
+  (4.2). A Medical note makes its encounter Medical if it was not, and the note's `medical`
+  column is set from its type (2.2).
 - **A note with no version** exists only as a phase 2 preview row. It keeps the open path rule it
   was written under, is never checked against a definition, and counts as a Non-Medical note. No
   new note can be created without a version.
@@ -1086,8 +1125,14 @@ take the same lock first.
   (`services/api/src/sync/apply.ts:507-516`). `MAX_NOTE_FIELDS` rises to 1,000 (forms 2.4). On a
   draft the draft rule applies, unchanged.
 - **A sensitive section.** A `set` of an answer in a section the sender may not see (6.4) answers
-  `rejected('permission')` and so is held for a Program Admin. The acting author may always set
-  their own note's answers.
+  `rejected('permission')` and so is held for a Program Admin. This check runs first, for a
+  draft and for a finished note alike, and a held change carries no `server` value: otherwise a
+  set to a hidden path of a finished note would be answered with the answer it holds. The acting
+  author may always set their own note's answers.
+- **An answer that will not count.** A `set` that lands in a field another phone has hidden, or
+  in an entry another phone has removed, is accepted as usual. Its receipt carries
+  `details.notCounted` (`hidden_field` or `removed_entry`), and the phone says so on the field:
+  "This part was removed. Your change was kept."
 - **A change to a finished note** is kept, not refused (3.6): `keepInHistory` with the problem
   `note_finished`, the same receipt shape as in 4.3. The sender gets a `late_change_kept` notice.
   The acting author gets one too when the sender is someone else. This replaces `record_locked`
@@ -1100,9 +1145,10 @@ take the same lock first.
 | already `draft` | anyone | `accepted`, nothing changes |
 | `signed`, or ever signed | anyone | Kept in history with a notice, as a late change |
 | `completed`, a Non-Medical note | anyone | Kept in history with a notice: a completed Non-Medical note is final |
-| `completed`, never signed, a Medical note | someone else | Refused: `not_author` |
+| `completed`, never signed, a Medical note | someone else | Kept in history with a notice, problem `not_author` |
 
-A `set` of `status` to `completed` is refused with `use_signoff`. Nothing in the app sends it.
+A `set` of `status` to `completed` is kept in history (`use_signoff`). Nothing in the app sends
+it.
 
 - **What the sync read shows of a note.** The snapshot of a note in `/v1/sync/records` gains the
   attributes `attestation`, `actingAuthorId`, `completedAt` and `signoffId`, so the author's
@@ -1165,23 +1211,32 @@ What the server does, in the change's transaction, under the team lock:
 
 1. Load the note for update, its encounter, and the note type definition.
 2. Work out the inputs of `signoffEffect` (3.12): `medicalNote` (3.1), `actsAsAuthor` (3.8),
-   `hashMatches` (4.5), `finishOk` (the forms part's `finishCheck` returns nothing), and from
-   `signedUnder` (3.5) `canSign` and `needsAttestation`.
+   `hashMatches` (4.5), `finishOk` (the forms part's `finishCheck` returns nothing),
+   `ownRedFlagsOpen` (the sender authors another note of this visit that is the Red flags note
+   and is still a draft, forms 6.2), and from `signedUnder` (3.5) `canSign` and
+   `needsAttestation`.
 3. Call `signoffEffect`. The sync code holds no rule of its own: it writes what the function says.
 4. **Refuse**: `rejected('validation', { problem })`. Nothing is written but the stored rejection.
-5. **Effect `none`** (the note is already finished): insert the `note_signoffs` row with
-   `effect: 'none'`. The receipt's details carry `hashMatches`.
+5. **Effect `none`** (the note is already finished, or the sender does not act as its author):
+   insert the `note_signoffs` row with `effect: 'none'`. The receipt's details carry the reason
+   and `hashMatches`.
 6. **Any other effect**: insert the `note_signoffs` row; update the note in one statement:
    `data` (the answers that count, 4.5), `status`, `completed_at`, `completed_by`, and when
    signed `first_signed_at`, `signoff_id` and `attestation`; write a `field_history` row for
    `status` and one for each answer dropped. The trigger updates the encounter.
-7. One audit event, in the same transaction: `note.completed`, `note.signed` or
-   `note.saved_unsigned` (10.1).
+7. One audit event, in the same transaction: `note.completed`, `note.signed`,
+   `note.saved_unsigned` or `note.signoff_repeated` (10.1).
 8. `saved_unsigned` also writes a notice to the signer (`user_notices`, kind
    `note_saved_unsigned`).
 
 The receipt is `accepted` with `details: { effect, status, attestation, hashMatches }`. The
 phone writes that onto its copy of the note (4.8).
+
+**The Red flags note goes first.** `finishNotes` puts the sign-off of the person's Red flags
+note ahead of their other sign-offs of that visit, so `ownRedFlagsOpen` is false when the others
+arrive. If the Red flags sign-off is refused, the others are refused with `red_flags_first`, and
+one Complete fixes all of them. This is the server's half of hard stop 5 (3.3); hard stop 4 is
+the refusal of a Medical note on a visit with no patient (4.4).
 
 **Sent twice.** The same change sent again answers with its stored receipt, as every change does
 (phase 2). A second sign-off for a note that is already finished is effect `none`.
@@ -1198,40 +1253,57 @@ above. `signedUnder` reads the membership as it is now, removed or not, and its 
 
 **`note_addendum`**: `{ encounterId: uuid, noteId: uuid | null, text: 1..4000, signoffId: uuid |
 null }`. Parents: the encounter, the note when given, and `signoffId` when given. The phone fills
-`signoffId` with its own sign-off while that sign-off is not yet confirmed, as it does for a
-correction below, so an addendum written a moment after Complete waits behind the sign-off and is
-never lost or sent early (PRD main 564). An addendum to a draft note, or to a visit with no
-finished note, is refused with `note_not_finished`. Audit: `addendum.added`.
+`signoffId` with its own sign-off while that sign-off is not yet confirmed, so an addendum
+written a moment after Complete waits behind the sign-off on the phone: "an addendum to a
+rejected note ... held, not sent" (PRD main 564). The server accepts an addendum in every state
+of the note. It is text with its own author and time, and refusing it would leave the worker
+with something they cannot fix (4.1). Audit: `addendum.added`.
 
-**`note_correction`**:
+**`note_correction`**: one reason, and one to ten answers changed together.
 
 ```ts
-{ noteId: uuid, field: `data.${path}`, newValue: unknown, baseVersion: number,
-  reason: 3..500, requestedByPatient: boolean, declined: boolean, signoffId: uuid | null }
+{ noteId: uuid,
+  changes: [{ field: `data.${path}`, newValue: unknown, baseVersion: number }],   // 1 to 10
+  reason: 3..500, requestedByPatient: boolean, declined: boolean,
+  claimedCredential: CredentialName | null, signoffId: uuid | null }
 ```
+
+Several answers go together because one answer can open another: correcting "EMS activated" to
+Yes makes the time required. Corrected one at a time, the note would pass through a state that
+fails its own finish check.
 
 - Parents: the note, and `signoffId` when given. The phone fills `signoffId` with its own
   sign-off of that note while that sign-off is not yet confirmed. The phone's hold rule then
   keeps the correction waiting if that sign-off is refused
   (`apps/mobile/lib/sync/local_store.dart:976-1018`), and releases it when the same sign-off
-  record is sent again and accepted. So a correction never reaches a note that is still a draft
-  because of a race.
-- Checks, in order: the note is finished, else `note_not_finished`; the sender acts as the
-  author, else `not_author`; for a Medical note, the Medical gate; `newValue` passes
-  `checkAnswer`; `declined` only with `requestedByPatient`; the answer's version equals
-  `baseVersion`, else `field_changed`.
-- `declined`: the row is stored with `outcome: 'declined'` and the note is unchanged.
-- The answer already holds `newValue`: stored with `outcome: 'no_change'`.
-- Otherwise: `set_config('app.note_correction', noteId, true)`, then the answer is written with
-  history kind `corrected` (the guard of 2.2 lets it through), the `note_corrections` row is
-  inserted with the history row's ID, and `correctionEffect` (3.12) says what happens to `status`,
-  `signoff_id` and `attestation` (the table in 3.6). Two small changes to
-  `services/api/src/sync/records.ts` make this possible: `'corrected'` joins the `HistoryKind`
-  type (`:228-237`), and `appendHistory` returns the row's ID (`:256-264`).
+  record is sent again and accepted.
+- What the server does, in order:
+  1. The sender does not act as the author: the row is stored with `outcome: 'not_author'`,
+     nothing changes, the sender gets a notice.
+  2. The note is a draft: each change is applied as an edit to the draft by the draft rule, and
+     the row is stored with `outcome: 'draft_edit'`.
+  3. For a Medical note, the Medical gate (4.2).
+  4. `declined` (only with `requestedByPatient`): the row is stored with `outcome: 'declined'`
+     and the note is unchanged.
+  5. Each `newValue` passes `checkAnswer`, else the correction is refused with that problem.
+  6. Each answer's version equals its `baseVersion`, else `field_changed`.
+  7. Every answer already holds its `newValue`: stored with `outcome: 'no_change'`.
+  8. The forms part's `finishCheck` passes on the answers as they would be, else `incomplete`. A
+     correction can never leave a signed note without, say, the consent a sensitive exam needs.
+  9. Otherwise: `set_config('app.note_correction', noteId, true)`, each answer is written with
+     history kind `corrected` (the guard of 2.2 lets it through), the `note_corrections` row is
+     inserted with the history rows' IDs, and `correctionEffect` (3.12) says what happens to
+     `status`, `signoff_id` and `attestation` (the table in 3.6).
+- **The corrector's credential** decides what `correctionEffect` returns, and a correction made
+  offline is checked days later, as a signature is. It is found by `signedUnder` (3.5) with the
+  correction's time, its `clockVerified` and its `claimedCredential`.
+- Two small changes to `services/api/src/sync/records.ts` make step 9 possible: `'corrected'`
+  joins the `HistoryKind` type (`:228-237`), and `appendHistory` returns the row's ID
+  (`:256-264`).
 - A correction can hide a field that holds an answer, or show one again. The answer stays in the
   note and counts or not by the definition, as `effectiveAnswers` says. The signer saw it when
   they signed.
-- Audit: `note.corrected`, `note.amendment_declined`. The details name the field path and the
+- Audit: `note.corrected`, `note.amendment_declined`. The details name the field paths and the
   outcome, never a value.
 
 **`referral`**: `{ patientId: uuid, referredOn: date, details: 1..2000, encounterId: uuid | null }`.
@@ -1245,7 +1317,10 @@ rule for who may act:
   take back their own referral; a clinician can take back anyone's.
 - `referredOn` may not be more than one day in the future (`valueProblem`, as a birth date is
   checked).
-- Parents: the patient, and the encounter when given.
+- Parents: the patient, and the encounter when given. A visit that names a patient outside the
+  referral's merged group is refused with `stale_reference` (`encounter_other_patient`); the
+  fix is **Send without the visit** (8.4). The same check joins the creates that already name a
+  visit: a problem, an allergy, a problem note.
 - Audit: `referral.created`, `referral.entered_in_error`.
 
 ### 4.8 The phone
@@ -1265,14 +1340,20 @@ rule for who may act:
   store already does for a problem note (`local_store.dart:513-522`).
 - The referral's date rule joins the phone's `valueProblem`, which checks patients only today
   (`entities.dart:514-515`).
-- `ems_handoff.shown` joins the list of actions a phone may log offline, on the phone and on the
-  server (`services/api/src/sync/entities/values.ts:269-277`). The list is closed, so without
-  this the handoff page could not be logged, and a read that can't be logged is refused.
+- `ems_handoff.shown` and `notes_to_finish.viewed` join the list of actions a phone may log
+  offline, on the phone and on the server (`services/api/src/sync/entities/values.ts:269-277`;
+  `apps/mobile/lib/sync/entities.dart:357-360`). The list is closed, and `appendAudit` throws on
+  an action the server would refuse (`local_store.dart:878-881`). Both screens show patients'
+  details offline, and a read that can't be logged is refused.
 
 `apps/mobile/lib/sync/local_store.dart` gains:
 
-1. **`finishNotes`**. One transaction. For each note it drops from the phone's copy the answers
-   that do not count (4.5), then makes the sign-off: a new `note_signoff` create, or, for a note
+1. **`finishNotes`**. It takes, for each note, the hash the summary screen worked out when it
+   drew the note. One transaction. If the store's hash of a note differs from the one shown,
+   it stops and nothing is written: a sync has brought in a teammate's change since the person
+   read the note, and a signature must cover what was on the screen, not what arrived behind it.
+   Otherwise, for each note, the Red flags note first (4.6), it drops from the phone's copy the
+   answers that do not count (4.5), then makes the sign-off: a new `note_signoff` create, or, for a note
    whose last sign-off was refused, the fix of that create (the same record ID, the new hash,
    `supersedes`, `:1328-1345`). It never leaves two sign-offs of one note in the outbox. It marks
    each local note with the effect the phone expects (`localEffect`, worked out by the Dart
@@ -1309,20 +1390,21 @@ case is an API test with the same name.
 |---|---|
 | 1 | An encounter's `status` is not settable; `summary` and `locationText` are; `kind` goes to `medical` at any time and never back |
 | 2 | The envelope lock: a late change is `accepted` with `server` and `details.outcome: 'history_only'`; sent twice, it answers the same; a blank patient can still be filled |
-| 3 | A Medical note needs a Medical encounter and a patient |
+| 3 | A Medical note needs a patient, and makes its encounter Medical |
 | 4 | A note create is accepted on an encounter whose notes are finished; an unknown key or version is refused |
 | 5 | A change to a finished note is kept in history, with a notice to the sender and to the author |
-| 6 | A note's `status` takes `draft` only; each row of the reopen table in 4.4 |
-| 7 | Every row of the sign-off table in 3.4, from `note-lifecycle.json`; a sign-off sent again after a refusal |
+| 6 | Each row of the reopen table in 4.4; a `status` of `completed` is kept in history |
+| 7 | Every case of `signoffEffect` in `note-lifecycle.json`; `red_flags_first`; a sign-off sent again after a refusal |
 | 8 | The content hash over the answers that count, from `note-content-hash.json`; a finished note holds only those answers |
-| 9 | An addendum needs a finished note, and waits behind a refused sign-off |
-| 10 | Each check of a correction, in the order of 4.7; each row of the table in 3.6 |
-| 11 | A referral: create; `enteredInError` once, by its author or a charting role; the date rule |
+| 9 | An addendum is accepted in every state |
+| 10 | Each step of a correction, in the order of 4.7, with several answers at once; each row of the table in 3.6 |
+| 11 | A referral: create; `enteredInError` once, by its author or a charting role; the date rule; a visit of another patient |
 | 12 | The Medical gate holds every kind of change to a Medical note for review |
 | 13 | The encounter's status follows its notes (the trigger of 2.2, as code in the fake) |
-| 14 | An answer that fails `checkAnswer` is refused with `validation` |
+| 14 | An answer that fails `checkAnswer` is refused with `validation`; an answer that will not count carries `details.notCounted`; a rule that throws is `definition_error` |
 | 15 | `ems_handoff.shown` is an offline audit action |
-| 16 | The sync read: a note's new attributes; for a reader who may not see a section, its answers, their versions and their history marks are all absent |
+| 16 | The sync read: a note's new attributes; for a reader who may not see a section, its answers, their versions and their history marks are all absent; who may read a sign-off, an addendum, a correction and a referral (6.4) |
+| 17 | What is accepted with no effect, row by row of the second table in 4.1 |
 
 The fake reads the same vector files, so rules 7 and 8 cannot drift.
 
@@ -1333,7 +1415,7 @@ of them in three ways:
 
 - **A notice** (`user_notices`) on the next sync. New notice kinds, none with any text:
   `note_cosigned`, `note_attested`, `note_assigned`, `note_saved_unsigned`, `late_change_kept`,
-  `note_corrected` (to a co-signer or attester whose note was corrected).
+  `change_not_applied`, `note_corrected` (to a co-signer or attester whose note was corrected).
 - **The record refresh**, for a note the phone still holds open: the snapshot's new attributes
   (4.4) show its state. The refresh covers open records only
   (`apps/mobile/lib/sync/sync_engine.dart:497-517`).
@@ -1362,8 +1444,8 @@ just changed.
 | 5.2 | `GET /v1/patients/{patientId}` (existing) gains `timeline` and `recentVisits`; `GET /v1/patients/{patientId}/timeline` | `patients.view` | none |
 | 5.3 | `POST /v1/encounters/{encounterId}/cosign` | `encounters.chart` | `sign` |
 | 5.4 | `GET /v1/team/cosign-queue`, `GET /v1/team/attestation-queue`, `POST /v1/encounters/{encounterId}/attest` | `encounters.chart` | `sign` for the first; `attest` for the other two |
-| 5.5 | `POST /v1/notes/{noteId}/assign` | `team.manage_users` | none |
-| 5.6 | `GET /v1/me/notes-to-finish`, `GET /v1/team/incomplete-notes` | `encounters.chart`; `team.manage_users` | none |
+| 5.5 | `POST /v1/notes/{noteId}/assign` | `team.manage_users`, and a recent sign-in | none |
+| 5.6 | `GET /v1/me/notes-to-finish`, `GET /v1/team/incomplete-notes`, `GET /v1/me/counts` | `encounters.chart`; `team.manage_users`; any member | none |
 | 5.7 | `GET /v1/encounters/{encounterId}/ems-handoff` | `patients.view`, and a recent sign-in | none |
 
 ### 5.1 Read a visit
@@ -1375,7 +1457,9 @@ display name), `read` (the note laid out for reading by the forms part's `readMo
 portal and the phone draw), `signoffs`, `addenda`, `corrections`, `attestations`, `contentHash`.
 
 - `read` is built from the answers the reader may see (the forms part's `visibleAnswers`, 6.4).
-  A note the reader may not see at all is absent, not blanked.
+  A note the reader may not see at all is absent, not blanked, and so is everything that hangs
+  off it. A correction to an answer the reader may not see is absent too: its old and new
+  values would give the answer away.
 - `contentHash` is present only when the reader sees every answer that counts. Co-sign and
   attest need it.
 - Refusals: `404` for an encounter the team does not have. Audit: `encounter.viewed`, with the
@@ -1434,14 +1518,15 @@ Audit: one `note.cosigned` per note. Notice to each author: `note_cosigned`, one
   `cosign_queue.viewed`, `attestation_queue.viewed`.
 - `POST /v1/encounters/{encounterId}/attest`: the same body as 5.3. Each note is checked by
   `attestEffect`: it is `signed` with `attestation = 'waiting'`, else `409 not_waiting`; the
-  caller does not act as its author, else `403`; the credential can attest; the caller sees
+  caller does not act as its author and is not the signer of its current signature, else `403`; the credential can attest; the caller sees
   every answer that counts; the hash matches, else `409 content_changed`. All or nothing, as in
   5.3. Then for each note a `note_attestations` row and `attestation = 'attested'`. Audit: one
   `note.attested` per note. Notice to each signer: `note_attested`, one per visit.
 
 ### 5.5 Assign a note
 
-Body: `{ toUserId, reason }` (3 to 500 characters). Checked by `mayAssign` (3.12): the note's
+Body: `{ toUserId, reason }` (3 to 500 characters). Like every `team.manage_users` route it
+needs a recent sign-in (`services/api/src/routes/members.ts:157`). Checked by `mayAssign` (3.12): the note's
 acting author is not an active member, else `409 author_active`; the assignee is an active
 member with `encounters.chart`; the assignee's credential rank is at least the rank the note was
 signed under, or for an unsigned note the author's last credential, else `422
@@ -1459,6 +1544,11 @@ Audit: `note.assigned`. Notice to the assignee: `note_assigned`.
   lead and post-run report.
 - Neither lists an empty draft (3.1).
 - Audit: `notes_to_finish.viewed`, `incomplete_notes.viewed`, with `details.patientIds`.
+- `GET /v1/me/counts` gives the numbers Home shows: the caller's notes to finish and how many are
+  overdue; the visits waiting for their co-signature or attestation; for `team.manage_users`,
+  the team's incomplete notes. It returns numbers and names no patient, so it logs no patient.
+  The list routes log every patient they show; a count built on them would put a view in each
+  patient's access report every time someone opened Home.
 
 ### 5.7 The EMS handoff
 
@@ -1467,14 +1557,17 @@ can be exported as a PDF; both are audit-logged. There is no copy-to-clipboard o
 option" (PRD main 413). The phone shows the summary full-screen, offline, built by the forms
 part's `handoffLines` (9.8). The PDF comes from the portal: this route returns
 `application/pdf`, built on the server from the same lines. A PDF made on the phone would have
-to leave through a share sheet, which the PRD rules out (PLAN-OPEN 12.1 #12).
+to leave through a share sheet, which the PRD rules out (PLAN-OPEN 12.1 #12). On the server and
+on the phone, each note goes through `visibleAnswers` for the reader before `handoffLines`
+reads it, so a handoff never shows a reader a note they may not open.
 
 A file leaves our control, so the PRD's rule for desktop exports applies (PRD main 602):
 
 - The route needs a recent sign-in. Without one it answers `reauth_required`, and the portal
   sends the person through its existing `/reauth` page.
 - Every page is stamped with who exported it and when.
-- The answer is sent with `Cache-Control: no-store`.
+- The answer is sent with `Cache-Control: no-store`, and the file's name holds no patient
+  details.
 - Audit: `ems_handoff.exported`.
 
 The PRD says two things about who may export: a clinician exports the handoff (PRD main 413),
@@ -1557,7 +1650,9 @@ Rules:
    nobody in the field could chart one (PLAN-OPEN 12.1 #13).
 2. Everyone else gets a note through `visibleAnswers`. Content the reader may not see is absent
    from every answer: the visit read (5.1), the timeline and the recent visits (5.2), the sync
-   read and the queues. In the sync read the answers' versions and history marks go with them:
+   read, the queues and the EMS handoff (5.7). The same goes for everything that hangs off a
+   note: the read model, a correction's old and new values, an addendum to a note the reader may
+   not see. In the sync read the answers' versions and history marks go with them:
    the snapshot lists a key for every answer (`services/api/src/sync/records.ts:176-190`), and a
    hidden answer leaves no key behind.
 3. Sensitive exams "never show on the patient overview" (PRD main 415): the timeline and the
@@ -1576,6 +1671,15 @@ Rules:
    `needs: 'orderMedications'` in the definition.
 6. The phone applies the same function before it shows a note, so a teammate's draft opened to
    help shows what the server would show.
+7. **The new records in the sync read.** `/v1/sync/records` gives a record of an entity it has
+   no rule for to anyone with `patients.view` (`services/api/src/routes/sync.ts:73-85`). The
+   four new entities get their own rule: a sign-off, an addendum and a correction are read by
+   whoever may read their note, and a correction's values only by whoever may read the answers
+   it changes; a referral by `patients.view`.
+8. **The exam picker.** Its answer names the systems examined. The options for GU, breast and
+   rectal are marked `sensitiveExam` in the definition: `visibleAnswers` drops those codes for a
+   reader without the key, and `recapLines` drops them for everyone, so nobody learns from the
+   overview that the exam was done (PRD main 415).
 
 ## 7. Referrals in this phase
 
@@ -1623,7 +1727,9 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
   phone holds and the server has not confirmed yet.
 - **When a finished note leaves the phone.** The domain layer calls the store's `closeRecord`
   for a note once its sign-off is confirmed, and for the encounter once every one of the
-  person's notes on it is closed. The purge then removes what is confirmed
+  person's notes on it is closed. It does this as a sweep, at start and after every sync, over
+  every finished note with nothing waiting, so a note is still closed if the app was killed
+  between the receipt and the sweep. The purge then removes what is confirmed
   (`apps/mobile/lib/sync/local_store.dart:1895-1922`). Data still leaves the phone only after a
   hash-confirmed receipt: nothing here touches the purge.
 - **A draft nobody has touched for 7 days** is closed the same way, if nothing of it waits in
@@ -1666,6 +1772,10 @@ visit itself never reached the server and is no longer on the phone. The card ga
 
 Both link the new change to the refused one, so the refused one is settled when the new one is
 accepted (the fix chain of phase 2).
+
+The same two buttons settle `encounter_other_patient` (4.7): a referral, a problem, an allergy
+or a problem note that names a visit of someone else. On a chart, a referral or a problem says
+"at a visit" only when that visit's patient is in the chart's merged group.
 
 ## 9. Screens
 
@@ -1817,6 +1927,8 @@ is logged (`ems_handoff.shown`). It works offline.
 | **Waiting for your co-signature** | a credential that signs | The count when online; "Connect to see notes waiting for you" offline | The co-sign queue |
 | **Waiting for attestation** | a credential that attests | The same | The attestation queue |
 
+The tiles' numbers come from `GET /v1/me/counts` when online (5.6), which names no patient.
+
 The queues list one row per visit: the patient's preferred name, the note types that wait, the
 author and the date. A row opens the visit (9.7) with **Co-sign** or **Attest** at the bottom
 and the sentence of 3.5 above it. One tap signs or attests every waiting note of the visit that
@@ -1851,27 +1963,29 @@ visits** loads more (5.2).
 ### 9.13 Needs attention (phone)
 
 `apps/mobile/lib/features/sync/sync_labels.dart` gains one sentence for each problem of 4.1, and
-`needs_attention_screen.dart` the two buttons of 8.4. The sentences:
+`needs_attention_screen.dart` the buttons that settle each (4.1, 8.4). The sentences:
 
-| Problem | Sentence |
-|---|---|
-| `content_changed` | "This note changed after you completed it. Open it, read it and complete it again." |
-| `incomplete` | "This note is missing something it needs. Open it and complete it again." |
-| `not_author` | "Only the note’s author can do this." |
-| `note_not_finished` | "This note isn’t finished yet, so it can be edited directly." |
-| `field_changed` | "Someone corrected this answer first. Open the note and check it." |
-| `note_type_needs_medical` | "This note type needs a Medical encounter. Switch the visit to Medical." |
-| `medical_note_needs_patient` | "A clinical note needs a patient. Choose who this visit is for." |
-| `encounter_note_missing`, `note_signoff_missing` | "The note this belongs to isn’t on the team’s list." |
+| Problem | Sentence | Buttons |
+|---|---|---|
+| `content_changed` | "This note changed after you completed it. Open it, read it and complete it again." | Open the note |
+| `incomplete` | "This is missing something the note needs. Open the note and try again." | Open the note |
+| `red_flags_first` | "Answer the red-flag question first, then complete again." | Open the note |
+| `field_changed` | "Someone corrected this answer first. Open the note and check it." | Correct again; Leave it |
+| `medical_note_needs_patient` | "A clinical note needs a patient. Choose who this visit is for." | Choose a patient |
+| `unknown_note_type` | "This note type isn’t on your team’s list. Choose the note type again." | Choose a note type |
+| `definition_error` | "This couldn’t be checked. Tell a Program Admin." | none: a fault in a note type, which a new version fixes |
+| `encounter_note_missing`, `note_signoff_missing` | "The note this belongs to isn’t on the team’s list." | as phase 3's missing-record card |
+| `encounter_other_patient` | "The visit this names belongs to someone else." | Send without the visit; Choose a visit |
 
 A sign-off that was held for a Program Admin shows on its note as "Sent for review" (4.8).
 
-And three notices, shown on Home as phase 2's notices are:
+And four notices, shown on Home as phase 2's notices are:
 
 | Notice | Sentence |
 |---|---|
 | `note_saved_unsigned` | "Your credential can’t sign this note type. It was saved unsigned for a co-signer." (the existing sentence, `services/api/src/sync/apply.ts:34`) |
 | `late_change_kept` | "The note was already finished. Your change was kept in its history. Add an addendum if it matters." |
+| `change_not_applied` | "Only the note’s author can do that. Nothing was changed." |
 | `note_corrected` | "A note you signed was corrected. It needs your review again." |
 
 ### 9.14 Portal: the queues

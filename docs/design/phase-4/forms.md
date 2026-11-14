@@ -167,6 +167,7 @@ type Option = {
   unable?: true;                     // "Unable to assess": neither normal nor abnormal
   icon?: string;                     // a design-system icon name (PRD main 419)
   suggests?: string;                 // a note type key to suggest on the summary screen
+  sensitiveExam?: true;              // in the exam picker: a system whose name is itself sensitive (6.6)
 };
 
 type Condition =
@@ -312,7 +313,10 @@ It runs in three places, each inside a transaction that already exists:
 1. When a team is created (`services/api/src/routes/owner.ts:136`).
 2. In the seed (`db/seed/seed.ts`).
 3. At the start of `GET /v1/forms/note-types` (3.3), so a team gets a new platform version the
-   first time one of its phones asks, with no deploy step. The write is idempotent.
+   first time one of its phones asks, with no deploy step. The write is idempotent. When it
+   inserts a row it writes the audit event `forms.presets_installed` (the key and version) in
+   the same transaction. Here a row with a different hash is logged and that key is skipped: a
+   throw would fail the route for the whole team at every sync.
 
 "A later platform update to a preset never overwrites a team's edited copy" (PRD main 387):
 from phase 5 on, `installPresets` skips a key whose newest row has `origin = 'team'`.
@@ -324,7 +328,8 @@ from phase 5 on, `installPresets` skips a key whose newest row has `origin = 'te
 | `GET /v1/forms/note-types` | any member of the team | For each key the team offers: its newest version, title, kinds, sensitivity, `quick`, `auto` and hash |
 | `GET /v1/forms/note-types/{key}/{version}` | any member of the team | The resolved definition. It never changes, so it is served with a long cache lifetime |
 
-Neither holds patient data. Neither is audited as a patient read.
+Neither holds patient data. Neither is audited as a patient read; the install of 3.2 is audited
+when it writes.
 
 On the server, `definitionFor(tx, teamId, key, version)` reads one row and keeps it in memory.
 Rows never change, so the cache never goes stale. The sync rules and the visit read use it.
@@ -355,7 +360,11 @@ is built from `handoffLines` on the server (lifecycle 5.7).
 ### 4.1 The steps
 
 1. A piece of SPEC (one row of an inventory's work-list) is saved as
-   `definitions/spec/<piece>.txt`, exactly as exported.
+   `definitions/spec/<piece>.txt`, exactly as exported. A line that must not be copied (the
+   example that names a real organization, SPEC 263 to 265) is replaced by the marker
+   `[left out]`, which the spec check skips. The PHI guard's list of fixture folders gains
+   `packages/forms/` and `packages/contract/test-vectors/`
+   (`tools/phi-guard-rules.mjs:4-10`), so copied text and made-up people in vectors are scanned.
 2. Its definition is written by hand as JSON, following the recipe
    `docs/plan/patterns/form-definition.md` (a new recipe, card F0-9).
 3. Every place the definition differs from the text on purpose is listed in
@@ -515,6 +524,9 @@ special to this note type.
 - Its consent field is `required`, so `finishCheck` stops Complete without it: "the note can't be
   signed without consent recorded".
 - Its three workflow fields are `noNormal`.
+- The exam picker's options for GU, breast and rectal carry `sensitiveExam`. `visibleAnswers`
+  drops those codes from the picker's answer for a reader without the key, and `recapLines`
+  drops them for everyone, so the overview does not say the exam was done.
 
 ### 6.7 Nothing charted twice
 
