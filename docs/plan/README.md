@@ -52,7 +52,7 @@ Each card is one file: `docs/plan/phase-<n>-<name>/cards/<nnn>-<short-name>.md`.
 1. **Goal.** One sentence: what exists after the card that didn't before.
 2. **Level.** S, T, R or X.
 3. **Depends on.** Card numbers that must be merged first.
-4. **Read first.** Files and line ranges, at most 600 lines in total. Nothing else needs reading.
+4. **Read first.** Files and line ranges, at most 300 lines in total. Nothing else needs reading.
 5. **Pattern.** One existing file to copy from, and the recipe in `docs/plan/patterns/` that explains it.
 6. **Files to change.** The full list. At most three source files, plus tests.
 7. **Steps.** Numbered. Each step is one edit, with the code to write given in full where it matters: signatures, SQL, field names, error codes, user-facing wording.
@@ -61,14 +61,15 @@ Each card is one file: `docs/plan/phase-<n>-<name>/cards/<nnn>-<short-name>.md`.
 10. **Check before you report.** Five to eight yes/no questions about the rules that matter for this card.
 11. **Never.** What this card must not do.
 12. **If stuck.** When to stop, and what to write in the report.
-13. **Context.** About how many tokens the card and its reading need.
+13. **Context.** About how many tokens the card, its recipe and its reading need, and the window to run it in (16,000 or 32,000).
 14. **Report.** Filled in by the implementer: what changed, the commands' last lines, anything unexpected.
 
 A card changes at most about 200 lines. If a change needs more, it is two cards.
 
 ## Setting up the small model
 
-- Give the model a context window of at least 16,000 tokens. Ollama's default is far smaller, and anything past the window is cut off without warning, so the model edits a file it only half read. For Ollama: set `num_ctx` (for example `PARAMETER num_ctx 16384` in a Modelfile).
+- Give the model a context window of at least 16,000 tokens, and 32,000 if the machine can hold it. Ollama's default is far smaller, and anything past the window is cut off without warning, so the model edits a file it only half read. For Ollama: set `num_ctx` (for example `PARAMETER num_ctx 16384` in a Modelfile).
+- The budget behind the limits, for a 16,000-token window: the card about 2,500 tokens, its recipe about 2,500, the reading about 3,500 (300 lines of code), the tool's own instructions about 1,500, which leaves about 6,000 for the model's answer. A card that says it needs 32,000 must not be run in a smaller window.
 - Give it one card, the files in **Read first**, and the pattern recipe. Nothing else.
 - Run the card's commands yourself, or with a tool that shows you their real output. Don't accept "tests pass" from the model's own text.
 - One card per session. Start a new session for the next card, so nothing from the last one leaks in.
