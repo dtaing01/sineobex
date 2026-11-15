@@ -43,12 +43,12 @@ them in sentence case. Option labels come from the lines, exactly.
 |---|---|---|---|---|---|
 | `provided` | `naloxone` | Naloxone | choice, one | 4 buttons | |
 | `provided` | `naloxone_doses` | Doses | stepper, 1 to 20, unit `doses` | | show when `provided.naloxone` is `accepted` |
-| `provided` | `supplies` | Supplies | choice, many | 6 buttons | Other is `other` |
-| `provided` | `education` | Education | choice, many | 5 buttons | Other is `other` |
+| `provided` | `supplies` | Supplies | choice, many | 6 buttons | flag `other` on Other |
+| `provided` | `education` | Education | choice, many | 5 buttons | flag `other` on Other |
 | `treatment` | `receiving` | Currently receiving treatment? | choice, one | 3 buttons | |
 | `treatment` | `discussed` | Treatment discussed? | choice, one | 2 buttons | |
 | `treatment` | `interested` | Interested in treatment? | choice, one | 3 buttons | |
-| `treatment` | `interested_in` | Which treatment? | choice, many | 4 buttons | Other is `other`; show when `treatment.interested` is `yes` or `maybe` |
+| `treatment` | `interested_in` | Which treatment? | choice, many | 4 buttons | flag `other` on Other; show when `treatment.interested` is `yes` or `maybe` |
 | `treatment` | `connect` | Connect to resource | action `add_referral` | | |
 
 ## 4. The definition you write (the two sections, inside the note type's `sections` array)

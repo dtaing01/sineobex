@@ -27,7 +27,9 @@ level T cards need their tests written first. In order:
 4. The small model's cards are run with `tools/card-run.mjs` (`docs/plan/README.md`, "Running a
    card"). A row below names files; the full card says for each whether it is new, written again
    whole, or changed by line range. A file that several cards add to (`api/routes/encounters.ts`
-   is named by nine) is changed by line range once it is long.
+   is named by nine) is changed by line range once it is long. A row whose only files are what a
+   command writes (the generated contract) is a card with no part: the driver runs its commands
+   and asks no model.
 5. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
    `docs/design/phase-4-encounters.md`.
 

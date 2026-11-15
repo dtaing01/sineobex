@@ -42,10 +42,10 @@ of the field specification, and the export accepts it.
 
    | Section | `id` | Label | Kind | Options | Also |
    |---|---|---|---|---|---|
-   | `reason` | `reasons` | Reason for visit | choice, many | 10 buttons, line 4 | Other is `other` |
+   | `reason` | `reasons` | Reason for visit | choice, many | 10 buttons, line 4 | flag `other` on Other |
    | `reason` | `concern` | Current concern | text | | |
-   | `safety` | `suicidal` | Suicidal thoughts | choice, one | 4 buttons, line 10 | "Unable to assess" is `unable` |
-   | `safety` | `homicidal` | Homicidal thoughts | choice, one | 3 buttons, line 12 | "Unable to assess" is `unable` |
+   | `safety` | `suicidal` | Suicidal thoughts | choice, one | 4 buttons, line 10 | flag `unable` on "Unable to assess" |
+   | `safety` | `homicidal` | Homicidal thoughts | choice, one | 3 buttons, line 12 | flag `unable` on "Unable to assess" |
    | `safety` | `immediate` | Immediate safety concern | choice, one | 2 buttons, line 14 | |
    | `safety` | `red_flags` | | action | | step 4 gives it in full |
    | `safety` | `assessment` | Safety assessment | text | | |

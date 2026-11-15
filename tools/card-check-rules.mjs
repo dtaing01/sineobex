@@ -10,16 +10,20 @@ export const SECTIONS = ['Goal', 'Read first', 'Files', 'Steps', 'Tests', 'Run',
 export const LEVELS = ['S', 'T', 'R', 'X'];
 
 /** Paths only the frontier model may change (docs/plan/README.md, "These paths are always level X"). */
+// Whatever the case of its letters: on some disks Tools/ and tools/ are one folder.
 export const ALWAYS_X = [
-  /^services\/api\/src\/(sync|auth|db)\//,
-  /^apps\/mobile\/lib\/(sync|security|auth)\//,
-  /^apps\/mobile\/test\/sync\/fake_server\.dart$/,
-  /^\.github\//,
-  /^tools\//,
+  /^services\/api\/src\/(sync|auth|db)\//i,
+  /^apps\/mobile\/lib\/(sync|security|auth)\//i,
+  /^apps\/mobile\/test\/sync\/fake_server\.dart$/i,
+  /^\.github\//i,
+  /^tools\//i,
 ];
 
 /** A migration is level X when it has a policy, a trigger or an audit table; never below R. */
-const MIGRATION = /^db\/migrations\//;
+const MIGRATION = /^db\/migrations\//i;
+
+/** Files a command writes. No card has them written by hand (CLAUDE.md, "Conventions"). */
+const GENERATED = [/^packages\/contract\/openapi\.json$/i, /(^|\/)generated\//i];
 
 /** The windows a card may ask for, and the tokens the runner is asked to hold for each. */
 export const WINDOWS = { '16,000': 16384, '32,000': 32768 };
@@ -42,17 +46,39 @@ const MADE_BY = new RegExp(`\\(made by (${CARD_REF})\\)`);
 // "Done." is added when the card's work is audited and on the branch (docs/plan/README.md, "The loop").
 const HEADER = /^Level: ([A-Z])\. Window: ([0-9,]+)\. Needs: (.+?)\.(?: (Done)\.)?$/;
 const TEST_PATH = /(^|\/)(test|e2e)\/|_test\.dart$|\.(test|spec)\.[a-z]+$/;
-// Naming a model in a document is against the repository's rules; the project file is not a model.
-const MODEL_NAME = /\b(qwen|claude|gpt-?\d|llama|gemini|mistral|deepseek)\b/i;
+// Naming a model in a document is against the repository's rules. A name is taken with whatever
+// follows it ("-coder", a version), so it is matched from its start; the project's own file and
+// folder of that name are not models.
+const MODEL_NAME =
+  /(?<![a-z0-9])(qwen|claude|gpt-?\d|llama|codellama|gemini|gemma|mistral|codestral|deepseek|phi-?\d)/i;
+const NOT_A_MODEL = /CLAUDE\.md|\.claude\/|claude\/[a-z0-9-]+/g;
+
+/** The model a text names, or null. */
+export const namedModel = (text) => MODEL_NAME.exec(text.replace(NOT_A_MODEL, ''))?.[0] ?? null;
+
+/** The commands of a card: the one code block under Run. */
+export function runScript(runBody) {
+  const m = /^```(?:sh|bash|shell)?\n([\s\S]*?)\n```\s*$/m.exec(runBody.replace(/\r\n/g, '\n'));
+  return m ? m[1] : null;
+}
 
 /** The card's ID, title, header line and sections as written. */
 export function parseCard(text) {
-  const lines = text.split('\n');
+  // A checkout with the other line ending, or a mark at its start, is the same card.
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
   const head = /^# Card ([^:]+): (.+)$/.exec(lines[0] ?? '');
   const sections = [];
   let header = null;
+  let fence = null;
   for (const line of lines.slice(1)) {
-    const h = /^## (.+)$/.exec(line);
+    // "## Heading" inside a code block is something the card gives to write, not a section of the card.
+    const mark = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (mark && fence === null) fence = mark;
+    else if (mark && mark[0] === fence[0] && mark.length >= fence.length) fence = null;
+    const h = fence === null && !mark ? /^## (.+)$/.exec(line) : null;
     if (h) sections.push({ name: h[1].trim(), body: [] });
     else if (sections.length > 0) sections.at(-1).body.push(line);
     else if (header === null && line.trim() !== '') header = line.trim();
@@ -79,10 +105,30 @@ export function items(body) {
   return out;
 }
 
+/** Lines of a list that are no item of it: "* x", "1. x", a sentence. A program would pass them over without a word. */
+function strays(body) {
+  const out = [];
+  let inItem = false;
+  for (const line of body.split('\n')) {
+    if (/^- /.test(line)) inItem = true;
+    else if (line.trim() === '') continue;
+    else if (!(inItem && /^\s+\S/.test(line))) out.push(line.trim());
+  }
+  return out;
+}
+
 const firstPath = (item) => /^`([^`]+)`/.exec(item)?.[1] ?? null;
 
-/** A card names files of the repository only: the driver reads and writes what a card names. */
-const outside = (path) => /^[/~]|^[A-Za-z]:|\\|(^|\/)\.\.(\/|$)/.test(path);
+/**
+ * A card names files of the repository, each by its one plain path. The driver reads and writes
+ * what a card names, and the rules here match on the path as written: "./tools/x" or "tools//x"
+ * would slip past them, ".." would reach outside, and a file under .git is git's own (a line of
+ * its config can name a command to run).
+ */
+const outside = (path) =>
+  /^[/~]|^[A-Za-z]:|\\|\/$/.test(path) ||
+  path.split('/').some((part) => part === '' || part === '.' || part === '..' || /^\.git$/i.test(part));
+const PLAIN = 'must be a plain path inside the repository (no "..", ".", ".git", "//" or "/" at its end)';
 
 /** What an item says after its path, lines and maker: the words that tell the reader why. */
 const caption = (rest) =>
@@ -134,28 +180,33 @@ export function readItem(item) {
  *   `path` (new)          a file that is not there yet
  *   `path`                a file that is there, written again whole
  *   `path` lines 56-73    those lines of a file that is there, written again
- * Anything else is words about files the card's commands write (a lockfile, generated code).
+ * "(replace)" after the path or the lines says that the card puts other lines in their place, so
+ * most of what is there need not come back. Anything else is words about files the card's
+ * commands write (a lockfile, generated code).
  */
 export function fileItem(item) {
   const path = firstPath(item);
   if (!path) return { kind: 'words' };
-  const rest = item.slice(path.length + 2);
+  let rest = item.slice(path.length + 2);
   const madeBy = MADE_BY.exec(rest)?.[1] ?? null;
   const range = rangeAfterPath(rest);
-  if (range) {
-    if (range.from < 1 || range.to < range.from)
-      return { kind: 'region', path, problem: `${path}: lines ${range.from}-${range.to} is not a range` };
+  if (range) rest = rest.slice(range.length);
+  if (range && (range.from < 1 || range.to < range.from))
+    return { kind: 'region', path, problem: `${path}: lines ${range.from}-${range.to} is not a range` };
+  const fresh = !range && /^ \(new\)/.test(rest);
+  const replace = !fresh && /^ \(replace\)/.test(rest);
+  const note = caption(fresh ? rest.slice(6) : replace ? rest.slice(10) : rest);
+  // Written anywhere else in the item, these words would be read as a note and the whole file sent to be written again.
+  if (/\blines? \d|\(new\)|\(replace\)/.test(note))
     return {
-      kind: 'region',
+      kind: 'whole',
       path,
-      from: range.from,
-      to: range.to,
-      madeBy,
-      note: caption(rest.slice(range.length)),
+      problem: `${path}: "lines 56-73", "(new)" and "(replace)" go straight after the path, before anything else`,
     };
-  }
-  if (/^ \(new\)/.test(rest)) return { kind: 'new', path, madeBy: null, note: caption(rest.slice(6)) };
-  return { kind: 'whole', path, madeBy, note: caption(rest) };
+  if (fresh) return { kind: 'new', path, madeBy: null, note };
+  return range
+    ? { kind: 'region', path, from: range.from, to: range.to, replace, madeBy, note }
+    : { kind: 'whole', path, replace, madeBy, note };
 }
 
 /** What is wrong with the files a card writes, as a list of sentences. */
@@ -224,7 +275,11 @@ export function checkCard(file, text, repo) {
     .filter((t) => t.kind !== 'words');
   const paths = [...new Set(targets.map((t) => t.path))];
   const source = paths.filter((p) => !TEST_PATH.test(p) && !p.startsWith('docs/'));
-  if (paths.length === 0) say('Files names no file');
+  // A card may leave everything to its commands (a generator), which a machine then checks: level S only.
+  if (paths.length === 0 && card.level !== 'S')
+    say('Files names no file (only a level S card leaves everything to its commands)');
+  for (const stray of strays(body.Files))
+    say(`Files: every line is an item that starts with "- " ("${stray.slice(0, 40)}")`);
   if (source.length > MAX_SOURCE_FILES) {
     say(`changes ${source.length} source files; a card changes at most ${MAX_SOURCE_FILES}`);
   }
@@ -233,8 +288,12 @@ export function checkCard(file, text, repo) {
       say(`${p} is an always-X path but the card is level ${card.level}`);
     if (MIGRATION.test(p) && card.level !== 'X' && card.level !== 'R')
       say(`${p} is a migration: level X, or R with no policy or trigger`);
+    if (GENERATED.some((re) => re.test(p)))
+      say(
+        `Files: ${p} is written by a command, never by hand; say so in words, with no path at the start of the item`,
+      );
   }
-  for (const p of paths) if (outside(p)) say(`Files: ${p} must be a path inside the repository`);
+  for (const p of paths) if (outside(p)) say(`Files: ${p} ${PLAIN}`);
   for (const p of fileProblems(targets)) say(p);
   let rewritten = 0;
   for (const t of targets) {
@@ -244,7 +303,7 @@ export function checkCard(file, text, repo) {
       // Keeps finished cards from rotting: the commit that lands a card's work marks the card.
       if (repo.exists(t.path))
         say(
-          `Files: ${t.path} is there already; mark the card Done once its work has landed ("Needs: …. Done.")`,
+          `Files: ${t.path} is there already: mark the card Done if its work has landed ("Needs: …. Done."), or take away what an earlier attempt left`,
         );
       continue;
     }
@@ -268,6 +327,11 @@ export function checkCard(file, text, repo) {
   }
 
   let total = 0;
+  if (body['Read first'] !== 'Nothing.')
+    for (const stray of strays(body['Read first']))
+      say(
+        `Read first: every line is an item that starts with "- ", or the section says "Nothing." ("${stray.slice(0, 40)}")`,
+      );
   for (const item of items(body['Read first'])) {
     const asked = readItem(item);
     if (asked.problem) {
@@ -275,7 +339,7 @@ export function checkCard(file, text, repo) {
       continue;
     }
     total += asked.count;
-    if (outside(asked.path)) say(`Read first: ${asked.path} must be a path inside the repository`);
+    if (outside(asked.path)) say(`Read first: ${asked.path} ${PLAIN}`);
     if (card.done) continue;
     if (asked.madeBy) {
       if (!card.needs.includes(asked.madeBy))
@@ -293,8 +357,15 @@ export function checkCard(file, text, repo) {
   if (total > MAX_READ_LINES[window])
     say(`Read first asks for ${total} lines; the limit is ${MAX_READ_LINES[window]}`);
 
-  const named = MODEL_NAME.exec(text.replaceAll('CLAUDE.md', ''));
-  if (named) say(`names a model ("${named[0]}"); documents name none`);
+  // The driver runs the first block and passes or fails the card on how it ends; words around it are for the auditor.
+  const fences = body.Run.split('\n').filter((l) => /^\s*(`{3,}|~{3,})/.test(l)).length;
+  if (body.Run && (fences !== 2 || runScript(body.Run) === null))
+    say(
+      'Run must hold exactly one code block: the commands that are run, which fail when the card is not done',
+    );
+
+  const named = namedModel(text);
+  if (named) say(`names a model ("${named}"); documents name none`);
 
   return problems;
 }

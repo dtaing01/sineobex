@@ -29,8 +29,11 @@ Reply with each part as its heading and one code block, like this:
     ```
 
 7. Write every line of a part, changed or not. A line you leave out is deleted from the file.
-   Never write `...` or "the rest is unchanged" in place of lines.
+   Never write `...` or "the rest is unchanged" in place of lines, and never a diff.
 8. Write only the parts listed, in the order listed. Do not write line numbers. Write nothing
    before, between or after the parts.
-9. If a step is unclear, or what you were given is not as the card describes it, write no part.
-   Write one line that starts with `STOP:` and say what is wrong. Do not guess.
+9. If a part itself holds a line of three backticks, put four backticks around that part.
+10. If a step is unclear, or what you were given is not as the card describes it, write no part.
+    Write one line instead, like this, and do not guess:
+
+        STOP: step 2 names a function that is not in the lines I was given.

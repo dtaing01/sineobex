@@ -29,8 +29,8 @@ specification's lines, the Decisions table, the definition and the diff file. Re
 
 ## Steps
 
-1. **Open the files the card names.** The piece's lines are already saved as
-   `packages/forms/definitions/spec/<piece>.txt`. Do not edit that file.
+1. **The piece's lines** are in `packages/forms/definitions/spec/<piece>.txt`, which the card
+   names. That file is never edited.
 2. **Create the definition file** at the path the card gives, with the header the card gives
    (`key`, `version`, `title`, `kinds`, `sensitivity` for a note type; `name`, `version` for a
    module).
@@ -68,12 +68,12 @@ specification's lines, the Decisions table, the definition and the diff file. Re
      `0-9` turned into one `_`, and no `_` at the start or end. "Already has" is `already_has`.
      "Safer-use supplies" is `safer_use_supplies`. If the Decisions table gives a code, use that
      one (it does when the label starts with a digit or two labels would get one code).
-   - Add `"exclusive": true`, `"other": true`, `"normal": true` or `"unable": true` only where
-     the Decisions table names that option.
+   - Add a flag only where the Decisions table says so: "flag `other` on Other" is
+     `"other": true` on that option. A flag never changes the option's code.
 6. **Leave the piece's other files alone.** `<piece>.txt`, `<piece>.shape.json` and
    `<piece>.diff.json` are already there. They hold the decisions. Do not edit them.
-7. **Run the export**, the first command under the card's **Run**. Fix what it reports. Its
-   messages name the file, the field and the rule.
+7. **The export checks the file** when the card's commands are run. Its messages name the file,
+   the field and the rule.
 
 ## Tests to write
 
@@ -109,7 +109,7 @@ The definition, the diff file and every generated file the export changed go in 
 ## Mistakes to avoid
 
 - **Fixing the specification.** A typo, an odd capital letter or a strange order in the piece is
-  copied as it is. If something looks wrong, finish the card and say so in your reply.
+  copied as it is. What looks wrong there is for the auditor, not for the implementer to mend.
 - **Guessing choose-one or choose-many.** The specification never says. The Decisions table
   does. If a field is missing from the table, stop and report.
 - **Joining or splitting fields.** A row of buttons wrapped over three lines is one field. Two

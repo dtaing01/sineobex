@@ -58,12 +58,12 @@ On the branch already: `services/api/test/encounter-rules.test.ts` runs one test
 ```sh
 export TEST_ADMIN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 (cd services/api && pnpm -s vitest run test/encounter-rules.test.ts)
+npx prettier --write services/api/src/encounters/rules.ts
 pnpm -s lint && pnpm -s format:check && pnpm -s typecheck
 ```
 
 - The test run prints `Test Files  1 passed (1)`.
-- The second line prints no error. If only the format check fails, run
-  `npx prettier --write services/api/src/encounters/rules.ts` and run it again.
+- The last line prints no error.
 
 ## Audit
 
