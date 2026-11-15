@@ -22,9 +22,13 @@ level T cards need their tests written first. In order:
    the fourteen of F1.
 3. The frontier model writes each card in full just before it is handed out, from this index,
    the design section the row points to, and the model card of the same level. A card is at most
-   90 lines. `node
-   tools/card-check.mjs` checks the result.
-4. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
+   90 lines. `node tools/card-check.mjs` checks the result, and `node tools/card-run.mjs <card>
+   --dry-run` shows what the small model will be sent.
+4. The small model's cards are run with `tools/card-run.mjs` (`docs/plan/README.md`, "Running a
+   card"). A row below names files; the full card says for each whether it is new, written again
+   whole, or changed by line range. A file that several cards add to (`api/routes/encounters.ts`
+   is named by nine) is changed by line range once it is long.
+5. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
    `docs/design/phase-4-encounters.md`.
 
 ## Levels, and what they mean for this phase

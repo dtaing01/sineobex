@@ -106,6 +106,7 @@ repository; `CLAUDE.md` links it.
 | D66 | Who reads what in a note: five kinds of content, one function, existing keys; whoever acts as the author sees all; co-signing and attesting need the whole note | PRD main 121, 145, 204, 415, 435; D37 |
 | D67 | The chart carries the timeline and the last three visits | "Recent notes" offline (PRD main 533) before routes exist |
 | D68 | The remaining phases are built from task cards with four levels, and CI checks every card's shape | A small model follows a card to the letter and cannot tell a stale path from a correct one |
+| D69 | A card is run by a program, not by an agent: the model is sent the card's reading and answers with each part whole (a new file, a whole file or a line range); only the card's files are written and only its commands are run | The coder model cannot call tools; a rule a program keeps needs no audit; whole parts are what a model of this size writes reliably, and diffs are not |
 
 ## What the review found
 

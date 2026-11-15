@@ -72,6 +72,7 @@ that look like bugs.
 | Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
 | PHI guard | `node tools/phi-guard.mjs` |
 | Task cards (after writing or changing one) | `node tools/card-check.mjs` |
+| Run a card with the small local model | `CARD_MODEL=<name> node tools/card-run.mjs <card>`; `--dry-run` shows what the model is sent (`docs/plan/README.md`, "Running a card") |
 | **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome tools/ci-local.sh` |
 
 `tools/ci-local.sh` takes about 15 minutes. It must end with "All local CI checks passed" before
@@ -116,7 +117,7 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
    owning its files, in dependency order. Have it critiqued against the PRD and the code before
    anyone builds from it. Phase 3's design is the model.
 2. **Build in units.** From phase 4 on, a unit is built from task cards (`docs/plan/README.md`): a
-   small local model writes the code of each card; the frontier model writes each card, writes the
+   small local model writes the code of each card, through `tools/card-run.mjs`; the frontier model writes each card, writes the
    level X cards' code itself, writes the tests of level T cards first, and audits every card and
    every unit. A unit that others depend on (the schema and contract unit) lands first, alone,
    with CI green. Then units run in parallel only when they own disjoint files. Keep each unit's

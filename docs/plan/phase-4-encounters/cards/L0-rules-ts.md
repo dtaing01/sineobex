@@ -9,8 +9,8 @@ file expects for every case.
 
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md`, section 3.12, from its heading to the heading "4. Sync"
-  (about 130 lines): every signature, and the order of each function's checks.
+- `docs/design/phase-4/lifecycle.md` lines 837-965 (section 3.12): every signature, and the order
+  of each function's checks.
 - `services/api/test/encounter-rules.test.ts`, all of it (about 60 lines) (made by L0-vectors):
   how the functions are called.
 

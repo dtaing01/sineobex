@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { checkCard, linesAsked, parseCard, SECTIONS } from '../card-check-rules.mjs';
+import { checkCard, fileItem, parseCard, readItem, SECTIONS } from '../card-check-rules.mjs';
 
 const FILE = 'docs/plan/phase-4-encounters/cards/F6-psychological.md';
+const HEADER = 'Level: S. Window: 16,000. Needs: F0-export, F6-spec-pieces.';
 
 /** A card that passes, with its header line or any section replaced. */
 function card(
@@ -23,18 +24,13 @@ function card(
     Audit: '- The export ended with `0 problems`.',
     ...overrides,
   };
-  return [
-    title,
-    '',
-    header ?? 'Level: S. Window: 16,000. Needs: F0-export, F6-spec-pieces.',
-    '',
-    ...SECTIONS.flatMap((s) => [`## ${s}`, '', body[s], '']),
-  ].join('\n');
+  return [title, '', header ?? HEADER, '', ...SECTIONS.flatMap((s) => [`## ${s}`, '', body[s], ''])].join(
+    '\n',
+  );
 }
 
-const repo = (
-  lines = { 'docs/plan/patterns/form-definition.md': 124, 'services/api/src/auth/permissions.ts': 200 },
-) => ({
+const LINES = { 'docs/plan/patterns/form-definition.md': 124, 'services/api/src/auth/permissions.ts': 200 };
+const repo = (lines = LINES) => ({
   exists: (p) => p in lines,
   lineCount: (p) => lines[p],
 });
@@ -96,27 +92,39 @@ describe('a task card', () => {
   it('changes at most three source files; tests and documents are not counted', () => {
     const four = card({
       Files:
-        '- `packages/forms/src/a.ts`\n- `packages/forms/src/b.ts`\n- `packages/forms/src/c.ts`\n- `packages/forms/src/d.ts`',
+        '- `packages/forms/src/a.ts` (new)\n- `packages/forms/src/b.ts` (new)\n- `packages/forms/src/c.ts` (new)\n- `packages/forms/src/d.ts` (new)',
     });
     expect(check(four)[0]).toMatch(/changes 4 source files/);
     const withTests = card({
       Files:
-        '- `packages/forms/src/a.ts`\n- `packages/forms/src/b.ts`\n- `packages/forms/src/c.ts`\n' +
-        '- `packages/forms/test/a.test.ts`\n- `apps/mobile/test/forms/a_test.dart`\n- `docs/design/phase-4/forms.md`',
+        '- `packages/forms/src/a.ts` (new)\n- `packages/forms/src/b.ts` (new)\n- `packages/forms/src/c.ts` (new)\n' +
+        '- `packages/forms/test/a.test.ts` (new)\n- `apps/mobile/test/forms/a_test.dart` (new)\n- `docs/design/phase-4/notes.md` (new)',
     });
     expect(check(withTests)).toEqual([]);
     expect(check(card({ Files: 'The definition.' }))[0]).toMatch(/names no file/);
   });
 
+  it('counts a file once, however many of its line ranges the card names', () => {
+    const r = repo({ ...LINES, 'services/api/src/app.ts': 120 });
+    const twice = card({
+      Files:
+        '- `services/api/src/app.ts` lines 7-17: the imports\n- `services/api/src/app.ts` lines 99-109\n' +
+        '- `packages/forms/src/a.ts` (new)\n- `packages/forms/src/b.ts` (new)',
+    });
+    expect(check(twice, r)).toEqual([]);
+  });
+
   it('may touch an always-X path only at level X', () => {
-    for (const path of [
+    const paths = [
       'services/api/src/sync/apply.ts',
       'services/api/src/auth/permissions.ts',
       'apps/mobile/lib/sync/local_store.dart',
       'apps/mobile/test/sync/fake_server.dart',
       '.github/workflows/ci.yml',
       'tools/ci-local.sh',
-    ]) {
+    ];
+    const r = repo({ ...LINES, ...Object.fromEntries(paths.map((p) => [p, 50])) });
+    for (const path of paths) {
       const c = (l) =>
         card(
           { Files: `- \`${path}\``, 'Read first': '- `docs/plan/patterns/form-definition.md` lines 30-77.' },
@@ -124,8 +132,8 @@ describe('a task card', () => {
             header: `Level: ${l}. Window: 16,000. Needs: none.`,
           },
         );
-      expect(check(c('T'))[0], path).toMatch(/always-X path but the card is level T/);
-      expect(check(c('X')), path).toEqual([]);
+      expect(check(c('T'), r)[0], path).toMatch(/always-X path but the card is level T/);
+      expect(check(c('X'), r), path).toEqual([]);
     }
   });
 
@@ -143,6 +151,39 @@ describe('a task card', () => {
     expect(check(c('X'))).toEqual([]);
   });
 
+  it('names what it writes as a new file, a whole file or a line range of a file that is there', () => {
+    const r = repo({ ...LINES, 'services/api/src/app.ts': 120 });
+    const files = (Files) => check(card({ Files }), r);
+    expect(files('- `services/api/src/app.ts`: the registrations')).toEqual([]);
+    expect(files('- `services/api/src/app.ts` lines 99-109')).toEqual([]);
+    expect(files('- `services/api/src/app.ts` lines 99-130')[0]).toMatch(/app\.ts has 120 lines, not 130/);
+    expect(files('- `services/api/src/app.ts` lines 20-10')[0]).toMatch(/lines 20-10 is not a range/);
+    expect(
+      files('- `services/api/src/app.ts` lines 5-20\n- `services/api/src/app.ts` lines 15-30')[0],
+    ).toMatch(/lines 5-20 and 15-30 overlap/);
+    expect(files('- `services/api/src/app.ts`\n- `services/api/src/app.ts` lines 15-30')[0]).toMatch(
+      /listed more than once/,
+    );
+    expect(files('- `services/api/src/gone.ts`')[0]).toMatch(/gone\.ts does not exist \(say "\(new\)"/);
+    expect(files('- `packages/forms/src/types.ts` (made by F0-types)')[0]).toMatch(
+      /made by F0-types, which is not under Needs/,
+    );
+    expect(files('- `packages/forms/src/types.ts` (made by F0-export)')).toEqual([]);
+  });
+
+  it('asks the small model to write again at most 200 lines that are already there', () => {
+    const r = repo({ ...LINES, 'packages/forms/src/long.ts': 320, 'packages/forms/src/short.ts': 90 });
+    const whole = { Files: '- `packages/forms/src/long.ts`' };
+    expect(check(card(whole), r)[0]).toMatch(/asks for 320 lines to be written again; the limit is 200/);
+    expect(check(card({ Files: '- `packages/forms/src/long.ts` lines 100-180' }), r)).toEqual([]);
+    const both = { Files: '- `packages/forms/src/long.ts` lines 100-220\n- `packages/forms/src/short.ts`' };
+    expect(check(card(both), r)[0]).toMatch(/asks for 211 lines to be written again/);
+    // A wider window holds twice as much, and the frontier model has no such limit.
+    const needs = 'Needs: F0-export, F6-spec-pieces.';
+    expect(check(card(whole, { header: `Level: T. Window: 32,000. ${needs}` }), r)).toEqual([]);
+    expect(check(card(whole, { header: `Level: X. Window: 16,000. ${needs}` }), r)).toEqual([]);
+  });
+
   it('reads only files that exist, or that a card it needs makes', () => {
     const gone = card({ 'Read first': '- `docs/plan/patterns/no-such-recipe.md`, all of it (100 lines).' });
     expect(check(gone)[0]).toMatch(/no-such-recipe.md does not exist/);
@@ -152,26 +193,60 @@ describe('a task card', () => {
     expect(check(stranger)[0]).toMatch(/made by F0-types, which is not under Needs/);
   });
 
-  it('says how much of each file to read, and the file is that long', () => {
-    expect(check(card({ 'Read first': '- `docs/plan/patterns/form-definition.md`.' }))[0]).toMatch(
-      /must say how many lines/,
+  it('says which lines of each file to read, in a form a program can follow', () => {
+    const read = (item) => check(card({ 'Read first': item }));
+    expect(read('- `docs/plan/patterns/form-definition.md`.')[0]).toMatch(/must say which lines/);
+    // A small model cannot find a section in a long file, and a program cannot either.
+    expect(read('- `docs/plan/patterns/form-definition.md`, section 3 (about 60 lines).')[0]).toMatch(
+      /must say which lines: "lines 56-73" or ", all of it \(124 lines\)"/,
     );
-    const past = card({ 'Read first': '- `services/api/src/auth/permissions.ts` lines 150-260.' });
-    expect(check(past)[0]).toMatch(/has 200 lines, not 260/);
-    const stale = card({ 'Read first': '- `docs/plan/patterns/form-definition.md`, all of it (60 lines).' });
-    expect(check(stale)[0]).toMatch(/has 124 lines, the card says 60/);
-    expect(check(card({ 'Read first': 'The recipe.\n- Everything in the package (40 lines).' }))[0]).toMatch(
+    expect(read('- `services/api/src/auth/permissions.ts` lines 150-260.')[0]).toMatch(
+      /has 200 lines, not 260/,
+    );
+    expect(read('- `services/api/src/auth/permissions.ts` lines 60-50.')[0]).toMatch(/is not a range/);
+    expect(read('- `docs/plan/patterns/form-definition.md`, all of it (60 lines).')[0]).toMatch(
+      /has 124 lines, the card says 60/,
+    );
+    expect(read('The recipe.\n- Everything in the package (40 lines).')[0]).toMatch(
       /must start with a path in backticks/,
     );
   });
 
-  it('asks for at most 200 lines of reading', () => {
-    const long = card({
+  it('asks for at most 200 lines of reading, or 400 in the wider window', () => {
+    const long = {
       'Read first':
         '- `docs/plan/patterns/form-definition.md`, all of it (124 lines).\n' +
         '- `services/api/src/auth/permissions.ts` lines 1-100.',
-    });
-    expect(check(long)[0]).toMatch(/Read first asks for 224 lines; the limit is 200/);
+    };
+    expect(check(card(long))[0]).toMatch(/Read first asks for 224 lines; the limit is 200/);
+    expect(check(card(long, { header: 'Level: T. Window: 32,000. Needs: none.' }))).toEqual([]);
+  });
+
+  it('is checked for its shape only once it is marked Done', () => {
+    const header = `${HEADER} Done.`;
+    const moved = {
+      'Read first': '- `docs/plan/patterns/form-definition.md` lines 100-260.',
+      Files: '- `services/api/src/gone.ts`',
+    };
+    expect(check(card(moved))).toHaveLength(2);
+    expect(check(card(moved, { header }))).toEqual([]);
+    expect(check(card({ Steps: '' }, { header }))[0]).toMatch(/section "Steps" is empty/);
+    // The commit that lands a card's work marks the card, or this check fails the build.
+    const landed = repo({ ...LINES, 'packages/forms/definitions/note-types/psychological/v1.json': 150 });
+    expect(check(card(), landed)[0]).toMatch(/v1\.json is there already; mark the card Done/);
+    expect(check(card({}, { header }), landed)).toEqual([]);
+  });
+
+  it('names only files inside the repository', () => {
+    for (const path of ['../other/a.ts', '/etc/passwd', '~/notes.md', 'docs/../../a.ts', 'C:\\a.ts']) {
+      expect(check(card({ Files: `- \`${path}\` (new)` }))[0], path).toMatch(
+        /must be a path inside the repository/,
+      );
+      expect(check(card({ 'Read first': `- \`${path}\` lines 1-5.` }))[0], path).toMatch(
+        /must be a path inside the repository/,
+      );
+    }
+    expect(check(card({ Files: '- `packages/forms/src/a..b.ts` (new)' }))).toEqual([]);
   });
 
   it('names no model', () => {
@@ -188,14 +263,72 @@ describe('reading a card', () => {
     expect(c.level).toBe('S');
     expect(c.window).toBe('16,000');
     expect(c.needs).toEqual(['F0-export', 'F6-spec-pieces']);
+    expect(c.done).toBe(false);
     expect(c.sections.map((s) => s.name)).toEqual(SECTIONS);
     expect(parseCard(card({}, { header: 'Level: X. Window: 32,000. Needs: none.' })).needs).toEqual([]);
+    const done = parseCard(card({}, { header: 'Level: X. Window: 32,000. Needs: none. Done.' }));
+    expect(done.needs).toEqual([]);
+    expect(done.done).toBe(true);
   });
 
-  it('reads a line count or a line range', () => {
-    expect(linesAsked('`a.md`, all of it (124 lines).')).toEqual({ count: 124, last: null });
-    expect(linesAsked('`a.md`, section 3 (about 115 lines).')).toEqual({ count: 115, last: null });
-    expect(linesAsked('`a.ts` lines 56-73: the rules.')).toEqual({ count: 18, last: 73 });
-    expect(linesAsked('`a.ts`')).toBeNull();
+  it('reads what to read: a line range or a whole file, who makes it, and why', () => {
+    expect(readItem('`a.ts` lines 56-73: the rules.')).toEqual({
+      path: 'a.ts',
+      from: 56,
+      to: 73,
+      count: 18,
+      madeBy: null,
+      note: 'the rules.',
+    });
+    expect(readItem('`a.md` lines 837-965 (section 3.12): every signature.')).toMatchObject({
+      from: 837,
+      to: 965,
+      count: 129,
+      note: '(section 3.12): every signature.',
+    });
+    expect(readItem('`a.md`, all of it (124 lines).')).toEqual({
+      path: 'a.md',
+      from: 1,
+      to: null,
+      count: 124,
+      madeBy: null,
+      note: '',
+    });
+    expect(readItem('`a.ts`, all of it (about 60 lines) (made by L0-vectors): how they are called.')).toEqual(
+      {
+        path: 'a.ts',
+        from: 1,
+        to: null,
+        count: 60,
+        madeBy: 'L0-vectors',
+        note: 'how they are called.',
+      },
+    );
+    expect(readItem('`a.ts`').problem).toMatch(/must say which lines/);
+    expect(readItem('The recipe.').problem).toMatch(/must start with a path/);
+  });
+
+  it('reads what to write: a new file, a whole file, a line range, or words about what commands write', () => {
+    expect(fileItem('`a.ts` (new)')).toEqual({ kind: 'new', path: 'a.ts', madeBy: null, note: '' });
+    expect(fileItem('`a.ts`: the registrations')).toEqual({
+      kind: 'whole',
+      path: 'a.ts',
+      madeBy: null,
+      note: 'the registrations',
+    });
+    expect(fileItem('`a.ts` (made by F0-types)')).toMatchObject({
+      kind: 'whole',
+      madeBy: 'F0-types',
+      note: '',
+    });
+    expect(fileItem('`a.ts` lines 99-109: the registrations')).toEqual({
+      kind: 'region',
+      path: 'a.ts',
+      from: 99,
+      to: 109,
+      madeBy: null,
+      note: 'the registrations',
+    });
+    expect(fileItem('The generated files the export rewrites.')).toEqual({ kind: 'words' });
   });
 });

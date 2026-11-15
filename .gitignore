@@ -19,6 +19,10 @@ playwright-report/
 test-results/
 .vitest-cache/
 
+# Records of local model runs (tools/card-run.mjs): what was sent, what came back, what the
+# commands printed
+.card-runs/
+
 # Editors and OS
 .DS_Store
 .idea/

@@ -9,8 +9,8 @@ of the lifecycle design, section 2.2, with a test for each rule.
 
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md`, section 2.2, from its heading to the heading "2.3" (about
-  125 lines): every column, check, function and trigger.
+- `docs/design/phase-4/lifecycle.md` lines 174-297 (section 2.2): every column, check, function
+  and trigger.
 - `docs/plan/patterns/migration.md` lines 52-121: the steps, the tests and the commands.
 
 ## Files
