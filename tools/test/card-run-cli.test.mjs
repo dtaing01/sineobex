@@ -316,11 +316,13 @@ describe('a card whose reply is good', () => {
 
   it('is asked of the runner itself, not of a proxy the environment names', async () => {
     runner.replies = [{ content: GOOD }];
+    // Both spellings: a machine that sets its own exceptions for local addresses would hide the difference.
     const proxied = {
       NODE_USE_ENV_PROXY: '1',
       HTTP_PROXY: 'http://127.0.0.1:9',
       http_proxy: 'http://127.0.0.1:9',
       NO_PROXY: '',
+      no_proxy: '',
     };
     const { code, out } = await start(usual(), proxied).done;
     expect(out).toContain('the commands passed');
