@@ -379,6 +379,11 @@ describe('the parts of a reply', () => {
       'part 1 is missing',
       'part 2 is missing',
     ]);
+    // A block, and only then the heading: whether the block is that part is not for a program to guess.
+    expect(parts(`${F}ts\na\n${F}\n\n### part 1\n`, one).problems).toEqual([
+      'each part goes under its heading, "### part 1"',
+      'part 1 has no code block under its heading',
+    ]);
     // A heading with nothing under it, then a bare block: the model began a part and did not write it.
     expect(parts(`### part 1\n\nI could not.\n`, one).problems).toEqual([
       'part 1 has no code block under its heading',
