@@ -177,6 +177,63 @@ describe('phase 3 sync: lock order', () => {
     }
   });
 
+  it('a note change waits for another writer of its visit, so the visit’s status is right', async () => {
+    // Lifecycle 4.2: every note change takes the team lock. Today's sync cannot finish a note (0018
+    // refuses a status without its time of finishing); the move it can make that finishes a visit
+    // is blanking its last open draft ("Remove this note"), which a draft opened at the same time
+    // by another phone must still stop.
+    const encounterId = await createEncounter(h, t.teamId, t.aId, null);
+    await h.scratch.owner`
+      insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data,
+        status, completed_at, completed_by)
+      values (gen_random_uuid(), ${t.teamId}, ${encounterId}, 'wound_care', ${t.aId},
+        '{"plan": "Demo: dress daily"}', 'completed', now(), ${t.aId})`;
+    const open = await phoneA.change({
+      entity: 'encounter_note',
+      op: 'create',
+      value: { encounterId, noteTypeKey: 'wound_care', data: { plan: 'Demo: soak first' } },
+    });
+    expect((await asA(open)).map((r) => r.status)).toEqual(['accepted']);
+    const statusOf = async () => {
+      const [row] = await h.scratch.owner<{ status: string; worked: string }[]>`
+        select status, sineobex.encounter_status(id) as worked from sineobex.encounters where id = ${encounterId}`;
+      return row;
+    };
+    expect(await statusOf()).toEqual({ status: 'draft', worked: 'draft' });
+
+    // Another phone's note create, under the team lock as its push takes it, not yet committed.
+    const other = await h.scratch.owner.reserve();
+    try {
+      await other`begin`;
+      await other`set local lock_timeout = '3s'`;
+      await other`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${t.teamId}::uuid::text, 0))`;
+      await other`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data)
+        values (gen_random_uuid(), ${t.teamId}, ${encounterId}, 'wound_care', ${t.bId},
+          '{"plan": "Demo: second look"}')`;
+      const blank = await phoneA.change({
+        entity: 'encounter_note',
+        recordId: open.recordId,
+        op: 'set',
+        field: 'data.plan',
+        value: '',
+        baseVersion: 1,
+      });
+      const pushing = asA(blank);
+      await pushWaitsForTeamLock();
+      // What an encounter set does next under the team lock: the row. The push has not locked it.
+      await other`select id from sineobex.encounters where id = ${encounterId} for no key update`;
+      await other`commit`;
+      expect(await pushing).toEqual([expect.objectContaining({ status: 'accepted', serverVersion: 2 })]);
+    } finally {
+      // After a failure, so the push it holds up and the tests after it are not stuck behind it.
+      await other`rollback`.catch(() => {});
+      other.release();
+    }
+    // The other phone's draft counts: the visit is still a draft.
+    expect(await statusOf()).toEqual({ status: 'draft', worked: 'draft' });
+  });
+
   it('two phones editing one encounter at once, one its status and one its patient, are both answered', async () => {
     const p1 = await createPatient(h, t.teamId, t.aId);
     const p2 = await createPatient(h, t.teamId, t.aId);

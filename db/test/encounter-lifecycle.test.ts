@@ -210,6 +210,51 @@ describe('0018 encounter lifecycle', () => {
       expect(await version()).not.toBe(before);
     });
 
+    describe('two writers of one visit at once, neither holding the team lock', () => {
+      /** Runs `first` and, once it has written but not committed, `second`; then lets both finish. */
+      const atOnce = async (
+        first: (tx: TransactionSql) => Promise<unknown>,
+        second: (tx: TransactionSql) => Promise<unknown>,
+      ) => {
+        let wrote!: () => void;
+        const written = new Promise<void>((resolve) => (wrote = resolve));
+        const a = inTeam(async (tx) => {
+          await first(tx);
+          wrote();
+          // Long enough for the second writer to reach the visit while this one is open.
+          await tx`select pg_sleep(0.3)`;
+        });
+        const b = (async () => {
+          await written;
+          await inTeam(second);
+        })();
+        await Promise.all([a, b]);
+      };
+
+      it('each finishing a different note: the visit is finished', async () => {
+        const id = await encounter();
+        const one = await draft(id);
+        const two = await draft(id);
+        await atOnce(
+          (tx) => complete(tx, one),
+          (tx) => complete(tx, two),
+        );
+        expect(await statusOf(id)).toBe('completed');
+      });
+
+      it('one signing while another opens a new draft: the visit is a draft', async () => {
+        const id = await encounter();
+        const signed = await draft(id, ANSWERS, true);
+        await atOnce(
+          (tx) => sign(tx, signed),
+          (tx) =>
+            tx`insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data)
+               values (${randomUUID()}, ${team}, ${id}, 'demo_note', ${author}, ${tx.json(ANSWERS as never)})`,
+        );
+        expect(await statusOf(id)).toBe('draft');
+      });
+    });
+
     it('works out one encounter at a time', async () => {
       const first = await encounter();
       const second = await encounter();

@@ -83,9 +83,16 @@ $$;
 -- A trigger and not API code: a sign-off, a reopen, an online co-sign and a correction all change
 -- a note's status, and a fifth path would forget the encounter. It writes only when the status
 -- moves, so charting in a draft does not touch the encounter row.
+--
+-- Two writers finishing two notes of one visit at once would each read the other's note as it was
+-- and leave the visit a draft. Every encounter-side change takes the team lock first (lifecycle
+-- 4.2), which keeps them apart. The row lock below is the second line: a writer that forgets the
+-- team lock waits here for the other to commit, and the status it then works out (a new snapshot,
+-- in read committed) sees the other's note. Under the team lock it never waits.
 create function sineobex.refresh_encounter_status() returns trigger
 language plpgsql as $$
 begin
+  perform 1 from sineobex.encounters e where e.id = new.encounter_id for no key update;
   update sineobex.encounters e set status = sineobex.encounter_status(new.encounter_id)
   where e.id = new.encounter_id and e.status is distinct from sineobex.encounter_status(new.encounter_id);
   return null;

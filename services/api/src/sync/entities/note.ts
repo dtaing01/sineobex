@@ -14,7 +14,15 @@ import {
 import { loadEncounter } from './encounter.ts';
 import { valueParents } from './values.ts';
 
-/** Notes on an encounter, one per care type (phase 2, Oct 19). Unchanged by phase 3. */
+/**
+ * Notes on an encounter, one per care type (phase 2, Oct 19). Unchanged by phase 3.
+ *
+ * Every change takes the team lock first (phase 4 lifecycle 4.2). A note's create or change can move
+ * its encounter's status, through the trigger of migration 0018, which locks the encounter row; two
+ * such changes of one visit must not each work out the status without the other's note, and a note
+ * change must not lock that row before it waits for the team lock at its audit event, while an
+ * encounter set holds the team lock and waits for the row.
+ */
 
 type Value = z.infer<typeof NoteCreate>;
 
@@ -39,7 +47,7 @@ export const noteRules: EntityRules<Value> = {
   entity: 'encounter_note',
   auditPrefix: 'note',
   permission: () => 'encounters.chart',
-  takesTeamLock: () => false,
+  takesTeamLock: () => true,
   create: NoteCreate,
   parents: (v) => valueParents('encounter_note', 'create', undefined, v),
   parentsOfSet: () => [],
