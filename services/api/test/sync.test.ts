@@ -678,7 +678,19 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
 
     it('a signed note refuses changes', async () => {
       const { noteId } = await syncedDraft({ plan: 'dress daily' });
-      await h.scratch.owner`update sineobex.encounter_notes set status = 'signed' where id = ${noteId}`;
+      // Signed as the database requires since 0018 and 0019: the sign-off row first, then the note.
+      const signoffId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.note_signoffs (id, team_id, note_id, act, effect, content_hash, signer_user_id,
+          signer_name, signer_credential, needs_attestation, statement_version, signed_at, clock_verified)
+        select ${signoffId}, team_id, id, 'sign', 'signed', ${'ab'.repeat(32)}, author_user_id, 'Demo Signer',
+          'attending', false, 'demo-1', now(), true
+        from sineobex.encounter_notes where id = ${noteId}`;
+      await h.scratch.owner`
+        update sineobex.encounter_notes
+        set medical = true, status = 'signed', completed_at = now(), completed_by = author_user_id,
+            first_signed_at = now(), signoff_id = ${signoffId}
+        where id = ${noteId}`;
       const change = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
