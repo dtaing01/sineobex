@@ -51,7 +51,10 @@ alter table sineobex.encounter_notes
     check (first_signed_at is not null or status <> 'signed') not valid,
   -- Non-Medical work has no signing or co-signing.
   add constraint encounter_notes_signed_is_medical
-    check (medical or status <> 'signed') not valid;
+    check (medical or status <> 'signed') not valid,
+  -- A note that was ever signed is never reopened: a student's correction leaves it completed.
+  add constraint encounter_notes_signed_never_reopened
+    check (first_signed_at is null or status <> 'draft') not valid;
 
 -- An empty draft does not count: a note type picked by mistake, or the Red flags note nobody has
 -- answered yet. The API and the phone have the same rule (noteIsEmpty, pinned by shared vectors).
@@ -105,10 +108,34 @@ create trigger encounter_notes_status after insert or update of status, data on 
 -- The correction code names the one note it corrects in app.note_correction, for its own
 -- transaction. The error is class 23 on purpose: sync stores a class 23 error as a rejection
 -- (server_constraint), and any other class would stop the phone's queue (D42).
+--
+-- What a finished note is never changes, correction or not: its visit, its type and version (the
+-- form it is read with), whether it is Medical, its author (an assignee is a column of its own),
+-- and the time it was first signed. Each refusal names its own constraint.
 create function sineobex.guard_finished_note() returns trigger
 language plpgsql as $$
+declare
+  v_kept text;
 begin
-  if old.status <> 'draft' and new.data is distinct from old.data
+  if old.status = 'draft' then
+    return new;
+  end if;
+  v_kept := case
+    when new.encounter_id is distinct from old.encounter_id then 'encounter_id'
+    when new.note_type_key is distinct from old.note_type_key then 'note_type_key'
+    when new.note_type_version is distinct from old.note_type_version then 'note_type_version'
+    when new.medical is distinct from old.medical then 'medical'
+    when new.author_user_id is distinct from old.author_user_id then 'author_user_id'
+  end;
+  if v_kept is not null then
+    raise exception 'a finished note keeps its %', v_kept
+      using errcode = 'check_violation', constraint = 'encounter_notes_finished_' || v_kept;
+  end if;
+  if old.first_signed_at is not null and new.first_signed_at is distinct from old.first_signed_at then
+    raise exception 'a note is first signed once'
+      using errcode = 'check_violation', constraint = 'encounter_notes_first_signed_at_once';
+  end if;
+  if new.data is distinct from old.data
      and coalesce(current_setting('app.note_correction', true), '') <> old.id::text then
     raise exception 'a finished note changes only through a correction'
       using errcode = 'check_violation', constraint = 'encounter_notes_finished_data';

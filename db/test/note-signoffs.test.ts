@@ -625,13 +625,21 @@ describe('0019 on a database that already holds notes', () => {
       select convalidated as validated from pg_constraint
       where conrelid = 'sineobex.encounter_notes'::regclass and conname = 'encounter_notes_signoff_when_signed'`;
     expect(check).toEqual({ validated: false });
-    // Made whole in every other way, it still names no sign-off.
+    // It cannot be made whole: a finished note stays what it is (0018), so it stays Non-Medical,
+    // and a signed note must be Medical and name its sign-off. Its next change is refused.
     expect(
       await refusal(
         db.owner`update sineobex.encounter_notes
                  set medical = true, completed_at = now(), completed_by = author_user_id, first_signed_at = now()
                  where id = ${signedByHand}`,
       ),
-    ).toEqual({ code: CHECK, constraint: 'encounter_notes_signoff_when_signed' });
+    ).toEqual({ code: CHECK, constraint: 'encounter_notes_finished_medical' });
+    expect(
+      await refusal(
+        db.owner`update sineobex.encounter_notes
+                 set completed_at = now(), completed_by = author_user_id, first_signed_at = now()
+                 where id = ${signedByHand}`,
+      ),
+    ).toEqual({ code: CHECK, constraint: 'encounter_notes_signed_is_medical' });
   });
 });

@@ -359,6 +359,92 @@ describe('0018 encounter lifecycle', () => {
       expect(await statusOf(id)).toBe('completed');
     });
 
+    it('a finished note keeps its visit, its type and version, whether it is Medical, and its author', async () => {
+      const elsewhere = await encounter();
+      const someoneElse = await makeUser(db.owner, 'lifecycle-someone-else@example.com');
+      const changes: [string, Record<string, unknown>][] = [
+        ['encounter_notes_finished_encounter_id', { encounter_id: elsewhere }],
+        ['encounter_notes_finished_note_type_key', { note_type_key: 'other_note' }],
+        ['encounter_notes_finished_note_type_version', { note_type_version: 2 }],
+        ['encounter_notes_finished_author_user_id', { author_user_id: someoneElse }],
+      ];
+      for (const shape of FINISHED) {
+        const id = await encounter();
+        const noteId = await note(id, shape);
+        const label = `${shape.status}, medical ${shape.medical}`;
+        const flipped: [string, Record<string, unknown>] = [
+          'encounter_notes_finished_medical',
+          // A signed note must stay Medical anyway; a waiting one could otherwise become Non-Medical.
+          { medical: !shape.medical },
+        ];
+        for (const [constraint, change] of [...changes, flipped]) {
+          const refused = { code: CHECK, constraint };
+          const set = (tx: TransactionSql) =>
+            tx`update sineobex.encounter_notes set ${tx(change)} where id = ${noteId}`;
+          expect(await refusal(inTeam(set)), `${label} ${constraint}`).toEqual(refused);
+          // A correction of this very note opens none of them.
+          expect(
+            await refusal(
+              inTeam(async (tx) => {
+                await tx`select set_config('app.note_correction', ${noteId}, true)`;
+                await set(tx);
+              }),
+            ),
+            `${label} ${constraint}, correcting`,
+          ).toEqual(refused);
+        }
+      }
+      // A draft is the API's to check: the guard holds finished notes only.
+      const id = await encounter();
+      const open = await draft(id);
+      for (const [constraint, change] of [...changes, ['', { medical: true }] as const]) {
+        expect(
+          await refusal(
+            inTeam((tx) => tx`update sineobex.encounter_notes set ${tx(change)} where id = ${open}`),
+          ),
+          `draft ${constraint}`,
+        ).toBeNull();
+      }
+    });
+
+    it('a note that was ever signed is never reopened, and keeps the time it was first signed', async () => {
+      const id = await encounter();
+      const signed = await note(id, { status: 'signed', medical: true, empty: false });
+      const reopen = (noteId: string) =>
+        refusal(
+          inTeam(
+            (tx) => tx`update sineobex.encounter_notes
+                       set status = 'draft', completed_at = null, completed_by = null, signoff_id = null,
+                           attestation = 'not_needed'
+                       where id = ${noteId}`,
+          ),
+        );
+      const NEVER = { code: CHECK, constraint: 'encounter_notes_signed_never_reopened' };
+      expect(await reopen(signed)).toEqual(NEVER);
+      // A student's correction sent it back to wait for a co-signer: still never a draft again.
+      await inTeam(async (tx) => {
+        await tx`select set_config('app.note_correction', ${signed}, true)`;
+        await tx`update sineobex.encounter_notes
+                 set status = 'completed', signoff_id = null, data = ${tx.json(CORRECTED as never)}
+                 where id = ${signed}`;
+      });
+      expect(await reopen(signed)).toEqual(NEVER);
+      const ONCE = { code: CHECK, constraint: 'encounter_notes_first_signed_at_once' };
+      for (const firstSignedAt of [new Date('2026-01-01T00:00:00Z'), null]) {
+        expect(
+          await refusal(
+            inTeam(async (tx) => {
+              await tx`select set_config('app.note_correction', ${signed}, true)`;
+              await tx`update sineobex.encounter_notes set first_signed_at = ${firstSignedAt} where id = ${signed}`;
+            }),
+          ),
+        ).toEqual(ONCE);
+      }
+      // A note finished but never signed may still be reopened by its author.
+      const waiting = await note(id, { status: 'completed', medical: true, empty: false });
+      expect(await reopen(waiting)).toBeNull();
+    });
+
     it('lets everything but the answers of a finished note change, and a draft change freely', async () => {
       const id = await encounter();
       const signed = await note(id, { status: 'signed', medical: true, empty: false });
@@ -740,6 +826,7 @@ describe('0018 on a database that already holds notes', () => {
         'encounter_notes_completed_by_with_at',
         'encounter_notes_signed_has_first_signed',
         'encounter_notes_signed_is_medical',
+        'encounter_notes_signed_never_reopened',
       ]),
     );
   });
