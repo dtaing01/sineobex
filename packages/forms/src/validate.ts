@@ -57,6 +57,14 @@ export function validate(definition: ResolvedNoteType, context: ValidateContext)
   return [...problems.values()];
 }
 
+/** Every path the validator's model stores at, and what is there: for the test that holds it to `pathsOf`. */
+export function modelPaths(definition: ResolvedNoteType): { path: string; holds: string }[] {
+  return [...modelOf(definition).leaves.values()].map((leaf) => ({
+    path: leaf.key,
+    holds: leaf.holds.type === 'codes' ? (leaf.holds.many ? 'codes, many' : 'codes, one') : leaf.holds.type,
+  }));
+}
+
 /** A fault at a place in the resolved definition, before it is traced to its file. */
 type Found = { at: string; rule: string; message: string };
 type Report = (at: string, rule: string, message: string) => void;
