@@ -10,8 +10,9 @@
  * Pure, and loaded by the API: nothing here may import a package.
  */
 import { locate, noteTypeFile, resolve } from './resolve.ts';
-import type { DefinitionFiles, FileProblem, Origin, ResolvedField, ResolvedNoteType } from './resolve.ts';
-import type { Option } from './types.ts';
+import type { DefinitionFiles, FileProblem, Origin, ResolvedNoteType } from './resolve.ts';
+import { pathsOf } from './paths.ts';
+import type { StoredPath } from './paths.ts';
 
 /**
  * An option reworded on purpose: at `path`, the option `code` had the label `from` and now has
@@ -26,34 +27,6 @@ export type Rename = { path: string; code: string; from: string; to: string };
  * has no key for one yet.
  */
 export type Renames = Readonly<Record<string, readonly Rename[]>>;
-
-/** What an answer at a path is. Two versions agree on a path when they say the same here. */
-export type Holds =
-  | 'one code'
-  | 'a list of codes'
-  | 'text'
-  | 'a number'
-  | 'a tick'
-  | 'a date'
-  | 'a time'
-  | 'a duration'
-  | 'a surface'
-  | 'a problem code'
-  | 'a problem label'
-  | 'the rows of a grid';
-
-/** One path of a definition (2.3), the entry's part of a repeating section left out. */
-export type StoredPath = {
-  path: string;
-  holds: Holds;
-  /** A number's unit: stored numbers are in it. */
-  unit?: string;
-  /** The codes that can be stored here, or that are the next part of a row's path. */
-  options?: Option[];
-  /** Where in the resolved definition the field is, and its options. */
-  at: string;
-  optionsAt?: string;
-};
 
 /**
  * Every version of every note type among the files against the versions before it. Empty when no
@@ -171,112 +144,3 @@ export function versionProblems(
 
 // A path cannot hold a space, so the two parts stay apart.
 const codeKey = (path: string, code: string): string => `${path} ${code}`;
-
-/**
- * Every path a note on this definition can store at, and what is stored there (2.3). The
- * validator works the same paths out to refuse the ones the server would not take; this list
- * assumes a definition that passed it.
- */
-export function pathsOf(definition: ResolvedNoteType): StoredPath[] {
-  const stored: StoredPath[] = [];
-  // The rows of such a grid are the options of a field elsewhere, so it waits for every other path.
-  const waiting: (() => void)[] = [];
-
-  const store = (field: ResolvedField, base: string[], at: string, sided: boolean, entry: string | null) => {
-    // Right and left are the last part of a path. A grid's sides are its cells'.
-    const sides = sided || field.sides === true;
-    const put = (parts: string[], holds: Holds, more: Partial<StoredPath> = {}) => {
-      for (const side of sides ? ['right', 'left'] : [])
-        stored.push({ path: [...parts, side].join('.'), holds, at, ...more });
-      if (!sides) stored.push({ path: parts.join('.'), holds, at, ...more });
-    };
-    const cells = (rows: string[], cell: ResolvedField) => {
-      for (const row of new Set(rows)) store(cell, [...base, row], `${at}.cell`, sides, entry);
-    };
-    switch (field.kind) {
-      case 'choice':
-        put(base, field.many ? 'a list of codes' : 'one code', {
-          options: field.options,
-          optionsAt: `${at}.options`,
-        });
-        // The text is stored beside the answer: at the same path, with `_other` added to its last part.
-        if (field.options.some((option) => option.other))
-          put([...base.slice(0, -1), `${base.at(-1)}_other`], 'text');
-        return;
-      case 'text':
-        return put(base, 'text');
-      case 'number':
-        return put(base, 'a number', field.unit === undefined ? {} : { unit: field.unit });
-      case 'flag':
-        return put(base, 'a tick');
-      case 'date':
-        return put(base, 'a date');
-      case 'time':
-        return put(base, 'a time');
-      case 'duration':
-        return put(base, 'a duration');
-      case 'group':
-        return field.fields.forEach((child, i) =>
-          store(child, [...base, child.id], `${at}.fields[${i}]`, sided, entry),
-        );
-      case 'grid': {
-        const { rows, cell } = field;
-        const path = base.join('.');
-        if (Array.isArray(rows)) {
-          // The row's code is the next part of the path, so its meaning is held like an option's.
-          stored.push({ path, holds: 'the rows of a grid', options: rows, optionsAt: `${at}.rows`, at });
-          return cells(
-            rows.map((row) => row.code),
-            cell,
-          );
-        }
-        waiting.push(() => {
-          // `./` starts from the entry of a repeating section (2.2).
-          const from = rows.pickedIn.startsWith('./') ? `${entry}.${rows.pickedIn.slice(2)}` : rows.pickedIn;
-          const picked = stored.find((s) => s.path === from);
-          // The labels of these rows are the picked field's, and are compared there.
-          stored.push({ path, holds: 'the rows of a grid', at });
-          cells(
-            (picked?.options ?? []).map((option) => option.code),
-            cell,
-          );
-        });
-        return;
-      }
-      case 'region':
-        // Never sided: a region has a side of its own.
-        stored.push({
-          path: [...base, 'region'].join('.'),
-          holds: 'one code',
-          options: field.options,
-          optionsAt: `${at}.options`,
-          at,
-        });
-        if (field.side)
-          stored.push({
-            path: [...base, 'side'].join('.'),
-            holds: 'one code',
-            options: field.side,
-            optionsAt: `${at}.side`,
-            at,
-          });
-        if (field.surface) stored.push({ path: [...base, 'surface'].join('.'), holds: 'a surface', at });
-        return;
-      case 'problem':
-        stored.push({ path: [...base, 'code'].join('.'), holds: 'a problem code', at });
-        stored.push({ path: [...base, 'label'].join('.'), holds: 'a problem label', at });
-        return;
-      default:
-      // A photo, an action and guidance store nothing.
-    }
-  };
-
-  definition.sections.forEach((section, s) =>
-    section.fields.forEach((field, f) =>
-      store(field, [section.id, field.id], `$.sections[${s}].fields[${f}]`, false, section.id),
-    ),
-  );
-  // Their own cells cannot hold another such grid (the validator refuses a grid in a grid).
-  for (const rows of waiting) rows();
-  return stored;
-}

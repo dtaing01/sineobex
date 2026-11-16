@@ -4,6 +4,7 @@
 export { canonicalJson, sha256Hex } from './canonical.ts';
 export * from './types.ts';
 export * from './resolve.ts';
+export * from './paths.ts';
 export * from './validate.ts';
 export * from './lock.ts';
 export * from './versions.ts';

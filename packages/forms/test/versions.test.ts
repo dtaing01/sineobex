@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from '../src/resolve.ts';
-import { checkVersions, pathsOf, type Rename } from '../src/versions.ts';
+import { pathsOf } from '../src/paths.ts';
+import { checkVersions, type Rename } from '../src/versions.ts';
 import { definitionFiles, type LooseFiles } from './fixtures/load.ts';
 
 // A path or an option code is never reused for another meaning in a later version of the same

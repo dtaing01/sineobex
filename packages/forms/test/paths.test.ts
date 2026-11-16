@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { resolve, type ResolvedNoteType } from '../src/resolve.ts';
-import { modelPaths } from '../src/validate.ts';
-import { pathsOf } from '../src/versions.ts';
+import { pathModel } from '../src/paths.ts';
+import { pathsOf } from '../src/paths.ts';
 import { definitionFiles } from './fixtures/load.ts';
 
-// The validator and the version rules each work out the paths a definition stores at (design 2.3).
-// They must agree path for path: one refuses what the server would not take, the other compares
-// what a path means from version to version.
+// The validator and the version rules read the paths a definition stores at (design 2.3) from one
+// model, src/paths.ts: one refuses what the server would not take, the other compares what a path
+// means from version to version. The list the version rules read is the model's, path for path.
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- a fixture is read as plain JSON */
 type Loose = any;
@@ -74,7 +74,13 @@ describe('the two lists of a definition’s paths', () => {
         // The version rules also hold a grid's rows, at the grid's own path, where no answer is.
         .filter((p) => p.holds !== 'the rows of a grid')
         .map((p) => line({ path: p.path, holds: HOLDS[p.holds]! }));
-      const forValidator = modelPaths(definition).map(line);
+      const forValidator = [...pathModel(definition).leaves.values()].map((leaf) =>
+        line({
+          path: leaf.key,
+          holds:
+            leaf.holds.type === 'codes' ? (leaf.holds.many ? 'codes, many' : 'codes, one') : leaf.holds.type,
+        }),
+      );
       expect(forValidator.length).toBeGreaterThan(1);
       expect(forVersions.sort()).toEqual(forValidator.sort());
     });
