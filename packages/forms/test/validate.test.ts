@@ -1321,27 +1321,62 @@ describe('a required field that can never be visible', () => {
     visit(f, 'lasting').showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
   });
 
-  describe('when there are too many cases to try', () => {
-    const many = (count: number) => (f: LooseFiles) => {
-      const all = [];
+  describe('however many answers its conditions hang on', () => {
+    const FILLED = (id: string) => ({ field: `visit.${id}`, filled: true });
+    const texts = (f: LooseFiles, ...ids: string[]) =>
+      ids.forEach((id) => checks(f).sections[0].fields.push(TEXT(id)));
+    /** Story shows when `pairs` times one of two texts is filled, and then on `last`. */
+    const pairs = (count: number, last: unknown[]) => (f: LooseFiles) => {
+      const all: unknown[] = [];
       for (let i = 0; i < count; i++) {
-        checks(f).sections[0].fields.push(TEXT(`t${i}`));
-        all.push({ field: `visit.t${i}`, filled: true });
+        texts(f, `a${i}`, `b${i}`);
+        all.push({ any: [FILLED(`a${i}`), FILLED(`b${i}`)] });
       }
-      story(f).showWhen = { all };
+      texts(f, 'last');
+      story(f).showWhen = { all: [...all, ...last] };
     };
-    fits('seventeen answers a condition hangs on are tried', many(17));
-    // Nothing is passed unchecked: what cannot be tried is refused.
-    broken('eighteen are refused', many(18), [
-      CHECKS,
-      `${V('story')}.required`,
-      rule('visibility_too_complex'),
-    ]);
+    const NEVER_LAST = [FILLED('last'), { not: FILLED('last') }];
+
+    fits('forty answers that must all be there', (f) => {
+      const ids = Array.from({ length: 40 }, (_, i) => `t${i}`);
+      texts(f, ...ids);
+      story(f).showWhen = { all: ids.map(FILLED) };
+    });
+    // Each field shows when the one before it is answered: thirty deep, and still one line of cases.
+    fits('a chain of thirty follow-ups', (f) => {
+      const ids = Array.from({ length: 30 }, (_, i) => `t${i}`);
+      texts(f, ...ids);
+      const added = checks(f).sections[0].fields.slice(-30);
+      added.forEach((field: Loose, i: number) => i > 0 && (field.showWhen = FILLED(ids[i - 1]!)));
+      story(f).showWhen = FILLED(ids[29]!);
+    });
+    broken(
+      'a chain of thirty follow-ups that ends on a field which cannot show',
+      (f) => {
+        const ids = Array.from({ length: 30 }, (_, i) => `t${i}`);
+        texts(f, ...ids);
+        const added = checks(f).sections[0].fields.slice(-30);
+        added.forEach((field: Loose, i: number) => i > 0 && (field.showWhen = FILLED(ids[i - 1]!)));
+        added[0].showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
+        story(f).showWhen = FILLED(ids[29]!);
+      },
+      STORY,
+    );
     fits('a condition on any of forty options is one case, not two to the fortieth', (f) => {
       const options = Array.from({ length: 40 }, (_, i) => ({ code: `c${i}`, label: `C ${i}` }));
       checks(f).sections[0].fields.push({ id: 'big', kind: 'choice', many: true, label: 'Big', options });
       story(f).showWhen = { field: 'visit.big', is: options.map((o) => o.code) };
     });
+
+    // Ten either-ors and then a contradiction: every way through the either-ors is tried, and none shows it.
+    broken('a tangle that can be tried to the end', pairs(10, NEVER_LAST), STORY);
+    fits('the same tangle without the contradiction', pairs(10, [FILLED('last')]));
+    // Nothing is passed unchecked: what cannot be tried to the end is refused.
+    broken('a tangle too large to try', pairs(18, NEVER_LAST), [
+      CHECKS,
+      `${V('story')}.required`,
+      rule('visibility_too_complex'),
+    ]);
   });
 });
 

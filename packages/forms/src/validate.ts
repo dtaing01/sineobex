@@ -830,8 +830,11 @@ function sitesOf(node: Node): Site[] {
   return [...new Set(node.grid.rows)].map((row) => ({ node, row }));
 }
 
-/** More cases than this are not tried. Seventeen yes-or-no answers fit; a form does not come near. */
-const MAX_CASES = 200_000;
+/**
+ * More tries than this are not made. A form's conditions take a handful: the search only asks for an
+ * answer when a condition needs it, so it is the tangled cases that grow, not the long ones.
+ */
+const MAX_TRIES = 20_000;
 
 function checkVisibility(model: Model, report: Report) {
   const visibility = new Visibility(model);
@@ -858,7 +861,7 @@ function checkVisibility(model: Model, report: Report) {
       report(
         `${node.at}.required`,
         'visibility_too_complex',
-        `its conditions hang on more answers than can be tried (${MAX_CASES} cases), so nothing shows that it can ever be visible`,
+        `its conditions are too tangled to try every case (${MAX_TRIES} tries), so nothing shows that it can ever be visible`,
       );
     else
       report(
@@ -872,9 +875,13 @@ function checkVisibility(model: Model, report: Report) {
 /** What an answer is, as far as any condition can tell. */
 type State = { filled: boolean; picked: Set<string> };
 
+/** A condition under the answers tried so far: it holds, it does not, or it first needs this answer. */
+type Verdict = boolean | Leaf;
+
 /**
- * Whether some set of answers shows the site. Every answer its showing hangs on, directly or
- * through another field's showing, is tried in every state a condition can tell apart.
+ * Whether some set of answers shows the site. An answer is tried, in every state a condition can
+ * tell apart, only once a condition needs it: one that is already decided without it is not
+ * multiplied by it. So the search is complete, and a long chain of follow-ups stays short.
  */
 function canShow(
   visibility: Visibility,
@@ -885,62 +892,82 @@ function canShow(
   // A cycle has no answer to work out. It is reported as a cycle.
   if (involved.some((s) => cyclic.has(siteKey(s)))) return 'unknown';
 
-  // The answers read, and for each the code lists it is asked for.
-  const asked = new Map<string, { leaf: Leaf; lists: string[][] }>();
-  const ask = (leaf: Leaf, is: string[] | null) => {
-    const entry = asked.get(leaf.key) ?? { leaf, lists: [] };
-    asked.set(leaf.key, entry);
-    if (is) entry.lists.push(is);
-  };
-  for (const s of involved) {
-    const rules = visibility.rulesOf(s);
-    rules.clearedBy.forEach((leaf) => ask(leaf, null));
-    for (const formula of rules.shows) leavesIn(formula, (test) => ask(test.leaf, test.is));
-  }
-  if (asked.size === 0) return 'yes';
-
-  const variables: { key: string; states: State[] }[] = [];
-  let cases = 1;
-  for (const { leaf, lists } of asked.values()) {
-    const states = statesOf(leaf, lists);
-    cases *= states?.length ?? Infinity;
-    if (!states || cases > MAX_CASES) return 'too_many';
-    variables.push({ key: leaf.key, states });
-  }
+  // For each answer read, the code lists it is asked for: they decide which states can be told apart.
+  const asked = new Map<string, string[][]>();
+  for (const s of involved)
+    for (const formula of visibility.rulesOf(s).shows)
+      leavesIn(formula, (test) => {
+        const lists = asked.get(test.leaf.key) ?? [];
+        asked.set(test.leaf.key, lists);
+        if (test.is) lists.push(test.is);
+      });
 
   const answers = new Map<string, State>();
   const counts = new Map<string, boolean>();
-  const countsAt = (leaf: Leaf): boolean => {
-    const at = siteOf(leaf);
-    const key = siteKey(at);
-    let known = counts.get(key);
-    if (known === undefined) {
-      const rules = visibility.rulesOf(at);
-      known =
-        rules.shows.every(holds) &&
-        !rules.clearedBy.some((flag) => countsAt(flag) && answers.get(flag.key)!.filled);
-      counts.set(key, known);
+  const allOf = <T>(parts: T[], verdict: (part: T) => Verdict): Verdict => {
+    for (const part of parts) {
+      const v = verdict(part);
+      if (v !== true) return v;
     }
-    return known;
+    return true;
   };
-  const holds = (formula: Formula): boolean => {
-    if ('all' in formula) return formula.all.every(holds);
-    if ('any' in formula) return formula.any.some(holds);
-    if ('not' in formula) return !holds(formula.not);
-    if (!countsAt(formula.leaf)) return false;
-    const answer = answers.get(formula.leaf.key)!;
-    return formula.is ? formula.is.some((code) => answer.picked.has(code)) : answer.filled;
+  // An answer counts while its field shows and no flag that clears it is set and counts itself.
+  const countsAt = (leaf: Leaf): Verdict => {
+    const key = siteKey(siteOf(leaf));
+    const known = counts.get(key);
+    if (known !== undefined) return known;
+    const rules = visibility.rulesOf(siteOf(leaf));
+    const verdict = allOf<Formula | Leaf>([...rules.shows, ...rules.clearedBy], (part) => {
+      if (!('key' in part)) return holds(part);
+      const set = answered(part, (answer) => answer.filled);
+      return typeof set === 'boolean' ? !set : set;
+    });
+    if (typeof verdict === 'boolean') counts.set(key, verdict);
+    return verdict;
+  };
+  /** What a counting answer says; false when it does not count. */
+  const answered = (leaf: Leaf, says: (answer: State) => boolean): Verdict => {
+    const counting = countsAt(leaf);
+    if (counting !== true) return counting;
+    const answer = answers.get(leaf.key);
+    return answer ? says(answer) : leaf;
+  };
+  const holds = (formula: Formula): Verdict => {
+    if ('all' in formula) return allOf(formula.all, holds);
+    if ('any' in formula) {
+      for (const part of formula.any) {
+        const v = holds(part);
+        if (v !== false) return v;
+      }
+      return false;
+    }
+    if ('not' in formula) {
+      const v = holds(formula.not);
+      return typeof v === 'boolean' ? !v : v;
+    }
+    const { is } = formula;
+    return answered(formula.leaf, (answer) =>
+      is ? is.some((code) => answer.picked.has(code)) : answer.filled,
+    );
   };
 
-  const choice = variables.map(() => 0);
-  for (;;) {
-    variables.forEach((variable, i) => answers.set(variable.key, variable.states[choice[i]!]!));
+  let tries = 0;
+  const search = (): 'yes' | 'no' | 'too_many' => {
+    if (++tries > MAX_TRIES) return 'too_many';
     counts.clear();
-    if (visibility.rulesOf(site).shows.every(holds)) return 'yes';
-    let i = 0;
-    while (i < variables.length && ++choice[i]! === variables[i]!.states.length) choice[i++] = 0;
-    if (i === variables.length) return 'no';
-  }
+    const verdict = allOf(visibility.rulesOf(site).shows, holds);
+    if (typeof verdict === 'boolean') return verdict ? 'yes' : 'no';
+    const states = statesOf(verdict, asked.get(verdict.key) ?? []);
+    if (!states) return 'too_many';
+    for (const state of states) {
+      answers.set(verdict.key, state);
+      const found = search();
+      if (found !== 'no') return found;
+    }
+    answers.delete(verdict.key);
+    return 'no';
+  };
+  return search();
 }
 
 /**
@@ -969,7 +996,7 @@ function statesOf(leaf: Leaf, lists: string[][]): State[] | null {
   // The fuller states first: most conditions ask for something to be there.
   const states: State[] = [];
   if (!many) for (const code of codes) states.push({ filled: true, picked: new Set([code]) });
-  else if (2 ** codes.length > MAX_CASES) return null;
+  else if (2 ** codes.length > MAX_TRIES) return null;
   else
     for (let set = (1 << codes.length) - 1; set > 0; set--) {
       const picked = codes.filter((_, i) => set & (1 << i));
