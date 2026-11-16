@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from '../src/resolve.ts';
 import { pathsOf } from '../src/paths.ts';
-import { checkVersions, type Rename } from '../src/versions.ts';
+import type { Rename } from '../src/types.ts';
+import { checkVersions } from '../src/versions.ts';
 import { definitionFiles, type LooseFiles } from './fixtures/load.ts';
 
 // A path or an option code is never reused for another meaning in a later version of the same
@@ -17,8 +18,10 @@ type Loose = any;
 type Expected = [file: string, path: string, rule: string];
 const sorted = (found: Expected[]) => found.map((p) => p.join('  ')).sort();
 
+/** The problems of the files, with `renames` written into the version files they are keyed by. */
 function found(files: LooseFiles, renames: Record<string, Rename[]> = {}): string[] {
-  const problems = checkVersions(files, renames);
+  for (const [file, declared] of Object.entries(renames)) files.noteTypes[file].renames = declared;
+  const problems = checkVersions(files);
   for (const p of problems) expect(p.message.length, p.rule).toBeGreaterThan(10);
   return sorted(problems.map((p): Expected => [p.file, p.path, p.rule]));
 }
@@ -118,6 +121,7 @@ describe('the versions of a note type', () => {
     file.title = 'Checks, second';
     file.sections[0].title = 'The visit';
     visit(file, 'story').label = 'Tell the story';
+    file.renames = [{ path: 'visit.story', from: 'What happened?', to: 'Tell the story' }];
     visit(file, 'story').maxLength = 500;
     visit(file, 'pressure').fields[0].max = 250;
     visit(file, 'onset').range = 'any';
@@ -206,7 +210,7 @@ describe('a path is never reused for another kind of answer', () => {
   );
   refused(
     'the cell of a grid, reported once and not once for each row',
-    (file) => (status(file, 'reflexes').cell = { id: 'grade', kind: 'flag', label: 'Present' }),
+    (file) => (status(file, 'reflexes').cell = { id: 'grade', kind: 'flag', label: 'Grade' }),
     [V2, `${at(3, 'reflexes')}.cell`, 'versions.kind_changed'],
   );
   refused(
@@ -275,7 +279,7 @@ describe('a path is never reused for another kind of answer', () => {
     const files = definitionFiles();
     const exam = structuredClone(files.modules['modules/demo_exam/v1.json']);
     exam.version = 3;
-    exam.sections[0].fields[1] = { id: 'notes', kind: 'flag', label: 'Seen' };
+    exam.sections[0].fields[1] = { id: 'notes', kind: 'flag', label: 'Notes' };
     files.modules['modules/demo_exam/v3.json'] = exam;
     next(files, 2, (file) => (file.sections[1].version = 3));
     expect(found(files)).toEqual(
@@ -361,11 +365,20 @@ describe('an option code is never reused for another meaning', () => {
     );
   });
 
-  it('a rename declared for a file that is no version of a note type is refused', () => {
+  it('a rename in a version that does not resolve is not read: the resolver says why the version fails', () => {
     const files = definitionFiles();
-    expect(found(files, { 'note-types/checks_demo/v7.json': [rename] })).toEqual(
-      sorted([['note-types/checks_demo/v7.json', '$.renames[0]', 'versions.rename_unused']]),
-    );
+    next(files, 2, (file) => (file.sections[1].include = 'no_such_module'));
+    expect(found(files, { [V2]: [rename] })).toEqual([]);
+  });
+
+  it('is read from the version’s own file, and left out of the resolved definition', () => {
+    const files = definitionFiles();
+    next(files, 2, reworded);
+    files.noteTypes[V2].renames = [rename];
+    expect(found(files)).toEqual([]);
+    const result = resolve(V2, files);
+    if (!result.ok) throw new Error('the fixture does not resolve');
+    expect('renames' in result.definition).toBe(false);
   });
 
   it('a code that was dropped in one version and comes back with another label in the next', () => {
@@ -473,6 +486,67 @@ describe('an option code is never reused for another meaning', () => {
       findings(file, 'where').side = 'side';
     },
   );
+});
+
+describe('a field’s own label is never reused for another meaning', () => {
+  const STORY = at(0, 'story');
+  refused(
+    'a text whose label says another thing at the same path',
+    (file) => {
+      visit(file, 'story').label = 'What medications?';
+    },
+    [V2, `${STORY}.label`, 'versions.label_changed'],
+  );
+  it('unless the version declares the rename, with no code', () => {
+    const files = definitionFiles();
+    next(files, 2, (file) => (visit(file, 'story').label = 'Tell the story'));
+    expect(
+      found(files, { [V2]: [{ path: 'visit.story', from: 'What happened?', to: 'Tell the story' }] }),
+    ).toEqual([]);
+  });
+  it('a rename with a code does not cover the field’s own label', () => {
+    const files = definitionFiles();
+    next(files, 2, (file) => (visit(file, 'story').label = 'Tell the story'));
+    expect(
+      found(files, {
+        [V2]: [{ path: 'visit.story', code: 'x', from: 'What happened?', to: 'Tell the story' }],
+      }),
+    ).toEqual(
+      sorted([
+        [V2, `${STORY}.label`, 'versions.label_changed'],
+        [V2, '$.renames[0]', 'versions.rename_unused'],
+      ]),
+    );
+  });
+  refused('a sided field, reported once for both sides', (file) => (visit(file, 'length').label = 'Width'), [
+    V2,
+    `${at(0, 'length')}.label`,
+    'versions.label_changed',
+  ]);
+  it('a sided field’s rename names its own path, without a side', () => {
+    const files = definitionFiles();
+    const before = visit(files.noteTypes[V1], 'length').label;
+    next(files, 2, (file) => (visit(file, 'length').label = 'Width'));
+    expect(found(files, { [V2]: [{ path: 'visit.length', from: before, to: 'Width' }] })).toEqual([]);
+  });
+  refused('a region, named at its own path', (file) => (findings(file, 'where').label = 'Elsewhere'), [
+    V2,
+    `${at(2, 'where')}.label`,
+    'versions.label_changed',
+  ]);
+  refused('a grid', (file) => (status(file, 'reflexes').label = 'Pulses'), [
+    V2,
+    `${at(3, 'reflexes')}.label`,
+    'versions.label_changed',
+  ]);
+  allowed('a section’s title and a group’s label, which store nothing', (file) => {
+    file.sections[0].title = 'Another visit';
+    visit(file, 'pressure').label = 'Pressure, sitting';
+  });
+  allowed('the label of a field at a new path', (file) => {
+    visit(file, 'story').id = 'account';
+    visit(file, 'account').label = 'An account';
+  });
 });
 
 describe('a version that cannot be checked', () => {

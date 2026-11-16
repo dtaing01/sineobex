@@ -64,7 +64,8 @@ export type ResolvedField =
   | ResolvedGridField
   | Exclude<Field, ChoiceField | RegionField | GroupField | GridField>;
 export type ResolvedSection = Omit<Section, 'fields'> & { fields: ResolvedField[] };
-export type ResolvedNoteType = Omit<NoteType, 'sections'> & { sections: ResolvedSection[] };
+/** Without `renames`: what a version rewords is checked between files, and is no part of its hash. */
+export type ResolvedNoteType = Omit<NoteType, 'sections' | 'renames'> & { sections: ResolvedSection[] };
 
 /**
  * Where a part of the resolved definition was written: `at` is a place in the resolved definition,
@@ -179,7 +180,8 @@ class Run {
         sections.push(section);
       });
     });
-    return { ...noteType, sections };
+    const { renames: _renames, ...header } = noteType;
+    return { ...header, sections };
   }
 
   /**

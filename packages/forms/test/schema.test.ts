@@ -296,6 +296,53 @@ broken('a key the format does not have', (f) => (f.sensitive = true), ['$.sensit
 broken('no sections', (f) => (f.sections = []), ['$.sections', LIMIT]);
 broken('sections that are not a list', (f) => (f.sections = {}), ['$.sections', WRONG_TYPE]);
 
+// The renames a version declares (2.6).
+const RENAME = { path: 'naloxone.offer', code: 'accepted', from: 'Took it', to: 'Accepted' };
+fits('a rename of an option', (f) => (f.renames = [RENAME]));
+fits(
+  'a rename of a field’s own label, without a code',
+  (f) => (f.renames = [{ path: 'naloxone.offer', from: 'Offer', to: 'Offered' }]),
+);
+broken('renames that are not a list', (f) => (f.renames = RENAME), ['$.renames', WRONG_TYPE]);
+broken('an empty list of renames', (f) => (f.renames = []), ['$.renames', LIMIT]);
+broken('a rename that is not an object', (f) => (f.renames = ['offer']), ['$.renames[0]', WRONG_TYPE]);
+for (const key of ['path', 'from', 'to'])
+  broken(
+    `a rename without ${key}`,
+    (f) => {
+      const rename: any = { ...RENAME };
+      delete rename[key];
+      f.renames = [rename];
+    },
+    ['$.renames[0]', MISSING],
+  );
+broken('a rename with a key it does not have', (f) => (f.renames = [{ ...RENAME, why: 'clearer' }]), [
+  '$.renames[0].why',
+  UNKNOWN_KEY,
+]);
+broken('a rename whose path starts from an entry', (f) => (f.renames = [{ ...RENAME, path: './offer' }]), [
+  '$.renames[0].path',
+  BAD_FORMAT,
+]);
+broken('a rename whose path is not a string', (f) => (f.renames = [{ ...RENAME, path: 3 }]), [
+  '$.renames[0].path',
+  WRONG_TYPE,
+]);
+broken('a rename to an empty label', (f) => (f.renames = [{ ...RENAME, to: '' }]), [
+  '$.renames[0].to',
+  LIMIT,
+]);
+broken('a rename of a code that is no code', (f) => (f.renames = [{ ...RENAME, code: 'Took' }]), [
+  '$.renames[0].code',
+  BAD_FORMAT,
+]);
+brokenFile(
+  'a module with renames, which only a note type declares',
+  'module',
+  (f) => (f.renames = [RENAME]),
+  ['$.renames', UNKNOWN_KEY],
+);
+
 // Sections and includes.
 broken('a section that is not an object', (f) => (f.sections[0] = 'naloxone'), [S, WRONG_TYPE]);
 for (const key of ['id', 'title', 'fields'])
@@ -1029,6 +1076,7 @@ describe('the types and the schema', () => {
     Option: 'option',
     ListRef: 'listRef',
     Condition: 'condition',
+    Rename: 'rename',
     ...Object.fromEntries(kinds.map((kind) => [capital(kind), `${kind}Field`])),
   };
   // Field is the union of the kinds and FieldKind its tag: both are compared by kind, below.

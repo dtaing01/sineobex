@@ -76,6 +76,11 @@ export type Leaf = {
   holds: Holds;
   /** Where the options of a code answer are written, in the resolved definition. */
   optionsAt: string | null;
+  /**
+   * The path of the field whose label says what this answer is: without a side, and without a
+   * region's or a problem's own part. Null for the text of an Other option, which the option names.
+   */
+  fieldPath: string | null;
 };
 
 export type PathModel = {
@@ -233,7 +238,8 @@ function storePaths(
   // Right and left are the last part of a path. A grid's sides are its cells'.
   const sides = sided || field.sides === true;
   const store = (parts: string[], holds: Holds) => {
-    if (sides) for (const side of SIDES) storeLeaf(model, node, [...parts, side], row, holds);
+    if (sides)
+      for (const side of SIDES) storeLeaf(model, node, [...parts, side], row, holds, undefined, true);
     else storeLeaf(model, node, parts, row, holds);
   };
   switch (field.kind) {
@@ -332,9 +338,15 @@ function storeLeaf(
   row: string | null,
   holds: Holds,
   optionsAt: string | null = holds.type === 'codes' ? `${node.at}.options` : null,
+  sided = false,
 ) {
   const key = parts.join('.');
-  const leaf: Leaf = { key, parts, node, row, holds, optionsAt };
+  // The field's own path: a side, a region's and a problem's own parts left out. The text of an
+  // Other option is the option's, not the field's.
+  const own =
+    sided || node.field.kind === 'region' || node.field.kind === 'problem' ? parts.slice(0, -1) : parts;
+  const fieldPath = holds === OTHER_TEXT ? null : own.join('.');
+  const leaf: Leaf = { key, parts, node, row, holds, optionsAt, fieldPath };
   for (let above: FieldNode | null = node; above; above = above.parent) above.leaves.push(leaf);
   // As a note would hold it: an entry's id is the second part of every path of a repeating section.
   const repeats = node.section.section.repeat !== undefined;
@@ -442,6 +454,8 @@ export type StoredPath = {
   /** Where in the resolved definition the field is, and its options. */
   at: string;
   optionsAt?: string;
+  /** The field's own path and label, which say what the answer is (`Leaf.fieldPath`). */
+  field?: { path: string; label: string };
 };
 
 const SAYS: Record<Exclude<Holds['type'], 'codes'>, PathHolds> = {
@@ -471,6 +485,7 @@ export function pathsOf(definition: ResolvedNoteType): StoredPath[] {
       const { rows } = grid.field as Extract<ResolvedField, { kind: 'grid' }>;
       const path = grid.base!.join('.');
       // The labels of picked rows are the picked field's, and are compared there.
+      const field = { path, label: grid.field.label };
       if (Array.isArray(rows))
         stored.push({
           path,
@@ -478,11 +493,14 @@ export function pathsOf(definition: ResolvedNoteType): StoredPath[] {
           options: rows,
           optionsAt: `${grid.at}.rows`,
           at: grid.at,
+          field,
         });
-      else stored.push({ path, holds: 'the rows of a grid', at: grid.at });
+      else stored.push({ path, holds: 'the rows of a grid', at: grid.at, field });
     }
     const { holds } = leaf;
     const at = leaf.node.at;
+    const field =
+      leaf.fieldPath === null ? {} : { field: { path: leaf.fieldPath, label: leaf.node.field.label } };
     if (holds.type === 'codes')
       stored.push({
         path: leaf.key,
@@ -490,12 +508,14 @@ export function pathsOf(definition: ResolvedNoteType): StoredPath[] {
         options: holds.options,
         optionsAt: leaf.optionsAt!,
         at,
+        ...field,
       });
     else
       stored.push({
         path: leaf.key,
         holds: SAYS[holds.type],
         at,
+        ...field,
         ...(holds.type === 'number' && holds.unit !== undefined ? { unit: holds.unit } : {}),
       });
   }

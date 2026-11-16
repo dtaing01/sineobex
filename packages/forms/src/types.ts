@@ -36,7 +36,18 @@ export type NoteType = {
   /** Added by itself with the first Medical note of an encounter (6.2). */
   auto?: 'medical';
   sections: (Section | Include)[];
+  /** The labels this version rewords on purpose (2.6). Not part of the resolved definition. */
+  renames?: Rename[];
 };
+
+/**
+ * A label reworded on purpose, declared in the version that rewords it (2.6). `path` is an answer
+ * path of this version, the entry's part of a repeating section left out; `code` is an option code
+ * there, or left out when the entry declares a change of the field's own label. For a row of a grid
+ * `path` is the grid's own path; for a field or an option in a cell, the path of each row. A field's
+ * own label is named at its own path: without a side, and without a region's or a problem's part.
+ */
+export type Rename = { path: string; code?: string; from: string; to: string };
 
 /**
  * definitions/modules/<name>/v<N>.json: a block of sections a note type includes. The design names

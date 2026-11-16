@@ -208,5 +208,9 @@
     },
     { "include": "demo_module", "version": 1 },
     { "include": "demo_module_two", "version": 2, "showWhen": { "field": "basics.systems", "is": "private" } }
+  ],
+  "renames": [
+    { "path": "basics.systems", "code": "eyes", "from": "Eye", "to": "Eyes" },
+    { "path": "basics.systems", "from": "Systems seen", "to": "Systems" }
   ]
 }

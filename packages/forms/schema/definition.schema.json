@@ -54,7 +54,8 @@
             "then": { "$ref": "#/$defs/include" },
             "else": { "$ref": "#/$defs/section" }
           }
-        }
+        },
+        "renames": { "type": "array", "items": { "$ref": "#/$defs/rename" }, "minItems": 1 }
       },
       "required": ["key", "version", "title", "kinds", "group", "sensitivity", "sections"],
       "additionalProperties": false
@@ -73,6 +74,20 @@
       "type": "object",
       "properties": { "name": { "$ref": "#/$defs/key" }, "options": { "$ref": "#/$defs/optionArray" } },
       "required": ["name", "options"],
+      "additionalProperties": false
+    },
+    "rename": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9_]{0,60}(\\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$"
+        },
+        "code": { "$ref": "#/$defs/code" },
+        "from": { "$ref": "#/$defs/text" },
+        "to": { "$ref": "#/$defs/text" }
+      },
+      "required": ["path", "from", "to"],
       "additionalProperties": false
     },
     "include": {
