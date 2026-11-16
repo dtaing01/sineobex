@@ -85,7 +85,7 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
       - name: Unit tests (packages without a database)
-        run: pnpm --filter @sineobex/contract --filter @sineobex/tools --filter @sineobex/portal test
+        run: pnpm --filter @sineobex/contract --filter @sineobex/tools --filter @sineobex/forms --filter @sineobex/portal test
 
   database:
     name: Migrations and API tests (Postgres ${{ matrix.postgres }})

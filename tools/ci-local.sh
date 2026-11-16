@@ -12,7 +12,7 @@ step "Secret scan";              gitleaks git --redact --exit-code 1 . >/dev/nul
 step "PHI guard";                node tools/phi-guard.mjs
 step "Task card check";         node tools/card-check.mjs
 step "Lint, format, types";      pnpm -s lint && pnpm -s format:check && pnpm -s typecheck >/dev/null
-step "Unit tests";               pnpm -s --filter @sineobex/contract --filter @sineobex/tools --filter @sineobex/portal test
+step "Unit tests";               pnpm -s --filter @sineobex/contract --filter @sineobex/tools --filter @sineobex/forms --filter @sineobex/portal test
 step "Migrations on scratch DB"
 psql "$ADMIN_URL" -qc 'drop database if exists ci_scratch with (force)' -c 'create database ci_scratch'
 SCRATCH="${ADMIN_URL%/*}/ci_scratch"
