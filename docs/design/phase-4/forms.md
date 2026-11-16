@@ -237,6 +237,7 @@ needs one.
   "version": 1,
   "title": "Harm reduction (example)",
   "kinds": ["medical"],
+  "group": "harm_reduction",
   "sensitivity": "sensitive",
   "sections": [
     {

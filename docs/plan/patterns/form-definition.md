@@ -32,8 +32,8 @@ the Decisions table, the definition, the diff file and the shape file. Read it o
 1. **The piece's lines** are in `packages/forms/definitions/spec/<piece>.txt`, which the card
    names. That file is never edited.
 2. **Create the definition file** at the path the card gives, with the header the card gives
-   (`key`, `version`, `title`, `kinds`, `sensitivity` for a note type; `name`, `version` for a
-   module).
+   (`key`, `version`, `title`, `kinds`, `group`, `sensitivity` for a note type; `name`, `version`
+   for a module).
 3. **Add one section for each row of the card's Sections table**, in order, with the `id` and
    `title` given, and `"spec": "<piece>"`.
 4. **Add one field for each row of the Decisions table**, in order. Use this table:

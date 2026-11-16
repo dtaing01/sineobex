@@ -38,20 +38,28 @@ const BAD_CONDITION = 'schema.bad_condition';
 // The example of design 2.5, character for character.
 const designExample = fixture('design-example');
 
-/** The 2.5 example made valid: a fresh copy each time, for one change. */
-const example = (): any => ({ ...structuredClone(designExample), group: 'harm_reduction' });
+/** The 2.5 example: a fresh copy each time, for one change. */
+const example = (): any => structuredClone(designExample);
 
 describe('the example of design 2.5', () => {
-  // The example predates the timeline group, which 2.2 requires of every note type and the chart
-  // reads for every note (lifecycle 5.2). As written it lacks only that.
-  it('as written, lacks only its timeline group', () => {
-    const problems = checkFile('noteType', designExample);
-    expect(problems.map((p) => [p.path, p.rule])).toEqual([['$', MISSING]]);
-    expect(problems[0]!.message).toContain('"group"');
+  it('is the fixture, character for character', () => {
+    const design = readFileSync(new URL('../../../docs/design/phase-4/forms.md', import.meta.url), 'utf8');
+    const block = /### 2\.5 [^\n]*\n\n```json\n([\s\S]*?)```/.exec(design);
+    expect(block?.[1]).toBe(readFileSync(new URL('./fixtures/design-example.json', import.meta.url), 'utf8'));
   });
 
-  it('passes with a group', () => {
-    expect(checkFile('noteType', example())).toEqual([]);
+  it('passes as written', () => {
+    expect(checkFile('noteType', designExample)).toEqual([]);
+  });
+
+  // 2.2 requires the timeline group of every note type, and the chart reads it for every note
+  // (lifecycle 5.2). The example was once written without one.
+  it('does not pass without its timeline group', () => {
+    const file = example();
+    delete file.group;
+    const problems = checkFile('noteType', file);
+    expect(problems.map((p) => [p.path, p.rule])).toEqual([['$', MISSING]]);
+    expect(problems[0]!.message).toContain('"group"');
   });
 });
 
@@ -101,8 +109,9 @@ describe('files that fit', () => {
     const whole = new Ajv2020({ strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
     for (const file of [example(), everyKind, fixture('module'), fixture('list')])
       expect(whole(file)).toBe(true);
+    const { group: _group, ...withoutGroup } = example();
     for (const broken of [
-      designExample,
+      withoutGroup,
       [],
       { ...fixture('module'), version: 0 },
       { ...fixture('list'), options: [] },
