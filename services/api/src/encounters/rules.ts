@@ -42,6 +42,8 @@ export function signoffEffect(i: {
   if (!i.finishOk) return { refuse: 'incomplete' };
   if (i.medicalNote && !i.redFlagsDone) return { refuse: 'red_flags_first' };
   // A Non-Medical note is never signed (lifecycle 3.1), so `sign` on one is a `complete`.
+  // PLAN-OPEN: is a Social needs or Outreach note inside a Medical visit signed and attested
+  // (lifecycle 12.1 #19)? No.
   if (!i.medicalNote || i.act === 'complete') {
     return { effect: 'completed', statusAfter: 'completed', attestationAfter: 'not_needed' };
   }
@@ -59,6 +61,9 @@ export function signoffEffect(i: {
 /**
  * What a `set` of a note's status to `draft` does (the table in lifecycle 4.4). Only a Medical
  * note that waits for a co-signer and was never signed goes back, and only for its acting author.
+ *
+ * PLAN-OPEN: can a co-signer send a note back to its author (lifecycle 12.1 #8)? No: only the
+ * author reopens it, while it was never signed.
  */
 export function reopenEffect(i: {
   noteStatus: NoteStatus;
@@ -100,7 +105,13 @@ export function correctionEffect(i: {
 export type CosignRefusal =
   'not_waiting' | 'is_author' | 'cannot_sign' | 'cannot_see_all' | 'content_changed';
 
-/** One note of an online co-sign (lifecycle 5.3). The refusals are checked in the order listed. */
+/**
+ * One note of an online co-sign (lifecycle 5.3). The refusals are checked in the order listed.
+ *
+ * PLAN-OPEN: may a resident, NP or PA co-sign a student's note, or only an attending (lifecycle
+ * 12.1 #6)? Any credential that signs; the note then waits for attestation if that credential
+ * needs it.
+ */
 export function cosignEffect(i: {
   noteStatus: NoteStatus;
   medicalNote: boolean;

@@ -13,10 +13,13 @@ import {
   reopenEffect,
   signoffEffect,
 } from '../src/encounters/rules.ts';
+import { CREDENTIALS } from '../src/auth/permissions.ts';
+import { signedUnder, TRUSTED_AHEAD_MS, type SignedUnderInput } from '../src/encounters/signed-under.ts';
+import { CLOCK_LIMIT_MS } from '../src/sync/push.ts';
 
 // The rules of a note's life are data (phase 4 design, lifecycle 3.12): the answers live in
-// packages/contract/test-vectors, and the phone's rules_test.dart reads the same file. This reader
-// holds no answer of its own.
+// packages/contract/test-vectors, and the phone's rules_test.dart reads the same lifecycle file.
+// This reader holds no answer of its own.
 
 interface Case {
   name: string;
@@ -95,5 +98,26 @@ describe('note lifecycle rules', () => {
 
   it('calls a note incomplete after 24 hours (PRD main 99)', () => {
     expect(INCOMPLETE_AFTER_HOURS).toBe(24);
+  });
+});
+
+describe('the credential a signature is recorded under', () => {
+  const cases = vector<{ cases: Case[] }>('signed-under.json').cases;
+  const answers = cases.map((c) => c.expected as ReturnType<typeof signedUnder>);
+
+  it('has cases for every credential, and for a time that is trusted and one that is not', () => {
+    expect(cases.length).toBeGreaterThan(20);
+    expect([...new Set(answers.map((a) => a.credential))].sort()).toEqual([...CREDENTIALS].sort());
+    expect(new Set(answers.map((a) => a.timeTrusted))).toEqual(new Set([true, false]));
+  });
+
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(signedUnder(c.input as SignedUnderInput)).toEqual(c.expected);
+    });
+  }
+
+  it('believes a time as far ahead of its receipt as a push lets a phone clock be', () => {
+    expect(TRUSTED_AHEAD_MS).toBe(CLOCK_LIMIT_MS);
   });
 });
