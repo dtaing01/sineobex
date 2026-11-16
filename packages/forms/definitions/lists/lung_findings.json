@@ -1,0 +1,12 @@
+{
+  "name": "lung_findings",
+  "options": [
+    { "code": "clear", "label": "Clear", "exclusive": true, "normal": true },
+    { "code": "diminished", "label": "Diminished" },
+    { "code": "crackles", "label": "Crackles" },
+    { "code": "wheezes", "label": "Wheezes" },
+    { "code": "rhonchi", "label": "Rhonchi" },
+    { "code": "stridor", "label": "Stridor" },
+    { "code": "bronchial", "label": "Bronchial" }
+  ]
+}

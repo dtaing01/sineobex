@@ -1,0 +1,9 @@
+{
+  "name": "special_test_result",
+  "options": [
+    { "code": "not_performed", "label": "Not performed", "normal": true },
+    { "code": "negative", "label": "Negative" },
+    { "code": "positive", "label": "Positive" },
+    { "code": "unable", "label": "Unable", "unable": true }
+  ]
+}

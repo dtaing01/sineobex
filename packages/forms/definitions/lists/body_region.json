@@ -1,0 +1,13 @@
+{
+  "name": "body_region",
+  "options": [
+    { "code": "head", "label": "Head" },
+    { "code": "upper_body", "label": "Upper Body" },
+    { "code": "abdomen", "label": "Abdomen" },
+    { "code": "back", "label": "Back" },
+    { "code": "arms", "label": "Arms" },
+    { "code": "legs", "label": "Legs" },
+    { "code": "lower_body", "label": "Lower Body" },
+    { "code": "hands", "label": "Hands" }
+  ]
+}

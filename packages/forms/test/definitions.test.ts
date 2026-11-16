@@ -1,8 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { readShape } from '../src/shape-check.ts';
+import { listFile } from '../src/resolve.ts';
+import { checkFile } from '../src/schema.ts';
+import { codeOf, readShape } from '../src/shape-check.ts';
 import { LEFT_OUT, readDiff, readPieces, specWords } from '../src/spec-check.ts';
+import { OPTION_CODE, type OptionList } from '../src/types.ts';
 
 // The files of packages/forms/definitions are well formed before any definition names them: each
 // piece of the field specification is read without a problem and is the inventories' range, and
@@ -99,5 +102,50 @@ describe('the shape and diff files', () => {
     const faults = (read: unknown) => (Array.isArray(read) ? read : []);
     if (diff !== undefined) expect(faults(readDiff(name, diff, specWords(text).lines))).toEqual([]);
     if (shape !== undefined) expect(faults(readShape(name, shape))).toEqual([]);
+  });
+});
+
+/**
+ * The shared lists (forms 4.4): those it names, Skin's side list, and the lists the inventories'
+ * section 5 call the same in each place they appear. A list has no shape file: a person reads its
+ * codes, order, flags and count against the lines, so only its form is held here.
+ */
+const LISTS = [
+  'body_region',
+  'capillary_refill',
+  'dressing',
+  'drainage_amount',
+  'lung_findings',
+  'needs',
+  'pulse_scale',
+  'range_of_motion',
+  'reflex_scale',
+  'side',
+  'side_rl',
+  'side_rlm',
+  'special_test_result',
+  'surface',
+  'wound_type',
+  'yes_no',
+  'yes_no_unknown',
+  'yes_no_unsure',
+];
+
+describe('the shared lists', () => {
+  it('are exactly the lists the definitions draw on', () => {
+    expect(filesIn('lists')).toEqual(LISTS.map((name) => `${name}.json`).sort());
+  });
+
+  it.each(LISTS)('%s passes the schema, is named as its file and codes each label by the rule', (name) => {
+    const list = JSON.parse(read(listFile(name))) as OptionList;
+    expect(checkFile('list', list)).toEqual([]);
+    expect(list.name).toBe(name);
+    const codes = list.options.map((option) => option.code);
+    const labels = list.options.map((option) => option.label);
+    expect(new Set(codes).size, 'a code twice').toBe(codes.length);
+    expect(new Set(labels).size, 'a label twice').toBe(labels.length);
+    // The recipe's rule, unless it makes no valid code ("1+"): then the list gives one.
+    for (const { code, label } of list.options)
+      if (OPTION_CODE.test(codeOf(label))) expect(code, label).toBe(codeOf(label));
   });
 });
