@@ -45,3 +45,16 @@ export async function addMember(
     returning id`;
   return row!.id;
 }
+
+/** What a refused statement names: its SQLSTATE and its constraint. Never its message. */
+export async function refusal(
+  run: PromiseLike<unknown>,
+): Promise<{ code?: string; constraint?: string } | null> {
+  try {
+    await run;
+  } catch (err) {
+    const e = err as { code?: string; constraint_name?: string };
+    return { code: e.code, constraint: e.constraint_name };
+  }
+  return null;
+}

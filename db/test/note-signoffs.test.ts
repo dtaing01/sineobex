@@ -6,21 +6,10 @@ import type { Sql, TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, MIGRATIONS_DIR } from '../src/migrate.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
-import { asApp, makeTeam, makeUser } from './helpers.ts';
+import { asApp, makeTeam, makeUser, refusal } from './helpers.ts';
 
 // 0019: sign-offs, addenda and corrections (phase 4 design, lifecycle 2.3). Three append-only
 // tables, and the tie between a signed note and the sign-off that signs it. Made-up people only.
-
-/** What a refused statement names: its SQLSTATE and its constraint. Never its message. */
-async function refusal(run: PromiseLike<unknown>): Promise<{ code?: string; constraint?: string } | null> {
-  try {
-    await run;
-  } catch (err) {
-    const e = err as { code?: string; constraint_name?: string };
-    return { code: e.code, constraint: e.constraint_name };
-  }
-  return null;
-}
 
 const CHECK = '23514';
 const FOREIGN_KEY = '23503';

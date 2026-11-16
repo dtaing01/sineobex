@@ -7,7 +7,7 @@ import type { TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, MIGRATIONS_DIR } from '../src/migrate.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
-import { asApp, makeTeam, makeUser } from './helpers.ts';
+import { asApp, makeTeam, makeUser, refusal } from './helpers.ts';
 
 // 0018: the life of a note and of its encounter (phase 4 design, lifecycle 2.2). The encounter's
 // status follows its notes, by trigger, and the answers the trigger must give are the shared
@@ -33,17 +33,6 @@ const vectors = JSON.parse(
     noteIsEmpty: Case<Record<string, unknown>, boolean>[];
   };
 };
-
-/** What a refused statement names: its SQLSTATE and its constraint. Never its message. */
-async function refusal(run: PromiseLike<unknown>): Promise<{ code?: string; constraint?: string } | null> {
-  try {
-    await run;
-  } catch (err) {
-    const e = err as { code?: string; constraint_name?: string };
-    return { code: e.code, constraint: e.constraint_name };
-  }
-  return null;
-}
 
 const CHECK = '23514';
 const ANSWERS = { plan: 'Demo: dressing changed' };
