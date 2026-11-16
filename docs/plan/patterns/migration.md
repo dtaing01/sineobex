@@ -51,7 +51,7 @@ example of adding columns, but most of its test is about filling in old rows, wh
 
 ## Steps
 
-1. Find the highest number in `db/migrations/` (`0016` at this commit). Your file is the next
+1. Find the highest number in `db/migrations/` (`0021` after phase 4). Your file is the next
    number, four digits, then `_short_name.sql`. Two files with one number make `loadMigrations`
    throw `Two migrations share version`.
 2. Start the file with a two-line comment (module, design section, why) and then:

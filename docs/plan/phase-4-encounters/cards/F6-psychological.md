@@ -9,7 +9,7 @@ of the field specification, and the export accepts it.
 
 ## Read first
 
-- `docs/plan/patterns/form-definition.md` lines 30-77: the steps, and what to write for each kind.
+- `docs/plan/patterns/form-definition.md` lines 30-112: the steps, and what to write for each kind.
 - `docs/plan/patterns/form-definition-example.md` lines 37-122: one piece worked through.
 - `packages/forms/definitions/spec/psychological.txt`, all of it (22 lines) (made by
   F6-spec-pieces): the buttons to copy.
@@ -86,5 +86,5 @@ npx prettier --write packages/forms/definitions
 - `git diff --stat`: the definition and generated files only. The piece's `.txt`, `.shape.json`
   and `.diff.json` are unchanged.
 - The export's `0 problems` means the spec check matched every option to the piece's lines and
-  the shape check matched every field to the shape file. Nothing else needs reading.
+  the shape check matched the header, each section, field and option code. Nothing else to read.
 - `flutter test test/forms/golden_test.dart test/features/forms/presets_smoke_test.dart` passes.
