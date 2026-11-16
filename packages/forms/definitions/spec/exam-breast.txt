@@ -1,0 +1,55 @@
+      12\. Breast
+
+      Hidden by default unless specifically selected.
+
+      A. Inspection
+
+      &#32;&#32;&#32;&#32;•   Symmetric
+
+      &#32;&#32;&#32;&#32;•   Asymmetric
+
+      &#32;&#32;&#32;&#32;•   Skin changes
+
+      &#32;&#32;&#32;&#32;•   Retraction
+
+      &#32;&#32;&#32;&#32;•   Dimpling
+
+      &#32;&#32;&#32;&#32;•   Erythema
+
+      &#32;&#32;&#32;&#32;•   Discharge
+
+      B. Palpation
+
+      Location: Breast clock / body map
+
+      Side
+
+      &#32;&#32;&#32;&#32;•   Right
+
+      &#32;&#32;&#32;&#32;•   Left
+
+      Finding
+
+      &#32;&#32;&#32;&#32;•   No mass
+
+      &#32;&#32;&#32;&#32;•   Mass
+
+      &#32;&#32;&#32;&#32;•   Tenderness
+
+      &#32;&#32;&#32;&#32;•   Nodule
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      If mass is present
+
+      &#32;&#32;&#32;&#32;•   Size: \_\_\_\_\_ cm
+
+      &#32;&#32;&#32;&#32;•   Location: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+      &#32;&#32;&#32;&#32;•   Mobile
+
+      &#32;&#32;&#32;&#32;•   Fixed
+
+      &#32;&#32;&#32;&#32;•   Tender
+
+      &#32;&#32;&#32;&#32;•   Non-tender

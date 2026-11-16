@@ -1,0 +1,65 @@
+      14\. Psychiatric / Behavioral Observation
+
+      A brief clinical observation section within General / Primary Care, without duplicating the full Mental Status Examination (MSE) in the Psych module.
+
+      A. Appearance / Behavior
+
+      &#32;&#32;&#32;&#32;•   Calm
+
+      &#32;&#32;&#32;&#32;•   Cooperative
+
+      &#32;&#32;&#32;&#32;•   Agitated
+
+      &#32;&#32;&#32;&#32;•   Guarded
+
+      &#32;&#32;&#32;&#32;•   Tearful
+
+      &#32;&#32;&#32;&#32;•   Withdrawn
+
+      &#32;&#32;&#32;&#32;•   Disorganized
+
+      B. Speech
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Rapid
+
+      &#32;&#32;&#32;&#32;•   Pressured
+
+      &#32;&#32;&#32;&#32;•   Slow
+
+      &#32;&#32;&#32;&#32;•   Slurred
+
+      C. Affect
+
+      &#32;&#32;&#32;&#32;•   Appropriate
+
+      &#32;&#32;&#32;&#32;•   Flat
+
+      &#32;&#32;&#32;&#32;•   Blunted
+
+      &#32;&#32;&#32;&#32;•   Anxious
+
+      &#32;&#32;&#32;&#32;•   Tearful
+
+      &#32;&#32;&#32;&#32;•   Irritable
+
+      D. Thought Process
+
+      &#32;&#32;&#32;&#32;•   Linear
+
+      &#32;&#32;&#32;&#32;•   Circumstantial
+
+      &#32;&#32;&#32;&#32;•   Tangential
+
+      &#32;&#32;&#32;&#32;•   Disorganized
+
+      E. Orientation
+
+      &#32;&#32;&#32;&#32;•   Person
+
+      &#32;&#32;&#32;&#32;•   Place
+
+      &#32;&#32;&#32;&#32;•   Time
+
+      &#32;&#32;&#32;&#32;•   Situation

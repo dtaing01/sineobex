@@ -1,0 +1,29 @@
+      C. Nose
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Congestion
+
+      &#32;&#32;&#32;&#32;•   Rhinorrhea
+
+      &#32;&#32;&#32;&#32;•   Epistaxis
+
+      &#32;&#32;&#32;&#32;•   Nasal tenderness
+
+      &#32;&#32;&#32;&#32;•   Swelling
+
+      &#32;&#32;&#32;&#32;•   Lesion
+
+      &#32;&#32;&#32;&#32;•   Septal abnormality
+
+      &#32;&#32;&#32;&#32;•   Purulent discharge
+
+      Sinuses
+
+      &#32;&#32;&#32;&#32;•   No tenderness
+
+      &#32;&#32;&#32;&#32;•   Frontal tenderness
+
+      &#32;&#32;&#32;&#32;•   Maxillary tenderness
+
+      &#32;&#32;&#32;&#32;•   Ethmoid tenderness

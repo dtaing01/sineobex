@@ -1,0 +1,24 @@
+1. General / Primary Care&#32;
+   1. Subsection 1
+      1. Reason for Encounter&#32;
+         1. Buttons: \[ New concern \] \[ Follow-up \] \[ Chronic care \] \[ Medication \] \[ General check-in \]  \[ Acute Care \]  \[ Other \]      
+         2. Text box titled Chief Concern&#32;
+   2. Subsection 2
+      1. History of Present Illness&#32;
+         1. Text box titled Chief Concern&#32;
+            1. Dictation (option in V2, not in MVP/V1)
+         2. Preventative Care
+            1. Vaccines
+               1. &#32;Buttons: \[ Flu \] \[ COVID \] \[ Tdap \] \[ Hep A \] \[ Hep B \] \[ Pneumococcal \] \[ HPV \] \[ Shingles \]
+            2. Status (for each vaccine)
+               1. Buttons: \[ Up-to-date \] \[ Given today \] \[ Offered \] \[ Declined \] \[ Due \] \[ Unknown \]
+            3. Screening
+               1. Buttons: \[ HIV \] \[ Hep C \] \[ STI \] \[ TB \] \[ Diabetes \] \[ BP \] \[ Cancer \] \[ Pregnancy \]
+            4. Action
+               1. &#91; Performed \] \[ Ordered \] \[ Referred \] \[ Education \]\[ Declined \]
+         3. Vitals
+            1. Text input boxes: BP | HR | SpO₂ | RR | TEMP | PAIN 
+               1. Button: \[+ ADD VITAL\] 
+            2. Focused Exam
+               1. Buttons: \[General\] \[HEENT\] \[CV\] \[Resp\] \[Abdomen\] \[Neuro\] \[MSK\] \[Skin\] \[GU\] \[Other\]
+               2. Button: \[ + ADD ANOTHER MODALITY \]

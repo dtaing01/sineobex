@@ -1,0 +1,22 @@
+4) Psychological&#32;
+   1. Subsection 1
+      1. Reason for Visit&#32;
+         1. Buttons: \[ Check-in \] \[ Anxiety \] \[ Depression \] \[ Psychosis \] \[ Sleep \] \[ Trauma \] \[ Substance Use \] \[ Crisis \] \[ Medication \] \[ Other \]    
+         2. Text box titled Current Concern&#32;
+            1. Dictation (option in V2, not in MVP/V1)
+   2. Subsection 2
+      1. SAFETY
+      2. SUICIDAL THOUGHTS
+         1. Buttons: \[ Denies \] \[ Passive \] \[ Active \] \[ Unable to assess \]
+      3. HOMICIDAL THOUGHTS
+         1. Buttons:  \[ Denies \] \[ Active \] \[ Unable to assess \]
+      4. &#32;IMMEDIATE SAFETY CONCERN
+         1. Buttons: \[ No \] \[ Yes \]       
+      5.  \[+ COMPLETE SAFETY ASSESSMENT\]
+      6. MENTAL STATUS EXAM
+         1. &#91;+ OPEN MSE\]
+   3. Subsection 3
+      1. INTERVENTION
+         1. Buttons: \[ Supportive counseling \] \[ Motivational interviewing \] \[ Grounding \] \[ Crisis intervention \] \[ Safety planning \] \[ Psychoeducation \] \[ Medication discussion \] \[ Warm handoff \] \[ Referral \]
+      2. OUTCOME
+         1. Buttons: \[ Patient engaged \] \[ Follow-up scheduled \] \[ Referral accepted \] \[ Declined \] \[ Crisis response \]

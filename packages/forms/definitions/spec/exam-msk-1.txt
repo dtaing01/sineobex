@@ -1,0 +1,83 @@
+      6\. Musculoskeletal (MSK)
+
+      Highly interactive section, particularly useful for common musculoskeletal complaints in street medicine.
+
+      A. Region Selector
+
+      Where are you examining?
+
+      &#32;&#32;&#32;&#32;•   Head / Neck
+
+      &#32;&#32;&#32;&#32;•   Shoulder
+
+      &#32;&#32;&#32;&#32;•   Elbow
+
+      &#32;&#32;&#32;&#32;•   Wrist / Hand
+
+      &#32;&#32;&#32;&#32;•   Back
+
+      &#32;&#32;&#32;&#32;•   Hip
+
+      &#32;&#32;&#32;&#32;•   Knee
+
+      &#32;&#32;&#32;&#32;•   Ankle / Foot
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      Once a region is selected, display the following fields.
+
+      B. Inspection
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Swelling
+
+      &#32;&#32;&#32;&#32;•   Erythema
+
+      &#32;&#32;&#32;&#32;•   Bruising
+
+      &#32;&#32;&#32;&#32;•   Deformity
+
+      &#32;&#32;&#32;&#32;•   Atrophy
+
+      &#32;&#32;&#32;&#32;•   Wound
+
+      &#32;&#32;&#32;&#32;•   Asymmetry
+
+      C. Palpation
+
+      &#32;&#32;&#32;&#32;•   No tenderness
+
+      &#32;&#32;&#32;&#32;•   Tenderness
+
+      &#32;&#32;&#32;&#32;•   Warmth
+
+      &#32;&#32;&#32;&#32;•   Crepitus
+
+      &#32;&#32;&#32;&#32;•   Mass
+
+      &#32;&#32;&#32;&#32;•   Effusion
+
+      Pain: \_\_\_\_\_ / 10
+
+      D. Range of Motion (ROM)
+
+      Active
+
+      &#32;&#32;&#32;&#32;•   Full
+
+      &#32;&#32;&#32;&#32;•   Limited
+
+      &#32;&#32;&#32;&#32;•   Painful
+
+      &#32;&#32;&#32;&#32;•   Unable
+
+      Passive
+
+      &#32;&#32;&#32;&#32;•   Full
+
+      &#32;&#32;&#32;&#32;•   Limited
+
+      &#32;&#32;&#32;&#32;•   Painful
+
+      &#32;&#32;&#32;&#32;•   Unable

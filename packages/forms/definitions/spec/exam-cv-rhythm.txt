@@ -1,0 +1,59 @@
+      3\. Cardiovascular
+
+      A. Rate / Rhythm
+
+      &#32;&#32;&#32;&#32;•   Regular
+
+      &#32;&#32;&#32;&#32;•   Irregular
+
+      &#32;&#32;&#32;&#32;•   Tachycardic
+
+      &#32;&#32;&#32;&#32;•   Bradycardic
+
+      B. Heart Sounds
+
+      &#32;&#32;&#32;&#32;•   Normal S1/S2
+
+      &#32;&#32;&#32;&#32;•   Murmur
+
+      &#32;&#32;&#32;&#32;•   Rub
+
+      &#32;&#32;&#32;&#32;•   Gallop
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      If Murmur Is Present:
+
+      Location
+
+      &#32;&#32;&#32;&#32;•   Aortic
+
+      &#32;&#32;&#32;&#32;•   Pulmonic
+
+      &#32;&#32;&#32;&#32;•   Tricuspid
+
+      &#32;&#32;&#32;&#32;•   Mitral
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      Character
+
+      &#32;&#32;&#32;&#32;•   Systolic
+
+      &#32;&#32;&#32;&#32;•   Diastolic
+
+      &#32;&#32;&#32;&#32;•   Continuous
+
+      Intensity: \_\_\_\_\_ / 6
+
+      Radiation
+
+      &#32;&#32;&#32;&#32;•   None
+
+      &#32;&#32;&#32;&#32;•   Carotids
+
+      &#32;&#32;&#32;&#32;•   Axilla
+
+      &#32;&#32;&#32;&#32;•   Back
+
+      &#32;&#32;&#32;&#32;•   Other

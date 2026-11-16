@@ -1,0 +1,29 @@
+3. Harm Reduction&#32;
+   1. Subsection 1
+      1. SUBSTANCE(S)
+         1. Buttons:  \[ Opioids \] \[ Fentanyl \] \[ Stimulants \] \[ Alcohol \] \[ Benzodiazepines \] \[ Cannabis \] \[ Tobacco \] \[ Other \]
+      2. LAST USE
+         1. Buttons:  \[ Today \] \[ Past week \] \[ Past month \] \[ Not currently \] \[ Unknown \]     
+      3. OVERDOSE HISTORY
+         1. Buttons: \[ Never \] \[ Previous overdose \] \[ Recent overdose \] \[ Unknown \]
+      4. RISK FACTORS
+         1. Buttons:  \[ Using alone \] \[ Mixing substances \] \[ Reduced tolerance \]\[ Fentanyl exposure \] \[ Other \]
+   2. Subsection 2
+      1. HARM REDUCTION PROVIDED
+         1. NALOXONE
+            1. Buttons:  \[ Offered \] \[ Accepted \] \[ Declined \] \[ Already has \]
+            2. &#91; − \]   x doses   \[ + \]  
+         2. SUPPLIES
+            1. Buttons:  \[ Fentanyl strips \] \[ Safer-use supplies \] \[ Sharps \]\[ Safer smoking supplies \] \[ Condoms \] \[ Other \]
+         3. EDUCATION
+            1. Buttons: \[ Overdose response \] \[ Safer use \] \[ Never use alone \]\[ MOUD \] \[ Other \] 
+      2. MOUD / SUD TREATMENT
+         1. Currently receiving treatment?
+            1. Buttons: \[ Yes \] \[ No \] \[ Unknown \]
+         2. Treatment Discussed?
+            1. Buttons: \[ Yes \] \[ No \]
+         3. Interested in treatment?
+            1. Buttons: \[ Yes \] \[ Maybe \] \[ No \]
+            2. If yes:
+               1. &#91; Buprenorphine \]\[ Methadone \]\[ Naltrexone \]\[ Other \]
+            3. &#91; CONNECT TO RESOURCE \]

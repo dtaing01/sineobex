@@ -1,0 +1,37 @@
+      10\. Lymphatic
+
+      A. Nodes Examined
+
+      &#32;&#32;&#32;&#32;•   Cervical
+
+      &#32;&#32;&#32;&#32;•   Supraclavicular
+
+      &#32;&#32;&#32;&#32;•   Axillary
+
+      &#32;&#32;&#32;&#32;•   Inguinal
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      B. Findings for Each Node Group
+
+      &#32;&#32;&#32;&#32;•   Not enlarged
+
+      &#32;&#32;&#32;&#32;•   Enlarged
+
+      &#32;&#32;&#32;&#32;•   Tender
+
+      &#32;&#32;&#32;&#32;•   Non-tender
+
+      &#32;&#32;&#32;&#32;•   Mobile
+
+      &#32;&#32;&#32;&#32;•   Fixed
+
+      Size: \_\_\_\_\_ cm
+
+      Example of compact documentation:
+
+      &#32;&#32;&#32;&#32;•   Cervical: Normal
+
+      &#32;&#32;&#32;&#32;•   Axillary: Normal
+
+      &#32;&#32;&#32;&#32;•   Inguinal: 2 cm, tender, mobile
