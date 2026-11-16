@@ -31,11 +31,23 @@ the Decisions table, the definition, the diff file and the shape file. Read it o
 
 1. **The piece's lines** are in `packages/forms/definitions/spec/<piece>.txt`, which the card
    names. That file is never edited.
-2. **Create the definition file** at the path the card gives, with the header the card gives
-   (`key`, `version`, `title`, `kinds`, `group`, `sensitivity` for a note type; `name`, `version`
-   for a module).
+2. **Create the definition file** at the path the card gives, with the header the card gives:
+   for a note type `key`, `version`, `title`, `kinds`, `group` and `sensitivity`, and `quick` or
+   `auto` where the card gives one; for a module `name` and `version`. The header is in the shape
+   file too, and the export compares it key by key.
 3. **Add one section for each row of the card's Sections table**, in order, with the `id` and
-   `title` given, and `"spec": "<piece>"`.
+   `title` given, and `"spec": "<piece>"`. A section that comes from no piece (the card says so)
+   has no `spec`. Then add each key the Sections table gives for the row:
+
+   | The Sections table says | Write on the section |
+   |---|---|
+   | show when `<path>` is `<code>` | `"showWhen": { "field": "<path>", "is": "<code>" }` |
+   | repeats, up to N, each titled "Wound {n}" | `"repeat": { "max": N, "itemTitle": "Wound {n}" }` |
+   | one-tap Normal | `"normal": true` |
+   | sensitive exam | `"sensitiveExam": true` |
+   | treatment record | `"treatmentRecord": true` |
+   | needs an ordering credential | `"needs": "orderMedications"` |
+
 4. **Add one field for each row of the Decisions table**, in order. Use this table:
 
    | The Decisions table says | Write |
@@ -51,11 +63,21 @@ the Decisions table, the definition, the diff file and the shape file. Read it o
    | flag | `{ "id": "…", "kind": "flag", "label": "…" }`, plus `"clears": [ … ]` if given |
    | date past / future / any | `{ "id": "…", "kind": "date", "label": "…", "range": "past" }` |
    | time | `{ "id": "…", "kind": "time", "label": "…" }` |
+   | duration | `{ "id": "…", "kind": "duration", "label": "…" }` |
+   | body map, regions from list `<name>` | `{ "id": "…", "kind": "region", "label": "…", "options": { "list": "<name>" } }`, plus `"side": "<side list>"` and `"surface": true` if given |
+   | diagnosis | `{ "id": "…", "kind": "problem", "label": "…" }` |
+   | photo, up to N | `{ "id": "…", "kind": "photo", "label": "…", "max": N }` |
+   | guidance | `{ "id": "…", "kind": "info", "label": "…" }` |
    | group | `{ "id": "…", "kind": "group", "label": "…", "layout": "stack", "fields": [ … ] }` |
    | grid | `{ "id": "…", "kind": "grid", "label": "…", "rows": …, "cell": { … } }` as the card writes it |
    | sides | add `"sides": true` |
    | required | add `"required": true` |
    | no Normal | add `"noNormal": true` |
+   | Normal fills N (a number) | add `"normal": N` |
+   | closed until tapped (a group or a grid) | add `"collapsed": true` |
+   | in the EMS handoff | add `"handoff": true` |
+   | blocks `<a>` with `<b>` | add `"excludes": [["<a>", "<b>"]]` |
+   | Expand maps to `<key>:<path>` | add `"mapsTo": "<key>:<path>"` |
    | show when `<path>` is `<code>` | add `"showWhen": { "field": "<path>", "is": "<code>" }` |
    | action | `{ "id": "…", "kind": "action", "label": "…", "action": "…" }` as the card writes it |
 
@@ -77,6 +99,17 @@ the Decisions table, the definition, the diff file and the shape file. Read it o
    `<piece>.diff.json` are already there. They hold the decisions. Do not edit them.
 7. **The export checks the file** when the card's commands are run. Its messages name the file,
    the field and the rule.
+
+   A condition's `<path>` is where the answer is stored, as the card writes it: a plain field at
+   `<section>.<field>`; a field with sides at `<section>.<field>.right` or `.left`; a body map at
+   `.region`, `.side` or `.surface`; a diagnosis at `.code`; one row of a grid at
+   `<grid's path>.<row code>`. Inside a repeating section it starts `./` (the entry); inside the
+   cell of a grid `./` is the row, and a cell cannot read a field of its entry: the condition goes
+   on the grid.
+
+   A field with sides has one condition for both sides. A follow-up that shows for one side only
+   ("Location, when that lung is not Clear") is written as two fields, one for each side, each
+   with its own condition, as the specification itself writes it; the card gives both.
 
 ## Tests to write
 
@@ -134,7 +167,7 @@ with a bracket that has no partner fails.
 | `piece` | the piece's name |
 | `notOptions` | each word of the lines that is not an option, written as the check reads it: `"+"`, `"CONNECT TO RESOURCE"`, `"Text box"`, `"___ cm"`, `"Text box titled Chief Concern"`, a button's text with the emoji the definition leaves off |
 | `added` | each option label that is not a word of the lines: an option decided elsewhere, a label written another way than the lines write it, an "Other" that the lines write as a heading over its text box |
-| `differences` | for a person: `{ "line": 5, "what": "…", "why": "…" }` for every decision the lines do not show. `line` is a line of the `.txt`, counted from 1. A note to the builder, an example value and anything left for a later version go here |
+| `differences` | for a person: `{ "line": 5, "what": "…", "why": "…" }` for every decision the lines do not show. `line` is a line of the `.txt`, counted from 1. A note to the builder, an example value and anything left for a later version go here. So does every word of `added` that is on a line the check cannot read as words (an "Other" over a text box, a status line with no brackets, a scale written `0 / 1+ / 2+`, a row of buttons with emoji): name its line, so the auditor reads those few labels against the lines |
 
 An entry of `notOptions` that is no word of the lines, or that is an option after all, fails. So
 does an entry of `added` that no option has, or that is in the lines. All four keys are there even
@@ -184,11 +217,16 @@ who types the definition. Worked out from the definition, it would check nothing
 1. Does every button in the piece's lines appear as an option, with the same words?
 2. Is there no option, field or condition that is in neither the lines nor the card?
 3. Is every `id` and every `code` lower case with `_`, and unique among its siblings?
-4. Does every `showWhen` name a path that exists (section id, a dot, field id)?
-5. Are the notes to the builder, the example values and anything marked V2 left out?
-6. Are the piece's `.txt`, `.shape.json` and `.diff.json` files unchanged?
-7. Did the export end with `0 problems`, and are the generated files in the change?
-8. Are only the files the card lists changed?
+4. Does every `showWhen` name an answer path that exists (`<section>.<field>`, with `.right`,
+   `.region`, `.code` or a row's code where the field stores there)?
+5. Does each word of `added` that the lines hold in a form the check cannot read have its line in
+   `differences`, and does it match that line?
+6. Are the notes to the builder, the example values and anything marked V2 left out?
+7. Are the piece's `.txt`, `.shape.json` and `.diff.json` files unchanged?
+8. Did the export end with `0 problems`, and are the generated files in the change?
+9. Are only the files the card lists changed?
+10. For a shared list the piece uses: its codes, its order, its flags and its count, against the
+    lines (a list has no shape file).
 
 ## Mistakes to avoid
 
@@ -202,7 +240,9 @@ who types the definition. Worked out from the definition, it would check nothing
   definition has no default values.
 - **A code that changes later.** Once a version is released, its codes are fixed: reports and
   supply mappings read them. Follow the code rule exactly, so the same label always gets the
-  same code.
+  same code. A later version that rewords an option's or a field's label at a path it keeps
+  declares it, as the card gives it, in the file's `renames`: `{ "path": "…", "code": "…",
+  "from": "…", "to": "…" }`, without `code` for a field's own label.
 - **An empty or one-line `options` array from a wrapped row.** Count the buttons in the lines and
   the options you wrote. The card gives the count.
 - **Editing generated files to make a test pass.** Run the export again instead.
