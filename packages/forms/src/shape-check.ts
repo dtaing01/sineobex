@@ -8,7 +8,10 @@
  * the spec check's (src/spec-check.ts).
  *
  * A shape file is the definition's sections without their options' words: each section and each
- * field with every key the definition writes, an option list as its number and its flags.
+ * field with every key the definition writes, an option list as its codes in order and its flags.
+ * A code is the recipe's rule applied to its label (`codeOf`); where the planner gives a code the
+ * rule would not make, the shape file gives the code and the label together. So a code crossed
+ * with its label, invented, typed twice, moved to another field or put out of order is found.
  *
  * Pure: the export reads the files of definitions/spec and hands them over (`readPieces`).
  */
@@ -16,7 +19,8 @@ import { canonicalJson } from './canonical.ts';
 import type { DefinitionFiles, FileProblem } from './resolve.ts';
 import { definitionsOf, pieceShape, sectionsByPiece } from './spec-check.ts';
 import type { Pieces } from './spec-check.ts';
-import type { Field, Module, NoteType, Section } from './types.ts';
+import { OPTION_CODE } from './types.ts';
+import type { Field, Module, NoteType, Option, Section } from './types.ts';
 
 /** A section of a shape file: every key of the section but its fields and the piece it names. */
 export type ShapeSection = { id: string } & Record<string, unknown>;
@@ -25,27 +29,84 @@ export type ShapeSection = { id: string } & Record<string, unknown>;
  * A field of a shape file. `path` is the ids from the section down to the field, joined by dots:
  * a field in a group after the group's id, the cell of a grid after the grid's. Then every key of
  * the field but its id and its children, which have entries of their own. An option list
- * (`options`, or the `rows` of a grid) is its number, or the shared list or picked field as the
- * definition names it; `flags` says which codes carry each key an option has beside its code and
- * label: `{ "other": ["other"], "suggests": { "skin": "wound_care" } }`.
+ * (`options`, or the `rows` of a grid) is its codes in order (`ShapeOption`), or the shared list or
+ * picked field as the definition names it; `flags` says which codes carry each key an option has
+ * beside its code and label: `{ "other": ["other"], "suggests": { "skin": "wound_care" } }`.
  */
 export type ShapeField = { path: string; kind: string } & Record<string, unknown>;
 
-/** <piece>.shape.json. Sections and fields are in the order the definition writes them. */
-export type Shape = { piece: string; sections: ShapeSection[]; fields: ShapeField[] };
+/**
+ * An option in a shape file: its code, which must be the recipe's rule applied to the option's
+ * label; or, where the rule gives no valid code or the planner gives another, the code and the
+ * label it is given for.
+ */
+export type ShapeOption = string | { code: string; label: string };
 
-/** The shape of the sections of a file that name the piece: what its shape file has to say. */
-export function shapeOf(piece: string, file: NoteType | Module): Shape {
-  const { shape } = placedShape(piece, sectionsByPiece(file).get(piece) ?? []);
-  return shape;
+/**
+ * The recipe's code rule (docs/plan/patterns/form-definition.md, step 5): the label in lower case,
+ * every run of characters that are not a-z or 0-9 one `_`, and no `_` at either end. "Safer-use
+ * supplies" is `safer_use_supplies`. What it makes is not always a valid code ("<1 wk" is `1_wk`);
+ * then the shape file gives the code.
+ */
+export const codeOf = (label: string): string =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+/**
+ * <piece>.shape.json. Sections and fields are in the order the definition writes them.
+ *  - `file`: the definition file the piece is typed into, by its path under definitions/. Once it
+ *    exists, the piece must be named by a section of it, and each of its sections must name a piece
+ *    or be listed in `outside` (by id) by one of the shape files for it: so a definition typed
+ *    without "spec" is not checked against nothing.
+ *  - `header`: a note type's every top-level key but `sections` and `renames`, as it must be
+ *    written. Exactly one shape file for a note type file carries it; none for a module.
+ */
+export type Shape = {
+  piece: string;
+  file: string;
+  header?: Record<string, unknown>;
+  outside?: string[];
+  sections: ShapeSection[];
+  fields: ShapeField[];
+};
+
+/**
+ * The shape of the sections of a file that name the piece: what its shape file has to say. `path`
+ * is the file's path under definitions/. The first piece a note type names carries its header and
+ * the sections that name no piece.
+ */
+export function shapeOf(piece: string, file: NoteType | Module, path: string): Shape {
+  const byPiece = sectionsByPiece(file);
+  const { shape } = placedShape(piece, byPiece.get(piece) ?? []);
+  const first = [...byPiece.keys()][0] === piece;
+  const outside = file.sections.flatMap((s) => ('include' in s || s.spec ? [] : [s.id]));
+  return {
+    piece,
+    file: path,
+    ...('key' in file && first ? { header: headerOf(file) } : {}),
+    ...(first && outside.length > 0 ? { outside } : {}),
+    sections: shape.sections,
+    fields: shape.fields,
+  };
 }
+
+/** A note type's own keys: all but its sections and the renames it declares. */
+function headerOf(file: NoteType): Record<string, unknown> {
+  const { sections: _sections, renames: _renames, ...header } = file;
+  return header;
+}
+
+/** A definition file's path under definitions/, as a shape file names it. */
+const DEFINITION_FILE = /^(note-types|modules)\/[a-z][a-z0-9_]{1,60}\/v[1-9][0-9]*\.json$/;
 
 /** A shape, and where in the file each of its sections (by id) and fields (by path) is written. */
 function placedShape(
   piece: string,
   sections: { section: Section; at: string }[],
 ): { shape: Shape; places: Map<string, string> } {
-  const shape: Shape = { piece, sections: [], fields: [] };
+  const shape: Shape = { piece, file: '', sections: [], fields: [] };
   const places = new Map<string, string>();
   const add = (field: Field, path: string, at: string) => {
     const { id: _id, fields, cell, ...keys } = field as Field & { fields?: Field[]; cell?: Field };
@@ -53,7 +114,9 @@ function placedShape(
     for (const key of ['options', 'rows']) {
       const options = entry[key];
       if (!Array.isArray(options)) continue;
-      entry[key] = options.length;
+      entry[key] = (options as Option[]).map(({ code, label }): ShapeOption =>
+        code === codeOf(label) ? code : { code, label },
+      );
       const flags = flagsOf(options);
       if (Object.keys(flags).length > 0) entry.flags = flags;
     }
@@ -96,10 +159,33 @@ export function readShape(piece: string, shape: unknown): Shape | FileProblem[] 
     bad('$', 'must be an object with the keys piece, sections and fields');
     return problems;
   }
-  const keys = ['piece', 'sections', 'fields'];
-  for (const key of Object.keys(shape)) if (!keys.includes(key)) bad(`$.${key}`, 'is no key of a shape file');
+  const keys = ['piece', 'file', 'sections', 'fields'];
+  const optional = ['header', 'outside'];
+  for (const key of Object.keys(shape))
+    if (!keys.includes(key) && !optional.includes(key)) bad(`$.${key}`, 'is no key of a shape file');
   for (const key of keys) if (!(key in shape)) bad('$', `has no "${key}"`);
   if ('piece' in shape && shape.piece !== piece) bad('$.piece', `must be "${piece}", the name of the file`);
+  if ('file' in shape && (typeof shape.file !== 'string' || !DEFINITION_FILE.test(shape.file)))
+    bad(
+      '$.file',
+      'must be the path under definitions/ of the note type or module file the piece is typed into',
+    );
+  if ('header' in shape) {
+    if (!isObject(shape.header)) bad('$.header', 'must be the note type’s own keys, as an object');
+    else if (typeof shape.file === 'string' && !shape.file.startsWith('note-types/'))
+      bad('$.header', 'a module has no header: only a note type file does');
+    else
+      for (const key of ['sections', 'renames'])
+        if (key in shape.header) bad(`$.header.${key}`, 'is not part of a note type’s header');
+  }
+  if (
+    'outside' in shape &&
+    (!Array.isArray(shape.outside) ||
+      shape.outside.length === 0 ||
+      shape.outside.some((id) => typeof id !== 'string') ||
+      new Set(shape.outside).size !== shape.outside.length)
+  )
+    bad('$.outside', 'must be the ids of the file’s sections that name no piece, each once');
 
   const sections = new Set<string>();
   if ('sections' in shape && !Array.isArray(shape.sections)) bad('$.sections', 'must be a list of sections');
@@ -138,21 +224,48 @@ export function readShape(piece: string, shape: unknown): Shape | FileProblem[] 
             `${at}.${key}`,
             'is not part of a field’s shape: the path names it, and each field in it has an entry of its own',
           );
-      for (const key of ['options', 'rows'])
-        if (Array.isArray(field[key]))
+      for (const key of ['options', 'rows']) {
+        const options = field[key];
+        if (options === undefined || (isObject(options) && !Array.isArray(options))) continue;
+        if (!Array.isArray(options)) {
           bad(
             `${at}.${key}`,
-            'must be the number of options, or the list they come from; the options themselves are typed in the definition',
+            'must be the codes of the options in order, or the list they come from, or the field they are picked in',
           );
+          continue;
+        }
+        options.forEach((option, i) => {
+          const fits =
+            typeof option === 'string'
+              ? OPTION_CODE.test(option)
+              : isObject(option) &&
+                Object.keys(option).sort().join() === 'code,label' &&
+                typeof option.code === 'string' &&
+                OPTION_CODE.test(option.code) &&
+                typeof option.label === 'string';
+          if (!fits)
+            bad(
+              `${at}.${key}[${i}]`,
+              'must be an option’s code, or { "code", "label" } where the code is not the rule’s',
+            );
+        });
+      }
     });
   return problems.length > 0 ? problems : (shape as Shape);
 }
 
 /**
- * Every file whose sections name a piece, against the piece's shape file. The rules:
+ * Every file whose sections name a piece, against the piece's shape file, and every definition
+ * file a shape file is for. The files must have passed the schema check (checkFile): a file
+ * without sections or fields is reported there, and this check reads them without looking. The
+ * rules:
  *  - `shape.missing_file`: a section names a piece that has no shape file
  *  - `shape.bad_file`: the shape file's form
- *  - `shape.missing_section`, `shape.extra_section`, `shape.section_order`
+ *  - `shape.missing_section`: a section of the shape file is not in the definition, or the file
+ *    the shape file is for names the piece in no section at all
+ *  - `shape.unnamed_section`: a section of that file names no piece and is not listed as outside
+ *  - `shape.missing_header`, `shape.header_differs`: a note type's header
+ *  - `shape.extra_section`, `shape.section_order`
  *  - `shape.section_differs`: a key of a section that is not what the shape file says
  *  - `shape.missing_field`, `shape.extra_field`, `shape.field_order` (within its section)
  *  - `shape.field_differs`: a key of a field that is not what the shape file says. The problem's
@@ -191,6 +304,77 @@ export function checkShapes(pieces: Pieces, files: DefinitionFiles): FileProblem
       for (const found of compare(expected, shape, places))
         problems.push({ file, path: found.path, rule: `shape.${found.rule}`, message: found.message });
     }
+
+  // Each definition file a shape file is for: the pieces it must name, the sections that must name
+  // one, and the note type's header. A file not written yet is not looked for.
+  const forFile = new Map<string, Shape[]>();
+  for (const [name, piece] of Object.entries(pieces)) {
+    if (piece.shape === undefined) continue;
+    const shape = readPiece(name, { file: pieceShape(name), path: '$' });
+    if (shape) forFile.set(shape.file, [...(forFile.get(shape.file) ?? []), shape]);
+  }
+  for (const [file, shapes] of forFile) {
+    const content = Object.hasOwn(files.noteTypes, file)
+      ? files.noteTypes[file]
+      : Object.hasOwn(files.modules, file)
+        ? files.modules[file]
+        : undefined;
+    if (!content) continue;
+    const named = sectionsByPiece(content);
+    for (const shape of shapes)
+      if (!named.has(shape.piece))
+        problems.push({
+          file,
+          path: '$.sections',
+          rule: 'shape.missing_section',
+          message: `${pieceShape(shape.piece)} is for this file, and no section of it names the piece "${shape.piece}"`,
+        });
+    const outside = new Set(shapes.flatMap((shape) => shape.outside ?? []));
+    content.sections.forEach((section, index) => {
+      if ('include' in section || section.spec || outside.has(section.id)) return;
+      problems.push({
+        file,
+        path: `$.sections[${index}]`,
+        rule: 'shape.unnamed_section',
+        message: `the section "${section.id}" names no piece, and no shape file for this file lists it as outside the specification`,
+      });
+    });
+    if ('key' in content) problems.push(...checkHeader(file, content, shapes));
+  }
+  return problems;
+}
+
+/** A note type's header, against the one shape file for it that carries one. */
+function checkHeader(file: string, content: NoteType, shapes: Shape[]): FileProblem[] {
+  const carriers = shapes.filter((shape) => shape.header !== undefined);
+  if (carriers.length === 0)
+    return [
+      {
+        file,
+        path: '$',
+        rule: 'shape.missing_header',
+        message: `no shape file for this file gives its header (one of ${shapes.map((s) => pieceShape(s.piece)).join(', ')} must)`,
+      },
+    ];
+  const problems: FileProblem[] = carriers.slice(1).map((shape) => ({
+    file: pieceShape(shape.piece),
+    path: '$.header',
+    rule: 'shape.bad_file',
+    message: `${pieceShape(carriers[0]!.piece)} already gives the header of ${file}: one shape file does`,
+  }));
+  const wanted = carriers[0]!.header!;
+  const written = headerOf(content);
+  const show = (value: unknown) => (value === undefined ? 'not set' : canonicalJson(value));
+  for (const key of new Set([...Object.keys(wanted), ...Object.keys(written)])) {
+    const [a, b] = [(written as Record<string, unknown>)[key], wanted[key]];
+    if (show(a) !== show(b))
+      problems.push({
+        file,
+        path: `$.${key}`,
+        rule: 'shape.header_differs',
+        message: `${key} is ${show(a)} here, and ${pieceShape(carriers[0]!.piece)} says ${show(b)}`,
+      });
+  }
   return problems;
 }
 

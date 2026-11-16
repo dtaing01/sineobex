@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkShapes, shapeOf } from '../src/shape-check.ts';
+import { checkShapes, codeOf, shapeOf } from '../src/shape-check.ts';
 import { readPieces, type Piece } from '../src/spec-check.ts';
 import { exampleBlocks } from './fixtures/example-doc.ts';
 import { definitionFiles, specTexts, type LooseFiles } from './fixtures/load.ts';
@@ -69,7 +69,7 @@ describe('the worked example', () => {
 
   it('has the shape its definition works out to', () => {
     const tree = example();
-    expect(shapeOf(PIECE, note(tree))).toEqual(shape(tree));
+    expect(shapeOf(PIECE, note(tree), NOTE)).toEqual(shape(tree));
   });
 
   it('names the field and the property, and says what each side has', () => {
@@ -93,10 +93,11 @@ describe('the shape of every kind of field', () => {
       if (!('include' in section) && section.id !== 'injury') section.spec = 'checks';
     return file;
   }
-  const entry = (path: string): Loose => shapeOf('checks', checks()).fields.find((f) => f.path === path);
+  const entry = (path: string): Loose =>
+    shapeOf('checks', checks(), CHECKS).fields.find((f) => f.path === path);
 
   it('lists the sections that name the piece with everything but their fields, and passes an include over', () => {
-    expect(shapeOf('checks', checks()).sections).toEqual([
+    expect(shapeOf('checks', checks(), CHECKS).sections).toEqual([
       { id: 'visit', title: 'Visit' },
       {
         id: 'findings',
@@ -106,11 +107,16 @@ describe('the shape of every kind of field', () => {
       },
       { id: 'status', title: 'Status' },
     ]);
-    expect(shapeOf('another', checks())).toEqual({ piece: 'another', sections: [], fields: [] });
+    expect(shapeOf('another', checks(), CHECKS)).toEqual({
+      piece: 'another',
+      file: CHECKS,
+      sections: [],
+      fields: [],
+    });
   });
 
   it('lists every field at every depth, in the order written, by the ids from its section down', () => {
-    expect(shapeOf('checks', checks()).fields.map((f) => `${f.path}: ${f.kind}`)).toEqual([
+    expect(shapeOf('checks', checks(), CHECKS).fields.map((f) => `${f.path}: ${f.kind}`)).toEqual([
       'visit.systems: choice',
       'visit.concern: choice',
       'visit.story: text',
@@ -143,13 +149,13 @@ describe('the shape of every kind of field', () => {
     ]);
   });
 
-  it('writes options as their number and the codes that carry each flag', () => {
+  it('writes options as their codes in order, and the codes that carry each flag', () => {
     expect(entry('visit.systems')).toEqual({
       path: 'visit.systems',
       kind: 'choice',
       many: true,
       label: 'What did you examine?',
-      options: 5,
+      options: ['none', 'eyes', 'ears', 'skin', 'other'],
       flags: { exclusive: ['none'], suggests: { skin: 'full_demo' }, other: ['other'] },
     });
     expect(entry('visit.plan')).toEqual({
@@ -157,7 +163,12 @@ describe('the shape of every kind of field', () => {
       kind: 'choice',
       many: true,
       label: 'Plan',
-      options: 3,
+      // The planner gives these codes: the rule would make sent_to_ed and declined_care.
+      options: [
+        { code: 'sent', label: 'Sent to ED' },
+        { code: 'declined', label: 'Declined care' },
+        'follow_up',
+      ],
       excludes: [['sent', 'declined']],
     });
   });
@@ -188,13 +199,13 @@ describe('the shape of every kind of field', () => {
     });
   });
 
-  it('writes the rows of a grid as their number, their list or the field they are picked in', () => {
+  it('writes the rows of a grid as their codes, their list or the field they are picked in', () => {
     expect(entry('status.reflexes')).toEqual({
       path: 'status.reflexes',
       kind: 'grid',
       label: 'Reflexes',
       sides: true,
-      rows: 2,
+      rows: ['knee', 'ankle'],
     });
     expect(entry('findings.pulses').rows).toEqual({ list: 'demo_sites' });
     expect(entry('status.each').rows).toEqual({ pickedIn: 'visit.systems' });
@@ -204,14 +215,14 @@ describe('the shape of every kind of field', () => {
   it('a tree whose shape files are worked out from it passes; a change deep in a shape file is found', () => {
     const files = definitionFiles();
     files.noteTypes[CHECKS] = checks();
-    const made = shapeOf('checks', files.noteTypes[CHECKS]) as Loose;
+    const made = shapeOf('checks', files.noteTypes[CHECKS], CHECKS) as Loose;
     const pieces = { checks: { shape: made } };
     expect(checkShapes(pieces, files)).toEqual([]);
 
     made.fields.find((f: Loose) => f.path === 'status.each.detail.note').required = undefined;
     made.fields.find((f: Loose) => f.path === 'findings.pulses.strength').many = true;
     made.fields.find((f: Loose) => f.path === 'visit.pressure.lower').max = 200;
-    made.fields.find((f: Loose) => f.path === 'status.reflexes').rows = 3;
+    made.fields.find((f: Loose) => f.path === 'status.reflexes').rows = ['knee'];
     made.fields.find((f: Loose) => f.path === 'findings.where').side = 'side';
     made.fields.find((f: Loose) => f.path === 'visit.systems').flags.suggests = { skin: 'checks_demo' };
     expect(found({ files, pieces })).toEqual(
@@ -287,6 +298,106 @@ describe('a field that differs from the shape file', () => {
   );
 });
 
+describe('the codes of the options', () => {
+  // A code is what is stored, and is fixed for good once released: the shape file lists them.
+  differs('a code crossed with its label', 0, 'naloxone', 'options', (f) => {
+    [f.options[0].code, f.options[1].code] = [f.options[1].code, f.options[0].code];
+  });
+  differs('a code the rule does not make from its label', 0, 'naloxone', 'options', (f) => {
+    f.options[3].code = 'has_already';
+  });
+  differs('an option typed twice', 0, 'naloxone', 'options', (f) => (f.options[1] = { ...f.options[0] }));
+  differs('options in another order', 0, 'naloxone', 'options', (f) => f.options.reverse());
+  broken(
+    'an option moved to another field, and one moved back',
+    (t) => {
+      const supplies = field(t, 0, 'supplies').options;
+      const education = field(t, 0, 'education').options;
+      [supplies[0], education[0]] = [education[0], supplies[0]];
+    },
+    [NOTE, `${at(0, 'supplies')}.options`, 'shape.field_differs'],
+    [NOTE, `${at(0, 'education')}.options`, 'shape.field_differs'],
+  );
+  it('a code the planner gives, with its label, in the shape file', () => {
+    const tree = example();
+    field(tree, 0, 'naloxone').options[0].code = 'o1';
+    expect(found(tree)).toEqual(sorted([[NOTE, `${at(0, 'naloxone')}.options`, 'shape.field_differs']]));
+    shape(tree).fields[0].options[0] = { code: 'o1', label: 'Offered' };
+    expect(found(tree)).toEqual([]);
+  });
+  it('the rule: lower case, each run of other characters one _, none at the ends', () => {
+    expect(codeOf('Already has')).toBe('already_has');
+    expect(codeOf('Safer-use supplies')).toBe('safer_use_supplies');
+    expect(codeOf('  MOUD / SUD (now)  ')).toBe('moud_sud_now');
+    expect(codeOf('<1 wk')).toBe('1_wk');
+  });
+});
+
+describe('the file a shape file is for', () => {
+  broken(
+    'a definition whose sections name no piece is not checked against nothing',
+    (t) => note(t).sections.forEach((s: Loose) => delete s.spec),
+    [NOTE, '$.sections', 'shape.missing_section'],
+    [NOTE, '$.sections[0]', 'shape.unnamed_section'],
+    [NOTE, '$.sections[1]', 'shape.unnamed_section'],
+  );
+  broken(
+    'a section that names no piece and is not listed as outside the specification',
+    (t) =>
+      note(t).sections.push({
+        id: 'extra',
+        title: 'Extra',
+        fields: [{ id: 'note', kind: 'info', label: 'A note' }],
+      }),
+    [NOTE, '$.sections[2]', 'shape.unnamed_section'],
+  );
+  it('is not looked for before it is written', () => {
+    const tree = example();
+    delete tree.files.noteTypes[NOTE];
+    expect(found(tree)).toEqual([]);
+  });
+});
+
+describe('the header of a note type', () => {
+  const headerDiffers = (name: string, key: string, change: (file: Loose) => void) =>
+    broken(name, (t) => change(note(t)), [NOTE, `$.${key}`, 'shape.header_differs']);
+  headerDiffers(
+    'a sensitive note type typed as not sensitive',
+    'sensitivity',
+    (f) => (f.sensitivity = 'none'),
+  );
+  headerDiffers('offered for Non-Medical encounters too', 'kinds', (f) => f.kinds.push('non_medical'));
+  headerDiffers('quick where the shape does not say so', 'quick', (f) => (f.quick = true));
+  headerDiffers('another timeline group', 'group', (f) => (f.group = 'clinical'));
+  it('a version declares its renames, which are not part of the header', () => {
+    const tree = example();
+    note(tree).renames = [{ path: 'provided.naloxone', from: 'Naloxone kit', to: 'Naloxone' }];
+    expect(found(tree)).toEqual([]);
+  });
+  broken('given by no shape file for it', (t) => delete shape(t).header, [NOTE, '$', 'shape.missing_header']);
+  broken(
+    'given by two shape files for it',
+    (t) => {
+      note(t).sections.push({
+        id: 'extra',
+        title: 'Extra',
+        spec: 'second',
+        fields: [{ id: 'note', kind: 'info', label: 'A note' }],
+      });
+      t.pieces.second = {
+        shape: {
+          piece: 'second',
+          file: NOTE,
+          header: shape(t).header,
+          sections: [{ id: 'extra', title: 'Extra' }],
+          fields: [{ path: 'extra.note', kind: 'info', label: 'A note' }],
+        },
+      };
+    },
+    ['spec/second.shape.json', '$.header', 'shape.bad_file'],
+  );
+});
+
 describe('the fields of a piece', () => {
   broken(
     'a field of the shape file that the definition does not have',
@@ -358,6 +469,7 @@ describe('the sections of a piece', () => {
     'a section of the shape file that does not name the piece: its fields are not listed one by one',
     (t) => delete note(t).sections[1].spec,
     [NOTE, '$.sections', 'shape.missing_section'],
+    [NOTE, '$.sections[1]', 'shape.unnamed_section'],
   );
   broken(
     'a section the shape file does not have: its fields are not listed one by one',
@@ -383,6 +495,7 @@ describe('the sections of a piece', () => {
       fields: [{ id: 'note', kind: 'info', label: 'A note' }],
     };
     note(tree).sections.splice(1, 0, other);
+    shape(tree).outside = ['between'];
     expect(found(tree)).toEqual([]);
     // Places are those of the file, not of the piece.
     note(tree).sections[2].title = 'Treatment';
@@ -412,6 +525,9 @@ describe('a piece named by more than one file', () => {
     };
     tree.files.modules[MODULE].sections[1].fields[4].action = 'show_handoff';
     note(tree).sections = [{ include: 'demo_part', version: 1 }];
+    // The piece is now typed into the module, which has no header.
+    shape(tree).file = MODULE;
+    delete shape(tree).header;
     expect(found(tree)).toEqual(sorted([[MODULE, `${at(1, 'connect')}.action`, 'shape.field_differs']]));
   });
 });
@@ -492,14 +608,38 @@ describe('the shape file', () => {
     '$.fields[2].cell',
   );
   bad(
-    'options written out instead of counted',
+    'options counted instead of listed by their codes',
     (s) => {
-      s.fields[0].options = [{ code: 'offered', label: 'Offered' }];
-      s.fields[2].rows = ['a', 'b'];
+      s.fields[0].options = 4;
+      s.fields[2].rows = 'six';
     },
     '$.fields[0].options',
     '$.fields[2].rows',
   );
+  bad(
+    'an option that is no code, or an object with more than a code and a label',
+    (s) => {
+      s.fields[0].options[1] = 'Accepted';
+      s.fields[2].options[0] = { code: 'syringes', label: 'Syringes', other: true };
+      s.fields[2].options[1] = { code: 'Pipes', label: 'Pipes' };
+    },
+    '$.fields[0].options[1]',
+    '$.fields[2].options[0]',
+    '$.fields[2].options[1]',
+  );
+  bad('without the file it is for', (s) => delete s.file, '$');
+  bad(
+    'a file that is no definition file',
+    (s) => {
+      s.file = 'lists/side.json';
+      delete s.header;
+    },
+    '$.file',
+  );
+  bad('a header for a module', (s) => (s.file = 'modules/demo_part/v1.json'), '$.header');
+  bad('a header with sections in it', (s) => (s.header.sections = []), '$.header.sections');
+  bad('an empty list of sections outside', (s) => (s.outside = []), '$.outside');
+  bad('a section outside listed twice', (s) => (s.outside = ['a', 'a']), '$.outside');
 
   it('its faults are reported once, however many files name the piece, and nothing is compared with it', () => {
     const tree = example();

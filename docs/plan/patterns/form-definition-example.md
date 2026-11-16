@@ -155,20 +155,22 @@ neither in the lines nor in `added`, and if either list holds a word that nothin
 ```json
 {
   "piece": "harm-reduction-2",
+  "file": "note-types/harm_reduction_example/v1.json",
+  "header": {"key": "harm_reduction_example", "version": 1, "title": "Harm reduction (worked example)", "kinds": ["medical"], "group": "harm_reduction", "sensitivity": "sensitive"},
   "sections": [
-    { "id": "provided", "title": "Harm reduction provided" },
-    { "id": "treatment", "title": "MOUD / SUD treatment" }
+    {"id": "provided", "title": "Harm reduction provided"},
+    {"id": "treatment", "title": "MOUD / SUD treatment"}
   ],
   "fields": [
-    { "path": "provided.naloxone", "kind": "choice", "many": false, "label": "Naloxone", "options": 4 },
-    { "path": "provided.naloxone_doses", "kind": "number", "label": "Doses", "min": 1, "max": 20, "decimals": 0, "unit": "doses", "display": "stepper", "showWhen": { "field": "provided.naloxone", "is": "accepted" } },
-    { "path": "provided.supplies", "kind": "choice", "many": true, "label": "Supplies", "options": 6, "flags": { "other": ["other"] } },
-    { "path": "provided.education", "kind": "choice", "many": true, "label": "Education", "options": 5, "flags": { "other": ["other"] } },
-    { "path": "treatment.receiving", "kind": "choice", "many": false, "label": "Currently receiving treatment?", "options": 3 },
-    { "path": "treatment.discussed", "kind": "choice", "many": false, "label": "Treatment discussed?", "options": 2 },
-    { "path": "treatment.interested", "kind": "choice", "many": false, "label": "Interested in treatment?", "options": 3 },
-    { "path": "treatment.interested_in", "kind": "choice", "many": true, "label": "Which treatment?", "showWhen": { "field": "treatment.interested", "is": ["yes", "maybe"] }, "options": 4, "flags": { "other": ["other"] } },
-    { "path": "treatment.connect", "kind": "action", "label": "Connect to resource", "action": "add_referral" }
+    {"path": "provided.naloxone", "kind": "choice", "many": false, "label": "Naloxone", "options": ["offered", "accepted", "declined", "already_has"]},
+    {"path": "provided.naloxone_doses", "kind": "number", "label": "Doses", "min": 1, "max": 20, "decimals": 0, "unit": "doses", "display": "stepper", "showWhen": {"field": "provided.naloxone", "is": "accepted"}},
+    {"path": "provided.supplies", "kind": "choice", "many": true, "label": "Supplies", "options": ["fentanyl_strips", "safer_use_supplies", "sharps", "safer_smoking_supplies", "condoms", "other"], "flags": {"other": ["other"]}},
+    {"path": "provided.education", "kind": "choice", "many": true, "label": "Education", "options": ["overdose_response", "safer_use", "never_use_alone", "moud", "other"], "flags": {"other": ["other"]}},
+    {"path": "treatment.receiving", "kind": "choice", "many": false, "label": "Currently receiving treatment?", "options": ["yes", "no", "unknown"]},
+    {"path": "treatment.discussed", "kind": "choice", "many": false, "label": "Treatment discussed?", "options": ["yes", "no"]},
+    {"path": "treatment.interested", "kind": "choice", "many": false, "label": "Interested in treatment?", "options": ["yes", "maybe", "no"]},
+    {"path": "treatment.interested_in", "kind": "choice", "many": true, "label": "Which treatment?", "showWhen": {"field": "treatment.interested", "is": ["yes", "maybe"]}, "options": ["buprenorphine", "methadone", "naltrexone", "other"], "flags": {"other": ["other"]}},
+    {"path": "treatment.connect", "kind": "action", "label": "Connect to resource", "action": "add_referral"}
   ]
 }
 ```
@@ -176,10 +178,18 @@ neither in the lines nor in `added`, and if either list holds a word that nothin
 The shape file is parts 2 and 3 as the export reads them: the definition's sections without the
 words of their options. A section's entry is the section as the definition writes it, without
 `fields` and `spec`. A field's entry is the field as the definition writes it, with `path` in
-place of `id` (the ids from the section down, joined by dots) and an option list as its number.
-`flags` names, for each key an option carries beside its code and label, the codes that carry it.
+place of `id` (the ids from the section down, joined by dots) and an option list as its codes in
+order. A code there is the rule's code for the option's label (recipe, step 5); where the planner
+gives another, the entry is `{ "code": …, "label": … }`. `flags` names, for each key an option
+carries beside its code and label, the codes that carry it. `file` names the definition file the
+piece is typed into, and `header` is the note type's own keys (every key but `sections` and
+`renames`): exactly one shape file for a note type carries it.
 A field in a group has an entry of its own, after the group's, at `<group's path>.<its id>`; the
 cell of a grid at `<grid's path>.<the cell's id>`.
 
 The export fails if a section or a field is missing, is one too many or is out of order, and if
-any key of one is not what the shape file says. The message names the field and the key.
+any key of one is not what the shape file says, the codes of the options and their order
+included. The message names the field and the key. Once the file the shape file names exists, it
+also fails if no section of it names the piece, if a section of it names no piece and no shape
+file for it lists that section's id under `outside`, and if a key of the note type's header is not
+what `header` says.

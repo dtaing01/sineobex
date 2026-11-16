@@ -68,7 +68,9 @@ the Decisions table, the definition, the diff file and the shape file. Read it o
    - The **code** is the label in lower case, with every run of characters that are not `a-z` or
      `0-9` turned into one `_`, and no `_` at the start or end. "Already has" is `already_has`.
      "Safer-use supplies" is `safer_use_supplies`. If the Decisions table gives a code, use that
-     one (it does when the label starts with a digit or two labels would get one code).
+     one: it does when the rule gives no valid code (a code starts with a letter: "<1 wk" and
+     "2+" give none) or two labels would get one code. The shape file lists every code, and
+     gives each one the rule does not make.
    - Add a flag only where the Decisions table says so: "flag `other` on Other" is
      `"other": true` on that option. A flag never changes the option's code.
 6. **Leave the piece's other files alone.** `<piece>.txt`, `<piece>.shape.json` and
@@ -121,7 +123,7 @@ A word has its escapes undone (`&#91;`, `&#32;`, a backslash before a character,
 the end of a line, the no-break space), no space at its ends and one space between its parts.
 Words are compared exactly, capitals included. The check compares the set of the piece's words
 with the set of option labels in the sections that name the piece; an option from a shared list,
-a row of a grid, a region and a side from the `side` or `side_rl` list all count as labels. It
+a row of a grid, a region, its side list and its surface list all count as labels. It
 does not say which field a word belongs to or how often it appears: the shape file does. A line
 with a bracket that has no partner fails.
 
@@ -138,8 +140,16 @@ An entry of `notOptions` that is no word of the lines, or that is an option afte
 does an entry of `added` that no option has, or that is in the lines. All four keys are there even
 when a list is empty.
 
-**The shape file** has exactly three keys, `piece`, `sections` and `fields`, and is the Sections
-and Decisions tables as the export reads them:
+**The shape file** has the keys `piece`, `file`, `sections` and `fields`, and `header` and
+`outside` where they are needed. It is the Sections and Decisions tables as the export reads them:
+
+- `file`: the definition file the piece is typed into, by its path under `definitions/`
+  (`note-types/<key>/v<N>.json` or `modules/<name>/v<N>.json`). Once that file exists, the export
+  fails if no section of it names the piece, and if a section of it names no piece and is not
+  listed, by its id, in the `outside` of a shape file for it.
+- `header`: for a note type, its every key but `sections` and `renames`, as it must be written
+  (`key`, `version`, `title`, `kinds`, `group`, `sensitivity`, and `quick` or `auto` where it has
+  them). Exactly one shape file for a note type file carries it; a module has none.
 
 - `sections`: one entry for each section that names the piece, in order. An entry is the section
   as the definition writes it, without `fields` and `spec`: its `id` and `title`, and `showWhen`,
@@ -151,8 +161,12 @@ and Decisions tables as the export reads them:
     comes after the grid, at `<the grid's path>.<the cell's id>`. (This names the field in the
     file. It is the path its answer is stored at for a plain field only.)
   - no `fields` and no `cell`: each of those fields has its own entry.
-  - `options`, and a grid's `rows`, as a number when the definition writes the options out.
-    `{ "list": "<name>" }` and `{ "pickedIn": "<path>" }` stay as they are.
+  - `options`, and a grid's `rows`, as the list of the options' codes in order when the
+    definition writes the options out: `["offered", "accepted"]`. Each code must be the code
+    rule applied to the option's label; where the planner gives another code, the entry is
+    `{ "code": "e1", "label": "1 dose" }`. `{ "list": "<name>" }` and `{ "pickedIn": "<path>" }`
+    stay as they are. A shared list has no shape: the auditor reads its codes, its flags and its
+    count against the lines.
   - `flags`, only when an option carries a key beside `code` and `label`: for each such key, the
     codes that carry it, in the order of the options: `{ "other": ["other"], "exclusive": ["none"] }`.
     For `suggests` and `icon`, what each code carries: `{ "suggests": { "wound": "wound_care" } }`.

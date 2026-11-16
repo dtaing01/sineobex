@@ -1,5 +1,14 @@
 {
   "piece": "harm-reduction-2",
+  "file": "note-types/harm_reduction_example/v1.json",
+  "header": {
+    "key": "harm_reduction_example",
+    "version": 1,
+    "title": "Harm reduction (worked example)",
+    "kinds": ["medical"],
+    "group": "harm_reduction",
+    "sensitivity": "sensitive"
+  },
   "sections": [
     {
       "id": "provided",
@@ -16,7 +25,7 @@
       "kind": "choice",
       "many": false,
       "label": "Naloxone",
-      "options": 4
+      "options": ["offered", "accepted", "declined", "already_has"]
     },
     {
       "path": "provided.naloxone_doses",
@@ -37,7 +46,14 @@
       "kind": "choice",
       "many": true,
       "label": "Supplies",
-      "options": 6,
+      "options": [
+        "fentanyl_strips",
+        "safer_use_supplies",
+        "sharps",
+        "safer_smoking_supplies",
+        "condoms",
+        "other"
+      ],
       "flags": {
         "other": ["other"]
       }
@@ -47,7 +63,7 @@
       "kind": "choice",
       "many": true,
       "label": "Education",
-      "options": 5,
+      "options": ["overdose_response", "safer_use", "never_use_alone", "moud", "other"],
       "flags": {
         "other": ["other"]
       }
@@ -57,21 +73,21 @@
       "kind": "choice",
       "many": false,
       "label": "Currently receiving treatment?",
-      "options": 3
+      "options": ["yes", "no", "unknown"]
     },
     {
       "path": "treatment.discussed",
       "kind": "choice",
       "many": false,
       "label": "Treatment discussed?",
-      "options": 2
+      "options": ["yes", "no"]
     },
     {
       "path": "treatment.interested",
       "kind": "choice",
       "many": false,
       "label": "Interested in treatment?",
-      "options": 3
+      "options": ["yes", "maybe", "no"]
     },
     {
       "path": "treatment.interested_in",
@@ -82,7 +98,7 @@
         "field": "treatment.interested",
         "is": ["yes", "maybe"]
       },
-      "options": 4,
+      "options": ["buprenorphine", "methadone", "naltrexone", "other"],
       "flags": {
         "other": ["other"]
       }
