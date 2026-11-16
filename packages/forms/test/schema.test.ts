@@ -252,6 +252,26 @@ broken('a note type key with a capital letter', (f) => (f.key = 'Harm_reduction'
 broken('a note type key of one letter', (f) => (f.key = 'h'), ['$.key', BAD_FORMAT]);
 broken('a key that is not a string', (f) => (f.key = 7), ['$.key', WRONG_TYPE]);
 broken('version 0', (f) => (f.version = 0), ['$.version', LIMIT]);
+fits('the highest version the database holds', (f) => (f.version = 2147483647));
+broken('a version the database cannot hold', (f) => (f.version = 3000000000), ['$.version', LIMIT]);
+broken('a title of spaces only', (f) => (f.title = '   '), ['$.title', BAD_FORMAT]);
+broken(
+  'a label holding a NUL, which the database refuses',
+  (f) => (f.sections[0].fields[0].label = 'a\u0000b'),
+  [`${S}.fields[0].label`, BAD_FORMAT],
+);
+broken('a label with a line break', (f) => (f.sections[0].fields[0].label = 'one\ntwo'), [
+  `${S}.fields[0].label`,
+  BAD_FORMAT,
+]);
+broken('a label holding half of a surrogate pair', (f) => (f.sections[0].fields[0].label = 'x\ud800'), [
+  `${S}.fields[0].label`,
+  BAD_FORMAT,
+]);
+fits(
+  'a label with spaces around words, an accent and an emoji',
+  (f) => (f.sections[0].fields[0].label = ' Café 😀 '),
+);
 broken('a version that is not a whole number', (f) => (f.version = 1.5), ['$.version', WRONG_TYPE]);
 broken('an empty title', (f) => (f.title = ''), ['$.title', LIMIT]);
 broken('a title that is not a string', (f) => (f.title = 5), ['$.title', WRONG_TYPE]);
@@ -465,6 +485,12 @@ brokenField('a text length that is not a whole number', 'text', (f) => (f.maxLen
 brokenField('a minimum that is not a number', 'number', (f) => (f.min = '0'), [`${F}.min`, WRONG_TYPE]);
 brokenField('a maximum that is not a number', 'number', (f) => (f.max = null), [`${F}.max`, WRONG_TYPE]);
 brokenField('three decimals', 'number', (f) => (f.decimals = 3), [`${F}.decimals`, NOT_ALLOWED]);
+fittingField('what one-tap Normal fills', 'number', (f) => (f.normal = 1));
+brokenField('a Normal that is not a number', 'number', (f) => (f.normal = '5'), [`${F}.normal`, WRONG_TYPE]);
+brokenField('a step, which a number does not have', 'number', (f) => (f.step = 0.5), [
+  `${F}.step`,
+  UNKNOWN_KEY,
+]);
 brokenField('an empty unit', 'number', (f) => (f.unit = ''), [`${F}.unit`, LIMIT]);
 brokenField('an unknown display', 'number', (f) => (f.display = 'slider'), [`${F}.display`, NOT_ALLOWED]);
 fittingField('a second unit', 'number', (f) => (f.altUnit = { unit: 'in', perUnit: 2.54 }));
@@ -557,7 +583,20 @@ brokenField('a cell of an unknown kind', 'grid', (f) => (f.cell.kind = 'slider')
 ]);
 
 // region
-brokenField('an unknown side list', 'region', (f) => (f.side = 'both'), [`${F}.side`, NOT_ALLOWED]);
+fittingField('a side from any shared list, Skin’s with Midline', 'region', (f) => (f.side = 'side_rlm'));
+brokenField('a side list that is no list name', 'region', (f) => (f.side = 'Side RL'), [
+  `${F}.side`,
+  BAD_FORMAT,
+]);
+brokenField('a surface named as a list', 'region', (f) => (f.surface = 'surface'), [
+  `${F}.surface`,
+  NOT_ALLOWED,
+]);
+fittingField('a grid closed until tapped', 'grid', (f) => (f.collapsed = true));
+brokenField('a grid open marked as collapsed false', 'grid', (f) => (f.collapsed = false), [
+  `${F}.collapsed`,
+  NOT_ALLOWED,
+]);
 
 // photo
 brokenField('room for no photo', 'photo', (f) => (f.max = 0), [`${F}.max`, LIMIT]);

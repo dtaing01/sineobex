@@ -49,7 +49,6 @@ const HOLDS: Record<string, string> = {
   'a date': 'date',
   'a time': 'time',
   'a duration': 'duration',
-  'a surface': 'surface',
   'a problem code': 'problemCode',
   'a problem label': 'problemLabel',
 };

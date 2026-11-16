@@ -9,7 +9,7 @@
  * Pure, like the resolver: the export reads the lock file and hands its parsed content over.
  */
 import { canonicalJson, sha256Hex } from './canonical.ts';
-import { listFile, moduleFile } from './resolve.ts';
+import { listFile, moduleFile, SURFACE_LIST } from './resolve.ts';
 import type { DefinitionFiles, FileProblem } from './resolve.ts';
 import type { Field, Include, Module, NoteType, Section } from './types.ts';
 
@@ -138,6 +138,7 @@ function listsOf(field: Field, path: string, parts: Part[]) {
       return named(field.options, 'options');
     case 'region':
       if (field.side) parts.push({ file: listFile(field.side), path: `${path}.side` });
+      if (field.surface) parts.push({ file: listFile(SURFACE_LIST), path: `${path}.surface` });
       return named(field.options, 'options');
     case 'group':
       return field.fields.forEach((child, i) => listsOf(child, `${path}.fields[${i}]`, parts));

@@ -187,7 +187,32 @@ describe('a shared list', () => {
     expect(field(definition, 'findings', 'where').side).toEqual(files.lists['lists/side_rl.json'].options);
     const full = resolved(definitionFiles(), FULL).definition;
     expect(field(full, 'wounds', 'where').side).toEqual(files.lists['lists/side.json'].options);
-    expect(field(full, 'wounds', 'where').surface).toBe(true);
+    expect(field(full, 'wounds', 'where').surface).toEqual(files.lists['lists/surface.json'].options);
+  });
+
+  it('is copied in as the sides of a region from any list the region names, Skin’s Midline among them', () => {
+    const files = definitionFiles();
+    files.lists['lists/side_rlm.json'] = {
+      name: 'side_rlm',
+      options: [
+        { code: 'right', label: 'Right' },
+        { code: 'left', label: 'Left' },
+        { code: 'midline', label: 'Midline' },
+      ],
+    };
+    files.noteTypes[CHECKS].sections[2].fields[0].side = 'side_rlm';
+    const { definition } = resolved(files);
+    expect(field(definition, 'findings', 'where').side).toEqual(files.lists['lists/side_rlm.json'].options);
+  });
+
+  it('copies the list named surface into a region that asks for one, and nothing into one that does not', () => {
+    expect(field(definition, 'findings', 'where').surface).toEqual([
+      { code: 'anterior', label: 'Anterior' },
+      { code: 'posterior', label: 'Posterior' },
+    ]);
+    const files = definitionFiles();
+    delete files.noteTypes[CHECKS].sections[2].fields[0].surface;
+    expect('surface' in field(resolved(files).definition, 'findings', 'where')).toBe(false);
   });
 
   it('leaves options written in place, and rows picked in another field, as they are', () => {
@@ -229,7 +254,9 @@ describe('resolving', () => {
 
   it('needs only the files the note type uses', () => {
     const files = definitionFiles();
-    const used = ['demo_scale', 'demo_sites', 'demo_regions', 'demo_yes_no', 'side_rl'].map(listFile);
+    const used = ['demo_scale', 'demo_sites', 'demo_regions', 'demo_yes_no', 'side_rl', 'surface'].map(
+      listFile,
+    );
     for (const file of Object.keys(files.lists)) if (!used.includes(file)) delete files.lists[file];
     delete files.modules['modules/demo_exam/v2.json'];
     delete files.noteTypes[FULL];
@@ -301,6 +328,11 @@ describe('what cannot be resolved names the file and the rule', () => {
     `${FINDINGS}.fields[0].side`,
     'resolve.unknown_list',
   ]);
+  broken(
+    'a region that asks for a surface when the surface list does not exist',
+    (f) => delete f.lists['lists/surface.json'],
+    [CHECKS, `${FINDINGS}.fields[0].surface`, 'resolve.unknown_list'],
+  );
 
   broken('a module file whose name is not its folder’s', (f) => (f.modules[EXAM].name = 'demo_other'), [
     EXAM,

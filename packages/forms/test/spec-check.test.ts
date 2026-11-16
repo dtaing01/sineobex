@@ -581,6 +581,12 @@ describe('the options of every kind of field', () => {
     [KINDS, '$.sections[0].fields[2].side', 'spec.not_in_piece'],
   );
   without(
+    'a surface the lines do not have: Anterior and Posterior, each named where the region asks for it',
+    (t) => (all(t, 'where').surface = true),
+    [KINDS, '$.sections[0].fields[2].surface', 'spec.not_in_piece'],
+    [KINDS, '$.sections[0].fields[2].surface', 'spec.not_in_piece'],
+  );
+  without(
     'a row and a cell’s option the lines do not have',
     (t) => {
       all(t, 'reflexes').rows.push({ code: 'elbow', label: 'Elbow' });

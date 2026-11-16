@@ -208,6 +208,7 @@ function optionLists(node: FieldNode): { key: string; options: Option[] }[] {
     return [
       { key: 'options', options: field.options },
       ...(field.side ? [{ key: 'side', options: field.side }] : []),
+      ...(field.surface ? [{ key: 'surface', options: field.surface }] : []),
     ];
   return [];
 }
@@ -263,6 +264,8 @@ function checkExcludes(node: FieldNode, field: Extract<ResolvedField, { kind: 'c
 
 /** The kinds that store one answer at their own path, where a side can be the last part. */
 const SIDED_KINDS = new Set(['choice', 'text', 'number', 'flag', 'date', 'time', 'duration', 'grid']);
+/** The kinds that store more than one answer, with no one meaning for filled. */
+const NO_ONE_ANSWER = new Set(['group', 'grid', 'region', 'problem']);
 /** The kinds that store nothing (2.3). */
 const STORES_NOTHING = new Set(['photo', 'action', 'info']);
 
@@ -279,13 +282,26 @@ function checkFlags(model: PathModel, report: Report) {
 
     // A region holds one code, and its Other text would have no path.
     if (field.kind === 'region')
-      for (const option of [...field.options, ...(field.side ?? [])])
+      for (const option of [...field.options, ...(field.side ?? []), ...(field.surface ?? [])])
         if (option.exclusive || option.other)
           report(
             at,
             'region_option_flag',
             `option "${option.code}" of a region cannot be ${option.other ? 'an Other option' : 'exclusive'}`,
           );
+
+    // A fixed row is a path part, not an answer: its Other text would have no path, and nothing in
+    // a row is picked for exclusive to clear. (Picked rows are options of the field they are picked in.)
+    if (field.kind === 'grid' && Array.isArray(field.rows))
+      for (const option of field.rows)
+        if (option.exclusive || option.other)
+          report(
+            at,
+            'row_option_flag',
+            `row "${option.code}" of a grid cannot be ${option.other ? 'an Other option' : 'exclusive'}`,
+          );
+
+    if (field.kind === 'number') checkNumber(field, at, report);
 
     if (field.sides && !SIDED_KINDS.has(field.kind))
       report(
@@ -298,9 +314,10 @@ function checkFlags(model: PathModel, report: Report) {
       report(`${at}.sides`, 'sides_not_allowed', 'the grid has sides, so each of its cells already has');
 
     // Complete waits for a required field to be filled (7.1). These kinds store nothing, so it
-    // would wait for ever; a group and a grid store only through their fields, and whether
-    // "filled" means one of them or all of them is for each field to say.
-    if (field.required && (STORES_NOTHING.has(field.kind) || field.kind === 'group' || field.kind === 'grid'))
+    // would wait for ever; a group and a grid store only through their fields, a region up to three
+    // answers and a problem two, and whether "filled" means one of them or all of them is for each
+    // answer to say.
+    if (field.required && (STORES_NOTHING.has(field.kind) || NO_ONE_ANSWER.has(field.kind)))
       report(
         `${at}.required`,
         'required_not_allowed',
@@ -324,6 +341,31 @@ function checkFlags(model: PathModel, report: Report) {
           report(`${at}.clears[${index}]`, 'clears_unknown_field', `"${id}" is not a field beside this flag`);
       });
   }
+}
+
+/**
+ * A number's range must hold a value at its decimals, or the field can never be answered and,
+ * required, the note never completed. What one-tap Normal fills must be such a value.
+ */
+function checkNumber(field: Extract<ResolvedField, { kind: 'number' }>, at: string, report: Report) {
+  const scale = 10 ** field.decimals;
+  // Rounded first: 0.7 * 10 is 7.000000000000001.
+  const scaled = (value: number) => Number((value * scale).toFixed(6));
+  if (Math.ceil(scaled(field.min)) > Math.floor(scaled(field.max)))
+    report(
+      at,
+      'number_range_empty',
+      `no value with ${field.decimals} decimals lies from ${field.min} to ${field.max}, so the field could never be answered`,
+    );
+  if (
+    field.normal !== undefined &&
+    (field.normal < field.min || field.normal > field.max || !Number.isInteger(scaled(field.normal)))
+  )
+    report(
+      `${at}.normal`,
+      'number_normal',
+      `one-tap Normal would fill ${field.normal}, which is not a value from ${field.min} to ${field.max} with ${field.decimals} decimals`,
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

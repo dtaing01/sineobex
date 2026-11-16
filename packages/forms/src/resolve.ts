@@ -31,6 +31,8 @@ export type FileProblem = Problem & { file: string };
 export const noteTypeFile = (key: string, version: number): string => `note-types/${key}/v${version}.json`;
 export const moduleFile = (name: string, version: number): string => `modules/${name}/v${version}.json`;
 export const listFile = (name: string): string => `lists/${name}.json`;
+/** The shared list a region's `surface` copies in: Anterior and Posterior. */
+export const SURFACE_LIST = 'surface';
 
 /** The parsed files of definitions/, each by its path under that folder. */
 export type DefinitionFiles = {
@@ -41,12 +43,14 @@ export type DefinitionFiles = {
 
 export type ResolvedChoiceField = Omit<ChoiceField, 'options'> & { options: Option[] };
 /**
- * `side` is no longer the name of a list (`side` or `side_rl`) but that list's options: the
- * interpreter is handed a definition and no lists, and has to know which sides it may store.
+ * `side` is no longer the name of a list but that list's options, and `surface` the options of the
+ * list named `surface`: the interpreter is handed a definition and no lists, and has to know which
+ * sides and surfaces it may store.
  */
-export type ResolvedRegionField = Omit<RegionField, 'options' | 'side'> & {
+export type ResolvedRegionField = Omit<RegionField, 'options' | 'side' | 'surface'> & {
   options: Option[];
   side?: Option[];
+  surface?: Option[];
 };
 export type ResolvedGroupField = Omit<GroupField, 'fields'> & { fields: ResolvedField[] };
 export type ResolvedGridField = Omit<GridField, 'rows' | 'cell'> & {
@@ -212,9 +216,13 @@ class Run {
       case 'choice':
         return { ...field, options: this.options(field.options, step(place, '.options')) };
       case 'region': {
-        const options = this.options(field.options, step(place, '.options'));
-        if (!field.side) return { ...(field as Omit<RegionField, 'side'>), options };
-        return { ...field, options, side: this.list(field.side, step(place, '.side'), '') };
+        const { side, surface, ...rest } = field;
+        return {
+          ...rest,
+          options: this.options(field.options, step(place, '.options')),
+          ...(side === undefined ? {} : { side: this.list(side, step(place, '.side'), '') }),
+          ...(surface ? { surface: this.list(SURFACE_LIST, step(place, '.surface'), '') } : {}),
+        };
       }
       case 'group':
         return {

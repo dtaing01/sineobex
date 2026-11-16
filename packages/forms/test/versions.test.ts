@@ -78,7 +78,7 @@ describe('every path a note type stores at', () => {
       // In a repeating section, without the entry's part: as a condition writes it.
       'findings.where.region: one code',
       'findings.where.side: one code',
-      'findings.where.surface: a surface',
+      'findings.where.surface: one code',
       'findings.diagnosis.code: a problem code',
       'findings.diagnosis.label: a problem label',
       'findings.type: one code',

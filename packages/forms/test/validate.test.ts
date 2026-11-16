@@ -530,10 +530,15 @@ describe('a condition', () => {
     ]);
     fitsInEntry('with a side the region’s list has', { field: './where.side', is: 'left' });
     fitsInEntry('that asks whether a region’s surface is filled', { field: './where.surface', filled: true });
-    brokenInEntry('that asks a region’s surface for a code', { field: './where.surface', is: 'front' }, [
-      `${DEPTH}.field`,
-      rule('condition_not_a_choice'),
-    ]);
+    fitsInEntry('that asks a region’s surface for a code of the surface list', {
+      field: './where.surface',
+      is: 'posterior',
+    });
+    brokenInEntry(
+      'that asks a region’s surface for a code the list does not have',
+      { field: './where.surface', is: 'front' },
+      [`${DEPTH}.is`, rule('condition_unknown_code')],
+    );
     fitsInEntry('that names the code of a problem', { field: './diagnosis.code', filled: true });
     brokenInEntry('that names a problem without the part', { field: './diagnosis', filled: true }, [
       `${DEPTH}.field`,
@@ -877,7 +882,101 @@ describe('a region', () => {
     F('where'),
     FLAG,
   ]);
+  broken(
+    'with an exclusive option among its surfaces',
+    (f) => (f.lists[list('surface')].options[0].exclusive = true),
+    [CHECKS, F('where'), FLAG],
+  );
   fits('with an icon on an option', (f) => (f.lists[list('demo_regions')].options[0].icon = 'arm'));
+  fits('with a side from a list of three, Skin’s Midline among them', (f) => {
+    f.lists[list('side_rlm')] = {
+      name: 'side_rlm',
+      options: [
+        { code: 'right', label: 'Right' },
+        { code: 'left', label: 'Left' },
+        { code: 'midline', label: 'Midline' },
+      ],
+    };
+    findings(f, 'where').side = 'side_rlm';
+    delete findings(f, 'where').mapsTo;
+    findings(f, 'depth').showWhen = { field: './where.side', is: 'midline' };
+  });
+  broken('with two surfaces of one code', (f) => (f.lists[list('surface')].options[1].code = 'anterior'), [
+    list('surface'),
+    '$.options[1].code',
+    rule('duplicate_code'),
+  ]);
+});
+
+describe('the fixed rows of a grid', () => {
+  // A row is a path part, not an answer: an Other text would have no path, and nothing is picked
+  // for exclusive to clear.
+  broken('with an Other row written in place', (f) => (status(f, 'reflexes').rows[0].other = true), [
+    CHECKS,
+    S('reflexes'),
+    rule('row_option_flag'),
+  ]);
+  broken(
+    'with an exclusive row from a shared list',
+    (f) => (f.lists[list('demo_sites')].options[1].exclusive = true),
+    [CHECKS, F('pulses'), rule('row_option_flag')],
+  );
+  fits('with a row marked normal', (f) => (status(f, 'reflexes').rows[1].normal = true));
+});
+
+describe('a number', () => {
+  const RANGE = rule('number_range_empty');
+  const NORMAL = rule('number_normal');
+  const depth = (f: LooseFiles) => findings(f, 'depth');
+  broken(
+    'whose minimum is above its maximum: no value could ever be stored',
+    (f) => {
+      depth(f).min = 300;
+      depth(f).max = 40;
+    },
+    [CHECKS, F('depth'), RANGE],
+  );
+  broken(
+    'whose range holds no value at its decimals',
+    (f) => {
+      depth(f).min = 0.55;
+      depth(f).max = 0.56;
+    },
+    [CHECKS, F('depth'), RANGE],
+  );
+  fits('whose range is one value', (f) => {
+    depth(f).min = 5;
+    depth(f).max = 5;
+  });
+  fits('whose bounds are off its decimals but hold a value between them', (f) => {
+    depth(f).min = 0.5;
+    depth(f).max = 1.7;
+  });
+  fits('at one decimal, from 0.7 to 0.7', (f) => {
+    depth(f).decimals = 1;
+    depth(f).min = 0.7;
+    depth(f).max = 0.7;
+  });
+  fits('with a Normal inside its range', (f) => (depth(f).normal = 50));
+  fits('with a Normal at its decimals: 0.3 at one decimal', (f) => {
+    depth(f).decimals = 1;
+    depth(f).normal = 0.3;
+  });
+  broken('with a Normal above its maximum', (f) => (depth(f).normal = 51), [
+    CHECKS,
+    `${F('depth')}.normal`,
+    NORMAL,
+  ]);
+  broken('with a Normal below its minimum', (f) => (depth(f).normal = -1), [
+    CHECKS,
+    `${F('depth')}.normal`,
+    NORMAL,
+  ]);
+  broken('with a Normal off its decimals', (f) => (depth(f).normal = 2.5), [
+    CHECKS,
+    `${F('depth')}.normal`,
+    NORMAL,
+  ]);
 });
 
 describe('sides', () => {
@@ -957,8 +1056,17 @@ describe('required', () => {
   ]);
   fits('on the cell of a grid', (f) => (findings(f, 'pulses').cell.required = true));
   fits('on a field of a group', (f) => (visit(f, 'pressure').fields[0].required = true));
-  fits('on a region', (f) => (findings(f, 'where').required = true));
-  fits('on a problem', (f) => (findings(f, 'diagnosis').required = true));
+  // A region stores up to three answers and a problem two: filled has no one meaning for either.
+  broken('on a region', (f) => (findings(f, 'where').required = true), [
+    CHECKS,
+    `${F('where')}.required`,
+    REQUIRED,
+  ]);
+  broken('on a problem', (f) => (findings(f, 'diagnosis').required = true), [
+    CHECKS,
+    `${F('diagnosis')}.required`,
+    REQUIRED,
+  ]);
   fits('on a flag', (f) => (visit(f, 'unable').required = true));
 });
 

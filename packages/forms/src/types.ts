@@ -126,6 +126,8 @@ export type NumberField = Common & {
   /** A second unit to type in: inches, 2.54 cm each. The answer is stored in `unit`. */
   altUnit?: { unit: string; perUnit: number };
   display?: 'box' | 'stepper' | 'outOf';
+  /** What one-tap Normal fills: inside min and max, at the field's decimals (strength 5 of 5). */
+  normal?: number;
 };
 
 /** A tick. While it is set, the sibling fields in `clears` do not count and are disabled. */
@@ -146,18 +148,26 @@ export type GroupField = Common & {
   fields: Field[];
 };
 
-/** One cell per row. `pickedIn`: the rows are the options picked in the choose-many field at that path. */
+/**
+ * One cell per row. `pickedIn`: the rows are the options picked in the choose-many field at that
+ * path. `collapsed`: closed until tapped, as a group can be; it changes no path.
+ */
 export type GridField = Common & {
   kind: 'grid';
+  collapsed?: true;
   rows: Option[] | ListRef | { pickedIn: string };
   cell: Field;
 };
 
-/** A body region. `side` names the list its side comes from: `side` has Bilateral, `side_rl` does not. */
+/**
+ * A body region. `side` names the shared list its side comes from (`side` has Bilateral, `side_rl`
+ * does not, Skin's has Midline). `surface` asks for Anterior or Posterior: the shared list named
+ * `surface`.
+ */
 export type RegionField = Common & {
   kind: 'region';
   options: Option[] | ListRef;
-  side?: 'side' | 'side_rl';
+  side?: string;
   surface?: true;
 };
 

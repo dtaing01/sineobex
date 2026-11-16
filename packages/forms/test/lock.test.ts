@@ -167,6 +167,13 @@ describe('what a released file is made of', () => {
     [CHECKS, '$.sections[2].fields[0].options.list', 'lock.unreleased_part'],
   );
 
+  badLock(
+    'the list a region takes its surface from',
+    (lock) => delete lock['lists/surface.json'],
+    [FULL, '$.sections[1].fields[0].surface', 'lock.unreleased_part'],
+    [CHECKS, '$.sections[2].fields[0].surface', 'lock.unreleased_part'],
+  );
+
   it('a draft may include a draft', async () => {
     const files = definitionFiles();
     const lock: Record<string, string> = await lockOf(files);

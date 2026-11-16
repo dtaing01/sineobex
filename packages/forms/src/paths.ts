@@ -62,7 +62,7 @@ export type Holds =
   | { type: 'text'; maxLength: number }
   | { type: 'number'; min: number; max: number; decimals: number; unit?: string }
   | { type: 'date'; range: 'past' | 'future' | 'any' }
-  | { type: 'flag' | 'time' | 'duration' | 'surface' | 'problemCode' | 'problemLabel' };
+  | { type: 'flag' | 'time' | 'duration' | 'problemCode' | 'problemLabel' };
 
 /** One path a note on this definition can have an answer at (2.3). */
 export type Leaf = {
@@ -298,7 +298,15 @@ function storePaths(
           },
           `${node.at}.side`,
         );
-      if (field.surface) storeLeaf(model, node, [...base, 'surface'], row, { type: 'surface' });
+      if (field.surface)
+        storeLeaf(
+          model,
+          node,
+          [...base, 'surface'],
+          row,
+          { type: 'codes', many: false, options: field.surface, excludes: [] },
+          `${node.at}.surface`,
+        );
       return;
     case 'problem':
       storeLeaf(model, node, [...base, 'code'], row, { type: 'problemCode' });
@@ -419,7 +427,6 @@ export type PathHolds =
   | 'a date'
   | 'a time'
   | 'a duration'
-  | 'a surface'
   | 'a problem code'
   | 'a problem label'
   | 'the rows of a grid';
@@ -444,7 +451,6 @@ const SAYS: Record<Exclude<Holds['type'], 'codes'>, PathHolds> = {
   date: 'a date',
   time: 'a time',
   duration: 'a duration',
-  surface: 'a surface',
   problemCode: 'a problem code',
   problemLabel: 'a problem label',
 };

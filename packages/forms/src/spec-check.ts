@@ -9,7 +9,7 @@
  *
  * Pure: the export reads the files of definitions/spec and hands their text over.
  */
-import { listFile } from './resolve.ts';
+import { listFile, SURFACE_LIST } from './resolve.ts';
 import type { DefinitionFiles, FileProblem } from './resolve.ts';
 import type { Field, ListRef, Module, NoteType, Option, Section } from './types.ts';
 
@@ -390,6 +390,7 @@ function labelsOf(section: Section, at: string, files: DefinitionFiles): Label[]
       case 'region':
         from(field.options, `${path}.options`);
         if (field.side) named(field.side, `${path}.side`);
+        if (field.surface) named(SURFACE_LIST, `${path}.surface`);
         return;
       case 'group':
         return field.fields.forEach((child, i) => walk(child, `${path}.fields[${i}]`));

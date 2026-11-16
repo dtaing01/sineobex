@@ -22,8 +22,12 @@
     },
     "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}$" },
     "specPiece": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,60}$" },
-    "text": { "type": "string", "minLength": 1 },
-    "version": { "type": "integer", "minimum": 1 },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:[^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*[^\\s\\u0000-\\u001f\\u007f\\ud800-\\udfff][^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*)?$"
+    },
+    "version": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
     "yes": { "const": true },
     "no": { "const": false },
     "noteType": {
@@ -329,6 +333,7 @@
         "min": { "type": "number" },
         "max": { "type": "number" },
         "decimals": { "enum": [0, 1, 2] },
+        "normal": { "type": "number" },
         "unit": { "$ref": "#/$defs/text" },
         "altUnit": { "$ref": "#/$defs/altUnit" },
         "display": { "enum": ["box", "stepper", "outOf"] }
@@ -450,6 +455,7 @@
         "handoff": { "$ref": "#/$defs/yes" },
         "mapsTo": { "$ref": "#/$defs/mapsTo" },
         "kind": { "const": "grid" },
+        "collapsed": { "$ref": "#/$defs/yes" },
         "rows": { "$ref": "#/$defs/rows" },
         "cell": { "$ref": "#/$defs/field" }
       },
@@ -471,7 +477,7 @@
         "mapsTo": { "$ref": "#/$defs/mapsTo" },
         "kind": { "const": "region" },
         "options": { "$ref": "#/$defs/options" },
-        "side": { "enum": ["side", "side_rl"] },
+        "side": { "$ref": "#/$defs/key" },
         "surface": { "$ref": "#/$defs/yes" }
       },
       "required": ["id", "kind", "label", "options"],
