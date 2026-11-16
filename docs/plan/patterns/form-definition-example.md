@@ -129,14 +129,23 @@ not plain:
   "added": [],
   "differences": [
     { "line": 5, "what": "The dose stepper shows only when Naloxone is Accepted, and starts at 1.", "why": "inventory A36" },
-    { "line": 17, "what": "The row has no label. Label added: Which treatment?", "why": "a field needs a label" },
+    { "line": 18, "what": "The row has no label. Label added: Which treatment?", "why": "a field needs a label" },
     { "line": 17, "what": "Shown for Yes and for Maybe.", "why": "inventory A37a" },
     { "line": 19, "what": "Always shown; opens Add referral.", "why": "inventory A38" }
   ]
 }
 ```
 
-`notOptions` lists the bracketed words in the lines that are not options (the stepper's minus and
-plus, a button that starts an action). `added` lists option labels that are in the definition and
-not in the lines. `line` counts from the first line of the piece's file. The export fails if the
-lines and the definition differ in any way these do not explain.
+`notOptions` lists the words of the lines that are not options. The spec check reads three things
+as words: every bracketed word (so also the stepper's minus and plus, a button that starts an
+action, `[ Text box ]`, an example value such as `[ 10:52 AM ]`), every bullet line, and every
+numbered line that has no bracket and nothing nested under it (so also `Text box titled X` and a
+note to the builder). `added` lists option labels that are in the definition and not in the lines.
+Both are written as the check reads a word: without the brackets, `&#91;` and the backslashes, with
+one space between words and none at the ends.
+
+`differences` is for a person: what else was decided, and where the decision comes from. `line`
+counts from the first line of the piece's file, which is line 1.
+
+The export fails if a word of the lines is neither an option nor in `notOptions`, if an option is
+neither in the lines nor in `added`, and if either list holds a word that nothing needs.

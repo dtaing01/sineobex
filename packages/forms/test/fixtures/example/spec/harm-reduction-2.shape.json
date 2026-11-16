@@ -1,0 +1,97 @@
+{
+  "piece": "harm-reduction-2",
+  "sections": [
+    {
+      "id": "provided",
+      "title": "Harm reduction provided"
+    },
+    {
+      "id": "treatment",
+      "title": "MOUD / SUD treatment"
+    }
+  ],
+  "fields": [
+    {
+      "path": "provided.naloxone",
+      "kind": "choice",
+      "many": false,
+      "label": "Naloxone",
+      "options": 4
+    },
+    {
+      "path": "provided.naloxone_doses",
+      "kind": "number",
+      "label": "Doses",
+      "min": 1,
+      "max": 20,
+      "decimals": 0,
+      "unit": "doses",
+      "display": "stepper",
+      "showWhen": {
+        "field": "provided.naloxone",
+        "is": "accepted"
+      }
+    },
+    {
+      "path": "provided.supplies",
+      "kind": "choice",
+      "many": true,
+      "label": "Supplies",
+      "options": 6,
+      "flags": {
+        "other": ["other"]
+      }
+    },
+    {
+      "path": "provided.education",
+      "kind": "choice",
+      "many": true,
+      "label": "Education",
+      "options": 5,
+      "flags": {
+        "other": ["other"]
+      }
+    },
+    {
+      "path": "treatment.receiving",
+      "kind": "choice",
+      "many": false,
+      "label": "Currently receiving treatment?",
+      "options": 3
+    },
+    {
+      "path": "treatment.discussed",
+      "kind": "choice",
+      "many": false,
+      "label": "Treatment discussed?",
+      "options": 2
+    },
+    {
+      "path": "treatment.interested",
+      "kind": "choice",
+      "many": false,
+      "label": "Interested in treatment?",
+      "options": 3
+    },
+    {
+      "path": "treatment.interested_in",
+      "kind": "choice",
+      "many": true,
+      "label": "Which treatment?",
+      "showWhen": {
+        "field": "treatment.interested",
+        "is": ["yes", "maybe"]
+      },
+      "options": 4,
+      "flags": {
+        "other": ["other"]
+      }
+    },
+    {
+      "path": "treatment.connect",
+      "kind": "action",
+      "label": "Connect to resource",
+      "action": "add_referral"
+    }
+  ]
+}
