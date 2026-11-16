@@ -116,6 +116,17 @@ describe('0021 referrals', () => {
     ]);
   });
 
+  it('takes and gives back a referral of any team to a platform-scope request', async () => {
+    const row = referral();
+    const seen = await asApp(db.appUrl, { userId: worker, platform: true }, async (tx) => {
+      await tx`insert into sineobex.referrals ${values(tx, row)}`;
+      return tx<
+        { teamId: string }[]
+      >`select team_id as "teamId" from sineobex.referrals where id = ${row.id as string}`;
+    });
+    expect(seen).toEqual([{ teamId: team }]);
+  });
+
   it('holds a date, free text and the bookkeeping of a synced record, and nothing of V2', async () => {
     const columns = await db.owner<{ name: string; type: string }[]>`
       select column_name as name, data_type as type from information_schema.columns

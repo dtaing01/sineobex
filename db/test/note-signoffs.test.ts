@@ -177,6 +177,17 @@ describe('0019 note sign-offs, addenda and corrections', () => {
       }
     });
 
+    it('let a platform-scope request write and read a row of any team', async () => {
+      for (const table of TABLES) {
+        const row = rows[table]();
+        const seen = await asApp(db.appUrl, { userId: signer, platform: true }, async (tx) => {
+          await tx`insert into sineobex.${tx(table)} ${values(tx, row)}`;
+          return tx<{ id: string }[]>`select id from sineobex.${tx(table)} where id = ${row.id as string}`;
+        });
+        expect(seen, table).toEqual([{ id: row.id }]);
+      }
+    });
+
     it('point only at a note, or a visit, of their own team', async () => {
       const cases: [Table, Row, string][] = [
         ['note_signoffs', { note_id: randomUUID() }, 'note_signoffs_team_id_note_id_fkey'],

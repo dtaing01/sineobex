@@ -164,6 +164,18 @@ describe('0020 note attestations and assignments', () => {
       }
     });
 
+    it('take and give back a row of any team to a platform-scope request', async () => {
+      for (const table of TABLES) {
+        const seen = await asApp(db.appUrl, { userId: attending, platform: true }, async (tx) => {
+          const [row] = await tx<{ id: string }[]>`
+            insert into sineobex.${tx(table)} ${values(tx, rows[table]())} returning id`;
+          return tx<{ teamId: string }[]>`
+            select team_id as "teamId" from sineobex.${tx(table)} where id = ${row!.id}`;
+        });
+        expect(seen, table).toEqual([{ teamId: team }]);
+      }
+    });
+
     it('never change or lose a row once written', async () => {
       const column = { note_attestations: 'attending_name', note_assignments: 'reason' } as const;
       for (const table of TABLES) {

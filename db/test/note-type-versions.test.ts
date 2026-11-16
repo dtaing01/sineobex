@@ -176,6 +176,20 @@ describe('0017 note type versions', () => {
     await expect(insertAs(teamB, row({ key: 'social_needs' }))).rejects.toThrow(/row-level security/);
   });
 
+  it('lets a platform-scope request install and read a version for any team', async () => {
+    // A team's presets are installed when the team is made, in platform scope (forms 3.1).
+    const fresh = await makeTeam(db.owner, 'Forms Team Fresh');
+    const seen = await asApp(db.appUrl, { userId: user, platform: true }, async (tx) => {
+      await tx`insert into sineobex.note_type_versions
+               ${tx({ ...row({ team_id: fresh, key: 'outreach' }), definition: tx.json(row().definition as never) })}
+               on conflict do nothing`;
+      return tx<{ teamId: string }[]>`
+        select distinct team_id as "teamId" from sineobex.note_type_versions
+        where team_id in (${teamA}, ${fresh}) order by 1`;
+    });
+    expect(seen.map((r) => r.teamId).sort()).toEqual([teamA, fresh].sort());
+  });
+
   it('does not tie a note to an installed version: preview notes name none', async () => {
     const encounter = randomUUID();
     await db.owner`insert into sineobex.encounters (id, team_id, kind, author_user_id, started_at)
