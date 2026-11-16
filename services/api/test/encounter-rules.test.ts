@@ -103,7 +103,10 @@ describe('note lifecycle rules', () => {
 
 describe('the credential a signature is recorded under', () => {
   const cases = vector<{ cases: Case[] }>('signed-under.json').cases;
-  const answers = cases.map((c) => c.expected as ReturnType<typeof signedUnder>);
+  const fault = (c: Case) => (c.expected as { throws?: string }).throws;
+  const answers = cases
+    .filter((c) => fault(c) === undefined)
+    .map((c) => c.expected as ReturnType<typeof signedUnder>);
 
   it('has cases for every credential, and for a time that is trusted and one that is not', () => {
     expect(cases.length).toBeGreaterThan(20);
@@ -113,7 +116,9 @@ describe('the credential a signature is recorded under', () => {
 
   for (const c of cases) {
     it(c.name, () => {
-      expect(signedUnder(c.input as SignedUnderInput)).toEqual(c.expected);
+      const message = fault(c);
+      if (message === undefined) expect(signedUnder(c.input as SignedUnderInput)).toEqual(c.expected);
+      else expect(() => signedUnder(c.input as SignedUnderInput)).toThrow(message);
     });
   }
 

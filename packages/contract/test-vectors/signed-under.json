@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written (phase 4 design, lifecycle 3.5). signedUnder in services/api/src/encounters/signed-under.ts must give every answer; the reader is services/api/test/encounter-rules.test.ts. Server-only: the phone never decides this. In each case the signature is at signedAt on the phone and reaches the server at receivedAt; notBefore is when the server received the note's create. laterChanges are the membership_changes rows of kind credential or restored made after the signature, each with its old_value. expected.fields are the fields of the credential found, without the NPI. Made-up people and numbers only.",
+  "note": "Hand-written (phase 4 design, lifecycle 3.5). signedUnder in services/api/src/encounters/signed-under.ts must give every answer; the reader is services/api/test/encounter-rules.test.ts. Server-only: the phone never decides this. In each case the signature is at signedAt on the phone and reaches the server at receivedAt; notBefore is when the server received the note's create. laterChanges are the membership_changes rows of kind credential or restored made after the signature, each with its old_value. expected.fields are the fields of the credential found, without the NPI; an expected of { throws } is an error with that message. Made-up people and numbers only.",
   "cases": [
     {
       "name": "an attending, no change since: signs with nothing held",
@@ -95,6 +95,11 @@
       "name": "lowered to resident and made an attending again since signing: the attending’s fields of the first change",
       "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T16:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}, {"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1000000003", "licenseNumber": "DEMO-0002", "licenseState": "OH"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
       "expected": {"credential": "attending", "npi": "1000000003", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "OH"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a later change whose time cannot be read is a fault of the server, never passed over",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "not a time", "oldValue": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"throws": "a credential change has a time that cannot be read"}
     },
     {
       "name": "the phone’s clock was not verified: the history is not consulted",

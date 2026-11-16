@@ -59,6 +59,11 @@ export const TRUSTED_AHEAD_MS = 5 * 60_000;
  * (lifecycle 12.1 #1; plan section 6)? At device time, when that time can be trusted.
  */
 export function signedUnder(i: SignedUnderInput): SignedUnder {
+  // A change's time comes from a timestamptz column: one that cannot be read is the server's own
+  // fault, and passing over it could record a signature under a credential it was not made under.
+  if (i.laterChanges.some((change) => Number.isNaN(Date.parse(change.changedAt)))) {
+    throw new Error('a credential change has a time that cannot be read');
+  }
   const signedAt = Date.parse(i.signedAt);
   // `clockVerified` is the phone's own word. A time from before the server knew the note could
   // date a signature to before a credential was lowered, so it is not believed. Neither is a time
