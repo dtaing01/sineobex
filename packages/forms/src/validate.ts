@@ -12,7 +12,8 @@
  */
 import { locate, noteTypeFile } from './resolve.ts';
 import type { FileProblem, Origin, ResolvedField, ResolvedNoteType, ResolvedSection } from './resolve.ts';
-import { PATH_PART } from './types.ts';
+import { canonicalJson } from './canonical.ts';
+import { MAX_DEFINITION_BYTES, MAX_REPEAT, MAX_TEXT_LENGTH, PATH_PART } from './types.ts';
 import type { Condition, Option } from './types.ts';
 
 export type ValidateContext = {
@@ -39,6 +40,9 @@ export function validate(definition: ResolvedNoteType, context: ValidateContext)
   checkCodes(model, report);
   checkConditions(model, report);
   checkOtherNoteTypes(model, context, report);
+  checkFlags(model, report);
+  checkVisibility(model, report);
+  checkLimits(model, report);
 
   const origins = context.origins ?? [
     { at: '$', file: noteTypeFile(definition.key, definition.version), path: '$' },
@@ -88,6 +92,8 @@ type Node = {
   base: string[] | null;
   /** A grid's row codes. Empty until they are known, and when they cannot be. */
   rows: string[];
+  /** The choose-many answer a grid's rows are picked in. */
+  picked: Leaf | null;
   /** Every answer stored by it or inside it. */
   leaves: Leaf[];
 };
@@ -178,6 +184,7 @@ function modelOf(definition: ResolvedNoteType): Model {
       });
       continue;
     }
+    grid.picked = picked.leaf;
     grid.rows = picked.leaf.holds.options.map((option) => option.code);
     storeRows(model, grid, grid.base!, grid.field.sides === true);
   }
@@ -230,6 +237,7 @@ function fieldNode(
     grid,
     base: null,
     rows: [],
+    picked: null,
     leaves: [],
   };
   model.nodes.push(node);
@@ -611,4 +619,367 @@ function checkExcludes(node: Node, field: Extract<ResolvedField, { kind: 'choice
         `"${pair[0]}" cannot be blocked from being held with itself`,
       );
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Flags: what a key means on the field that carries it.
+
+/** The kinds that store one answer at their own path, where a side can be the last part. */
+const SIDED_KINDS = new Set(['choice', 'text', 'number', 'flag', 'date', 'time', 'duration', 'grid']);
+/** The kinds that store nothing (2.3). */
+const STORES_NOTHING = new Set(['photo', 'action', 'info']);
+
+function checkFlags(model: Model, report: Report) {
+  for (const node of model.nodes) {
+    const { field, at } = node;
+
+    // Every option of a choose-one field clears the others. One marked exclusive says nothing
+    // there, and is the mark of a field that was meant to be choose-many.
+    if (field.kind === 'choice' && !field.many)
+      for (const option of field.options)
+        if (option.exclusive)
+          report(at, 'exclusive_in_choose_one', `option "${option.code}" is exclusive in a choose-one field`);
+
+    // A region holds one code, and its Other text would have no path.
+    if (field.kind === 'region')
+      for (const option of [...field.options, ...(field.side ?? [])])
+        if (option.exclusive || option.other)
+          report(
+            at,
+            'region_option_flag',
+            `option "${option.code}" of a region cannot be ${option.other ? 'an Other option' : 'exclusive'}`,
+          );
+
+    if (field.sides && !SIDED_KINDS.has(field.kind))
+      report(
+        `${at}.sides`,
+        'sides_not_allowed',
+        `a ${field.kind} has no one answer to record for right and for left`,
+      );
+    // Right and left are one path part, the last (2.3). A grid's sides are already its cells'.
+    else if (field.sides && node.grid?.field.sides)
+      report(`${at}.sides`, 'sides_not_allowed', 'the grid has sides, so each of its cells already has');
+
+    // Complete waits for a required field to be filled (7.1). These kinds store nothing, so it
+    // would wait for ever; a group and a grid store only through their fields, and whether
+    // "filled" means one of them or all of them is for each field to say.
+    if (field.required && (STORES_NOTHING.has(field.kind) || field.kind === 'group' || field.kind === 'grid'))
+      report(
+        `${at}.required`,
+        'required_not_allowed',
+        `a ${field.kind} holds no answer of its own to wait for`,
+      );
+
+    if (field.kind === 'grid' && node.grid)
+      report(at, 'grid_in_grid', 'a grid cannot be in the cell of a grid: its rows would be rows of a row');
+    if (node.parent?.cell === node && STORES_NOTHING.has(field.kind))
+      report(
+        at,
+        'grid_cell_stores_nothing',
+        `the cell of a grid holds one answer for each row; a ${field.kind} holds none`,
+      );
+
+    // While the flag is set these fields do not count (2.3). A name that is no field beside the
+    // flag would leave a length counting under "Unable to measure", and nothing would show it.
+    if (field.kind === 'flag')
+      (field.clears ?? []).forEach((id, index) => {
+        if (id === field.id || !node.siblings.some((sibling) => sibling.field.id === id))
+          report(`${at}.clears[${index}]`, 'clears_unknown_field', `"${id}" is not a field beside this flag`);
+      });
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The limits of 2.4. The schema holds the first two for a file; a definition can also reach this
+// check without having been a file.
+
+function checkLimits(model: Model, report: Report) {
+  for (const { section, at } of model.sections)
+    if (section.repeat && section.repeat.max > MAX_REPEAT)
+      report(`${at}.repeat.max`, 'repeat_too_many', `a section has at most ${MAX_REPEAT} entries`);
+  for (const { field, at } of model.nodes)
+    if (field.kind === 'text' && field.maxLength > MAX_TEXT_LENGTH)
+      report(`${at}.maxLength`, 'text_too_long', `a text field holds at most ${MAX_TEXT_LENGTH} characters`);
+  // As it is hashed and stored: canonical JSON, in bytes.
+  const bytes = new TextEncoder().encode(canonicalJson(model.definition)).length;
+  if (bytes > MAX_DEFINITION_BYTES)
+    report(
+      '$',
+      'too_large',
+      `the resolved definition is ${bytes} bytes; the most is ${MAX_DEFINITION_BYTES}`,
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Visibility. An answer counts only while its field shows and no flag clears it (2.3, 7.1), so
+// whether one field shows can hang on whether another does. Two things can go wrong that no reader
+// of a single condition would see: a condition that hangs on itself, and a required field that no
+// set of answers ever shows.
+
+/** One showing of a field: the field itself, or in a grid's cell the field in one row. */
+type Site = { node: Node; row: string | null };
+const siteKey = (site: Site): string => `${site.node.at} ${site.row ?? ''}`;
+const siteOf = (leaf: Leaf): Site => ({ node: leaf.node, row: leaf.row });
+
+/** A condition with each path traced to the answer it names. */
+type Formula =
+  { leaf: Leaf; is: string[] | null } | { all: Formula[] } | { any: Formula[] } | { not: Formula };
+
+/**
+ * Null when the condition names no answer, or asks for a code where there is none: that is reported
+ * where conditions are checked, and such a condition is then left out. With one condition fewer a
+ * field can only show more often, so a field said never to show is still one that never does. A
+ * code the field does not offer is likewise taken as one that could be picked.
+ */
+function formulaOf(
+  model: Model,
+  condition: Condition,
+  carrier: Node | SectionNode,
+  row: string | null,
+): Formula | null {
+  if ('field' in condition) {
+    const named = leafAt(model, condition.field, carrier, row);
+    if ('fault' in named) return null;
+    if (!('is' in condition)) return { leaf: named.leaf, is: null };
+    if (named.leaf.holds.type !== 'codes') return null;
+    return { leaf: named.leaf, is: typeof condition.is === 'string' ? [condition.is] : condition.is };
+  }
+  if ('not' in condition) {
+    const inner = formulaOf(model, condition.not, carrier, row);
+    return inner && { not: inner };
+  }
+  const parts = ('all' in condition ? condition.all : condition.any).map((c) =>
+    formulaOf(model, c, carrier, row),
+  );
+  if (parts.some((part) => part === null)) return null;
+  return 'all' in condition ? { all: parts as Formula[] } : { any: parts as Formula[] };
+}
+
+function leavesIn(formula: Formula, each: (test: Extract<Formula, { leaf: Leaf }>) => void) {
+  if ('leaf' in formula) each(formula);
+  else if ('not' in formula) leavesIn(formula.not, each);
+  else ('all' in formula ? formula.all : formula.any).forEach((part) => leavesIn(part, each));
+}
+
+/** What decides whether a site's answers count. */
+type Rules = {
+  /** All must hold for the site to show: the section's condition, each group's and grid's around it, its own. */
+  shows: Formula[];
+  /** The answers of flags that clear it, or something around it, while they are set. */
+  clearedBy: Leaf[];
+};
+
+class Visibility {
+  private readonly rules = new Map<string, Rules>();
+  constructor(private readonly model: Model) {}
+
+  rulesOf(site: Site): Rules {
+    const key = siteKey(site);
+    let rules = this.rules.get(key);
+    if (rules) return rules;
+    rules = { shows: [], clearedBy: [] };
+    this.rules.set(key, rules);
+
+    const add = (condition: Condition | undefined, carrier: Node | SectionNode, row: string | null) => {
+      const formula = condition && formulaOf(this.model, condition, carrier, row);
+      if (formula) rules.shows.push(formula);
+    };
+    add(site.node.section.section.showWhen, site.node.section, null);
+    const around: Node[] = [];
+    for (let node: Node | null = site.node; node; node = node.parent) around.unshift(node);
+    for (const node of around) {
+      // Only what is inside a grid's cell is in a row. The grid's own condition is read from outside.
+      const row = node.grid ? site.row : null;
+      add(node.field.showWhen, node, row);
+      // A row of picked rows is there while its option is picked.
+      if (node.parent?.cell === node && node.parent.picked && row !== null)
+        rules.shows.push({ leaf: node.parent.picked, is: [row] });
+      for (const flag of node.siblings)
+        if (flag !== node && flag.field.kind === 'flag' && flag.field.clears?.includes(node.field.id))
+          rules.clearedBy.push(...flag.leaves.filter((leaf) => leaf.row === row));
+    }
+    return rules;
+  }
+
+  /** The sites whose answers this one's showing or counting reads. */
+  reads(site: Site): Site[] {
+    const rules = this.rulesOf(site);
+    const sites: Site[] = rules.clearedBy.map(siteOf);
+    for (const formula of rules.shows) leavesIn(formula, (test) => sites.push(siteOf(test.leaf)));
+    return sites;
+  }
+
+  /** Everything reachable from a site through what it reads, the site itself only if it comes round again. */
+  reach(site: Site): Map<string, Site> {
+    const seen = new Map<string, Site>();
+    const stack = this.reads(site);
+    while (stack.length > 0) {
+      const next = stack.pop()!;
+      const key = siteKey(next);
+      if (seen.has(key)) continue;
+      seen.set(key, next);
+      stack.push(...this.reads(next));
+    }
+    return seen;
+  }
+}
+
+/** The sites of a field: one for each row when it is in a grid's cell. */
+function sitesOf(node: Node): Site[] {
+  if (!node.grid) return [{ node, row: null }];
+  return [...new Set(node.grid.rows)].map((row) => ({ node, row }));
+}
+
+/** More cases than this are not tried. Seventeen yes-or-no answers fit; a form does not come near. */
+const MAX_CASES = 200_000;
+
+function checkVisibility(model: Model, report: Report) {
+  const visibility = new Visibility(model);
+  const cyclic = new Set<string>();
+  for (const node of model.nodes)
+    for (const site of sitesOf(node)) {
+      const reach = visibility.reach(site);
+      if (!reach.has(siteKey(site))) continue;
+      cyclic.add(siteKey(site));
+      // Hidden until something is answered that can only be answered, or only counts, once it shows.
+      report(
+        node.at,
+        'condition_cycle',
+        'whether this field shows, or counts, hangs on its own answer; follow its conditions, and those of the fields they name, back to it',
+      );
+    }
+
+  for (const node of model.nodes) {
+    if (!node.field.required) continue;
+    const outcomes = sitesOf(node).map((site) => canShow(visibility, site, cyclic));
+    if (outcomes.length === 0 || outcomes.some((outcome) => outcome === 'yes' || outcome === 'unknown'))
+      continue;
+    if (outcomes.includes('too_many'))
+      report(
+        `${node.at}.required`,
+        'visibility_too_complex',
+        `its conditions hang on more answers than can be tried (${MAX_CASES} cases), so nothing shows that it can ever be visible`,
+      );
+    else
+      report(
+        `${node.at}.required`,
+        'required_never_visible',
+        'no set of answers shows this field, so nothing would ever ask for it: its conditions, with those around it, cannot all hold',
+      );
+  }
+}
+
+/** What an answer is, as far as any condition can tell. */
+type State = { filled: boolean; picked: Set<string> };
+
+/**
+ * Whether some set of answers shows the site. Every answer its showing hangs on, directly or
+ * through another field's showing, is tried in every state a condition can tell apart.
+ */
+function canShow(
+  visibility: Visibility,
+  site: Site,
+  cyclic: Set<string>,
+): 'yes' | 'no' | 'unknown' | 'too_many' {
+  const involved = [site, ...visibility.reach(site).values()];
+  // A cycle has no answer to work out. It is reported as a cycle.
+  if (involved.some((s) => cyclic.has(siteKey(s)))) return 'unknown';
+
+  // The answers read, and for each the code lists it is asked for.
+  const asked = new Map<string, { leaf: Leaf; lists: string[][] }>();
+  const ask = (leaf: Leaf, is: string[] | null) => {
+    const entry = asked.get(leaf.key) ?? { leaf, lists: [] };
+    asked.set(leaf.key, entry);
+    if (is) entry.lists.push(is);
+  };
+  for (const s of involved) {
+    const rules = visibility.rulesOf(s);
+    rules.clearedBy.forEach((leaf) => ask(leaf, null));
+    for (const formula of rules.shows) leavesIn(formula, (test) => ask(test.leaf, test.is));
+  }
+  if (asked.size === 0) return 'yes';
+
+  const variables: { key: string; states: State[] }[] = [];
+  let cases = 1;
+  for (const { leaf, lists } of asked.values()) {
+    const states = statesOf(leaf, lists);
+    cases *= states?.length ?? Infinity;
+    if (!states || cases > MAX_CASES) return 'too_many';
+    variables.push({ key: leaf.key, states });
+  }
+
+  const answers = new Map<string, State>();
+  const counts = new Map<string, boolean>();
+  const countsAt = (leaf: Leaf): boolean => {
+    const at = siteOf(leaf);
+    const key = siteKey(at);
+    let known = counts.get(key);
+    if (known === undefined) {
+      const rules = visibility.rulesOf(at);
+      known =
+        rules.shows.every(holds) &&
+        !rules.clearedBy.some((flag) => countsAt(flag) && answers.get(flag.key)!.filled);
+      counts.set(key, known);
+    }
+    return known;
+  };
+  const holds = (formula: Formula): boolean => {
+    if ('all' in formula) return formula.all.every(holds);
+    if ('any' in formula) return formula.any.some(holds);
+    if ('not' in formula) return !holds(formula.not);
+    if (!countsAt(formula.leaf)) return false;
+    const answer = answers.get(formula.leaf.key)!;
+    return formula.is ? formula.is.some((code) => answer.picked.has(code)) : answer.filled;
+  };
+
+  const choice = variables.map(() => 0);
+  for (;;) {
+    variables.forEach((variable, i) => answers.set(variable.key, variable.states[choice[i]!]!));
+    counts.clear();
+    if (visibility.rulesOf(site).shows.every(holds)) return 'yes';
+    let i = 0;
+    while (i < variables.length && ++choice[i]! === variables[i]!.states.length) choice[i++] = 0;
+    if (i === variables.length) return 'no';
+  }
+}
+
+/**
+ * The states of one answer that the conditions asking about it can tell apart. For a choice, codes
+ * that are in exactly the same asked lists, and that no rule of the field singles out, stand or
+ * fall together: one of them stands for all, so a list of forty codes is one case. Null when there
+ * are more states than can be tried.
+ */
+function statesOf(leaf: Leaf, lists: string[][]): State[] | null {
+  const empty: State = { filled: false, picked: new Set() };
+  const other: State = { filled: true, picked: new Set() };
+  if (leaf.holds.type !== 'codes') return [other, empty];
+  const { options, many, excludes } = leaf.holds;
+
+  const exclusive = new Set(options.filter((option) => option.exclusive).map((option) => option.code));
+  const singled = new Set([...exclusive, ...excludes.flat()]);
+  const asked = new Set(lists.flat());
+  const stands = new Map<string, string>();
+  for (const code of asked) {
+    const lot =
+      singled.has(code) && many ? code : lists.map((list) => (list.includes(code) ? '1' : '0')).join('');
+    if (!stands.has(lot)) stands.set(lot, code);
+  }
+  const codes = [...stands.values()];
+
+  // The fuller states first: most conditions ask for something to be there.
+  const states: State[] = [];
+  if (!many) for (const code of codes) states.push({ filled: true, picked: new Set([code]) });
+  else if (2 ** codes.length > MAX_CASES) return null;
+  else
+    for (let set = (1 << codes.length) - 1; set > 0; set--) {
+      const picked = codes.filter((_, i) => set & (1 << i));
+      const alone = picked.length === 1;
+      if (!alone && picked.some((code) => exclusive.has(code))) continue;
+      if (excludes.some(([a, b]) => a !== b && picked.includes(a) && picked.includes(b))) continue;
+      states.push({ filled: true, picked: new Set(picked) });
+    }
+  // Filled with none of the codes asked about, where the field has such an option.
+  if (options.some((option) => !asked.has(option.code))) states.push(other);
+  states.push(empty);
+  return states;
 }

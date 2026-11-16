@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { canonicalJson } from '../src/canonical.ts';
 import { resolve, type ResolvedNoteType } from '../src/resolve.ts';
 import { validate } from '../src/validate.ts';
 import { definitionFiles, type LooseFiles } from './fixtures/load.ts';
@@ -244,6 +246,16 @@ const LONG = 'path_too_long';
 const rule = (name: string) => `validate.${name}`;
 
 describe('a path of five parts', () => {
+  // Four is the server's number: one part and up to three more (DATA_PATH). test/schema.test.ts
+  // holds the part's own pattern to the same line.
+  it('is one more than the server takes', () => {
+    const records = readFileSync(
+      new URL('../../../services/api/src/sync/records.ts', import.meta.url),
+      'utf8',
+    );
+    expect(records).toMatch(/const DATA_PATH = \/\^.*\{0,3\}\$\/;/);
+  });
+
   // The design's own example: section, entry, grid, row, side.
   broken('a grid with sides in a repeating section', (f) => (findings(f, 'pulses').sides = true), [
     CHECKS,
@@ -812,4 +824,587 @@ describe('a note type named by a definition', () => {
     const { definition, origins } = resolved(files, FULL);
     expect(validate(definition, { origins, noteType: () => undefined })).toEqual([]);
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Flags: what a key means on the field that carries it.
+
+describe('an exclusive option', () => {
+  const EXCLUSIVE = rule('exclusive_in_choose_one');
+  // Every option of a choose-one field clears the others: marking one says nothing, and hides a
+  // field that was meant to be choose-many.
+  broken('in a choose-one field', (f) => (findings(f, 'type').options[0].exclusive = true), [
+    CHECKS,
+    F('type'),
+    EXCLUSIVE,
+  ]);
+  broken(
+    'in the choose-one cell of a grid',
+    (f) => {
+      status(f, 'reflexes').cell.options = [{ code: 'none', label: 'None', exclusive: true }];
+    },
+    [CHECKS, `${S('reflexes')}.cell`, EXCLUSIVE],
+  );
+  // The list is not at fault: a choose-many field could use it. Each choose-one field that does is named.
+  broken(
+    'in a shared list: each choose-one field that uses the list is named',
+    (f) => {
+      f.lists[list('demo_yes_no')].options[1].exclusive = true;
+    },
+    [CHECKS, V('concern'), EXCLUSIVE],
+    [CHECKS, `${S('each')}.cell.fields[0]`, EXCLUSIVE],
+  );
+  fits('in a choose-many field', (f) => (visit(f, 'plan').options[2].exclusive = true));
+});
+
+describe('a region', () => {
+  const FLAG = rule('region_option_flag');
+  // A region holds one code and no text beside it.
+  broken('with an exclusive option', (f) => (f.lists[list('demo_regions')].options[0].exclusive = true), [
+    CHECKS,
+    F('where'),
+    FLAG,
+  ]);
+  broken(
+    'with an Other option: its text has no path',
+    (f) => {
+      f.lists[list('demo_regions')].options[2].other = true;
+    },
+    [CHECKS, F('where'), FLAG],
+  );
+  broken('with an Other option among its sides', (f) => (f.lists[list('side_rl')].options[1].other = true), [
+    CHECKS,
+    F('where'),
+    FLAG,
+  ]);
+  fits('with an icon on an option', (f) => (f.lists[list('demo_regions')].options[0].icon = 'arm'));
+});
+
+describe('sides', () => {
+  const SIDES = rule('sides_not_allowed');
+  const push = (field: Record<string, unknown>) => (f: LooseFiles) =>
+    checks(f).sections[0].fields.push(field);
+  broken(
+    'on a group: each of its fields says for itself whether it has sides',
+    (f) => {
+      visit(f, 'pressure').sides = true;
+    },
+    [CHECKS, `${V('pressure')}.sides`, SIDES],
+  );
+  broken('on a region, which has a side of its own', (f) => (findings(f, 'where').sides = true), [
+    CHECKS,
+    `${F('where')}.sides`,
+    SIDES,
+  ]);
+  broken('on a problem', (f) => (findings(f, 'diagnosis').sides = true), [
+    CHECKS,
+    `${F('diagnosis')}.sides`,
+    SIDES,
+  ]);
+  broken('on a photo', (f) => (visit(f, 'photos').sides = true), [CHECKS, `${V('photos')}.sides`, SIDES]);
+  broken('on a button', (f) => (visit(f, 'handoff').sides = true), [CHECKS, `${V('handoff')}.sides`, SIDES]);
+  broken('on guidance', (f) => (visit(f, 'guidance').sides = true), [
+    CHECKS,
+    `${V('guidance')}.sides`,
+    SIDES,
+  ]);
+  // Right and left are one path part, the last. A grid's sides are already its cell's.
+  broken('on the cell of a grid that has sides itself', (f) => (status(f, 'reflexes').cell.sides = true), [
+    CHECKS,
+    `${S('reflexes')}.cell.sides`,
+    SIDES,
+  ]);
+  for (const kind of ['flag', 'time', 'duration'])
+    fits(`on a ${kind}`, push({ id: 'extra', kind, label: 'Extra', sides: true }));
+  fits('on a date', push({ id: 'extra', kind: 'date', label: 'Extra', range: 'any', sides: true }));
+  fits('on a text', push({ ...TEXT('extra'), sides: true }));
+  fits('on the cell of a grid without sides', (f) => {
+    delete status(f, 'reflexes').sides;
+    status(f, 'reflexes').cell.sides = true;
+  });
+});
+
+describe('required', () => {
+  const REQUIRED = rule('required_not_allowed');
+  // Complete waits for a required field to be filled. These hold nothing that could be.
+  broken(
+    'on a photo: nothing is stored, so Complete would wait for ever',
+    (f) => {
+      visit(f, 'photos').required = true;
+    },
+    [CHECKS, `${V('photos')}.required`, REQUIRED],
+  );
+  broken('on a button', (f) => (visit(f, 'handoff').required = true), [
+    CHECKS,
+    `${V('handoff')}.required`,
+    REQUIRED,
+  ]);
+  broken('on guidance', (f) => (visit(f, 'guidance').required = true), [
+    CHECKS,
+    `${V('guidance')}.required`,
+    REQUIRED,
+  ]);
+  // "Filled" has no one meaning for these two: any field, or every field? Each field says for itself.
+  broken('on a group', (f) => (visit(f, 'pressure').required = true), [
+    CHECKS,
+    `${V('pressure')}.required`,
+    REQUIRED,
+  ]);
+  broken('on a grid', (f) => (findings(f, 'pulses').required = true), [
+    CHECKS,
+    `${F('pulses')}.required`,
+    REQUIRED,
+  ]);
+  fits('on the cell of a grid', (f) => (findings(f, 'pulses').cell.required = true));
+  fits('on a field of a group', (f) => (visit(f, 'pressure').fields[0].required = true));
+  fits('on a region', (f) => (findings(f, 'where').required = true));
+  fits('on a problem', (f) => (findings(f, 'diagnosis').required = true));
+  fits('on a flag', (f) => (visit(f, 'unable').required = true));
+});
+
+describe('the cell of a grid', () => {
+  const grid = (cell: unknown) => (f: LooseFiles) =>
+    checks(f).sections[0].fields.push({
+      id: 'matrix',
+      kind: 'grid',
+      label: 'Matrix',
+      rows: [{ code: 'a', label: 'A' }],
+      cell,
+    });
+  const CELL = `${VISIT}.fields[14].cell`;
+  const inner = {
+    id: 'inner',
+    kind: 'grid',
+    label: 'Inner',
+    rows: [{ code: 'b', label: 'B' }],
+    cell: TEXT('x'),
+  };
+  fits('that is a text', grid(TEXT('x')));
+  fits('that is a group', grid(GROUP('x', TEXT('y'))));
+  // What ./ means in a row of a row, nothing says.
+  it('that is a grid', () => {
+    const files = definitionFiles();
+    grid(inner)(files);
+    expect(found(files)).toEqual(sorted([[CHECKS, CELL, rule('grid_in_grid')]]));
+  });
+  it('that holds a grid in a group', () => {
+    const files = definitionFiles();
+    grid(GROUP('x', { ...inner, rows: { pickedIn: 'visit.systems' } }))(files);
+    expect(found(files)).toEqual(sorted([[CHECKS, `${CELL}.fields[0]`, rule('grid_in_grid')]]));
+  });
+  for (const cell of [
+    { id: 'x', kind: 'info', label: 'Guidance' },
+    { id: 'x', kind: 'photo', label: 'Photos', max: 1 },
+    { id: 'x', kind: 'action', label: 'Button', action: 'show_handoff' },
+  ])
+    it(`that stores nothing: ${cell.kind}`, () => {
+      const files = definitionFiles();
+      grid(cell)(files);
+      expect(found(files)).toEqual(sorted([[CHECKS, CELL, rule('grid_cell_stores_nothing')]]));
+    });
+  fits(
+    'that is a group with guidance among its fields',
+    grid(GROUP('x', TEXT('y'), { id: 'z', kind: 'info', label: 'Guidance' })),
+  );
+});
+
+describe('a flag that clears', () => {
+  const CLEARS = `${V('unable')}.clears[0]`;
+  const UNKNOWN = rule('clears_unknown_field');
+  // While "Unable to measure" is ticked, the length must not count. A misspelt id would leave it counting.
+  broken('a field that is not beside it', (f) => (visit(f, 'unable').clears = ['lenght']), [
+    CHECKS,
+    CLEARS,
+    UNKNOWN,
+  ]);
+  broken('a field of a group beside it', (f) => (visit(f, 'unable').clears = ['upper']), [
+    CHECKS,
+    CLEARS,
+    UNKNOWN,
+  ]);
+  broken('a field of another section', (f) => (visit(f, 'unable').clears = ['depth']), [
+    CHECKS,
+    CLEARS,
+    UNKNOWN,
+  ]);
+  broken('itself', (f) => (visit(f, 'unable').clears = ['unable']), [CHECKS, CLEARS, UNKNOWN]);
+  fits('a group beside it', (f) => (visit(f, 'unable').clears = ['pressure']));
+  fits('two fields beside it', (f) => (visit(f, 'unable').clears = ['length', 'lasting']));
+});
+
+describe('the limits of design 2.4', () => {
+  const full = (f: LooseFiles): Loose => f.noteTypes[FULL];
+  // full_demo is at both limits as written: a text of 4,000 characters and 20 entries.
+  it('a text field longer than 4,000 characters', () => {
+    const files = definitionFiles();
+    expect(full(files).sections[0].fields[0].maxLength).toBe(4000);
+    full(files).sections[0].fields[0].maxLength = 4001;
+    expect(found(files, FULL)).toEqual(
+      sorted([[FULL, '$.sections[0].fields[0].maxLength', rule('text_too_long')]]),
+    );
+  });
+  it('a repeating section of more than 20 entries', () => {
+    const files = definitionFiles();
+    expect(full(files).sections[1].repeat.max).toBe(20);
+    full(files).sections[1].repeat.max = 21;
+    expect(found(files, FULL)).toEqual(sorted([[FULL, '$.sections[1].repeat.max', rule('repeat_too_many')]]));
+  });
+
+  const LIMIT = 256 * 1024;
+  const bytes = (files: LooseFiles) =>
+    new TextEncoder().encode(canonicalJson(resolved(files, FULL).definition)).length;
+  /** full_demo with its title padded until the resolved definition is `size` bytes. */
+  const padded = (size: number, pad = 'x') => {
+    const files = definitionFiles();
+    const width = new TextEncoder().encode(pad).length;
+    full(files).title += pad.repeat(Math.floor((size - bytes(files)) / width));
+    full(files).title += 'x'.repeat(size - bytes(files));
+    expect(bytes(files)).toBe(size);
+    return files;
+  };
+  it('a resolved definition of exactly 256 KiB passes', () => {
+    expect(found(padded(LIMIT), FULL)).toEqual([]);
+  });
+  it('one byte more does not', () => {
+    expect(found(padded(LIMIT + 1), FULL)).toEqual(sorted([[FULL, '$', rule('too_large')]]));
+  });
+  // The limit is on what is stored and sent, which is bytes.
+  it('the size is counted in bytes, not characters', () => {
+    const files = padded(LIMIT + 2, 'é');
+    expect(JSON.stringify(resolved(files, FULL).definition).length).toBeLessThan(LIMIT);
+    expect(found(files, FULL)).toEqual(sorted([[FULL, '$', rule('too_large')]]));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Visibility. An answer counts only while its field shows (7.1), so a condition can depend on
+// another, and a required field can be one that no set of answers ever shows.
+
+describe('a required field that can never be visible', () => {
+  const NEVER = rule('required_never_visible');
+  const story = (f: LooseFiles) => visit(f, 'story');
+  const STORY: Expected = [CHECKS, `${V('story')}.required`, NEVER];
+  const CONCERN_YES = { field: 'visit.concern', is: 'yes' };
+  /** Story is required. Its condition replaced by one that can never hold, or by one that can. */
+  const never = (name: string, condition: unknown) =>
+    broken(name, (f) => (story(f).showWhen = condition), STORY);
+  const sometimes = (name: string, condition: unknown) => fits(name, (f) => (story(f).showWhen = condition));
+
+  never('two codes of a choose-one field at once', {
+    all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }],
+  });
+  sometimes('two codes of a choose-many field at once', {
+    all: [
+      { field: 'visit.systems', is: 'eyes' },
+      { field: 'visit.systems', is: 'ears' },
+    ],
+  });
+  sometimes('one of two codes of a choose-one field', {
+    any: [CONCERN_YES, { field: 'visit.concern', is: 'no' }],
+  });
+  // Sent to ED and Declined care are a blocked pair of the Plan field.
+  never('both codes of a blocked pair', {
+    all: [
+      { field: 'visit.plan', is: 'sent' },
+      { field: 'visit.plan', is: 'declined' },
+    ],
+  });
+  sometimes('two codes that are not a blocked pair', {
+    all: [
+      { field: 'visit.plan', is: 'sent' },
+      { field: 'visit.plan', is: 'follow_up' },
+    ],
+  });
+  never('an exclusive option with another', {
+    all: [
+      { field: 'visit.systems', is: 'none' },
+      { field: 'visit.systems', is: ['eyes', 'ears'] },
+    ],
+  });
+  never('filled and not filled', {
+    all: [{ field: 'visit.lasting', filled: true }, { not: { field: 'visit.lasting', filled: true } }],
+  });
+  never('a code and not filled', { all: [CONCERN_YES, { not: { field: 'visit.concern', filled: true } }] });
+  sometimes('a code and not another code', {
+    all: [CONCERN_YES, { not: { field: 'visit.concern', is: 'no' } }],
+  });
+  never('not (filled or not filled)', {
+    not: {
+      any: [{ field: 'visit.lasting', filled: true }, { not: { field: 'visit.lasting', filled: true } }],
+    },
+  });
+  sometimes('not filled, alone: it shows until the other is answered', {
+    not: { field: 'visit.lasting', filled: true },
+  });
+  never('filled, and none of the options the field has', {
+    all: [{ field: 'visit.concern', filled: true }, { not: { field: 'visit.concern', is: ['yes', 'no'] } }],
+  });
+  sometimes('filled, and none of some of its options', {
+    all: [
+      { field: 'visit.systems', filled: true },
+      { not: { field: 'visit.systems', is: ['none', 'eyes', 'ears', 'skin'] } },
+    ],
+  });
+  sometimes('a choice not filled, alone', { not: { field: 'visit.concern', filled: true } });
+  sometimes('none of the options a field has, alone: it shows while the field is empty', {
+    not: { field: 'visit.concern', is: ['yes', 'no'] },
+  });
+  sometimes('two fields both not filled', {
+    all: [
+      { not: { field: 'visit.lasting', filled: true } },
+      { not: { field: 'visit.called', filled: true } },
+    ],
+  });
+  // None is exclusive; Eyes, listed beside it, can be held with Ears.
+  sometimes('an exclusive option or another, with a third', {
+    all: [
+      { field: 'visit.systems', is: ['none', 'eyes'] },
+      { field: 'visit.systems', is: 'ears' },
+    ],
+  });
+  sometimes('one of a blocked pair or another, with the other of the pair', {
+    all: [
+      { field: 'visit.plan', is: ['sent', 'follow_up'] },
+      { field: 'visit.plan', is: 'declined' },
+    ],
+  });
+  sometimes('any of every option of a field', {
+    field: 'visit.systems',
+    is: ['none', 'eyes', 'ears', 'skin', 'other'],
+  });
+
+  // An answer in a hidden field does not count. The Eyes section shows only when New concern is Yes.
+  never('an answer that only counts when the opposite holds', {
+    all: [
+      { field: 'eyes.pupils', filled: true },
+      { field: 'visit.concern', is: 'no' },
+    ],
+  });
+  sometimes('an answer in a section that can show at the same time', {
+    all: [{ field: 'eyes.pupils', filled: true }, CONCERN_YES],
+  });
+  // Eyes: Notes shows for pupils 0 or 1+, in a section that shows for Eyes.
+  never('an answer two conditions away from showing', {
+    all: [
+      { field: 'eyes.notes', filled: true },
+      { field: 'eyes.pupils', is: 'two' },
+    ],
+  });
+  never('an answer behind a section whose own condition excludes it', {
+    all: [
+      { field: 'eyes.notes', filled: true },
+      { field: 'visit.systems', is: 'none' },
+    ],
+  });
+  // "Unable to measure" clears Length: while it is ticked, the length does not count.
+  never('a field and the flag that clears it', {
+    all: [
+      { field: 'visit.unable', filled: true },
+      { field: 'visit.length.left', filled: true },
+    ],
+  });
+  sometimes('a field or the flag that clears it', {
+    any: [
+      { field: 'visit.unable', filled: true },
+      { field: 'visit.length.left', filled: true },
+    ],
+  });
+
+  describe('behind what is around it', () => {
+    // Depth is required, in an entry of Findings, which shows when Skin was examined.
+    broken(
+      'a section that shows only when the field cannot',
+      (f) => {
+        findings(f, 'depth').showWhen = { field: 'visit.systems', is: 'none' };
+      },
+      [CHECKS, `${F('depth')}.required`, NEVER],
+    );
+    broken(
+      'a section that can never show: each required field in it',
+      (f) => {
+        checks(f).sections[2].showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
+      },
+      [CHECKS, `${F('depth')}.required`, NEVER],
+    );
+    broken(
+      'a group that can never show',
+      (f) => {
+        const group = GROUP('extra', { ...TEXT('must'), required: true }) as Loose;
+        group.showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
+        checks(f).sections[0].fields.push(group);
+      },
+      [CHECKS, `${VISIT}.fields[14].fields[0].required`, NEVER],
+    );
+    broken(
+      'an include whose condition excludes the field’s own',
+      (f) => {
+        exam(f).sections[1].fields[0].required = true;
+        exam(f).sections[1].fields[0].showWhen = { field: 'visit.concern', is: 'no' };
+      },
+      [EXAM, '$.sections[1].fields[0].required', NEVER],
+    );
+  });
+
+  describe('in the cell of a grid', () => {
+    const note = (f: LooseFiles) => status(f, 'each').cell.fields[1];
+    const NOTE: Expected = [CHECKS, `${S('each')}.cell.fields[1].required`, NEVER];
+    broken(
+      'whose condition can hold in no row',
+      (f) => {
+        note(f).showWhen = {
+          all: [
+            { field: './seen', is: 'yes' },
+            { field: './seen', is: 'no' },
+          ],
+        };
+      },
+      NOTE,
+    );
+    // The rows are the systems picked. A row is there only while its system is.
+    broken(
+      'whose condition asks that no row be picked',
+      (f) => {
+        note(f).showWhen = { not: { field: 'visit.systems', filled: true } };
+      },
+      NOTE,
+    );
+    fits('whose condition can hold in one row only', (f) => {
+      note(f).showWhen = { not: { field: 'visit.systems', is: ['none', 'ears', 'skin', 'other'] } };
+    });
+    broken(
+      'whose condition excludes every row’s own option',
+      (f) => {
+        note(f).showWhen = { not: { field: 'visit.systems', is: ['none', 'eyes', 'ears', 'skin', 'other'] } };
+      },
+      NOTE,
+    );
+    broken(
+      'when the field the rows are picked in can never show: nothing that hangs on it can',
+      (f) => {
+        visit(f, 'systems').showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
+      },
+      NOTE,
+      [CHECKS, `${F('depth')}.required`, NEVER],
+    );
+  });
+
+  describe('in the cell of a grid whose rows are picked', () => {
+    // One row for each plan picked. Sent to ED and Declined care are a blocked pair: never both rows.
+    const byPlan =
+      (...rows: string[]) =>
+      (f: LooseFiles) => {
+        const must = { ...TEXT('must'), required: true } as Loose;
+        must.showWhen = { all: rows.map((row) => ({ field: `status.plans.${row}.seen`, filled: true })) };
+        checks(f).sections[3].fields.push({
+          id: 'plans',
+          kind: 'grid',
+          label: 'For each plan',
+          rows: { pickedIn: 'visit.plan' },
+          cell: GROUP('detail', TEXT('seen'), must),
+        });
+      };
+    fits('a field that needs answers in two rows that can both be there', byPlan('sent', 'follow_up'));
+    broken(
+      'a field that needs answers in two rows that can never both be there',
+      byPlan('sent', 'declined'),
+      [CHECKS, `${STATUS}.fields[2].cell.fields[1].required`, NEVER],
+    );
+  });
+
+  // A condition that is itself at fault is reported as that, and not a second time here.
+  broken('is not claimed of a condition with an unknown code', (f) => (story(f).showWhen.is = 'yess'), [
+    CHECKS,
+    `${V('story')}.showWhen.is`,
+    rule('condition_unknown_code'),
+  ]);
+  fits('is not claimed of a field that is not required', (f) => {
+    visit(f, 'lasting').showWhen = { all: [CONCERN_YES, { field: 'visit.concern', is: 'no' }] };
+  });
+
+  describe('when there are too many cases to try', () => {
+    const many = (count: number) => (f: LooseFiles) => {
+      const all = [];
+      for (let i = 0; i < count; i++) {
+        checks(f).sections[0].fields.push(TEXT(`t${i}`));
+        all.push({ field: `visit.t${i}`, filled: true });
+      }
+      story(f).showWhen = { all };
+    };
+    fits('seventeen answers a condition hangs on are tried', many(17));
+    // Nothing is passed unchecked: what cannot be tried is refused.
+    broken('eighteen are refused', many(18), [
+      CHECKS,
+      `${V('story')}.required`,
+      rule('visibility_too_complex'),
+    ]);
+    fits('a condition on any of forty options is one case, not two to the fortieth', (f) => {
+      const options = Array.from({ length: 40 }, (_, i) => ({ code: `c${i}`, label: `C ${i}` }));
+      checks(f).sections[0].fields.push({ id: 'big', kind: 'choice', many: true, label: 'Big', options });
+      story(f).showWhen = { field: 'visit.big', is: options.map((o) => o.code) };
+    });
+  });
+});
+
+describe('a condition that hangs on itself', () => {
+  const CYCLE = rule('condition_cycle');
+  const FILLED = (field: string) => ({ field, filled: true });
+  // Hidden until answered, and it cannot be answered while hidden.
+  broken('a field shown when it is filled', (f) => (visit(f, 'lasting').showWhen = FILLED('visit.lasting')), [
+    CHECKS,
+    V('lasting'),
+    CYCLE,
+  ]);
+  broken(
+    'two fields that each show when the other is filled',
+    (f) => {
+      visit(f, 'onset').showWhen = FILLED('visit.called');
+      visit(f, 'called').showWhen = FILLED('visit.onset');
+    },
+    [CHECKS, V('onset'), CYCLE],
+    [CHECKS, V('called'), CYCLE],
+  );
+  fits('two fields, one of which shows when the other is filled', (f) => {
+    visit(f, 'onset').showWhen = FILLED('visit.called');
+  });
+  broken(
+    'a group shown when a field inside it is filled',
+    (f) => {
+      visit(f, 'pressure').showWhen = FILLED('visit.pressure.upper');
+    },
+    [CHECKS, `${V('pressure')}.fields[0]`, CYCLE],
+  );
+  // The whole section hangs on New concern, which is in it. Story is required and hangs on it too:
+  // that is said once, as the cycle.
+  broken(
+    'a section shown by a field inside it',
+    (f) => (checks(f).sections[0].showWhen = { field: 'visit.concern', is: 'yes' }),
+    [CHECKS, V('concern'), CYCLE],
+  );
+  // Ticked, it clears the length, so it hides, so the length counts, so it shows.
+  broken(
+    'a flag shown when the field it clears is filled',
+    (f) => {
+      visit(f, 'unable').showWhen = FILLED('visit.length.left');
+    },
+    [CHECKS, V('unable'), CYCLE],
+    [CHECKS, V('length'), CYCLE],
+  );
+  broken(
+    'a field in a row shown when it is filled',
+    (f) => {
+      status(f, 'each').cell.fields[1].showWhen = FILLED('./note');
+    },
+    [CHECKS, `${S('each')}.cell.fields[1]`, CYCLE],
+  );
+  fits('a field in a row shown by the same field in another grid’s row', (f) => {
+    findings(f, 'pulses').cell.showWhen = FILLED('status.reflexes.knee.left');
+  });
+  broken(
+    'rows picked in a field that shows when a row is filled',
+    (f) => {
+      visit(f, 'systems').showWhen = FILLED('status.each.eyes.seen');
+    },
+    [CHECKS, V('systems'), CYCLE],
+    [CHECKS, `${S('each')}.cell.fields[0]`, CYCLE],
+  );
 });
