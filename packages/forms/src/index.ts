@@ -3,3 +3,4 @@
 // its own entry, '@sineobex/forms/schema' (test/import-path.test.ts holds this).
 export { canonicalJson, sha256Hex } from './canonical.ts';
 export * from './types.ts';
+export * from './resolve.ts';

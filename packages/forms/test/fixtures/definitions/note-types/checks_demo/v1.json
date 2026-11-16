@@ -1,0 +1,203 @@
+{
+  "key": "checks_demo",
+  "version": 1,
+  "title": "Checks (test)",
+  "kinds": ["medical"],
+  "group": "clinical",
+  "sensitivity": "none",
+  "quick": true,
+  "sections": [
+    {
+      "id": "visit",
+      "title": "Visit",
+      "fields": [
+        {
+          "id": "systems",
+          "kind": "choice",
+          "many": true,
+          "label": "What did you examine?",
+          "options": [
+            { "code": "none", "label": "None", "exclusive": true },
+            { "code": "eyes", "label": "Eyes" },
+            { "code": "ears", "label": "Ears" },
+            { "code": "skin", "label": "Skin", "suggests": "full_demo" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        },
+        {
+          "id": "concern",
+          "kind": "choice",
+          "many": false,
+          "label": "New concern?",
+          "required": true,
+          "options": { "list": "demo_yes_no" }
+        },
+        {
+          "id": "story",
+          "kind": "text",
+          "label": "What happened?",
+          "lines": "many",
+          "maxLength": 2000,
+          "required": true,
+          "showWhen": { "field": "visit.concern", "is": "yes" },
+          "mapsTo": "full_demo:history.story"
+        },
+        {
+          "id": "length",
+          "kind": "number",
+          "label": "Length",
+          "min": 0,
+          "max": 99.9,
+          "decimals": 1,
+          "unit": "cm",
+          "sides": true,
+          "mapsTo": "full_demo:history.length"
+        },
+        { "id": "unable", "kind": "flag", "label": "Unable to measure", "clears": ["length"] },
+        { "id": "onset", "kind": "date", "label": "Onset", "range": "past" },
+        { "id": "called", "kind": "time", "label": "Time called" },
+        { "id": "lasting", "kind": "duration", "label": "How long" },
+        {
+          "id": "pressure",
+          "kind": "group",
+          "label": "Blood pressure",
+          "layout": "row",
+          "fields": [
+            { "id": "upper", "kind": "number", "label": "Upper", "min": 0, "max": 300, "decimals": 0 },
+            { "id": "lower", "kind": "number", "label": "Lower", "min": 0, "max": 300, "decimals": 0 }
+          ]
+        },
+        {
+          "id": "plan",
+          "kind": "choice",
+          "many": true,
+          "label": "Plan",
+          "options": [
+            { "code": "sent", "label": "Sent to ED" },
+            { "code": "declined", "label": "Declined care" },
+            { "code": "follow_up", "label": "Follow up" }
+          ],
+          "excludes": [["sent", "declined"]]
+        },
+        { "id": "photos", "kind": "photo", "label": "Photos", "max": 4 },
+        { "id": "handoff", "kind": "action", "label": "Show the handoff summary", "action": "show_handoff" },
+        {
+          "id": "wound",
+          "kind": "action",
+          "label": "Go to the full module",
+          "action": "open_note_type",
+          "noteType": "full_demo",
+          "showWhen": { "field": "visit.systems", "is": "skin" }
+        },
+        { "id": "guidance", "kind": "info", "label": "The resource directory is coming." }
+      ]
+    },
+    { "include": "demo_exam", "version": 1, "showWhen": { "field": "visit.concern", "is": "yes" } },
+    {
+      "id": "findings",
+      "title": "Findings",
+      "showWhen": { "field": "visit.systems", "is": "skin" },
+      "repeat": { "max": 5, "itemTitle": "Finding {n}" },
+      "fields": [
+        {
+          "id": "where",
+          "kind": "region",
+          "label": "Where",
+          "options": { "list": "demo_regions" },
+          "side": "side_rl",
+          "surface": true,
+          "mapsTo": "full_demo:wounds.where"
+        },
+        { "id": "diagnosis", "kind": "problem", "label": "Diagnosis" },
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Type",
+          "options": [
+            { "code": "cut", "label": "Cut" },
+            { "code": "burn", "label": "Burn" }
+          ],
+          "mapsTo": "full_demo:wounds.type"
+        },
+        {
+          "id": "depth",
+          "kind": "number",
+          "label": "Depth",
+          "min": 0,
+          "max": 50,
+          "decimals": 0,
+          "unit": "mm",
+          "required": true,
+          "showWhen": { "field": "./type", "is": "burn" }
+        },
+        {
+          "id": "pulses",
+          "kind": "grid",
+          "label": "Pulses",
+          "rows": { "list": "demo_sites" },
+          "cell": {
+            "id": "strength",
+            "kind": "choice",
+            "many": false,
+            "label": "Strength",
+            "options": { "list": "demo_scale" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "title": "Status",
+      "fields": [
+        {
+          "id": "each",
+          "kind": "grid",
+          "label": "For each system examined",
+          "rows": { "pickedIn": "visit.systems" },
+          "cell": {
+            "id": "detail",
+            "kind": "group",
+            "label": "Detail",
+            "layout": "stack",
+            "fields": [
+              {
+                "id": "seen",
+                "kind": "choice",
+                "many": false,
+                "label": "Seen before?",
+                "options": { "list": "demo_yes_no" }
+              },
+              {
+                "id": "note",
+                "kind": "text",
+                "label": "Note",
+                "lines": "one",
+                "maxLength": 200,
+                "required": true,
+                "showWhen": { "field": "./seen", "is": "yes" }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reflexes",
+          "kind": "grid",
+          "label": "Reflexes",
+          "sides": true,
+          "rows": [
+            { "code": "knee", "label": "Knee" },
+            { "code": "ankle", "label": "Ankle" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Grade",
+            "options": { "list": "demo_scale" }
+          }
+        }
+      ]
+    }
+  ]
+}

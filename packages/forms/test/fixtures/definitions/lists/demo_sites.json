@@ -1,0 +1,7 @@
+{
+  "name": "demo_sites",
+  "options": [
+    { "code": "radial", "label": "Radial" },
+    { "code": "pedal", "label": "Pedal" }
+  ]
+}
