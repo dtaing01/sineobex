@@ -93,12 +93,24 @@ describe('0018 encounter lifecycle', () => {
     tx`update sineobex.encounter_notes set status = 'completed', completed_at = now(), completed_by = ${author}
        where id = ${noteId}`;
 
-  /** The columns a signed note must carry. */
-  const sign = (tx: TransactionSql, noteId: string) =>
-    tx`update sineobex.encounter_notes
-       set status = 'signed', completed_at = now(), completed_by = ${author},
-           first_signed_at = coalesce(first_signed_at, now())
-       where id = ${noteId}`;
+  /** A sign-off row (0019): a signed note names the one that signs it. */
+  const signoff = async (tx: TransactionSql, noteId: string) => {
+    const id = randomUUID();
+    await tx`insert into sineobex.note_signoffs (id, team_id, note_id, act, effect, content_hash, signer_user_id,
+               signer_name, signer_credential, needs_attestation, statement_version, signed_at, clock_verified)
+             values (${id}, ${team}, ${noteId}, 'sign', 'signed', ${'ab'.repeat(32)}, ${author}, 'Demo Signer',
+               'attending', false, 'demo-1', now(), true)`;
+    return id;
+  };
+
+  /** The columns a signed note must carry, written with its sign-off as a sign-off is applied. */
+  const sign = async (tx: TransactionSql, noteId: string) => {
+    const signoffId = await signoff(tx, noteId);
+    await tx`update sineobex.encounter_notes
+             set status = 'signed', completed_at = now(), completed_by = ${author},
+                 first_signed_at = coalesce(first_signed_at, now()), signoff_id = ${signoffId}
+             where id = ${noteId}`;
+  };
 
   /** A note in the state a vector case names. A finished note is inserted finished where it can be. */
   const note = async (encounterId: string, shape: NoteShape) => {
@@ -287,12 +299,13 @@ describe('0018 encounter lifecycle', () => {
     it('the update that finishes a note may change its answers', async () => {
       const id = await encounter();
       const signed = await draft(id, { ...ANSWERS, hidden: 'Demo: an answer that no longer counts' }, true);
-      await inTeam(
-        (tx) => tx`update sineobex.encounter_notes
-                   set status = 'signed', data = ${tx.json(ANSWERS as never)}, completed_at = now(),
-                       completed_by = ${author}, first_signed_at = now()
-                   where id = ${signed}`,
-      );
+      await inTeam(async (tx) => {
+        const signoffId = await signoff(tx, signed);
+        await tx`update sineobex.encounter_notes
+                 set status = 'signed', data = ${tx.json(ANSWERS as never)}, completed_at = now(),
+                     completed_by = ${author}, first_signed_at = now(), signoff_id = ${signoffId}
+                 where id = ${signed}`;
+      });
       expect(await dataOf(signed)).toEqual(ANSWERS);
       expect(await statusOf(id)).toBe('signed');
     });
@@ -353,10 +366,19 @@ describe('0018 encounter lifecycle', () => {
       return last;
     };
     const finished = () => ({ completed_at: NOW, completed_by: author });
-    const signed = () => ({ status: 'signed', medical: true, first_signed_at: NOW, ...finished() });
+    let signoffId: string;
+    const signed = () => ({
+      status: 'signed',
+      medical: true,
+      first_signed_at: NOW,
+      signoff_id: signoffId,
+      ...finished(),
+    });
 
     beforeAll(async () => {
       encounterId = await encounter();
+      const signedNote = await draft(encounterId, ANSWERS, true);
+      signoffId = await inTeam((tx) => signoff(tx, signedNote));
     });
 
     it('a new note is a draft, Non-Medical, with nothing to attest and nobody assigned', async () => {
@@ -413,8 +435,9 @@ describe('0018 encounter lifecycle', () => {
       }
       // A student's correction sends a signed note back to wait for a co-signer: the attestation goes too.
       const waiting = { ...signed(), attestation: 'waiting' };
-      expect(await update({}, waiting, { status: 'completed' })).toEqual(refused);
-      expect(await update({}, waiting, { status: 'completed', attestation: 'not_needed' })).toBeNull();
+      const back = { status: 'completed', signoff_id: null };
+      expect(await update({}, waiting, back)).toEqual(refused);
+      expect(await update({}, waiting, { ...back, attestation: 'not_needed' })).toBeNull();
     });
 
     it('an attestation is one of three words', async () => {
@@ -657,13 +680,16 @@ describe('0018 on a database that already holds notes', () => {
       select conname as name from pg_constraint
       where conrelid = 'sineobex.encounter_notes'::regclass and contype = 'c' and not convalidated
       order by conname`;
-    expect(checks.map((c) => c.name)).toEqual([
-      'encounter_notes_attestation_when_signed',
-      'encounter_notes_completed_at_when_finished',
-      'encounter_notes_completed_by_with_at',
-      'encounter_notes_signed_has_first_signed',
-      'encounter_notes_signed_is_medical',
-    ]);
+    // 0019 adds one more the same way.
+    expect(checks.map((c) => c.name)).toEqual(
+      expect.arrayContaining([
+        'encounter_notes_attestation_when_signed',
+        'encounter_notes_completed_at_when_finished',
+        'encounter_notes_completed_by_with_at',
+        'encounter_notes_signed_has_first_signed',
+        'encounter_notes_signed_is_medical',
+      ]),
+    );
   });
 
   it('works out an old encounter’s status at its notes’ next change', async () => {
