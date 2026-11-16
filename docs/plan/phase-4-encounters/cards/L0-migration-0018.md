@@ -1,6 +1,6 @@
 # Card L0-migration-0018: note and encounter columns, the status trigger, the finished-note guard
 
-Level: X. Window: 32,000. Needs: L0-vectors.
+Level: X. Window: 32,000. Needs: L0-vectors. Done.
 
 ## Goal
 
