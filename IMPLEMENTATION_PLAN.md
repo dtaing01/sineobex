@@ -212,10 +212,12 @@ Each is a single configuration point or code path, so changing it later is small
 | May a resident, NP or PA co-sign a student's note, or only an attending? (phase 4, lifecycle 12.1 #6) | Any credential that signs may co-sign; the note then waits for attestation if that credential needs it | The PRD names no credential for a co-signer; a note co-signed by a resident, NP or PA still waits for an attending. Brooke and Mercy decide |
 | Can a co-signer send a note back to its author? (phase 4, lifecycle 12.1 #8) | No. Whoever acts as the author reopens a note that waits for a co-signer and was never signed; a co-signer who wants changes says so to the author | The PRD describes no "return" step. Brooke and Mercy decide |
 | Is a Social needs or Outreach note inside a Medical visit signed and attested? (phase 4, lifecycle 12.1 #19) | No. A Non-Medical note is completed, never signed, co-signed or attested, in any visit | Medical is a property of the note's type (D56). Brooke, Mercy and the billing partner decide |
+| Which credential is a signature or a correction recorded under when its time cannot be trusted? (phase 4, lifecycle 12.1 #22) | The one held when the server receives it, with the phone's claimed credential stored beside it; the claim can still make the note wait for attestation | An untrusted time could date a signature to before a credential was lowered; keeping the claim shows what the phone said. Counsel and the billing partner decide |
+| What does Expand do with a Quick encounter draft written on an older released version? (phase 4, forms 10.1 #12) | It reads the draft's own version, writes each answer only where the newest full version takes it, and lists for the person the answers it left out | `mapsTo` is checked only for the newest quick version, and an answer the full note refuses would be a rejected change long after the visit. Brooke and Mercy decide |
 
 ### Phases 4 to 12 (designed, not built)
 
-Each design lists its own defaults and who decides them, and they move into this section as each is built: phase 4 has 32 and eight questions with no default (`docs/design/phase-4/lifecycle.md` 12.1 and 12.2, `docs/design/phase-4/forms.md` 10.1 and 10.2; `docs/design/phase-4-encounters.md` names the six that matter most). The later designs each end with their own table.
+Each design lists its own defaults and who decides them, and they move into this section as each is built: phase 4 has 34 and eight questions with no default (`docs/design/phase-4/lifecycle.md` 12.1 and 12.2, `docs/design/phase-4/forms.md` 10.1 and 10.2; `docs/design/phase-4-encounters.md` names the six that matter most). The later designs each end with their own table.
 
 ### Phase 3 (patients)
 
