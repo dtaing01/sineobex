@@ -315,6 +315,17 @@ describe('0020 note attestations and assignments', () => {
   });
 
   describe('an attestation', () => {
+    it('records the attending’s NPI as ten digits', async () => {
+      const refusedNpi = { code: CHECK, constraint: 'note_attestations_attending_npi_check' };
+      for (const npi of ['', '123456789', '12345678901', 'abcdefghij', ' 000000000', '000000000\n']) {
+        expect(await refused('note_attestations', { attending_npi: npi }), JSON.stringify(npi)).toEqual(
+          refusedNpi,
+        );
+      }
+      // Demo NPIs are ten zeros: the check digit is the API's.
+      expect(await refused('note_attestations', { attending_npi: '0000000000' })).toBeNull();
+    });
+
     it('names the signature attested, one of its team', async () => {
       const constraint = 'note_attestations_team_id_note_id_signoff_id_fkey';
       expect(await refused('note_attestations', { signoff_id: randomUUID() })).toEqual({

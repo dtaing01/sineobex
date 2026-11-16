@@ -342,6 +342,16 @@ describe('0019 note sign-offs, addenda and corrections', () => {
   });
 
   describe('a sign-off', () => {
+    it('records an NPI of ten digits, or none', async () => {
+      const refusedNpi = { code: CHECK, constraint: 'note_signoffs_signer_npi_check' };
+      for (const npi of ['', '123456789', '12345678901', 'abcdefghij', ' 000000000', '000000000\n']) {
+        expect(await refused('note_signoffs', { signer_npi: npi }), JSON.stringify(npi)).toEqual(refusedNpi);
+      }
+      // Demo NPIs are ten zeros: the check digit is the API's.
+      expect(await refused('note_signoffs', { signer_npi: '0000000000' })).toBeNull();
+      expect(await refused('note_signoffs', { signer_npi: null })).toBeNull();
+    });
+
     it('says what was asked and what was done, in the words the rules use', async () => {
       for (const act of ['complete', 'sign', 'cosign']) {
         for (const effect of ['signed', 'completed', 'saved_unsigned', 'none']) {

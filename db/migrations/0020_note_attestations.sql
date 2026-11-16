@@ -13,7 +13,8 @@ create table sineobex.note_attestations (
   content_hash       text not null check (content_hash ~ '^[0-9a-f]{64}$'),   -- the note as the attending read it
   attending_user_id  uuid not null references sineobex.users (id),
   attending_name     text not null,                   -- name, NPI and license as they were then
-  attending_npi      text not null,                   -- the billing export needs it
+  -- The billing export needs it. Ten digits; the check digit is the API's (demo NPIs are ten zeros).
+  attending_npi      text not null check (attending_npi ~ '^[0-9]{10}$'),
   attending_fields   jsonb not null default '{}' check (jsonb_typeof(attending_fields) = 'object'),
   statement_version  text not null,                   -- which wording the attending was shown
   attested_at        timestamptz not null default now(),

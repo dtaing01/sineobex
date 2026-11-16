@@ -19,7 +19,9 @@ create table sineobex.note_signoffs (
   -- The credential the server recorded the act under; it may differ from what the phone claimed.
   signer_credential   text not null
                         check (signer_credential in ('attending', 'resident', 'np', 'pa', 'student', 'chw', 'none')),
-  signer_npi          text,                           -- null when that credential has none
+  -- Null when that credential has none. Ten digits; the check digit is the API's (demo NPIs are
+  -- ten zeros).
+  signer_npi          text check (signer_npi ~ '^[0-9]{10}$'),
   signer_fields       jsonb not null default '{}' check (jsonb_typeof(signer_fields) = 'object'),
   -- What the phone's saved profile said. Null for an online co-sign and for a plain complete.
   claimed_credential  text
