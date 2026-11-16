@@ -1,6 +1,6 @@
 # Card L0-rules-ts: the lifecycle rules in TypeScript
 
-Level: T. Window: 16,000. Needs: L0-vectors.
+Level: T. Window: 16,000. Needs: L0-vectors. Done.
 
 ## Goal
 

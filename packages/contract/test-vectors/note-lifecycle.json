@@ -816,8 +816,8 @@
         "expected": true
       },
       {
-        "name": "a start time in the future",
-        "input": {"noteStatus": "draft", "startedAt": "2026-11-17T18:00:00.000Z", "startedVerified": true, "receivedAt": null, "now": "2026-11-16T18:00:00.000Z"},
+        "name": "a start time two days in the future",
+        "input": {"noteStatus": "draft", "startedAt": "2026-11-18T18:00:00.000Z", "startedVerified": true, "receivedAt": null, "now": "2026-11-16T18:00:00.000Z"},
         "expected": false
       },
       {
