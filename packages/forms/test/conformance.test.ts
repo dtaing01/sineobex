@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { fieldAt } from '../src/interp/field-at.ts';
 import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
 import type { Condition, Option } from '../src/types.ts';
@@ -22,7 +23,16 @@ const vectors = JSON.parse(
 const byKey = new Map(Object.values(vectors.definitions).map((d) => [d.key, d]));
 
 /** Each function, called with a case's definition and its other inputs. */
-const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unknown> = {};
+const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unknown> = {
+  // What a path points at, as plain data both readers can give: the place in the definition is
+  // written as the path model writes it ($.sections[0].fields[2].cell.options[1]).
+  fieldAt: (definition, c) => {
+    const target = fieldAt(definition, c.path as string);
+    if (!target) return null;
+    const { points, at, entry, row, side, part, holds } = target;
+    return { points, at, entry, row, side, part, stores: holds !== null };
+  },
+};
 
 describe('the conformance definitions', () => {
   for (const [name, definition] of Object.entries(vectors.definitions))

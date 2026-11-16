@@ -10,3 +10,5 @@ export * from './lock.ts';
 export * from './versions.ts';
 export * from './spec-check.ts';
 export * from './shape-check.ts';
+// The interpreter (7.1): pure functions of a definition and a note's answers.
+export * from './interp/field-at.ts';
