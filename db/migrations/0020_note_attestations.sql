@@ -18,7 +18,8 @@ create table sineobex.note_attestations (
   statement_version  text not null,                   -- which wording the attending was shown
   attested_at        timestamptz not null default now(),
   foreign key (team_id, note_id) references sineobex.encounter_notes (team_id, id),
-  foreign key (team_id, signoff_id) references sineobex.note_signoffs (team_id, id)
+  -- A signature of the note attested, never one of another note.
+  foreign key (team_id, note_id, signoff_id) references sineobex.note_signoffs (team_id, note_id, id)
 );
 create index note_attestations_note on sineobex.note_attestations (team_id, note_id, attested_at);
 create trigger note_attestations_append_only before update or delete on sineobex.note_attestations

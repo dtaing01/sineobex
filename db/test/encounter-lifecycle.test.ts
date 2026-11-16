@@ -345,29 +345,30 @@ describe('0018 encounter lifecycle', () => {
     const update = async (start: Record<string, unknown>, ...steps: Record<string, unknown>[]) => {
       const values = row(start);
       await inTeam((tx) => tx`insert into sineobex.encounter_notes ${tx(values)}`);
+      // A note names only a sign-off of its own: each note gets one, put where a step says OWN.
+      const own = await inTeam((tx) => signoff(tx, values.id));
       let last: Awaited<ReturnType<typeof refusal>> = null;
       for (const step of steps) {
         expect(last).toBeNull();
+        const change = step.signoff_id === OWN ? { ...step, signoff_id: own } : step;
         last = await refusal(
-          inTeam((tx) => tx`update sineobex.encounter_notes set ${tx(step)} where id = ${values.id}`),
+          inTeam((tx) => tx`update sineobex.encounter_notes set ${tx(change)} where id = ${values.id}`),
         );
       }
       return last;
     };
     const finished = () => ({ completed_at: NOW, completed_by: author });
-    let signoffId: string;
+    const OWN = 'the note’s own sign-off';
     const signed = () => ({
       status: 'signed',
       medical: true,
       first_signed_at: NOW,
-      signoff_id: signoffId,
+      signoff_id: OWN,
       ...finished(),
     });
 
     beforeAll(async () => {
       encounterId = await encounter();
-      const signedNote = await draft(encounterId, ANSWERS, true);
-      signoffId = await inTeam((tx) => signoff(tx, signedNote));
     });
 
     it('a new note is a draft, Non-Medical, with nothing to attest and nobody assigned', async () => {
@@ -474,8 +475,12 @@ describe('0018 encounter lifecycle', () => {
                array(select a.attname::text from unnest(c.conkey) with ordinality k (attnum, n)
                      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum order by k.n) as columns
         from pg_constraint c
-        where c.conrelid = 'sineobex.encounter_notes'::regclass and c.contype = 'u'`;
-      expect(keys).toEqual([{ name: 'encounter_notes_team_id_key', columns: ['team_id', 'id'] }]);
+        where c.conrelid = 'sineobex.encounter_notes'::regclass and c.contype = 'u'
+        order by c.conname`;
+      expect(keys).toEqual([
+        { name: 'encounter_notes_team_id_encounter_id_id_key', columns: ['team_id', 'encounter_id', 'id'] },
+        { name: 'encounter_notes_team_id_key', columns: ['team_id', 'id'] },
+      ]);
     });
 
     it('the co-sign and attestation queues have their indexes', async () => {
@@ -545,7 +550,7 @@ describe('0018 encounter lifecycle', () => {
     });
   });
 
-  it('another team’s request neither reads a note nor moves its encounter', async () => {
+  it('another team’s request neither reads a note nor puts one on its encounter', async () => {
     const otherTeam = await makeTeam(db.owner, 'Lifecycle Other Team');
     const id = await encounter();
     const noteId = await draft(id);
@@ -554,15 +559,20 @@ describe('0018 encounter lifecycle', () => {
     expect(await asOther((tx) => tx`select id from sineobex.encounter_notes where id = ${noteId}`)).toEqual(
       [],
     );
-    // Its own note on this team's encounter: the trigger runs as the request and sees nothing to move.
+    // Its own note on this team's encounter: the foreign key checks the team, whatever the request
+    // can see, so the note is refused and the encounter does not move.
     await db.owner`update sineobex.encounters set status = 'signed' where id = ${id}`;
-    await asOther(
-      (
-        tx,
-      ) => tx`insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id,
-                   data)
-                 values (${randomUUID()}, ${otherTeam}, ${id}, 'demo_note', ${author}, '{"plan": "Demo: x"}')`,
-    );
+    expect(
+      await refusal(
+        asOther(
+          (
+            tx,
+          ) => tx`insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id,
+                       data)
+                     values (${randomUUID()}, ${otherTeam}, ${id}, 'demo_note', ${author}, '{"plan": "Demo: x"}')`,
+        ),
+      ),
+    ).toEqual({ code: '23503', constraint: 'encounter_notes_team_id_encounter_id_fkey' });
     const [row] = await db.owner<{ status: string }[]>`
       select status from sineobex.encounters where id = ${id}`;
     expect(row!.status).toBe('signed');
@@ -662,6 +672,14 @@ describe('0018 on a database that already holds notes', () => {
     const [row] = await db.owner<{ moved: boolean }[]>`
       select updated_at > ${at} as moved from sineobex.encounter_notes where id = ${notes.completed}`;
     expect(row!.moved).toBe(true);
+  });
+
+  it('adds the key from a note to its team’s encounter without holding old rows to it', async () => {
+    const [key] = await db.owner<{ valid: boolean; toEncounters: boolean }[]>`
+      select convalidated as valid, confrelid = 'sineobex.encounters'::regclass as "toEncounters"
+      from pg_constraint
+      where conrelid = 'sineobex.encounter_notes'::regclass and conname = 'encounter_notes_team_id_encounter_id_fkey'`;
+    expect(key).toEqual({ valid: false, toEncounters: true });
   });
 
   it('adds each check without holding old rows to it', async () => {

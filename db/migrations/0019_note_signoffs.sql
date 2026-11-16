@@ -34,18 +34,21 @@ create table sineobex.note_signoffs (
   created_device_id   uuid references sineobex.devices (id),
   approved_by         uuid references sineobex.users (id),   -- the Program Admin who accepted it from quarantine
   constraint note_signoffs_team_id_key unique (team_id, id),
+  -- So a note, or an attestation, can only name a sign-off of its own note.
+  constraint note_signoffs_team_id_note_id_id_key unique (team_id, note_id, id),
   foreign key (team_id, note_id) references sineobex.encounter_notes (team_id, id)
 );
 create index note_signoffs_note on sineobex.note_signoffs (team_id, note_id, received_at);
 create trigger note_signoffs_append_only before update or delete on sineobex.note_signoffs
   for each row execute function sineobex.forbid_mutation();
 
--- A note is signed exactly while it names the sign-off that signs it. A correction by someone who
--- cannot sign clears both. NOT VALID, as the checks of 0018: a preview row marked signed by hand
--- names none.
+-- A note is signed exactly while it names the sign-off that signs it, and that sign-off is one of
+-- its own: a signature made on other content never signs it. A correction by someone who cannot
+-- sign clears both. The check is NOT VALID, as the checks of 0018: a preview row marked signed by
+-- hand names none. The key is valid: every signoff_id is null when it is added.
 alter table sineobex.encounter_notes
   add constraint encounter_notes_signoff_fk
-    foreign key (team_id, signoff_id) references sineobex.note_signoffs (team_id, id),
+    foreign key (team_id, id, signoff_id) references sineobex.note_signoffs (team_id, note_id, id),
   add constraint encounter_notes_signoff_when_signed
     check ((status = 'signed') = (signoff_id is not null)) not valid;
 
@@ -66,7 +69,8 @@ create table sineobex.note_addenda (
   change_id          uuid,
   created_at         timestamptz not null default now(),
   foreign key (team_id, encounter_id) references sineobex.encounters (team_id, id),
-  foreign key (team_id, note_id) references sineobex.encounter_notes (team_id, id)
+  -- Its note is a note of its visit. Unchecked when note_id is null: an addendum to the visit.
+  foreign key (team_id, encounter_id, note_id) references sineobex.encounter_notes (team_id, encounter_id, id)
 );
 create index note_addenda_encounter on sineobex.note_addenda (team_id, encounter_id, written_at);
 create trigger note_addenda_append_only before update or delete on sineobex.note_addenda

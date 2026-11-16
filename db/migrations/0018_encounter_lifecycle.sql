@@ -19,8 +19,16 @@ alter table sineobex.encounter_notes
                                  check (attestation in ('not_needed', 'waiting', 'attested')),
   -- The clinician a Program Admin put in the author's place. Null: the author acts.
   add column assigned_user_id  uuid references sineobex.users (id),
-  -- Composite foreign keys from sign-offs, addenda and corrections to their note.
-  add constraint encounter_notes_team_id_key unique (team_id, id);
+  -- Composite foreign keys from sign-offs, addenda and corrections to their note; an addendum's
+  -- also names the visit, so its note is a note of that visit.
+  add constraint encounter_notes_team_id_key unique (team_id, id),
+  add constraint encounter_notes_team_id_encounter_id_id_key unique (team_id, encounter_id, id);
+
+-- 0004's key is the encounter's ID alone, and a foreign key check ignores row-level security: a
+-- request could put a note of its own team on another team's encounter, which the status trigger
+-- (running as the request) cannot see. NOT VALID, as 0013: phase 2 rows stay as they are.
+alter table sineobex.encounter_notes add constraint encounter_notes_team_id_encounter_id_fkey
+  foreign key (team_id, encounter_id) references sineobex.encounters (team_id, id) not valid;
 
 -- Phase 2 let a phone mark a note completed and recorded nothing more: the last change and the
 -- author are the nearest facts. The touch trigger is off for this one statement, so the row's own

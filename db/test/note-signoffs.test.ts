@@ -183,8 +183,8 @@ describe('0019 note sign-offs, addenda and corrections', () => {
         ['note_signoffs', { note_id: otherNote }, 'note_signoffs_team_id_note_id_fkey'],
         ['note_corrections', { note_id: randomUUID() }, 'note_corrections_team_id_note_id_fkey'],
         ['note_corrections', { note_id: otherNote }, 'note_corrections_team_id_note_id_fkey'],
-        ['note_addenda', { note_id: randomUUID() }, 'note_addenda_team_id_note_id_fkey'],
-        ['note_addenda', { note_id: otherNote }, 'note_addenda_team_id_note_id_fkey'],
+        ['note_addenda', { note_id: randomUUID() }, 'note_addenda_team_id_encounter_id_note_id_fkey'],
+        ['note_addenda', { note_id: otherNote }, 'note_addenda_team_id_encounter_id_note_id_fkey'],
         ['note_addenda', { encounter_id: randomUUID() }, 'note_addenda_team_id_encounter_id_fkey'],
         ['note_addenda', { encounter_id: otherEncounter }, 'note_addenda_team_id_encounter_id_fkey'],
       ];
@@ -323,8 +323,9 @@ describe('0019 note sign-offs, addenda and corrections', () => {
         { name: 'note_addenda_encounter', columns: ['team_id', 'encounter_id', 'written_at'] },
         { name: 'note_corrections_note', columns: ['team_id', 'note_id', 'corrected_at'] },
         { name: 'note_signoffs_note', columns: ['team_id', 'note_id', 'received_at'] },
-        // What other tables point at a sign-off by.
+        // What other tables point at a sign-off by: with its team, and with its team and note.
         { name: 'note_signoffs_team_id_key', columns: ['team_id', 'id'] },
+        { name: 'note_signoffs_team_id_note_id_id_key', columns: ['team_id', 'note_id', 'id'] },
       ]);
     });
   });
@@ -436,9 +437,34 @@ describe('0019 note sign-offs, addenda and corrections', () => {
       await as(otherTeam, (tx) => tx`insert into sineobex.note_signoffs ${values(tx, foreign)}`);
       expect(await set(id, signedColumns(foreign.id as string))).toEqual(POINTS);
     });
+
+    it('the sign-off it names is one of its own', async () => {
+      const visit = await encounter();
+      const id = await note(visit);
+      const beside = await note(visit);
+      const { id: besideSignoff, done } = insert('note_signoffs', { note_id: beside });
+      await done;
+      expect(await set(id, signedColumns(besideSignoff))).toEqual(POINTS);
+      // As a sign-off is applied: its row first, then the note that names it.
+      const own = rows.note_signoffs({ note_id: id });
+      await inTeam(async (tx) => {
+        await tx`insert into sineobex.note_signoffs ${values(tx, own)}`;
+        await tx`update sineobex.encounter_notes set ${tx(signedColumns(own.id as string))} where id = ${id}`;
+      });
+    });
   });
 
   describe('an addendum', () => {
+    it('names a note of its own visit', async () => {
+      const visit = await encounter();
+      const elsewhere = await note(visit);
+      expect(await refused('note_addenda', { note_id: elsewhere })).toEqual({
+        code: FOREIGN_KEY,
+        constraint: 'note_addenda_team_id_encounter_id_note_id_fkey',
+      });
+      expect(await refused('note_addenda', { encounter_id: visit, note_id: elsewhere })).toBeNull();
+    });
+
     it('is attached to a note, or to the visit itself', async () => {
       const onVisit = insert('note_addenda', { note_id: null });
       await onVisit.done;

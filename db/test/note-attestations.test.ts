@@ -303,7 +303,7 @@ describe('0020 note attestations and assignments', () => {
 
   describe('an attestation', () => {
     it('names the signature attested, one of its team', async () => {
-      const constraint = 'note_attestations_team_id_signoff_id_fkey';
+      const constraint = 'note_attestations_team_id_note_id_signoff_id_fkey';
       expect(await refused('note_attestations', { signoff_id: randomUUID() })).toEqual({
         code: FOREIGN_KEY,
         constraint,
@@ -312,6 +312,19 @@ describe('0020 note attestations and assignments', () => {
         code: FOREIGN_KEY,
         constraint,
       });
+    });
+
+    it('names a signature of the note it attests', async () => {
+      // Another note of the same team, with its own signature: attesting this note with it is refused.
+      const [row] = await db.owner<{ encounterId: string }[]>`
+        select encounter_id as "encounterId" from sineobex.encounter_notes where id = ${noteId}`;
+      const beside = await insertNote(db.owner, team, departed, row!.encounterId);
+      const besideSignoff = await signoff(beside);
+      expect(await refused('note_attestations', { signoff_id: besideSignoff })).toEqual({
+        code: FOREIGN_KEY,
+        constraint: 'note_attestations_team_id_note_id_signoff_id_fkey',
+      });
+      expect(await refused('note_attestations', { note_id: beside, signoff_id: besideSignoff })).toBeNull();
     });
 
     it('is written again when a corrected note is attested again', async () => {
