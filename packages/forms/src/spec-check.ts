@@ -258,6 +258,10 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
  *  - `spec.added_in_piece`: an `added` label that is a word of the piece after all
  * A file is checked on its own: every file whose sections name a piece has all of its words. A
  * version that departs from the piece in another way names a piece of its own.
+ *
+ * The definition files must have passed the schema check (checkFile): a file without sections, a
+ * section without fields or a choice without options is reported there, and this check reads them
+ * without looking. The export stops after schema problems.
  */
 export function checkSpec(pieces: Pieces, files: DefinitionFiles): FileProblem[] {
   const problems: FileProblem[] = [];

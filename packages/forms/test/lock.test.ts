@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/canonical.ts';
-import { checkLock, LOCK_FILE, lockOf, lockText } from '../src/lock.ts';
-import { definitionFiles, type LooseFiles } from './fixtures/load.ts';
+import { checkLock, LOCK_FILE, lockOf, lockText, resolvedEntry } from '../src/lock.ts';
+import { resolve } from '../src/resolve.ts';
+import { readPieces, type Pieces } from '../src/spec-check.ts';
+import { definitionFiles, specTexts, type LooseFiles } from './fixtures/load.ts';
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- a parsed shape file is changed as plain JSON */
 
 // A released version never changes (design 4.2, and the rule each test holds in section 9). The
 // fixture tree is released as it stands; each test then makes one change to the tree or to the lock.
@@ -15,8 +19,8 @@ const YES_NO = 'lists/demo_yes_no.json';
 type Expected = [file: string, path: string, rule: string];
 const sorted = (found: Expected[]) => found.map((p) => p.join('  ')).sort();
 
-async function found(lock: unknown, files: LooseFiles): Promise<string[]> {
-  const problems = await checkLock(lock, files);
+async function found(lock: unknown, files: LooseFiles, pieces: Pieces = {}): Promise<string[]> {
+  const problems = await checkLock(lock, files, pieces);
   for (const p of problems) expect(p.message.length, p.rule).toBeGreaterThan(10);
   return sorted(problems.map((p): Expected => [p.file, p.path, p.rule]));
 }
@@ -48,7 +52,12 @@ describe('the lock of a tree', () => {
     const files = definitionFiles();
     const lock = await lockOf(files);
     expect(Object.keys(lock).sort()).toEqual(
-      [...Object.keys(files.noteTypes), ...Object.keys(files.modules), ...Object.keys(files.lists)].sort(),
+      [
+        ...Object.keys(files.noteTypes),
+        ...Object.keys(files.noteTypes).map(resolvedEntry),
+        ...Object.keys(files.modules),
+        ...Object.keys(files.lists),
+      ].sort(),
     );
     // The hash of the content in canonical form, worked out here by another route.
     const expected = createHash('sha256').update(canonicalJson(files.noteTypes[CHECKS])).digest('hex');
@@ -210,7 +219,8 @@ describe('the lock file itself', () => {
     'lock.bad_entry',
   ]);
   for (const path of [
-    'spec/demo.txt',
+    'spec/demo.md',
+    'spec/Demo.txt',
     'old/note-types/checks_demo/v1.json',
     'note-types/checks_demo/v1.json.bak',
     'note-types/checks_demo/v1',
@@ -223,4 +233,69 @@ describe('the lock file itself', () => {
       (lock) => (lock[path] = lock[CHECKS]),
       [LOCK_FILE, `$["${path}"]`, 'lock.bad_entry'],
     );
+});
+
+describe('what a released definition is checked against, and what the server stores', () => {
+  // The piece files of a released definition are frozen with it: the checks read them against a
+  // definition that can no longer be mended (CHK-10).
+  const NOTE = 'note-types/harm_reduction_example/v1.json';
+  const PIECE = 'harm-reduction-2';
+  const example = () => ({
+    files: definitionFiles('example'),
+    pieces: readPieces(specTexts('example')).pieces,
+  });
+
+  it('holds the three files of each piece a released definition names', async () => {
+    const { files, pieces } = example();
+    const lock = await lockOf(files, pieces);
+    expect(
+      Object.keys(lock)
+        .filter((file) => file.startsWith('spec/'))
+        .sort(),
+    ).toEqual([`spec/${PIECE}.diff.json`, `spec/${PIECE}.shape.json`, `spec/${PIECE}.txt`]);
+    expect(await checkLock(lock, files, pieces)).toEqual([]);
+  });
+
+  it('a shape file edited after release, and a piece’s lines that are gone', async () => {
+    const { files, pieces } = example();
+    const lock = await lockOf(files, pieces);
+    (pieces[PIECE]!.shape as any).sections[0].title = 'Provided';
+    delete pieces[PIECE]!.text;
+    expect(await found(lock, files, pieces)).toEqual(
+      sorted([
+        [`spec/${PIECE}.shape.json`, '$', 'lock.changed'],
+        [`spec/${PIECE}.txt`, '$', 'lock.missing'],
+      ]),
+    );
+  });
+
+  it('a released definition whose piece is not released', async () => {
+    const { files, pieces } = example();
+    const lock = await lockOf(files, pieces);
+    delete lock[`spec/${PIECE}.diff.json`];
+    expect(await found(lock, files, pieces)).toEqual(
+      sorted([[NOTE, '$.sections[0].spec', 'lock.unreleased_part']]),
+    );
+  });
+
+  // What the server refuses is a changed hash of the resolved definition (CHK-11): a change to
+  // the resolver changes it while every file stays the same.
+  it('a resolved definition whose hash changed while its files did not', async () => {
+    const files = definitionFiles();
+    const lock = await lockOf(files);
+    expect(lock[resolvedEntry(CHECKS)]).toBe(
+      createHash('sha256')
+        .update(canonicalJson((resolve(CHECKS, files) as any).definition))
+        .digest('hex'),
+    );
+    lock[resolvedEntry(CHECKS)] = '0'.repeat(64);
+    expect(await found(lock, files)).toEqual(sorted([[CHECKS, '$', 'lock.changed']]));
+  });
+
+  it('a released note type version whose resolved hash is not held', async () => {
+    const files = definitionFiles();
+    const lock = await lockOf(files);
+    delete lock[resolvedEntry(FULL)];
+    expect(await found(lock, files)).toEqual(sorted([[FULL, '$', 'lock.unreleased_part']]));
+  });
 });
