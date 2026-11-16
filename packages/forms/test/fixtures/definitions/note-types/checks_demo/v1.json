@@ -62,6 +62,7 @@
           "kind": "group",
           "label": "Blood pressure",
           "layout": "row",
+          "mapsTo": "full_demo:history.pressure",
           "fields": [
             { "id": "upper", "kind": "number", "label": "Upper", "min": 0, "max": 300, "decimals": 0 },
             { "id": "lower", "kind": "number", "label": "Lower", "min": 0, "max": 300, "decimals": 0 }
