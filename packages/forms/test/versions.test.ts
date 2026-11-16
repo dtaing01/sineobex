@@ -447,6 +447,38 @@ describe('an option code is never reused for another meaning', () => {
     );
   });
 
+  it('a cell’s option in a grid whose rows are picked relative to an entry of a repeating section', () => {
+    const files = definitionFiles();
+    const cell = (label: string) => ({
+      id: 'grade',
+      kind: 'choice',
+      many: false,
+      label: 'Grade',
+      options: [
+        { code: 'mild', label },
+        { code: 'severe', label: 'Severe' },
+      ],
+    });
+    const add = (file: Loose, label: string) =>
+      file.sections[2].fields.push(
+        {
+          id: 'kinds',
+          kind: 'choice',
+          many: true,
+          label: 'Kinds',
+          options: [
+            { code: 'cut', label: 'Cut' },
+            { code: 'burn', label: 'Burn' },
+          ],
+        },
+        { id: 'grades', kind: 'grid', label: 'Grades', rows: { pickedIn: './kinds' }, cell: cell(label) },
+      );
+    add(files.noteTypes[V1], 'Mild');
+    next(files, 2, (file) => (file.sections[2].fields.at(-1).cell.options[0].label = 'Slight'));
+    const GRID = `$.sections[2].fields[${files.noteTypes[V1].sections[2].fields.length - 1}]`;
+    expect(found(files)).toEqual(sorted([[V2, `${GRID}.cell.options[0].label`, 'versions.label_changed']]));
+  });
+
   it('a label that changed in a shared list: the problem names the list’s file', () => {
     const files = definitionFiles();
     files.lists['lists/demo_answers.json'] = {
