@@ -1,7 +1,7 @@
 # Worked example: one piece of the field specification, from lines to definition
 
 This goes with `form-definition.md`. The piece is the second half of Harm Reduction. A card gives
-you parts 1 to 3. You write part 4. Part 5 is written for you, with the piece's shape file.
+you parts 1 to 3. You write part 4. Parts 5 and 6 are written for you.
 
 ## 1. The piece's lines (`packages/forms/definitions/spec/harm-reduction-2.txt`)
 
@@ -149,3 +149,37 @@ counts from the first line of the piece's file, which is line 1.
 
 The export fails if a word of the lines is neither an option nor in `notOptions`, if an option is
 neither in the lines nor in `added`, and if either list holds a word that nothing needs.
+
+## 6. The shape file (`packages/forms/definitions/spec/harm-reduction-2.shape.json`), already written
+
+```json
+{
+  "piece": "harm-reduction-2",
+  "sections": [
+    { "id": "provided", "title": "Harm reduction provided" },
+    { "id": "treatment", "title": "MOUD / SUD treatment" }
+  ],
+  "fields": [
+    { "path": "provided.naloxone", "kind": "choice", "many": false, "label": "Naloxone", "options": 4 },
+    { "path": "provided.naloxone_doses", "kind": "number", "label": "Doses", "min": 1, "max": 20, "decimals": 0, "unit": "doses", "display": "stepper", "showWhen": { "field": "provided.naloxone", "is": "accepted" } },
+    { "path": "provided.supplies", "kind": "choice", "many": true, "label": "Supplies", "options": 6, "flags": { "other": ["other"] } },
+    { "path": "provided.education", "kind": "choice", "many": true, "label": "Education", "options": 5, "flags": { "other": ["other"] } },
+    { "path": "treatment.receiving", "kind": "choice", "many": false, "label": "Currently receiving treatment?", "options": 3 },
+    { "path": "treatment.discussed", "kind": "choice", "many": false, "label": "Treatment discussed?", "options": 2 },
+    { "path": "treatment.interested", "kind": "choice", "many": false, "label": "Interested in treatment?", "options": 3 },
+    { "path": "treatment.interested_in", "kind": "choice", "many": true, "label": "Which treatment?", "showWhen": { "field": "treatment.interested", "is": ["yes", "maybe"] }, "options": 4, "flags": { "other": ["other"] } },
+    { "path": "treatment.connect", "kind": "action", "label": "Connect to resource", "action": "add_referral" }
+  ]
+}
+```
+
+The shape file is parts 2 and 3 as the export reads them: the definition's sections without the
+words of their options. A section's entry is the section as the definition writes it, without
+`fields` and `spec`. A field's entry is the field as the definition writes it, with `path` in
+place of `id` (the ids from the section down, joined by dots) and an option list as its number.
+`flags` names, for each key an option carries beside its code and label, the codes that carry it.
+A field in a group has an entry of its own, after the group's, at `<group's path>.<its id>`; the
+cell of a grid at `<grid's path>.<the cell's id>`.
+
+The export fails if a section or a field is missing, is one too many or is out of order, and if
+any key of one is not what the shape file says. The message names the field and the key.

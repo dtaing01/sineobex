@@ -8,3 +8,4 @@ export * from './validate.ts';
 export * from './lock.ts';
 export * from './versions.ts';
 export * from './spec-check.ts';
+export * from './shape-check.ts';
