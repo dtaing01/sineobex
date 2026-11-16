@@ -452,12 +452,12 @@ Only decisions that change a field, an option, a section or a flow of a note typ
 
 ## 8. Transcription work-list
 
-Lines 1 to 4 are a title and need no card. Lines 149 and 172 are blank. Every piece is under 120 lines. 13 pieces; the field counts add up to 127.
+Lines 1 to 4 are a title and need no card. Lines 149 and 172 are blank. Every piece is under 120 lines. 14 pieces; the field counts add up to 127.
 
 | # | Note type | Part | SPEC lines | Fields |
 |---|---|---|---|---|
 | 1 | General / Primary Care | Subsection 1 (Reason for Encounter) and Subsection 2 (History of Present Illness: narrative, Preventative Care, Vitals, Focused Exam picker) | 5–28 | 14 |
-| 2 | General / Primary Care | Subsection 3 (Assessment: Problem, Red Flags with the EMS branch, Disposition, Follow Up) and Encounter Summary | 29–62 | 12 |
+| 2 | General / Primary Care | Subsection 3, its Problem part (Assessment: diagnosis search, Status, Intervention), and Encounter Summary | 29–35, 61–62 | 4 |
 | 3 | Wound Care | Subsection 1 (Wounds) and Subsection 2 (WOUND 1: location to systemic symptoms) | 63–103 | 14 |
 | 4 | Wound Care | Subsection 3 (WOUND TREATMENT) | 104–119 | 6 |
 | 5 | Harm Reduction | Whole note type | 120–148 | 12 |
@@ -469,12 +469,14 @@ Lines 1 to 4 are a title and need no card. Lines 149 and 172 are blank. Every pi
 | 11 | Social Needs | Subsection 2 (Outreach / Community Encounter) | 268–282 | 6 |
 | 12 | Patient Encounter | Subsection 1, first half: the selector row, If GENERAL, If WOUND | 283–307 | 16 |
 | 13 | Patient Encounter | Subsection 1, second half (If SOCIAL NEEDS, If MEDICATION), Subsection 2 and Subsection 3 | 308–332 | 10 |
+| 14 | Red flags and disposition (`red_flags_disposition`, a note type of its own: forms 6.2) | From Subsection 3 of General: Red Flags with the EMS branch, Disposition, Follow Up | 36–60 | 8 |
 
 Notes for the cards:
 
 - Piece 8 hangs off the Reason row in piece 7 (line 176), and piece 13 off the selector in piece 12 (line 285). Each card must name the parent field's id.
 - Piece 9 is short; it can be joined to piece 8 (204–251, 48 lines, 11 fields) if fewer cards are wanted.
 - Pieces 1, 3, 7 and 12 hold option lists that section 5 says are shared. Decide the shared list names before those cards are written.
+- Piece 14 (`red-flags`) was cut out of piece 2 (`general-2`) once the red flags became a note type of their own (forms 6.2): it has its own three files under `definitions/spec/`, and piece 2 is lines 29 to 35 and 61 to 62. Lines 61 and 62, the Encounter Summary, are the visit's assessment (lifecycle 9.6), not a field of any note, so no definition types them: piece 2's diff file declares their words. The field count keeps this inventory's way of counting.
 - Each card should carry the fixes from section 6 and section 9 that touch its lines, so the small model does not copy the old version.
 
 ## 9. Ambiguities, contradictions and gaps

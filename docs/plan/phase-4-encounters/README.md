@@ -60,7 +60,9 @@ Files that more than one unit edits, and the order: `services/api/src/app.ts` (F
 L2-read-visit); `services/api/test/permissions.test.ts` (F3-contract, then L2-permissions);
 `db/seed/seed.ts` (F3-install, then L2-seed); `apps/mobile/pubspec.yaml` (E-presets, then
 L5-location); the generated contract (F3-contract, L1-contract, L2-contract, each after its own
-unit's routes or schemas).
+unit's routes or schemas). Wave A's review had L0 edit three files L1 owns:
+`services/api/src/sync/entities/note.ts` (the team lock), `services/api/src/sync/review.ts` (a
+comment) and `services/api/test/sync.test.ts` (one test's setup); L1 builds on those edits.
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -77,13 +79,13 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F0-package | R | `forms/package.json`, `forms/tsconfig.json`, `pnpm-lock.yaml` | — |
+| F0-package | R | `forms/package.json`, `forms/tsconfig.json`, `pnpm-lock.yaml`, `forms/src/index.ts`, `forms/test/import-path.test.ts` (the index stays safe for the API's bundle) | — |
 | F0-schema | X | `forms/schema/definition.schema.json`, `forms/src/types.ts`, `forms/test/schema.test.ts` (adds a JSON Schema library; the lockfile changes) | F0-package |
 | F0-canonical | X | `forms/src/canonical.ts`, `forms/test/canonical.test.ts`: a copy of `canonicalJson` and `sha256Hex`, pinned by `vectors/canonical-json.json` | F0-package |
-| F0-tests | X | The test files of this unit's and unit E's T cards: `forms/test/{resolve,validate,lock,versions,spec-check,shape-check,export}.test.ts` | F0-schema |
-| F0-resolve | T | `forms/src/resolve.ts` | F0-tests |
+| F0-tests | X | The test files of this unit's T cards: `forms/test/{resolve,validate,paths,lock,versions,spec-check,shape-check}.test.ts`. The export's test, `forms/test/export.test.ts`, is written in unit E, which owns the script it tests (E-presets) | F0-schema |
+| F0-resolve | T | `forms/src/resolve.ts` (a module, a version or a list that does not exist is the resolver's to report) | F0-tests |
 | F0-validate-ids | T | `forms/src/validate.ts` (duplicate and reserved IDs, option codes) | F0-resolve |
-| F0-validate-paths | T | `forms/src/validate.ts` (every path a definition can produce; conditions and `mapsTo` name real fields; lists exist) | F0-validate-ids |
+| F0-validate-paths | T | `forms/src/paths.ts` (every path a definition can produce: the one copy the validator, the version rules and the interpreter use), `forms/src/validate.ts` (conditions and `mapsTo` name real fields) | F0-validate-ids |
 | F0-validate-flags | T | `forms/src/validate.ts` (exclusive in a choose-one, a required field never visible, grid and region rules, limits of 2.4) | F0-validate-paths |
 | F0-lock | T | `forms/src/lock.ts`, `forms/src/versions.ts` | F0-resolve |
 | F0-spec-check | T | `forms/src/spec-check.ts` | F0-resolve |
@@ -113,7 +115,7 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| E-presets | T | `forms/scripts/export.ts`, `apps/mobile/pubspec.yaml` (writes `generated/presets.json` and the phone asset; runs every check of forms 4.2) | F0, F1 |
+| E-presets | T | `forms/scripts/export.ts`, `forms/test/export.test.ts`, `apps/mobile/pubspec.yaml` (writes `generated/presets.json` and the phone asset; runs every check of forms 4.2, stopping after schema problems, since every later check reads files that passed `checkFile`; hands the parsed pieces to `lockOf` and `checkLock`; prints the largest number of answers each note type can hold, and refuses nothing for it, forms 2.4) | F0, F1 |
 | E-golden | T | `forms/scripts/golden.ts` (writes `generated/golden.json`) | E-presets |
 | E-drift | X | `tools/ci-local.sh`, `.github/workflows/ci.yml`, `tools/phi-guard-rules.mjs` (the Forms drift step; `packages/forms/` and the vectors folder join the PHI guard's fixture list) | E-golden |
 
@@ -135,7 +137,7 @@ F2-expand. Then:
 |---|---|---|---|
 | F3-migration | X | `db/migrations/0017_note_type_versions.sql`, `db/test/note-type-versions.test.ts` | — |
 | F3-tests | X | `forms/test/install.test.ts`, `api-test/forms-routes.test.ts` | F3-migration |
-| F3-install | T | `forms/src/install.ts` (`installPresets`, in the forms package so the seed and the API can both call it), `api/routes/owner.ts`, `db/seed/seed.ts` | F3-tests, E-presets |
+| F3-install | T | `forms/src/install.ts` (`installPresets`, in the forms package so the seed and the API can both call it; every `preset` row names its `preset_version`, which 0017 checks), `api/routes/owner.ts`, `db/seed/seed.ts` | F3-tests, E-presets |
 | F3-routes | T | `api/forms/definitions.ts`, `api/routes/forms.ts`, `api/app.ts` (the register line) | F3-install |
 | F3-contract | R | `api-test/permissions.test.ts`, the generated contract | F3-routes |
 
@@ -178,12 +180,12 @@ Every card is level R and includes its widget test file.
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F6-spec-pieces | X | `spec/<piece>.txt` for the 36 pieces, copied from the field specification, with `[left out]` where a line must not be copied | F0-spec-check |
-| F6-shapes-notes | X | `spec/<piece>.shape.json` and `spec/<piece>.diff.json` for the 13 note type pieces, from `forms-inventory.md` | F6-spec-pieces, F0-shape-check |
-| F6-shapes-exam-a | X | The shape and diff files of exam pieces 1 to 11 | F6-spec-pieces, F0-shape-check |
-| F6-shapes-exam-b | X | The shape and diff files of exam pieces 12 to 23 | F6-spec-pieces, F0-shape-check |
-| F6-lists | R | `lists/*.json`: the shared lists of forms 4.4 | F0-validate-flags |
-| F6-red-flags | R | `note-types/red_flags_disposition/v1.json` (field specification lines 36 to 60) | F6-lists, E-presets |
+| F6-spec-pieces | X | `spec/<piece>.txt` for the 37 pieces, copied from the field specification, with `[left out]` where a line must not be copied. The red flags note type is a piece of its own: `general-2` is lines 29 to 35 and 61 to 62, and `red-flags` lines 36 to 60 (`forms-inventory.md` section 8) | F0-spec-check |
+| F6-shapes-notes | X | `spec/<piece>.shape.json` and `spec/<piece>.diff.json` for the 14 note type pieces, from `forms-inventory.md`. A shape file holds every key of every section and field, the option codes in order, the file it is for (`file`), the note type's header on exactly one shape file per note type, and `outside` for a section that names no piece; a diff file has all four keys, even when a list is empty (forms 4.1, 4.2) | F6-spec-pieces, F0-shape-check |
+| F6-shapes-exam-a | X | The shape and diff files of exam pieces 1 to 11, written as F6-shapes-notes says | F6-spec-pieces, F0-shape-check |
+| F6-shapes-exam-b | X | The shape and diff files of exam pieces 12 to 23, written as F6-shapes-notes says | F6-spec-pieces, F0-shape-check |
+| F6-lists | R | `lists/*.json`: the shared lists of forms 4.4, `surface` (Anterior, Posterior) and Skin's side list (Right, Left, Midline) among them. A list has no shape file: a person reads its codes, order, flags and count against the lines when the unit is reviewed | F0-validate-flags |
+| F6-red-flags | R | `note-types/red_flags_disposition/v1.json` (field specification lines 36 to 60: the piece `red-flags`, with its own three files) | F6-lists, E-presets, F6-shapes-notes |
 
 The transcription cards, each level S, each one definition file, each needing F6-lists,
 E-presets and the shape card of its piece:
@@ -191,7 +193,7 @@ E-presets and the shape card of its piece:
 | Card | Piece (field specification lines) | Goes into |
 |---|---|---|
 | F6-general-1 | 5 to 25 | `note-types/general_primary_care/v1.json` |
-| F6-general-2 | 29 to 35 | the same file, after F6-general-1 |
+| F6-general-2 | 29 to 35 and 61 to 62 | the same file, after F6-general-1 |
 | F6-wound-1 | 63 to 103 | `note-types/wound_care/v1.json` |
 | F6-wound-2 | 104 to 119 | the same file, after F6-wound-1 |
 | F6-harm-reduction | 120 to 148 | `note-types/harm_reduction/v1.json` |
@@ -205,8 +207,8 @@ E-presets and the shape card of its piece:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F6-general-assemble | R | `note-types/general_primary_care/v1.json` (the 22 includes); `mapsTo` on `note-types/quick_encounter/v1.json` | every F6 transcription card |
-| F6-release | X | `definitions.lock.json`, the generated files | F6-general-assemble |
+| F6-general-assemble | R | `note-types/general_primary_care/v1.json` (the 22 includes); `mapsTo` on `note-types/quick_encounter/v1.json`, and each `mapsTo` in the shape files of the Quick encounter's two pieces, in the same change (the shape check compares every key) | every F6 transcription card |
+| F6-release | X | `definitions.lock.json` (every released file, the three files of each piece a released definition names, and each released version's `#resolved` hash: `lockOf` with the pieces), the generated files | F6-general-assemble |
 
 ### F7 Flows (forms 6)
 
@@ -224,14 +226,14 @@ E-presets and the shape card of its piece:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| L0-migration-0018 | X | `db/migrations/0018_encounter_lifecycle.sql`, `db/test/encounter-lifecycle.test.ts` | — |
+| L0-migration-0018 | X | `db/migrations/0018_encounter_lifecycle.sql`, `db/test/encounter-lifecycle.test.ts`; after the review also `db/test/helpers.ts` (`refusal`, shared by the four lifecycle test files), `api/sync/entities/note.ts` (every note change takes the team lock), `api-test/sync-concurrency.test.ts`, and the setup of one test in `api-test/sync.test.ts` (it signs its note through a sign-off row) | — |
 | L0-migration-0019 | X | `db/migrations/0019_note_signoffs.sql`, `db/test/note-signoffs.test.ts` | L0-migration-0018 |
-| L0-migration-0020 | X | `db/migrations/0020_note_attestations.sql`, `db/test/note-attestations.test.ts` | L0-migration-0019 |
+| L0-migration-0020 | X | `db/migrations/0020_note_attestations.sql`, `db/test/note-attestations.test.ts`; after the review also the comment on `patient_of_change` in `api/sync/review.ts` | L0-migration-0019 |
 | L0-migration-0021 | X | `db/migrations/0021_referrals.sql`, `db/test/referrals.test.ts`, `api/patients/charts.ts` (the chart table row) | L0-migration-0018 |
-| L0-vectors | X | `vectors/note-lifecycle.json`, `note-content-hash.json`, `signed-under.json`; the readers `api-test/encounter-rules.test.ts`, `phone-test/encounters/rules_test.dart`, `phone-test/encounters/content_hash_test.dart` | — |
+| L0-vectors | X | `vectors/note-lifecycle.json`, `signed-under.json`; the readers `api-test/encounter-rules.test.ts`, `phone-test/encounters/rules_test.dart`. The content hash's `vectors/note-content-hash.json` and its readers (`phone-test/encounters/content_hash_test.dart`, and the API's) wait for F1 and F2 (`effectiveAnswers`), and come before L0-content-hash-ts and L0-content-hash-dart | — (the content hash: F1-effective, F2-effective) |
 | L0-rules-ts | T | `api/encounters/rules.ts` | L0-vectors |
 | L0-content-hash-ts | T | `api/encounters/content-hash.ts` | L0-vectors, F1-effective |
-| L0-signed-under-ts | T | `api/encounters/signed-under.ts` | L0-vectors |
+| L0-signed-under-ts | T | `api/encounters/signed-under.ts`; after the review also `api/services/memberships.ts` (a restore records the credential and fields it replaced) and `api-test/foundation.test.ts` | L0-vectors |
 | L0-rules-dart | T | `phone/encounters/rules.dart` | L0-vectors |
 | L0-content-hash-dart | T | `phone/encounters/content_hash.dart` | L0-vectors, F2-effective |
 
@@ -239,17 +241,17 @@ E-presets and the shape card of its piece:
 
 | Card | Files | Needs |
 |---|---|---|
-| L1-legacy-tests | A test-only note type for the API fixtures, the fake and the phone tests; phase 2's status tests rewritten as sign-offs (`api-test/sync.test.ts`, `api-test/sync-fixtures.ts`, the phone's sync tests) | L0, F3-install |
-| L1-lock-signer-gate | `entities/encounter.ts`, `entities/note.ts`, `api/encounters/signer.ts` | L1-legacy-tests |
+| L1-legacy-tests | A test-only note type for the API fixtures, the fake and the phone tests; phase 2's status tests rewritten as sign-offs (`api-test/sync.test.ts`, `api-test/sync-fixtures.ts`, the phone's sync tests). The setup of "a signed note refuses changes" already signs through a sign-off row (L0) | L0, F3-install |
+| L1-lock-signer-gate | `entities/encounter.ts`, `entities/note.ts`, `api/encounters/signer.ts` (`noteRules.takesTeamLock` is already true, and every note path keeps it; `credentialChangesAfter` reads the `membership_changes` rows of kind `credential` and `restored`, each with its `old_value`) | L1-legacy-tests |
 | L1-encounter-fields | `records.ts`, `entities/encounter.ts` (new fields; `status` removed; `kind` to Medical only) | L1-lock-signer-gate |
 | L1-envelope-lock | `entities/encounter.ts`, `entities/fields.ts` (kept in history after a finished note; a blank patient can be filled; last seen) | L1-encounter-fields |
 | L1-note-create | `records.ts`, `entities/note.ts` (the create checks; the `medical` column; a Medical note makes its visit Medical) | L1-lock-signer-gate, F3-routes |
 | L1-note-answers | `entities/note.ts`, `entities/fields.ts`, `apply.ts` (`checkAnswer` after the load; 1,000 answers; `notCounted`; a throw becomes `definition_error`) | L1-note-create, F1-check-structure |
 | L1-note-late-reopen | `entities/note.ts`, `entities/fields.ts` (late changes kept; the reopen table) | L1-note-answers |
-| L1-signoff | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` | L1-note-late-reopen, L0, F1-finish |
-| L1-addendum | `entities/note-addendum.ts`, `entities/index.ts`, `entities/values.ts` | L1-signoff |
-| L1-correction | `entities/note-correction.ts`, `entities/index.ts`, `records.ts` (`corrected` history; `appendHistory` returns the row ID) | L1-signoff |
-| L1-referral | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` (and the check for a visit of another patient) | L1-lock-signer-gate |
+| L1-signoff | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` (the sign-off row first, then the note's `signoff_id`, both from the same loaded note; the database cannot see a sign-off's effect, so a test pins that a note names only a signature) | L1-note-late-reopen, L0, F1-finish |
+| L1-addendum | `entities/note-addendum.ts`, `entities/index.ts`, `entities/values.ts` (the `(encounterId, noteId)` pair is checked before the insert, so a mismatch answers `stale_reference`) | L1-signoff |
+| L1-correction | `entities/note-correction.ts`, `entities/index.ts`, `records.ts` (`corrected` history; `appendHistory` returns the row ID; `app.note_correction` set from the loaded row's ID) | L1-signoff |
+| L1-referral | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` (and the check for a visit of another patient; `error_by` written with the entered-in-error mark, which the database needs) | L1-lock-signer-gate |
 | L1-read-filter | `api/routes/sync.ts`, `review.ts`, `records.ts` (hidden content leaves no value, version or mark; the new records' read rule; a note's new attributes; the sensitive check first) | L1-correction, F1-visible |
 | L1-audit-actions | `entities/values.ts` (`ems_handoff.shown`, `notes_to_finish.viewed`) | L1-lock-signer-gate |
 | L1-problem-source | `entities/problem.ts` | L1-lock-signer-gate |
@@ -259,7 +261,7 @@ E-presets and the shape card of its piece:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| L2-tests | X | `api-test/encounters-{read,timeline,cosign,queues,attest,assign,incomplete,counts}.test.ts` | L1 |
+| L2-tests | X | `api-test/encounters-{read,timeline,cosign,queues,attest,assign,incomplete,counts}.test.ts` (the attest test pins that an attestation names the note's current signature: the database's key cannot see a sign-off's effect) | L1 |
 | L2-read-visit | T | `routes/encounters.ts`, `encounters/read.ts`, `api/app.ts` (the register line) | L2-tests, F1-read-corrections |
 | L2-timeline | R | `api/patients/charts.ts`, `projection.ts`, `schemas.ts` (`timeline`, `recentVisits`) | L2-read-visit |
 | L2-timeline-more | T | `routes/encounters.ts`, `encounters/timeline.ts` | L2-timeline |
