@@ -661,6 +661,9 @@ brokenFile(
   'a module that includes a module',
   'module',
   (f) => (f.sections[0] = { include: 'demo_module_two', version: 1 }),
+  // Read as a section, it lacks all three of a section's keys.
+  ['$.sections[0]', MISSING],
+  ['$.sections[0]', MISSING],
   ['$.sections[0]', MISSING],
   ['$.sections[0].include', UNKNOWN_KEY],
   ['$.sections[0].version', UNKNOWN_KEY],
@@ -688,9 +691,7 @@ describe('one change to a file that fits', () => {
   });
 
   it.each(failing)('is refused: $name', ({ kind, file, problems }) => {
-    // "a section without fields" and the like miss several keys at once: one line each in the
-    // expectation, however many the check reports there.
-    expect([...new Set(found(kind, file))]).toEqual(sorted(problems));
+    expect(found(kind, file)).toEqual(sorted(problems));
     for (const problem of checkFile(kind, file)) expect(problem.message).not.toBe('');
   });
 
@@ -791,8 +792,6 @@ function rulesOf(root: any): Rule[] {
 describe('every rule in the schema', () => {
   // Rules no file can reach through checkFile, each for a reason.
   const unreachable = (at: string): boolean =>
-    // The file as a whole: checkFile is told the kind and starts at that kind's definition.
-    at === '#/type' ||
     // `field` sends an object to the definition of its kind, so there it is always an object of that kind.
     /^#\/\$defs\/[a-z]+Field\/(type|required\/kind|properties\/kind\/const)$/.test(at) ||
     // Reached only through an `if` that has already seen an object, or the key itself.

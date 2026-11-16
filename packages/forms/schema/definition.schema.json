@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "A Sineobex form definition file",
   "description": "One of the three kinds of file under packages/forms/definitions: a note type version, a module or a shared option list (docs/design/phase-4/forms.md, section 2). src/types.ts says the same thing as TypeScript types; test/schema.test.ts holds the two together.",
-  "type": "object",
   "if": { "type": "object", "required": ["key"] },
   "then": { "$ref": "#/$defs/noteType" },
   "else": {
@@ -47,7 +46,6 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "object",
             "if": { "type": "object", "required": ["include"] },
             "then": { "$ref": "#/$defs/include" },
             "else": { "$ref": "#/$defs/section" }

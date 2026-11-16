@@ -43,15 +43,10 @@ export function checkFile(kind: FileKind, file: unknown): Problem[] {
   // What is not an object has no form to be wrong about: "must be an object" says it all.
   const notObjects = new Set(errors.filter((e) => e.keyword === 'type').map((e) => e.instancePath));
   const problems: Problem[] = [];
-  const seen = new Set<string>();
   for (const error of errors) {
     if (error.keyword === 'oneOf' && notObjects.has(error.instancePath)) continue;
     const problem = problemOf(error, file);
-    if (!problem) continue;
-    const key = `${problem.path}\n${problem.rule}\n${problem.message}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    problems.push(problem);
+    if (problem) problems.push(problem);
   }
   return problems;
 }
