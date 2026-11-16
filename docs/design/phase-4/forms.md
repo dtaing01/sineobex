@@ -235,7 +235,7 @@ F2) can then rely on:
   too (`validate.relative_outside_entry`).
 - **Inside the cell of a grid `./` is the row**, in a repeating section as well, so a cell
   cannot read a field of its own entry. The grid's own `showWhen` is read from the entry and can.
-  This is accepted as a limit: no piece of SPEC needs more.
+  This is accepted as a limit: a condition that needs the entry goes on the grid.
 - A grid's `pickedIn` is read as a condition is, and must name a choose-many answer
   (`validate.picked_in_unknown_field`, `validate.picked_in_not_choose_many`).
 - **A condition never reads what a reader may not see.** A condition, or a grid's picked rows,
