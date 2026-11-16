@@ -275,6 +275,13 @@ describe('what cannot be resolved names the file and the rule', () => {
   const FINDINGS = '$.sections[2]';
   const STATUS = '$.sections[3]';
 
+  it('a file whose name every object has is not among the files either', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty'])
+      expect(failures(resolve(name, definitionFiles())), name).toEqual(
+        sorted([[name, '$', 'resolve.missing_file']]),
+      );
+  });
+
   it('a note type file that was not handed over', () => {
     const result = resolve('note-types/missing_demo/v1.json', definitionFiles());
     expect(failures(result)).toEqual(
@@ -471,6 +478,113 @@ describe('where a place in the resolved definition was written', () => {
     expect(locate([{ at: '$', file: FULL, path: '$' }], '$.sections[1]')).toEqual({
       file: FULL,
       path: '$.sections[1]',
+    });
+  });
+});
+
+describe('a whole resolved definition, written out by hand', () => {
+  // Every key that decides who may read a section (sensitiveExam, treatmentRecord, needs) and what
+  // the note type is (quick, auto) is carried through, so permissions read from the resolved
+  // definition see what the files say. Two includes in a row, the first of two sections, pin where
+  // a later module's sections land and where their faults are reported.
+  const text = (id: string) => ({ id, kind: 'text', label: 'Notes', lines: 'one', maxLength: 50 });
+  const files = (): LooseFiles => ({
+    noteTypes: {
+      'note-types/flags_demo/v1.json': {
+        key: 'flags_demo',
+        version: 1,
+        title: 'Flags (test)',
+        kinds: ['medical'],
+        group: 'clinical',
+        sensitivity: 'sensitive',
+        quick: true,
+        auto: 'medical',
+        sections: [
+          { id: 'intro', title: 'Intro', spec: 'flags-demo', fields: [text('note')] },
+          { include: 'mod_a', version: 1, showWhen: { field: 'intro.note', filled: true } },
+          { include: 'mod_b', version: 2 },
+        ],
+        renames: [{ path: 'intro.note', from: 'Note', to: 'Notes' }],
+      },
+    },
+    modules: {
+      'modules/mod_a/v1.json': {
+        name: 'mod_a',
+        version: 1,
+        sections: [
+          { id: 'gu', title: 'GU', sensitiveExam: true, normal: true, fields: [text('finding')] },
+          {
+            id: 'use',
+            title: 'Use',
+            treatmentRecord: true,
+            showWhen: { field: 'gu.finding', filled: true },
+            repeat: { max: 3, itemTitle: 'Use {n}' },
+            fields: [text('what')],
+          },
+        ],
+      },
+      'modules/mod_b/v2.json': {
+        name: 'mod_b',
+        version: 2,
+        sections: [{ id: 'meds', title: 'Meds', needs: 'orderMedications', fields: [text('order')] }],
+      },
+    },
+    lists: {},
+  });
+  const FLAGS = 'note-types/flags_demo/v1.json';
+  const INCLUDED = { field: 'intro.note', filled: true };
+
+  it('carries every key of the files, and leaves out only the renames', () => {
+    const { definition } = resolved(files(), FLAGS);
+    expect(definition).toStrictEqual({
+      key: 'flags_demo',
+      version: 1,
+      title: 'Flags (test)',
+      kinds: ['medical'],
+      group: 'clinical',
+      sensitivity: 'sensitive',
+      quick: true,
+      auto: 'medical',
+      sections: [
+        { id: 'intro', title: 'Intro', spec: 'flags-demo', fields: [text('note')] },
+        {
+          id: 'gu',
+          title: 'GU',
+          sensitiveExam: true,
+          normal: true,
+          showWhen: INCLUDED,
+          fields: [text('finding')],
+        },
+        {
+          id: 'use',
+          title: 'Use',
+          treatmentRecord: true,
+          showWhen: { all: [INCLUDED, { field: 'gu.finding', filled: true }] },
+          repeat: { max: 3, itemTitle: 'Use {n}' },
+          fields: [text('what')],
+        },
+        { id: 'meds', title: 'Meds', needs: 'orderMedications', fields: [text('order')] },
+      ],
+    });
+  });
+
+  it('reports a fault of the second module in its own file, after a module of two sections', () => {
+    const { origins } = resolved(files(), FLAGS);
+    expect(locate(origins, '$.sections[3].fields[0].id')).toEqual({
+      file: 'modules/mod_b/v2.json',
+      path: '$.sections[0].fields[0].id',
+    });
+    expect(locate(origins, '$.sections[2].showWhen.all[1]')).toEqual({
+      file: 'modules/mod_a/v1.json',
+      path: '$.sections[1].showWhen',
+    });
+    expect(locate(origins, '$.sections[2].showWhen.all[0]')).toEqual({
+      file: FLAGS,
+      path: '$.sections[1].showWhen',
+    });
+    expect(locate(origins, '$.sections[1].fields[0]')).toEqual({
+      file: 'modules/mod_a/v1.json',
+      path: '$.sections[0].fields[0]',
     });
   });
 });

@@ -7,6 +7,11 @@
  * Pure: parsed files in, a definition out. No disk and no network, so the export and the API can
  * both call it. The files must have passed the schema check ('@sineobex/forms/schema'), which this
  * file cannot load (src/index.ts reaches it, and the schema library cannot run in the API's bundle).
+ *
+ * A resolved definition is made only here, from files that passed checkFile, and is then checked by
+ * validate(). Nothing stores a definition that did not go through those three, so the resolved form
+ * has no JSON Schema of its own: it does not fit the file schema (a region's side is a list of
+ * options, not a list's name), and the types below are its description.
  */
 import type {
   ChoiceField,
@@ -84,7 +89,8 @@ export type Resolution =
  * them are reported, each once; with one or more there is no definition.
  */
 export function resolve(file: string, files: DefinitionFiles): Resolution {
-  const noteType = files.noteTypes[file];
+  // Own keys only: `constructor` or `__proto__` is a key of every object, and no file.
+  const noteType = Object.hasOwn(files.noteTypes, file) ? files.noteTypes[file] : undefined;
   if (!noteType)
     return {
       ok: false,
@@ -160,7 +166,7 @@ class Run {
         return;
       }
       const from = moduleFile(entry.include, entry.version);
-      const module = this.files.modules[from];
+      const module = Object.hasOwn(this.files.modules, from) ? this.files.modules[from] : undefined;
       if (!module) {
         // The name is wrong when no version of it exists; otherwise the version is.
         const known = Object.keys(this.files.modules).some((f) => f.startsWith(`modules/${entry.include}/`));
@@ -249,7 +255,7 @@ class Run {
   /** A shared list's options, for the field part at `place`; `key` is where in that part the list is named. */
   private list(name: string, place: Place, key: string): Option[] {
     const from = listFile(name);
-    const list = this.files.lists[from];
+    const list = Object.hasOwn(this.files.lists, from) ? this.files.lists[from] : undefined;
     if (!list) {
       this.problems.push({
         file: place.file,
