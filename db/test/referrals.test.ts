@@ -395,5 +395,53 @@ describe('0021 referrals', () => {
       expect(await of(randomUUID(), { reason: 'Demo: meant for someone else' })).toBeNull();
       expect(await of(randomUUID(), { patientId: 'not-an-id' })).toBeNull();
     });
+
+    describe('while its create is held', () => {
+      const hold = (record: string, op: string, value: Row, at: Date) => db.owner`
+        insert into sineobex.quarantine_items (team_id, device_id, user_id, change_id, entity, record_id, op,
+          value, value_hash, device_time, reason, received_at)
+        values (${team}, ${device}, ${worker}, ${randomUUID()}, 'referral', ${record}, ${op},
+          ${db.owner.json(value as never)}, ${'0'.repeat(64)}, now(), 'permission', ${at})`;
+
+      it('a held entered in error is about the patient that create names', async () => {
+        const id = randomUUID();
+        const elsewhere = await insertPatient(team);
+        await hold(
+          id,
+          'create',
+          { patientId: elsewhere, referredOn: '2026-03-04', details: 'Demo' },
+          new Date(Date.now() - 60_000),
+        );
+        // Created again while held, naming its patient: the later create answers.
+        await hold(
+          id,
+          'create',
+          { patientId: patient, referredOn: '2026-03-04', details: 'Demo' },
+          new Date(Date.now() - 30_000),
+        );
+        await hold(id, 'set', { reason: 'Demo: meant for someone else' }, new Date());
+        expect(await of(id, { reason: 'Demo: meant for someone else' })).toBe(patient);
+        // The value's own patient still answers first, as it did.
+        expect(await of(id, { patientId: elsewhere })).toBe(elsewhere);
+        // Another team's request learns nothing of it.
+        expect(
+          await as(
+            otherTeam,
+            async (tx) =>
+              (
+                await tx<{ p: string | null }[]>`
+                  select sineobex.patient_of_change('referral', ${id}, ${tx.json({ reason: 'x' } as never)}) as p`
+              )[0]!.p,
+          ),
+        ).toBeNull();
+      });
+
+      it('another team’s referral on the chart names no patient to this team', async () => {
+        const theirs = randomUUID();
+        await db.owner`
+          insert into sineobex.referrals ${values(db.owner, referral({ id: theirs, team_id: otherTeam, patient_id: otherPatient }))}`;
+        expect(await of(theirs, { reason: 'x' })).toBeNull();
+      });
+    });
   });
 });

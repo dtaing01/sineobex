@@ -43,8 +43,8 @@ create trigger note_assignments_append_only before update or delete on sineobex.
 
 -- The body of 0009 with the entities phase 4 adds, so the review queue can still name the patient
 -- of a held change. A sign-off and a correction name their note, an addendum its visit; a referral
--- is a row with a patient, like an allergy. The referrals table arrives in 0021; PL/pgSQL resolves
--- it when it runs.
+-- is a row with a patient, like an allergy, and both fall back to their held create. The referrals
+-- table arrives in 0021; PL/pgSQL resolves it when it runs.
 create or replace function sineobex.patient_of_change(p_entity text, p_record uuid, p_value jsonb) returns uuid
 language plpgsql stable as $$
 declare
@@ -52,6 +52,7 @@ declare
   v_problem uuid;
   v_note uuid;
   v_encounter uuid;
+  v_held_create text;
 begin
   if p_entity = 'patient' then
     return p_record;
@@ -59,6 +60,7 @@ begin
     select a.patient_id into v_patient from sineobex.patient_aliases a where a.id = p_record;
   elsif p_entity = 'patient_allergy' then
     select a.patient_id into v_patient from sineobex.patient_allergies a where a.id = p_record;
+    v_held_create := 'patient_allergy';
   elsif p_entity = 'patient_consent' then
     select c.patient_id into v_patient from sineobex.patient_consents c where c.id = p_record;
   elsif p_entity = 'problem' then
@@ -67,6 +69,7 @@ begin
     select l.patient_id into v_patient from sineobex.patient_id_links l where l.id = p_record;
   elsif p_entity = 'referral' then
     select r.patient_id into v_patient from sineobex.referrals r where r.id = p_record;
+    v_held_create := 'referral';
   elsif p_entity = 'problem_note' then
     v_problem := coalesce(
       (select n.problem_id from sineobex.problem_notes n where n.id = p_record),
@@ -95,6 +98,14 @@ begin
       (select sineobex.as_uuid(c.value ->> 'patientId') from sineobex.quarantine_items c
        where c.entity = 'encounter' and c.op = 'create' and c.record_id = v_encounter
        order by c.received_at desc limit 1));
+  end if;
+  -- An allergy or a referral marked entered in error while its create is held too: the mark's
+  -- value is a reason and no patient, so the held create names it. After the value's own patient,
+  -- so every answer the function gave before stays the same.
+  if v_held_create is not null and v_patient is null and sineobex.as_uuid(p_value ->> 'patientId') is null then
+    select sineobex.as_uuid(c.value ->> 'patientId') into v_patient from sineobex.quarantine_items c
+    where c.entity = v_held_create and c.op = 'create' and c.record_id = p_record
+    order by c.received_at desc limit 1;
   end if;
   -- A scalar value (a set) has no keys; ->> answers null rather than failing.
   return coalesce(v_patient, sineobex.as_uuid(p_value ->> 'patientId'));

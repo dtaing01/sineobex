@@ -58,12 +58,13 @@ async function holdCreate(
   entity: string,
   record: string,
   value: Row,
+  held: { op?: string; at?: Date } = {},
 ) {
   await owner`
     insert into sineobex.quarantine_items (team_id, device_id, user_id, change_id, entity, record_id, op,
-      value, value_hash, device_time, reason)
-    values (${by.team}, ${by.device}, ${by.user}, ${randomUUID()}, ${entity}, ${record}, 'create',
-      ${owner.json(value as never)}, ${'0'.repeat(64)}, now(), 'permission')`;
+      value, value_hash, device_time, reason, received_at)
+    values (${by.team}, ${by.device}, ${by.user}, ${randomUUID()}, ${entity}, ${record}, ${held.op ?? 'create'},
+      ${owner.json(value as never)}, ${'0'.repeat(64)}, now(), 'permission', ${held.at ?? new Date()})`;
 }
 
 describe('0020 note attestations and assignments', () => {
@@ -471,6 +472,100 @@ describe('0020 note attestations and assignments', () => {
       expect(await of('note_addendum', { noteId: note }, visit)).toBeNull();
       expect(await of('note_addendum', { encounterId: randomUUID() })).toBeNull();
       expect(await of('note_addendum', { encounterId: 7 })).toBeNull();
+    });
+
+    it('an allergy whose create is held is about the patient that create names', async () => {
+      const by = { team, device: await insertDevice(db.owner, team, departed), user: departed };
+      const allergy = randomUUID();
+      await holdCreate(db.owner, by, 'patient_allergy', allergy, {
+        patientId: heldOnly,
+        substance: 'Demo: dust',
+      });
+      // Marking it entered in error sends a reason and no patient.
+      expect(await of('patient_allergy', { reason: 'Demo: wrong person' }, allergy)).toBe(heldOnly);
+      // The value's own patient still answers first, as it did.
+      expect(await of('patient_allergy', { patientId: onChart }, allergy)).toBe(onChart);
+      expect(await of('patient_allergy', { reason: 'Demo: wrong person' })).toBeNull();
+    });
+
+    it('takes the latest held create of a record, and only a create', async () => {
+      const by = { team, device: await insertDevice(db.owner, team, departed), user: departed };
+      const earlier = new Date(Date.now() - 60_000);
+      const later = new Date(Date.now() - 30_000);
+      // Created twice while held (a retry naming another patient): the later create answers.
+      const twiceVisit = randomUUID();
+      await holdCreate(
+        db.owner,
+        by,
+        'encounter',
+        twiceVisit,
+        { patientId: onChart, kind: 'medical' },
+        { at: later },
+      );
+      await holdCreate(
+        db.owner,
+        by,
+        'encounter',
+        twiceVisit,
+        { patientId: heldOnly, kind: 'medical' },
+        { at: earlier },
+      );
+      expect(await of('encounter', null, twiceVisit)).toBe(onChart);
+      const twiceNote = randomUUID();
+      await holdCreate(db.owner, by, 'encounter_note', twiceNote, { encounterId: heldVisit }, { at: later });
+      await holdCreate(db.owner, by, 'encounter_note', twiceNote, { encounterId: visit }, { at: earlier });
+      expect(await of('encounter_note', 'x', twiceNote)).toBe(heldOnly);
+      const twiceProblem = randomUUID();
+      await holdCreate(
+        db.owner,
+        by,
+        'problem',
+        twiceProblem,
+        { patientId: heldOnly, title: 'Demo: rash' },
+        { at: later },
+      );
+      await holdCreate(
+        db.owner,
+        by,
+        'problem',
+        twiceProblem,
+        { patientId: onChart, title: 'Demo: rash' },
+        { at: earlier },
+      );
+      expect(await of('problem_note', { problemId: twiceProblem })).toBe(heldOnly);
+      // A later held change of the record that is not its create never answers for it.
+      const setLater = new Date();
+      for (const [entity, record, value] of [
+        ['encounter', twiceVisit, { patientId: heldOnly }],
+        ['encounter_note', twiceNote, { encounterId: visit }],
+        ['problem', twiceProblem, { patientId: onChart }],
+      ] as const) {
+        await holdCreate(db.owner, by, entity, record, value, { op: 'set', at: setLater });
+      }
+      expect(await of('encounter', null, twiceVisit)).toBe(onChart);
+      expect(await of('encounter_note', 'x', twiceNote)).toBe(heldOnly);
+      expect(await of('problem_note', { problemId: twiceProblem })).toBe(heldOnly);
+    });
+
+    it('answers nothing about another team’s records', async () => {
+      const ofOther = (entity: string, value: unknown, record: string = randomUUID()) =>
+        as(
+          otherTeam,
+          async (tx) =>
+            (
+              await tx<{ p: string | null }[]>`
+                select sineobex.patient_of_change(${entity}, ${record}, ${tx.json(value as never)}) as p`
+            )[0]!.p,
+        );
+      expect(await of('note_signoff', { noteId: note })).toBe(onChart);
+      for (const entity of ['note_signoff', 'note_correction']) {
+        expect(await ofOther(entity, { noteId: note }), entity).toBeNull();
+        expect(await ofOther(entity, { noteId: heldNote }), entity).toBeNull();
+      }
+      expect(await ofOther('note_addendum', { encounterId: visit })).toBeNull();
+      expect(await ofOther('note_addendum', { encounterId: heldVisit })).toBeNull();
+      expect(await ofOther('encounter_note', 'x', note)).toBeNull();
+      expect(await ofOther('encounter', null, heldVisit)).toBeNull();
     });
 
     it('a note and a visit resolve as they did', async () => {
