@@ -56,10 +56,12 @@ export const QUARANTINE_PAGE_SIZE = 50;
  */
 export async function listQuarantine(scope: TeamScope, { status, userId, afterId }: QuarantineQueryValue) {
   return scope.tx(async (tx, audit) => {
-    // The patient each item is about (migration 0009, patient_of_change): the record itself, its
+    // The patient each item is about (migration 0020, patient_of_change): the record itself, its
     // row's patient, or what its value names; for a note or an encounter, through the encounter,
-    // on the chart or its create held here, whatever was decided on it. Values were never
-    // schema-checked, so text is read only when it is a UUID.
+    // on the chart or its create held here, whatever was decided on it. A sign-off and a
+    // correction answer through the note their value names, an addendum through its visit, and a
+    // referral or an allergy through its row, or its held create when the row does not exist.
+    // Values were never schema-checked, so text is read only when it is a UUID.
     const rows = await tx<QuarantineRow[]>`
       select q.*, u.display_name as user_name, du.display_name as decided_by_name,
              sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id
