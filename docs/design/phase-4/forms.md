@@ -576,7 +576,7 @@ As built:
 | The lock (`definitions.lock.json`, `src/lock.ts`) | A released version file, module, list or piece file whose content changed (`lock.changed`) or that is gone (`lock.missing`); a released version whose resolved definition's hash changed while its files did not (`lock.changed`, at the version's file); a released file that includes, names or is checked against a part that is not released, or a released version whose resolved hash the lock does not hold (`lock.unreleased_part`) |
 | Version rules (2.6, `src/versions.ts`) | A path or code reused for another meaning: a kind or a unit that changed, or a label that changed with no rename declared, against every earlier version |
 | The spec check (`src/spec-check.ts`) | For each file whose sections name a piece: a word of the piece that is no option label of those sections, and an option label there that is no word of the piece, unless `<piece>.diff.json` declares it; a declaration that nothing needs |
-| The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: for every field its path, kind, choose-one or choose-many, the number of options, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal`. So a wrong choose-one, a wrong condition or a missing flag fails the export. As built it compares every key, the option codes and the order (below). |
+| The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: every key of every section and field (path, kind, label, choose-one or choose-many, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal` and the rest), the option codes in order, the order of sections and fields, the file the piece is for and the note type's header (below). So a wrong choose-one, a wrong condition, a missing flag or a crossed code fails the export. |
 | Drift | Generated files that differ from what the export writes (`git diff --exit-code`, as the contract does) |
 
 **The spec check** reads the bracketed tokens of the piece (`[ New concern ]`, with SPEC's
@@ -832,7 +832,8 @@ re-entering what they filled in" (PRD main 409).
   (`validate.maps_to_needs`): Expand by anyone without the capability would be a held change. A
   target shown only under a condition is allowed. The full field must take every answer the quick
   field can hold (`validate.maps_to_mismatch`, 4.2).
-- **These checks across note types run only for the newest version of the quick note type,
+- **The checks against the target** (`unknown_note_type` for a `mapsTo`, `maps_to_unknown_field`,
+  `maps_to_needs`, `maps_to_mismatch`) **run only for the newest version of the quick note type,
   against the newest version of the target note type.** A released older quick version is not
   checked again: it can no longer be edited, and the newest full version may have moved on.
 - **Expand from a draft written on an older quick version** (PLAN-OPEN 10.1 #12) reads the
@@ -1104,7 +1105,10 @@ their levels, files and order. This part's units, and what each owns:
 database package cannot import the API (`db/package.json`; `services/api/package.json:26`). The
 forms package needs `canonicalJson` and `sha256Hex` for a definition's hash, and they exist only
 in the API's sync folder (`services/api/src/sync/canonical.ts`), so F0 carries its own copy,
-pinned by the same vector file, `packages/contract/test-vectors/canonical-json.json`.
+pinned by the same vector file, `packages/contract/test-vectors/canonical-json.json`. Since wave
+A that file holds an object whose keys lie on both sides of U+FFFF, so a reader that sorts keys
+by code point, and not by UTF-16 code unit as the API does, fails: the API, this copy and the
+phone are held to one order.
 
 ## What this part needs from the lifecycle part
 
