@@ -798,10 +798,10 @@ a one-tap Normal" (PRD main 414).
 - One-tap Normal fills visible fields only: the cranial nerve groups that stay hidden while the
   screen is "Grossly intact" are not filled.
 - What the format gained for the exam, as built: Neurologic reflexes are an optional table
-  recorded by side (focused-exam defaults 25 and 26), so a grid can be `collapsed` like a group,
-  at no cost in path parts; motor strength is a number whose `normal` is 5, what one-tap Normal
-  fills (default 28); Skin's side list has Midline (default 24), so a region's `side` names any
-  shared list.
+  recorded by side (focused-exam inventory, default 25 and construct 26), so a grid can be
+  `collapsed` like a group, at no cost in path parts; motor strength is a number whose `normal`
+  is 5, what one-tap Normal fills (default 28); Skin's side list has Midline (default 24), so a
+  region's `side` names any shared list.
 
 ### 6.4 The Quick encounter
 
