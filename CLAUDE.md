@@ -67,6 +67,7 @@ that look like bugs.
 | Lint, format, types | `pnpm -s lint && pnpm -s format:check && pnpm -s typecheck` |
 | DB and API tests | `pnpm -s --filter @sineobex/db test && pnpm -s --filter @sineobex/api test` |
 | One API test file | `cd services/api && pnpm -s vitest run test/<file>.test.ts` |
+| Forms package tests | `pnpm -s --filter @sineobex/forms test` |
 | Contract (after any route or schema change) | `pnpm contract:generate`, then commit the regenerated files with the change |
 | Phone | `cd apps/mobile && tool/format_check.sh && flutter analyze --fatal-infos && flutter test` |
 | Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
@@ -116,10 +117,12 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
    screens, tests mapped to the Done when, defaults, risks, and a **work breakdown into units**, each
    owning its files, in dependency order. Have it critiqued against the PRD and the code before
    anyone builds from it. Phase 3's design is the model.
-2. **Build in units.** From phase 4 on, a unit is built from task cards (`docs/plan/README.md`): a
-   small local model writes the code of each card, through `tools/card-run.mjs`; the frontier model writes each card, writes the
-   level X cards' code itself, writes the tests of level T cards first, and audits every card and
-   every unit. A unit that others depend on (the schema and contract unit) lands first, alone,
+2. **Build in units.** From phase 5 on, a unit is built from task cards (`docs/plan/README.md`): a
+   small local model writes the code of each card, through `tools/card-run.mjs`; the frontier
+   model writes each card, writes the level X cards' code itself, writes the tests of level T
+   cards first, and audits every card and every unit. Phase 4 is the exception: the frontier
+   model builds it from its card index with helper agents, and no further cards are written for
+   it (`docs/design/phase-4-encounters.md`, "How this phase is built"). A unit that others depend on (the schema and contract unit) lands first, alone,
    with CI green. Then units run in parallel only when they own disjoint files. Keep each unit's
    **Status** row in the design doc current as it lands.
 3. **Review.** An adversarial review of the whole phase (sync safety, audit, permissions, PHI,

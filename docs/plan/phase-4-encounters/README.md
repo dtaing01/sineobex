@@ -4,34 +4,26 @@ This is the work-list for phase 4. The design is `docs/design/phase-4-encounters
 parts, `docs/design/phase-4/forms.md` and `docs/design/phase-4/lifecycle.md`. How cards work is
 in `docs/plan/README.md`. Each card is, or will be, one file under `cards/`, named after its ID.
 
-**Status (Nov 14):** the design is reviewed. Nothing is built. Three cards are written in full,
-as models for the rest: `F6-psychological` (level S), `L0-rules-ts` (level T) and
-`L0-migration-0018` (level X). A card is written in full when the cards it needs have landed, so
-that the files and line ranges it names exist.
+**Status (Nov 16):** in build, by the frontier model with helper agents: the decision and what
+it changes are in `docs/design/phase-4-encounters.md`, "How this phase is built". This index is
+the work-list: each row's files, needs and order hold. No further cards are written for this
+phase. The three written in full (`F6-psychological`, `L0-rules-ts`, `L0-migration-0018`) are
+followed where their files are built, and marked Done. Which units are on the branch is in the
+design's Status table.
 
 ## Where to start
 
-Nothing here can be given to the small model on day one. The first cards are level X, and the
-level T cards need their tests written first. In order:
+1. Read the Status table in `docs/design/phase-4-encounters.md`: it says which units are on the
+   branch and what each has left.
+2. Take the next unit in the Order table below whose needs have landed. Build it from the design
+   sections its rows point to, tests first, in a worktree of its own (`CLAUDE.md`, "Running units
+   with helper agents").
+3. Check every rule by removing it and seeing its test fail. Script it, as `CLAUDE.md` says.
+4. After each unit: an independent review, the full local CI (`CLAUDE.md`), then push, then
+   update the unit's row in the Status table. A migration is pushed only after its review.
 
-1. The frontier model does **F0-schema**, **F0-canonical** and **F0-tests**; the small model can
-   do **F0-package** before them. From then on the small model can do the seven T cards of F0,
-   one at a time.
-2. In parallel, the frontier model does **L0-vectors** and the four **L0-migration** cards, then
-   **F1-vectors** and **F3-migration**. The small model can then do the five T cards of L0 and
-   the fourteen of F1.
-3. The frontier model writes each card in full just before it is handed out, from this index,
-   the design section the row points to, and the model card of the same level. A card is at most
-   90 lines. `node tools/card-check.mjs` checks the result, and `node tools/card-run.mjs <card>
-   --dry-run` shows what the small model will be sent.
-4. The small model's cards are run with `tools/card-run.mjs` (`docs/plan/README.md`, "Running a
-   card"). A row below names files; the full card says for each whether it is new, written again
-   whole, or changed by line range. A file that several cards add to (`api/routes/encounters.ts`
-   is named by nine) is changed by line range once it is long. A row whose only files are what a
-   command writes (the generated contract) is a card with no part: the driver runs its commands
-   and asks no model.
-5. After each unit: the full local CI (`CLAUDE.md`), then push, then tick the unit in
-   `docs/design/phase-4-encounters.md`.
+How a card is run by the small local model is in `docs/plan/README.md`. Phases 5 on are still
+planned that way.
 
 ## Levels, and what they mean for this phase
 
@@ -42,11 +34,11 @@ level T cards need their tests written first. In order:
 | R | 64 | The small local model | The frontier model's audit of the diff and the screen |
 | X | 49 | The frontier model | A second review |
 
-220 cards. The small model writes the code of 171 of them and decides nothing on any of them: the
-decisions are in the design, in the tests written first, and in each card's tables. The frontier
-model writes the 49 level X cards, writes the tests of the level T cards, writes each card just
-before it is handed out, and audits every card and every unit (`docs/plan/README.md`, "The
-audit").
+220 cards. The table is how the phase was planned: the small model would have written the code
+of 171 of them and decided nothing on any of them. In this phase the frontier model writes the
+code of every level (see the Status above). A row's level still says how much judgment it takes:
+an S or T row is settled by its machine check or its tests, an R row needs its diff and its
+screen read, and an X row needs a second reader before it lands.
 
 ## Order
 

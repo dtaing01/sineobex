@@ -7,20 +7,20 @@ patient's timeline.
 **Done when** (`IMPLEMENTATION_PLAN.md`): a resident charts a medical, wound and social visit as
 one encounter offline, saves and closes it, completes it later, and an attending attests it.
 
-## Status (Nov 14): designed and reviewed, not built
+## Status (Nov 16): in build
 
 | Unit | State | On the branch | Left |
 |---|---|---|---|
-| F0 The forms package | Not started | — | 11 cards |
+| F0 The forms package | Built, in review | The package `@sineobex/forms`: the format (types, JSON Schema, the schema check), its own canonical JSON and hash, the resolver, the validator, the lock, the version rules, the spec check and the shape check, with 819 tests, run in CI | The review's findings. The export's test (`test/export.test.ts`) is written with unit E, which owns the script it tests |
 | F1 The interpreter in TypeScript | Not started | — | 15 cards |
 | E The export | Not started | — | 3 cards |
 | F2 The interpreter in Dart | Not started | — | 15 cards |
-| F3 Definitions on the server | Not started | — | 5 cards |
+| F3 Definitions on the server | Started | — | Migration 0017 is built and in review on a unit branch. 4 cards |
 | F4 Definitions on the phone | Not started | — | 4 cards |
 | F5 The renderer | Not started | — | 22 cards |
 | F6 The definitions | Not started | The recipe and its worked example (`docs/plan/patterns/form-definition.md`); one card written in full | 44 cards |
 | F7 Flows | Not started | — | 7 cards |
-| L0 Schema and core rules | Not started | Two cards written in full | 10 cards |
+| L0 Schema and core rules | Built in part, in review | The shared vectors (`note-lifecycle.json`, `signed-under.json`), the lifecycle rules in TypeScript and in Dart, and `signedUnder` | Migrations 0018 to 0021 are built and in review on a unit branch: a migration is pushed only after its review. The content hash (vectors, TypeScript, Dart) waits for F1 and F2 |
 | L1 Server sync | Not started | — | 15 cards |
 | L2 Server routes | Not started | — | 14 cards |
 | L3 The phone's sync layer | Not started | — | 8 cards |
@@ -31,6 +31,28 @@ one encounter offline, saves and closes it, completes it later, and an attending
 
 Start with `docs/plan/phase-4-encounters/README.md`: every card, its level, its files, what it
 needs first, and the order the units land in. Keep this table current as units land.
+
+## How this phase is built (decided Nov 16)
+
+The project lead decided on Nov 16 that the frontier model builds this phase with helper agents,
+because the small local model's setup was not ready. What that changes:
+
+- **The card index stays the work-list.** Each row's files, needs and order hold. No further
+  cards are written for this phase. The three written in full are followed where their files are
+  built, and marked Done.
+- **A unit is built from the design sections its rows point to**, tests first, by one agent in
+  its own worktree, a few rows at a time (`CLAUDE.md`, "Running units with helper agents").
+- **What a card's checks gave is replaced.** Every rule is removed by a script to see its test
+  fail. Each unit gets an independent review, with each confirmed finding shown by a failing
+  test before it is fixed. A migration is pushed only after its review; other code may land
+  first and take its fixes as later commits. The whole-phase adversarial review at the end is
+  unchanged.
+- **`tools/card-run.mjs` is not used in this phase**, so it is still unproven against a real
+  model. Phase 5's first cards are its first real test. Decisions D68 and D69 stand for phases 5
+  on.
+- **The index's order holds**: the schema unit (L0) lands alone before server sync (L1). Its
+  migrations refuse one thing today's code allows, a note marked signed with no sign-off, which
+  only one test's setup did.
 
 ## Where the design is
 
@@ -107,6 +129,7 @@ repository; `CLAUDE.md` links it.
 | D67 | The chart carries the timeline and the last three visits | "Recent notes" offline (PRD main 533) before routes exist |
 | D68 | The remaining phases are built from task cards with four levels, and CI checks every card's shape | A small model follows a card to the letter and cannot tell a stale path from a correct one |
 | D69 | A card is run by a program, not by an agent: the model is sent the card's reading and answers with each part whole (a new file, a whole file or a line range); only the card's files are written and only its commands are run | The coder model cannot call tools; a rule a program keeps needs no audit; whole parts are what a model of this size writes reliably, and diffs are not |
+| D70 | Phase 4 is built by the frontier model from the card index, with a review per unit; no further cards are written for it | The local model's setup was not ready (project lead, Nov 16); the index already names every file, its needs and the order |
 
 ## What the review found
 
@@ -154,8 +177,8 @@ The ones that would change the most if answered differently:
 2. **Two interpreters and a hand-kept test server.** Every rule exists twice or three times. The
    vectors, the golden file and the parity tests are what hold them together; a rule added
    without one is plan risk 7 again.
-3. **The size.** 220 cards. The small local model types the code of 171 and decides nothing.
-   The frontier model writes the other 49 itself, writes the tests of 67 first, and audits all of
-   them.
+3. **The size.** 220 cards' worth of work, a third of it in the sync core. The frontier model
+   now writes all of it, so the narrow file list and the machine check a card gave are replaced
+   by rule-removal runs and a review of each unit ("How this phase is built").
 4. **The defaults are clinical choices made by an engineer.** Until Brooke and Mercy go through
    them, the forms are a preview.
