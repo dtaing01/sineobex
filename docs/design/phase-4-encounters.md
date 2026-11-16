@@ -130,6 +130,13 @@ repository; `CLAUDE.md` links it.
 | D68 | The remaining phases are built from task cards with four levels, and CI checks every card's shape | A small model follows a card to the letter and cannot tell a stale path from a correct one |
 | D69 | A card is run by a program, not by an agent: the model is sent the card's reading and answers with each part whole (a new file, a whole file or a line range); only the card's files are written and only its commands are run | The coder model cannot call tools; a rule a program keeps needs no audit; whole parts are what a model of this size writes reliably, and diffs are not |
 | D70 | Phase 4 is built by the frontier model from the card index, with a review per unit; no further cards are written for it | The local model's setup was not ready (project lead, Nov 16); the index already names every file, its needs and the order |
+| D71 | Every note change takes the team lock, and the status trigger also locks the visit's row before it works out the status (lifecycle 2.2, 4.2) | Two writers finishing two notes of one visit at once each read the other's note as it was and left the visit wrong; with the row lock a writer that forgets the team lock waits instead |
+| D72 | What a finished note is never changes: its visit, type and version, whether it is Medical, its author and its first signing time; a note once signed never returns to draft. The database refuses each, correction or not (lifecycle 2.2) | A signature must go on covering the same note; without the check, a signed note could be put back to draft and rewritten in two statements |
+| D73 | Composite keys tie a note's signature, an attestation and an addendum to their own note, and a note to its own team's visit; whether a named sign-off is a signature stays the routes' rule (lifecycle 2.2 to 2.4) | A key no code path can forget; a key cannot see a sign-off's effect, so the sign-off path and the attest route write each pair from the same loaded rows |
+| D74 | A resolved definition is made only by `resolve()` from files that passed the schema check, and checked by `validate()`; it has no schema of its own, and in it a region's side and surface are option lists (forms 2.1) | One way into what the server stores; the interpreters are handed a definition and no lists |
+| D75 | The machine checks of transcription hold every key: a shape file gives every key of every section and field, the option codes in order, the file it is for and the note type's header; the lock holds a released definition's piece files and its resolved hash (forms 4.2) | Labels, ranges, codes and headers would otherwise reach a definition unchecked; what the server refuses is a changed resolved hash, so a change to the resolver must fail too |
+| D76 | A version declares in its own file every label it rewords, a field's own label as well as an option's; every earlier version is compared, and a unit may not change (forms 2.6) | Reports and supply mappings read paths and codes across versions; a reworded or re-unitted path is another meaning |
+| D77 | A condition, or a grid's picked rows, outside a sensitive exam or treatment record section never reads an answer inside one (forms 2.2) | What it shows would tell a reader without the key what was found (D66) |
 
 ## What the review found
 
@@ -149,8 +156,8 @@ note, which is why decision D56 exists.
 
 ## What a person has to decide
 
-Every default is built, marked `PLAN-OPEN` and listed with who decides: 21 in
-`lifecycle.md` 12.1, 11 in `forms.md` 10.1, and eight questions with no default in 12.2 and 10.2.
+Every default is built, marked `PLAN-OPEN` and listed with who decides: 22 in
+`lifecycle.md` 12.1, 12 in `forms.md` 10.1, and eight questions with no default in 12.2 and 10.2.
 The ones that would change the most if answered differently:
 
 1. **Who may co-sign or attest a note that has a GU, breast or rectal exam.** The default follows
@@ -167,7 +174,9 @@ The ones that would change the most if answered differently:
 5. **Substance use treatment records and 42 CFR Part 2.** Default: readable only with a clinical
    credential (lifecycle 6.4). Counsel decides.
 6. **Whether a note signed offline counts from the device's time or the server's** (PRD main
-   452). Default: the device's, with the server's kept beside it.
+   452). Default: the device's, with the server's kept beside it. When the device's time cannot
+   be trusted, the signature is recorded under the credential held when the server receives it,
+   with the phone's claim beside it (lifecycle 12.1 #22).
 
 ## Risks
 
