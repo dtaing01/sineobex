@@ -1032,6 +1032,59 @@ describe('a condition that reads restricted content', () => {
     delete status(f, 'each').rows;
     status(f, 'each').rows = [{ code: 'one', label: 'One' }];
   });
+
+  // Rows picked in a restricted section, alone: a small note type with nothing else that reads it.
+  describe('rows picked in a choose-many inside a restricted section', () => {
+    const PICKED_FILE = 'note-types/picked_demo/v1.json';
+    const PICKER = {
+      id: 'sites',
+      kind: 'choice',
+      many: true,
+      label: 'Demo: sites looked at',
+      options: [
+        { code: 'one', label: 'One' },
+        { code: 'two', label: 'Two' },
+      ],
+    };
+    const GRID = {
+      id: 'each',
+      kind: 'grid',
+      label: 'Demo: for each site',
+      rows: { pickedIn: 'exam.sites' },
+      cell: GROUP('detail', TEXT('note')),
+    };
+    const pickedFiles = (key: 'sensitiveExam' | 'treatmentRecord', gridInside: boolean): LooseFiles => {
+      const exam = { id: 'exam', title: 'Exam', [key]: true, fields: gridInside ? [PICKER, GRID] : [PICKER] };
+      const sections: Loose[] = [exam];
+      if (!gridInside) sections.push({ id: 'open', title: 'Open', fields: [GRID] });
+      return {
+        noteTypes: {
+          [PICKED_FILE]: {
+            key: 'picked_demo',
+            version: 1,
+            title: 'Picked (test)',
+            kinds: ['medical'],
+            group: 'clinical',
+            sensitivity: 'none',
+            sections,
+          },
+        },
+        modules: {},
+        lists: {},
+      };
+    };
+    const pickedFound = (files: LooseFiles) => found(files, PICKED_FILE);
+    for (const key of ['sensitiveExam', 'treatmentRecord'] as const) {
+      it(`by a grid in an open section, from a section marked ${key}, is refused at the grid`, () => {
+        expect(pickedFound(pickedFiles(key, false))).toEqual([
+          [PICKED_FILE, '$.sections[1].fields[0].rows.pickedIn', RESTRICTED].join('  '),
+        ]);
+      });
+      it(`by a grid in the same section marked ${key} is allowed`, () => {
+        expect(pickedFound(pickedFiles(key, true))).toEqual([]);
+      });
+    }
+  });
 });
 
 describe('a note type named by a definition', () => {
