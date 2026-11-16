@@ -194,14 +194,14 @@
           "id": "status",
           "kind": "grid",
           "label": "Status for each one picked",
+          "showWhen": { "field": "./where.region", "filled": true },
           "rows": { "pickedIn": "basics.systems" },
           "cell": {
             "id": "detail",
             "kind": "text",
             "label": "Detail",
             "lines": "one",
-            "maxLength": 100,
-            "showWhen": { "field": "./where", "filled": true }
+            "maxLength": 100
           }
         }
       ]

@@ -585,6 +585,16 @@ describe('a condition', () => {
   describe('inside the cell of a grid, where ./ is the row', () => {
     const note = (f: LooseFiles) => status(f, 'each').cell.fields[1];
     const NOTE = `${S('each')}.cell.fields[1].showWhen`;
+    // A cell cannot read a field of its own entry: ./ is the row there, and an absolute path into
+    // the repeating section names no one entry. The grid's own condition can (decision D17).
+    broken(
+      'in a repeating section, that names a field of the entry',
+      (f) => (findings(f, 'pulses').cell.showWhen = { field: './where.region', filled: true }),
+      [CHECKS, `${F('pulses')}.cell.showWhen.field`, UNKNOWN],
+    );
+    fits('on the grid itself, in a repeating section, that names a field of the entry', (f) => {
+      findings(f, 'pulses').showWhen = { field: './where.region', filled: true };
+    });
     // The cell's own id is no path part: its fields follow the row's code.
     broken('that puts the cell’s id in the path', (f) => (note(f).showWhen.field = './detail.seen'), [
       CHECKS,
