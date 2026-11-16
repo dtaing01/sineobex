@@ -50,8 +50,8 @@ when the units it needs are on the branch with CI green.
 | 1 | **F0** | Everything about forms needs the package, the schema and the checks |
 | 2 | **F1**, **L0**, **F3** (migration and install only) | The interpreter and the lifecycle rules are pure functions on vectors; the migrations stand alone |
 | 3 | **E**, **F2**, **F6** | The export needs F1. The Dart interpreter needs F1's vectors. Definitions need the export's checks |
-| 4 | **L1**, **F3** (routes), **F4** | Server sync needs the rules (L0), the interpreter (F1) and stored definitions (F3) |
-| 5 | **L2**, **L3**, **F5** | Routes need L1. The phone's sync layer mirrors L1 and needs F2 and F4. The renderer needs F2 |
+| 4 | **L1** with **L3**'s registry, test server and parity cards; **F3** (routes); **F4** | Server sync needs the rules (L0), the interpreter (F1) and stored definitions (F3). A change to the server's sync rules lands with the same change to the phone's test server (`CLAUDE.md`) |
+| 5 | **L2**, **L3** (the store cards), **F5** | Routes need L1. The phone's store mirrors L1 and needs F2 and F4. The renderer needs F2 |
 | 6 | **L4**, **F7** | The phone's domain layer needs L3 and the generated client from L2 |
 | 7 | **L5**, **L6** | Screens need the domain layer and the renderer; the portal needs the routes |
 | 8 | **L7** | The Done when, end to end |
@@ -61,6 +61,10 @@ L2-read-visit); `services/api/test/permissions.test.ts` (F3-contract, then L2-pe
 `db/seed/seed.ts` (F3-install, then L2-seed); `apps/mobile/pubspec.yaml` (E-presets, then
 L5-location); the generated contract (F3-contract, L1-contract, L2-contract, each after its own
 unit's routes or schemas).
+
+One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
+L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
+the two change in one push and never a wave apart (`docs/plan/factory-handoff/`, B 2.3).
 
 ## The cards
 

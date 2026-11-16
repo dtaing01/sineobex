@@ -6,6 +6,18 @@ level X work and audits. **Nothing here is applied.** No card level, card, Needs
 setting has changed because of these documents. They are the input to a separate comparison with the
 factory's actual code.
 
+> **Later on Nov 16.** The project lead decided that the frontier model builds phase 4 without
+> task cards (`docs/design/phase-4-encounters.md`, "How this phase is built"). For phase 4 that
+> settles part of B and leaves the rest as proposals:
+>
+> - Done in the build: the forms tests run in CI (B §3, F0-ci); the export's test is written with
+>   unit E (E-tests); the content hash vectors wait for F1 and F2 (L0-vectors-content-hash).
+>   `proposed-cards/F0-package.md` is superseded: the package is on the branch.
+> - Taken into the phase 4 index: server sync lands with the phone's test server (B §2.3).
+> - Not applied: every other edit to the index, the levels and `docs/plan/README.md`. They stand
+>   as proposals for phases 5 on, where cards are run by the small local model. The counts below
+>   are of the plan as written, not of what is built.
+
 Every statement is marked:
 
 - **[V]** verified against this repository at `ca2c4db` (commands, scripts or runs cited);
