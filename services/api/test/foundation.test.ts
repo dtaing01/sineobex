@@ -178,6 +178,51 @@ describe('phase 1 foundation', () => {
     ]);
   });
 
+  it('a re-invite records the credential and fields the membership had before it', async () => {
+    // Signatures keep the credential they were signed under (lifecycle 3.5): a sign-off held while
+    // the person was away is read against this history, so a restore must say what it replaced.
+    const invite = (credential: string, credentialFields: Record<string, string>) =>
+      call('/v1/team/members', {
+        method: 'POST',
+        token: mercyToken,
+        teamId,
+        json: {
+          email: 'rowena@example.com',
+          displayName: 'Rowena',
+          roleId: roles.healthcare_staff,
+          credential,
+          credentialFields,
+        },
+      });
+    const residentFields = {
+      npi: NPI,
+      program: 'Demo: internal medicine',
+      supervisingAttending: 'Dr. Mercy',
+    };
+    const first = await invite('resident', residentFields);
+    expect(first.status).toBe(201);
+    const membershipId = first.body.membershipId as string;
+    const removed = await call(`/v1/team/members/${membershipId}/remove`, {
+      method: 'POST',
+      token: mercyToken,
+      teamId,
+      json: { reason: 'Demo: rotation ended' },
+    });
+    expect(removed.status).toBe(200);
+    const attendingFields = { npi: '1245319599', licenseNumber: 'MD-9', licenseState: 'MI' };
+    const again = await invite('attending', attendingFields);
+    expect(again.status).toBe(201);
+    expect(again.body.membershipId).toBe(membershipId);
+
+    const history = await call(`/v1/team/members/${membershipId}/history`, { token: mercyToken, teamId });
+    const changes = history.body as unknown as { kind: string; oldValue: unknown; newValue: unknown }[];
+    expect(changes.map((c) => c.kind)).toEqual(['restored', 'removed', 'invited']);
+    expect(changes[0]).toMatchObject({
+      oldValue: { credential: 'resident', fields: residentFields },
+      newValue: { roleKey: 'healthcare_staff', credential: 'attending' },
+    });
+  });
+
   it('moves down at once, without waiting for fields', async () => {
     const invited = await call('/v1/team/members', {
       method: 'POST',

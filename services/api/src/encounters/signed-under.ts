@@ -13,7 +13,11 @@ export interface CredentialSnapshot {
   fields: Record<string, string>;
 }
 
-/** A membership_changes row of kind `credential`. */
+/**
+ * A membership_changes row of kind `credential` or `restored`, with its old_value: both replace the
+ * credential and its fields (a restore is a re-invite of a removed person, who may come back with
+ * another credential or another NPI). Rows of other kinds carry no credential and are not passed.
+ */
 export interface CredentialChange {
   changedAt: string;
   /** What the person held until this change. */
@@ -23,7 +27,7 @@ export interface CredentialChange {
 export interface SignedUnderInput {
   /** The signer's membership now, also when they were removed since. */
   current: CredentialSnapshot;
-  /** The membership's credential changes made after `signedAt`. Earlier ones are passed over. */
+  /** The membership's credential changes and restores made after `signedAt`. Earlier ones are passed over. */
   laterChanges: CredentialChange[];
   /** Clock-corrected device time of the act, as the phone gave it. Times are ISO 8601 in UTC. */
   signedAt: string;

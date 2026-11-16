@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written (phase 4 design, lifecycle 3.5). signedUnder in services/api/src/encounters/signed-under.ts must give every answer; the reader is services/api/test/encounter-rules.test.ts. Server-only: the phone never decides this. In each case the signature is at signedAt on the phone and reaches the server at receivedAt; notBefore is when the server received the note's create. expected.fields are the fields of the credential found, without the NPI. Made-up people and numbers only.",
+  "note": "Hand-written (phase 4 design, lifecycle 3.5). signedUnder in services/api/src/encounters/signed-under.ts must give every answer; the reader is services/api/test/encounter-rules.test.ts. Server-only: the phone never decides this. In each case the signature is at signedAt on the phone and reaches the server at receivedAt; notBefore is when the server received the note's create. laterChanges are the membership_changes rows of kind credential or restored made after the signature, each with its old_value. expected.fields are the fields of the credential found, without the NPI. Made-up people and numbers only.",
   "cases": [
     {
       "name": "an attending, no change since: signs with nothing held",
@@ -75,6 +75,16 @@
       "name": "a removed signer with no later change: the membership’s last credential",
       "input": {"current": {"credential": "np", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0002", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "np"},
       "expected": {"credential": "np", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as a resident, removed and invited again as an attending Tuesday, synced Wednesday: signed as a resident",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as an attending, removed and invited again as a student Tuesday: the signature stands as an attending’s",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
     },
     {
       "name": "the phone’s clock was not verified: the history is not consulted",

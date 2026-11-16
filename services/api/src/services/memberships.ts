@@ -183,16 +183,24 @@ export async function inviteMember(
       returning id`;
     const userId = user!.id;
 
-    const existing = await tx<{ id: string; status: string }[]>`
-      select id, status from sineobex.team_memberships where team_id = ${input.teamId} and user_id = ${userId}
+    const existing = await tx<
+      { id: string; status: string; credential: Credential; credentialFields: Record<string, string> }[]
+    >`
+      select id, status, credential, credential_fields from sineobex.team_memberships
+      where team_id = ${input.teamId} and user_id = ${userId}
       for update`;
     let membershipId: string;
     let kind: 'invited' | 'restored';
+    // A restore replaces the credential and its fields, as a credential change does, so it records
+    // what it replaced: a signature made before it is read against this history (phase 4
+    // lifecycle 3.5, signedUnder).
+    let oldValue: { credential: Credential; fields: Record<string, string> } | null = null;
     if (existing[0]?.status === 'active') {
       throw conflict('already_member', 'That person is already on this team.');
     } else if (existing[0]) {
       membershipId = existing[0].id;
       kind = 'restored';
+      oldValue = { credential: existing[0].credential, fields: existing[0].credentialFields };
       await tx`
         update sineobex.team_memberships
         set status = 'active', role_id = ${input.roleId}, credential = ${input.credential},
@@ -210,8 +218,9 @@ export async function inviteMember(
 
     const newValue = { roleKey: preflight.role.key, credential: input.credential };
     await tx`
-      insert into sineobex.membership_changes (team_id, membership_id, kind, new_value, changed_by)
-      values (${input.teamId}, ${membershipId}, ${kind}, ${tx.json(newValue)}, ${actor.userId})`;
+      insert into sineobex.membership_changes (team_id, membership_id, kind, old_value, new_value, changed_by)
+      values (${input.teamId}, ${membershipId}, ${kind}, ${oldValue && tx.json(oldValue)}, ${tx.json(newValue)},
+              ${actor.userId})`;
     await audit({
       action: kind === 'invited' ? 'membership.invited' : 'membership.restored',
       entity: 'membership',
