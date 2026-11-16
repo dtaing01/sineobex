@@ -90,7 +90,7 @@ Every row was checked against the code on this branch. Phase 4 builds on these f
 | One change is one transaction with its receipt and its audit event. A change applies inside a savepoint, so a database constraint it breaks becomes a stored rejection and the queue moves on. | `services/api/src/sync/push.ts:134-179`; `services/api/src/sync/apply.ts:279-294` | New entities get this for free. |
 | A change without the permission its entity needs is held for a Program Admin (quarantine). A change to a record whose create is held waits with it. | `services/api/src/sync/apply.ts:403-423`, `:426-443` | Sign-offs and corrections from a removed person follow the same path. |
 | The actor of a change carries the team, the author, the device and the role's permissions. It does not carry the credential. | `services/api/src/sync/records.ts:271-293`; `services/api/src/sync/push.ts:84-92` | Signing needs the credential. Phase 4 adds it (4.2). |
-| Encounter sets and creates that name a patient take the team's write lock first. Note changes do not. | `services/api/src/sync/entities/encounter.ts:54-55`; `note.ts:42` | A sign-off writes the note and the encounter, so phase 4 makes every encounter-side change take the team lock first (4.2). |
+| Encounter sets and creates that name a patient take the team's write lock first. Note changes do not. | `services/api/src/sync/entities/encounter.ts:54-55`; `note.ts:42` | A sign-off writes the note and the encounter, so phase 4 makes every encounter-side change take the team lock first (4.2). Note changes take it since wave A. |
 | A problem status is `{status, encounterId}`. A non-null `encounterId` must be an encounter of the team, or the set answers `stale_reference` with `encounter_missing`. The same holds for creates of a problem, an allergy and a problem note. | `services/api/src/sync/entities/values.ts:230-232`, `:388-435`; `services/api/src/sync/entities/index.ts:44-62`; `services/api/test/problems-sync.test.ts:229` | Phase 3 always sent `null`. Phase 4 fills it (8.3). |
 | `/v1/sync/records` returns a note's whole `data` to anyone with `encounters.chart`. Only sensitive problems are hidden from a role. | `services/api/src/routes/sync.ts:73-85`; `services/api/src/sync/review.ts:268-299` | Phase 4 must hide sensitive sections here too (6.4). |
 | Offline reads can already be logged as `encounter.viewed` and `note.viewed`. | `services/api/src/sync/entities/values.ts:269-294` | The phone's visit screen uses them. |
@@ -177,8 +177,12 @@ tables. `field_history` needs no new kind: `set`, `kept_both` and `corrected` al
 
 | Column | Type | Meaning | PRD |
 |---|---|---|---|
-| `summary` | `text`, null or 1 to 4,000 characters | The free-text assessment written on the summary screen | PRD main 383, 433 |
-| `location_text` | `text`, null or 1 to 200 characters | The place, entered by hand | PRD main 378 |
+| `summary` | `text`, null or 1 to 4,000 characters (`encounters_summary_check`) | The free-text assessment written on the summary screen | PRD main 383, 433 |
+| `location_text` | `text`, null or 1 to 200 characters (`encounters_location_text_check`) | The place, entered by hand | PRD main 378 |
+
+Both lengths are plain `length()`, not trimmed, so the database is never stricter than the
+API's schema for the two fields (card L1-encounter-fields). Both checks are ordinary, validated
+ones: the columns are new and every row holds null.
 
 `kind` keeps its column and becomes a field a phone can set to `medical`, at any time (PRD main
 379: "A Non-Medical encounter can be switched to Medical partway through"; 3.10). Rows made before
@@ -212,6 +216,7 @@ $$;
 create function sineobex.refresh_encounter_status() returns trigger
 language plpgsql as $$
 begin
+  perform 1 from sineobex.encounters e where e.id = new.encounter_id for no key update;
   update sineobex.encounters e set status = sineobex.encounter_status(new.encounter_id)
   where e.id = new.encounter_id and e.status is distinct from sineobex.encounter_status(new.encounter_id);
   return null;
@@ -228,6 +233,25 @@ trigger, and not API code, because four code paths change a note's status (a sig
 an online co-sign, a correction by a student), and a fifth would forget. It also runs when a
 note's answers change, because the first answer makes an empty draft count.
 
+**The row lock, and why there are two locks.** Two writers that finish two notes of one visit
+at once would each read the other's note as it was and leave the visit a draft, or sign a visit
+beside an open draft. Every note change takes the team lock first (4.2), which keeps them
+apart. The trigger's first statement is the second line: it locks the visit's row (`for no key
+update`, which does not wait on the key-share lock a note's foreign key takes), so a writer that
+forgets the team lock waits for the other to commit, and the status it then works out, from a
+new snapshot in read committed, sees the other's note. Under the team lock it never waits.
+
+**Visits from before 0018.** Phase 2 let a phone set an encounter's status, and nothing tied it
+to the notes. A finished note never changes again, so the trigger alone would leave such a visit
+wrong for good: once the functions exist, 0018 works out the status of every existing encounter
+once (`update ... set status = encounter_status(id) where status is distinct from ...`). The
+encounters' touch trigger stays on for it, so a status that moves is stamped as every change is,
+and a phone learns of it at its next pull.
+
+**A phone can still write `encounters.status`** until card L1-encounter-fields takes the field
+out of the encounter's settable fields (4.3). The database has no rule against it: a status a
+phone sets is overwritten at the next change of one of the visit's notes.
+
 **`encounter_notes`: new columns.**
 
 | Column | Type | Meaning |
@@ -236,12 +260,18 @@ note's answers change, because the first answer makes an empty draft count.
 | `completed_at` | `timestamptz` | When the note last left draft (clock-corrected device time). Null while a draft. |
 | `completed_by` | `uuid` references `users` | Who finished it |
 | `first_signed_at` | `timestamptz` | Set once, at the first signature. A note that was ever signed is never reopened. |
-| `signoff_id` | `uuid` | The sign-off that makes the note signed now. Null unless `status = 'signed'`. Foreign key `(team_id, signoff_id)` to `note_signoffs`, added in 0019. |
+| `signoff_id` | `uuid` | The sign-off that makes the note signed now. Null unless `status = 'signed'`. Foreign key `(team_id, id, signoff_id)` to `note_signoffs (team_id, note_id, id)`, added in 0019: a note names only a sign-off of its own. |
 | `attestation` | `text not null default 'not_needed'`, one of `not_needed`, `waiting`, `attested` | Whether an attending must still attest the note as it reads now |
 | `assigned_user_id` | `uuid` references `users` | The clinician a Program Admin assigned after the author left. Null: the author acts. |
 
 Also `unique (team_id, id)` on `encounter_notes`, so other tables can point at a note with a
-composite key, and one partial index for the attestation queue:
+composite key (`encounter_notes_team_id_key`), and `unique (team_id, encounter_id, id)`
+(`encounter_notes_team_id_encounter_id_id_key`), so an addendum's note is a note of its visit
+(2.3). And a foreign key `(team_id, encounter_id)` to `encounters (team_id, id)`, `not valid` as
+0013's (`encounter_notes_team_id_encounter_id_fkey`): 0004's key is the encounter's ID alone, and
+a foreign key check ignores row-level security, so a request could otherwise put a note of its
+own team on another team's encounter, which the status trigger, running as the request, cannot
+see. And one partial index for the attestation queue:
 
 ```sql
 create index encounter_notes_waiting on sineobex.encounter_notes (team_id, updated_at)
@@ -259,26 +289,53 @@ Check constraints, all added `not valid` as `0013_encounter_patient_fk.sql` does
 preview rows stay as they are and every new or changed row is checked:
 
 ```sql
-check ((status = 'draft') = (completed_at is null))
-check ((completed_at is null) = (completed_by is null))
-check (status = 'signed' or attestation = 'not_needed')
-check (first_signed_at is not null or status <> 'signed')
-check (medical or status <> 'signed')
+check ((status = 'draft') = (completed_at is null))             -- encounter_notes_completed_at_when_finished
+check ((completed_at is null) = (completed_by is null))         -- encounter_notes_completed_by_with_at
+check (status = 'signed' or attestation = 'not_needed')         -- encounter_notes_attestation_when_signed
+check (first_signed_at is not null or status <> 'signed')       -- encounter_notes_signed_has_first_signed
+check (medical or status <> 'signed')                           -- encounter_notes_signed_is_medical
+check (first_signed_at is null or status <> 'draft')            -- encounter_notes_signed_never_reopened
 ```
+
+The last is the rule that a note once signed is never reopened: a student's correction leaves it
+`completed`, never `draft` (3.6). Each check is named, because the tests and a sync rejection
+(`server_constraint` stores the name) need stable names.
 
 `(status = 'signed') = (signoff_id is not null)` is added in 0019, once the table it points at
 exists. Before the checks, the migration fills `completed_at = updated_at` and
-`completed_by = author_user_id` for rows that are already `completed`.
+`completed_by = author_user_id` for rows that are already `completed`. The notes' touch trigger
+(`encounter_notes_touch`) is off for that one statement and on again after it, so a row's own
+time of last change stays what it was.
 
-**The finished-note guard.** A finished note's answers change only through a correction. The
-database holds that rule itself:
+**The finished-note guard.** A finished note's answers change only through a correction, and
+what a finished note is never changes at all. The database holds both rules itself:
 
 ```sql
 create function sineobex.guard_finished_note() returns trigger
 language plpgsql as $$
+declare
+  v_kept text;
 begin
-  if old.status <> 'draft' and new.data is distinct from old.data
-     and coalesce(current_setting('app.note_correction', true), '') <> old.id::text then
+  if old.status = 'draft' then
+    return new;
+  end if;
+  v_kept := case
+    when new.encounter_id is distinct from old.encounter_id then 'encounter_id'
+    when new.note_type_key is distinct from old.note_type_key then 'note_type_key'
+    when new.note_type_version is distinct from old.note_type_version then 'note_type_version'
+    when new.medical is distinct from old.medical then 'medical'
+    when new.author_user_id is distinct from old.author_user_id then 'author_user_id'
+  end;
+  if v_kept is not null then
+    raise exception 'a finished note keeps its %', v_kept
+      using errcode = 'check_violation', constraint = 'encounter_notes_finished_' || v_kept;
+  end if;
+  if old.first_signed_at is not null and new.first_signed_at is distinct from old.first_signed_at then
+    raise exception 'a note is first signed once'
+      using errcode = 'check_violation', constraint = 'encounter_notes_first_signed_at_once';
+  end if;
+  if new.data is distinct from old.data
+     and lower(btrim(coalesce(current_setting('app.note_correction', true), ''), E' \t\r\n')) <> old.id::text then
     raise exception 'a finished note changes only through a correction'
       using errcode = 'check_violation', constraint = 'encounter_notes_finished_data';
   end if;
@@ -294,6 +351,21 @@ The correction code sets `app.note_correction` to the note's ID for its own tran
 error class is 23 on purpose: `applyInSavepoint` turns a class 23 error into a stored
 `server_constraint` rejection, so a bug here can never stop a phone's queue (D42,
 `services/api/src/sync/apply.ts:279-301`).
+
+Two of the guard's rules go beyond the first design (wave A's review):
+
+- **What a finished note is never changes**, correction or not: its visit, its note type and
+  version (the form it is read with), whether it is Medical, its author (an assignee is a column
+  of its own), and, once set, the time it was first signed. Each refusal names its own
+  constraint: `encounter_notes_finished_encounter_id`, `_note_type_key`, `_note_type_version`,
+  `_medical`, `_author_user_id`, and `encounter_notes_first_signed_at_once`. With the check
+  `encounter_notes_signed_never_reopened`, a signed note can no longer be put back to draft and
+  rewritten in two statements. The correction setting opens none of these. A draft may still
+  change them, which the sync rules govern (4.4).
+- **The setting is compared without case**: `lower(btrim(...))` of the value, with spaces, tabs
+  and line ends trimmed, against the note's ID. The right ID in capitals, or with white space
+  around it, opens the note; any other value, braces or a no-break space included, is still
+  refused with class 23, never a class 22 error.
 
 ### 2.3 `0019_note_signoffs.sql`
 
@@ -312,7 +384,7 @@ the credential it was signed under (PRD main 133, 223).
 | `signer_user_id` | `uuid not null` references `users` | |
 | `signer_name` | `text not null` | `users.display_name` at the time |
 | `signer_credential` | `text not null`, one of the seven credentials | The credential the server recorded the act under (3.5) |
-| `signer_npi` | `text` | Null when that credential has none |
+| `signer_npi` | `text`, ten digits | Null when that credential has none |
 | `signer_fields` | `jsonb not null default '{}'` | The credential's other fields at the time (license, program, supervising attending) |
 | `claimed_credential` | `text` | What the phone's saved profile said. Null for an online co-sign and for `complete`. |
 | `needs_attestation` | `boolean not null` | |
@@ -335,7 +407,7 @@ Append-only.
 |---|---|---|
 | `id` | `uuid primary key` | Made on the phone |
 | `team_id`, `encounter_id` | `uuid not null` | Foreign key to `encounters (team_id, id)` |
-| `note_id` | `uuid` | The note it is attached to. Null: it is about the visit's summary. |
+| `note_id` | `uuid` | The note it is attached to, a note of the same visit (foreign key `(team_id, encounter_id, note_id)` to `encounter_notes (team_id, encounter_id, id)`). Null: it is about the visit's summary. |
 | `text` | `text`, 1 to 4,000 characters | |
 | `written_at` | `timestamptz not null` | Clock-corrected device time |
 | `clock_verified` | `boolean not null` | |
@@ -367,6 +439,41 @@ Check: `outcome <> 'declined' or requested_by_patient`. Index
 
 The app role gets no `update` or `delete` on these three tables.
 
+**As built**, 0019 also holds:
+
+- **A note names only a signature of its own.** `note_signoffs` has
+  `unique (team_id, note_id, id)` (`note_signoffs_team_id_note_id_id_key`) beside
+  `unique (team_id, id)`, and the key on `encounter_notes.signoff_id` is
+  `(team_id, id, signoff_id)` to `note_signoffs (team_id, note_id, id)`
+  (`encounter_notes_signoff_fk`). The key is added valid: every `signoff_id` is null when it is
+  added. Only the check `encounter_notes_signoff_when_signed` is `not valid`, as 2.2's are.
+- **The order a writer follows.** The `note_signoffs` row first, then the note's update to
+  `signed`, with `signoff_id`, in one statement: the key is not deferrable. A note that leaves
+  `signed` clears `signoff_id`, and sets `attestation` back to `not_needed`, in the same statement;
+  a reopen clears `completed_at` and `completed_by` in the same statement.
+- **What a key cannot see stays the route's rule.** The database accepts a note that names its
+  own sign-off whose `effect` is not `signed` (`none`, `completed`), because a key cannot see the
+  effect. L1's sign-off path writes the note's `signoff_id` and the sign-off row from the same
+  loaded rows, and its tests pin that a note names only a signature.
+- **An addendum's note is a note of its visit**: the key is `(team_id, encounter_id, note_id)` to
+  `encounter_notes (team_id, encounter_id, id)` (`note_addenda_team_id_encounter_id_note_id_fkey`),
+  unchecked when `note_id` is null, beside `(team_id, encounter_id)` to `encounters`.
+- Checks the tables above do not spell out: `signer_credential`, `author_credential`,
+  `corrector_credential` and both `claimed_credential` columns are one of the seven credentials,
+  as `team_memberships.credential` is; `signer_fields` is a JSON object; `content_hash` is 64
+  lower-case hex characters; `signer_npi`, where it is not null, is ten digits
+  (`note_signoffs_signer_npi_check`; the check digit is left to the API's check of a membership's
+  credential fields, `isValidNpi`, since demo NPIs are ten zeros);
+  `author_name`, `author_credential`, `corrector_name` and `corrector_credential` are not null.
+  An addendum's text and a correction's reason are measured trimmed (`length(btrim(...))`), as
+  `problem_notes.text` and the API's `Trimmed` are.
+- **`changes` is checked in the database** (`note_corrections_changes_shape`), through the
+  function `note_correction_changes_ok`: an array of 1 to 10 objects, each with a string `field`
+  matching `data._%`, so a correction of the summary or the status can never be stored. It is a
+  function with a guard on the value's type, so a value of the wrong shape breaks the check
+  (class 23, a stored rejection) and never raises a class 22 error, which would stop a phone's
+  queue. `oldValue`, `newValue` and `historyId` are not checked.
+
 ### 2.4 `0020_note_attestations.sql`
 
 **`note_attestations`**: "Attesting adds a dated statement below the note and doesn't change it"
@@ -377,10 +484,10 @@ a second row when it is attested again.
 |---|---|---|
 | `id` | `uuid primary key default gen_random_uuid()` | Attesting is online, so the server makes the ID |
 | `team_id`, `note_id` | `uuid not null` | Foreign key to `encounter_notes (team_id, id)` |
-| `signoff_id` | `uuid not null` | The signature attested. Foreign key to `note_signoffs (team_id, id)`. |
+| `signoff_id` | `uuid not null` | The signature attested. Foreign key `(team_id, note_id, signoff_id)` to `note_signoffs (team_id, note_id, id)`: a sign-off of the same note. |
 | `content_hash` | `text not null` | The note as the attending read it |
 | `attending_user_id`, `attending_name` | | |
-| `attending_npi` | `text not null` | The billing export needs the attesting physician's NPI (PRD main 656) |
+| `attending_npi` | `text not null`, ten digits | The billing export needs the attesting physician's NPI (PRD main 656) |
 | `attending_fields` | `jsonb not null default '{}'` | License number and state at the time |
 | `statement_version` | `text not null` | |
 | `attested_at` | `timestamptz not null default now()` | Server time |
@@ -407,6 +514,31 @@ branches, so the quarantine queue can still name the patient of a held change:
 - `referral`: the row's `patient_id`, else the value's `patientId` (the function's last line
   already reads it).
 
+**As built**, 0020 also holds:
+
+- **An attestation's signature is one of the same note.** Its key is
+  `(team_id, note_id, signoff_id)` to `note_signoffs (team_id, note_id, id)`
+  (`note_attestations_team_id_note_id_signoff_id_fkey`), beside `(team_id, note_id)` to the note.
+  A key cannot see a sign-off's `effect`, so the database still accepts an attestation that names
+  a sign-off of the same note that is not a signature. That stays the route's rule: L2's attest
+  route writes the attestation from the note it loaded and that note's current `signoff_id`, and
+  its tests pin it.
+- `content_hash` is 64 lower-case hex characters and `attending_fields` a JSON object, as on
+  `note_signoffs`; `attending_npi` is ten digits (`note_attestations_attending_npi_check`; the
+  check digit is left to the API, as on `note_signoffs`). An assignment's `reason` is not null
+  and measured trimmed.
+- **`patient_of_change`**: a sign-off and a correction go through the note their value names (the
+  note's row, else its held create; then the visit's row, else its held create); an addendum
+  through its visit. **The referral branch lives in 0020**, as this section says, though its
+  table arrives in 0021: PL/pgSQL looks the table up when the branch runs, and nothing sends a
+  `referral` change before L1. Its tests are in `db/test/referrals.test.ts`. A referral and an
+  allergy fall back, when their row does not exist and the value names no patient (an
+  entered-in-error mark whose create is held too), to the `patientId` of the latest held create of
+  that record, as the problem-note branch does for its problem. The fallback comes after the
+  value's own `patientId`, so every answer the 0009 body gave stays the same: compared over the
+  review's inputs, as the owner and as the application role of two teams and of none, no answer
+  changed.
+
 ### 2.5 `0021_referrals.sql`
 
 **`referrals`**: "a referral records only a date and free-text details" (PRD main 113, 507). It
@@ -421,7 +553,7 @@ existing record: a union record with one retraction.
 | `details` | `text`, 1 to 2,000 characters | Free text |
 | `encounter_id` | `uuid` | The encounter it was made in, if any. Foreign key to `encounters (team_id, id)`. |
 | `status` | `text not null default 'active'`, `active` or `entered_in_error` | |
-| `error_reason`, `error_by`, `error_at` | | As on `patient_allergies` |
+| `error_reason`, `error_by`, `error_at` | | As on `patient_allergies`, but all three or none (below) |
 | `recorded_at` | `timestamptz not null` | Clock-corrected device time |
 | `clock_verified` | `boolean not null default false` | |
 | `author_user_id`, `created_device_id` | | |
@@ -434,6 +566,16 @@ test fails.
 
 V1 has no status, no completion prompt and no completion reporting (PRD main 113, 507-512). The
 table has no column for them. V2 adds them.
+
+**As built**, 0021 has exactly the nineteen columns above (a test lists them, so no V2 column can
+slip in), and named constraints: `referrals_team_id_key`, `referrals_team_id_patient_id_fkey`,
+`referrals_team_id_encounter_id_fkey`, `referrals_details_check` (1 to 2,000 characters, measured
+trimmed), `referrals_status_check`, `referrals_error_reason_check` (3 to 300, trimmed) and
+**`referrals_error_with_status`, which is stricter than the check on `patient_allergies`**: the
+reason, who (`error_by`) and when (`error_at`) are all set while the status is
+`entered_in_error`, and all null otherwise. The allergies' check never asks for `error_by` and
+lets an active row keep a reason. So L1's referral entity writes `error_by` with the other two
+(4.7), as `allergy.ts` already does.
 
 ### 2.6 What is not stored
 
@@ -623,7 +765,11 @@ stored as it is and shown as "time not verified". PLAN-OPEN 12.1 #1.
 signed under" (PRD main 133) and "moving down removes permissions at once" (PRD main 223). An
 offline signature is checked days later, so the server must know the credential at the time of
 signing, not at the time of syncing. A resident who signs on Monday, becomes an attending on
-Tuesday and syncs on Wednesday signed as a resident, and that note needs attestation.
+Tuesday and syncs on Wednesday signed as a resident, and that note needs attestation, when the
+draft had reached the server before the signature. When the whole note arrives on Wednesday, the
+Monday time is not trusted (rule 1, below): the row records the credential held when the server
+received it, attending, with the claim (resident) beside it, and the note still waits for
+attestation because the claim says resident (rule 4). PLAN-OPEN 12.1 #22.
 
 The function `signedUnder` decides it, for a sign-off and for a correction alike (4.7). It is
 server-only and pure:
@@ -631,7 +777,7 @@ server-only and pure:
 | Input | From |
 |---|---|
 | `current` | The signer's membership now: credential and fields (also when they were removed since) |
-| `laterChanges` | `membership_changes` rows of kind `credential` for that membership, made after `signedAt`, oldest first (1.3) |
+| `laterChanges` | `membership_changes` rows of kind `credential` or `restored` for that membership, made after `signedAt`, oldest first, each with its `old_value` (1.3; 3.12) |
 | `signedAt`, `receivedAt`, `clockVerified` | The change |
 | `notBefore` | The time the server received the note's create |
 | `claimed` | The credential the phone's saved profile showed |
@@ -641,7 +787,7 @@ server-only and pure:
    before `notBefore`. `clockVerified` is the phone's own word
    (`services/api/src/sync/records.ts:342`), so a time that claims to come before the note
    existed on the server is not believed: it could date a signature to before a credential was
-   lowered.
+   lowered. A time that cannot be read (`signedAt`, `receivedAt` or `notBefore`) is not trusted.
 2. If the time is trusted and `laterChanges` is not empty, the credential and fields are the
    `old_value` of its first row: what the person held until that change.
 3. Otherwise they are `current`.
@@ -852,6 +998,16 @@ of cases per function, each case `{ "name", "input", "expected" }`. The planner 
 files and both readers (`services/api/test/encounter-rules.test.ts`,
 `apps/mobile/test/encounters/rules_test.dart`) first. The functions are then T cards.
 
+As built: `note-lifecycle.json` is `{ "note", "cases" }`, where `cases` is an object keyed by
+function name (`cases.signoffEffect`, `cases.encounterStatus`, ...), each a list of
+`{ "name", "input", "expected" }`, so a reader can check that the file holds exactly the ten
+functions. `input` is the function's one argument; for `encounterStatus` it is the list of
+notes, and the 0018 test reads those cases against the trigger. `signed-under.json` is
+`{ "note", "cases" }` with one list. The Dart functions take named parameters and answer with
+enums and sealed classes; `rules_test.dart` turns each answer back into the vector's JSON, so
+both sides are held to one file. The content hash's vector file, its readers and its two
+functions wait for the forms interpreter's `effectiveAnswers` (units F1 and F2).
+
 The types the ten functions share:
 
 ```ts
@@ -963,6 +1119,40 @@ note, or any draft, is `draft`; a Medical note that is `completed` makes it `com
 (3.9). Times are ISO 8601 strings in UTC. The phone passes `receivedAt: null` for an encounter
 the server has not confirmed.
 
+**`signedUnder`** (3.5), server-only, in `services/api/src/encounters/signed-under.ts`, as built:
+
+```ts
+interface CredentialSnapshot { credential: Credential; fields: Record<string, string> }
+interface CredentialChange { changedAt: string; oldValue: CredentialSnapshot }   // what was held until then
+signedUnder(i: {
+  current: CredentialSnapshot;            // the membership now, also when removed since
+  laterChanges: CredentialChange[];       // rows of kind 'credential' or 'restored', with old_value
+  signedAt: string; receivedAt: string; clockVerified: boolean;
+  notBefore: string;                      // when the server received the note's create
+  claimed: Credential | null;             // null for a complete and for an online act
+}): { credential: Credential; npi: string | null; fields: Record<string, string>;   // fields without the NPI
+      timeTrusted: boolean; canSign: boolean; needsAttestation: boolean; claimDiffers: boolean }
+```
+
+- **`laterChanges` are `membership_changes` rows of kind `credential` or `restored`**, each with
+  its `old_value`. A restore is a re-invite of a removed person, who may come back with another
+  credential or another NPI, so since wave A a restore writes `old_value { credential, fields }`
+  (the values before it), as a credential change does (`services/api/src/services/memberships.ts`).
+  Rows of other kinds carry no credential and are not passed. The portal's member history reads
+  only a row's kind, who and the reason, so it did not change.
+- The function itself passes over a row that is not strictly after `signedAt`, and takes the
+  earliest that is, so a caller that passes the whole history, or another order, gets the same
+  answer as one that follows 3.5. A row whose `changedAt` cannot be read is a fault of the
+  server, never passed over: the function throws ("a credential change has a time that cannot be
+  read"). A `signedAt`, `receivedAt` or `notBefore` that cannot be read makes the time untrusted.
+- The result is what the `note_signoffs` row stores: the credential found, its NPI apart from
+  its other fields, and `claimDiffers` for the audit event. `TRUSTED_AHEAD_MS` (five minutes) is
+  its own constant, so the pure module never imports the sync core; a test holds it equal to
+  `CLOCK_LIMIT_MS` of `sync/push.ts`.
+- The vectors pin both readings of rule 1 (a time before the server knew the note is not
+  believed; a draft that reached the server before the signature is) and rule 4 (a claimed
+  student makes an attending's signature wait for attestation), and the restore cases.
+
 ## 4. Sync
 
 Everything in this section is level X: it changes `services/api/src/sync/**`,
@@ -1064,6 +1254,15 @@ made this choice for patient-side changes, and encounter sets already take the l
 reason (`services/api/src/sync/entities/encounter.ts:22-24`). The online routes of section 5
 take the same lock first.
 
+**Note changes take it already.** Since wave A `noteRules.takesTeamLock` returns `true` for
+every note change (`services/api/src/sync/entities/note.ts`), in the same landing as the status
+trigger's row lock (2.2). Without it, two note changes of one visit could each work out the
+visit's status without the other's note; and a note change locked the encounter row through the
+trigger and then waited for the team lock at its audit event, while an encounter set held the
+team lock and waited for that row. `services/api/test/sync-concurrency.test.ts` holds it: a
+phone's note change waits for another writer of its visit, and the visit's status is right. The
+phone's test server has no counterpart: it serves one request at a time.
+
 ### 4.3 The encounter
 
 - **Create** takes `kind`, `patientId`, `location` and, new, `locationText` (1 to 200 characters,
@@ -1154,6 +1353,22 @@ it.
 - **What the sync read shows of a note.** The snapshot of a note in `/v1/sync/records` gains the
   attributes `attestation`, `actingAuthorId`, `completedAt` and `signoffId`, so the author's
   phone can show the state of a note it still holds.
+
+**What wave A leaves L1 to do for notes.** The database now refuses what today's note path
+still sends, and L1 meets it:
+
+- **Every note path runs under the team lock.** `takesTeamLock` is already `true` for notes
+  (4.2); a new path that writes a note, the sign-off and the correction included, keeps it.
+- The database refuses a note's `status` set to `completed` alone
+  (`encounter_notes_completed_at_when_finished`) and any change of a finished note's answers
+  outside a correction (`encounter_notes_finished_data`). Both are stored `server_constraint`
+  rejections today, never queue stops. L1 writes `completed_at` and `completed_by` with the
+  status, clears them on a reopen, sets `medical` at the create, and answers a late change as
+  this section says, before the database is asked.
+- `services/api/test/sync.test.ts`, "a signed note refuses changes", already signs its note the
+  way the database requires (a `note_signoffs` row, then `status`, `completed_at`,
+  `completed_by`, `first_signed_at`, `signoff_id` and `medical` on the note). It still answers
+  `record_locked` until L1 replaces that path (3.6).
 
 ### 4.5 The content hash
 
@@ -1257,7 +1472,10 @@ null }`. Parents: the encounter, the note when given, and `signoffId` when given
 written a moment after Complete waits behind the sign-off on the phone: "an addendum to a
 rejected note ... held, not sent" (PRD main 564). The server accepts an addendum in every state
 of the note. It is text with its own author and time, and refusing it would leave the worker
-with something they cannot fix (4.1). Audit: `addendum.added`.
+with something they cannot fix (4.1). Audit: `addendum.added`. The database refuses an
+addendum whose note is not a note of its visit (2.3), so L1 checks the `(encounterId, noteId)`
+pair before the insert: a mismatch answers `stale_reference`, as a missing parent does, rather
+than a `server_constraint` rejection the worker could not read.
 
 **`note_correction`**: one reason, and one to ten answers changed together.
 
@@ -1293,10 +1511,14 @@ fails its own finish check.
   9. Otherwise: `set_config('app.note_correction', noteId, true)`, each answer is written with
      history kind `corrected` (the guard of 2.2 lets it through), the `note_corrections` row is
      inserted with the history rows' IDs, and `correctionEffect` (3.12) says what happens to
-     `status`, `signoff_id` and `attestation` (the table in 3.6).
+     `status`, `signoff_id` and `attestation` (the table in 3.6). The value set is the loaded
+     row's ID (`id::text`), not the `noteId` as the phone sent it; the guard compares it without
+     case (2.2) all the same.
 - **The corrector's credential** decides what `correctionEffect` returns, and a correction made
   offline is checked days later, as a signature is. It is found by `signedUnder` (3.5) with the
-  correction's time, its `clockVerified` and its `claimedCredential`.
+  correction's time, its `clockVerified` and its `claimedCredential`. For a sign-off and a
+  correction alike, `credentialChangesAfter` (4.2) reads the membership's `membership_changes`
+  rows of kind `credential` and `restored`, each with its `old_value` (3.12).
 - Two small changes to `services/api/src/sync/records.ts` make step 9 possible: `'corrected'`
   joins the `HistoryKind` type (`:228-237`), and `appendHistory` returns the row's ID
   (`:256-264`).
@@ -1314,7 +1536,9 @@ rule for who may act:
 - One settable field, `enteredInError`, of class `set_once`, with the value `{ reason }` the
   allergy uses (`allergy.ts:127`). It needs `referrals.create`, and `mayChange` allows it for the
   referral's author or for anyone who holds `encounters.chart`. A community health worker can
-  take back their own referral; a clinician can take back anyone's.
+  take back their own referral; a clinician can take back anyone's. The entity writes
+  `error_reason`, `error_by` and `error_at` together with the status, as `allergy.ts` does: the
+  database's `referrals_error_with_status` needs all three (2.5).
 - `referredOn` may not be more than one day in the future (`valueProblem`, as a birth date is
   checked).
 - Parents: the patient, and the encounter when given. A visit that names a patient outside the
@@ -2143,6 +2367,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 19 | Is a Social needs or Outreach note inside a Medical visit signed and attested? | No. A Non-Medical note is completed, never signed (3.1) | Brooke and Mercy, the billing partner |
 | 20 | Who reads the substance use treatment part of a Harm reduction note? | The note's author, and people with `patients.view_sensitive` and a clinical credential (6.4) | Counsel (42 CFR Part 2) |
 | 21 | Do roles without `encounters.chart` or `billing.view_codes` read Medical notes? | No, as D37 decided for the problem list (6.4) | The project lead |
+| 22 | Which credential is a signature or a correction recorded under when its time cannot be trusted (the clock not verified, more than five minutes after the receipt, before the server received the note, or a time that cannot be read)? | The one held when the server receives it, with the phone's claim stored beside it; the claim can still make it wait for attestation (3.5) | Counsel and the billing partner |
 
 ### 12.2 Questions that need a person and have no default
 

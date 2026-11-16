@@ -7,9 +7,11 @@ Level: X. Window: 32,000. Needs: L0-vectors. Done.
 Migration `0018_encounter_lifecycle.sql` gives the database the columns, checks and two triggers
 of the lifecycle design, section 2.2, with a test for each rule.
 
+The wave A review changed this migration; lifecycle section 2.2 describes it as built.
+
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md` lines 174-297 (section 2.2): every column, check, function
+- `docs/design/phase-4/lifecycle.md` lines 174-369 (section 2.2): every column, check, function
   and trigger.
 - `docs/plan/patterns/migration.md` lines 52-121: the steps, the tests and the commands.
 
