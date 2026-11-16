@@ -1488,13 +1488,14 @@ describe('a required field that can never be visible', () => {
       },
       [CHECKS, `${VISIT}.fields[14].fields[0].required`, NEVER],
     );
+    // The module's field can show under another include; this note type's include is what hides it.
     broken(
-      'an include whose condition excludes the field’s own',
+      'an include whose condition excludes the field’s own: reported at the include',
       (f) => {
         exam(f).sections[1].fields[0].required = true;
         exam(f).sections[1].fields[0].showWhen = { field: 'visit.concern', is: 'no' };
       },
-      [EXAM, '$.sections[1].fields[0].required', NEVER],
+      [CHECKS, '$.sections[1].showWhen', NEVER],
     );
   });
 
@@ -1630,6 +1631,152 @@ describe('a required field that can never be visible', () => {
       `${V('story')}.required`,
       rule('visibility_too_complex'),
     ]);
+
+    // The exam picker has sixteen systems; a field shown when any one of them is picked asks
+    // about each code on its own. Each is a yes or a no tried only when a condition needs it.
+    const many =
+      (count: number, last: unknown[] = []) =>
+      (f: LooseFiles) => {
+        const options = Array.from({ length: count }, (_, i) => ({ code: `s${i}`, label: `System ${i}` }));
+        options[0] = { ...options[0]!, exclusive: true } as Loose;
+        checks(f).sections[0].fields.push({
+          id: 'picked',
+          kind: 'choice',
+          many: true,
+          label: 'Picked',
+          options,
+        });
+        texts(f, 'last');
+        story(f).showWhen = {
+          all: [{ any: options.map((o) => ({ field: 'visit.picked', is: o.code })) }, ...last],
+        };
+      };
+    fits('any one of sixteen options of a choose-many, each asked on its own', many(16));
+    fits('any one of forty options, each asked on its own', many(40));
+    broken('any one of sixteen options, and then a contradiction', many(16, NEVER_LAST), STORY);
+    broken(
+      'an exclusive option with another, among sixteen asked on their own',
+      many(16, [
+        { field: 'visit.picked', is: 's0' },
+        { field: 'visit.picked', is: 's9' },
+      ]),
+      STORY,
+    );
+    fits(
+      'two options that are not exclusive, among sixteen asked on their own',
+      many(16, [
+        { field: 'visit.picked', is: 's3' },
+        { field: 'visit.picked', is: 's9' },
+      ]),
+    );
+
+    // A chain deeper than is followed is refused, not a crash of the export.
+    const chain = (length: number) => (f: LooseFiles) => {
+      const ids = Array.from({ length }, (_, i) => `t${i}`);
+      texts(f, ...ids);
+      const added = checks(f).sections[0].fields.slice(-length);
+      added.forEach((field: Loose, i: number) => i > 0 && (field.showWhen = FILLED(ids[i - 1]!)));
+      story(f).showWhen = FILLED(ids[length - 1]!);
+    };
+    fits('a chain of a hundred and fifty follow-ups', chain(150));
+    broken('a chain of fifteen hundred follow-ups', chain(1500), [
+      CHECKS,
+      `${V('story')}.required`,
+      rule('visibility_too_complex'),
+    ]);
+  });
+
+  // While a flag is set, what it clears does not count (2.3): every field inside a group or a grid
+  // it clears, and in a grid's cell only the row the flag is in.
+  describe('behind a flag that clears', () => {
+    const push = (f: LooseFiles, ...fields: unknown[]) => checks(f).sections[0].fields.push(...fields);
+    const ROWS = [
+      { code: 'a', label: 'A' },
+      { code: 'b', label: 'B' },
+    ];
+    const FILLED = (path: string) => ({ field: path, filled: true });
+    broken(
+      'a field inside a group the flag clears',
+      (f) => {
+        push(f, { id: 'gone', kind: 'flag', label: 'Gone', clears: ['g'] }, GROUP('g', TEXT('len')));
+        story(f).showWhen = { all: [FILLED('visit.gone'), FILLED('visit.g.len')] };
+      },
+      STORY,
+    );
+    broken(
+      'a row of a grid the flag beside it clears',
+      (f) => {
+        push(
+          f,
+          { id: 'gone', kind: 'flag', label: 'Gone', clears: ['grid'] },
+          {
+            id: 'grid',
+            kind: 'grid',
+            label: 'Grid',
+            rows: ROWS,
+            cell: TEXT('c'),
+          },
+        );
+        story(f).showWhen = { all: [FILLED('visit.gone'), FILLED('visit.grid.a')] };
+      },
+      STORY,
+    );
+    const rowFlags = (condition: unknown) => (f: LooseFiles) => {
+      push(f, {
+        id: 'grid',
+        kind: 'grid',
+        label: 'Grid',
+        rows: ROWS,
+        cell: GROUP('cell', { id: 'gone', kind: 'flag', label: 'Gone', clears: ['x'] }, TEXT('x')),
+      });
+      story(f).showWhen = condition;
+    };
+    broken(
+      'a field of a row whose own flag clears it',
+      rowFlags({ all: [FILLED('visit.grid.a.gone'), FILLED('visit.grid.a.x')] }),
+      STORY,
+    );
+    fits(
+      'a field of another row than the flag’s',
+      rowFlags({ all: [FILLED('visit.grid.a.gone'), FILLED('visit.grid.b.x')] }),
+    );
+  });
+
+  // The fault is the include's, in the note type: the module's own file may be right, released,
+  // and used correctly by other note types.
+  describe('because of the condition on an include', () => {
+    const hearing = (f: LooseFiles) => exam(f).sections[1].fields[0];
+    broken(
+      'is reported at the include, in the note type’s file',
+      (f) => {
+        hearing(f).required = true;
+        checks(f).sections[1].showWhen = {
+          all: [
+            { field: 'visit.systems', is: 'none' },
+            { field: 'visit.systems', is: 'eyes' },
+          ],
+        };
+      },
+      [CHECKS, '$.sections[1].showWhen', NEVER],
+    );
+    broken(
+      'and so is a module field that can never show by itself, in the module’s file',
+      (f) => {
+        hearing(f).required = true;
+        hearing(f).showWhen = {
+          all: [
+            { field: 'visit.concern', is: 'yes' },
+            { field: 'visit.concern', is: 'no' },
+          ],
+        };
+      },
+      [EXAM, '$.sections[1].fields[0].required', NEVER],
+    );
+    broken(
+      'a cycle made by the include’s condition is reported at the include',
+      (f) => (checks(f).sections[1].showWhen = { field: 'ears.hearing.right', filled: true }),
+      [CHECKS, '$.sections[1].showWhen', rule('condition_cycle')],
+    );
   });
 });
 

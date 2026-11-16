@@ -40,7 +40,7 @@ export function validate(definition: ResolvedNoteType, context: ValidateContext)
   checkConditions(model, report);
   checkOtherNoteTypes(model, context, report);
   checkFlags(model, report);
-  checkVisibility(model, report);
+  checkVisibility(model, context, report);
   checkLimits(model, report);
 
   const origins = context.origins ?? [
@@ -564,15 +564,30 @@ function sitesOf(node: FieldNode): Site[] {
  * answer when a condition needs it, so it is the tangled cases that grow, not the long ones.
  */
 const MAX_TRIES = 20_000;
+/**
+ * Whether an answer counts hangs on the answers its field's conditions read, and so on down a chain
+ * of follow-ups. Deeper than this the chain is not followed: no form has one near it.
+ */
+const MAX_DEPTH = 200;
 
-function checkVisibility(model: PathModel, report: Report) {
+function checkVisibility(model: PathModel, context: ValidateContext, report: Report) {
   const visibility = new Visibility(model);
+  const lifted = new Lifted(model, context.origins);
   const cyclic = new Set<string>();
   for (const node of model.nodes)
     for (const site of sitesOf(node)) {
-      const reach = visibility.reach(site);
-      if (!reach.has(siteKey(site))) continue;
+      if (!visibility.reach(site).has(siteKey(site))) continue;
       cyclic.add(siteKey(site));
+      // A cycle that only the condition on an include makes is that include's fault.
+      const without = lifted.of(node);
+      if (without && !without.visibility.reach({ node: without.node, row: site.row }).has(siteKey(site))) {
+        report(
+          without.at,
+          'condition_cycle',
+          'the condition on this include names an answer inside the module it shows, so whether that answer shows hangs on itself',
+        );
+        continue;
+      }
       // Hidden until something is answered that can only be answered, or only counts, once it shows.
       report(
         node.at,
@@ -590,33 +605,142 @@ function checkVisibility(model: PathModel, report: Report) {
       report(
         `${node.at}.required`,
         'visibility_too_complex',
-        `its conditions are too tangled to try every case (${MAX_TRIES} tries), so nothing shows that it can ever be visible`,
+        `its conditions are too tangled to try every case (more than ${MAX_TRIES} tries), so nothing shows that it can ever be visible`,
       );
-    else
+    else if (outcomes.includes('too_deep'))
       report(
         `${node.at}.required`,
-        'required_never_visible',
-        'no set of answers shows this field, so nothing would ever ask for it: its conditions, with those around it, cannot all hold',
+        'visibility_too_complex',
+        `it hangs on a chain of more than ${MAX_DEPTH} follow-ups, each shown by the one before, which is not followed to its end`,
       );
+    else {
+      // Never visible only because of the condition on the include that brought it in: that
+      // condition, in the note type, is what to mend.
+      const without = lifted.of(node);
+      const shows =
+        without &&
+        sitesOf(without.node).some((site) => canShow(without.visibility, site, new Set()) === 'yes');
+      if (shows)
+        report(
+          without.at,
+          'required_never_visible',
+          `the condition on this include never holds, so the required field at ${locate(context.origins ?? [], node.at).path} in the module never shows`,
+        );
+      else
+        report(
+          `${node.at}.required`,
+          'required_never_visible',
+          'no set of answers shows this field, so nothing would ever ask for it: its conditions, with those around it, cannot all hold',
+        );
+    }
   }
 }
 
-/** What an answer is, as far as any condition can tell. */
+/**
+ * The definition as it would be without the condition an include added to one section: what shows
+ * whether a fault is that condition's. Null when the section has no such condition.
+ */
+class Lifted {
+  private readonly cache = new Map<string, { at: string; model: PathModel; visibility: Visibility } | null>();
+  constructor(
+    private readonly model: PathModel,
+    private readonly origins: readonly Origin[] | undefined,
+  ) {}
+
+  of(node: FieldNode): { at: string; node: FieldNode; visibility: Visibility } | null {
+    const lifted = this.section(node.section);
+    const same = lifted?.model.nodes.find((n) => n.at === node.at);
+    return lifted && same ? { at: lifted.at, node: same, visibility: lifted.visibility } : null;
+  }
+
+  private section(section: SectionNode) {
+    if (this.cache.has(section.at)) return this.cache.get(section.at)!;
+    let found: { at: string; model: PathModel; visibility: Visibility } | null = null;
+    const { showWhen } = section.section;
+    if (this.origins && showWhen) {
+      const own = locate(this.origins, section.at).file;
+      // The resolver writes an include's condition as the section's, or as the first of two.
+      for (const at of [`${section.at}.showWhen.all[0]`, `${section.at}.showWhen`]) {
+        const origin = this.origins.find((o) => o.at === at);
+        if (!origin || origin.file === own) continue;
+        const index = this.model.sections.indexOf(section);
+        const definition = {
+          ...this.model.definition,
+          sections: this.model.definition.sections.map((s) => {
+            if (s !== section.section) return s;
+            const { showWhen: _dropped, ...rest } = s;
+            const kept = at.endsWith('.all[0]') && 'all' in showWhen ? showWhen.all[1] : undefined;
+            return kept ? { ...rest, showWhen: kept } : rest;
+          }),
+        };
+        const model = pathModel(definition);
+        if (model.sections[index]?.at !== section.at) break;
+        found = { at, model, visibility: new Visibility(model) };
+        break;
+      }
+    }
+    this.cache.set(section.at, found);
+    return found;
+  }
+}
+
+/** What a choose-one (or any other) answer is, as far as any condition can tell. */
 type State = { filled: boolean; picked: Set<string> };
 
-/** A condition under the answers tried so far: it holds, it does not, or it first needs this answer. */
-type Verdict = boolean | Leaf;
+/** A condition under the answers tried so far: it holds, it does not, or it first needs this answered. */
+type Verdict = boolean | Question;
+/** An answer to try; for a choose-many, one of its options (or a class of them) to try picked or not. */
+type Question = { leaf: Leaf; option?: string };
+
+/** The text of an option that no condition asks about, as one stand-in. */
+const REST = ' rest';
+
+/**
+ * A choose-many answer, as the conditions that read it can tell it apart: each code they ask about
+ * (or each class of codes asked about together, that no rule of the field singles out) is picked
+ * or not, and one more stands for any option none of them asks about. Two can be held together
+ * unless one is exclusive or they are a blocked pair.
+ */
+type Many = { classOf: Map<string, string>; all: string[]; together: (a: string, b: string) => boolean };
+
+function manyOf(leaf: Leaf, lists: string[][]): Many {
+  const holds = leaf.holds as Extract<Leaf['holds'], { type: 'codes' }>;
+  const exclusive = new Set(holds.options.filter((o) => o.exclusive).map((o) => o.code));
+  const singled = new Set([...exclusive, ...holds.excludes.flat()]);
+  const asked = new Set(lists.flat());
+  const classOf = new Map<string, string>();
+  const stands = new Map<string, string>();
+  for (const code of asked) {
+    const lot = singled.has(code) ? code : lists.map((list) => (list.includes(code) ? '1' : '0')).join('');
+    if (!stands.has(lot)) stands.set(lot, code);
+    classOf.set(code, stands.get(lot)!);
+  }
+  const all = [...stands.values()];
+  // The option an unasked pick stands for: one that is free of every rule when there is one.
+  const unasked = holds.options.filter((o) => !asked.has(o.code));
+  const rest = unasked.find((o) => !singled.has(o.code)) ?? unasked[0];
+  if (rest) all.push(REST);
+  const codeOf = (v: string) => (v === REST ? rest!.code : v);
+  const together = (a: string, b: string) => {
+    const [x, y] = [codeOf(a), codeOf(b)];
+    if (exclusive.has(x) || exclusive.has(y)) return false;
+    return !holds.excludes.some(([p, q]) => (p === x && q === y) || (p === y && q === x));
+  };
+  return { classOf, all, together };
+}
 
 /**
  * Whether some set of answers shows the site. An answer is tried, in every state a condition can
  * tell apart, only once a condition needs it: one that is already decided without it is not
- * multiplied by it. So the search is complete, and a long chain of follow-ups stays short.
+ * multiplied by it. A choose-many is tried an option at a time, picked or not, so a condition on
+ * any of sixteen options is sixteen short tries, not two to the sixteenth. So the search is
+ * complete, and a long chain of follow-ups stays short.
  */
 function canShow(
   visibility: Visibility,
   site: Site,
   cyclic: Set<string>,
-): 'yes' | 'no' | 'unknown' | 'too_many' {
+): 'yes' | 'no' | 'unknown' | 'too_many' | 'too_deep' {
   const involved = [site, ...visibility.reach(site).values()];
   // A cycle has no answer to work out. It is reported as a cycle.
   if (involved.some((s) => cyclic.has(siteKey(s)))) return 'unknown';
@@ -630,9 +754,18 @@ function canShow(
         asked.set(test.leaf.key, lists);
         if (test.is) lists.push(test.is);
       });
+  const isMany = (leaf: Leaf) => leaf.holds.type === 'codes' && leaf.holds.many;
+  const manies = new Map<string, Many>();
+  const many = (leaf: Leaf) => {
+    let found = manies.get(leaf.key);
+    if (!found) manies.set(leaf.key, (found = manyOf(leaf, asked.get(leaf.key) ?? [])));
+    return found;
+  };
 
   const answers = new Map<string, State>();
+  const picks = new Map<string, Map<string, boolean>>();
   const counts = new Map<string, boolean>();
+  let depth = 0;
   const allOf = <T>(parts: T[], verdict: (part: T) => Verdict): Verdict => {
     for (const part of parts) {
       const v = verdict(part);
@@ -640,26 +773,48 @@ function canShow(
     }
     return true;
   };
+  /** What an answer says to a test of it (`is` null: whether it is filled), counting or not. */
+  const says = (leaf: Leaf, is: string[] | null): Verdict => {
+    if (!isMany(leaf)) {
+      const answer = answers.get(leaf.key);
+      if (!answer) return { leaf };
+      return is ? is.some((code) => answer.picked.has(code)) : answer.filled;
+    }
+    const { classOf, all } = many(leaf);
+    const set = picks.get(leaf.key);
+    const wanted = is ? [...new Set(is.map((code) => classOf.get(code)!))] : all;
+    let open: string | undefined;
+    for (const option of wanted) {
+      const picked = set?.get(option);
+      if (picked === true) return true;
+      if (picked === undefined) open ??= option;
+    }
+    return open === undefined ? false : { leaf, option: open };
+  };
   // An answer counts while its field shows and no flag that clears it is set and counts itself.
   const countsAt = (leaf: Leaf): Verdict => {
     const key = siteKey(siteOf(leaf));
     const known = counts.get(key);
     if (known !== undefined) return known;
-    const rules = visibility.rulesOf(siteOf(leaf));
-    const verdict = allOf<Formula | Leaf>([...rules.shows, ...rules.clearedBy], (part) => {
-      if (!('key' in part)) return holds(part);
-      const set = answered(part, (answer) => answer.filled);
-      return typeof set === 'boolean' ? !set : set;
-    });
-    if (typeof verdict === 'boolean') counts.set(key, verdict);
-    return verdict;
+    if (++depth > MAX_DEPTH) throw TOO_DEEP;
+    try {
+      const rules = visibility.rulesOf(siteOf(leaf));
+      const verdict = allOf<Formula | Leaf>([...rules.shows, ...rules.clearedBy], (part) => {
+        if (!('key' in part)) return holds(part);
+        const set = answered(part, null);
+        return typeof set === 'boolean' ? !set : set;
+      });
+      if (typeof verdict === 'boolean') counts.set(key, verdict);
+      return verdict;
+    } finally {
+      depth--;
+    }
   };
   /** What a counting answer says; false when it does not count. */
-  const answered = (leaf: Leaf, says: (answer: State) => boolean): Verdict => {
+  const answered = (leaf: Leaf, is: string[] | null): Verdict => {
     const counting = countsAt(leaf);
     if (counting !== true) return counting;
-    const answer = answers.get(leaf.key);
-    return answer ? says(answer) : leaf;
+    return says(leaf, is);
   };
   const holds = (formula: Formula): Verdict => {
     if ('all' in formula) return allOf(formula.all, holds);
@@ -674,10 +829,7 @@ function canShow(
       const v = holds(formula.not);
       return typeof v === 'boolean' ? !v : v;
     }
-    const { is } = formula;
-    return answered(formula.leaf, (answer) =>
-      is ? is.some((code) => answer.picked.has(code)) : answer.filled,
-    );
+    return answered(formula.leaf, formula.is);
   };
 
   let tries = 0;
@@ -686,56 +838,61 @@ function canShow(
     counts.clear();
     const verdict = allOf(visibility.rulesOf(site).shows, holds);
     if (typeof verdict === 'boolean') return verdict ? 'yes' : 'no';
-    const states = statesOf(verdict, asked.get(verdict.key) ?? []);
-    if (!states) return 'too_many';
-    for (const state of states) {
-      answers.set(verdict.key, state);
+    const { leaf, option } = verdict;
+    if (option !== undefined) {
+      const set = picks.get(leaf.key) ?? new Map<string, boolean>();
+      picks.set(leaf.key, set);
+      const { together } = many(leaf);
+      // Picked first, where it can be held with what is picked already: most conditions ask for
+      // something to be there.
+      if ([...set].every(([other, picked]) => !picked || together(other, option))) {
+        set.set(option, true);
+        const found = search();
+        if (found !== 'no') return found;
+      }
+      set.set(option, false);
+      const found = search();
+      if (found !== 'no') return found;
+      set.delete(option);
+      return 'no';
+    }
+    for (const state of statesOf(leaf, asked.get(leaf.key) ?? [])) {
+      answers.set(leaf.key, state);
       const found = search();
       if (found !== 'no') return found;
     }
-    answers.delete(verdict.key);
+    answers.delete(leaf.key);
     return 'no';
   };
-  return search();
+  try {
+    return search();
+  } catch (error) {
+    if (error === TOO_DEEP) return 'too_deep';
+    throw error;
+  }
 }
 
+const TOO_DEEP = new Error('a chain of follow-ups deeper than is followed');
+
 /**
- * The states of one answer that the conditions asking about it can tell apart. For a choice, codes
- * that are in exactly the same asked lists, and that no rule of the field singles out, stand or
- * fall together: one of them stands for all, so a list of forty codes is one case. Null when there
- * are more states than can be tried.
+ * The states of one answer that is not a choose-many, as the conditions asking about it can tell
+ * them apart. For a choice, codes that are in exactly the same asked lists stand or fall together:
+ * one of them stands for all, so a list of forty codes is one case.
  */
-function statesOf(leaf: Leaf, lists: string[][]): State[] | null {
+function statesOf(leaf: Leaf, lists: string[][]): State[] {
   const empty: State = { filled: false, picked: new Set() };
   const other: State = { filled: true, picked: new Set() };
   if (leaf.holds.type !== 'codes') return [other, empty];
-  const { options, many, excludes } = leaf.holds;
-
-  const exclusive = new Set(options.filter((option) => option.exclusive).map((option) => option.code));
-  const singled = new Set([...exclusive, ...excludes.flat()]);
   const asked = new Set(lists.flat());
   const stands = new Map<string, string>();
   for (const code of asked) {
-    const lot =
-      singled.has(code) && many ? code : lists.map((list) => (list.includes(code) ? '1' : '0')).join('');
+    const lot = lists.map((list) => (list.includes(code) ? '1' : '0')).join('');
     if (!stands.has(lot)) stands.set(lot, code);
   }
-  const codes = [...stands.values()];
-
   // The fuller states first: most conditions ask for something to be there.
-  const states: State[] = [];
-  if (!many) for (const code of codes) states.push({ filled: true, picked: new Set([code]) });
-  else if (2 ** codes.length > MAX_TRIES) return null;
-  else
-    for (let set = (1 << codes.length) - 1; set > 0; set--) {
-      const picked = codes.filter((_, i) => set & (1 << i));
-      const alone = picked.length === 1;
-      if (!alone && picked.some((code) => exclusive.has(code))) continue;
-      if (excludes.some(([a, b]) => a !== b && picked.includes(a) && picked.includes(b))) continue;
-      states.push({ filled: true, picked: new Set(picked) });
-    }
+  const states: State[] = [...stands.values()].map((code) => ({ filled: true, picked: new Set([code]) }));
   // Filled with none of the codes asked about, where the field has such an option.
-  if (options.some((option) => !asked.has(option.code))) states.push(other);
+  if (leaf.holds.options.some((option) => !asked.has(option.code))) states.push(other);
   states.push(empty);
   return states;
 }
