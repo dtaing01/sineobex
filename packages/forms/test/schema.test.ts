@@ -940,7 +940,17 @@ describe('every rule in the schema', () => {
 // src/types.ts and the schema say the same thing. The types are read with the compiler, so
 // nothing has to be kept in step by hand: a key, a kind or a value added to one side only fails.
 
-type Shape = Record<string, { optional: boolean; values?: string[]; primitive?: string; keys?: string[] }>;
+/**
+ * What a key may hold. `forms` is each form of value it takes: `string`, `number`, `boolean`, a
+ * list of something (`list:…`), a pair or other fixed-length list (`tuple2:…`), and an object by
+ * the names of every key it may have (`{a,b}`; the members of a union of objects as one). So a key
+ * that is one value on one side and a list on the other, or a list whose objects have other keys,
+ * does not pass for the same.
+ */
+type Shape = Record<
+  string,
+  { optional: boolean; values?: string[]; primitive?: string; keys?: string[]; forms: string[] }
+>;
 
 const typesFile = fileURLToPath(new URL('../src/types.ts', import.meta.url));
 const program = ts.createProgram([typesFile], {
@@ -974,6 +984,29 @@ const valuesOf = (types: ts.Type[]): string[] | undefined => {
   return values.length > 0 && values.every((v) => v !== undefined) ? (values as string[]).sort() : undefined;
 };
 
+/** The forms of value a type takes (`Shape`). */
+function typeForms(types: ts.Type[]): string[] {
+  const forms = new Set<string>();
+  const keys = new Set<string>();
+  let object = false;
+  for (const type of types.flatMap(membersOf)) {
+    if (checker.isTupleType(type)) {
+      const items = checker.getTypeArguments(type as ts.TypeReference);
+      forms.add(`tuple${items.length}:${typeForms([...items]).join('|')}`);
+    } else if (checker.isArrayType(type))
+      forms.add(`list:${typeForms([checker.getTypeArguments(type as ts.TypeReference)[0]!]).join('|')}`);
+    else if (type.flags & ts.TypeFlags.StringLike) forms.add('string');
+    else if (type.flags & ts.TypeFlags.NumberLike) forms.add('number');
+    else if (type.flags & ts.TypeFlags.BooleanLike) forms.add('boolean');
+    else if (isObject(type)) {
+      object = true;
+      for (const property of checker.getPropertiesOfType(type)) keys.add(property.name);
+    } else forms.add(checker.typeToString(type));
+  }
+  if (object) forms.add(`{${[...keys].sort().join(',')}}`);
+  return [...forms].sort();
+}
+
 /** What the types say an object holds. A union of objects is read as one: a key is optional when any member lacks it. */
 function typeShape(type: ts.Type): Shape {
   const members = membersOf(type);
@@ -991,6 +1024,7 @@ function typeShape(type: ts.Type): Shape {
     ];
     const entry: Shape[string] = {
       optional: symbols.some((s) => s === undefined || (s.flags & ts.SymbolFlags.Optional) !== 0),
+      forms: typeForms(types),
     };
     const only = types.length === 1 ? types[0]! : undefined;
     const values =
@@ -1033,13 +1067,49 @@ function keysOf(node: any): string[] {
     ...keysOf(at.else),
   ];
 }
+/** The forms of value a schema takes (`Shape`). */
+function schemaForms(node: any): string[] {
+  const at = deref(node);
+  if (!at) return [];
+  const types: string[] = at.enum
+    ? [...new Set<string>(at.enum.map((v: unknown) => typeof v))]
+    : 'const' in at
+      ? [typeof at.const]
+      : Array.isArray(at.type)
+        ? at.type
+        : at.type
+          ? [at.type]
+          : at.properties || at.allOf || at.then
+            ? ['object']
+            : [];
+  const forms = new Set<string>();
+  for (const type of types) {
+    if (type === 'array') {
+      // A list's items are in `items`, or in the branch of an allOf that applies to a list.
+      const branch = (at.allOf ?? []).find((b: any) => b.if?.type === 'array');
+      const list = at.items ? at : deref(branch?.then);
+      const items = schemaForms(list.items).join('|');
+      forms.add(
+        list.minItems !== undefined && list.minItems === list.maxItems
+          ? `tuple${list.minItems}:${items}`
+          : `list:${items}`,
+      );
+    } else if (type === 'object') forms.add(`{${[...new Set(keysOf(node))].sort().join(',')}}`);
+    else forms.add(type === 'integer' ? 'number' : type);
+  }
+  return [...forms].sort();
+}
+
 /** What the schema says an object holds. */
 function schemaShape(node: any): Shape {
   const at = deref(node, compared);
   const shape: Shape = {};
   for (const name of Object.keys(at.properties).sort()) {
     const property = deref(at.properties[name]);
-    const entry: Shape[string] = { optional: !(at.required ?? []).includes(name) };
+    const entry: Shape[string] = {
+      optional: !(at.required ?? []).includes(name),
+      forms: schemaForms(at.properties[name]),
+    };
     const valued = property.type === 'array' ? deref(property.items) : property;
     if (valued.enum) entry.values = valued.enum.map((v: unknown) => JSON.stringify(v)).sort();
     else if ('const' in valued) entry.values = [JSON.stringify(valued.const)];
