@@ -1,0 +1,212 @@
+{
+  "key": "every_kind_demo",
+  "version": 3,
+  "title": "Every kind of field (test)",
+  "kinds": ["medical", "non_medical"],
+  "group": "clinical",
+  "sensitivity": "none",
+  "quick": true,
+  "auto": "medical",
+  "sections": [
+    {
+      "id": "basics",
+      "title": "Basics",
+      "spec": "demo-piece-1",
+      "normal": true,
+      "fields": [
+        {
+          "id": "systems",
+          "kind": "choice",
+          "many": true,
+          "label": "What did you examine?",
+          "help": "Pick every system examined.",
+          "required": true,
+          "handoff": true,
+          "options": [
+            { "code": "none", "label": "None", "exclusive": true },
+            { "code": "normal", "label": "Normal", "normal": true, "icon": "check" },
+            { "code": "unable", "label": "Unable to assess", "unable": true },
+            { "code": "skin", "label": "Skin", "suggests": "wound_care" },
+            { "code": "private", "label": "Private exam", "sensitiveExam": true },
+            { "code": "other", "label": "Other", "other": true }
+          ],
+          "excludes": [
+            ["skin", "private"],
+            ["normal", "other"]
+          ]
+        },
+        {
+          "id": "scale",
+          "kind": "choice",
+          "many": false,
+          "label": "Scale",
+          "options": { "list": "demo_scale" },
+          "mapsTo": "wound_care:wounds.type",
+          "showWhen": { "field": "basics.systems", "is": ["skin", "private"] }
+        },
+        {
+          "id": "story",
+          "kind": "text",
+          "label": "What happened?",
+          "lines": "many",
+          "maxLength": 4000,
+          "recap": false,
+          "showWhen": { "field": "basics.systems", "filled": true }
+        },
+        { "id": "name", "kind": "text", "label": "Short answer", "lines": "one", "maxLength": 1 },
+        {
+          "id": "length",
+          "kind": "number",
+          "label": "Length",
+          "min": 0,
+          "max": 99.9,
+          "decimals": 1,
+          "unit": "cm",
+          "altUnit": { "unit": "in", "perUnit": 2.54 },
+          "display": "box",
+          "sides": true
+        },
+        {
+          "id": "score",
+          "kind": "number",
+          "label": "Score",
+          "min": -2,
+          "max": 30,
+          "decimals": 0,
+          "display": "outOf"
+        },
+        {
+          "id": "ratio",
+          "kind": "number",
+          "label": "Ratio",
+          "min": 0,
+          "max": 2,
+          "decimals": 2,
+          "display": "stepper"
+        },
+        { "id": "unable", "kind": "flag", "label": "Unable to measure", "clears": ["length", "score"] },
+        { "id": "approximate", "kind": "flag", "label": "Approximate", "noNormal": true },
+        { "id": "onset", "kind": "date", "label": "Onset", "range": "past" },
+        { "id": "followUp", "kind": "date", "label": "Follow up", "range": "future" },
+        { "id": "seen", "kind": "date", "label": "Seen", "range": "any" },
+        { "id": "called", "kind": "time", "label": "Time called" },
+        { "id": "lasting", "kind": "duration", "label": "How long" },
+        { "id": "diagnosis", "kind": "problem", "label": "Diagnosis" },
+        { "id": "photos", "kind": "photo", "label": "Photos", "max": 4 },
+        { "id": "handoff", "kind": "action", "label": "Show the handoff summary", "action": "show_handoff" },
+        { "id": "refer", "kind": "action", "label": "Connect to resource", "action": "add_referral" },
+        {
+          "id": "wound",
+          "kind": "action",
+          "label": "Go to Wound care",
+          "action": "open_note_type",
+          "noteType": "wound_care",
+          "showWhen": {
+            "any": [
+              {
+                "all": [
+                  { "field": "basics.systems", "is": "skin" },
+                  { "not": { "field": "basics.unable", "filled": true } }
+                ]
+              },
+              { "field": "basics.scale", "is": "two" }
+            ]
+          }
+        },
+        { "id": "guidance", "kind": "info", "label": "The resource directory is coming." }
+      ]
+    },
+    {
+      "id": "findings",
+      "title": "Findings",
+      "showWhen": { "field": "basics.systems", "is": "skin" },
+      "sensitiveExam": true,
+      "treatmentRecord": true,
+      "needs": "orderMedications",
+      "repeat": { "max": 20, "itemTitle": "Finding {n}" },
+      "fields": [
+        {
+          "id": "where",
+          "kind": "region",
+          "label": "Where",
+          "options": [
+            { "code": "arm", "label": "Arm" },
+            { "code": "leg", "label": "Leg" }
+          ],
+          "side": "side",
+          "surface": true
+        },
+        {
+          "id": "spot",
+          "kind": "region",
+          "label": "Spot",
+          "options": { "list": "demo_regions" },
+          "side": "side_rl"
+        },
+        {
+          "id": "pressure",
+          "kind": "group",
+          "label": "Blood pressure",
+          "layout": "row",
+          "collapsed": true,
+          "fields": [
+            { "id": "upper", "kind": "number", "label": "Upper", "min": 0, "max": 300, "decimals": 0 },
+            { "id": "lower", "kind": "number", "label": "Lower", "min": 0, "max": 300, "decimals": 0 }
+          ]
+        },
+        {
+          "id": "more",
+          "kind": "group",
+          "label": "More",
+          "layout": "stack",
+          "fields": [{ "id": "note", "kind": "text", "label": "Note", "lines": "one", "maxLength": 200 }]
+        },
+        {
+          "id": "pulses",
+          "kind": "grid",
+          "label": "Pulses",
+          "rows": [
+            { "code": "radial", "label": "Radial" },
+            { "code": "pedal", "label": "Pedal" }
+          ],
+          "cell": {
+            "id": "strength",
+            "kind": "choice",
+            "many": false,
+            "label": "Strength",
+            "options": { "list": "demo_scale" }
+          }
+        },
+        {
+          "id": "reflexes",
+          "kind": "grid",
+          "label": "Reflexes",
+          "rows": { "list": "demo_sites" },
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Grade",
+            "options": { "list": "demo_scale" }
+          }
+        },
+        {
+          "id": "status",
+          "kind": "grid",
+          "label": "Status for each one picked",
+          "rows": { "pickedIn": "basics.systems" },
+          "cell": {
+            "id": "detail",
+            "kind": "text",
+            "label": "Detail",
+            "lines": "one",
+            "maxLength": 100,
+            "showWhen": { "field": "./where", "filled": true }
+          }
+        }
+      ]
+    },
+    { "include": "demo_module", "version": 1 },
+    { "include": "demo_module_two", "version": 2, "showWhen": { "field": "basics.systems", "is": "private" } }
+  ]
+}

@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Note type definitions as data: the definition format, its schema and checks, and the functions that read a definition.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./definition.schema.json": "./schema/definition.schema.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -12,6 +14,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "ajv": "8.20.0",
     "typescript": "5.9.3",
     "vitest": "4.1.12"
   }

@@ -1,0 +1,38 @@
+{
+  "key": "harm_reduction_demo",
+  "version": 1,
+  "title": "Harm reduction (example)",
+  "kinds": ["medical"],
+  "sensitivity": "sensitive",
+  "sections": [
+    {
+      "id": "naloxone",
+      "title": "Naloxone",
+      "spec": "harm-reduction",
+      "fields": [
+        {
+          "id": "offer",
+          "kind": "choice",
+          "many": false,
+          "label": "Naloxone",
+          "options": [
+            { "code": "accepted", "label": "Accepted" },
+            { "code": "declined", "label": "Declined" },
+            { "code": "has_supply", "label": "Already has supply" }
+          ]
+        },
+        {
+          "id": "doses",
+          "kind": "number",
+          "label": "Doses",
+          "min": 0,
+          "max": 20,
+          "decimals": 0,
+          "unit": "doses",
+          "display": "stepper",
+          "showWhen": { "field": "naloxone.offer", "is": "accepted" }
+        }
+      ]
+    }
+  ]
+}
