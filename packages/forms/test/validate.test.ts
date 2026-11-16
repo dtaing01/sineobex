@@ -943,6 +943,77 @@ describe('mapsTo, for sense', () => {
   });
 });
 
+describe('a condition that reads restricted content', () => {
+  // A reader without the key gets no answer from a sensitive exam or a treatment record (lifecycle
+  // 6.4), but would get the open field whose showing tells them that answer.
+  const RESTRICTED = rule('condition_reads_restricted');
+  const ears = (f: LooseFiles): Loose => exam(f).sections[1];
+  const CONCERN_YES_ = { field: 'visit.concern', is: 'yes' };
+  const DECREASED = { field: 'ears.hearing.right', is: 'decreased' };
+  broken(
+    'from an open section, into a sensitive exam',
+    (f) => {
+      ears(f).sensitiveExam = true;
+      visit(f, 'onset').showWhen = DECREASED;
+    },
+    [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+  );
+  broken(
+    'from an open section, into a treatment record, inside a condition of several',
+    (f) => {
+      ears(f).treatmentRecord = true;
+      visit(f, 'onset').showWhen = { any: [CONCERN_YES_, { not: DECREASED }] };
+    },
+    [CHECKS, `${V('onset')}.showWhen.any[1].not.field`, RESTRICTED],
+  );
+  broken(
+    'from a section’s own condition',
+    (f) => {
+      ears(f).sensitiveExam = true;
+      checks(f).sections[3].showWhen = DECREASED;
+    },
+    [CHECKS, `${STATUS}.showWhen.field`, RESTRICTED],
+  );
+  fits('from a section that is a sensitive exam too', (f) => {
+    ears(f).sensitiveExam = true;
+    checks(f).sections[3].sensitiveExam = true;
+    checks(f).sections[3].showWhen = DECREASED;
+  });
+  fits('inside the sensitive exam itself', (f) => {
+    ears(f).sensitiveExam = true;
+    ears(f).fields.push({ ...TEXT('more'), showWhen: DECREASED });
+  });
+  broken(
+    'from a sensitive exam into a treatment record: each key is its own',
+    (f) => {
+      ears(f).treatmentRecord = true;
+      checks(f).sections[3].sensitiveExam = true;
+      checks(f).sections[3].showWhen = DECREASED;
+    },
+    [CHECKS, `${STATUS}.showWhen.field`, RESTRICTED],
+  );
+  // A section that needs a capability is about who may set its answers, not who reads them (6.4).
+  fits('into a section that needs a capability', (f) => {
+    checks(f).sections[4].needs = 'orderMedications';
+    visit(f, 'onset').showWhen = { field: 'injury.type', is: 'cut' };
+  });
+  // The exam picker's GU option is itself sensitive (6.4, rule 8).
+  broken(
+    'from an open section, of a picker option that is a sensitive exam, and rows picked there',
+    (f) => {
+      visit(f, 'systems').options.find((o: Loose) => o.code === 'skin').sensitiveExam = true;
+    },
+    [CHECKS, `${FINDINGS}.showWhen.is`, RESTRICTED],
+    [CHECKS, `${V('wound')}.showWhen.is`, RESTRICTED],
+    [CHECKS, `${S('each')}.rows.pickedIn`, RESTRICTED],
+  );
+  fits('of a picker option that is not sensitive, in a field that has one that is', (f) => {
+    visit(f, 'systems').options.find((o: Loose) => o.code === 'ears').sensitiveExam = true;
+    delete status(f, 'each').rows;
+    status(f, 'each').rows = [{ code: 'one', label: 'One' }];
+  });
+});
+
 describe('a note type named by a definition', () => {
   const UNKNOWN = rule('unknown_note_type');
   broken(

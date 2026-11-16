@@ -11,7 +11,7 @@
  * Pure, like the resolver, and loaded by the API: nothing here may import a package.
  */
 import { locate, noteTypeFile } from './resolve.ts';
-import type { FileProblem, Origin, ResolvedField, ResolvedNoteType } from './resolve.ts';
+import type { FileProblem, Origin, ResolvedField, ResolvedNoteType, ResolvedSection } from './resolve.ts';
 import { canonicalJson } from './canonical.ts';
 import { leafAt, pathModel, PATH_FAULTS } from './paths.ts';
 import type { FieldNode, Found, Holds, Leaf, PathModel, SectionNode } from './paths.ts';
@@ -82,6 +82,14 @@ function checkConditions(model: PathModel, report: Report) {
         const rule = named.fault === 'unknown_field' ? 'condition_unknown_field' : named.fault;
         return report(`${at}.field`, rule, PATH_FAULTS[named.fault](test.field));
       }
+      const from = 'field' in carrier ? carrier.section.section : carrier.section;
+      const key = hiddenBy(named.leaf.node.section.section, from);
+      if (key)
+        report(
+          `${at}.field`,
+          'condition_reads_restricted',
+          `"${test.field}" is in a section marked ${key}, and this condition is not: a reader who may not see that answer would learn it from what this shows`,
+        );
       if (!('is' in test)) return;
       const { holds } = named.leaf;
       if (holds.type !== 'codes')
@@ -92,23 +100,63 @@ function checkConditions(model: PathModel, report: Report) {
         );
       const codes = new Set(holds.options.map((option) => option.code));
       const wanted = typeof test.is === 'string' ? [test.is] : test.is;
+      const sensitive = new Set(holds.options.filter((o) => o.sensitiveExam).map((o) => o.code));
       wanted.forEach((code, index) => {
+        const place = typeof test.is === 'string' ? `${at}.is` : `${at}.is[${index}]`;
         if (!codes.has(code))
           report(
-            typeof test.is === 'string' ? `${at}.is` : `${at}.is[${index}]`,
+            place,
             'condition_unknown_code',
             `"${code}" is not the code of an option at "${test.field}": the condition could never hold for it`,
+          );
+        if (sensitive.has(code) && !from.sensitiveExam)
+          report(
+            place,
+            'condition_reads_restricted',
+            `"${code}" at "${test.field}" names a sensitive exam, and this condition is not in one: a reader without the key would learn that the exam was done`,
           );
       });
     });
   };
   for (const section of model.sections) check(section.section.showWhen, section, null);
+  // Picked rows read the picked answer as a condition does.
+  for (const node of model.nodes) {
+    if (!node.picked) continue;
+    const from = node.section.section;
+    const target = node.picked.node.section.section;
+    const at = `${node.at}.rows.pickedIn`;
+    const key = hiddenBy(target, from);
+    if (key)
+      report(
+        at,
+        'condition_reads_restricted',
+        `the rows are picked in a section marked ${key}, and this grid's section is not: its rows would show those answers`,
+      );
+    else if (node.rows.length > 0 && !from.sensitiveExam && node.picked.holds.type === 'codes')
+      if (node.picked.holds.options.some((o) => o.sensitiveExam))
+        report(
+          at,
+          'condition_reads_restricted',
+          'the rows are picked among options that name a sensitive exam, and this grid is not in one: its rows would show that the exam was done',
+        );
+  }
   for (const node of model.nodes) {
     if (!node.field.showWhen) continue;
     // Every row of a grid has the same cell, so what holds for one row's paths holds for all.
     if (!node.grid) check(node.field.showWhen, node, null);
     else if (node.grid.rows.length > 0) check(node.field.showWhen, node, node.grid.rows[0]!);
   }
+}
+
+/**
+ * The key that hides `target`'s answers from some readers and that `from` does not carry, if any
+ * (lifecycle 6.4). `needs` decides who may set an answer, not who reads it, so it is not one.
+ */
+function hiddenBy(target: ResolvedSection, from: ResolvedSection): string | null {
+  if (target === from) return null;
+  if (target.sensitiveExam && !from.sensitiveExam) return 'sensitiveExam';
+  if (target.treatmentRecord && !from.treatmentRecord) return 'treatmentRecord';
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------
