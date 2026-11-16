@@ -88,7 +88,9 @@ describe('the shape of every kind of field', () => {
   const CHECKS = 'note-types/checks_demo/v1.json';
   function checks(): Loose {
     const file = definitionFiles().noteTypes[CHECKS];
-    for (const section of file.sections) if (!('include' in section)) section.spec = 'checks';
+    // Its last section, Injury, is the quick form's mapping and names no piece.
+    for (const section of file.sections)
+      if (!('include' in section) && section.id !== 'injury') section.spec = 'checks';
     return file;
   }
   const entry = (path: string): Loose => shapeOf('checks', checks()).fields.find((f) => f.path === path);
@@ -176,7 +178,6 @@ describe('the shape of every kind of field', () => {
       options: { list: 'demo_regions' },
       side: 'side_rl',
       surface: true,
-      mapsTo: 'full_demo:wounds.where',
     });
     expect(entry('visit.pressure')).toEqual({
       path: 'visit.pressure',

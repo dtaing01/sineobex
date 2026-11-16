@@ -127,6 +127,12 @@ function checkOtherNoteTypes(model: PathModel, context: ValidateContext, report:
     if (!other(key)) report(at, 'unknown_note_type', `there is no note type "${key}"`);
   };
 
+  // A released quick version is not checked again against a newer full form: it can no longer be
+  // edited, and Expand is written for the newest quick version. What it says of itself still is.
+  const newest = context.noteType(model.definition.key);
+  const across = !newest || newest.version <= model.definition.version;
+  const targets = new Map<string, FieldNode>();
+
   for (const node of model.nodes) {
     const { field } = node;
     for (const { key, options } of optionLists(node))
@@ -135,7 +141,33 @@ function checkOtherNoteTypes(model: PathModel, context: ValidateContext, report:
       });
     if (field.kind === 'action' && field.action === 'open_note_type')
       known(field.noteType, `${node.at}.noteType`);
-    if (field.mapsTo !== undefined) checkMapsTo(node, field.mapsTo, other, report);
+    if (field.mapsTo === undefined) continue;
+    const at = `${node.at}.mapsTo`;
+    if (!node.base) {
+      report(
+        at,
+        'maps_to_in_grid',
+        'the cell of a grid has no path of its own to map; the grid is what maps',
+      );
+      continue;
+    }
+    if (model.definition.quick !== true)
+      report(at, 'maps_to_not_quick', 'only the quick form maps its answers into a full note type (6.4)');
+    if (node.section.section.repeat)
+      report(
+        at,
+        'maps_to_from_repeat',
+        'a field of a repeating section has an answer for each entry, and Expand has one full field to write them to',
+      );
+    const first = targets.get(field.mapsTo);
+    if (first)
+      report(
+        at,
+        'maps_to_twice',
+        `the field at ${first.at} already maps to ${field.mapsTo}: Expand would write two answers to one path`,
+      );
+    else targets.set(field.mapsTo, node);
+    if (across) checkMapsTo(node, field.mapsTo, other, report);
   }
 }
 
@@ -153,16 +185,18 @@ function checkMapsTo(
 ) {
   const at = `${node.at}.mapsTo`;
   const [key, path] = mapsTo.split(':') as [string, string];
-  if (!node.base)
-    return report(
-      at,
-      'maps_to_in_grid',
-      'the cell of a grid has no path of its own to map; the grid is what maps',
-    );
   const full = other(key);
   if (!full) return report(at, 'unknown_note_type', `there is no note type "${key}"`);
   const target = full.nodes.find((n) => n.base?.join('.') === path);
   if (!target) return report(at, 'maps_to_unknown_field', `"${key}" has no field at "${path}"`);
+  // Expand by a credential without the capability would be a held change (lifecycle 6.4).
+  const needs = target.section.section.needs;
+  if (needs !== undefined && node.section.section.needs !== needs)
+    report(
+      at,
+      'maps_to_needs',
+      `${key}:${path} is in a section that needs ${needs}, and this field's section does not: Expand by anyone without it would be held`,
+    );
 
   const places = new Map(target.leaves.map((leaf) => [within(leaf, target), leaf]));
   for (const leaf of node.leaves) {
@@ -187,11 +221,27 @@ function within(leaf: Leaf, node: FieldNode): string {
 function takes(to: Holds, from: Holds): boolean {
   if (to.type === 'codes' && from.type === 'codes') {
     const codes = new Set(to.options.map((option) => option.code));
-    return to.many === from.many && from.options.every((option) => codes.has(option.code));
+    if (to.many !== from.many || !from.options.every((option) => codes.has(option.code))) return false;
+    if (!to.many) return true;
+    // checkAnswer on the full definition refuses a blocked pair and an exclusive option held with
+    // others: whatever the quick widget lets be held together must be held there too.
+    const offered = new Set(from.options.map((option) => option.code));
+    const alone = new Set(from.options.filter((option) => option.exclusive).map((option) => option.code));
+    // An exclusive option of the quick field is never held with another either.
+    const blocked = (a: string, b: string) =>
+      alone.has(a) ||
+      alone.has(b) ||
+      from.excludes.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+    return (
+      to.options.every(
+        (option) => !option.exclusive || !offered.has(option.code) || alone.has(option.code),
+      ) && to.excludes.every(([a, b]) => !offered.has(a) || !offered.has(b) || blocked(a, b))
+    );
   }
   if (to.type === 'text' && from.type === 'text') return from.maxLength <= to.maxLength;
+  // Expand copies the stored number, which is in the field's unit: 4 inches would become 4 cm.
   if (to.type === 'number' && from.type === 'number')
-    return from.min >= to.min && from.max <= to.max && from.decimals <= to.decimals;
+    return to.unit === from.unit && from.min >= to.min && from.max <= to.max && from.decimals <= to.decimals;
   if (to.type === 'date' && from.type === 'date') return to.range === 'any' || to.range === from.range;
   return to.type === from.type;
 }

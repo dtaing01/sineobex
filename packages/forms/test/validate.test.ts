@@ -69,6 +69,8 @@ const findings = (files: LooseFiles, field: string): Loose =>
   checks(files).sections[2].fields.find((f: Loose) => f.id === field);
 const status = (files: LooseFiles, field: string): Loose =>
   checks(files).sections[3].fields.find((f: Loose) => f.id === field);
+const injury = (files: LooseFiles, field: string): Loose =>
+  checks(files).sections[4].fields.find((f: Loose) => f.id === field);
 const exam = (files: LooseFiles): Loose => files.modules[EXAM];
 /** Where a field of the Visit section is, by its id. */
 const at = (files: LooseFiles, section: number, field: string) =>
@@ -77,6 +79,7 @@ const base = definitionFiles();
 const V = (field: string) => at(base, 0, field);
 const F = (field: string) => at(base, 2, field);
 const S = (field: string) => at(base, 3, field);
+const I = (field: string) => at(base, 4, field);
 
 describe('the fixture tree', () => {
   it('passes: both note types, with every kind of field between them', () => {
@@ -691,8 +694,8 @@ describe('mapsTo', () => {
   // A field of a repeating section is named without the entry part (6.4), and only so.
   broken(
     'that names a part of a field',
-    (f) => (findings(f, 'where').mapsTo = 'full_demo:wounds.where.region'),
-    [CHECKS, MAPS(F('where')), rule('maps_to_unknown_field')],
+    (f) => (injury(f, 'where').mapsTo = 'full_demo:wounds.where.region'),
+    [CHECKS, MAPS(I('where')), rule('maps_to_unknown_field')],
   );
   fits('to a field of the note type itself', (f) => (visit(f, 'onset').mapsTo = 'checks_demo:visit.onset'));
   broken('on the cell of a grid', (f) => (findings(f, 'pulses').cell.mapsTo = 'full_demo:wounds.type'), [
@@ -703,28 +706,32 @@ describe('mapsTo', () => {
 
   // Expand writes each mapped answer into the full note, where the server checks it against the
   // full definition. An answer the full field cannot hold would be a rejected change on the phone.
-  broken('to a field of another kind', (f) => (visit(f, 'story').mapsTo = 'full_demo:history.length'), [
-    CHECKS,
-    MAPS(V('story')),
-    MISMATCH,
-  ]);
+  broken(
+    'to a field of another kind',
+    (f) => {
+      visit(f, 'story').mapsTo = 'full_demo:history.length';
+      delete visit(f, 'length').mapsTo;
+    },
+    [CHECKS, MAPS(V('story')), MISMATCH],
+  );
   broken(
     'to a field at the same place that holds another kind of answer',
     (f) => {
       visit(f, 'onset').mapsTo = 'full_demo:history.story';
+      delete visit(f, 'story').mapsTo;
     },
     [CHECKS, MAPS(V('onset')), MISMATCH],
   );
   broken(
     'with an option the full field does not have',
     (f) => {
-      findings(f, 'type').options.push({ code: 'scrape', label: 'Scrape' });
+      injury(f, 'type').options.push({ code: 'scrape', label: 'Scrape' });
     },
-    [CHECKS, MAPS(F('type')), MISMATCH],
+    [CHECKS, MAPS(I('type')), MISMATCH],
   );
   broken('from choose-one to choose-many', (f) => (wounds(f, 'type').many = true), [
     CHECKS,
-    MAPS(F('type')),
+    MAPS(I('type')),
     MISMATCH,
   ]);
   broken('from a text longer than the full field takes', (f) => (history(f, 'story').maxLength = 1000), [
@@ -754,7 +761,7 @@ describe('mapsTo', () => {
   ]);
   broken('from a region with a surface to one without', (f) => delete wounds(f, 'where').surface, [
     CHECKS,
-    MAPS(F('where')),
+    MAPS(I('where')),
     MISMATCH,
   ]);
   // The quick form's region has Right and Left; the full one adds Bilateral, and takes both.
@@ -762,17 +769,17 @@ describe('mapsTo', () => {
   broken(
     'from a region with a side the full one does not have',
     (f) => {
-      findings(f, 'where').side = 'side';
+      injury(f, 'where').side = 'side';
       wounds(f, 'where').side = 'side_rl';
     },
-    [CHECKS, MAPS(F('where')), MISMATCH],
+    [CHECKS, MAPS(I('where')), MISMATCH],
   );
   broken(
     'from a group to a group without one of its fields',
     (f) => (history(f, 'pressure').fields[1].id = 'low'),
     [CHECKS, MAPS(V('pressure')), MISMATCH],
   );
-  const quickOther = (f: LooseFiles) => (findings(f, 'type').options[0].other = true);
+  const quickOther = (f: LooseFiles) => (injury(f, 'type').options[0].other = true);
   fits('with an Other option, to a field that has one', quickOther);
   broken(
     'with an Other option, to a field that has none: its text has nowhere to go',
@@ -780,7 +787,7 @@ describe('mapsTo', () => {
       quickOther(f);
       wounds(f, 'type').options.pop();
     },
-    [CHECKS, MAPS(F('type')), MISMATCH],
+    [CHECKS, MAPS(I('type')), MISMATCH],
   );
   fits('from a date to a date of any range', (f) => {
     history(f, 'story').kind = 'date';
@@ -798,6 +805,142 @@ describe('mapsTo', () => {
     },
     [CHECKS, MAPS(V('onset')), MISMATCH],
   );
+});
+
+describe('mapsTo, for sense', () => {
+  const MAPS = (place: string) => `${place}.mapsTo`;
+  const full = (f: LooseFiles): Loose => f.noteTypes[FULL];
+  const history = (f: LooseFiles): Loose => full(f).sections[0];
+  const STORY = { id: 'retold', kind: 'text', label: 'Retold', lines: 'many', maxLength: 500 };
+  const NEXT = `${VISIT}.fields[${base.noteTypes[CHECKS].sections[0].fields.length}]`;
+
+  // Expand would return two answers for one path, and the later would win without a word.
+  broken(
+    'two fields mapped to one target',
+    (f) => checks(f).sections[0].fields.push({ ...STORY, mapsTo: 'full_demo:history.story' }),
+    [CHECKS, MAPS(NEXT), rule('maps_to_twice')],
+  );
+  // Expand has no meaning for several entries mapped to one.
+  broken(
+    'from a field inside a repeating section',
+    (f) => {
+      findings(f, 'type').mapsTo = 'full_demo:wounds.type';
+      delete injury(f, 'type').mapsTo;
+    },
+    [CHECKS, MAPS(F('type')), rule('maps_to_from_repeat')],
+  );
+  broken(
+    'in a note type that is not the quick form',
+    (f) => delete checks(f).quick,
+    ...['story', 'length', 'pressure'].map((id): Expected => [
+      CHECKS,
+      MAPS(V(id)),
+      rule('maps_to_not_quick'),
+    ]),
+    ...['where', 'type'].map((id): Expected => [CHECKS, MAPS(I(id)), rule('maps_to_not_quick')]),
+  );
+  // Expand by a credential that cannot order medications would be a held change.
+  broken(
+    'into a section that needs a capability the quick section does not',
+    (f) => (full(f).sections[1].needs = 'orderMedications'),
+    [CHECKS, MAPS(I('where')), rule('maps_to_needs')],
+    [CHECKS, MAPS(I('type')), rule('maps_to_needs')],
+  );
+  fits('into a section that needs a capability the quick section needs too', (f) => {
+    full(f).sections[1].needs = 'orderMedications';
+    checks(f).sections[4].needs = 'orderMedications';
+  });
+  fits('to a field shown only under a condition', (f) => {
+    history(f).fields.find((x: Loose) => x.id === 'story').showWhen = {
+      field: 'history.length.right',
+      filled: true,
+    };
+  });
+
+  // A released quick version is not checked again against a newer full form: it can no longer be
+  // edited, and the newest quick version is what Expand is written for.
+  it('across note types, only for the newest version of the quick note type', () => {
+    const files = definitionFiles();
+    const second = structuredClone(checks(files));
+    second.version = 2;
+    delete second.sections[0].fields.find((x: Loose) => x.id === 'story').mapsTo;
+    files.noteTypes['note-types/checks_demo/v2.json'] = second;
+    history(files).fields.find((x: Loose) => x.id === 'story').maxLength = 10;
+    expect(found(files, CHECKS)).toEqual([]);
+    expect(found(files, 'note-types/checks_demo/v2.json')).toEqual([]);
+    // What a version says of itself is still checked.
+    checks(files).sections[0].fields.push({ ...STORY, mapsTo: 'full_demo:history.story' });
+    expect(found(files, CHECKS)).toEqual(sorted([[CHECKS, MAPS(NEXT), rule('maps_to_twice')]]));
+  });
+
+  // checkAnswer on the full definition refuses a blocked pair and an exclusive option held with
+  // others (6.8): the quick widget must refuse them first.
+  const GOALS = (more: Loose = {}) => ({
+    id: 'goals',
+    kind: 'choice',
+    many: true,
+    label: 'Goals',
+    options: [
+      { code: 'none', label: 'None' },
+      { code: 'food', label: 'Food' },
+      { code: 'rest', label: 'Rest' },
+    ],
+    ...more,
+  });
+  const goals = (quick: Loose, target: Loose) => (f: LooseFiles) => {
+    checks(f).sections[0].fields.push(GOALS({ ...quick, mapsTo: 'full_demo:history.goals' }));
+    history(f).fields.push(GOALS(target));
+  };
+  fits(
+    'a choose-many with the same blocked pairs and exclusive options',
+    goals({ excludes: [['food', 'rest']] }, { excludes: [['food', 'rest']] }),
+  );
+  broken(
+    'to a field that blocks a pair the quick field lets be held',
+    goals({}, { excludes: [['food', 'rest']] }),
+    [CHECKS, MAPS(NEXT), rule('maps_to_mismatch')],
+  );
+  fits('to a field that blocks a pair of which the quick field offers one code', (f) => {
+    goals({}, {})(f);
+    checks(f).sections[0].fields.at(-1).options.pop();
+    history(f).fields.at(-1).excludes = [['food', 'rest']];
+  });
+  broken(
+    'to a field whose None is exclusive where the quick one is not',
+    (f) => {
+      goals({}, {})(f);
+      history(f).fields.at(-1).options[0].exclusive = true;
+    },
+    [CHECKS, MAPS(NEXT), rule('maps_to_mismatch')],
+  );
+  fits('to a field that blocks a pair whose one code is exclusive in the quick field', (f) => {
+    goals({}, { excludes: [['none', 'food']] })(f);
+    checks(f).sections[0].fields.at(-1).options[0].exclusive = true;
+  });
+  fits('from a field whose None is exclusive to one where it is not', (f) => {
+    goals({}, {})(f);
+    checks(f).sections[0].fields.at(-1).options[0].exclusive = true;
+  });
+
+  // Expand copies the stored number: 4 inches would become 4 cm.
+  broken(
+    'from a number in one unit to a number in another',
+    (f) => {
+      history(f).fields.find((x: Loose) => x.id === 'length').unit = 'in';
+    },
+    [CHECKS, MAPS(V('length')), rule('maps_to_mismatch')],
+  );
+  broken(
+    'from a number with a unit to one without',
+    (f) => {
+      delete history(f).fields.find((x: Loose) => x.id === 'length').unit;
+    },
+    [CHECKS, MAPS(V('length')), rule('maps_to_mismatch')],
+  );
+  fits('between two numbers without a unit', (f) => {
+    delete history(f).fields.find((x: Loose) => x.id === 'length').unit;
+    delete visit(f, 'length').unit;
+  });
 });
 
 describe('a note type named by a definition', () => {
@@ -877,15 +1020,17 @@ describe('a region', () => {
     },
     [CHECKS, F('where'), FLAG],
   );
-  broken('with an Other option among its sides', (f) => (f.lists[list('side_rl')].options[1].other = true), [
-    CHECKS,
-    F('where'),
-    FLAG,
-  ]);
+  broken(
+    'with an Other option among its sides',
+    (f) => (f.lists[list('side_rl')].options[1].other = true),
+    [CHECKS, F('where'), FLAG],
+    [CHECKS, I('where'), FLAG],
+  );
   broken(
     'with an exclusive option among its surfaces',
     (f) => (f.lists[list('surface')].options[0].exclusive = true),
     [CHECKS, F('where'), FLAG],
+    [CHECKS, I('where'), FLAG],
   );
   fits('with an icon on an option', (f) => (f.lists[list('demo_regions')].options[0].icon = 'arm'));
   fits('with a side from a list of three, Skin’s Midline among them', (f) => {

@@ -100,14 +100,21 @@ describe('a resolved definition', () => {
   });
 
   it('has a module’s sections where the include stood, in the module’s order', () => {
-    expect(sectionIds(resolved().definition)).toEqual(['visit', 'eyes', 'ears', 'findings', 'status']);
+    expect(sectionIds(resolved().definition)).toEqual([
+      'visit',
+      'eyes',
+      'ears',
+      'findings',
+      'status',
+      'injury',
+    ]);
   });
 
   it('takes the version of the module the include names', () => {
     const files = definitionFiles();
     files.noteTypes[CHECKS].sections[1].version = 2;
     const { definition } = resolved(files);
-    expect(sectionIds(definition)).toEqual(['visit', 'eyes', 'findings', 'status']);
+    expect(sectionIds(definition)).toEqual(['visit', 'eyes', 'findings', 'status', 'injury']);
     expect(section(definition, 'eyes').title).toBe('Eyes (second version)');
   });
 
@@ -120,6 +127,7 @@ describe('a resolved definition', () => {
       'ears',
       'findings',
       'status',
+      'injury',
       'eyes',
     ]);
   });
@@ -330,15 +338,17 @@ describe('what cannot be resolved names the file and the rule', () => {
     (f) => (f.noteTypes[CHECKS].sections[2].fields[0].options = { list: 'demo_missing' }),
     [CHECKS, `${FINDINGS}.fields[0].options.list`, 'resolve.unknown_list'],
   );
-  broken('a region whose side list does not exist', (f) => delete f.lists['lists/side_rl.json'], [
-    CHECKS,
-    `${FINDINGS}.fields[0].side`,
-    'resolve.unknown_list',
-  ]);
+  broken(
+    'a region whose side list does not exist',
+    (f) => delete f.lists['lists/side_rl.json'],
+    [CHECKS, `${FINDINGS}.fields[0].side`, 'resolve.unknown_list'],
+    [CHECKS, '$.sections[4].fields[0].side', 'resolve.unknown_list'],
+  );
   broken(
     'a region that asks for a surface when the surface list does not exist',
     (f) => delete f.lists['lists/surface.json'],
     [CHECKS, `${FINDINGS}.fields[0].surface`, 'resolve.unknown_list'],
+    [CHECKS, '$.sections[4].fields[0].surface', 'resolve.unknown_list'],
   );
 
   broken('a module file whose name is not its folder’s', (f) => (f.modules[EXAM].name = 'demo_other'), [

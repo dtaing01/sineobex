@@ -106,8 +106,7 @@
           "label": "Where",
           "options": { "list": "demo_regions" },
           "side": "side_rl",
-          "surface": true,
-          "mapsTo": "full_demo:wounds.where"
+          "surface": true
         },
         { "id": "diagnosis", "kind": "problem", "label": "Diagnosis" },
         {
@@ -118,8 +117,7 @@
           "options": [
             { "code": "cut", "label": "Cut" },
             { "code": "burn", "label": "Burn" }
-          ],
-          "mapsTo": "full_demo:wounds.type"
+          ]
         },
         {
           "id": "depth",
@@ -197,6 +195,35 @@
             "label": "Grade",
             "options": { "list": "demo_scale" }
           }
+        }
+      ]
+    },
+    {
+      "id": "injury",
+      "title": "Injury",
+      "fields": [
+        {
+          "id": "where",
+          "kind": "region",
+          "label": "Where",
+          "options": [
+            { "code": "arm", "label": "Arm" },
+            { "code": "leg", "label": "Leg" }
+          ],
+          "side": "side_rl",
+          "surface": true,
+          "mapsTo": "full_demo:wounds.where"
+        },
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Type",
+          "options": [
+            { "code": "cut", "label": "Cut" },
+            { "code": "burn", "label": "Burn" }
+          ],
+          "mapsTo": "full_demo:wounds.type"
         }
       ]
     }

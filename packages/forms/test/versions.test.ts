@@ -94,6 +94,10 @@ describe('every path a note type stores at', () => {
       'status.reflexes.knee.left: one code',
       'status.reflexes.ankle.right: one code',
       'status.reflexes.ankle.left: one code',
+      'injury.where.region: one code',
+      'injury.where.side: one code',
+      'injury.where.surface: one code',
+      'injury.type: one code',
       // The rows of this grid are the options picked in visit.systems, so it comes after every other path.
       'status.each: the rows of a grid',
       'status.each.none.seen: one code',
