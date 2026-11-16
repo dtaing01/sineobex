@@ -382,8 +382,8 @@ describe('an option code is never reused for another meaning', () => {
     const tenth = structuredClone(files.noteTypes[V2]);
     tenth.version = 10;
     // Listed first, and "v10" sorts before "v2" as text.
-    files.noteTypes = { 'note-types/checks_demo/v10.json': tenth, ...files.noteTypes };
-    expect(found(files, { [V2]: [rename] })).toEqual([]);
+    const noteTypes = { 'note-types/checks_demo/v10.json': tenth, ...files.noteTypes };
+    expect(found({ ...files, noteTypes }, { [V2]: [rename] })).toEqual([]);
   });
 
   refused(

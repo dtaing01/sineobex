@@ -437,7 +437,7 @@ describe('the options of every kind of field', () => {
   const KINDS = 'note-types/kinds_demo/v1.json';
   function kinds(): Tree {
     const tree = example();
-    tree.files.lists = definitionFiles().lists;
+    Object.assign(tree.files.lists, definitionFiles().lists);
     tree.pieces.kinds = {
       text: lines(
         '1. Sites',
