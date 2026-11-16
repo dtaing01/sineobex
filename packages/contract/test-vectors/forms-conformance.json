@@ -1,0 +1,701 @@
+{
+  "note": "Hand-written (phase 4 design, docs/design/phase-4/forms.md 7.2). Small made-up resolved definitions, and for each interpreter function (forms.md 7.1) its cases: a case names a definition and gives the function's other inputs and the exact output. Each expected value is worked out from the design, cited in the case's name or its why. packages/forms/src/interp and apps/mobile/lib/forms must give every answer; the readers are packages/forms/test/conformance.test.ts and apps/mobile/test/forms/conformance_test.dart. Every definition passes validate(), with the other definitions of this file as the note types it may name. Answers are a flat map of path to value (forms.md 2.3). An entry ID is e and seven characters from a-z0-9; an entryAt is a UTC time written YYYY-MM-DDTHH:MM:SS, then optionally a dot and one to nine digits, then Z.",
+  "definitions": {
+    "visit": {
+      "key": "demo_visit",
+      "version": 1,
+      "title": "Demo visit",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "auto": "medical",
+      "sections": [
+        {
+          "id": "vitals",
+          "title": "Demo vitals",
+          "normal": true,
+          "fields": [
+            {
+              "id": "bp",
+              "kind": "group",
+              "label": "Demo blood pressure",
+              "layout": "row",
+              "collapsed": true,
+              "fields": [
+                { "id": "systolic", "kind": "number", "label": "Demo systolic", "min": 50, "max": 250, "decimals": 0, "unit": "mmHg", "handoff": true },
+                { "id": "diastolic", "kind": "number", "label": "Demo diastolic", "min": 30, "max": 150, "decimals": 0, "unit": "mmHg", "handoff": true }
+              ]
+            },
+            { "id": "unableBp", "kind": "flag", "label": "Demo unable to measure", "clears": ["bp"], "noNormal": true },
+            { "id": "pulse", "kind": "number", "label": "Demo pulse", "min": 20, "max": 250, "decimals": 0, "unit": "bpm", "handoff": true },
+            { "id": "temp", "kind": "number", "label": "Demo temperature", "min": 30, "max": 43, "decimals": 1, "unit": "C", "display": "box" },
+            {
+              "id": "weight",
+              "kind": "number",
+              "label": "Demo weight",
+              "min": 0.5,
+              "max": 300,
+              "decimals": 2,
+              "unit": "kg",
+              "altUnit": { "unit": "lb", "perUnit": 0.45359237 }
+            },
+            { "id": "strength", "kind": "number", "label": "Demo grip strength", "min": 0, "max": 5, "decimals": 0, "display": "outOf", "normal": 5 },
+            { "id": "measured", "kind": "time", "label": "Demo time measured", "recap": false },
+            {
+              "id": "alert",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo level of alertness",
+              "handoff": true,
+              "options": [
+                { "code": "alert", "label": "Demo alert", "normal": true, "icon": "eye" },
+                { "code": "drowsy", "label": "Demo drowsy" },
+                { "code": "unresponsive", "label": "Demo unresponsive" }
+              ]
+            },
+            { "id": "seated", "kind": "info", "label": "Demo: take vitals seated." },
+            { "id": "pictures", "kind": "photo", "label": "Demo photos", "max": 3 }
+          ]
+        },
+        {
+          "id": "meds",
+          "title": "Demo medications",
+          "needs": "orderMedications",
+          "fields": [
+            {
+              "id": "given",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo medications given",
+              "options": [
+                { "code": "none", "label": "Demo none", "exclusive": true },
+                { "code": "naloxone", "label": "Demo naloxone" },
+                { "code": "ondansetron", "label": "Demo ondansetron" },
+                { "code": "ibuprofen", "label": "Demo ibuprofen" }
+              ]
+            },
+            {
+              "id": "doses",
+              "kind": "number",
+              "label": "Demo naloxone doses",
+              "min": 1,
+              "max": 10,
+              "decimals": 0,
+              "unit": "doses",
+              "display": "stepper",
+              "showWhen": { "field": "meds.given", "is": "naloxone" }
+            }
+          ]
+        },
+        {
+          "id": "plan",
+          "title": "Demo plan",
+          "fields": [
+            {
+              "id": "next",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo next step",
+              "help": "Demo: the step agreed with the patient.",
+              "options": [
+                { "code": "wound", "label": "Demo wound care", "suggests": "demo_wound" },
+                { "code": "talk", "label": "Demo talk again", "suggests": "demo_psych" },
+                { "code": "none", "label": "Demo nothing more" }
+              ]
+            },
+            { "id": "notes", "kind": "text", "label": "Demo plan notes", "lines": "many", "maxLength": 500 },
+            { "id": "followUp", "kind": "date", "label": "Demo follow-up date", "range": "any" },
+            { "id": "openWound", "kind": "action", "label": "Demo open wound care", "action": "open_note_type", "noteType": "demo_wound" },
+            { "id": "refer", "kind": "action", "label": "Demo add a referral", "action": "add_referral" }
+          ]
+        }
+      ]
+    },
+    "wound": {
+      "key": "demo_wound",
+      "version": 1,
+      "title": "Demo wound care",
+      "kinds": ["medical"],
+      "group": "wound",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "wounds",
+          "title": "Demo wounds",
+          "repeat": { "max": 5, "itemTitle": "Demo wound {n}" },
+          "fields": [
+            {
+              "id": "where",
+              "kind": "region",
+              "label": "Demo location",
+              "options": [
+                { "code": "arm", "label": "Demo arm" },
+                { "code": "leg", "label": "Demo leg" },
+                { "code": "foot", "label": "Demo foot", "icon": "foot" },
+                { "code": "back", "label": "Demo back" }
+              ],
+              "side": [
+                { "code": "right", "label": "Demo right" },
+                { "code": "left", "label": "Demo left" },
+                { "code": "bilateral", "label": "Demo bilateral" }
+              ],
+              "surface": [
+                { "code": "anterior", "label": "Anterior" },
+                { "code": "posterior", "label": "Posterior" }
+              ]
+            },
+            { "id": "eachSide", "kind": "info", "label": "Demo: measure each side.", "showWhen": { "field": "./where.side", "is": "bilateral" } },
+            {
+              "id": "type",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo wound type",
+              "required": true,
+              "options": [
+                { "code": "laceration", "label": "Demo laceration" },
+                { "code": "abscess", "label": "Demo abscess" },
+                { "code": "burn", "label": "Demo burn" },
+                { "code": "ulcer", "label": "Demo ulcer" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ]
+            },
+            {
+              "id": "degree",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo burn degree",
+              "showWhen": { "field": "./type", "is": "burn" },
+              "options": [
+                { "code": "first", "label": "Demo first" },
+                { "code": "second", "label": "Demo second" },
+                { "code": "third", "label": "Demo third" }
+              ]
+            },
+            {
+              "id": "drainage",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo drainage",
+              "showWhen": { "field": "./type", "is": ["abscess", "ulcer"] },
+              "options": [
+                { "code": "none", "label": "Demo none", "exclusive": true },
+                { "code": "serous", "label": "Demo serous" },
+                { "code": "purulent", "label": "Demo purulent" },
+                { "code": "bloody", "label": "Demo bloody" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ],
+              "excludes": [["serous", "purulent"]]
+            },
+            {
+              "id": "length",
+              "kind": "number",
+              "label": "Demo length",
+              "min": 0,
+              "max": 50,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": { "unit": "in", "perUnit": 2.54 }
+            },
+            { "id": "unableLength", "kind": "flag", "label": "Demo unable to measure", "clears": ["length"] },
+            { "id": "injuredOn", "kind": "date", "label": "Demo date of injury", "range": "past" },
+            { "id": "healing", "kind": "duration", "label": "Demo time healing" },
+            { "id": "photos", "kind": "photo", "label": "Demo wound photos", "max": 5 }
+          ]
+        },
+        {
+          "id": "care",
+          "title": "Demo care",
+          "fields": [
+            { "id": "changeBy", "kind": "date", "label": "Demo change dressing by", "range": "future" },
+            { "id": "teaching", "kind": "text", "label": "Demo teaching given", "lines": "one", "maxLength": 20 }
+          ]
+        }
+      ]
+    },
+    "exam": {
+      "key": "demo_exam",
+      "version": 1,
+      "title": "Demo exam",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "systems",
+          "title": "Demo systems",
+          "fields": [
+            {
+              "id": "picked",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo systems examined",
+              "options": [
+                { "code": "heart", "label": "Demo heart" },
+                { "code": "lungs", "label": "Demo lungs" },
+                { "code": "skin", "label": "Demo skin", "suggests": "demo_wound" },
+                { "code": "gu", "label": "Demo private exam", "sensitiveExam": true }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "heart",
+          "title": "Demo heart",
+          "normal": true,
+          "showWhen": { "field": "systems.picked", "is": "heart" },
+          "fields": [
+            {
+              "id": "rhythm",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo rhythm",
+              "options": [
+                { "code": "regular", "label": "Demo regular", "normal": true },
+                { "code": "irregular", "label": "Demo irregular" },
+                { "code": "unable", "label": "Demo unable to assess", "unable": true }
+              ]
+            },
+            {
+              "id": "murmur",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo murmur",
+              "options": [
+                { "code": "none", "label": "Demo none", "normal": true },
+                { "code": "present", "label": "Demo present" }
+              ]
+            },
+            {
+              "id": "grade",
+              "kind": "number",
+              "label": "Demo murmur grade",
+              "min": 1,
+              "max": 6,
+              "decimals": 0,
+              "display": "outOf",
+              "showWhen": { "all": [{ "field": "heart.murmur", "is": "present" }, { "field": "heart.rhythm", "filled": true }] }
+            }
+          ]
+        },
+        {
+          "id": "lungs",
+          "title": "Demo lungs",
+          "normal": true,
+          "showWhen": { "field": "systems.picked", "is": ["lungs"] },
+          "fields": [
+            {
+              "id": "sounds",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo breath sounds",
+              "sides": true,
+              "options": [
+                { "code": "clear", "label": "Demo clear", "normal": true },
+                { "code": "wheeze", "label": "Demo wheeze" },
+                { "code": "crackles", "label": "Demo crackles" },
+                { "code": "unable", "label": "Demo unable to assess", "unable": true },
+                { "code": "other", "label": "Demo other", "other": true }
+              ]
+            },
+            {
+              "id": "where",
+              "kind": "text",
+              "label": "Demo where heard",
+              "lines": "one",
+              "maxLength": 100,
+              "showWhen": {
+                "any": [
+                  { "field": "lungs.sounds.right", "is": ["wheeze", "crackles"] },
+                  { "field": "lungs.sounds.left", "is": ["wheeze", "crackles"] }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "pulses",
+          "title": "Demo pulses and reflexes",
+          "normal": true,
+          "fields": [
+            {
+              "id": "pulses",
+              "kind": "grid",
+              "label": "Demo pulses",
+              "sides": true,
+              "rows": [
+                { "code": "radial", "label": "Demo radial" },
+                { "code": "pedal", "label": "Demo pedal", "icon": "foot" }
+              ],
+              "cell": {
+                "id": "strength",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo pulse strength",
+                "options": [
+                  { "code": "absent", "label": "Demo absent" },
+                  { "code": "weak", "label": "Demo weak" },
+                  { "code": "normal", "label": "Demo normal", "normal": true }
+                ]
+              }
+            },
+            {
+              "id": "reflexes",
+              "kind": "grid",
+              "label": "Demo reflexes",
+              "collapsed": true,
+              "rows": [
+                { "code": "biceps", "label": "Demo biceps" },
+                { "code": "knee", "label": "Demo knee" }
+              ],
+              "cell": {
+                "id": "reflex",
+                "kind": "group",
+                "label": "Demo reflex",
+                "layout": "row",
+                "fields": [
+                  { "id": "grade", "kind": "number", "label": "Demo grade", "min": 0, "max": 4, "decimals": 0, "normal": 2 },
+                  { "id": "comment", "kind": "text", "label": "Demo comment", "lines": "one", "maxLength": 40, "showWhen": { "field": "./grade", "filled": true } }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "gu",
+          "title": "Demo private exam",
+          "sensitiveExam": true,
+          "showWhen": { "field": "systems.picked", "is": "gu" },
+          "fields": [
+            {
+              "id": "consent",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo consent recorded",
+              "required": true,
+              "noNormal": true,
+              "options": [
+                { "code": "yes", "label": "Demo yes" },
+                { "code": "no", "label": "Demo no" }
+              ]
+            },
+            { "id": "findings", "kind": "text", "label": "Demo findings", "lines": "many", "maxLength": 1000, "showWhen": { "field": "gu.consent", "is": "yes" } }
+          ]
+        }
+      ]
+    },
+    "outreach": {
+      "key": "demo_outreach",
+      "version": 1,
+      "title": "Demo outreach",
+      "kinds": ["medical", "non_medical"],
+      "group": "outreach",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "supplies",
+          "title": "Demo supplies",
+          "fields": [
+            {
+              "id": "given",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo supplies given",
+              "options": [
+                { "code": "none", "label": "Demo none", "exclusive": true },
+                { "code": "socks", "label": "Demo socks", "icon": "sock" },
+                { "code": "water", "label": "Demo water" },
+                { "code": "blanket", "label": "Demo blanket" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ],
+              "excludes": [["socks", "blanket"], ["water", "blanket"]]
+            },
+            {
+              "id": "vaccines",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo vaccines offered",
+              "options": [
+                { "code": "flu", "label": "Demo flu" },
+                { "code": "tetanus", "label": "Demo tetanus" },
+                { "code": "hepa", "label": "Demo hepatitis A" }
+              ]
+            },
+            {
+              "id": "status",
+              "kind": "grid",
+              "label": "Demo vaccine status",
+              "rows": { "pickedIn": "supplies.vaccines" },
+              "cell": {
+                "id": "outcome",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo outcome",
+                "options": [
+                  { "code": "given", "label": "Demo given" },
+                  { "code": "declined", "label": "Demo declined" },
+                  { "code": "other", "label": "Demo other", "other": true }
+                ]
+              }
+            },
+            {
+              "id": "counts",
+              "kind": "grid",
+              "label": "Demo how many",
+              "rows": [
+                { "code": "socks", "label": "Demo socks" },
+                { "code": "water", "label": "Demo water" }
+              ],
+              "cell": { "id": "count", "kind": "number", "label": "Demo count", "min": 0, "max": 20, "decimals": 0, "display": "stepper" }
+            },
+            { "id": "seenAt", "kind": "time", "label": "Demo time seen" },
+            { "id": "openWound", "kind": "action", "label": "Demo open wound care", "action": "open_note_type", "noteType": "demo_wound" }
+          ]
+        }
+      ]
+    },
+    "psych": {
+      "key": "demo_psych",
+      "version": 1,
+      "title": "Demo check-in",
+      "kinds": ["medical", "non_medical"],
+      "group": "psych",
+      "sensitivity": "sensitive",
+      "sections": [
+        {
+          "id": "mood",
+          "title": "Demo mood",
+          "fields": [
+            {
+              "id": "mood",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo mood today",
+              "options": [
+                { "code": "good", "label": "Demo good", "normal": true },
+                { "code": "low", "label": "Demo low" },
+                { "code": "anxious", "label": "Demo anxious", "icon": "cloud" }
+              ]
+            },
+            { "id": "safety", "kind": "text", "label": "Demo safety plan", "lines": "many", "maxLength": 300, "showWhen": { "not": { "field": "mood.mood", "is": "good" } } }
+          ]
+        },
+        {
+          "id": "treatment",
+          "title": "Demo treatment program",
+          "treatmentRecord": true,
+          "fields": [
+            {
+              "id": "program",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo program",
+              "options": [
+                { "code": "clinic", "label": "Demo clinic program" },
+                { "code": "peer", "label": "Demo peer program" },
+                { "code": "none", "label": "Demo no program" }
+              ]
+            },
+            { "id": "since", "kind": "date", "label": "Demo in program since", "range": "past", "showWhen": { "not": { "field": "treatment.program", "is": "none" } } },
+            { "id": "length", "kind": "duration", "label": "Demo time in program" }
+          ]
+        }
+      ]
+    },
+    "quick": {
+      "key": "demo_quick",
+      "version": 1,
+      "title": "Demo quick visit",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "quick": true,
+      "sections": [
+        {
+          "id": "hpi",
+          "title": "Demo history",
+          "fields": [
+            {
+              "id": "concern",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo new concern",
+              "options": [
+                { "code": "yes", "label": "Demo yes" },
+                { "code": "no", "label": "Demo no" },
+                { "code": "unknown", "label": "Demo unknown" }
+              ]
+            },
+            { "id": "details", "kind": "text", "label": "Demo details", "lines": "many", "maxLength": 400, "showWhen": { "field": "hpi.concern", "is": "yes" }, "mapsTo": "demo_visit:plan.notes" }
+          ]
+        },
+        {
+          "id": "vitals",
+          "title": "Demo vitals",
+          "fields": [
+            { "id": "pulse", "kind": "number", "label": "Demo pulse", "min": 30, "max": 200, "decimals": 0, "unit": "bpm", "mapsTo": "demo_visit:vitals.pulse" },
+            {
+              "id": "woundType",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo wound type",
+              "options": [
+                { "code": "laceration", "label": "Demo laceration" },
+                { "code": "abscess", "label": "Demo abscess" }
+              ],
+              "mapsTo": "demo_wound:wounds.type"
+            },
+            { "id": "woundLength", "kind": "number", "label": "Demo wound length", "min": 0, "max": 20, "decimals": 1, "unit": "cm", "mapsTo": "demo_wound:wounds.length" }
+          ]
+        },
+        {
+          "id": "meds",
+          "title": "Demo medications",
+          "needs": "orderMedications",
+          "fields": [
+            {
+              "id": "given",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo medications given",
+              "options": [
+                { "code": "none", "label": "Demo none", "exclusive": true },
+                { "code": "naloxone", "label": "Demo naloxone" }
+              ],
+              "mapsTo": "demo_visit:meds.given"
+            }
+          ]
+        }
+      ]
+    },
+    "problems": {
+      "key": "demo_problems",
+      "version": 1,
+      "title": "Demo diagnoses",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "dx",
+          "title": "Demo diagnoses",
+          "repeat": { "max": 10, "itemTitle": "Demo diagnosis {n}" },
+          "fields": [
+            { "id": "problem", "kind": "problem", "label": "Demo diagnosis", "handoff": true },
+            {
+              "id": "status",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo status",
+              "required": true,
+              "options": [
+                { "code": "new", "label": "Demo new" },
+                { "code": "ongoing", "label": "Demo ongoing" },
+                { "code": "resolved", "label": "Demo resolved" }
+              ]
+            },
+            {
+              "id": "steps",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo what was done",
+              "showWhen": { "not": { "field": "./status", "is": "resolved" } },
+              "options": [
+                { "code": "education", "label": "Demo education" },
+                { "code": "referral", "label": "Demo referral" },
+                { "code": "medication", "label": "Demo medication" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "ems": {
+      "key": "demo_ems",
+      "version": 1,
+      "title": "Demo EMS call",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "ems",
+          "title": "Demo EMS",
+          "fields": [
+            { "id": "called", "kind": "time", "label": "Demo time EMS called", "required": true, "handoff": true },
+            {
+              "id": "reason",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo reason",
+              "handoff": true,
+              "options": [
+                { "code": "breathing", "label": "Demo trouble breathing", "icon": "lungs" },
+                { "code": "fall", "label": "Demo fall" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ]
+            },
+            { "id": "showHandoff", "kind": "action", "label": "Demo show handoff", "action": "show_handoff" }
+          ]
+        },
+        {
+          "id": "transport",
+          "title": "Demo transport",
+          "showWhen": { "all": [{ "field": "ems.called", "filled": true }, { "not": { "field": "ems.reason", "is": "fall" } }] },
+          "fields": [
+            { "id": "went", "kind": "flag", "label": "Demo transported", "handoff": true },
+            { "id": "destination", "kind": "text", "label": "Demo destination", "lines": "one", "maxLength": 80, "handoff": true, "showWhen": { "field": "transport.went", "filled": true } }
+          ]
+        }
+      ]
+    },
+    "social": {
+      "key": "demo_social",
+      "version": 1,
+      "title": "Demo social needs",
+      "kinds": ["non_medical"],
+      "group": "social",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "housing",
+          "title": "Demo housing",
+          "fields": [
+            {
+              "id": "status",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo where staying",
+              "options": [
+                { "code": "housed", "label": "Demo housed" },
+                { "code": "shelter", "label": "Demo shelter" },
+                { "code": "outside", "label": "Demo outside" }
+              ]
+            },
+            {
+              "id": "needs",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo needs today",
+              "options": [
+                { "code": "food", "label": "Demo food" },
+                { "code": "wound", "label": "Demo wound looked at", "suggests": "demo_wound" },
+                { "code": "talk", "label": "Demo someone to talk to", "suggests": "demo_psych" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "shelter",
+          "title": "Demo shelter search",
+          "showWhen": { "any": [{ "not": { "field": "housing.status", "is": "housed" } }, { "field": "housing.needs", "is": "food" }] },
+          "fields": [
+            { "id": "tried", "kind": "duration", "label": "Demo time looking" },
+            { "id": "place", "kind": "text", "label": "Demo shelter tried", "lines": "one", "maxLength": 60 }
+          ]
+        }
+      ]
+    }
+  },
+  "cases": {}
+}
