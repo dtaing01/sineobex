@@ -29,6 +29,7 @@ export const CHART_TABLES: Readonly<Record<string, 'group' | 'not_chart'>> = {
   field_reviews: 'group',
   patient_corrections: 'group',
   problems: 'group',
+  referrals: 'group',
   // Phase 4 lists a group's recent encounters; phase 2 rows may name patients that never existed.
   encounters: 'group',
   // Search keys: retrieval groups them by canonical_id (patient_candidates), never a chart.

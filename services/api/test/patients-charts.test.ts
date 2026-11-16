@@ -356,6 +356,11 @@ describe('CHART_TABLES (design 13.3, risk 14.2-7)', () => {
     }
   });
 
+  it('reads a referral through the group, like the rest of a chart', () => {
+    // A merged patient's referrals are every record's referrals (phase 4 design, lifecycle 2.5, 7).
+    expect(CHART_TABLES.referrals).toBe('group');
+  });
+
   it('lists only tables that exist', async () => {
     const rows = await h.scratch.owner<{ name: string }[]>`
       select table_name as name from information_schema.tables where table_schema = 'sineobex'`;
