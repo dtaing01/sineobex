@@ -953,6 +953,16 @@ describe('mapsTo, for sense', () => {
   });
 });
 
+describe('a condition that names a field with sides', () => {
+  it('without its side is refused, and the message names the two answers', () => {
+    const files = definitionFiles();
+    visit(files, 'onset').showWhen = { field: 'visit.length', filled: true };
+    const [problem] = problems(files);
+    expect(problem?.rule).toBe('validate.condition_unknown_field');
+    expect(problem?.message).toContain('"visit.length.right" and "visit.length.left"');
+  });
+});
+
 describe('a condition that reads restricted content', () => {
   // A reader without the key gets no answer from a sensitive exam or a treatment record (lifecycle
   // 6.4), but would get the open field whose showing tells them that answer.

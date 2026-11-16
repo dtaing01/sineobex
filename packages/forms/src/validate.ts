@@ -80,7 +80,13 @@ function checkConditions(model: PathModel, report: Report) {
       const named = leafAt(model, test.field, carrier, row);
       if ('fault' in named) {
         const rule = named.fault === 'unknown_field' ? 'condition_unknown_field' : named.fault;
-        return report(`${at}.field`, rule, PATH_FAULTS[named.fault](test.field));
+        // A condition names an answer: a field with sides has two, a region and a problem have parts.
+        const parts = ['right', 'left', 'region', 'code'].filter(
+          (part) => !('fault' in leafAt(model, `${test.field}.${part}`, carrier, row)),
+        );
+        const hint =
+          parts.length > 0 ? `; it stores at ${parts.map((p) => `"${test.field}.${p}"`).join(' and ')}` : '';
+        return report(`${at}.field`, rule, PATH_FAULTS[named.fault](test.field) + hint);
       }
       const from = 'field' in carrier ? carrier.section.section : carrier.section;
       const key = hiddenBy(named.leaf.node.section.section, from);
