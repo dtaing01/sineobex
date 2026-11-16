@@ -741,12 +741,16 @@ describe('0018 on a database that already holds notes', () => {
   let team: string;
   let author: string;
   const at = new Date('2026-10-20T15:00:00.000Z');
+  // Notes were made a day before their last change, so the fill can be told to use the latter.
+  const made = new Date('2026-10-19T15:00:00.000Z');
   const encounters: Record<NoteStatus, string> = { draft: '', completed: '', signed: '' };
   const notes: Record<NoteStatus, string> = { draft: '', completed: '', signed: '' };
-  let before: { encounters: unknown[]; notes: Record<string, unknown>[] };
+  // A visit a phone marked completed while its note is a draft, and one with no notes at all.
+  const markedCompleted = { withDraft: randomUUID(), empty: randomUUID() };
+  let before: { encounters: Record<string, unknown>[]; notes: Record<string, unknown>[] };
 
   const snapshot = async () => ({
-    encounters: await db.owner`
+    encounters: await db.owner<Record<string, unknown>[]>`
       select id, team_id, patient_id, kind, status, author_user_id, started_at, started_device_time,
              clock_verified, location, created_device_id, field_versions, field_meta, version, created_at,
              updated_at
@@ -768,19 +772,24 @@ describe('0018 on a database that already holds notes', () => {
     team = await makeTeam(db.owner, 'Phase Two Team');
     author = await makeUser(db.owner, 'phase-two-author@example.com');
 
+    const visit = (id: string, status: string) => db.owner`
+      insert into sineobex.encounters (id, team_id, kind, status, author_user_id, started_at, created_at, updated_at)
+      values (${id}, ${team}, 'non_medical', ${status}, ${author}, ${at}, ${at}, ${at})`;
+    const oldNote = (id: string, encounterId: string, status: string) => db.owner`
+      insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, status, author_user_id,
+        data, field_versions, version, created_at, updated_at)
+      values (${id}, ${team}, ${encounterId}, 'demo_note', ${status}, ${author},
+        '{"plan": "Demo: seen at the day center"}', '{"status": 2, "data.plan": 1}', 3, ${made}, ${at})`;
     // A phone could set either status in phase 2, and nothing tied the two together.
     for (const status of ['draft', 'completed', 'signed'] as const) {
       encounters[status] = randomUUID();
       notes[status] = randomUUID();
-      await db.owner`
-        insert into sineobex.encounters (id, team_id, kind, status, author_user_id, started_at, created_at, updated_at)
-        values (${encounters[status]}, ${team}, 'non_medical', 'draft', ${author}, ${at}, ${at}, ${at})`;
-      await db.owner`
-        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, status, author_user_id,
-          data, field_versions, version, created_at, updated_at)
-        values (${notes[status]}, ${team}, ${encounters[status]}, 'demo_note', ${status}, ${author},
-          '{"plan": "Demo: seen at the day center"}', '{"status": 2, "data.plan": 1}', 3, ${at}, ${at})`;
+      await visit(encounters[status], 'draft');
+      await oldNote(notes[status], encounters[status], status);
     }
+    await visit(markedCompleted.withDraft, 'completed');
+    await oldNote(randomUUID(), markedCompleted.withDraft, 'draft');
+    await visit(markedCompleted.empty, 'completed');
     before = await snapshot();
     await migrate(db.owner);
   });
@@ -790,14 +799,18 @@ describe('0018 on a database that already holds notes', () => {
   });
 
   it('rows from before the migration stay', async () => {
-    expect(before.notes).toHaveLength(3);
-    // Every column phase 2 wrote, the time of the last change included, and each encounter's status.
-    expect(await snapshot()).toEqual(before);
+    expect(before.notes).toHaveLength(4);
+    // Every column phase 2 wrote, the time of the last change included.
+    const after = await snapshot();
+    expect(after.notes).toEqual(before.notes);
+    const withoutStatus = (rows: Record<string, unknown>[]) =>
+      rows.map(({ status: _s, updated_at: _u, ...rest }) => rest);
+    expect(withoutStatus(after.encounters)).toEqual(withoutStatus(before.encounters));
 
     const added = await db.owner<Record<string, unknown>[]>`
       select status, medical, completed_at, completed_by, first_signed_at, signoff_id, attestation,
              assigned_user_id
-      from sineobex.encounter_notes order by status`;
+      from sineobex.encounter_notes where id in ${db.owner(Object.values(notes))} order by status`;
     const blank = {
       medical: false,
       completed_at: null,
@@ -813,6 +826,25 @@ describe('0018 on a database that already holds notes', () => {
       { ...blank, status: 'draft' },
       { ...blank, status: 'signed' },
     ]);
+  });
+
+  it('works out the status of every encounter once, from its notes', async () => {
+    const expected: [string, string][] = [
+      [encounters.draft, 'draft'],
+      [encounters.completed, 'completed'],
+      // Phase 2 never signed a note; one marked signed by hand counts as signed.
+      [encounters.signed, 'signed'],
+      [markedCompleted.withDraft, 'draft'],
+      [markedCompleted.empty, 'draft'],
+    ];
+    for (const [id, status] of expected) {
+      const [row] = await db.owner<{ status: string; worked: string; moved: boolean }[]>`
+        select status, sineobex.encounter_status(id) as worked, updated_at > ${at} as moved
+        from sineobex.encounters where id = ${id}`;
+      const was = before.encounters.find((e) => e.id === id)!.status;
+      // A status that moved is stamped as every change is, which is how a phone learns of it.
+      expect(row, id).toEqual({ status, worked: status, moved: status !== was });
+    }
   });
 
   it('checks an old row from its next change on', async () => {

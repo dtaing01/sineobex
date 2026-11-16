@@ -105,6 +105,13 @@ end $$;
 create trigger encounter_notes_status after insert or update of status, data on sineobex.encounter_notes
   for each row execute function sineobex.refresh_encounter_status();
 
+-- Phase 2 let a phone set an encounter's status, and nothing tied it to the notes. A finished note
+-- never changes again, so the trigger alone would leave such a visit wrong for good: work each one
+-- out once. The encounters' touch trigger stays on, so a status that moves is stamped as every
+-- change is, and a phone learns of it at its next pull.
+update sineobex.encounters e set status = sineobex.encounter_status(e.id)
+where e.status is distinct from sineobex.encounter_status(e.id);
+
 -- The correction code names the one note it corrects in app.note_correction, for its own
 -- transaction. The error is class 23 on purpose: sync stores a class 23 error as a rejection
 -- (server_constraint), and any other class would stop the phone's queue (D42).
