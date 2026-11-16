@@ -135,8 +135,9 @@ begin
     raise exception 'a note is first signed once'
       using errcode = 'check_violation', constraint = 'encounter_notes_first_signed_at_once';
   end if;
+  -- The ID in any case and with white space around it still names the note.
   if new.data is distinct from old.data
-     and coalesce(current_setting('app.note_correction', true), '') <> old.id::text then
+     and lower(btrim(coalesce(current_setting('app.note_correction', true), ''), E' \t\r\n')) <> old.id::text then
     raise exception 'a finished note changes only through a correction'
       using errcode = 'check_violation', constraint = 'encounter_notes_finished_data';
   end if;

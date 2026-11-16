@@ -314,6 +314,31 @@ describe('0018 encounter lifecycle', () => {
       }
     });
 
+    it('a correction names its note in any case and with spaces around it', async () => {
+      const id = await encounter();
+      for (const spell of [(n: string) => n.toUpperCase(), (n: string) => `  ${n}\n`]) {
+        const noteId = await note(id, { status: 'completed', medical: false, empty: false });
+        await inTeam(async (tx) => {
+          await tx`select set_config('app.note_correction', ${spell(noteId)}, true)`;
+          await setData(tx, noteId, CORRECTED);
+        });
+        expect(await dataOf(noteId)).toEqual(CORRECTED);
+      }
+      // A value that names no note at all is still a class 23 refusal, never another class.
+      const noteId = await note(id, { status: 'completed', medical: false, empty: false });
+      for (const value of ['not a note', '{' + noteId + '}', ' ', '\u00a0']) {
+        expect(
+          await refusal(
+            inTeam(async (tx) => {
+              await tx`select set_config('app.note_correction', ${value}, true)`;
+              await setData(tx, noteId, CORRECTED);
+            }),
+          ),
+          value,
+        ).toEqual(GUARD);
+      }
+    });
+
     it('a correction opens one note, not every note of the statement', async () => {
       const id = await encounter();
       const corrected = await note(id, { status: 'completed', medical: false, empty: false });
