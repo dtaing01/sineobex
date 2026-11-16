@@ -47,6 +47,9 @@ const inputs: unknown[] = [
   { b: 1, a: 2, A: 3, aa: 4, '': 5 },
   { nested: { z: [{ y: 1, x: 2 }], a: null } },
   { 'wound.length_cm': 4.2, 'wound.photos': ['p1', 'p2'], present: true },
+  // Keys sort by UTF-16 code units: a key above U+FFFF (a surrogate pair, D83E) comes before one
+  // in U+E000 to U+FFFF, where code-point order would put it after.
+  { '\uffff': 'private use and noncharacters', '\ue000': 'private use', '🩺': 'above U+FFFF' },
 ];
 
 export async function buildVectors() {

@@ -210,6 +210,15 @@
       },
       "canonical": "{\"present\":true,\"wound.length_cm\":4.2,\"wound.photos\":[\"p1\",\"p2\"]}",
       "sha256": "7b9d5b4e31ad01eea75ee9a54aadd6b46b0421ab9cba1a79cc498b9d2e9e6802"
+    },
+    {
+      "input": {
+        "￿": "private use and noncharacters",
+        "": "private use",
+        "🩺": "above U+FFFF"
+      },
+      "canonical": "{\"🩺\":\"above U+FFFF\",\"\":\"private use\",\"￿\":\"private use and noncharacters\"}",
+      "sha256": "4a1c4b7859652de61ebc3ce5e4b06044a4387543ff04b044dee7c7e137ed03a9"
     }
   ]
 }
