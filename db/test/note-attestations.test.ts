@@ -263,37 +263,24 @@ describe('0020 note attestations and assignments', () => {
     });
 
     it('refuse a row with a part missing', async () => {
-      const required: Record<Table, string[]> = {
-        note_attestations: [
-          ...[
-            'id',
-            'team_id',
-            'note_id',
-            'signoff_id',
-            'content_hash',
-            'attending_user_id',
-            'attending_name',
-          ],
-          ...['attending_npi', 'attending_fields', 'statement_version', 'attested_at'],
-        ],
-        note_assignments: [
-          ...[
-            'id',
-            'team_id',
-            'note_id',
-            'from_user_id',
-            'to_user_id',
-            'assigned_by',
-            'reason',
-            'assigned_at',
-          ],
-        ],
+      const filledIn: Record<Table, string[]> = {
+        note_attestations: ['id', 'attending_fields', 'attested_at'],
+        note_assignments: ['id', 'assigned_at'],
       };
       for (const table of TABLES) {
-        for (const column of required[table]) {
+        const given = Object.keys(rows[table]());
+        for (const column of [...given, ...filledIn[table]]) {
           expect(await refusedAsOwner(table, { [column]: null }), `${table}.${column}`).toEqual({
             code: NOT_NULL,
           });
+        }
+        // Nothing is made up for a part the API leaves out.
+        for (const column of given) {
+          const rest = Object.fromEntries(Object.entries(rows[table]()).filter(([c]) => c !== column));
+          expect(
+            await refusal(db.owner`insert into sineobex.${db.owner(table)} ${values(db.owner, rest)}`),
+            `${table} without ${column}`,
+          ).toEqual({ code: NOT_NULL });
         }
       }
     });
