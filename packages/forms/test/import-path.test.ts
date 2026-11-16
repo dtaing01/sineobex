@@ -14,13 +14,32 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s+(?!type\s)(?:[^'";]*?\sfrom\s*)?['"]([^'"]+)['"]/g;
 const DYNAMIC = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
 
+/**
+ * What would load or run code the bundle does not hold, or that the edge runtime lacks, written any
+ * way at all: a dynamic import (a template literal included), require, a Node global, and code
+ * built from a string. Comments are left out, so a word in one is no hit.
+ */
+const FORBIDDEN: [name: string, pattern: RegExp][] = [
+  ['import(', /\bimport\s*\(/],
+  ['require(', /\brequire\s*\(/],
+  ['Buffer', /\bBuffer\b/],
+  ['process', /\bprocess\b/],
+  ['Function(', /\bFunction\s*\(/],
+];
+
+function forbidden(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  return FORBIDDEN.filter(([, pattern]) => pattern.test(code)).map(([name]) => name);
+}
+
 function specifiers(source: string): string[] {
   return [...source.matchAll(IMPORT), ...source.matchAll(DYNAMIC)].map((m) => m[1]!);
 }
 
-async function reachable(entry: string): Promise<{ files: string[]; outside: string[] }> {
+async function reachable(entry: string): Promise<{ files: string[]; outside: string[]; uses: string[] }> {
   const files = new Set<string>();
   const outside = new Set<string>();
+  const uses = new Set<string>();
   const queue = [entry];
   while (queue.length > 0) {
     const file = queue.pop()!;
@@ -28,14 +47,20 @@ async function reachable(entry: string): Promise<{ files: string[]; outside: str
     files.add(file);
     // A data file is a leaf: it is in the bundle, and it imports nothing.
     if (file.endsWith('.json')) continue;
-    for (const spec of specifiers(await readFile(file, 'utf8'))) {
+    const source = await readFile(file, 'utf8');
+    for (const name of forbidden(source)) uses.add(`${relative(root, file)} uses ${name}`);
+    for (const spec of specifiers(source)) {
       const target = resolve(dirname(file), spec);
       if (!spec.startsWith('.') || relative(root, target).startsWith('..'))
         outside.add(`${relative(root, file)} imports ${spec}`);
       else queue.push(target);
     }
   }
-  return { files: [...files].map((f) => relative(root, f)).sort(), outside: [...outside].sort() };
+  return {
+    files: [...files].map((f) => relative(root, f)).sort(),
+    outside: [...outside].sort(),
+    uses: [...uses].sort(),
+  };
 }
 
 describe('what the package index loads', () => {
@@ -59,9 +84,21 @@ describe('what the package index loads', () => {
     ).toEqual(['one', './two.ts', './three.ts', './four.ts', './five.ts', './nine.ts', 'six']);
   });
 
+  it('finds a dynamic import, require, a Node global and code built from a string, outside comments', () => {
+    expect(forbidden('export const lazy = () => import(`ajv`);')).toEqual(['import(']);
+    expect(forbidden("const m = require('ajv');")).toEqual(['require(']);
+    expect(forbidden('const n = Buffer.byteLength(s);')).toEqual(['Buffer']);
+    expect(forbidden('if (process.env.X) f();')).toEqual(['process']);
+    expect(forbidden("const g = new Function('return 1');")).toEqual(['Function(']);
+    expect(forbidden("// import('x'), Buffer, process\n/* require('y') */\nconst a = 1;")).toEqual([]);
+    expect(forbidden("const url = 'https://example.org'; const b = Buffer;")).toEqual(['Buffer']);
+  });
+
   it('is this package’s own source only, without the schema check', async () => {
-    const { files, outside } = await reachable(resolve(root, 'src/index.ts'));
+    const { files, outside, uses } = await reachable(resolve(root, 'src/index.ts'));
     expect(outside).toEqual([]);
+    expect(uses).toEqual([]);
+    expect(files).toContain('src/paths.ts');
     expect(files).toContain('src/canonical.ts');
     expect(files).not.toContain('src/schema.ts');
   });
