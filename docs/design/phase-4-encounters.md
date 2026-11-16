@@ -11,16 +11,16 @@ one encounter offline, saves and closes it, completes it later, and an attending
 
 | Unit | State | On the branch | Left |
 |---|---|---|---|
-| F0 The forms package | Built, in review | The package `@sineobex/forms`: the format (types, JSON Schema, the schema check), its own canonical JSON and hash, the resolver, the validator, the lock, the version rules, the spec check and the shape check, with 819 tests, run in CI | The review's findings. The export's test (`test/export.test.ts`) is written with unit E, which owns the script it tests |
+| F0 The forms package | Done (Nov 16) | The package `@sineobex/forms`: the format (types, JSON Schema, the schema check), its own canonical JSON and hash, the resolver, one copy of the path rules (`src/paths.ts`), the validator, the lock, the version rules, the spec check and the shape check, with 968 tests, run in CI. Reviewed by three reviewers (35 findings, 12 of them major); each fix has a test that fails without it | Nothing. The export's test (`test/export.test.ts`) is written with unit E, which owns the script it tests |
 | F1 The interpreter in TypeScript | Not started | — | 15 cards |
 | E The export | Not started | — | 3 cards |
 | F2 The interpreter in Dart | Not started | — | 15 cards |
-| F3 Definitions on the server | Started | — | Migration 0017 is built and in review on a unit branch. 4 cards |
+| F3 Definitions on the server | Started | Migration 0017, the table of installed note type versions, with its tests | 4 cards: F3-tests, F3-install (needs E-presets), F3-routes, F3-contract |
 | F4 Definitions on the phone | Not started | — | 4 cards |
 | F5 The renderer | Not started | — | 22 cards |
 | F6 The definitions | Not started | The recipe and its worked example (`docs/plan/patterns/form-definition.md`); one card written in full | 44 cards |
 | F7 Flows | Not started | — | 7 cards |
-| L0 Schema and core rules | Built in part, in review | The shared vectors (`note-lifecycle.json`, `signed-under.json`), the lifecycle rules in TypeScript and in Dart, and `signedUnder` | Migrations 0018 to 0021 are built and in review on a unit branch: a migration is pushed only after its review. The content hash (vectors, TypeScript, Dart) waits for F1 and F2 |
+| L0 Schema and core rules | Done but the content hash (Nov 16) | Migrations 0018 to 0021 (the note lifecycle, sign-offs, addenda and corrections, attestations and assignments, referrals), the shared vectors (`note-lifecycle.json`, `signed-under.json`), the lifecycle rules in TypeScript and in Dart, and `signedUnder`. Note changes take the team lock. Reviewed by three reviewers (14 findings) and the migration fixes read again by a fourth | The content hash (vectors, TypeScript, Dart), which waits for F1 and F2 |
 | L1 Server sync | Not started | — | 15 cards |
 | L2 Server routes | Not started | — | 14 cards |
 | L3 The phone's sync layer | Not started | — | 8 cards |

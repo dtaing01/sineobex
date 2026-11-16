@@ -1,4 +1,4 @@
-> **Reviewed (Nov 14).** Four reviewers checked this design and the lifecycle part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 10 lists what a person still has to decide. Nothing is built yet.
+> **Reviewed (Nov 14).** Four reviewers checked this design and the lifecycle part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 10 lists what a person still has to decide. In build since Nov 16: which units are on the branch is in the Status table of `docs/design/phase-4-encounters.md`, and the sections marked "as built" say what the code does where it says more than the design did.
 
 # Phase 4 design, part 1: forms and note types
 

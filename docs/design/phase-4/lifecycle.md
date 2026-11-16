@@ -1,8 +1,8 @@
-> **Reviewed (Nov 14).** Four reviewers checked this design and the forms part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 12 lists what a person still has to decide. Nothing is built yet.
+> **Reviewed (Nov 14).** Four reviewers checked this design and the forms part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 12 lists what a person still has to decide. In build since Nov 16: which units are on the branch is in the Status table of `docs/design/phase-4-encounters.md`.
 
 # Phase 4 design, part 2: the encounter lifecycle, sync and screens
 
-Status: designed and reviewed; not built. The cards are in `docs/plan/phase-4-encounters/README.md`.
+Status: in build. The schema and core rules (unit L0) are on the branch; section 1 still describes the code before this phase. The work-list is `docs/plan/phase-4-encounters/README.md`.
 
 This part covers how an encounter is stored, saved, completed, signed, attested, corrected and
 synced, and the screens around it. The other part (`docs/design/phase-4/forms.md`) covers the form

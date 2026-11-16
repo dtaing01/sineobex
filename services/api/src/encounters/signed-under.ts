@@ -57,6 +57,9 @@ export const TRUSTED_AHEAD_MS = 5 * 60_000;
 /**
  * PLAN-OPEN: does a note signed offline count as signed at device time or at server receipt
  * (lifecycle 12.1 #1; plan section 6)? At device time, when that time can be trusted.
+ * PLAN-OPEN: which credential is a signature recorded under when its time cannot be trusted
+ * (lifecycle 12.1 #22; plan section 6)? The one held when the server receives it, with the
+ * phone's claim stored beside it.
  */
 export function signedUnder(i: SignedUnderInput): SignedUnder {
   // A change's time comes from a timestamptz column: one that cannot be read is the server's own

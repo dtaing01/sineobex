@@ -141,8 +141,9 @@ async function processOne(
   return scope.tx(async (tx, audit) => {
     // A retry racing its own first attempt waits here, then finds the receipt.
     await tx`select pg_advisory_xact_lock(hashtextextended(${change.changeId}, 0))`;
-    // Patient-side changes, an encounter create naming a patient and every encounter set take the
-    // team's write lock before anything else, so a merge and a push lock in one order (D32).
+    // Patient-side changes, an encounter create naming a patient, every encounter set and every note
+    // change take the team's write lock before anything else, so a merge and a push lock in one
+    // order (D32), and a visit's status is worked out under the lock (phase 4, lifecycle 4.2).
     if (takesTeamLock(change)) await lockTeamWrites(tx, actor.teamId);
     const existing = await findReceipt(tx, change.changeId);
     if (existing) {
