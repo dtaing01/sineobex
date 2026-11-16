@@ -80,9 +80,12 @@ packages/forms/
     note-types/<key>/v<N>.json         one note type, one version
     spec/<piece>.txt                   the lines of SPEC a definition was transcribed from
     spec/<piece>.diff.json             the differences from SPEC made on purpose, each with its reason
-  definitions.lock.json                the hash of every released file
+    spec/<piece>.shape.json            the planner's decisions for the piece: its sections and fields (4.2)
+  definitions.lock.json                the hashes of every released file, of the piece files a released
+                                       definition names, and of each released version's resolved definition
   schema/definition.schema.json        the JSON Schema of the three file kinds
-  src/                                 the resolver, the validator and the interpreter (TypeScript)
+  src/                                 the path model, the resolver, the validator, the lock, the version
+                                       rules, the spec and shape checks, and the interpreter (TypeScript)
   scripts/export.ts                    writes everything under generated/ and the phone asset
   generated/presets.json               every note type version with includes and lists resolved, and its hash
   generated/golden.json                what the interpreter says about each preset (7.3)
@@ -91,6 +94,31 @@ apps/mobile/assets/forms/presets.json  a copy of generated/presets.json
 
 A **resolved** definition has no include and no list reference: every module and list is copied
 in. The API, the database and the phone only ever see resolved definitions.
+
+As built (unit F0):
+
+- **A module file** is `{ name, version, sections }`, at `modules/<name>/v<N>.json`. It holds
+  sections only, never an include: nothing in SPEC needs a module inside a module, and the
+  resolver stays one pass.
+- **A shared list file** is `{ name, options }`, at `lists/<name>.json`, with no version. Once
+  released the lock holds it like any other file, so a list that must change after release is a
+  new list under a new name.
+- The resolver (`src/resolve.ts`) checks that each file's content names the key or name, and the
+  version, that its path gives (`resolve.misplaced_file`): otherwise a module could be included
+  under one name while saying it is another.
+- **In a resolved definition a region's `side` and `surface` are option lists**, copied from the
+  shared lists they name (2.2), because the interpreter and the phone are handed a definition and
+  no lists. `renames` (2.6) is left out, so the hash the server stores does not depend on it.
+- **A resolved definition is made only by `resolve()`**, from files that passed the schema check,
+  and is then checked by `validate()`. Nothing stores a definition that did not go through those
+  three, so the resolved form has no JSON Schema of its own: it does not fit the file schema (a
+  region's side is a list of options, not a list's name), and the types in `src/resolve.ts` are its
+  description.
+- **The package's index is safe for the API's bundle.** `src/index.ts` reaches only pure modules
+  that import no package, and a test scans every source file it reaches for an import outside the
+  package, `Buffer`, `process`, `require(`, a dynamic `import(` and `Function(`. The schema check
+  uses a JSON Schema library that builds code at run time, so it is reached only through
+  `@sineobex/forms/schema`, by the export and the tests.
 
 ### 2.2 The shape
 
@@ -109,7 +137,13 @@ type NoteType = {
   quick?: true;                      // the Quick encounter
   auto?: 'medical';                  // added by itself with the first Medical note of an encounter (6.2)
   sections: (Section | Include)[];
+  renames?: Rename[];                // labels this version rewords on purpose (2.6); not resolved
 };
+
+type Rename = { path: string; code?: string; from: string; to: string };   // 2.6
+
+type Module = { name: string; version: number; sections: Section[] };      // modules/<name>/v<N>.json
+type OptionList = { name: string; options: Option[] };                     // lists/<name>.json
 
 type Include = { include: string; version: number; showWhen?: Condition };   // a module
 
@@ -145,17 +179,20 @@ type Field = Common & (
   | { kind: 'text'; lines: 'one' | 'many'; maxLength: number }
   | { kind: 'number'; min: number; max: number; decimals: 0 | 1 | 2; unit?: string;
       altUnit?: { unit: string; perUnit: number };          // inches: 2.54 cm each; stored in cm
-      display?: 'box' | 'stepper' | 'outOf' }
+      display?: 'box' | 'stepper' | 'outOf';
+      normal?: number }                                     // what one-tap Normal fills (strength: 5)
   | { kind: 'flag'; clears?: string[] }                     // a tick; while set, these sibling fields do not count and are disabled
   | { kind: 'date'; range: 'past' | 'future' | 'any' }
   | { kind: 'time' }
   | { kind: 'duration' }                                    // weeks and days, stored as days
   | { kind: 'group'; layout: 'stack' | 'row'; collapsed?: true; fields: Field[] }   // collapsed: closed until tapped
-  | { kind: 'grid'; rows: Option[] | { list: string } | { pickedIn: string }; cell: Field }   // one cell per row; see 2.3
-  | { kind: 'region'; options: Option[] | { list: string }; side?: 'side' | 'side_rl'; surface?: true }   // a body region
+  | { kind: 'grid'; rows: Option[] | { list: string } | { pickedIn: string }; cell: Field;
+      collapsed?: true }                                    // one cell per row; see 2.3
+  | { kind: 'region'; options: Option[] | { list: string }; side?: string; surface?: true }   // a body region
   | { kind: 'problem' }                                     // one diagnosis from the problem code list: its code and label
   | { kind: 'photo'; max: number }                          // phase 8; shown as a placeholder until then
-  | { kind: 'action'; action: 'show_handoff' | 'add_referral' | 'open_note_type'; noteType?: string }
+  | { kind: 'action'; action: 'show_handoff' | 'add_referral' }
+  | { kind: 'action'; action: 'open_note_type'; noteType: string }
   | { kind: 'info' }                                        // the label is guidance; nothing is stored
 );
 
@@ -177,9 +214,74 @@ type Condition =
   | { all: Condition[] } | { any: Condition[] } | { not: Condition };
 ```
 
-A condition's `field` is a path inside the same note type. Inside a repeating section it may be
-written relative to the entry, starting with `./`. Inside the cell of a grid, `./` means the
-row.
+A condition's `field` is a path inside the same note type. Inside a repeating section a field of
+the same entry is written relative to the entry, starting with `./`. Inside the cell of a grid,
+`./` means the row.
+
+**Conditions, as built.** The validator holds them to these rules, which the interpreters (F1,
+F2) can then rely on:
+
+- **A condition names an answer path (2.3), not a field.** A field with sides is named at
+  `<path>.right` or `<path>.left`, a region at `.region`, `.side` or `.surface`, a problem at
+  `.code` (or `.label`), one row of a grid at `<grid's path>.<row code>` (and
+  `<grid's path>.<row code>.<child>` when the cell is a group). A condition that names such a
+  field without its part, or `filled` on a group, a region or a problem as a whole, names no
+  answer (`validate.condition_unknown_field`; the message names the paths the field stores at).
+  `is` is allowed only where a code is stored (`validate.condition_not_a_choice`), and only with a
+  code that is there (`validate.condition_unknown_code`).
+- **`./` is the only way to name a field of the same entry.** An absolute path into a repeating
+  section names no one entry and is refused from anywhere (`validate.path_into_repeat`). `./`
+  where there is no entry or row, the repeating section's own `showWhen` included, is refused
+  too (`validate.relative_outside_entry`).
+- **Inside the cell of a grid `./` is the row**, in a repeating section as well, so a cell
+  cannot read a field of its own entry. The grid's own `showWhen` is read from the entry and can.
+  This is accepted as a limit: no piece of SPEC needs more.
+- A grid's `pickedIn` is read as a condition is, and must name a choose-many answer
+  (`validate.picked_in_unknown_field`, `validate.picked_in_not_choose_many`).
+- **A condition never reads what a reader may not see.** A condition, or a grid's picked rows,
+  in a section without `sensitiveExam` may not read an answer inside a section that has it, nor
+  test an option code marked `sensitiveExam`; the same for `treatmentRecord`
+  (`validate.condition_reads_restricted`, reported at the condition). What it shows would tell a
+  reader without the key what was found. `needs` is not covered: lifecycle 6.4 hides no `needs`
+  section from any reader; `needs` decides who may change an answer (rule 5).
+- No field's showing may depend on its own answer, through conditions, the sections, groups and
+  grids around it, picked rows or a clearing flag (`validate.condition_cycle`). The interpreters
+  can then work conditions out in dependency order.
+
+**What the schema and the validator add to the types, as built.** The schema check is
+`checkFile(kind, file)` in `src/schema.ts`. It is told the kind of file rather than guessing it
+from the keys, where a misspelt key would give a misleading kind.
+
+- **Patterns.** A note type key, a module's name, a list's name, and every `include`, `list`,
+  `suggests`, `noteType` and region `side` that names one: `^[a-z][a-z0-9_]{1,60}$`. A section's
+  or field's `id`, and each entry of `clears`: one path part, `^[a-z][a-zA-Z0-9_]{0,60}$`. An
+  option code, and each code of `is` and of `excludes`: `^[a-z][a-z0-9_]{0,40}$`. A condition's
+  `field` and a grid's `pickedIn`: one to four path parts, with an optional leading `./`.
+  `mapsTo`: `<key>:<path>`. `spec`: a piece's name, `^[a-z0-9][a-z0-9-]{0,60}$`, so it cannot be
+  a path. A version: a whole number from 1 to 2,147,483,647 (the table's `int`). A title, label,
+  help, unit, icon or `itemTitle`: at least one character that is not a space, and no control
+  character below U+0020, no DEL and no half of a surrogate pair.
+- **No empty lists**: `kinds`, `sections`, a section's or a group's `fields`, options and rows
+  written out, `excludes`, `clears`, `renames`, `is: []`, `all: []` and `any: []`. An empty `all`
+  is true and an empty `any` false only by a convention both interpreters would have to share,
+  and a choice with no options can never be answered. No code twice in `kinds`, `is` or `clears`;
+  each pair of `excludes` is exactly two codes; `perUnit` is above 0; `photo.max` is at least 1.
+- **`group` is required** on every note type: the timeline and the visit read need it for every
+  note (lifecycle 5.2).
+- **`noteType` goes with `open_note_type` only**: required there, refused on the other actions.
+- **A region's `side` names any shared list** (`side` has Bilateral, `side_rl` does not, Skin's
+  has Midline). `surface: true` asks for the shared list named `surface`: Anterior and Posterior
+  (SPEC 1258). The resolver copies both in as option lists, so a condition may test
+  `<path>.surface` with `is`. A region's options, side and surface may have no Other and no
+  exclusive option (`validate.region_option_flag`).
+- **`collapsed`** is allowed on a group and on a grid. It changes no path.
+- **A number's `normal`** is what one-tap Normal fills (focused-exam default 28: strength 5 of
+  5). It must lie inside `min` and `max`, at the field's `decimals` (`validate.number_normal`).
+  There is no `step`: a value in half units is written with `decimals: 1` and a box.
+- **`required`** is refused on a group, a grid, a region, a problem, a photo, an action and an
+  info (`validate.required_not_allowed`): the last three store nothing and would block Complete
+  for ever, and for the first four "filled" has no one meaning.
+- **`renames`** (2.6) is a key of a note type file only.
 
 ### 2.3 The fourteen kinds, what each stores, and where
 
@@ -196,7 +298,7 @@ row.
 | `duration` | a whole number of days | the field's path | weeks and days |
 | `group` | nothing itself | its children add a path part | the vitals row, blood pressure as two numbers, a heading with several fields |
 | `grid` | one cell value per row | the field's path, then the row's code. The cell's own ID is not a path part, unless the cell is a `group`: then its children's IDs follow the row's code. With `rows: { pickedIn }`, a row whose option is no longer picked does not count. | pulses by site, reflexes, a status for each vaccine picked, findings for each node group picked |
-| `region` | codes | the field's path, then `region` (a code from its options), `side` (from the list it names: `side` has Bilateral, `side_rl` does not), `surface` | the body map |
+| `region` | codes | the field's path, then `region` (a code from its options), `side` (a code from the shared list it names: `side` has Bilateral, `side_rl` does not, Skin's has Midline), `surface` (a code from the shared list `surface`: Anterior or Posterior) | the body map |
 | `problem` | a code and a label | the field's path, then `code` and `label`. What the note asks about the diagnosis (its status, the interventions) are ordinary fields beside it, and the section repeats, one entry per diagnosis. | the diagnosis search |
 | `photo`, `action`, `info` | nothing in phase 4 | | photos, buttons, guidance |
 
@@ -219,6 +321,23 @@ Every path has at most four parts, and every part matches the pattern of
 produce and refuses a definition with a part that does not match, or with a fifth part: a grid with sides inside a repeating section, for example. Nothing in SPEC
 needs one.
 
+As built:
+
+- **The Other text of a field with sides** is at `<field>_other.right` and `<field>_other.left`:
+  `_other` goes on the field's own part, before the side. In a grid's cell it is at
+  `<grid's path>.<row code>_other`.
+- **A field with sides has one condition for both sides.** A follow-up that shows for one side
+  only ("Location, when that lung is not Clear") is written as two fields, one for each side,
+  each with its own condition.
+- **One copy of these rules.** `src/paths.ts` works the paths out (`pathModel`, `leafAt`,
+  `pathsOf`); the validator and the version rules use it, and the interpreter (F1) will. It is
+  exported from the package's index and imports nothing, so the API's bundle can load it.
+- Besides a part that does not match (`validate.bad_path_part`) and a fifth part
+  (`validate.path_too_long`), the validator refuses two paths that collide
+  (`validate.path_collision`): an ID or a row code that equals another's `_other` path, or an
+  answer whose path is also the start of another's. `entryAt` and `entryRemoved` are refused as
+  the ID of any field at any depth, a grid's cell included (`validate.reserved_id`).
+
 ### 2.4 Limits
 
 - `MAX_NOTE_FIELDS` rises from 300 to 1,000 (`services/api/src/sync/records.ts:31`). A General
@@ -228,6 +347,14 @@ needs one.
 - A `text` field's `maxLength` is at most 4,000. A resolved definition is at most 256 KiB.
 - A section's `repeat.max` is at most 20. The phone holds to it. The server checks one answer at
   a time and does not count entries; the 1,000 limit is its bound.
+- As built, the validator checks the three limits again on the resolved definition
+  (`validate.text_too_long`, `validate.repeat_too_many`, `validate.too_large`). The 256 KiB are
+  the UTF-8 bytes of the definition's canonical JSON, as the server hashes it.
+- **How many answers a note can hold is printed, not refused.** No definition is refused for the
+  number of answers a note on it could hold (every path, each repeating section at its
+  `repeat.max`). The export prints that number for each note type, so whoever sets
+  `MAX_NOTE_FIELDS` sees how near a form comes to it: the review counted about 540 for Wound care
+  at 20 wounds, and a General note with every system charted can pass 1,000 on paper.
 
 ### 2.5 One complete small example
 
@@ -286,6 +413,28 @@ A note written on it could hold `{ "naloxone.offer": "accepted", "naloxone.doses
 - A draft started on version 2 stays on version 2 after version 3 is released. New notes use the
   newest version the server lists.
 
+As built (`src/versions.ts`, `checkVersions`):
+
+- **Each version is compared with every earlier version**, not only the one before it: a path
+  dropped in version 2 still has version 1's meaning when version 3 brings it back. A version
+  that does not resolve is skipped; the resolver says why.
+- The rules: a path whose kind of answer changed (`versions.kind_changed`); **a number whose unit
+  changed** (`versions.unit_changed`), since a number is stored in its field's unit and the same
+  path in another unit is another meaning (dropping a unit, or naming one for the first time,
+  passes: the unit compared is the last one a version named); an option's label, or **a field's
+  own label at a path it kept**, that changed with no rename declared (`versions.label_changed`);
+  and a declared rename that covers no change (`versions.rename_unused`), so the declarations stay
+  true.
+- **Renames are declared in the version's own file**, as `renames`: a list of
+  `{ path, code?, from, to }`. `path` is an answer path of this version without the entry part
+  (for a row of a grid, the grid's own path; for an option in a cell, each row's path); `code` is
+  an option code there, left out when the entry declares a change of the field's own label;
+  `from` is the label in the version before and `to` the label now. A field's own label is named
+  at its own path: without a side, without a region's or a problem's part, and once for each row
+  in a cell. Group labels and section titles store nothing and are not compared. The resolved
+  definition leaves `renames` out, so the hash the server stores does not depend on it.
+- Phase 4 ships version 1 of every note type, so these rules first bite in phase 5's editor.
+
 ## 3. How definitions reach the API, the phone and the portal
 
 ### 3.1 The table: `0017_note_type_versions.sql` (level X)
@@ -308,6 +457,15 @@ notes have a null version.
 
 Phase 5 adds its own table for which note types a team offers, archives or has removed, and
 writes `origin = 'team'` rows here. Phase 4 offers every installed key.
+
+As built, 0017 has three checks the column list above does not show: `definition` is a JSON
+object (`jsonb_typeof`), as every `jsonb` column of the schema is; `preset_version` is 1 or more;
+and **a row with `origin = 'preset'` names its `preset_version`**
+(`note_type_versions_preset_names_version`), so `installPresets` (card F3-install) sets it on
+every preset row, and a `team` row may leave it null. Beside the `forbid_mutation` trigger the app
+role loses `update` and `delete` on the table (`revoke`), as every append-only table has both.
+`insert ... on conflict do nothing` works for the app role. The row-level policy also lets a
+platform-scope request write and read a row of any team, as the policy of 0004 does.
 
 ### 3.2 Installing the presets
 
@@ -385,16 +543,40 @@ is built from `handoffLines` on the server (lifecycle 5.7).
    the definition.
 4. `pnpm forms:export` resolves, validates and writes the generated files.
 
+As built:
+
+- A piece's name is lower-case letters, digits and hyphens (`^[a-z0-9][a-z0-9-]{0,60}$`), and
+  any other file under `spec/` fails (`spec.unknown_file`). A section names its piece with
+  `spec`; as soon as one does, all three of the piece's files must exist (`spec.missing_text`,
+  `spec.missing_diff`, `shape.missing_file`). The `.txt` keeps blank lines, so a line number can
+  be found again; a line that holds `[left out]` is skipped whole and still counts as a line.
+- **The diff file has exactly four keys**, all of them there even when a list is empty: `piece`
+  (its name), `notOptions`, `added` and `differences` (each `{ line, what, why }`, exactly those
+  keys, `line` a line of the `.txt` counted from 1, `what` and `why` not empty). Entries are
+  written as the check reads a word: no brackets, one space between words, no entry twice
+  (`spec.bad_diff`). **Nothing is declared just in case**: a `notOptions` word that is no word of
+  the piece, or that is an option after all, fails (`spec.not_option_unused`,
+  `spec.not_option_is_option`), and so does an `added` label that no option has, or that is a word
+  of the piece (`spec.added_unused`, `spec.added_in_piece`). `differences` are checked for their
+  form only: they are for a person.
+- The export runs the schema check on every file first and **stops after schema problems**:
+  every later check reads files that passed `checkFile`, without looking again, and says so in
+  its header. Then each note type is resolved and validated, and the lock, the version rules,
+  the spec check and the shape check run over the whole tree. Each note type that includes a module or
+  names a list finds that file's faults again, so the export drops a problem it has already
+  printed (same file, place and rule).
+
 ### 4.2 What the export checks (each failure names the file and the rule)
 
 | Check | What it catches |
 |---|---|
-| The JSON Schema | A misspelt key, a missing label, a wrong type |
-| The semantic validator (`src/validate.ts`) | Two fields with one ID; a reserved ID (`entryAt`, `entryRemoved`); a condition that names no field; a list that does not exist; a path of five parts, or a path part the server would refuse; an option code used twice; an exclusive option in a choose-one field; a `required` field that can never be visible; a `mapsTo` that names no field |
-| The lock (`definitions.lock.json`) | A released version file, module or list whose content changed |
-| Version rules (2.6) | A path or code reused for another meaning |
-| The spec check (`src/spec-check.ts`) | An option in SPEC that is in no definition, and an option in a definition that is not in SPEC, unless `<piece>.diff.json` declares it |
-| The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: for every field its path, kind, choose-one or choose-many, the number of options, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal`. So a wrong choose-one, a wrong condition or a missing flag fails the export. |
+| The JSON Schema (`src/schema.ts`, `checkFile`) | A misspelt key, a missing label, a wrong type, a pattern or a limit of 2.2 and 2.4 |
+| The resolver (`src/resolve.ts`) | A note type file that is not there (`resolve.missing_file`); an include of a module or version that does not exist (`resolve.unknown_module`); a list that does not exist, the `surface` list a region asks for included (`resolve.unknown_list`); a file whose content names another key, name or version than its path (`resolve.misplaced_file`) |
+| The semantic validator (`src/validate.ts`) | Two fields with one ID; a reserved ID (`entryAt`, `entryRemoved`); a condition that names no field; a path of five parts, or a path part the server would refuse; an option code used twice; an exclusive option in a choose-one field; a `required` field that can never be visible; a `mapsTo` that names no field. Every rule, with its name, is listed below the table. |
+| The lock (`definitions.lock.json`, `src/lock.ts`) | A released version file, module, list or piece file whose content changed (`lock.changed`) or that is gone (`lock.missing`); a released version whose resolved definition's hash changed while its files did not (`lock.changed`, at the version's file); a released file that includes, names or is checked against a part that is not released, or a released version whose resolved hash the lock does not hold (`lock.unreleased_part`) |
+| Version rules (2.6, `src/versions.ts`) | A path or code reused for another meaning: a kind or a unit that changed, or a label that changed with no rename declared, against every earlier version |
+| The spec check (`src/spec-check.ts`) | For each file whose sections name a piece: a word of the piece that is no option label of those sections, and an option label there that is no word of the piece, unless `<piece>.diff.json` declares it; a declaration that nothing needs |
+| The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: for every field its path, kind, choose-one or choose-many, the number of options, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal`. So a wrong choose-one, a wrong condition or a missing flag fails the export. As built it compares every key, the option codes and the order (below). |
 | Drift | Generated files that differ from what the export writes (`git diff --exit-code`, as the contract does) |
 
 **The spec check** reads the bracketed tokens of the piece (`[ New concern ]`, with SPEC's
@@ -407,6 +589,105 @@ made by the planner, from the inventories, and written down once as the piece's 
 transcription card shows that file as its Decisions table. The small model types the options;
 the two checks together leave it nothing to decide and nothing it can get wrong unseen. That is
 what lets a transcription card be level S.
+
+**The spec check, as built** (`checkSpec`, `specWords`):
+
+- It reads three kinds of word in a piece's lines: every bracketed word, anywhere in a line
+  (`\[ New concern \]`, `&#91; YES \]`; empty brackets are skipped); every bullet line (`•` or
+  `◦`) that holds no bracket, as the whole line after the bullet; and every numbered line (`N.`
+  or `N)`) with no bracket in it or in the lines that continue it and nothing nested under it, as
+  the whole line after the number. Nothing else is a word: a heading, a numbered line with lines
+  nested under it, `1\. Eyes`, `A. Part`, a scale written `0 / 1+ / 2+`, a `Label: ___` line. A
+  word has SPEC's escapes undone (`&#NN;`, a backslash before a character or at the end of a
+  line, the no-break space), no space at its ends and one space between its parts.
+- **It works per file**: each file whose sections name a piece must hold all of the piece's
+  words, not the union of every definition. A later version that departs from the piece on
+  purpose names a piece of its own, with its own three files.
+- Words are compared exactly, capitals included, as one set per piece, with the option labels of
+  those sections: a choice's options, a grid's rows and its cell's options, a region's options,
+  its side list and its surface list, and options from shared lists. The check does not know
+  which field a word belongs to, or how often it appears: the shape check does.
+- A line with a bracket that has no partner fails (`spec.unclosed_bracket`) and stops the
+  comparison for that piece.
+- A label that reaches a definition only through `added`, because the check cannot read it as a
+  word on its line (an Other written as a heading over its text box, `Status: New, Chronic,
+  Improving, Worse`, a scale line, a button with an emoji), is named with its line in the diff
+  file's `differences`, so the auditor reads those few labels against the lines.
+
+**The shape check, as built** (`checkShapes`):
+
+- **A shape file** has the keys `piece`, `file`, `sections` and `fields`, and `header` and
+  `outside` where they are needed. `file` names the definition file the piece is typed into, by
+  its path under `definitions/`. **Exactly one shape file for a note type carries `header`**:
+  every top-level key of the note type but `sections` and `renames`, compared key by key
+  (`shape.missing_header`, `shape.header_differs`). A module has none.
+- `sections` lists each section that names the piece, in order, as the definition writes it
+  without `fields` and `spec`; `fields` lists every field at every depth, in written order, with
+  `path` (the ids from the section down, joined by dots; a group's child after the group, a
+  grid's cell after the grid) in place of `id`, and with no `fields` and no `cell`. **Every other
+  key is compared exactly, both ways**: labels and titles, `help`, ranges, units, `display`,
+  `action`, `clears`, `excludes`, `mapsTo`, `repeat`, `sensitiveExam` and the rest, so the shape
+  file is the Sections and Decisions tables in machine form. A key absent from the entry must be
+  absent from the definition.
+- **Options are their codes in order.** A field's `options`, and a grid's written-out `rows`, are
+  the list of the options' codes. A plain code must be the recipe's code rule applied to its
+  label (`codeOf`); where the planner gives a code the rule would not make, the entry is
+  `{ "code": …, "label": … }`. A code crossed with its label, invented, typed twice, moved to
+  another field or put out of order is found. `{ "list": … }` and `{ "pickedIn": … }` stay as
+  written. `flags` names, for each key an option carries beside its code and label, the codes
+  that carry it.
+- **Sections and fields are compared in order**: `shape.missing_section`, `shape.extra_section`,
+  `shape.section_order`, `shape.section_differs`, `shape.missing_field`, `shape.extra_field`,
+  `shape.field_order` (within its section) and `shape.field_differs`, whose path ends in the key
+  and whose message gives both values. A problem is placed in the definition, where it is mended.
+- **No definition is checked against nothing.** Once the file a shape file names exists, a piece
+  that no section of it names is `shape.missing_section`, and a section of it that names no piece
+  is `shape.unnamed_section` unless a shape file for that file lists its id under `outside`. A
+  piece whose file is not yet written is not looked for, so pieces can land before their
+  definitions.
+- **Shared lists have no shape.** A person reads each list's codes, order, flags and count
+  against the lines in the unit's review.
+
+**The lock, as built.** `definitions.lock.json` is a flat object from a path under
+`definitions/` to the SHA-256 of the file's content (its canonical JSON; a piece's `.txt` as
+text), so a file reformatted or written with its keys in another order is the same file. It
+holds every released note type version, module version and list; the three files of every piece
+a released definition names; and, at `<the version's file>#resolved`, the hash of each released
+version's resolved definition, computed as the server computes it. A change to the resolver that
+changes a released definition then fails the export, at the version's file, even though no file
+changed. A file is released by adding its line; a file with no line is a draft and may change.
+
+**The validator's rules, as built.** Each is reported as `validate.<rule>`, in the file and at
+the place it was written (through the resolver's origins), once:
+
+| Group | Rules |
+|---|---|
+| IDs and codes | `duplicate_section_id`, `duplicate_field_id`, `reserved_id`, `duplicate_code`, `excludes_unknown_code`, `excludes_same_code`, `excludes_in_choose_one` |
+| Paths (2.3) | `path_too_long`, `bad_path_part`, `path_collision` |
+| Conditions (2.2) | `condition_unknown_field`, `condition_unknown_code`, `condition_not_a_choice`, `relative_outside_entry`, `path_into_repeat`, `condition_cycle`, `condition_reads_restricted`; picked rows: `picked_in_unknown_field`, `picked_in_not_choose_many` |
+| Other note types (6.4, 6.7) | `unknown_note_type` (a `mapsTo`, `suggests` or `open_note_type` that names none), `maps_to_unknown_field`, `maps_to_mismatch`, `maps_to_in_grid`, `maps_to_twice`, `maps_to_from_repeat`, `maps_to_not_quick`, `maps_to_needs` |
+| What a key means where it is written | `exclusive_in_choose_one`, `region_option_flag`, `row_option_flag` (an Other or exclusive option among a grid's fixed rows), `sides_not_allowed`, `required_not_allowed`, `grid_in_grid`, `grid_cell_stores_nothing`, `clears_unknown_field` (a flag clears a sibling, never itself), `number_range_empty` (min above max, or no value at the field's decimals between them), `number_normal` |
+| Visibility | `required_never_visible`, `visibility_too_complex` |
+| Limits (2.4) | `text_too_long`, `repeat_too_many`, `too_large` |
+
+- `required_never_visible` searches every answer a required field's showing depends on: the
+  conditions of its section and of the groups and grid around it, picked rows, exclusive options,
+  blocked pairs and clearing flags, reading only answers that count (a hidden or cleared answer
+  does not, 7.1). A choose-many is tried one asked code at a time, only when a condition needs
+  it. A search past 20,000 tries, or a chain of follow-ups more than 200 deep, is refused as
+  `visibility_too_complex` and never passed; the message names the limit hit. When a module's
+  field can show only without the condition of the include that brought it in, the fault, or a
+  cycle that condition makes, is reported at the include's `showWhen` in the note type's file.
+- `maps_to_mismatch`: the full field must take every answer the quick field can store, or Expand
+  would write an answer the server refuses: the same kind; choose-one or choose-many alike; codes
+  a subset, with every blocked pair and exclusive option of the full field held in the quick one
+  too; text no longer; a number in the same unit, inside the range, at no more decimals; a date
+  range that fits; the same sides, region parts and Other text. The other `mapsTo` rules are in
+  6.4.
+- **Header keys that make no sense where they are written stay allowed**: `auto` on a note type
+  offered for Non-Medical encounters too, `quick` with no `mapsTo`, an `itemTitle` without `{n}`,
+  a problem field outside a repeating section. Neither interpreter nor the renderer depends on
+  them.
 
 ### 4.3 How one piece of SPEC maps to data
 
@@ -434,6 +715,13 @@ come before the cards that use them. The lists this phase needs at least: `wound
 410 gives it in full), `body_region`, `side` (Right, Left, Bilateral), `side_rl` (Right, Left),
 `pulse_scale` (0, 1+, 2+, 3+, unable to assess; PRD main 414), `reflex_scale` (0 to 4+),
 `drainage_amount`, `dressing`, `needs`, `yes_no_unknown`.
+
+As built, a region's `side` names any of these lists, and two more are needed: `surface`
+(Anterior, Posterior; SPEC 1258), which every region with `surface: true` takes, and Skin's side
+list, Right, Left and Midline (focused-exam inventory, default 24). A list has no version and no
+shape file: the lock freezes it once released, so a list that must change is a new list under a
+new name, and a person reads its codes, order, flags and count against the lines when the unit
+is reviewed.
 
 ## 5. The inventory, and the decisions that shape it
 
@@ -509,6 +797,11 @@ a one-tap Normal" (PRD main 414).
   (10.2). One-tap Normal takes the entry it is tapped in.
 - One-tap Normal fills visible fields only: the cranial nerve groups that stay hidden while the
   screen is "Grossly intact" are not filled.
+- What the format gained for the exam, as built: Neurologic reflexes are an optional table
+  recorded by side (focused-exam defaults 25 and 26), so a grid can be `collapsed` like a group,
+  at no cost in path parts; motor strength is a number whose `normal` is 5, what one-tap Normal
+  fills (default 28); Skin's side list has Midline (default 24), so a region's `side` names any
+  shared list.
 
 ### 6.4 The Quick encounter
 
@@ -530,6 +823,21 @@ re-entering what they filled in" (PRD main 409).
   the server holds a change to it from anyone else (lifecycle 6.4, rule 5).
 - Medication delivery set to Yes "creates a delivery task" (PRD main 418). The answer is
   recorded now. The task is created in phase 7, which builds tasks.
+- **What the validator holds `mapsTo` to, as built.** Only a note type with `quick: true` maps
+  (`validate.maps_to_not_quick`). No two fields map to one target (`validate.maps_to_twice`):
+  Expand would write two answers to one path. A field inside a repeating section does not map
+  (`validate.maps_to_from_repeat`): it has an answer for each entry, and Expand has one full field
+  to write them to. A cell of a grid does not map; the grid does (`validate.maps_to_in_grid`). A
+  target in a section with `needs` needs the same `needs` on the source's section
+  (`validate.maps_to_needs`): Expand by anyone without the capability would be a held change. A
+  target shown only under a condition is allowed. The full field must take every answer the quick
+  field can hold (`validate.maps_to_mismatch`, 4.2).
+- **These checks across note types run only for the newest version of the quick note type,
+  against the newest version of the target note type.** A released older quick version is not
+  checked again: it can no longer be edited, and the newest full version may have moved on.
+- **Expand from a draft written on an older quick version** (PLAN-OPEN 10.1 #12) reads the
+  draft's own version, writes each answer only where the newest full version takes it
+  (`checkAnswer`), and lists for the person the answers it left out.
 
 ### 6.5 Sexual and reproductive branching
 
@@ -551,6 +859,9 @@ special to this note type.
 - The exam picker's options for GU, breast and rectal carry `sensitiveExam`. `visibleAnswers`
   drops those codes from the picker's answer for a reader without the key, and `recapLines`
   drops them for everyone, so the overview does not say the exam was done.
+- A condition outside a sensitive exam section never reads an answer in one, nor tests a picker
+  code marked `sensitiveExam` (2.2, `validate.condition_reads_restricted`): what it showed would
+  tell a reader without the key what was found. The same holds for a `treatmentRecord` section.
 
 ### 6.7 Nothing charted twice
 
@@ -723,6 +1034,7 @@ the rest of the visit page.
 | 9 | The label of the psych note type (three names in the PRD) | "Behavioral health"; key `psychological` | Brooke and Mercy |
 | 10 | May the field specification's lines be copied into the repository, piece by piece? | Yes: the spec check needs them (4.1). Without them, every transcription card is read against SPEC by the auditor instead. The example that names a real organization (SPEC 263 to 265) is left out of the copy | The project lead |
 | 11 | Which timeline filter each note type belongs to | The mapping in section 5 | Brooke and Mercy |
+| 12 | What Expand does with a Quick encounter draft written on an older released version | It reads the draft's own version, writes each answer only where the newest full version takes it (`checkAnswer`), and lists for the person the answers it left out (6.4) | Brooke and Mercy |
 
 ### 10.2 Questions that need a person and have no default
 
@@ -767,7 +1079,9 @@ the rest of the visit page.
    how phase 2 works, and its sync batches them, but a visit with every system charted is a few
    hundred changes. The live job should include one.
 5. **A definition is 256 KiB at most** and the General note type with sixteen modules is the
-   largest. If it passes the limit, split the exam into a note type of its own.
+   largest. If it passes the limit, split the exam into a note type of its own. The number of
+   answers a note can hold is bounded by the server's `MAX_NOTE_FIELDS`, and the export prints it
+   for each note type (2.4), so a form that comes near it is seen before a visit does.
 
 ## 11. Units
 
@@ -776,9 +1090,9 @@ their levels, files and order. This part's units, and what each owns:
 
 | Unit | Owns | Depends on |
 |---|---|---|
-| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/` and `scripts/`: the schema, the types, the resolver, the validator, the lock, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
+| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/`, `scripts/` and `test/export.test.ts`: the schema, the types, the path model, the resolver, the validator, the lock, the version rules, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
 | **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/contract/test-vectors/forms-conformance.json` and its two readers | F0 |
-| **E** The export | `packages/forms/scripts/`, the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
+| **E** The export | `packages/forms/scripts/` and its test, `packages/forms/test/export.test.ts`; the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
 | **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the golden test | F1 (the vectors), E (the golden file) |
 | **F3** Definitions on the server | `db/migrations/0017_note_type_versions.sql`, `packages/forms/src/install.ts`, `services/api/src/forms/`, `services/api/src/routes/forms.ts` | F0, E |
 | **F4** Definitions on the phone | `apps/mobile/lib/forms/definition_store.dart`, `forms_api.dart`, `forms_providers.dart`; one level X card adds the calls in `lib/auth` and `lib/sync` | F2, F3 |
