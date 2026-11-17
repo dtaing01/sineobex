@@ -452,14 +452,13 @@ Only decisions that change a field, an option, a section or a flow of a note typ
 
 ## 8. Transcription work-list
 
-Lines 1 to 4 are a title and need no card. Lines 149 and 172 are blank. Every piece is under 120 lines. 14 pieces; the field counts add up to 127.
+Lines 1 to 4 are a title and need no card. Lines 149 and 172 are blank. Every piece is under 120 lines. 13 pieces; the field counts add up to 127. Pieces 3 and 4 are one since wave B (see the notes): their row is numbered 3–4, so the numbers of the rows after it, which other documents cite, stay as they were.
 
 | # | Note type | Part | SPEC lines | Fields |
 |---|---|---|---|---|
 | 1 | General / Primary Care | Subsection 1 (Reason for Encounter) and Subsection 2 (History of Present Illness: narrative, Preventative Care, Vitals, Focused Exam picker) | 5–28 | 14 |
 | 2 | General / Primary Care | Subsection 3, its Problem part (Assessment: diagnosis search, Status, Intervention), and Encounter Summary | 29–35, 61–62 | 4 |
-| 3 | Wound Care | Subsection 1 (Wounds) and Subsection 2 (WOUND 1: location to systemic symptoms) | 63–103 | 14 |
-| 4 | Wound Care | Subsection 3 (WOUND TREATMENT) | 104–119 | 6 |
+| 3–4 | Wound Care | Subsection 1 (Wounds), Subsection 2 (WOUND 1: location to systemic symptoms) and Subsection 3 (WOUND TREATMENT): one piece, `wound` | 63–119 | 20 |
 | 5 | Harm Reduction | Whole note type | 120–148 | 12 |
 | 6 | Psychological | Whole note type | 150–171 | 7 |
 | 7 | Sexual and Reproductive | Reason, and the Pregnancy, Contraception and Menstrual Health blocks | 173–203 | 14 |
@@ -475,7 +474,8 @@ Notes for the cards:
 
 - Piece 8 hangs off the Reason row in piece 7 (line 176), and piece 13 off the selector in piece 12 (line 285). Each card must name the parent field's id.
 - Piece 9 is short; it can be joined to piece 8 (204–251, 48 lines, 11 fields) if fewer cards are wanted.
-- Pieces 1, 3, 7 and 12 hold option lists that section 5 says are shared. Decide the shared list names before those cards are written.
+- Pieces 1, 3–4, 7 and 12 hold option lists that section 5 says are shared. Decide the shared list names before those cards are written.
+- Pieces 3 and 4 were joined into one, `wound` (63–119), in wave B. A section names one piece (forms 4.1), and A26 puts the treatment in each wound: only as one piece can Subsection 3 sit inside the repeating Wound section, as a group, Wound treatment, in each entry. The card is F6-wound, and it needs the red flags note type first, since a wound's Urgent infection concern opens it (`unknown_note_type` until it exists).
 - Piece 14 (`red-flags`) was cut out of piece 2 (`general-2`) once the red flags became a note type of their own (forms 6.2): it has its own three files under `definitions/spec/`, and piece 2 is lines 29 to 35 and 61 to 62. Lines 61 and 62, the Encounter Summary, are the visit's assessment (lifecycle 9.6), not a field of any note, so no definition types them: piece 2's diff file declares their words. The field count keeps this inventory's way of counting.
 - Each card should carry the fixes from section 6 and section 9 that touch its lines, so the small model does not copy the old version.
 

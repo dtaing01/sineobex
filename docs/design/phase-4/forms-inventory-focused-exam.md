@@ -557,8 +557,7 @@ Every card should also be given the rules from sections 6 and 8 that change its 
 | 7 | Cardiovascular | C. Peripheral Perfusion, D. Edema, E. JVD | 670–732 | 63 | 8 |
 | 8 | Pulmonary / Respiratory | whole system (A–C) | 734–820 | 87 | 8 |
 | 9 | Abdominal / GI | whole system (A–G) | 822–910 | 89 | 9 |
-| 10 | Musculoskeletal (MSK) | intro, A. Region Selector, B. Inspection, C. Palpation, D. ROM | 912–994 | 83 | 6 (7 with side) |
-| 11 | Musculoskeletal (MSK) | E. Strength, F. Neurovascular, G. Gait, H. Region-Specific Tests | 996–1068 | 73 | 11 (12 with tone) |
+| 10–11 | Musculoskeletal (MSK) | the whole system: intro, A. Region Selector, B. Inspection, C. Palpation, D. ROM, E. Strength, F. Neurovascular, G. Gait, H. Region-Specific Tests; one piece, `exam-msk` | 912–1068 | 157 | 17 (19 with side and tone) |
 | 12 | Neurologic | A. Mental Status, B. Cranial Nerves | 1070–1150 | 81 | 10 |
 | 13 | Neurologic | C. Motor Strength, D. Sensory, E. Coordination, F. Reflexes, G. Gait | 1152–1222 | 71 | 12 |
 | 14 | Skin | whole system (A–C) | 1224–1330 | 107 | 10 |
@@ -573,13 +572,22 @@ Every card should also be given the rules from sections 6 and 8 that change its 
 | 23 | Focused Exam Workflow | Step 1 picker, Step 2 review, and Step 4 buttons | 1780–1836 and 2032–2036 | 57 + 5 | 1 (the picker, 17 entries) |
 | — | Focused Exam Workflow | Step 3 worked example: **do not transcribe**; reference only | 1838–2030 | 193 | 0 |
 
-That is 23 cards. Lines 333–334 are the two heading lines and need no card. The largest card is
-Skin at 107 lines. Cards 4 and 5 can be merged (524–608, 85 lines, 6 fields) and so can cards 16
-and 22 with a neighbour, if fewer cards are wanted.
+That is 22 cards. Lines 333–334 are the two heading lines and need no card. The largest card is
+MSK at 157 lines (line 995 is blank), then Skin at 107. Cards 4 and 5 can be merged (524–608, 85
+lines, 6 fields) and so can cards 16 and 22 with a neighbour, if fewer cards are wanted.
 
-Cards that are not plain transcription and need the designer's shape first: 10 and 11 (region
-gate, tests), 12 (screen then expand), 13 (reflex table), 14 (repeating entry), 15, 18 and 19
-(sensitive block), 16 (repeat per node group), 7 and 17 (pulse grids and the single pulse scale).
+Cards 10 and 11 were joined into one piece, `exam-msk`, in wave B, so that MSK is one repeating
+section with one entry per region (default 16): a section names one piece (forms 4.1), and the
+second card's parts could not otherwise read the region of the first card's entry. Its row is
+numbered 10–11, so the numbers after it, which other documents and the diff files cite, stay as
+they were. The 21 module pieces are rows 1 to 22, rows 10 and 11 being one; the picker is row 23,
+the 22nd piece. As planned, gait (part G) is one answer for the exam, in a second section of the
+module, not one per region (forms 6.3).
+
+Cards that are not plain transcription and need the designer's shape first: 10–11 (one entry
+per region, tests, gait once), 12 (screen then expand), 13 (reflex table), 14 (repeating entry),
+15, 18 and 19 (sensitive block), 16 (repeat per node group), 7 and 17 (pulse grids and the single
+pulse scale).
 
 ## 8. Ambiguities, contradictions and gaps
 
