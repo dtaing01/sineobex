@@ -505,22 +505,26 @@ writes `origin = 'team'` rows here. Phase 4 offers every installed key.
 As built, 0017 has three checks the column list above does not show: `definition` is a JSON
 object (`jsonb_typeof`), as every `jsonb` column of the schema is; `preset_version` is 1 or more;
 and **a row with `origin = 'preset'` names its `preset_version`**
-(`note_type_versions_preset_names_version`), so `installPresets` (card F3-install) sets it on
-every preset row, and a `team` row may leave it null. Beside the `forbid_mutation` trigger the app
-role loses `update` and `delete` on the table (`revoke`), as every append-only table has both.
-`insert ... on conflict do nothing` works for the app role. The row-level policy also lets a
-platform-scope request write and read a row of any team, as the policy of 0004 does.
+(`note_type_versions_preset_names_version`), so `installPresets` (3.2) sets it on every row it
+writes, to the row's own version, and a `team` row may leave it null. Beside the `forbid_mutation`
+trigger the app role loses `update` and `delete` on the table (`revoke`), as every append-only
+table has both. `insert ... on conflict do nothing` works for the app role. The row-level policy
+also lets a platform-scope request write and read a row of any team, as the policy of 0004 does.
+**The hash is checked for its form only** (64 lower-case hex characters): nothing in the database
+ties it to the definition. The export computes it (4.2), and the installer writes it as the
+export wrote it.
 
 ### 3.2 Installing the presets
 
-`installPresets(tx, teamId)` in `services/api/src/forms/install.ts` inserts every version in
+`installPresets(tx, teamId)` in `packages/forms/src/install.ts` inserts every version in
 `@sineobex/forms`'s `generated/presets.json` that the team does not have, with
 `on conflict do nothing`. If a row exists with a different hash it throws: a released version
-was edited, which the lock file should have stopped.
+was edited, which the lock file should have stopped. It lives in the forms package because the
+seed calls it as well as the API (11).
 
 It runs in three places, each inside a transaction that already exists:
 
-1. When a team is created (`services/api/src/routes/owner.ts:136`).
+1. When a team is created (`services/api/src/routes/owner.ts`, the team creation route).
 2. In the seed (`db/seed/seed.ts`).
 3. At the start of `GET /v1/forms/note-types` (3.3), so a team gets a new platform version the
    first time one of its phones asks, with no deploy step. The write is idempotent. When it
@@ -530,6 +534,53 @@ It runs in three places, each inside a transaction that already exists:
 
 "A later platform update to a preset never overwrites a team's edited copy" (PRD main 387):
 from phase 5 on, `installPresets` skips a key whose newest row has `origin = 'team'`.
+
+As built (unit F3):
+
+- **The signature** is `installPresets(sql, teamId, { presets?, onDiffer? })`, which answers
+  `{ installed, differing }`, each a list of `{ key, version }`. `sql` is the caller's
+  transaction as a tagged template (a postgres.js transaction is one). The installer never opens
+  a transaction of its own: the package imports no database library, and the API is bundled for
+  an edge runtime. The transaction must be allowed to write the team's rows: the team's own scope
+  or platform scope, the two arms of 0017's policy. `presets` is `PRESETS` when left out, the
+  export's `generated/presets.json` imported as JSON. The tests install the fixture note types
+  instead (passed in, or put in that file's place for the API's tests), since the real file is
+  empty until the definitions are typed.
+- **What it does.** It reads the key, version and hash of every row the team holds, then writes
+  every preset the team lacks in one statement (`insert ... select ... from
+  jsonb_to_recordset(...) on conflict do nothing returning key, version`), each row
+  `origin = 'preset'`. The rows travel as one text cast to `jsonb`: a parameter typed `jsonb`
+  would be written as one JSON string. Two installs of one team at once write nothing twice: the
+  second waits on the first's rows. A version the statement did not write was written by another
+  transaction after the read; it is read again, and must hold the preset's hash too. With no
+  presets it asks the database nothing.
+- **A row with another hash is never overwritten, and never passed over in silence.** By default
+  the installer throws `PresetDiffers`, which names each key and version and nothing else, and
+  the caller's transaction writes nothing. With `onDiffer: 'skip'` it installs none of that key's
+  versions and answers them in `differing`.
+- **Team creation** installs in the platform-scope transaction that creates the team and, when
+  it installed anything, writes `forms.presets_installed` (`{ installed }`) in the team's audit
+  chain. A new team holds no row, so nothing can differ; a failure fails the creation, and no
+  team, role or audit event is left.
+- **The seed** installs in both seeded teams, the demo team and its neighbour, in platform scope,
+  and logs how many versions each got; a second seed writes nothing. It takes `presets` as an
+  option, so a test can seed the fixture note types.
+- **The list route** installs with `onDiffer: 'skip'` in the team's own transaction, before it
+  reads the list (`listNoteTypes`, `services/api/src/forms/definitions.ts`), and writes
+  `forms.presets_installed` when it wrote a row, the member whose request wrote it being the
+  actor. A differing key is logged as `forms.preset_differs` (level error, with the request, the
+  team and how many versions) and is not named: the log's allowlist has no key for it, and the
+  team's rows name it. The list still answers, with the row the team holds for that key.
+
+**Open, to settle before the first release (wave D).** The export writes every note type
+version it resolves to `generated/presets.json`, drafts included (2.1), and the installer keeps
+what it is given for good. A draft installed in a team and then changed, as a draft may be
+(4.2), would be reported as "a released version was edited": the list route would skip every
+version of that key in each team holding the old draft, and a second seed would throw. Either
+the export writes to the presets only the versions whose `#resolved` line the lock holds, and
+notes the drafts, or each preset says whether it is released and the installer skips drafts.
+Either changes 2.1 and this section. Nothing is affected yet: `presets.json` is empty and there
+is no lock.
 
 ### 3.3 Routes
 
@@ -544,6 +595,44 @@ when it writes.
 On the server, `definitionFor(tx, teamId, key, version)` reads one row and keeps it in memory.
 Rows never change, so the cache never goes stale. The sync rules and the visit read use it.
 
+As built (unit F3):
+
+- **Both routes are in `services/api/src/routes/forms.ts`**, their work in
+  `services/api/src/forms/definitions.ts`. Each takes the team scope: a signed-in member of the
+  team named in `X-Team-Id`, whatever their role. No permission key guards them, since a
+  definition holds no patient data; `permissions.test.ts` lets every role through, one with no
+  permission among them, and refuses a member of another team. Without a sign-in the answer is
+  401, without a team 400 `team_required`, for another team 403 `not_a_member`.
+- **The list** answers `{ noteTypes }`, one entry per key the team holds, ordered by key:
+  `{ key, version, title, kinds, sensitivity, quick, auto, hash }` of its newest version, read
+  from that row's definition (`quick` false and `auto` null where the definition leaves them
+  out). It installs first (3.2). Its query names the team itself, so even a platform-scope
+  transaction, which row-level security lets read every team's rows, lists one team's. It is
+  `no-store`, as every response is but a definition found (below), and is not audited.
+- **One version** answers `{ key, version, hash, definition }`, the row the team holds. A key
+  outside the key pattern, or a version that is not plain digits from 1 with no leading zero
+  (`0`, `01`, `1.5` and `-1` are refused), is 422, so one version has one URL. A version the
+  team does not hold is 404 `not_found`, `no-store`, since it may be installed later. A definition
+  found is sent with `Cache-Control: private, max-age=31536000, immutable` and
+  `Vary: Authorization, X-Team-Id`: private, because from phase 5 two teams may hold different
+  definitions at one URL. It is not audited.
+- **The one exception to `no-store`.** The app sets `Cache-Control: no-store` and
+  `Pragma: no-cache` on every response (`services/api/src/app.ts`), and leaves one alone only when
+  its `Cache-Control` is exactly the definition's value. A handler that sets any other lifetime
+  still gets `no-store`.
+- **`definitionFor`** answers `{ key, version, hash, definition }`, or undefined. It keeps each
+  row it reads in a map for the life of the process, keyed by team, key and version, and frozen
+  through and through, so no caller can change the copy another holds. A missing row is not
+  kept: it may be installed later. The caller's transaction must be in that team's scope, as
+  every team-scope transaction is: a kept row is answered without a read, so the team ID is what
+  keeps teams apart. Today only the one-version route calls it; the sync rules (lifecycle 4.4)
+  and the visit read (lifecycle 5.1) will.
+
+**Open, to settle when the sync rules call `definitionFor`.** Its map has no bound, and keeps one
+copy of the same preset for each team. Sharing one frozen copy per hash is safe only after
+checking that a row's definition is the one kept, since 0017 checks a hash's form and not what
+it hashes (3.1); a bound, such as dropping the least recently used, is a separate choice.
+
 ### 3.4 The phone
 
 - Right after `/v1/me`, and at each sync, the phone asks for the team's list.
@@ -557,6 +646,18 @@ Rows never change, so the cache never goes stale. The sync rules and the visit r
   normal sign-in, which is online.
 - The phone keeps the definition of every note it holds, whatever its version, so an old draft
   opens offline.
+
+As built (units E and F2): the bundled asset is `apps/mobile/assets/forms/presets.json`, listed
+under the assets of `apps/mobile/pubspec.yaml`. The export writes it with the same bytes as
+`packages/forms/generated/presets.json`, in the same run, and the Forms drift step fails CI when
+either differs from what the export writes (4.2). Each entry is
+`{ key, version, hash, definition }`, in key and version order, the definition in canonical key
+order. It is an empty list until the definitions are typed. The phone reads a definition with
+`NoteTypeDef.fromJson` (`apps/mobile/lib/forms/definition.dart`), which refuses a shape the
+validator would never pass with a `FormatException` that names its place, never a cast error
+deep in a screen. The golden test holds each bundled preset's hash to its definition's (7.3).
+The definition store, the download and the calls after `/v1/me` and at each sync are unit F4's,
+not built yet.
 
 ### 3.5 The portal
 
