@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { z } from '@hono/zod-openapi';
+import {
+  canonicalJson as definitionJson,
+  installPresets,
+  sha256Hex,
+  type InstallSql,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import { expect } from 'vitest';
 import { canonicalJson, valueHash } from '../src/sync/canonical.ts';
 import type { ChangeEntity } from '../src/sync/schemas.ts';
@@ -73,6 +81,38 @@ export class FakePhone {
   }
 }
 
+/**
+ * The test-only note types (lifecycle 4.4): phase 2's tests chart on them, so every note they make
+ * names a key and version its team holds. Shared with the phone's tests.
+ */
+export const TEST_NOTE_TYPES: readonly ResolvedNoteType[] = (
+  JSON.parse(
+    readFileSync(
+      new URL('../../../packages/contract/test-vectors/sync-note-types.json', import.meta.url),
+      'utf8',
+    ),
+  ) as { noteTypes: ResolvedNoteType[] }
+).noteTypes;
+
+/** A Non-Medical note type: what phase 2's tests chart on. Spread into a note's create. */
+export const TEST_NOTE = { noteTypeKey: 'test_note', noteTypeVersion: 1 } as const;
+
+/** A Medical note type with the same sections. */
+export const TEST_MEDICAL = { noteTypeKey: 'test_medical', noteTypeVersion: 1 } as const;
+
+/** Installs the test-only note types in a team, as the presets are installed. */
+export async function installTestNoteTypes(h: Harness, teamId: string) {
+  const presets = await Promise.all(
+    TEST_NOTE_TYPES.map(async (definition) => ({
+      key: definition.key,
+      version: definition.version,
+      hash: await sha256Hex(definitionJson(definition)),
+      definition,
+    })),
+  );
+  await installPresets(h.scratch.owner as unknown as InstallSql, teamId, { presets });
+}
+
 export interface Team {
   teamId: string;
   ownerToken: string;
@@ -105,6 +145,7 @@ export async function setupTeam(h: Harness): Promise<Team> {
   });
   expect(team.status).toBe(201);
   const teamId = team.body.id as string;
+  await installTestNoteTypes(h, teamId);
   const admin = await call(h, `/v1/owner/teams/${teamId}/program-admins`, {
     method: 'POST',
     token: ownerToken,
@@ -145,6 +186,7 @@ export async function secondTeam(h: Harness, name = 'Second Team', prefix = 'sec
   });
   expect(team.status).toBe(201);
   const teamId = team.body.id as string;
+  await installTestNoteTypes(h, teamId);
   const admin = await call(h, `/v1/owner/teams/${teamId}/program-admins`, {
     method: 'POST',
     token: ownerToken,

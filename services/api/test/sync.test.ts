@@ -18,6 +18,7 @@ import {
   secondTeam,
   setRole,
   setupTeam,
+  TEST_NOTE,
   type Team,
 } from './sync-fixtures.ts';
 
@@ -98,7 +99,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     const note = await phoneA.change({
       entity: 'encounter_note',
       op: 'create',
-      value: { encounterId: encounter.recordId, noteTypeKey: 'wound_care', data },
+      value: { encounterId: encounter.recordId, ...TEST_NOTE, data },
     });
     const r = await push(h, phoneA, t.aToken, t.teamId, [encounter, note]);
     expect(results(r.body).map((x) => x.status)).toEqual(['accepted', 'accepted']);
@@ -193,7 +194,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         op: 'create',
         value: {
           encounterId: encounter.recordId,
-          noteTypeKey: 'wound_care',
+          ...TEST_NOTE,
           data: { 'wound.site': 'left forearm' },
         },
       });
@@ -339,21 +340,21 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.a',
+        field: 'data.extra.a',
         value: 'x\u0000y',
       });
       const lone = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.b',
+        field: 'data.extra.b',
         value: 'x\ud800',
       });
       const fine = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.c',
+        field: 'data.extra.c',
         value: 'ok',
       });
       const r = await push(h, phoneA, t.aToken, t.teamId, [nul, lone, fine]);
@@ -371,13 +372,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const set = (field: string, more: Record<string, unknown> = {}) =>
         phoneA.change({ entity: 'encounter_note', recordId: noteId, op: 'set', field, value: 'ok', ...more });
       const unreadable = [
-        await set('data.a', { baseVersion: 2_147_483_648 }),
-        await set('data.b', { deviceTime: '0000-01-01T00:00:00.000Z', clockVerified: false }),
+        await set('data.extra.a', { baseVersion: 2_147_483_648 }),
+        await set('data.extra.b', { deviceTime: '0000-01-01T00:00:00.000Z', clockVerified: false }),
         // An offset that carries a time into year 0000, or past 9999.
-        await set('data.c', { correctedTime: '0001-01-01T00:30:00+01:00' }),
-        await set('data.d', { deviceTime: '9999-12-31T23:30:00-01:00' }),
+        await set('data.extra.c', { correctedTime: '0001-01-01T00:30:00+01:00' }),
+        await set('data.extra.d', { deviceTime: '9999-12-31T23:30:00-01:00' }),
       ];
-      const fine = await set('data.e');
+      const fine = await set('data.extra.e');
       // The phone reports its oldest unsynced change, which can be one of those.
       const oldest = '0000-01-01T00:00:00.000Z';
       const refused = await push(h, phoneA, t.aToken, t.teamId, [...unreadable, fine], { oldest });
@@ -398,8 +399,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
 
       // The edges are a phone's: a reset clock reads the epoch, and the largest version fits.
       const edges = [
-        await set('data.f', { deviceTime: '1970-01-01T00:00:00.000Z', baseVersion: 2_147_483_647 }),
-        await set('data.g', { correctedTime: '9999-12-31T23:59:59.999Z' }),
+        await set('data.extra.f', { deviceTime: '1970-01-01T00:00:00.000Z', baseVersion: 2_147_483_647 }),
+        await set('data.extra.g', { correctedTime: '9999-12-31T23:59:59.999Z' }),
       ];
       const stored = await push(h, phoneA, t.aToken, t.teamId, edges);
       expect(results(stored.body).map((x) => x.status)).toEqual(['accepted', 'accepted']);
@@ -409,13 +410,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const note = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: randomUUID(), noteTypeKey: 'wound_care' },
+        value: { encounterId: randomUUID(), ...TEST_NOTE },
       });
       const edit = await phoneA.change({
         entity: 'encounter_note',
         recordId: note.recordId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'rest',
         follows: note.changeId,
       });
@@ -426,7 +427,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: note.recordId,
         op: 'create',
-        value: { encounterId, noteTypeKey: 'wound_care', data: { plan: 'rest' } },
+        value: { encounterId, ...TEST_NOTE, data: { 'care.plan': 'rest' } },
         supersedes: note.changeId,
       });
       expect(results((await push(h, phoneA, t.aToken, t.teamId, [fix])).body)[0]!.status).toBe('accepted');
@@ -630,7 +631,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const note = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: randomUUID(), noteTypeKey: 'wound_care' },
+        value: { encounterId: randomUUID(), ...TEST_NOTE },
       });
       const r = await push(h, phoneA, t.aToken, t.teamId, [note]);
       expect(results(r.body)[0]).toMatchObject({ status: 'rejected', reason: 'stale_reference' });
@@ -638,22 +639,24 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
 
     it('a note has at most 300 data fields, at create and as fields are added', async () => {
       // Review finding: 6,400 keys per note made one push write ~96,000 permanent history rows.
-      const tooMany = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`f${i}`, i]));
+      // An answer in each of many entries of the test note type's repeating section.
+      const rowPath = (i: number) => `rows.e${String(i).padStart(7, '0')}.n`;
+      const tooMany = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [rowPath(i), i]));
       const { encounterId } = await syncedDraft();
       const big = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId, noteTypeKey: 'vitals', data: tooMany },
+        value: { encounterId, ...TEST_NOTE, data: tooMany },
       });
       expect(results((await push(h, phoneA, t.aToken, t.teamId, [big])).body)[0]).toMatchObject({
         status: 'rejected',
         reason: 'validation',
       });
-      const full = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`f${i}`, i]));
+      const full = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [rowPath(i), i]));
       const ok = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId, noteTypeKey: 'vitals', data: full },
+        value: { encounterId, ...TEST_NOTE, data: full },
       });
       const change = (field: string) =>
         phoneA.change({
@@ -666,8 +669,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         });
       const r = await push(h, phoneA, t.aToken, t.teamId, [
         ok,
-        await change('data.f0'),
-        await change('data.f300'),
+        await change(`data.${rowPath(0)}`),
+        await change(`data.${rowPath(300)}`),
       ]);
       expect(results(r.body).map((x) => [x.status, x.details?.problem])).toEqual([
         ['accepted', undefined],
@@ -677,7 +680,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
 
     it('a signed note refuses changes', async () => {
-      const { noteId } = await syncedDraft({ plan: 'dress daily' });
+      const { noteId } = await syncedDraft({ 'care.plan': 'dress daily' });
       // Signed as the database requires since 0018 and 0019: the sign-off row first, then the note.
       const signoffId = randomUUID();
       await h.scratch.owner`
@@ -695,7 +698,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'x',
         baseVersion: 1,
       });
@@ -743,22 +746,22 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     }
 
     it('different fields merge; a blank server field fills in; the same field with a different value conflicts', async () => {
-      const { noteId } = await syncedDraft({ allergies_note: '' });
+      const { noteId } = await syncedDraft({ 'care.allergies': '' });
       const seen = await snapshotOf(t.bToken, noteId);
-      expect(seen.fields['data.allergies_note']).toMatchObject({ value: '', version: 1 });
+      expect(seen.fields['data.care.allergies']).toMatchObject({ value: '', version: 1 });
 
       const aTemp = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 38.2,
       });
       const aAllergy = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.allergies_note',
+        field: 'data.care.allergies',
         value: 'penicillin',
         baseVersion: 1,
       });
@@ -769,21 +772,21 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.0,
       });
       const bPlan = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'recheck in 2 days',
       });
       const bSame = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.allergies_note',
+        field: 'data.care.allergies',
         value: 'penicillin',
         baseVersion: 1,
       });
@@ -802,7 +805,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.followup',
+        field: 'data.care.followup',
         value: '',
       });
       await push(h, phoneA, t.aToken, t.teamId, [blank]);
@@ -810,13 +813,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.followup',
+        field: 'data.care.followup',
         value: 'clinic Friday',
       });
       const filled = await push(h, phoneB, t.bToken, t.teamId, [fill]);
       expect(results(filled.body)[0]).toMatchObject({ status: 'accepted', serverVersion: 2 });
       const history = await h.scratch.owner<{ kind: string }[]>`
-        select kind from sineobex.field_history where record_id = ${noteId} and field = 'data.followup' order by version`;
+        select kind from sineobex.field_history where record_id = ${noteId} and field = 'data.care.followup' order by version`;
       expect(history.map((x) => x.kind)).toEqual(['set', 'filled_blank']);
 
       // Retrying the conflicted change shows the server's current value again.
@@ -825,12 +828,12 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
 
     it('choosing my value replaces the server’s, logging the replaced value and who approved it', async () => {
-      const { noteId } = await syncedDraft({ temp_c: 38.2 });
+      const { noteId } = await syncedDraft({ 'vitals.temp_c': 38.2 });
       const mine = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
       });
       const conflicted = results((await push(h, phoneB, t.bToken, t.teamId, [mine])).body)[0]!;
@@ -840,7 +843,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
         baseVersion: conflicted.server!.version,
         conflictOf: mine.changeId,
@@ -852,7 +855,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         { kind: string; value: unknown; previousValue: unknown; approvedBy: string }[]
       >`
         select kind, value, previous_value as "previousValue", approved_by as "approvedBy"
-        from sineobex.field_history where record_id = ${noteId} and field = 'data.temp_c' and version = 2`;
+        from sineobex.field_history where record_id = ${noteId} and field = 'data.vitals.temp_c' and version = 2`;
       expect(entry).toEqual({
         kind: 'replaced_after_review',
         value: 39.1,
@@ -865,12 +868,12 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
 
     it('a resolution against a value that changed again is a new conflict', async () => {
-      const { noteId } = await syncedDraft({ temp_c: 38.2 });
+      const { noteId } = await syncedDraft({ 'vitals.temp_c': 38.2 });
       const mine = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
       });
       await push(h, phoneB, t.bToken, t.teamId, [mine]);
@@ -878,7 +881,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 38.5,
         baseVersion: 1,
       });
@@ -887,7 +890,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
         baseVersion: 1,
         conflictOf: mine.changeId,
@@ -898,12 +901,12 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
 
     it('keeping the server’s value keeps both in history and tells the note’s author', async () => {
-      const { noteId } = await syncedDraft({ temp_c: 38.2 });
+      const { noteId } = await syncedDraft({ 'vitals.temp_c': 38.2 });
       const mine = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
       });
       await push(h, phoneB, t.bToken, t.teamId, [mine]);
@@ -911,7 +914,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
         baseVersion: 1,
         conflictOf: mine.changeId,
@@ -924,7 +927,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         hash: keep.valueHash,
       });
       const snap = await snapshotOf(t.aToken, noteId);
-      expect(snap.fields['data.temp_c']).toMatchObject({ value: 38.2, version: 1 });
+      expect(snap.fields['data.vitals.temp_c']).toMatchObject({ value: 38.2, version: 1 });
       const [kept] = await h.scratch.owner<{ value: unknown; previousValue: unknown }[]>`
         select value, previous_value as "previousValue" from sineobex.field_history
         where record_id = ${noteId} and kind = 'kept_both'`;
@@ -959,12 +962,12 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     it('keeping a server value that changed again since is a new conflict, and nothing is logged as kept', async () => {
       // Review finding: keep_server was accepted against any version, so a value the person never
       // saw was recorded as the one they approved, and their next edit overwrote it silently.
-      const { noteId } = await syncedDraft({ temp_c: 38.2 });
+      const { noteId } = await syncedDraft({ 'vitals.temp_c': 38.2 });
       const mine = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
       });
       await push(h, phoneB, t.bToken, t.teamId, [mine]);
@@ -972,7 +975,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 38.8,
         baseVersion: 1,
       });
@@ -981,7 +984,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 39.1,
         baseVersion: 1,
         conflictOf: mine.changeId,
@@ -998,14 +1001,14 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'rest',
       });
       const second = await phoneA.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'rest and fluids',
         follows: first.changeId,
       });
@@ -1020,15 +1023,15 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         op: 'create',
         value: {
           encounterId: (await syncedDraft()).encounterId,
-          noteTypeKey: 'wound_care',
-          data: { temp_c: 38 },
+          ...TEST_NOTE,
+          data: { 'vitals.temp_c': 38 },
         },
       });
       const edited = await phoneA.change({
         entity: 'encounter_note',
         recordId: created.recordId,
         op: 'set',
-        field: 'data.temp_c',
+        field: 'data.vitals.temp_c',
         value: 38.4,
         follows: created.changeId,
       });
@@ -1042,7 +1045,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'other',
         follows: second.changeId,
       });
@@ -1055,14 +1058,14 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.pulse',
+        field: 'data.vitals.pulse',
         value: 80,
       });
       const fromB = await phoneB.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
-        field: 'data.pulse',
+        field: 'data.vitals.pulse',
         value: 92,
       });
       const [ra, rb] = await Promise.all([
@@ -1360,13 +1363,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const note = await phone.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: encounter.recordId, noteTypeKey: 'vitals', data: { temp_c: 38.2 } },
+        value: { encounterId: encounter.recordId, ...TEST_NOTE, data: { 'vitals.temp_c': 38.2 } },
       });
       const pulse = await phone.change({
         entity: 'encounter_note',
         recordId: note.recordId,
         op: 'set',
-        field: 'data.pulse',
+        field: 'data.vitals.pulse',
         value: 96,
       });
       const waiting = (c: { changeId: string; valueHash: string }) => ({
@@ -1450,7 +1453,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(chart).toEqual({
         location: { lat: 42.33, lng: -83.05 },
         status: 'draft',
-        data: { temp_c: 38.2, pulse: 96 },
+        data: { 'vitals.temp_c': 38.2, 'vitals.pulse': 96 },
       });
       const later = await push(h, phone, harper.token, t.teamId, [location, note, pulse]);
       expect(results(later.body).map((r) => [r.status, r.hash])).toEqual(
@@ -1483,7 +1486,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const refused = await other.phone.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: randomUUID(), noteTypeKey: 'vitals' },
+        value: { encounterId: randomUUID(), ...TEST_NOTE },
       });
       const read = await other.phone.change({
         entity: 'audit',
@@ -1601,13 +1604,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const note = await phone.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: encounter.recordId, noteTypeKey: 'wound_care' },
+        value: { encounterId: encounter.recordId, ...TEST_NOTE },
       });
       const noteEdit = await phone.change({
         entity: 'encounter_note',
         recordId: note.recordId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: 'rest',
       });
       const encounterEdit = await phone.change({
@@ -1652,17 +1655,22 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const note = await phone.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: encounter.recordId, noteTypeKey: 'vitals' },
+        value: { encounterId: encounter.recordId, ...TEST_NOTE },
       });
       const edits = [];
-      for (const field of ['data.temp_c', 'data.pulse', 'data.plan', 'data.followup']) {
+      for (const [field, value] of Object.entries({
+        'data.vitals.temp_c': 38.2,
+        'data.vitals.pulse': 96,
+        'data.care.plan': 'Demo: rest',
+        'data.care.followup': 'Demo: clinic Friday',
+      })) {
         edits.push(
           await phone.change({
             entity: 'encounter_note',
             recordId: note.recordId,
             op: 'set',
             field,
-            value: 1,
+            value,
           }),
         );
       }
@@ -2022,7 +2030,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const orphan = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
-        value: { encounterId: badEncounter.recordId, noteTypeKey: 'vitals', data: { temp_c: 38.4 } },
+        value: { encounterId: badEncounter.recordId, ...TEST_NOTE, data: { 'vitals.temp_c': 38.4 } },
       });
       const first = await push(h, phoneA, t.aToken, t.teamId, [badEncounter, orphan]);
       expect(results(first.body).map((x) => x.reason)).toEqual(['validation', 'stale_reference']);
