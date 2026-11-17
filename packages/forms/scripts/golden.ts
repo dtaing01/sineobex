@@ -1,6 +1,7 @@
 /**
  * The golden file (docs/design/phase-4/forms.md, 7.3): what the TypeScript interpreter says about
- * every note type version in generated/presets.json, written to generated/golden.json. The phone's
+ * every note type version in generated/presets.json, written to generated/golden.json. The presets
+ * carry only released versions (D78), so a draft has no golden line until it is released. The phone's
  * golden test recomputes all of it from the bundled presets, so the two interpreters are held
  * together on the real forms, not only on the small definitions of the vectors. Run as `pnpm
  * --filter @sineobex/forms golden`, after the export: it reads the presets the export wrote.

@@ -89,9 +89,9 @@ function releasable() {
 }
 
 describe('a tree that passes', () => {
-  it('writes every note type version, resolved, in a fixed order with its hash, and the phone copy byte for byte', async () => {
-    const t = tree(...GOOD);
-    const result = await t.run();
+  it('writes every released note type version, resolved, in a fixed order with its hash, and the phone copy byte for byte', async () => {
+    const t = releasable();
+    const result = await t.run(true);
     expect(result.problems).toEqual([]);
 
     const files = definitionFiles('definitions');
@@ -115,17 +115,19 @@ describe('a tree that passes', () => {
   });
 
   it('writes the same bytes on a second run', async () => {
-    const t = tree(...GOOD);
-    await t.run();
+    const t = releasable();
+    await t.run(true);
     const first = readFileSync(t.presets, 'utf8');
+    expect(JSON.parse(first)).toHaveLength(3);
     await t.run();
     expect(readFileSync(t.presets, 'utf8')).toBe(first);
   });
 
   it('writes the same bytes for a file with its keys in another order, as the lock and the hash do', async () => {
-    const t = tree(...GOOD);
-    await t.run();
+    const t = releasable();
+    await t.run(true);
     const first = readFileSync(t.presets, 'utf8');
+    expect(JSON.parse(first)).toHaveLength(3);
     const reversed = (value: unknown): unknown =>
       Array.isArray(value)
         ? value.map(reversed)
@@ -144,8 +146,9 @@ describe('a tree that passes', () => {
 
   it('orders versions by number, not by their text', async () => {
     const t = tree('definitions');
+    t.remove('modules/demo_exam/v2.json');
     for (const version of [2, 10]) copyAs(t, FULL, 'full_demo', version);
-    const result = await t.run();
+    const result = await t.run(true);
     expect(result.problems).toEqual([]);
     expect(result.presets.map((p) => `${p.key} ${p.version}`)).toEqual([
       'checks_demo 1',
@@ -182,6 +185,98 @@ describe('a tree that passes', () => {
     expect(notes).toContainEqual(expect.stringMatching(/^lists\/spare_list\.json {2}.*no note type/));
     // What is used is not noted.
     expect(notes.filter((n) => /harm-reduction-2|demo_exam\/v1|lists\/side/.test(n))).toEqual([]);
+  });
+});
+
+describe('only released versions are presets (D78)', () => {
+  // A version a team installs is kept for good (forms 3.2): a draft installed and then changed would
+  // be refused at every sync as a released version edited. So the presets, the phone's copy and the
+  // golden file carry only the versions whose resolved hash the lock holds.
+  const presetsIn = (path: string) =>
+    (JSON.parse(readFileSync(path, 'utf8')) as { key: string; version: number }[]).map(
+      (p) => `${p.key} ${p.version}`,
+    );
+  const drafts = (notes: { file: string; message: string }[]) =>
+    notes
+      .filter((n) => /draft/.test(n.message))
+      .map((n) => n.file)
+      .sort();
+  const RELEASED = ['checks_demo 1', 'full_demo 1', 'harm_reduction_example 1'];
+
+  it('checks a draft, notes it by its file and never writes it', async () => {
+    const t = tree(...GOOD);
+    const result = await t.run();
+    expect(result.problems).toEqual([]);
+    expect(result.presets).toEqual([]);
+    expect(readFileSync(t.presets, 'utf8')).toBe('[]\n');
+    expect(readFileSync(t.phoneAsset, 'utf8')).toBe('[]\n');
+    expect(drafts(result.notes)).toEqual([CHECKS, FULL, EXAMPLE].sort());
+    // Checked as ever: a fault in a draft fails the run.
+    t.edit(EXAMPLE, (file) => {
+      fields(file)[0].many = true;
+    });
+    expect(found((await t.run()).problems)).toEqual([
+      `${EXAMPLE}  $.sections[0].fields[0].many  shape.field_differs`,
+    ]);
+  });
+
+  it('writes a version whose resolved line the lock holds, and no other', async () => {
+    const t = releasable();
+    const files = definitionFiles('definitions');
+    Object.assign(files.noteTypes, definitionFiles('example').noteTypes);
+    delete files.modules['modules/demo_exam/v2.json'];
+    delete files.noteTypes[FULL];
+    const { pieces } = readPieces(specTexts('example'));
+    // Every file but full_demo released, by hand: its module and lists are released with it.
+    writeFileSync(t.lock, lockText(await lockOf(files, pieces)));
+    const result = await t.run();
+    expect(result.problems).toEqual([]);
+    expect(result.presets.map((p) => `${p.key} ${p.version}`)).toEqual([
+      'checks_demo 1',
+      'harm_reduction_example 1',
+    ]);
+    expect(presetsIn(t.presets)).toEqual(['checks_demo 1', 'harm_reduction_example 1']);
+    expect(readFileSync(t.phoneAsset, 'utf8')).toBe(readFileSync(t.presets, 'utf8'));
+    expect(drafts(result.notes)).toEqual([FULL]);
+  });
+
+  it('makes the versions a release run releases presets in the same run', async () => {
+    const t = releasable();
+    const result = await t.run(true);
+    expect(result.problems).toEqual([]);
+    expect(result.presets.map((p) => `${p.key} ${p.version}`)).toEqual(RELEASED);
+    expect(presetsIn(t.presets)).toEqual(RELEASED);
+    expect(presetsIn(t.phoneAsset)).toEqual(RELEASED);
+    expect(drafts(result.notes)).toEqual([]);
+    expect(existsSync(t.lock)).toBe(true);
+  });
+
+  it('keeps a draft added or changed after a release out of the presets', async () => {
+    const t = releasable();
+    expect((await t.run(true)).problems).toEqual([]);
+    const lock = readFileSync(t.lock, 'utf8');
+    copyAs(t, FULL, 'full_demo', 2);
+    copyAs(t, EXAMPLE, 'later_demo');
+    // later_demo names harm-reduction-2, whose shape is for the example's file: say it is outside.
+    t.edit('note-types/later_demo/v1.json', (file) => {
+      for (const section of file.sections as Json[]) delete section.spec;
+    });
+    let result = await t.run();
+    expect(result.problems).toEqual([]);
+    expect(presetsIn(t.presets)).toEqual(RELEASED);
+    expect(drafts(result.notes)).toEqual(['note-types/full_demo/v2.json', 'note-types/later_demo/v1.json']);
+
+    // A draft may change; it is still checked, still noted, still not written.
+    t.edit('note-types/full_demo/v2.json', (file) => {
+      file.title = 'Full (test, changed)';
+    });
+    result = await t.run();
+    expect(result.problems).toEqual([]);
+    expect(presetsIn(t.presets)).toEqual(RELEASED);
+    expect(presetsIn(t.phoneAsset)).toEqual(RELEASED);
+    expect(drafts(result.notes)).toContain('note-types/full_demo/v2.json');
+    // A run without --release never touches the lock.
+    expect(readFileSync(t.lock, 'utf8')).toBe(lock);
   });
 });
 
@@ -400,12 +495,14 @@ describe('the release mode', () => {
     expect(found((await t.run()).problems)).toContainEqual('lists/demo_scale.json  $  lock.changed');
   });
 
-  it('does not write the lock when any check fails', async () => {
+  it('does not write the lock, or the presets, when any check fails', async () => {
     const t = releasable();
     t.edit(EXAMPLE, (file) => {
       fields(file)[0].many = true;
     });
+    expect((await t.run(true)).problems).not.toEqual([]);
     expect(existsSync(t.lock)).toBe(false);
+    expect(existsSync(t.presets)).toBe(false);
   });
 });
 
@@ -506,6 +603,15 @@ describe('the lock only grows', () => {
       t.lock,
       head((l) => (l['lists/demo_new.json'] = '0'.repeat(64))),
     );
+    expect(run(t).code).toBe(0);
+  });
+
+  it('passes a draft added after a release, which the export leaves out of the presets and the lock', async () => {
+    const t = await released();
+    copyAs(t, FULL, 'full_demo', 2);
+    const result = await t.run();
+    expect(result.problems).toEqual([]);
+    expect(result.presets.map((p) => `${p.key} ${p.version}`)).not.toContain('full_demo 2');
     expect(run(t).code).toBe(0);
   });
 

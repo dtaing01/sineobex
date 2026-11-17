@@ -103,19 +103,31 @@ const NORMAL_DEMO = {
   ],
 };
 
-/** A package folder holding definitions/ copied from the fixture trees, the export run over it. */
+/**
+ * A package folder holding definitions/ copied from the fixture trees, released by the export: only
+ * a released version is a preset (D78). The one fixture file no note type uses is left out, since a
+ * release refuses it.
+ */
 async function exported(...from: string[]) {
   const root = mkdtempSync(join(scratch, 'tree-'));
   const definitions = join(root, 'definitions');
   for (const name of from) cpSync(join(FIXTURES, name), definitions, { recursive: true });
+  rmSync(join(definitions, 'modules/demo_exam/v2.json'), { force: true });
   const write = (path: string, content: unknown) => {
     mkdirSync(dirname(join(definitions, path)), { recursive: true });
     writeFileSync(join(definitions, path), JSON.stringify(content, null, 2));
   };
   write('note-types/normal_demo/v1.json', NORMAL_DEMO);
-  const result = await exportDefinitions({ root, phoneAsset: join(root, 'phone', 'presets.json') });
+  const phoneAsset = join(root, 'phone', 'presets.json');
+  const result = await exportDefinitions({ root, phoneAsset, release: true });
   expect(result.problems).toEqual([]);
-  return { root, presets: result.presets, golden: join(root, GOLDEN_FILE) };
+  return {
+    root,
+    presets: result.presets,
+    golden: join(root, GOLDEN_FILE),
+    write,
+    run: () => exportDefinitions({ root, phoneAsset }),
+  };
 }
 
 const caseOf = (golden: Awaited<ReturnType<typeof goldenOf>>, key: string, name: string) => {
@@ -229,6 +241,21 @@ describe('the golden file', () => {
     const once = readFileSync(t.golden, 'utf8');
     await writeGolden({ root: t.root });
     expect(readFileSync(t.golden, 'utf8')).toBe(once);
+  });
+
+  it('covers what the presets carry: the released versions, never a draft (D78)', async () => {
+    const t = await exported('definitions', 'example');
+    const released = t.presets.map(({ key, version }) => `${key} ${version}`);
+    expect(released).toContain('normal_demo 1');
+    t.write('note-types/normal_demo/v2.json', { ...NORMAL_DEMO, version: 2 });
+    t.write('note-types/draft_demo/v1.json', { ...NORMAL_DEMO, key: 'draft_demo' });
+    const result = await t.run();
+    expect(result.problems).toEqual([]);
+    const golden = await writeGolden({ root: t.root });
+    expect(golden.map(({ key, version }) => `${key} ${version}`)).toEqual(released);
+    expect(golden.map(({ key, version, hash }) => ({ key, version, hash }))).toEqual(
+      result.presets.map(({ key, version, hash }) => ({ key, version, hash })),
+    );
   });
 
   it('is an empty list when there is no preset', async () => {

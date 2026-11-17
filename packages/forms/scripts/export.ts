@@ -15,19 +15,24 @@
  * reported once (same file, place and rule).
  *
  * Nothing is written while any problem stands: the generated files only ever hold definitions that
- * passed every check, which is all the server, the database and the phone trust.
+ * passed every check, which is all the server, the database and the phone trust. And they hold only
+ * released versions (D78, forms 3.2): those whose `<file>#resolved` line the lock holds. A draft is
+ * checked as any version is, printed as a note and never written, since a team keeps for good what
+ * it installs and a draft may still change.
  *
  * Release (`--release`, card F6-release): a released file can never change again, so nothing is
  * released that nothing checks or uses. A piece no definition names, and a list or module no note
  * type uses, is refused (`export.unused_file`); then definitions.lock.json is written over every
- * file present. Without `--release` those are notes, and the lock is never written.
+ * file present, before the presets, which then hold every version it released. Without
+ * `--release` those are notes, and the lock is never written.
  */
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, sha256Hex } from '../src/canonical.ts';
 import type { Preset } from '../src/install.ts';
-import { checkLock, LOCK_FILE, lockOf, lockText } from '../src/lock.ts';
+import { checkLock, LOCK_FILE, lockOf, lockText, resolvedEntry } from '../src/lock.ts';
+import type { Lock } from '../src/lock.ts';
 import { pathModel } from '../src/paths.ts';
 import { resolve } from '../src/resolve.ts';
 import type { DefinitionFiles, FileProblem, Origin, ResolvedNoteType } from '../src/resolve.ts';
@@ -61,7 +66,7 @@ export type ExportResult = {
   /** Every problem, each once. Nothing was written when there is one. */
   problems: FileProblem[];
   notes: Note[];
-  /** The presets, in their fixed order; empty when there are problems. */
+  /** The presets: the released versions, in their fixed order; empty when there are problems. */
   presets: Preset[];
   /** For each note type version file, the most answers a note on it can hold (2.4). */
   answers: Record<string, number>;
@@ -132,10 +137,27 @@ export async function exportDefinitions(options: ExportOptions): Promise<ExportR
   for (const [file, count] of Object.entries(answers))
     notes.push({ file, message: `a note on it can hold at most ${count} answers` });
 
+  // Only a released version is a preset (D78): a team keeps what it installs for good, and a draft
+  // may still change. A release run releases every version, so they are presets in the same run.
+  const lock: Lock | null = release
+    ? await lockOf(files, pieces)
+    : isObject(tree.lock)
+      ? (tree.lock as Lock)
+      : null;
+  const isReleased = (file: string) => lock !== null && Object.hasOwn(lock, resolvedEntry(file));
+  for (const file of resolutions.keys())
+    if (!isReleased(file))
+      notes.push({
+        file,
+        message:
+          'is a draft: the lock does not hold its resolved line, so it is checked and not written to the presets',
+      });
+
   if (problems.size > 0) return failed();
 
   const presets: Preset[] = [];
-  for (const { definition } of resolutions.values()) {
+  for (const [file, { definition }] of resolutions) {
+    if (!isReleased(file)) continue;
     const canonical = canonicalJson(definition);
     presets.push({
       key: definition.key,
@@ -148,8 +170,10 @@ export async function exportDefinitions(options: ExportOptions): Promise<ExportR
   }
   presets.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.version - b.version));
   const text = `${JSON.stringify(presets, null, 2)}\n`;
+  // The lock first: presets that name a version the lock on disk does not hold would be installed
+  // by the server as released while the tree still treats it as a draft.
+  if (release && lock) writeText(join(options.root, LOCK_FILE), lockText(lock));
   for (const path of [join(options.root, PRESETS_FILE), options.phoneAsset]) writeText(path, text);
-  if (release) writeText(join(options.root, LOCK_FILE), lockText(await lockOf(files, pieces)));
   return { problems: [], notes, presets, answers };
 }
 
@@ -239,6 +263,9 @@ function readTree(root: string, problems: Problems): Tree | null {
   return { files, pieces, lock };
 }
 
+const isObject = (value: unknown): value is object =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
 function writeText(path: string, text: string) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, text);
@@ -281,7 +308,7 @@ export async function main(
     return 1;
   }
   print(
-    `Wrote ${PRESETS_FILE} and the phone's copy: ${result.presets.length} note type version(s)${release ? ', and released the tree in ' + LOCK_FILE : ''}.`,
+    `${release ? 'Released the tree in ' + LOCK_FILE + '; w' : 'W'}rote ${PRESETS_FILE} and the phone's copy: ${result.presets.length} released note type version(s).`,
   );
   return 0;
 }
