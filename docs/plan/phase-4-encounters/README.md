@@ -70,7 +70,12 @@ and `clears_with_sides`, a wider `condition_reads_restricted`, and `required_nev
 counting a field's own clearing flag: forms 2.2, 4.2), and add
 `forms/test/interp/one-meaning.test.ts`, which holds the validator and the interpreter to one
 meaning of what counts (forms 7.2); and F6 edit one, `forms/src/shape-check.ts` with its test (a
-shape file may pin a label, forms 4.2).
+shape file may pin a label, forms 4.2). In wave C, F3-install edited E's `forms/scripts/export.ts`
+(the `Preset` type moved to `forms/src/install.ts`), F1's `forms/src/interp/check-answer.ts` and
+`vectors/forms-conformance.json` took the rule that a text holding a NUL or half of a surrogate
+pair is `wrong_type` (forms 7.1), and F2-golden added a test to E's `forms/test/golden.test.ts`,
+the one that writes the phone's golden sample. Wave C's review had F2 add six cases and the
+`rules` definition to `vectors/forms-conformance.json`, in place of Dart-only tests (forms 7.2).
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -123,9 +128,9 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| E-presets | T | `forms/scripts/export.ts`, `forms/test/export.test.ts`, `apps/mobile/pubspec.yaml` (writes `generated/presets.json` and the phone asset; runs every check of forms 4.2, stopping after schema problems, since every later check reads files that passed `checkFile`; hands the parsed pieces to `lockOf` and `checkLock`; prints the largest number of answers each note type can hold, and refuses nothing for it, forms 2.4) | F0, F1 |
-| E-golden | T | `forms/scripts/golden.ts` (writes `generated/golden.json`) | E-presets |
-| E-drift | X | `tools/ci-local.sh`, `.github/workflows/ci.yml`, `tools/phi-guard-rules.mjs` (the Forms drift step; `packages/forms/` and the vectors folder join the PHI guard's fixture list) | E-golden |
+| E-presets | T | `forms/scripts/export.ts`, `forms/test/export.test.ts`, `forms/package.json` (the `export` script), `apps/mobile/pubspec.yaml`, and what it writes, `forms/generated/presets.json` and `apps/mobile/assets/forms/presets.json` (runs every check of forms 4.2, stopping after schema problems, since every later check reads files that passed `checkFile`; hands the parsed pieces to `lockOf` and `checkLock`; prints the largest number of answers each note type can hold, and refuses nothing for it, forms 2.4; writes each definition in canonical key order; `--release` refuses a piece, module or list nothing uses, `export.unused_file`, and is all that writes the lock, forms 4.1) | F0, F1 |
+| E-golden | T | `forms/scripts/golden.ts`, `forms/test/golden.test.ts`, `forms/package.json` (the `golden` script), and what it writes, `forms/generated/golden.json` (three answer sets made by rule for each preset, after the export, from the presets it wrote: forms 7.3) | E-presets |
+| E-drift | X | `tools/ci-local.sh`, `.github/workflows/ci.yml`, `tools/phi-guard-rules.mjs` (the Forms drift step; `packages/forms/` and the vectors folder join the PHI guard's fixture list); after the review also `forms/scripts/lock-grows.ts`, its cases in `forms/test/export.test.ts` and its script in `forms/package.json` (a line the base commit's lock holds never leaves it or changes, forms 4.2), and `tools/test/phi-guard.test.mjs` (the fixture list's test) | E-golden |
 
 ### F2 The interpreter in Dart (forms 7)
 
@@ -134,21 +139,28 @@ for its function, each needing the same card of F1 that it mirrors: F2-field-at,
 F2-check-values, F2-check-structure, F2-conditions, F2-effective, F2-finish, F2-normal,
 F2-recap, F2-read-sections, F2-read-corrections, F2-visible, F2-handoff, F2-suggestions,
 F2-expand. F2-field-at also writes the Dart reader of the vectors,
-`phone-test/forms/conformance_test.dart`, which F1-vectors left to this unit. Then:
+`phone-test/forms/conformance_test.dart`, which F1-vectors left to this unit. As built, F2-field-at
+also wrote `phone/forms/definition.dart` (a resolved definition read, and a shape the validator
+would never pass refused by its place) and `phone/forms/paths.dart` (the path model, as
+`forms/src/paths.ts`), F2-effective `conditions.dart`, and F2-recap `layout.dart` and
+`sensitive_exams.dart`, the files F1 shares between functions. A card that met something the
+vectors cannot say wrote a test of its own beside them:
+`phone-test/forms/{definition,check_answer,effective,read,visible,handoff,expand}_test.dart`
+(forms 7.2). Then:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F2-golden | X | `phone-test/forms/golden_test.dart` | F2 (the fourteen), E-golden |
+| F2-golden | X | `phone-test/forms/golden_test.dart`; `phone-test/forms/golden_sample.json`, which a test it adds to `forms/test/golden.test.ts` writes as a snapshot, so the check runs before `golden.json` holds the real note types (forms 7.3) | F2 (the fourteen), E-golden |
 
 ### F3 Definitions on the server (forms 3)
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
 | F3-migration | X | `db/migrations/0017_note_type_versions.sql`, `db/test/note-type-versions.test.ts` | — |
-| F3-tests | X | `forms/test/install.test.ts`, `api-test/forms-routes.test.ts` | F3-migration |
-| F3-install | T | `forms/src/install.ts` (`installPresets`, in the forms package so the seed and the API can both call it; every `preset` row names its `preset_version`, which 0017 checks), `api/routes/owner.ts`, `db/seed/seed.ts` | F3-tests, E-presets |
-| F3-routes | T | `api/forms/definitions.ts`, `api/routes/forms.ts`, `api/app.ts` (the register line) | F3-install |
-| F3-contract | R | `api-test/permissions.test.ts`, the generated contract | F3-routes |
+| F3-tests | X | `forms/test/install.test.ts`, `forms/test/fixtures/presets.ts` (the fixture note types as presets, since `presets.json` is empty until the definitions are typed), `db/test/install-presets.test.ts` (the installer against 0017, in the db package: the forms tests run where there is no database, and a forms dependency on the db package would make a cycle with the seed's), `api-test/forms-routes.test.ts` | F3-migration |
+| F3-install | T | `forms/src/install.ts` (`installPresets`, in the forms package so the seed and the API can both call it; every `preset` row names its `preset_version`, which 0017 checks), `forms/src/index.ts`, `api/routes/owner.ts`, `db/seed/seed.ts`; `db/package.json`, `services/api/package.json` and `pnpm-lock.yaml` (both depend on the forms package); `forms/scripts/export.ts` (the `Preset` type moves to `install.ts`) | F3-tests, E-presets |
+| F3-routes | T | `api/forms/definitions.ts`, `api/routes/forms.ts`, `api/app.ts` (the register line, and the one exception to `no-store`: a definition found, matched by its exact header, forms 3.3) | F3-install |
+| F3-contract | R | `api-test/permissions.test.ts`, the generated contract, `packages/contract/test/spec.test.ts` (a note type's key and version are the only path parameters that are not IDs, with exactly 0017's patterns) | F3-routes |
 
 ### F4 Definitions on the phone (forms 3.4)
 
@@ -247,9 +259,9 @@ care; General is checked with them once F6-general-assemble includes them, after
 | L0-migration-0019 | X | `db/migrations/0019_note_signoffs.sql`, `db/test/note-signoffs.test.ts` | L0-migration-0018 |
 | L0-migration-0020 | X | `db/migrations/0020_note_attestations.sql`, `db/test/note-attestations.test.ts`; after the review also the comment on `patient_of_change` in `api/sync/review.ts` | L0-migration-0019 |
 | L0-migration-0021 | X | `db/migrations/0021_referrals.sql`, `db/test/referrals.test.ts`, `api/patients/charts.ts` (the chart table row) | L0-migration-0018 |
-| L0-vectors | X | `vectors/note-lifecycle.json`, `signed-under.json`; the readers `api-test/encounter-rules.test.ts`, `phone-test/encounters/rules_test.dart`. The content hash's `vectors/note-content-hash.json` and its readers (`phone-test/encounters/content_hash_test.dart`, and the API's) wait for F1 and F2 (`effectiveAnswers`), and come before L0-content-hash-ts and L0-content-hash-dart | — (the content hash: F1-effective, F2-effective) |
+| L0-vectors | X | `vectors/note-lifecycle.json`, `signed-under.json`; the readers `api-test/encounter-rules.test.ts`, `phone-test/encounters/rules_test.dart`. The content hash's `vectors/note-content-hash.json` (21 cases, each on a definition of `vectors/forms-conformance.json`) and its readers, `api-test/note-content-hash.test.ts` and `phone-test/encounters/content_hash_test.dart`, wait for F1 and F2 (`effectiveAnswers`). As built, each reader landed with its side's function: the vectors, the API's reader and L0-content-hash-ts after F1, the phone's reader and L0-content-hash-dart after F2-effective (lifecycle 4.5) | — (the content hash: F1-effective, F2-effective) |
 | L0-rules-ts | T | `api/encounters/rules.ts` | L0-vectors |
-| L0-content-hash-ts | T | `api/encounters/content-hash.ts` | L0-vectors, F1-effective |
+| L0-content-hash-ts | T | `api/encounters/content-hash.ts` (after the review, a missing patient or summary is written as `null`, as the phone writes it, with a test in `api-test/note-content-hash.test.ts`: lifecycle 4.5) | L0-vectors, F1-effective |
 | L0-signed-under-ts | T | `api/encounters/signed-under.ts`; after the review also `api/services/memberships.ts` (a restore records the credential and fields it replaced) and `api-test/foundation.test.ts` | L0-vectors |
 | L0-rules-dart | T | `phone/encounters/rules.dart` | L0-vectors |
 | L0-content-hash-dart | T | `phone/encounters/content_hash.dart` | L0-vectors, F2-effective |
