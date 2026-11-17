@@ -4,6 +4,7 @@ import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
 import { finishCheck } from '../src/interp/finish.ts';
+import { handoffLines } from '../src/interp/handoff.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
 import { readModel } from '../src/interp/read-model.ts';
 import type { NoteCorrection } from '../src/interp/read-model.ts';
@@ -53,6 +54,15 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
     readModel(definition, c.answers as Answers, c.corrections as NoteCorrection[]),
   visibleAnswers: (definition, c) => visibleAnswers(definition, c.answers as Answers, c.reader as NoteReader),
   suggestions: (definition, c) => suggestions(definition, c.answers as Answers),
+  // A handoff reads every note of a visit: `notes` names each one's definition, and the case's own
+  // `definition` is the first's.
+  handoffLines: (_, c) => {
+    const notes = c.notes as { definition: string; answers: Answers | null }[];
+    return handoffLines(
+      notes.map((n) => vectors.definitions[n.definition]!),
+      notes.map((n) => n.answers),
+    );
+  },
 };
 
 describe('the conformance definitions', () => {
@@ -150,7 +160,11 @@ describe('the conformance cases', () => {
       it('has cases, each named once, each on a definition of the file', () => {
         expect(cases.length).toBeGreaterThan(0);
         expect(new Set(cases.map((c) => c.name)).size).toBe(cases.length);
-        for (const c of cases) expect(Object.keys(vectors.definitions), c.name).toContain(c.definition);
+        for (const c of cases) {
+          expect(Object.keys(vectors.definitions), c.name).toContain(c.definition);
+          for (const n of (c.notes ?? []) as { definition: string }[])
+            expect(Object.keys(vectors.definitions), c.name).toContain(n.definition);
+        }
       });
 
       const run = FUNCTIONS[fn];

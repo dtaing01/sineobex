@@ -20,4 +20,5 @@ export * from './interp/normal.ts';
 export * from './interp/recap.ts';
 export * from './interp/read-model.ts';
 export * from './interp/visible.ts';
+export * from './interp/handoff.ts';
 export * from './interp/suggestions.ts';
