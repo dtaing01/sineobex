@@ -666,29 +666,119 @@ describe('the plans of the exam pieces', () => {
 
 /**
  * The shared lists (forms 4.4): those it names, Skin's side list, and the lists the inventories'
- * section 5 call the same in each place they appear. A list has no shape file: a person reads its
- * codes, order, flags and count against the lines, so only its form is held here.
+ * section 5 call the same in each place they appear. A list has no shape file, so its codes,
+ * labels, order and flags, read against the lines, are pinned here: each entry is `code=Label`,
+ * then ` +flag` for each flag it carries. A list's flag decides what one-tap Normal writes in
+ * every field that names it (Normal on the shoulder tests is Not performed, not Negative), and a
+ * label written as a number ("2+") follows no code rule, so a slip in either would pass the shape
+ * check of every piece.
  */
-const LISTS = [
-  'body_region',
-  'capillary_refill',
-  'dressing',
-  'drainage_amount',
-  'lung_findings',
-  'needs',
-  'pulse_scale',
-  'range_of_motion',
-  'reflex_scale',
-  'side',
-  'side_rl',
-  'side_rlm',
-  'special_test_result',
-  'surface',
-  'wound_type',
-  'yes_no',
-  'yes_no_unknown',
-  'yes_no_unsure',
-];
+const LIST_PINS: Record<string, string[]> = {
+  body_region: [
+    'head=Head',
+    'upper_body=Upper Body',
+    'abdomen=Abdomen',
+    'back=Back',
+    'arms=Arms',
+    'legs=Legs',
+    'lower_body=Lower Body',
+    'hands=Hands',
+  ],
+  capillary_refill: [
+    'less_than_2_seconds=Less than 2 seconds +normal',
+    'greater_than_2_seconds=Greater than 2 seconds',
+  ],
+  drainage_amount: ['none=None', 'scant=Scant', 'small=Small', 'moderate=Moderate', 'large=Large'],
+  dressing: [
+    'gauze=Gauze',
+    'xeroform=Xeroform',
+    'mepilex=Mepilex',
+    'abd=ABD',
+    'hydrocolloid=Hydrocolloid',
+    'aquacel=Aquacel',
+    'compression=Compression',
+    'other=Other +other',
+  ],
+  lung_findings: [
+    'clear=Clear +exclusive +normal',
+    'diminished=Diminished',
+    'crackles=Crackles',
+    'wheezes=Wheezes',
+    'rhonchi=Rhonchi',
+    'stridor=Stridor',
+    'bronchial=Bronchial',
+  ],
+  needs: [
+    'housing=Housing',
+    'food=Food',
+    'hygiene=Hygiene',
+    'clothing=Clothing',
+    'phone=Phone',
+    'charging=Charging',
+    'transportation=Transportation',
+    'medication=Medication',
+    'id=ID',
+    'financial=Financial',
+    'legal=Legal',
+    'pet=Pet',
+    'benefits=Benefits',
+    'other=Other +other',
+  ],
+  pulse_scale: [
+    'zero=0',
+    'one_plus=1+',
+    'two_plus=2+ +normal',
+    'three_plus=3+',
+    'unable_to_assess=Unable to assess +unable',
+  ],
+  range_of_motion: [
+    'full=Full +exclusive +normal',
+    'limited=Limited',
+    'painful=Painful',
+    'unable=Unable +unable',
+  ],
+  reflex_scale: ['zero=0', 'one_plus=1+', 'two_plus=2+ +normal', 'three_plus=3+', 'four_plus=4+'],
+  side: ['right=Right', 'left=Left', 'bilateral=Bilateral'],
+  side_rl: ['right=Right', 'left=Left'],
+  side_rlm: ['right=Right', 'left=Left', 'midline=Midline'],
+  special_test_result: [
+    'not_performed=Not performed +normal',
+    'negative=Negative',
+    'positive=Positive',
+    'unable=Unable +unable',
+  ],
+  surface: ['anterior=Anterior', 'posterior=Posterior'],
+  wound_type: [
+    'venous=Venous',
+    'arterial=Arterial',
+    'pressure=Pressure',
+    'diabetic=Diabetic',
+    'traumatic=Traumatic',
+    'burn=Burn',
+    'abscess=Abscess',
+    'surgical=Surgical',
+    'cellulitis=Cellulitis',
+    'other=Other +other',
+  ],
+  yes_no: ['yes=Yes', 'no=No'],
+  yes_no_unknown: ['yes=Yes', 'no=No', 'unknown=Unknown'],
+  yes_no_unsure: ['yes=Yes', 'no=No', 'unsure=Unsure'],
+};
+const LISTS = Object.keys(LIST_PINS);
+
+/** A list's options as LIST_PINS writes them. */
+const pinOf = (list: OptionList): string[] =>
+  list.options.map(({ code, label, ...flags }) =>
+    [
+      `${code}=${label}`,
+      ...Object.keys(flags)
+        .sort()
+        .map((flag) => {
+          const value = (flags as Record<string, unknown>)[flag];
+          return value === true ? ` +${flag}` : ` +${flag}:${String(value)}`;
+        }),
+    ].join(''),
+  );
 
 describe('the shared lists', () => {
   it('are exactly the lists the definitions draw on', () => {
@@ -706,5 +796,9 @@ describe('the shared lists', () => {
     // The recipe's rule, unless it makes no valid code ("1+"): then the list gives one.
     for (const { code, label } of list.options)
       if (OPTION_CODE.test(codeOf(label))) expect(code, label).toBe(codeOf(label));
+  });
+
+  it.each(LISTS)('%s holds the codes, labels, order and flags read against the lines', (name) => {
+    expect(pinOf(listOf(name))).toEqual(LIST_PINS[name]);
   });
 });
