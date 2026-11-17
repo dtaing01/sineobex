@@ -7,18 +7,13 @@ import {
   idLinkUrl,
   newIdLinkToken,
 } from '../src/patients/id-links.ts';
-import {
-  AuditAppend,
-  CREATE_SCHEMAS,
-  patientFieldSchema,
-  valueParents,
-  valueProblem,
-} from '../src/sync/entities/values.ts';
-import { EncounterCreate, fieldSchema } from '../src/sync/records.ts';
-import type { AnyRecordEntityName, PatientEntityName } from '../src/sync/schemas.ts';
+import { RULES } from '../src/sync/entities/index.ts';
+import { AuditAppend, CREATE_SCHEMAS, valueParents } from '../src/sync/entities/values.ts';
+import { NOTE_LIFE_ENTITIES, REFERRAL_ENTITIES, type AnyRecordEntityName } from '../src/sync/schemas.ts';
 
-// The phase 3 vectors the API shares with the phone (packages/contract/test-vectors): sync values
-// (design 2.1, 2.8) and ID link tokens (10.1). The phone's tests read the same files.
+// The vectors the API shares with the phone (packages/contract/test-vectors): sync values (phase 3
+// design 2.1, 2.8; phase 4 lifecycle 4.6 to 4.8) and ID link tokens (10.1). The phone's tests read
+// the same files. Each value is read by the entity registry's own schemas and rules, as a push is.
 
 const vector = <T>(name: string) =>
   JSON.parse(
@@ -37,21 +32,30 @@ interface ValueCase {
 
 const sync = vector<{ today: string; valid: ValueCase[]; invalid: ValueCase[] }>('sync-values.json');
 
+const rulesOf = (c: ValueCase) => RULES[c.entity as AnyRecordEntityName];
+
 function schemaOf(c: ValueCase) {
   if (c.entity === 'audit') return AuditAppend;
-  if (c.entity === 'encounter')
-    return c.op === 'create' ? EncounterCreate : fieldSchema('encounter', c.field!)!;
-  const entity = c.entity as PatientEntityName;
-  return c.op === 'create' ? CREATE_SCHEMAS[entity] : patientFieldSchema(entity, c.field!)!;
+  return c.op === 'create' ? rulesOf(c).create : rulesOf(c).fieldSchema(c.field!)!;
 }
 
-const isPatientSide = (c: ValueCase) => c.entity !== 'audit' && c.entity !== 'encounter';
+/** The rule a parsed value breaks on its own, as the push asks it (a patient's dates, a referral's). */
+const problemOf = (c: ValueCase, value: unknown) =>
+  c.entity === 'audit'
+    ? null
+    : (rulesOf(c).valueProblem?.(c.op as 'create' | 'set', c.field, value, sync.today) ?? null);
 
 describe('sync-values.json', () => {
-  it('covers every patient-side entity, valid and invalid, and the 50-patient audit limit', () => {
-    for (const e of Object.keys(CREATE_SCHEMAS)) {
+  it('covers every patient-side entity and phase 4’s records, valid and invalid, and the 50-patient audit limit', () => {
+    for (const e of [...Object.keys(CREATE_SCHEMAS), ...NOTE_LIFE_ENTITIES, ...REFERRAL_ENTITIES]) {
       expect(sync.valid.some((c) => c.entity === e)).toBe(true);
       expect(sync.invalid.some((c) => c.entity === e)).toBe(true);
+    }
+    expect(sync.invalid.some((c) => c.expect?.problem === 'referral_in_future')).toBe(true);
+    for (const action of ['ems_handoff.shown', 'notes_to_finish.viewed']) {
+      expect(
+        sync.valid.some((c) => c.entity === 'audit' && (c.value as { action: string }).action === action),
+      ).toBe(true);
     }
     const ids = (c: ValueCase) => ((c.value as { patientIds?: string[] }).patientIds ?? []).length;
     expect(sync.valid.some((c) => c.entity === 'audit' && ids(c) === 50)).toBe(true);
@@ -67,18 +71,13 @@ describe('sync-values.json', () => {
       expect(parsed.success).toBe(true);
       // Validate, never transform: what is stored is exactly what was hashed on the phone.
       expect(parsed.data).toEqual(c.value);
-      if (isPatientSide(c)) {
-        expect(
-          valueProblem(
-            c.entity as PatientEntityName,
-            c.op as 'create' | 'set',
-            c.field,
-            parsed.data,
-            sync.today,
-          ),
-        ).toBeNull();
-      }
+      expect(problemOf(c, parsed.data)).toBeNull();
       if (c.op !== 'append') {
+        // The registry's own, which a push checks, and the shared reading of them.
+        const rules = rulesOf(c);
+        expect(
+          c.op === 'create' ? rules.parents(parsed.data) : rules.parentsOfSet(c.field!, parsed.data),
+        ).toEqual(c.parents);
         expect(valueParents(c.entity as AnyRecordEntityName, c.op, c.field, c.value)).toEqual(c.parents);
       }
     });
@@ -93,15 +92,7 @@ describe('sync-values.json', () => {
         expect(paths).toEqual(c.expect!.paths);
       } else {
         expect(parsed.success).toBe(true);
-        expect(
-          valueProblem(
-            c.entity as PatientEntityName,
-            c.op as 'create' | 'set',
-            c.field,
-            parsed.data,
-            sync.today,
-          ),
-        ).toBe(c.expect!.problem);
+        expect(problemOf(c, parsed.data)).toBe(c.expect!.problem);
       }
     });
   }

@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused.",
+  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused. Phase 4 (lifecycle 4.6, 4.7, 4.8) adds the sign-off, the addendum, the correction and the referral, and the two offline audit actions of a visit; a referral is dated no more than a day after `today` (referral_in_future).",
   "today": "2026-10-22",
   "valid": [
     {
@@ -720,6 +720,219 @@
         "entity": "id_link",
         "entityId": "1d1d0000-0000-4000-8000-000000000001",
         "patientId": "5eed0000-0000-4000-8000-000000000001"
+      },
+      "parents": []
+    },
+    {
+      "name": "a note signed",
+      "entity": "note_signoff",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "act": "sign",
+        "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "claimedCredential": "resident",
+        "statementVersion": "sign-2026-11"
+      },
+      "parents": [
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a note completed, claiming no credential",
+      "entity": "note_signoff",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "act": "complete",
+        "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "claimedCredential": null,
+        "statementVersion": "complete-2026-11"
+      },
+      "parents": [
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an addendum to a note whose sign-off still waits",
+      "entity": "note_addendum",
+      "op": "create",
+      "value": {
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001",
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "text": "Demo: the lab result came back normal",
+        "signoffId": "b5b50000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "note_signoff",
+          "id": "b5b50000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "an addendum to the visit itself",
+      "entity": "note_addendum",
+      "op": "create",
+      "value": {
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001",
+        "noteId": null,
+        "text": "Demo: the lab result came back normal",
+        "signoffId": null
+      },
+      "parents": [
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a correction of two answers together",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "parents": [
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a patient's amendment request, declined, while its note's sign-off waits",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.care.plan",
+            "newValue": null,
+            "baseVersion": 2
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": true,
+        "declined": true,
+        "claimedCredential": "attending",
+        "signoffId": "b5b50000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "note_signoff",
+          "id": "b5b50000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a referral made at a visit",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-10-20",
+        "details": "Demo: dental clinic on Main St",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        },
+        {
+          "entity": "encounter",
+          "id": "0e0e0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a referral dated the day after the server's",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-10-23",
+        "details": "Demo: dental clinic on Main St",
+        "encounterId": null
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a referral entered in error",
+      "entity": "referral",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Made for the wrong person"
+      },
+      "parents": []
+    },
+    {
+      "name": "the EMS handoff shown offline",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "ems_handoff.shown",
+        "entity": "encounter",
+        "entityId": "0e0e0000-0000-4000-8000-000000000001",
+        "patientId": "5eed0000-0000-4000-8000-000000000001"
+      },
+      "parents": []
+    },
+    {
+      "name": "notes to finish viewed offline",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "notes_to_finish.viewed",
+        "patientIds": [
+          "5eed0000-0000-4000-8000-000000000001",
+          "5eed0000-0000-4000-8000-000000000002"
+        ],
+        "resultCount": 3
       },
       "parents": []
     }
@@ -1534,6 +1747,393 @@
       "expect": {
         "paths": [
           "criteria.0"
+        ]
+      }
+    },
+    {
+      "name": "a complete that claims a credential",
+      "entity": "note_signoff",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "act": "complete",
+        "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "claimedCredential": "resident",
+        "statementVersion": "sign-2026-11"
+      },
+      "expect": {
+        "paths": [
+          "claimedCredential"
+        ]
+      }
+    },
+    {
+      "name": "a sign-off hash in upper case",
+      "entity": "note_signoff",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "act": "sign",
+        "contentHash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "claimedCredential": "resident",
+        "statementVersion": "sign-2026-11"
+      },
+      "expect": {
+        "paths": [
+          "contentHash"
+        ]
+      }
+    },
+    {
+      "name": "a co-signature sent through sync",
+      "entity": "note_signoff",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "act": "cosign",
+        "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "claimedCredential": "resident",
+        "statementVersion": "sign-2026-11"
+      },
+      "expect": {
+        "paths": [
+          "act"
+        ]
+      }
+    },
+    {
+      "name": "an addendum with no text",
+      "entity": "note_addendum",
+      "op": "create",
+      "value": {
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001",
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "text": "",
+        "signoffId": "b5b50000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "an addendum without its sign-off key",
+      "entity": "note_addendum",
+      "op": "create",
+      "value": {
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001",
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "text": "Demo: the lab result came back normal"
+      },
+      "expect": {
+        "paths": [
+          "signoffId"
+        ]
+      }
+    },
+    {
+      "name": "a correction of eleven answers",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.extra.a",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.b",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.c",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.d",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.e",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.f",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.g",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.h",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.i",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.extra.j",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.care.plan",
+            "newValue": "Demo: fixed",
+            "baseVersion": 1
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "changes"
+        ]
+      }
+    },
+    {
+      "name": "a correction naming one answer twice",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.care.plan",
+            "newValue": "Demo: rest",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.care.plan",
+            "newValue": "Demo: fluids",
+            "baseVersion": 1
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "changes"
+        ]
+      }
+    },
+    {
+      "name": "a correction of something that is not an answer",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "status",
+            "newValue": "draft",
+            "baseVersion": 1
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "changes.0.field"
+        ]
+      }
+    },
+    {
+      "name": "a correction without its new value",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.care.plan",
+            "baseVersion": 1
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "changes.0.newValue"
+        ]
+      }
+    },
+    {
+      "name": "a correction declined that no patient asked for",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": true,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "declined"
+        ]
+      }
+    },
+    {
+      "name": "a correction whose reason is two characters",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "No",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a referral dated more than a day after the server's",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-12-01",
+        "details": "Demo: dental clinic on Main St",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "problem": "referral_in_future"
+      }
+    },
+    {
+      "name": "a referral on a day that does not exist",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-02-30",
+        "details": "Demo: dental clinic on Main St",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "referredOn"
+        ]
+      }
+    },
+    {
+      "name": "referral details with a trailing space",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-10-20",
+        "details": "Demo: dental clinic ",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "details"
+        ]
+      }
+    },
+    {
+      "name": "a referral without its visit key",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "2026-10-20",
+        "details": "Demo: dental clinic on Main St"
+      },
+      "expect": {
+        "paths": [
+          "encounterId"
+        ]
+      }
+    },
+    {
+      "name": "a referral taken back without a reason",
+      "entity": "referral",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": ""
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "the EMS handoff exported offline",
+      "entity": "audit",
+      "op": "append",
+      "value": {
+        "action": "ems_handoff.exported",
+        "entity": "encounter",
+        "entityId": "0e0e0000-0000-4000-8000-000000000001",
+        "patientId": "5eed0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "action"
         ]
       }
     }

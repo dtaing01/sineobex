@@ -8,6 +8,10 @@ import 'package:sineobex_field/sync/entities.dart';
 /// sync-values.json), which the API's Zod schemas pass too: the same values are valid, an invalid
 /// one fails at the same issue paths or breaks the same named rule, and every valid change names
 /// the same parents. The fake server checks values with this registry, so it is pinned as well.
+/// Phase 4's records and offline reads in the vectors (lifecycle 4.6 to 4.8).
+const phase4Entities = {'note_signoff', 'note_addendum', 'note_correction', 'referral'};
+const phase4Actions = {'ems_handoff.shown', 'notes_to_finish.viewed'};
+
 void main() {
   final vectors = jsonDecode(
     File('../../packages/contract/test-vectors/sync-values.json').readAsStringSync(),
@@ -28,6 +32,25 @@ void main() {
     return rules?.valueProblem(c['op']! as String, c['field'] as String?, c['value'], today);
   }
 
+  /// Why [c] is skipped: a phase 4 record or offline read (lifecycle 4.6 to 4.8) the API takes and
+  /// the registry does not hold yet. The test below fails once it holds one, so the skip goes then.
+  String? notOnPhoneYet(Map<String, Object?> c) {
+    final value = c['value'];
+    final pending =
+        phase4Entities.contains(c['entity']) ||
+        (c['entity'] == entityAudit && value is Map<String, Object?> && phase4Actions.contains(value['action']));
+    return pending ? 'the registry takes phase 4’s records and audit actions with lifecycle 4.8' : null;
+  }
+
+  test('phase 4’s records and audit actions are not in the registry yet, so their cases are skipped', () {
+    for (final entity in phase4Entities) {
+      expect(rulesFor(entity), isNull, reason: entity);
+    }
+    for (final action in phase4Actions) {
+      expect(auditActions, isNot(contains(action)), reason: action);
+    }
+  });
+
   test('the vectors cover every patient-side entity, valid and invalid', () {
     for (final entity in [
       entityPatient,
@@ -44,7 +67,7 @@ void main() {
   });
 
   for (final c in cases('valid')) {
-    test('accepts ${c['name']}, with its parents', () {
+    test(skip: notOnPhoneYet(c), 'accepts ${c['name']}, with its parents', () {
       expect(issuesOf(c), isEmpty);
       expect(problemOf(c), isNull);
       if (c['op'] != 'append') {
@@ -62,7 +85,7 @@ void main() {
   }
 
   for (final c in cases('invalid')) {
-    test('refuses ${c['name']}', () {
+    test(skip: notOnPhoneYet(c), 'refuses ${c['name']}', () {
       final expected = c['expect']! as Map<String, Object?>;
       final paths = expected['paths'] as List<Object?>?;
       if (paths != null) {

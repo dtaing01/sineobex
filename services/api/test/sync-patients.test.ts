@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { idLinkTokenRef } from '../src/patients/id-links.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { createPatient, expectAudit, auditMark, mergeDirect, type NewPatient } from './patient-fixtures.ts';
@@ -37,7 +37,7 @@ interface ValueCase {
 
 const vectors = JSON.parse(
   readFileSync(new URL('../../../packages/contract/test-vectors/sync-values.json', import.meta.url), 'utf8'),
-) as { valid: ValueCase[]; invalid: ValueCase[] };
+) as { today: string; valid: ValueCase[]; invalid: ValueCase[] };
 
 type Change = Awaited<ReturnType<FakePhone['change']>>;
 
@@ -139,6 +139,10 @@ describe('phase 3 sync: patient-side records', () => {
       problem_note: 'problem_notes',
       id_link: 'patient_id_links',
       encounter: 'encounters',
+      note_signoff: 'note_signoffs',
+      note_addendum: 'note_addenda',
+      note_correction: 'note_corrections',
+      referral: 'referrals',
     };
 
     it('refuses every invalid value of sync-values.json as a validation rejection, and stores nothing', async () => {
@@ -166,6 +170,10 @@ describe('phase 3 sync: patient-side records', () => {
     });
 
     it('checks the parents sync-values.json lists for every valid change before anything is stored', async () => {
+      // On the vectors' date, which a date's rule reads (a referral dated the next day is taken).
+      const was = h.clock.now;
+      h.clock.set(new Date(`${vectors.today}T12:00:00.000Z`));
+      onTestFinished(() => h.clock.set(was));
       // An empty team: no parent exists, so each change names the first one it lacks.
       for (const v of vectors.valid) {
         if (!v.parents?.length || v.op === 'append') continue;
