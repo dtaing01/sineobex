@@ -366,7 +366,7 @@ export async function createEncounter(
 ) {
   const id = randomUUID();
   const at = h.clock.now.toISOString();
-  const fields = ['patientId', 'location', 'status'];
+  const fields = ['patientId', 'location', 'locationText', 'kind'];
   await h.scratch.owner`
     insert into sineobex.encounters (id, team_id, patient_id, kind, author_user_id, started_at, field_versions,
       field_meta)

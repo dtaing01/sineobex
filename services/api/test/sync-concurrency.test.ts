@@ -149,8 +149,9 @@ describe('phase 3 sync: lock order', () => {
   });
 
   it('every encounter edit takes the team lock before the encounter row', async () => {
-    // Review finding S3: a status edit locked the row, then waited for the team lock at its audit
-    // event, while a patient move held the team lock and waited for the row.
+    // Review finding S3: a status edit (a location edit since phase 4 took status out of the fields)
+    // locked the row, then waited for the team lock at its audit event, while a patient move held
+    // the team lock and waited for the row.
     const p = await createPatient(h, t.teamId, t.aId);
     const encounterId = await createEncounter(h, t.teamId, t.aId, p.id);
     const mover = await h.scratch.owner.reserve();
@@ -162,8 +163,8 @@ describe('phase 3 sync: lock order', () => {
         entity: 'encounter',
         recordId: encounterId,
         op: 'set',
-        field: 'status',
-        value: 'completed',
+        field: 'location',
+        value: { lat: 42.33, lng: -83.05 },
         baseVersion: 1,
       });
       const pushing = asA(edit);
@@ -234,18 +235,18 @@ describe('phase 3 sync: lock order', () => {
     expect(await statusOf()).toEqual({ status: 'draft', worked: 'draft' });
   });
 
-  it('two phones editing one encounter at once, one its status and one its patient, are both answered', async () => {
+  it('two phones editing one encounter at once, one its location and one its patient, are both answered', async () => {
     const p1 = await createPatient(h, t.teamId, t.aId);
     const p2 = await createPatient(h, t.teamId, t.aId);
     const failedBefore = spy.lines.filter((l) => l.includes('sync.change_failed')).length;
     for (let i = 0; i < 20; i++) {
       const encounterId = await createEncounter(h, t.teamId, t.aId, p1.id);
-      const status = await phoneA.change({
+      const location = await phoneA.change({
         entity: 'encounter',
         recordId: encounterId,
         op: 'set',
-        field: 'status',
-        value: 'completed',
+        field: 'location',
+        value: { lat: 42.33, lng: -83.05 },
         baseVersion: 1,
       });
       const move = await phoneB.change({
@@ -256,7 +257,7 @@ describe('phase 3 sync: lock order', () => {
         value: p2.id,
         baseVersion: 1,
       });
-      const answered = await Promise.all([asA(status), asB(move)]);
+      const answered = await Promise.all([asA(location), asB(move)]);
       expect(answered.map((r) => r.map((x) => x.status))).toEqual([['accepted'], ['accepted']]);
     }
     expect(spy.lines.filter((l) => l.includes('sync.change_failed')).length).toBe(failedBefore);

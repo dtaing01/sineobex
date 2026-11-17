@@ -29,7 +29,8 @@ import {
  * - identity (legal name, birth): a fill only from someone who saw the current value, or into a
  *   blank; anything else is an admin's correction, or a kept alternate for one.
  * - set-once (retractions): the first wins, later ones are history.
- * - status (problems): the entity's own rule (problem.ts, design 9.2).
+ * - status: the entity's own rule (a problem's status, problem.ts, design 9.2; an encounter's kind,
+ *   encounter.ts; a note's fields, behind the Medical gate, note.ts).
  */
 
 export async function applyField(cls: FieldClass, s: SetContext): Promise<Outcome> {
@@ -224,7 +225,7 @@ function blank(field: string, value: unknown): boolean {
 }
 
 /** A change that never conflicts was sent as the answer to a conflict. */
-const NOTHING_TO_RESOLVE = 'nothing_to_resolve';
+export const NOTHING_TO_RESOLVE = 'nothing_to_resolve';
 
 /** Whether any record of the patient's group has an active allergy. */
 export async function groupHasActiveAllergy(tx: Tx, teamId: string, canonicalId: string): Promise<boolean> {

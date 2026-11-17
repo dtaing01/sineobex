@@ -5,12 +5,17 @@ import {
   EncounterCreate,
   fieldSchema,
   initialFieldState,
+  invalid,
   jsonb,
+  sameValue,
   storeCreate,
   type EntityRules,
   type FieldMeta,
+  type Outcome,
+  type SetContext,
   type StoredRecord,
 } from '../records.ts';
+import { keepInHistory, NOTHING_TO_RESOLVE, writeValue } from './fields.ts';
 import { valueParents } from './values.ts';
 
 /**
@@ -25,6 +30,10 @@ import { valueParents } from './values.ts';
  * two (review finding S3). And a visit's status is worked out from its notes by the trigger of
  * migration 0018: with one lock per team, its changes and its notes' apply one after the other, so
  * no rule reads a half-applied sibling.
+ *
+ * Its status is no longer a field: the trigger of 0018 owns the column (lifecycle 4.3). Its kind is
+ * one, with a rule of its own (the `status` class, the hook a problem's status uses): it moves to
+ * Medical at any time (PRD main 379) and never back.
  */
 
 type Value = z.infer<typeof EncounterCreate>;
@@ -37,6 +46,8 @@ interface EncounterRow {
   version: number;
   patientId: string | null;
   location: Record<string, unknown> | null;
+  locationText: string | null;
+  summary: string | null;
   kind: string;
   startedAt: Date;
   startedDeviceTime: Date | null;
@@ -62,17 +73,18 @@ export const encounterRules: EntityRules<Value> = {
         const initial: Record<string, unknown> = {
           patientId: value.patientId ?? null,
           location: value.location ?? null,
-          status: 'draft',
+          locationText: value.locationText ?? null,
+          kind: value.kind,
         };
         const { versions, meta } = initialFieldState(initial, input);
         const rows = await ctx.tx`
           insert into sineobex.encounters
             (id, team_id, patient_id, kind, status, author_user_id, started_at, started_device_time,
-             clock_verified, location, created_device_id, field_versions, field_meta)
+             clock_verified, location, location_text, created_device_id, field_versions, field_meta)
           values (${input.id}, ${input.teamId}, ${initial.patientId as string | null}, ${value.kind}, 'draft',
                   ${input.authorUserId}, ${input.at}, ${input.deviceTime}, ${input.clockVerified},
-                  ${jsonb(ctx.tx, initial.location)}, ${input.deviceId}, ${jsonb(ctx.tx, versions)},
-                  ${jsonb(ctx.tx, meta)})
+                  ${jsonb(ctx.tx, initial.location)}, ${initial.locationText as string | null}, ${input.deviceId},
+                  ${jsonb(ctx.tx, versions)}, ${jsonb(ctx.tx, meta)})
           on conflict (id) do nothing
           returning id`;
         return rows.length === 0 ? null : initial;
@@ -81,23 +93,40 @@ export const encounterRules: EntityRules<Value> = {
       action: 'encounter.created',
     }),
 
-  fieldClass: (field) => (fieldSchema('encounter', field) ? 'draft' : null),
+  fieldClass: (field) => (field === 'kind' ? 'status' : fieldSchema('encounter', field) ? 'draft' : null),
   fieldSchema: (field) => fieldSchema('encounter', field),
+  applyStatus: kindSet,
   load: loadEncounter,
 
   async write(tx, rec, field, value, version, meta) {
     const set =
-      field === 'status'
-        ? tx`status = ${value as string}`
-        : field === 'patientId'
-          ? tx`patient_id = ${value as string | null}`
-          : tx`location = ${jsonb(tx, value)}`;
+      field === 'patientId'
+        ? tx`patient_id = ${value as string | null}`
+        : field === 'location'
+          ? tx`location = ${jsonb(tx, value)}`
+          : field === 'locationText'
+            ? tx`location_text = ${value as string | null}`
+            : field === 'summary'
+              ? tx`summary = ${value as string | null}`
+              : tx`kind = ${value as string}`;
     const rows = await tx<{ version: number }[]>`
       update sineobex.encounters set ${set}, ${bookkeeping(tx, field, version, meta)}
       where id = ${rec.id} returning version`;
     return rows[0]!.version;
   },
 };
+
+/**
+ * A visit's kind goes from Non-Medical to Medical at any time, finished notes or not, and never back
+ * (lifecycle 3.10, 4.3). It moves one way only, so a switch never conflicts: it applies from any
+ * version. A move back is kept in history and not applied, since the worker has nothing to fix.
+ */
+async function kindSet(s: SetContext): Promise<Outcome> {
+  if (s.change.resolution) return invalid(NOTHING_TO_RESOLVE);
+  if (sameValue(s.cur.value, s.value)) return { status: 'accepted', serverVersion: s.cur.version };
+  if (s.value !== 'medical') return keepInHistory(s, { problem: 'kind_cannot_go_back' });
+  return writeValue(s, 'set');
+}
 
 /**
  * Loads an encounter; `lock` takes FOR NO KEY UPDATE, so two phones changing it are applied one
@@ -118,11 +147,17 @@ export async function loadEncounter(tx: Tx, id: string, lock: boolean): Promise<
     authorUserId: r.authorUserId,
     version: r.version,
     patientId: r.patientId,
-    fieldVersions: r.fieldVersions,
-    fieldMeta: r.fieldMeta,
-    values: { patientId: r.patientId, location: r.location, status: r.status },
-    attributes: {
+    // Encounters from before phase 4 still carry the bookkeeping of a status field; it is no field now.
+    fieldVersions: withoutStatus(r.fieldVersions),
+    fieldMeta: withoutStatus(r.fieldMeta),
+    values: {
+      patientId: r.patientId,
+      location: r.location,
+      locationText: r.locationText,
+      summary: r.summary,
       kind: r.kind,
+    },
+    attributes: {
       startedAt: r.startedAt.toISOString(),
       startedDeviceTime: r.startedDeviceTime?.toISOString() ?? null,
       clockVerified: r.clockVerified,
@@ -131,4 +166,9 @@ export async function loadEncounter(tx: Tx, id: string, lock: boolean): Promise<
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
+}
+
+function withoutStatus<T>(byField: Record<string, T>): Record<string, T> {
+  const { status: _, ...rest } = byField;
+  return rest;
 }

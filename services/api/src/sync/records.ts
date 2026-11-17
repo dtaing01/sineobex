@@ -84,11 +84,30 @@ const JsonValue = z.unknown().superRefine((v, ctx) => {
   if (p) ctx.addIssue({ code: 'custom', message: p });
 });
 
+const EncounterKind = z.enum(['medical', 'non_medical']);
+
+/**
+ * Free text, as values.ts takes it: validated, never transformed, so the server stores the string the
+ * phone hashed. The phone trims what it sends; a space at either end is refused, never trimmed here.
+ * The database measures the same `length()` without trimming, so it is never the stricter of the two.
+ */
+const Text = (max: number) =>
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .refine((s) => s === s.trim(), { message: 'untrimmed' });
+
+/** The place typed by hand (PRD main 378); the assessment written on the summary screen (433). */
+const LocationText = Text(200);
+const Summary = Text(4000);
+
 export const EncounterCreate = z
   .object({
-    kind: z.enum(['medical', 'non_medical']),
+    kind: EncounterKind,
     patientId: Uuid.nullable().optional(),
     location: Location.nullable().optional(),
+    locationText: LocationText.nullable().optional(),
   })
   .strict();
 
@@ -107,12 +126,18 @@ export const NoteCreate = z
 /** Draft and Complete are set by sync; Signed comes only through signing (phase 4). */
 const Status = z.enum(['draft', 'completed']);
 
-/** The settable fields of phase 2's records: an encounter's, and a note's. */
+/**
+ * The settable fields of an encounter and of a note. An encounter's status is not one: the database
+ * works it out from the visit's notes (lifecycle 2.2, 4.3), so a set of it answers as any unknown
+ * field does. Its kind takes `non_medical` too, so a move back is kept in history, not refused.
+ */
 export function fieldSchema(entity: 'encounter' | 'encounter_note', field: string): z.ZodType | null {
   if (entity === 'encounter') {
     if (field === 'patientId') return Uuid.nullable();
     if (field === 'location') return Location.nullable();
-    if (field === 'status') return Status;
+    if (field === 'locationText') return LocationText.nullable();
+    if (field === 'summary') return Summary.nullable();
+    if (field === 'kind') return EncounterKind;
     return null;
   }
   if (field === 'status') return Status;

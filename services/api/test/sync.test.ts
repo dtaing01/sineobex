@@ -732,8 +732,8 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         entity: 'encounter',
         recordId: encounterId,
         op: 'set',
-        field: 'kind',
-        value: 'non_medical',
+        field: 'startedAt',
+        value: '2026-10-20T14:00:00.000Z',
         baseVersion: 1,
       });
       const signed = await phoneA.change({
@@ -1404,22 +1404,22 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(results(first.body)).toEqual([location, note, pulse].map(waiting));
       // The answer to the encounter was lost, so it goes again in one push with all of the above
       // and a new edit: the same answers, and the new edit waits too.
-      const status = await phone.change({
+      const summary = await phone.change({
         entity: 'encounter',
         recordId: encounter.recordId,
         op: 'set',
-        field: 'status',
-        value: 'completed',
-        baseVersion: 1,
+        field: 'summary',
+        value: 'Demo: seen at the shelter door',
+        baseVersion: 0,
       });
-      const again = await push(h, phone, harper.token, t.teamId, [encounter, location, note, pulse, status]);
+      const again = await push(h, phone, harper.token, t.teamId, [encounter, location, note, pulse, summary]);
       expect(results(again.body)[0]).toMatchObject({
         reason: 'permission',
         quarantined: true,
         hash: encounter.valueHash,
       });
       expect(results(again.body).slice(1)).toEqual(
-        [location, note, pulse, status].map((c) => expect.objectContaining(waiting(c))),
+        [location, note, pulse, summary].map((c) => expect.objectContaining(waiting(c))),
       );
       expect(await count('encounters', `id = '${encounter.recordId}'`)).toBe(0);
       expect(await count('encounter_notes', `id = '${note.recordId}'`)).toBe(0);
@@ -1433,7 +1433,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         [location.changeId, 'awaiting_review'],
         [note.changeId, 'awaiting_review'],
         [pulse.changeId, 'awaiting_review'],
-        [status.changeId, 'awaiting_review'],
+        [summary.changeId, 'awaiting_review'],
       ]);
       expect(
         await count('audit_events', `action = 'quarantine.item_viewed' and patient_id = '${patientId}'`),
@@ -1447,7 +1447,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         { changeId: location.changeId, waitsOn: encounter.changeId },
         { changeId: note.changeId, waitsOn: encounter.changeId },
         { changeId: pulse.changeId, waitsOn: note.changeId },
-        { changeId: status.changeId, waitsOn: encounter.changeId },
+        { changeId: summary.changeId, waitsOn: encounter.changeId },
       ]);
 
       // Accepted before the record it belongs to, nothing is applied and the admin is told why.
@@ -1466,7 +1466,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       for (const c of [encounter, location, note, pulse]) {
         expect((await decide(c, 'accept', 'Visit confirmed with Harper')).status).toBe(200);
       }
-      expect((await decide(status, 'reject', 'Not finished yet')).status).toBe(200);
+      expect((await decide(summary, 'reject', 'Not finished yet')).status).toBe(200);
       const [chart] = await h.scratch.owner<{ location: unknown; status: string; data: unknown }[]>`
         select e.location, e.status, n.data from sineobex.encounters e
         join sineobex.encounter_notes n on n.encounter_id = e.id where e.id = ${encounter.recordId}`;

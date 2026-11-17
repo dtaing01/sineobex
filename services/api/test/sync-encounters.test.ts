@@ -6,7 +6,7 @@ import type { Tx } from '../src/db/database.ts';
 import { chartsMedical, credentialChangesAfter, loadSigner } from '../src/encounters/signer.ts';
 import { takesTeamLock } from '../src/sync/entities/index.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, expectAudit } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit } from './patient-fixtures.ts';
 import {
   addMember,
   call,
@@ -448,6 +448,305 @@ describe('phase 4 sync: encounters and notes', () => {
     });
   });
 
+  describe('the encounter’s fields (lifecycle 4.3)', () => {
+    let ash: Awaited<ReturnType<typeof clinician>>;
+    let bo: Awaited<ReturnType<typeof clinician>>;
+
+    beforeAll(async () => {
+      ash = await clinician('ash@example.com', 'Ash (demo)', 'none');
+      bo = await clinician('bo@example.com', 'Bo (demo)', 'none');
+    });
+
+    const setOn = (
+      c: Awaited<ReturnType<typeof clinician>>,
+      encounterId: string,
+      field: string,
+      value: unknown,
+      baseVersion: number,
+      more: Partial<Change> = {},
+    ) =>
+      c.phone.change({
+        entity: 'encounter',
+        recordId: encounterId,
+        op: 'set',
+        field,
+        value,
+        baseVersion,
+        ...more,
+      });
+
+    const encounterRow = async (id: string) =>
+      (
+        await h.scratch.owner<
+          {
+            kind: string;
+            patientId: string | null;
+            locationText: string | null;
+            summary: string | null;
+            status: string;
+            fieldVersions: Record<string, number>;
+          }[]
+        >`
+          select kind, patient_id as "patientId", location_text as "locationText", summary, status,
+                 field_versions as "fieldVersions"
+          from sineobex.encounters where id = ${id}`
+      )[0]!;
+
+    const historyOf = (id: string, field: string) =>
+      h.scratch.owner<{ version: number; value: unknown; kind: string }[]>`
+        select version, value, kind from sineobex.field_history
+        where record_id = ${id} and field = ${field} order by id`;
+
+    it('a create takes a place typed by hand; kind, place and summary are fields, and status is not', async () => {
+      const p = await createPatient(h, t.teamId, t.adminId);
+      const create = await ash.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: {
+          kind: 'non_medical',
+          patientId: p.id,
+          location: { lat: 42.33, lng: -83.05 },
+          locationText: 'Demo: by the river steps',
+        },
+      });
+      expect(await ash.send(create)).toEqual([
+        expect.objectContaining({ status: 'accepted', serverVersion: 1 }),
+      ]);
+      expect(await encounterRow(create.recordId)).toMatchObject({
+        kind: 'non_medical',
+        patientId: p.id,
+        locationText: 'Demo: by the river steps',
+        summary: null,
+        status: 'draft',
+        fieldVersions: { patientId: 1, location: 1, locationText: 1, kind: 1 },
+      });
+      expect(Object.keys((await encounterRow(create.recordId)).fieldVersions).sort()).toEqual([
+        'kind',
+        'location',
+        'locationText',
+        'patientId',
+      ]);
+      const created = await h.scratch.owner<{ field: string }[]>`
+        select field from sineobex.field_history where record_id = ${create.recordId} and kind = 'created'
+        order by field`;
+      expect(created.map((r) => r.field)).toEqual(['kind', 'location', 'locationText', 'patientId']);
+
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: ash.token,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'encounter', id: create.recordId }] },
+      });
+      expect(read.status).toBe(200);
+      const [snapshot] = read.body.records as {
+        status: string;
+        attributes: Record<string, unknown>;
+        fields: Record<string, { value: unknown; version: number }>;
+      }[];
+      expect(snapshot!.status).toBe('draft');
+      expect(Object.keys(snapshot!.attributes).sort()).toEqual([
+        'clockVerified',
+        'startedAt',
+        'startedDeviceTime',
+      ]);
+      expect(Object.keys(snapshot!.fields).sort()).toEqual([
+        'kind',
+        'location',
+        'locationText',
+        'patientId',
+        'summary',
+      ]);
+      expect(snapshot!.fields.kind).toMatchObject({ value: 'non_medical', version: 1 });
+      expect(snapshot!.fields.locationText).toMatchObject({ value: 'Demo: by the river steps', version: 1 });
+      expect(snapshot!.fields.summary).toMatchObject({ value: null, version: 0 });
+    });
+
+    it('summary and place are set by the draft rule: what was seen is replaced, what was not is a conflict', async () => {
+      const encounterId = await encounterOf(ash);
+      const summary = await setOn(ash, encounterId, 'summary', 'Demo: cough for a week, no fever', 0);
+      const place = await setOn(ash, encounterId, 'locationText', 'Demo: north parking lot', 1);
+      expect(await ash.send(summary, place)).toEqual([
+        expect.objectContaining({ status: 'accepted', serverVersion: 1 }),
+        expect.objectContaining({ status: 'accepted', serverVersion: 2 }),
+      ]);
+      // Bo never saw Ash's summary: a different one is shown beside it, never written over it.
+      const other = await setOn(bo, encounterId, 'summary', 'Demo: seen at the shelter door', 0);
+      expect(await bo.send(other)).toEqual([
+        expect.objectContaining({
+          status: 'conflict',
+          server: expect.objectContaining({ value: 'Demo: cough for a week, no fever', version: 1 }),
+        }),
+      ]);
+      expect(await encounterRow(encounterId)).toMatchObject({
+        summary: 'Demo: cough for a week, no fever',
+        locationText: 'Demo: north parking lot',
+        fieldVersions: { summary: 1, locationText: 2 },
+      });
+      // Cleared by the person who saw it.
+      const cleared = await setOn(ash, encounterId, 'summary', null, 1);
+      expect(await ash.send(cleared)).toEqual([
+        expect.objectContaining({ status: 'accepted', serverVersion: 2 }),
+      ]);
+      expect((await encounterRow(encounterId)).summary).toBeNull();
+    });
+
+    it('a summary holds 1 to 4,000 characters and a place 1 to 200, with no space at either end', async () => {
+      const encounterId = await encounterOf(ash);
+      const refused: [string, unknown][] = [
+        ['summary', ''],
+        ['summary', 'x'.repeat(4001)],
+        ['summary', ' Demo: a space before'],
+        ['summary', 'Demo: a line end after\n'],
+        ['summary', 42],
+        ['locationText', ''],
+        ['locationText', 'y'.repeat(201)],
+        ['locationText', 'Demo: a space after '],
+        ['kind', 'telehealth'],
+        ['kind', null],
+      ];
+      // Refused by the value's schema, naming the path: the database's own check never answers first.
+      const bySchema = expect.objectContaining({
+        status: 'rejected',
+        reason: 'validation',
+        details: { problems: [expect.objectContaining({ path: '' })] },
+      });
+      for (const [field, value] of refused) {
+        const change = await setOn(ash, encounterId, field, value, 0);
+        expect([field, value, await ash.send(change)]).toEqual([field, value, [bySchema]]);
+      }
+      const longest = await setOn(ash, encounterId, 'summary', `Demo:${'é'.repeat(3995)}`, 0);
+      const widest = await setOn(ash, encounterId, 'locationText', `Demo:${'y'.repeat(195)}`, 1);
+      expect((await ash.send(longest, widest)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+
+      for (const locationText of ['', 'y'.repeat(201), ' Demo: padded']) {
+        const create = await ash.phone.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind: 'medical', locationText },
+        });
+        expect(await ash.send(create)).toEqual([
+          expect.objectContaining({
+            status: 'rejected',
+            reason: 'validation',
+            details: { problems: [expect.objectContaining({ path: 'locationText' })] },
+          }),
+        ]);
+      }
+      // The summary is written on the summary screen, never with the create.
+      const withSummary = await ash.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', summary: 'Demo: early' },
+      });
+      expect(await ash.send(withSummary)).toEqual([
+        expect.objectContaining({ status: 'rejected', reason: 'validation' }),
+      ]);
+    });
+
+    it('status is no longer a field: the database works it out from the notes', async () => {
+      const encounterId = await encounterOf(ash);
+      for (const value of ['completed', 'draft']) {
+        const status = await setOn(ash, encounterId, 'status', value, 1);
+        expect(await ash.send(status)).toEqual([
+          expect.objectContaining({
+            status: 'rejected',
+            reason: 'validation',
+            details: { problem: 'unknown_field' },
+          }),
+        ]);
+      }
+      expect(await encounterRow(encounterId)).toMatchObject({ status: 'draft' });
+      expect(await historyOf(encounterId, 'status')).toEqual([]);
+
+      // An encounter from phase 2 still carries a status field's bookkeeping: a snapshot shows its
+      // status, and no status field, and its kind as a field at version 0.
+      const old = randomUUID();
+      const at = h.clock.now.toISOString();
+      await h.scratch.owner`
+        insert into sineobex.encounters (id, team_id, kind, author_user_id, started_at, field_versions, field_meta)
+        values (${old}, ${t.teamId}, 'medical', ${ash.id}, ${at},
+          ${h.scratch.owner.json({ patientId: 1, location: 1, status: 2 })},
+          ${h.scratch.owner.json({ status: { by: ash.id, at, changeId: null } })})`;
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: ash.token,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'encounter', id: old }] },
+      });
+      const [snapshot] = read.body.records as {
+        status: string;
+        fields: Record<string, { value: unknown; version: number }>;
+      }[];
+      expect(snapshot!.status).toBe('draft');
+      expect(Object.keys(snapshot!.fields).sort()).toEqual([
+        'kind',
+        'location',
+        'locationText',
+        'patientId',
+        'summary',
+      ]);
+      expect(snapshot!.fields.kind).toMatchObject({ value: 'medical', version: 0 });
+    });
+
+    it('kind goes to Medical from any version, and a move back is kept in history, not applied', async () => {
+      const create = await ash.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical' },
+      });
+      expect((await ash.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      const encounterId = create.recordId;
+
+      const mark = await auditMark(h);
+      // Bo never saw the kind (version 0): the switch applies all the same, since it only goes one way.
+      const medical = await setOn(bo, encounterId, 'kind', 'medical', 0);
+      expect(await bo.send(medical)).toEqual([
+        expect.objectContaining({ status: 'accepted', serverVersion: 2 }),
+      ]);
+      expect(await encounterRow(encounterId)).toMatchObject({ kind: 'medical', fieldVersions: { kind: 2 } });
+      const [switched] = await expectAudit(h, 'encounter.updated', { after: mark, count: 1 });
+      expect(switched!.details).toMatchObject({ changeId: medical.changeId, field: 'kind', version: 2 });
+
+      const back = await setOn(ash, encounterId, 'kind', 'non_medical', 2);
+      const [kept] = await ash.send(back);
+      expect(kept).toEqual({
+        changeId: back.changeId,
+        status: 'accepted',
+        serverVersion: 2,
+        hash: back.valueHash,
+        server: expect.objectContaining({ value: 'medical', version: 2, changedBy: bo.id }),
+        details: { outcome: 'history_only', problem: 'kind_cannot_go_back' },
+      });
+      expect(await encounterRow(encounterId)).toMatchObject({ kind: 'medical', fieldVersions: { kind: 2 } });
+      expect(await historyOf(encounterId, 'kind')).toEqual([
+        { version: 1, value: 'non_medical', kind: 'created' },
+        { version: 2, value: 'medical', kind: 'set' },
+        { version: 2, value: 'non_medical', kind: 'kept_both' },
+      ]);
+      const [keptEvent] = await expectAudit(h, 'encounter.kept_in_history', { after: mark, count: 1 });
+      expect(keptEvent!.details).toMatchObject({
+        changeId: back.changeId,
+        field: 'kind',
+        problem: 'kind_cannot_go_back',
+      });
+      // Sent twice, it answers the same.
+      expect(await ash.send(back)).toEqual([kept]);
+
+      // Medical again changes nothing; a kind never conflicts, so there is nothing to resolve.
+      const again = await setOn(ash, encounterId, 'kind', 'medical', 1);
+      const resolved = await setOn(ash, encounterId, 'kind', 'medical', 2, { resolution: 'replace' });
+      expect(await ash.send(again, resolved)).toEqual([
+        { changeId: again.changeId, status: 'accepted', serverVersion: 2, hash: again.valueHash },
+        expect.objectContaining({
+          status: 'rejected',
+          reason: 'validation',
+          details: { problem: 'nothing_to_resolve' },
+        }),
+      ]);
+      expect(await historyOf(encounterId, 'kind')).toHaveLength(3);
+    });
+  });
+
   describe('the team lock (lifecycle 4.2)', () => {
     it('every encounter and note change takes it first, a create naming no patient included', () => {
       const change = (c: Partial<Change> & Pick<Change, 'entity' | 'op' | 'value'>) =>
@@ -470,7 +769,7 @@ describe('phase 4 sync: encounters and notes', () => {
           value: { kind: 'non_medical', patientId: randomUUID() },
         }),
         change({ entity: 'encounter', op: 'create', value: null }),
-        ...['patientId', 'location', 'status', 'kind'].map((field) =>
+        ...['patientId', 'location', 'locationText', 'summary', 'status', 'kind'].map((field) =>
           change({ entity: 'encounter', op: 'set', field, value: null }),
         ),
         change({ entity: 'encounter_note', op: 'create', value: { encounterId, ...TEST_NOTE } }),
