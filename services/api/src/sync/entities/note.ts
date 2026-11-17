@@ -1,9 +1,11 @@
 import type { z } from '@hono/zod-openapi';
-import type { ResolvedNoteType } from '@sineobex/forms';
+import { checkAnswer, fieldAt, isBlank, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
-import { definitionFor } from '../../forms/definitions.ts';
 import {
   bookkeeping,
+  byDefinition,
+  DefinitionError,
+  definitionOf,
   fieldSchema,
   fieldState,
   initialFieldState,
@@ -16,6 +18,7 @@ import {
   type EntityRules,
   type FieldMeta,
   type Outcome,
+  type SetContext,
   type StoredRecord,
 } from '../records.ts';
 import { encounterRules, loadEncounter } from './encounter.ts';
@@ -35,10 +38,13 @@ import { valueParents } from './values.ts';
  * patient and makes that visit Medical (4.4). It is taken whatever state the visit's other notes are
  * in: the note is the unit, so a teammate's note added after the clinician signed is never lost.
  *
- * Every change to a Medical note passes the Medical gate (4.2). A set reaches it through the note's
- * own rule (the `status` class, the hook a problem's status uses): the gate needs the loaded note and
- * the sender's credential, which neither apply.ts's checks nor the field rules load. The rule then
- * applies the draft rule unchanged.
+ * A set goes through the note's own rule (the `status` class, the hook a problem's status uses),
+ * since its checks need the loaded note: first the Medical gate (4.2), which needs the sender's
+ * credential; then, for an answer of a note with a version, its type's checkAnswer (4.4), which
+ * needs the note's type; then the draft rule, unchanged. The schema hooks that run before the load
+ * know only phase 2's open path pattern. An answer put on the chart where it does not count says so
+ * on its receipt. A note with no version is a phase 2 preview row: it keeps the open path rule and
+ * is never read against a definition.
  */
 
 type Value = z.infer<typeof NoteCreate>;
@@ -74,13 +80,14 @@ export const noteRules: EntityRules<Value> = {
     const encounter = await loadEncounter(ctx.tx, value.encounterId, false);
     if (!encounter) return rejected('stale_reference', { problem: 'encounter_missing' });
     const type = await noteType(ctx, value);
-    const medical = type !== undefined && isMedicalType(type.definition);
+    const medical = type !== undefined && isMedicalType(type);
     return storeCreate(ctx, 'encounter_note', {
-      // In this order (4.4): what the worker can fix is refused; the gate holds for review.
+      // In this order (4.4): the type and the visit, which the worker can fix; the gate, which holds
+      // the change for review; then each answer, as a set of it is checked.
       check: async () => {
         if (!type) return invalid('unknown_note_type');
         if (medical && encounter.patientId === null) return invalid('medical_note_needs_patient');
-        return medicalGate(ctx, medical);
+        return (await medicalGate(ctx, medical)) ?? answersProblem(type, value.data ?? {});
       },
       insert: async (input) => {
         const data = value.data ?? {};
@@ -109,7 +116,7 @@ export const noteRules: EntityRules<Value> = {
 
   fieldClass: (field) => (fieldSchema('encounter_note', field) ? 'status' : null),
   fieldSchema: (field) => fieldSchema('encounter_note', field),
-  applyStatus: async (s) => (await medicalGate(s, s.rec.internal.medical === true)) ?? applyField('draft', s),
+  applyStatus: noteSet,
 
   async load(tx, id, lock) {
     const rows = lock
@@ -166,9 +173,83 @@ export const isMedicalType = (definition: ResolvedNoteType): boolean =>
  * have. A note with no version is a phase 2 preview row, and no new one is made (4.4). Whether the
  * note is Medical is read from it once, at the create, and never changed (2.2).
  */
-async function noteType(ctx: ChangeContext, value: Value) {
+async function noteType(ctx: ChangeContext, value: Value): Promise<ResolvedNoteType | undefined> {
   if (value.noteTypeVersion === null || value.noteTypeVersion === undefined) return undefined;
-  return definitionFor(ctx.tx, ctx.actor.teamId, value.noteTypeKey, value.noteTypeVersion);
+  return definitionOf(ctx.tx, ctx.actor.teamId, value.noteTypeKey, value.noteTypeVersion);
+}
+
+/** The first of a create's answers its type refuses, naming its path, as a set of it would be refused. */
+function answersProblem(type: ResolvedNoteType, data: Record<string, unknown>): Outcome | null {
+  for (const [path, answer] of Object.entries(data)) {
+    const problem = byDefinition(() => checkAnswer(type, path, answer));
+    if (problem) return invalid(problem, { path });
+  }
+  return null;
+}
+
+/** A set of a note's field: the gate, the answer's check against the note's type, the draft rule. */
+async function noteSet(s: SetContext): Promise<Outcome> {
+  const gated = await medicalGate(s, s.rec.internal.medical === true);
+  if (gated) return gated;
+  const path = s.field.startsWith('data.') ? s.field.slice('data.'.length) : null;
+  const type = path === null ? undefined : await typeOfNote(s);
+  if (path === null || type === undefined) return applyField('draft', s);
+  const problem = byDefinition(() => checkAnswer(type, path, s.value));
+  if (problem) return invalid(problem);
+  const outcome = await applyField('draft', s);
+  // Told only of a value now on the chart: not a conflict, a value kept in history, or the answer
+  // to a conflict that kept the server's value.
+  if (outcome.status !== 'accepted' || outcome.server || s.change.resolution === 'keep_server')
+    return outcome;
+  const why = byDefinition(() => notCounted(type, answersWith(s.rec, path, s.value), path));
+  return why ? { ...outcome, details: { ...outcome.details, notCounted: why } } : outcome;
+}
+
+/**
+ * The definition of a loaded note's type, or undefined for a phase 2 note with no version. Its
+ * create checked that the team holds it; a note that names one the team does not hold was written
+ * past every check, and nothing the worker does can fix it.
+ */
+async function typeOfNote(s: SetContext): Promise<ResolvedNoteType | undefined> {
+  const { noteTypeKey, noteTypeVersion } = s.rec.attributes as {
+    noteTypeKey: string;
+    noteTypeVersion: number | null;
+  };
+  if (noteTypeVersion === null) return undefined;
+  const type = await definitionOf(s.tx, s.rec.teamId, noteTypeKey, noteTypeVersion);
+  if (!type) throw new DefinitionError();
+  return type;
+}
+
+/** The note's answers, by path, with `value` at `path`. */
+function answersWith(rec: StoredRecord, path: string, value: unknown): Record<string, unknown> {
+  const answers: Record<string, unknown> = {};
+  for (const [field, held] of Object.entries(rec.values))
+    if (field.startsWith('data.')) answers[field.slice('data.'.length)] = held;
+  answers[path] = value;
+  return answers;
+}
+
+/**
+ * Why an answer on the chart does not count (lifecycle 4.4), or null when it does: it is in an entry
+ * that is not there (another phone removed it), or its field is hidden now (a condition, a flag that
+ * clears it, a row whose option is no longer picked). It is kept all the same, and counts again when
+ * the field shows again. A clear holds no answer, and a removal is what it says: neither is told.
+ */
+export function notCounted(
+  type: ResolvedNoteType,
+  answers: Record<string, unknown>,
+  path: string,
+): 'hidden_field' | 'removed_entry' | null {
+  const target = fieldAt(type, path);
+  if (!target || target.part === 'entryRemoved' || isBlank(answers[path])) return null;
+  const reading = new NoteReading(type, answers);
+  if (reading.counts(path)) return null;
+  if (target.entry !== null) {
+    const section = reading.model.sections.find((node) => node.section === target.section)!;
+    if (!reading.entries(section).includes(target.entry)) return 'removed_entry';
+  }
+  return 'hidden_field';
 }
 
 /**

@@ -33,7 +33,8 @@ import {
  *   blank; anything else is an admin's correction, or a kept alternate for one.
  * - set-once (retractions): the first wins, later ones are history.
  * - status: the entity's own rule (a problem's status, problem.ts, design 9.2; an encounter's kind,
- *   encounter.ts; a note's fields, behind the Medical gate, note.ts).
+ *   encounter.ts; a note's fields, note.ts: the Medical gate and the answer's check against the
+ *   note's type, then the draft rule here).
  */
 
 export async function applyField(cls: FieldClass, s: SetContext): Promise<Outcome> {

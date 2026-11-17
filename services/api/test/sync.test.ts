@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { valueHash } from '../src/sync/canonical.ts';
 import { MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
+import { MAX_NOTE_FIELDS } from '../src/sync/records.ts';
 import { QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { createPatient } from './patient-fixtures.ts';
@@ -638,11 +639,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       expect(results(r.body)[0]).toMatchObject({ status: 'rejected', reason: 'stale_reference' });
     });
 
-    it('a note has at most 300 data fields, at create and as fields are added', async () => {
+    it('a note has at most MAX_NOTE_FIELDS data fields, at create and as fields are added', async () => {
       // Review finding: 6,400 keys per note made one push write ~96,000 permanent history rows.
       // An answer in each of many entries of the test note type's repeating section.
       const rowPath = (i: number) => `rows.e${String(i).padStart(7, '0')}.n`;
-      const tooMany = Object.fromEntries(Array.from({ length: 301 }, (_, i) => [rowPath(i), i]));
+      const tooMany = Object.fromEntries(
+        Array.from({ length: MAX_NOTE_FIELDS + 1 }, (_, i) => [rowPath(i), i]),
+      );
       const { encounterId } = await syncedDraft();
       const big = await phoneA.change({
         entity: 'encounter_note',
@@ -653,7 +656,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         status: 'rejected',
         reason: 'validation',
       });
-      const full = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [rowPath(i), i]));
+      const full = Object.fromEntries(Array.from({ length: MAX_NOTE_FIELDS }, (_, i) => [rowPath(i), i]));
       const ok = await phoneA.change({
         entity: 'encounter_note',
         op: 'create',
@@ -671,7 +674,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       const r = await push(h, phoneA, t.aToken, t.teamId, [
         ok,
         await change(`data.${rowPath(0)}`),
-        await change(`data.${rowPath(300)}`),
+        await change(`data.${rowPath(MAX_NOTE_FIELDS)}`),
       ]);
       expect(results(r.body).map((x) => [x.status, x.details?.problem])).toEqual([
         ['accepted', undefined],

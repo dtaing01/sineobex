@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written (phase 4 design, lifecycle 4.4). The test-only note types phase 2's sync tests chart on, in place of the keys they made up before note types existed (vitals, wound_care), with the paths those tests use. Each is a resolved definition as the export writes one; a team holds it with the hash sha256Hex(canonicalJson(definition)). test_note is a Non-Medical note type (offered for both kinds of encounter), so the Medical gate never applies to it; test_medical is a Medical note type with the same sections. No field is required, so a note on either passes the finish check whatever it holds. rows repeats: its entries give a note as many answers as a test needs. services/api/test/sync-fixtures.ts installs both in every test team; the phone's tests read them through apps/mobile/test/sync/test_note_types.dart. Never installed outside tests.",
+  "note": "Hand-written (phase 4 design, lifecycle 4.4). The test-only note types phase 2's sync tests chart on, in place of the keys they made up before note types existed (vitals, wound_care), with the paths those tests use. Each is a resolved definition as the export writes one; a team holds it with the hash sha256Hex(canonicalJson(definition)). test_note is a Non-Medical note type (offered for both kinds of encounter), so the Medical gate never applies to it; test_medical is a Medical note type with the same sections. No field is required, so a note on either passes the finish check whatever it holds. rows repeats: its entries give a note as many answers as a test needs. more.detail shows only while more.none is not ticked, so an answer there can be one that does not count (lifecycle 4.4, notCounted). services/api/test/sync-fixtures.ts installs both in every test team; the phone's tests read them through apps/mobile/test/sync/test_note_types.dart. Never installed outside tests.",
   "noteTypes": [
     {
       "key": "test_note",
@@ -166,6 +166,30 @@
               "label": "Text",
               "lines": "many",
               "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "more",
+          "title": "More",
+          "fields": [
+            {
+              "id": "none",
+              "kind": "flag",
+              "label": "Nothing more"
+            },
+            {
+              "id": "detail",
+              "kind": "text",
+              "label": "Detail",
+              "lines": "one",
+              "maxLength": 200,
+              "showWhen": {
+                "not": {
+                  "field": "more.none",
+                  "filled": true
+                }
+              }
             }
           ]
         }
@@ -335,6 +359,30 @@
               "label": "Text",
               "lines": "many",
               "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "more",
+          "title": "More",
+          "fields": [
+            {
+              "id": "none",
+              "kind": "flag",
+              "label": "Nothing more"
+            },
+            {
+              "id": "detail",
+              "kind": "text",
+              "label": "Detail",
+              "lines": "one",
+              "maxLength": 200,
+              "showWhen": {
+                "not": {
+                  "field": "more.none",
+                  "filled": true
+                }
+              }
             }
           ]
         }

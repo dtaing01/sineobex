@@ -6,6 +6,7 @@ import { applyField } from './entities/fields.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
+  DefinitionError,
   fieldState,
   invalid,
   jsonb,
@@ -270,8 +271,10 @@ export async function applyChange(
  * checked first wasn't: it would fail the same way on every retry, and a push stops at a failing
  * change, so the phone's queue would never move again. Instead the change's writes roll back and it
  * is stored as a rejection naming the constraint (schema, never a value), which the worker sees and
- * fixes, and the devices page counts as the bug report it is. Any other error (a deadlock, a lost
- * connection) may succeed on retry, so it still aborts the transaction and stops the batch.
+ * fixes, and the devices page counts as the bug report it is. A rule that could not apply a note
+ * type's definition is the same kind of lasting fault, stored as `definition_error` (phase 4,
+ * lifecycle 4.1). Any other error (a deadlock, a lost connection) may succeed on retry, so it still
+ * aborts the transaction and stops the batch.
  *
  * Everything inside runs on the savepoint's own handle: postgres.js fails the whole transaction
  * when a query on the outer handle fails, even one that was caught.
@@ -287,6 +290,8 @@ export async function applyInSavepoint(
   try {
     return await tx.savepoint((sp) => applyChange(sp, audit, actor, change, hash, rejection));
   } catch (err) {
+    if (err instanceof DefinitionError)
+      return applyChange(tx, audit, actor, change, hash, invalid('definition_error'));
     const broken = integrityError(err);
     if (!broken) throw err;
     return applyChange(tx, audit, actor, change, hash, invalid('server_constraint', broken));

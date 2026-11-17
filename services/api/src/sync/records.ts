@@ -1,7 +1,9 @@
 import { z } from '@hono/zod-openapi';
+import type { ResolvedNoteType } from '@sineobex/forms';
 import type { AuditFn } from '../auth/context.ts';
 import type { Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
+import { definitionFor, DefinitionMismatch } from '../forms/definitions.ts';
 import { Uuid } from '../routes/schemas.ts';
 import { canonicalJson } from './canonical.ts';
 import type { ParentRef } from './entities/values.ts';
@@ -18,7 +20,8 @@ import type {
  * who last changed it, so two people can edit one record field by field. Each kind of record has
  * its rules in entities/ (the registry, phase 3 design 2.2); this file holds what they share: the
  * stored record, its history, the change being applied, and phase 2's encounter and note values.
- * Phase 4 replaces the open `data.<path>` rule with the team's versioned note type definitions.
+ * A note's answers keep phase 2's open `data.<path>` pattern here, before the note is loaded; once it
+ * is, the team's definition of its type checks each one (phase 4, lifecycle 4.4, entities/note.ts).
  */
 
 /** Largest canonical JSON for one value. Photos travel separately (module 8). */
@@ -26,9 +29,11 @@ export const MAX_VALUE_BYTES = 64 * 1024;
 
 /**
  * Data fields one note may have. Each field is its own history row, version and meta entry, so
- * without a bound one 1 MB push could write ~100,000 permanent history rows.
+ * without a bound one 1 MB push could write ~100,000 permanent history rows. A General note with
+ * every exam system charted can pass 300 (forms 2.4); the definition bounds a note's paths, and this
+ * is the server's bound, since it checks one answer at a time and counts no entries.
  */
-export const MAX_NOTE_FIELDS = 300;
+export const MAX_NOTE_FIELDS = 1000;
 const MAX_DEPTH = 10;
 
 const Location = z
@@ -289,6 +294,52 @@ export async function appendHistory(tx: Tx, e: HistoryEntry): Promise<void> {
     values (${e.teamId}, ${e.entity}, ${e.recordId}, ${e.field}, ${e.version}, ${jsonb(tx, e.value)},
             ${e.previousValue === undefined ? null : jsonb(tx, e.previousValue)}, ${e.kind}, ${e.changedBy},
             ${e.approvedBy}, ${e.changeId}, ${e.deviceId}, ${e.deviceTime}, ${e.reviewId ?? null})`;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rules that read a note type's definition
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * A rule could not apply the definition it reads (lifecycle 4.1): the team's row of it fails its
+ * hash (D79), a note names a version the team does not hold, or the interpreter threw on it. The
+ * same definition fails the same way on every retry, and a push stops at a change that throws, so
+ * applyInSavepoint rolls back what the change wrote and stores it as a `definition_error`
+ * rejection: the phone's queue moves on. It carries nothing of the definition or the answer.
+ */
+export class DefinitionError extends Error {
+  constructor() {
+    super('A sync rule could not apply a note type definition.');
+    this.name = 'DefinitionError';
+  }
+}
+
+/** Runs the interpreter for a rule (checkAnswer, effectiveAnswers, the hash): any throw is a DefinitionError. */
+export function byDefinition<T>(rule: () => T): T {
+  try {
+    return rule();
+  } catch {
+    throw new DefinitionError();
+  }
+}
+
+/**
+ * The definition of a version the team holds, for a rule that needs it: undefined when the team
+ * does not hold it, a DefinitionError when its row fails its hash. A database error is no
+ * DefinitionError: it may pass on a retry, so it still stops the push.
+ */
+export async function definitionOf(
+  tx: Tx,
+  teamId: string,
+  key: string,
+  version: number,
+): Promise<ResolvedNoteType | undefined> {
+  try {
+    return (await definitionFor(tx, teamId, key, version))?.definition;
+  } catch (err) {
+    if (err instanceof DefinitionMismatch) throw new DefinitionError();
+    throw err;
+  }
 }
 
 // ------------------------------------------------------------------------------------------------

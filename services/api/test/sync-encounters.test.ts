@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { canonicalJson, checkAnswer, sha256Hex, validate } from '@sineobex/forms';
+import { canonicalJson, checkAnswer, sha256Hex, validate, type ResolvedNoteType } from '@sineobex/forms';
 import { checkFile } from '@sineobex/forms/schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Tx } from '../src/db/database.ts';
 import { chartsMedical, credentialChangesAfter, loadSigner } from '../src/encounters/signer.ts';
 import { takesTeamLock } from '../src/sync/entities/index.ts';
+import { MAX_NOTE_FIELDS } from '../src/sync/records.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createPatient, createTeam, expectAudit } from './patient-fixtures.ts';
 import {
@@ -132,6 +133,8 @@ describe('phase 4 sync: encounters and notes', () => {
         [`${rows(300)}.n`, 300],
         [`${rows(999)}.text`, 'Demo: a row'],
         [`${rows(999)}.entryAt`, '2026-10-20T14:50:00.000Z'],
+        ['more.none', true],
+        ['more.detail', 'Demo: shown while nothing more is ticked'],
       ];
       for (const definition of TEST_NOTE_TYPES) {
         for (const [path, value] of answers)
@@ -403,7 +406,10 @@ describe('phase 4 sync: encounters and notes', () => {
           value: 'draft',
           baseVersion: 1,
         });
-        expect(await who.send(pulse, status)).toEqual([
+        // The gate comes first: an answer the type refuses is held too, and checked when accepted.
+        const wrong = await answer(who, create.recordId, 'data.vitals.pulse', 'fast');
+        expect(await who.send(pulse, status, wrong)).toEqual([
+          expect.objectContaining(held),
           expect.objectContaining(held),
           expect.objectContaining(held),
         ]);
@@ -610,6 +616,315 @@ describe('phase 4 sync: encounters and notes', () => {
         data: { 'care.followup': 'Demo: Friday' },
       });
       expect(await kai.send(later)).toEqual([accepted(later)]);
+    });
+  });
+
+  describe('a note’s answers (lifecycle 4.4)', () => {
+    let eli: Awaited<ReturnType<typeof clinician>>;
+    let fay: Awaited<ReturnType<typeof clinician>>;
+    let encounterId: string;
+
+    beforeAll(async () => {
+      eli = await clinician('eli@example.com', 'Eli (demo)', 'none');
+      fay = await clinician('fay@example.com', 'Fay (demo)', 'none');
+      encounterId = await encounterOf(eli);
+    });
+
+    const noteCreate = (c: Awaited<ReturnType<typeof clinician>>, value: object) =>
+      c.phone.change({ entity: 'encounter_note', op: 'create', value: { encounterId, ...value } });
+    const setOn = (
+      c: Awaited<ReturnType<typeof clinician>>,
+      noteId: string,
+      field: string,
+      value: unknown,
+      baseVersion = 0,
+      more: Partial<Change> = {},
+    ) =>
+      c.phone.change({
+        entity: 'encounter_note',
+        recordId: noteId,
+        op: 'set',
+        field,
+        value,
+        baseVersion,
+        ...more,
+      });
+    /** A note on the test-only Non-Medical type, on the chart. */
+    async function noteWith(data: Record<string, unknown> = {}) {
+      const create = await noteCreate(eli, { ...TEST_NOTE, data });
+      expect((await eli.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      return create.recordId;
+    }
+    const refused = (c: Change, details: Record<string, unknown>) => ({
+      changeId: c.changeId,
+      status: 'rejected',
+      reason: 'validation',
+      message: expect.any(String),
+      details,
+    });
+    const taken = (c: Change, serverVersion: number, details?: Record<string, unknown>) => ({
+      changeId: c.changeId,
+      status: 'accepted',
+      serverVersion,
+      hash: c.valueHash,
+      ...(details ? { details } : {}),
+    });
+    const entry = (n: number) => `rows.e${String(n).padStart(7, '0')}`;
+    const at = '2026-10-20T14:40:00.000Z';
+
+    it('each answer is checked against the note’s type once the note is loaded', async () => {
+      const noteId = await noteWith({ 'vitals.pulse': 88 });
+      const wrong: [string, unknown, string][] = [
+        ['data.vitals.pulse', 'fast', 'wrong_type'],
+        ['data.vitals.pulse', 301, 'out_of_range'],
+        // One decimal: 38.25 is not one of its values.
+        ['data.vitals.temp_c', 38.25, 'out_of_range'],
+        ['data.care.followup', `Demo: ${'x'.repeat(200)}`, 'too_long'],
+        ['data.vitals.bp', 120, 'unknown_path'],
+        ['data.rows.notanentry.text', 'Demo: a row', 'unknown_path'],
+        ['data.rows.e0000001.n', 'two', 'wrong_type'],
+        // A tick stores true; unticking writes null.
+        ['data.more.none', false, 'wrong_type'],
+      ];
+      const sets = await Promise.all(wrong.map(([field, value]) => setOn(eli, noteId, field, value)));
+      const right = [
+        await setOn(eli, noteId, 'data.vitals.pulse', 96, 1),
+        await setOn(eli, noteId, 'data.vitals.temp_c', 38.2),
+        // Null clears an answer, wherever one is stored.
+        await setOn(eli, noteId, 'data.care.followup', null),
+      ];
+      expect(await eli.send(...sets, ...right)).toEqual([
+        ...sets.map((c, i) => refused(c, { problem: wrong[i]![2] })),
+        taken(right[0]!, 2),
+        taken(right[1]!, 1),
+        taken(right[2]!, 0),
+      ]);
+      expect(await noteRow(noteId)).toMatchObject({ data: { 'vitals.pulse': 96, 'vitals.temp_c': 38.2 } });
+      // Phase 2's open pattern still answers first, before the note is loaded.
+      const badPath = await setOn(eli, noteId, 'data.Vitals', 1);
+      expect(await eli.send(badPath)).toEqual([refused(badPath, { problem: 'unknown_field' })]);
+    });
+
+    it('a create’s answers are checked too, each refusal naming the answer’s path', async () => {
+      const cases: [Record<string, unknown>, Record<string, unknown>][] = [
+        [{ 'vitals.pulse': 'fast' }, { problem: 'wrong_type', path: 'vitals.pulse' }],
+        [
+          { 'care.plan': 'Demo: rest', 'vitals.bp': 120 },
+          { problem: 'unknown_path', path: 'vitals.bp' },
+        ],
+        [{ 'wound.length_cm': 100 }, { problem: 'out_of_range', path: 'wound.length_cm' }],
+      ];
+      const creates = await Promise.all(cases.map(([data]) => noteCreate(eli, { ...TEST_NOTE, data })));
+      const fine = await noteCreate(eli, { ...TEST_NOTE, data: { 'vitals.pulse': 88, 'care.plan': null } });
+      expect(await eli.send(...creates, fine)).toEqual([
+        ...creates.map((c, i) => refused(c, cases[i]![1])),
+        taken(fine, 1),
+      ]);
+      for (const c of creates) expect(await noteRow(c.recordId)).toBeUndefined();
+    });
+
+    it('a note with no version keeps the open path rule, and is never checked against a definition', async () => {
+      // A phase 2 preview row: no new one can be made.
+      const noteId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data)
+        values (${noteId}, ${t.teamId}, ${encounterId}, 'wound_care', ${eli.id}, '{"plan": "Demo: dress daily"}')`;
+      const sets = [
+        await setOn(eli, noteId, 'data.plan', 'Demo: soak first'),
+        await setOn(eli, noteId, 'data.site.left.arm', 12),
+      ];
+      expect(await eli.send(...sets)).toEqual([taken(sets[0]!, 1), taken(sets[1]!, 1)]);
+      expect(await noteRow(noteId)).toMatchObject({
+        data: { plan: 'Demo: soak first', 'site.left.arm': 12 },
+      });
+    });
+
+    it('a note holds up to 1,000 answers', async () => {
+      expect(MAX_NOTE_FIELDS).toBe(1000);
+      // The server checks one answer at a time and counts no entries: 1,000 is its bound (forms 2.4).
+      const data = Object.fromEntries(
+        Array.from({ length: MAX_NOTE_FIELDS / 2 }, (_, i) => [
+          [`${entry(i)}.entryAt`, at],
+          [`${entry(i)}.n`, i],
+        ]).flat(),
+      );
+      const full = await noteCreate(eli, { ...TEST_NOTE, data });
+      const over = await noteCreate(eli, { ...TEST_NOTE, data: { ...data, 'care.plan': 'Demo: one more' } });
+      const [made, refusedOver] = await eli.send(full, over);
+      expect(made).toEqual(taken(full, 1));
+      expect(refusedOver).toMatchObject({ status: 'rejected', reason: 'validation' });
+      const again = await setOn(eli, full.recordId, `data.${entry(0)}.n`, 7, 1);
+      const more = await setOn(eli, full.recordId, 'data.care.plan', 'Demo: one more');
+      expect(await eli.send(again, more)).toEqual([
+        taken(again, 2),
+        refused(more, { problem: 'too_many_fields' }),
+      ]);
+    }, 60_000);
+
+    it('an answer that will not count is taken, and its receipt says why', async () => {
+      // Fay removed the first row and ticked "Nothing more"; Eli, offline, wrote into both.
+      const noteId = await noteWith({
+        [`${entry(1)}.entryAt`]: at,
+        [`${entry(1)}.entryRemoved`]: true,
+        [`${entry(2)}.entryAt`]: at,
+        'more.none': true,
+      });
+      const sets = [
+        await setOn(eli, noteId, `data.${entry(1)}.text`, 'Demo: the first row'),
+        await setOn(eli, noteId, `data.${entry(1)}.entryAt`, at, 1),
+        await setOn(eli, noteId, 'data.more.detail', 'Demo: more to say'),
+        // In an entry that is there, and in a field that shows: nothing to say.
+        await setOn(eli, noteId, `data.${entry(2)}.text`, 'Demo: the second row'),
+        await setOn(eli, noteId, 'data.care.plan', 'Demo: rest'),
+        // A clear holds no answer to count. The removal itself is what it says.
+        await setOn(eli, noteId, 'data.more.detail', null, 1),
+        await setOn(eli, noteId, `data.${entry(2)}.entryRemoved`, true),
+        await setOn(eli, noteId, `data.${entry(2)}.text`, 'Demo: the second row, again', 1),
+      ];
+      const answered = await eli.send(...sets);
+      expect(answered).toEqual([
+        taken(sets[0]!, 1, { notCounted: 'removed_entry' }),
+        taken(sets[1]!, 1, { notCounted: 'removed_entry' }),
+        taken(sets[2]!, 1, { notCounted: 'hidden_field' }),
+        taken(sets[3]!, 1),
+        taken(sets[4]!, 1),
+        taken(sets[5]!, 2),
+        taken(sets[6]!, 1),
+        taken(sets[7]!, 2, { notCounted: 'removed_entry' }),
+      ]);
+      // Kept on the chart as sent: shown again if the field shows again.
+      expect(await noteRow(noteId)).toMatchObject({
+        data: { [`${entry(1)}.text`]: 'Demo: the first row', [`${entry(2)}.entryRemoved`]: true },
+      });
+      // Sent twice, it answers the same, from its receipt.
+      expect(await eli.send(...sets)).toEqual(answered);
+
+      // Only a value on the chart is told so: a conflict, or the answer to one that keeps the
+      // server's value, says nothing of it.
+      const fays = await setOn(fay, noteId, 'data.more.detail', 'Demo: from Fay', 2);
+      expect(await fay.send(fays)).toEqual([taken(fays, 3, { notCounted: 'hidden_field' })]);
+      const unseen = await setOn(eli, noteId, 'data.more.detail', 'Demo: from Eli', 2);
+      const [conflict] = await eli.send(unseen);
+      expect(conflict).toMatchObject({ status: 'conflict' });
+      expect(conflict!.details).toBeUndefined();
+      const keep = await setOn(eli, noteId, 'data.more.detail', 'Demo: from Eli', 3, {
+        conflictOf: unseen.changeId,
+        resolution: 'keep_server',
+      });
+      expect(await eli.send(keep)).toEqual([taken(keep, 3)]);
+      // The same value again is still a value that does not count.
+      const same = await setOn(fay, noteId, 'data.more.detail', 'Demo: from Fay', 3);
+      expect(await fay.send(same)).toEqual([taken(same, 3, { notCounted: 'hidden_field' })]);
+    });
+
+    it('a hidden field in an entry that is there is hidden, not removed', async () => {
+      const [testNote] = TEST_NOTE_TYPES;
+      const wounds = {
+        ...testNote!,
+        key: 'test_wounds',
+        sections: [
+          {
+            id: 'wounds',
+            title: 'Wounds',
+            repeat: { max: 20, itemTitle: 'Wound {n}' },
+            fields: [
+              { id: 'healed', kind: 'flag', label: 'Healed' },
+              {
+                id: 'size_cm',
+                kind: 'number',
+                label: 'Size',
+                min: 0,
+                max: 99.9,
+                decimals: 1,
+                showWhen: { not: { field: './healed', filled: true } },
+              },
+            ],
+          },
+        ],
+      } as unknown as ResolvedNoteType;
+      expect(validate(wounds, { noteType: () => undefined })).toEqual([]);
+      await installNoteTypes(h, t.teamId, [wounds]);
+      const wound = 'wounds.e0000001';
+      const create = await noteCreate(eli, {
+        noteTypeKey: 'test_wounds',
+        noteTypeVersion: 1,
+        data: { [`${wound}.entryAt`]: at, [`${wound}.healed`]: true },
+      });
+      expect((await eli.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      const size = await setOn(fay, create.recordId, `data.${wound}.size_cm`, 2.5);
+      expect(await fay.send(size)).toEqual([taken(size, 1, { notCounted: 'hidden_field' })]);
+    });
+
+    it('a rule that throws on a definition is refused definition_error, writes nothing, and the queue goes on', async () => {
+      const [testNote] = TEST_NOTE_TYPES;
+      // A row whose hash is not its definition's (D79): 0017 checks only the hash's form.
+      const forged = { ...testNote!, key: 'test_forged' };
+      await h.scratch.owner`
+        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin, preset_version)
+        values (${t.teamId}, 'test_forged', 1, ${JSON.stringify(forged)}::text::jsonb,
+                ${await sha256Hex(canonicalJson(testNote))}, 'preset', 1)`;
+      // A definition the validator refuses, two fields that each show only while the other is filled,
+      // installed under its own hash: the interpreter throws on it.
+      const looped = {
+        ...testNote!,
+        key: 'test_looped',
+        sections: [
+          {
+            id: 'loop',
+            title: 'Loop',
+            fields: [
+              {
+                id: 'a',
+                kind: 'text',
+                label: 'A',
+                lines: 'one',
+                maxLength: 200,
+                showWhen: { field: 'loop.b', filled: true },
+              },
+              {
+                id: 'b',
+                kind: 'text',
+                label: 'B',
+                lines: 'one',
+                maxLength: 200,
+                showWhen: { field: 'loop.a', filled: true },
+              },
+            ],
+          },
+        ],
+      } as unknown as ResolvedNoteType;
+      expect(validate(looped, { noteType: () => undefined }).map((p) => p.rule)).toContain(
+        'validate.condition_cycle',
+      );
+      await installNoteTypes(h, t.teamId, [looped]);
+      const loopedNote = await noteCreate(eli, { noteTypeKey: 'test_looped', noteTypeVersion: 1 });
+      expect((await eli.send(loopedNote)).map((r) => r.status)).toEqual(['accepted']);
+      // A note naming a version the team does not hold, from before any check: none can be made now.
+      const strayId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, note_type_version, author_user_id)
+        values (${strayId}, ${t.teamId}, ${encounterId}, 'test_note', 9, ${eli.id})`;
+
+      const mark = await auditMark(h);
+      const throwing = [
+        await noteCreate(eli, { noteTypeKey: 'test_forged', noteTypeVersion: 1 }),
+        await setOn(eli, loopedNote.recordId, 'data.loop.a', 'Demo: round and round'),
+        await setOn(eli, strayId, 'data.care.plan', 'Demo: rest'),
+      ];
+      const after = await noteCreate(eli, TEST_NOTE);
+      expect(await eli.send(...throwing, after)).toEqual([
+        ...throwing.map((c) => refused(c, { problem: 'definition_error' })),
+        taken(after, 1),
+      ]);
+      expect(await noteRow(throwing[0]!.recordId)).toBeUndefined();
+      expect(await noteRow(loopedNote.recordId)).toMatchObject({ data: {} });
+      const events = await h.scratch.owner<{ action: string; problem: string | null }[]>`
+        select action, details->>'problem' as problem from sineobex.audit_events
+        where id > ${mark}::bigint order by id`;
+      expect(events).toEqual([
+        ...throwing.map(() => ({ action: 'sync.rejected', problem: 'definition_error' })),
+        { action: 'note.created', problem: null },
+      ]);
     });
   });
 
