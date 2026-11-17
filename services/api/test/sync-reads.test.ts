@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { validate, type ResolvedNoteType } from '@sineobex/forms';
 import { checkFile } from '@sineobex/forms/schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mayHoldHidden, noteReader } from '../src/sync/records.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createPatient, expectAudit } from './patient-fixtures.ts';
 import {
@@ -11,10 +12,12 @@ import {
   installNoteTypes,
   noteOn,
   setCredential,
+  setRole,
   setupTeam,
   signoffOf,
   TEST_NOTE_TYPES,
   TEST_ASSESS_TYPE,
+  TEST_MARKED_TYPE,
   TEST_RED_FLAGS_TYPE,
   TEST_RESTRICTED_TYPE,
   TEST_RESTRICTED_TYPES,
@@ -84,6 +87,9 @@ describe('phase 4 sync: who may read and change what in a note', () => {
   let dee: Clinician;
   /** A custom role with encounters.chart alone: no patients.view, so no Medical note. */
   let eli: Clinician;
+  /** Dee's role, and one that sees everything a note may hide: what a role is moved to and from. */
+  let outreachRole: string;
+  let examsRole: string;
   const admin = () => ({ token: t.adminToken });
 
   beforeAll(async () => {
@@ -104,14 +110,14 @@ describe('phase 4 sync: who may read and change what in a note', () => {
     ana = await clinician(h, t, 'ana@example.com', 'Ana (demo)', 'attending');
     ben = await clinician(h, t, 'ben@example.com', 'Ben (demo)', 'none');
     sky = await clinician(h, t, 'sky@example.com', 'Sky (demo)', 'student');
-    dee = await clinician(
-      h,
-      t,
-      'dee@example.com',
-      'Dee (demo)',
-      'none',
-      await role('Outreach charting', ['patients.view', 'encounters.chart']),
-    );
+    outreachRole = await role('Outreach charting', ['patients.view', 'encounters.chart']);
+    examsRole = await role('Exam charting', [
+      'patients.view',
+      'patients.view_sensitive',
+      'patients.view_sensitive_exams',
+      'encounters.chart',
+    ]);
+    dee = await clinician(h, t, 'dee@example.com', 'Dee (demo)', 'none', outreachRole);
     eli = await clinician(
       h,
       t,
@@ -595,53 +601,61 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       message: expect.any(String),
     });
 
-    it('is held for review, with nothing sent back of what the answer holds; the author always sets their own', async () => {
+    it('is held for review by what the answer could hold, never by what it holds: one set, one answer, on any note; the author always sets their own', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
-      const bens = [
-        await set(ben, n, 'exam.findings', 'Demo: a small rash'),
-        // Not seen, and so a conflict with the answer held there, but held before that is asked.
-        await set(ben, n, 'exam.findings', 'Demo: something else', 0),
-        await set(ben, n, 'moud.dose', 'Demo: 12 mg'),
-        // An ordering credential's section.
-        await set(ben, n, 'meds.given', 'Demo: one tablet'),
-        // A sensitive option, put there or taken away.
-        await set(ben, n, 'systems.seen', ['lungs', 'gu']),
-        await set(ben, n, 'systems.seen', ['heart']),
-        await set(ben, n, 'general.notes', 'Demo: walked over from the park'),
-      ];
-      const answers = await ben.send(...bens);
-      expect(answers.slice(0, 6)).toEqual(bens.slice(0, 6).map(heldOnly));
-      expect(answers[6]).toMatchObject({ status: 'accepted', serverVersion: 2 });
-      // On a note whose restricted sections hold nothing: the section alone, or the value sent.
-      const bare = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
+      // Nothing here the sender may not see: no exam, no treatment, no sensitive option picked, and
+      // no sensitive diagnosis. Each set is answered here as on the note that holds them, so
+      // whether it is held tells the sender nothing of what a note holds (review finding RD-10).
+      const BARE = {
         'general.notes': 'Demo: walked over from the shelter',
         'systems.seen': ['heart'],
-      });
-      const onBare = [
-        await set(ben, bare, 'exam.findings', '', 0),
-        await set(ben, bare, 'moud.dose', '', 0),
-        await set(ben, bare, 'systems.seen', ['heart', 'gu']),
-        await set(ben, bare, 'systems.seen', ['heart', 'lungs']),
+        [`dx.${E2}.entryAt`]: AT,
+        [`dx.${E2}.diagnosis.code`]: 'J02.9',
+      };
+      const bare = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, BARE);
+      const notes = [
+        { note: n, versions: new Map(Object.keys(ANSWERS).map((path) => [path, 1])) },
+        { note: bare, versions: new Map(Object.keys(BARE).map((path) => [path, 1])) },
       ];
-      const bareAnswers = await ben.send(...onBare);
-      expect(bareAnswers.slice(0, 3)).toEqual(onBare.slice(0, 3).map(heldOnly));
-      expect(bareAnswers[3]).toMatchObject({ status: 'accepted', serverVersion: 2 });
-      // A student reads the treatment record, and orders nothing.
-      const skys = [
-        await set(sky, n, 'moud.dose', 'Demo: 12 mg'),
-        await set(sky, n, 'meds.given', 'Demo: one tablet'),
+      const cases: [Clinician, string, unknown, 'held' | 'accepted', number?][] = [
+        [ben, 'exam.findings', 'Demo: a small rash', 'held'],
+        // Not seen, and so a conflict with the answer held there, but held before that is asked.
+        [ben, 'exam.findings', 'Demo: something else', 'held', 0],
+        [ben, 'moud.dose', 'Demo: 12 mg', 'held'],
+        // An ordering credential's section.
+        [ben, 'meds.given', 'Demo: one tablet', 'held'],
+        // A picker with a sensitive exam's option, whatever it holds and whatever is sent.
+        [ben, 'systems.seen', ['lungs', 'gu'], 'held'],
+        [ben, 'systems.seen', ['heart'], 'held'],
+        [ben, 'systems.seen', ['heart', 'lungs'], 'held'],
+        [ben, 'general.notes', 'Demo: walked over from the park', 'accepted'],
+        // With patients.view_sensitive, any diagnosis's entry.
+        [ben, `dx.${E2}.note`, 'Demo: rest and fluids', 'accepted'],
+        // A student reads the treatment record, and orders nothing.
+        [sky, 'moud.dose', 'Demo: 12 mg', 'accepted'],
+        [sky, 'meds.given', 'Demo: one tablet', 'held'],
+        // Without patients.view_sensitive, every answer of a section of diagnoses, sensitive or not.
+        [dee, `dx.${E1}.note`, 'Demo: something else', 'held'],
+        [dee, `dx.${E2}.note`, 'Demo: rest and fluids', 'held'],
+        [dee, `dx.${E2}.entryRemoved`, true, 'held'],
+        [dee, 'general.notes', 'Demo: back at the shelter', 'accepted'],
       ];
-      const skyAnswers = await sky.send(...skys);
-      expect(skyAnswers[0]).toMatchObject({ status: 'accepted', serverVersion: 2 });
-      expect(skyAnswers[1]).toEqual(heldOnly(skys[1]!));
-      // Without patients.view_sensitive, the entry of a sensitive diagnosis.
-      const dees = [
-        await set(dee, n, `dx.${E1}.note`, 'Demo: something else'),
-        await set(dee, n, `dx.${E2}.note`, 'Demo: rest and fluids', 0),
-      ];
-      const deeAnswers = await dee.send(...dees);
-      expect(deeAnswers[0]).toEqual(heldOnly(dees[0]!));
-      expect(deeAnswers[1]).toMatchObject({ status: 'accepted', serverVersion: 1 });
+      const heldOnN: Change[] = [];
+      for (const [c, path, value, expected, base] of cases) {
+        for (const on of notes) {
+          const change = await set(c, on.note, path, value, base ?? on.versions.get(path) ?? 0);
+          const [answer] = await c.send(change);
+          const label = `${c.displayName} ${path} ${JSON.stringify(value)} on ${on.note === n ? 'the full note' : 'the bare one'}`;
+          if (expected === 'held') {
+            expect(answer, label).toEqual(heldOnly(change));
+            if (on.note === n) heldOnN.push(change);
+          } else {
+            expect(answer, label).toMatchObject({ status: 'accepted' });
+            expect(answer!.details, label).toBeUndefined();
+            on.versions.set(path, answer!.serverVersion!);
+          }
+        }
+      }
       // ...and any answer of a note they may not read at all.
       const talk = await noteOn(ana, await visitOf(ana, patientId), TEST_SENSITIVE_TYPE, {
         'talk.notes': 'Demo: talked about sleep',
@@ -658,10 +672,14 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         'systems.seen': ['heart', 'gu'],
         [`dx.${E1}.note`]: 'Demo: talk again next week',
       });
+      expect((await noteRow(bare.noteId)).data).toMatchObject({ 'systems.seen': ['heart'] });
 
       // An admin's accept is the approval: the held change applies as it was sent.
-      const [item] = await h.scratch.owner<{ id: string }[]>`
-        select id from sineobex.quarantine_items where change_id = ${bens[3]!.changeId}`;
+      const meds = heldOnN.find((c) => c.field === 'data.meds.given')!;
+      const [item] = await h.scratch.owner<{ id: string; reason: string }[]>`
+        select id, reason from sineobex.quarantine_items where change_id = ${meds.changeId}`;
+      // Why it was held is the reviewer's to read, never its sender's.
+      expect(item!.reason).toBe('permission');
       const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
         method: 'POST',
         token: t.adminToken,
@@ -670,6 +688,81 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
       expect(decided.status).toBe(200);
       expect((await noteRow(n.noteId)).data).toMatchObject({ 'meds.given': 'Demo: one tablet' });
+    });
+
+    it('every place a sensitive exam’s mark can sit is held without the key, whatever the note holds: an option, its Other text, a region, a grid’s rows, an entry around one', async () => {
+      const W = 'e0000003';
+      // What the mark hides is there on one note, and only what it does not hide on the other.
+      const FULL = {
+        'look.systems': ['other'],
+        'look.systems_other': 'Demo: a scrape',
+        'look.skin.region': 'groin',
+        'look.rows.rectal': 'Demo: clear',
+        [`wounds.${W}.entryAt`]: AT,
+        [`wounds.${W}.where`]: 'groin',
+        'look.notes': 'Demo: walked over',
+      };
+      const BARE = {
+        'look.systems': ['heart'],
+        'look.skin.region': 'arm',
+        'look.rows.head': 'Demo: clear',
+        [`wounds.${W}.entryAt`]: AT,
+        [`wounds.${W}.where`]: 'arm',
+        [`wounds.${W}.size`]: 'Demo: 2 cm',
+        'look.notes': 'Demo: walked over',
+      };
+      const full = await noteOn(ana, await visitOf(ana, patientId), TEST_MARKED_TYPE, FULL);
+      const bare = await noteOn(ana, await visitOf(ana, patientId), TEST_MARKED_TYPE, BARE);
+      const versions = new Map([
+        [full, new Map(Object.keys(FULL).map((path) => [path, 1]))],
+        [bare, new Map(Object.keys(BARE).map((path) => [path, 1]))],
+      ]);
+      const cases: [string, unknown, 'held' | 'accepted'][] = [
+        ['look.systems', ['heart'], 'held'],
+        ['look.systems_other', 'Demo: a cut', 'held'],
+        ['look.skin.region', 'arm', 'held'],
+        ['look.rows.head', 'Demo: a bump', 'held'],
+        ['look.rows.rectal', 'Demo: a bump', 'held'],
+        [`wounds.${W}.where`, 'arm', 'held'],
+        [`wounds.${W}.entryAt`, AT, 'held'],
+        [`wounds.${W}.size`, 'Demo: 3 cm', 'accepted'],
+        ['look.notes', 'Demo: walked back', 'accepted'],
+      ];
+      const sendAs = async (c: Clinician, path: string, value: unknown, expected: 'held' | 'accepted') => {
+        for (const [note, held] of versions) {
+          const change = await set(c, note, path, value, held.get(path) ?? 0);
+          const [answer] = await c.send(change);
+          const label = `${c.displayName} ${path} on ${note === full ? 'the full note' : 'the bare one'}`;
+          if (expected === 'held') expect(answer, label).toEqual(heldOnly(change));
+          else {
+            expect(answer, label).toMatchObject({ status: 'accepted' });
+            held.set(path, answer!.serverVersion!);
+          }
+        }
+      };
+      // Ben holds patients.view_sensitive and not patients.view_sensitive_exams.
+      for (const [path, value, expected] of cases) await sendAs(ben, path, value, expected);
+      // With the key, each is the draft rule's.
+      await setRole(h, t, ben.membershipId, examsRole);
+      try {
+        await sendAs(ben, 'look.skin.region', 'arm', 'accepted');
+        await sendAs(ben, `wounds.${W}.entryAt`, '2026-10-20T14:55:00Z', 'accepted');
+      } finally {
+        await setRole(h, t, ben.membershipId, 'healthcare_staff');
+      }
+      expect((await noteRow(full.noteId)).data).toMatchObject({
+        'look.systems': ['other'],
+        'look.skin.region': 'arm',
+        'look.rows.rectal': 'Demo: clear',
+        [`wounds.${W}.where`]: 'groin',
+      });
+      // Whoever acts as the author is never held by it: the set check asks that first, and so does
+      // the rule itself.
+      const asAuthor = noteReader(new Set(['patients.view', 'encounters.chart']), 'none', true);
+      expect(mayHoldHidden(TEST_MARKED_TYPE, 'look.systems', asAuthor)).toBe(false);
+      expect(mayHoldHidden(TEST_MARKED_TYPE, 'look.systems', { ...asAuthor, actsAsAuthor: false })).toBe(
+        true,
+      );
     });
 
     it('an answer that does not count is hidden by where it is: beside a sensitive diagnosis, or a pick of a sensitive exam', async () => {
@@ -755,12 +848,10 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       const dees = [
         await set(dee, n, `dx.${E1}.entryRemoved`, true, 0),
         await set(dee, n, `dx.${E1}.note`, 'Demo: something else', 0),
-        // An entry she may see is hers to remove.
+        // An entry she may see is held too: any entry of the section could hold one (RD-10).
         await set(dee, n, `dx.${E2}.entryRemoved`, true, 0),
       ];
-      const answered = await dee.send(...dees);
-      expect(answered.slice(0, 2)).toEqual(dees.slice(0, 2).map(heldOnly));
-      expect(answered[2]).toMatchObject({ status: 'accepted', serverVersion: 1 });
+      expect(await dee.send(...dees)).toEqual(dees.map(heldOnly));
       // Removed by its author, the entry still holds the diagnosis: nothing is written into it blind.
       const removal = await set(ana, n, `dx.${E1}.entryRemoved`, true, 0);
       expect((await ana.send(removal))[0]).toMatchObject({ status: 'accepted' });
@@ -929,47 +1020,70 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
     const nothing = { value: null, version: 0, changedBy: null, changedAt: null };
 
-    it('a conflict whose answer was hidden since is sent with a field that holds nothing; one still shown is sent as it is', async () => {
+    it('a conflict whose answer the sender may no longer see is sent with a field that holds nothing, whatever it holds; one still shown is sent as it is', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
         'general.notes': 'Demo: walked over from the shelter',
         'systems.seen': ['heart'],
         [`dx.${E2}.entryAt`]: AT,
         [`dx.${E2}.diagnosis.code`]: 'J02.9',
       });
-      // Neither saw the answer held there, which they may see: a conflict that shows it.
+      // Ben sees sensitive exams and Dee sensitive diagnoses when they push. Neither saw the answer
+      // held there, which they may see: a conflict that shows it.
+      const talk = await noteOn(ana, await visitOf(ana, patientId), TEST_SENSITIVE_TYPE, {
+        'talk.notes': 'Demo: talked about sleep',
+      });
       const bens = await set(ben, n, 'systems.seen', ['lungs'], 0);
       const dees = await set(dee, n, `dx.${E2}.diagnosis.code`, 'J03.9', 0);
+      // A note Dee will not be able to read at all.
+      const onTalk = await set(dee, talk, 'talk.notes', 'Demo: a guess', 0);
       const plain = await set(ben, n, 'general.notes', 'Demo: from Ben', 0);
-      const first = [...(await ben.send(bens, plain)), ...(await dee.send(dees))];
+      await setRole(h, t, ben.membershipId, examsRole);
+      await setRole(h, t, dee.membershipId, 'healthcare_staff');
+      let first;
+      try {
+        first = [...(await ben.send(bens, plain)), ...(await dee.send(dees, onTalk))];
+      } finally {
+        // Their roles are lowered again before the phones retry.
+        await setRole(h, t, ben.membershipId, 'healthcare_staff');
+        await setRole(h, t, dee.membershipId, outreachRole);
+      }
       expect(first.map((r) => [r.status, r.server?.value])).toEqual([
         ['conflict', ['heart']],
         ['conflict', 'Demo: walked over from the shelter'],
         ['conflict', 'J02.9'],
+        ['conflict', 'Demo: talked about sleep'],
       ]);
-      // The author charts a GU exam and a sensitive diagnosis; the answers never reached the phones.
+      // A retry answers as a fresh set would be held: by what the field could hold, so the same
+      // before and after the author charts a GU exam and a sensitive diagnosis (review finding RD-10).
+      const retried = async () => [...(await ben.send(bens, plain)), ...(await dee.send(dees, onTalk))];
+      const nothingFor = (c: Change) => ({
+        changeId: c.changeId,
+        status: 'conflict',
+        serverVersion: 0,
+        server: nothing,
+      });
+      const before = await retried();
+      expect([before[0], before[2], before[3]]).toEqual([
+        nothingFor(bens),
+        nothingFor(dees),
+        nothingFor(onTalk),
+      ]);
       const anas = [
         await set(ana, n, 'systems.seen', ['heart', 'gu']),
         await set(ana, n, `dx.${E2}.diagnosis.code`, 'F11.20'),
         await set(ana, n, 'general.notes', 'Demo: walked over from the park'),
       ];
       expect((await ana.send(...anas)).map((r) => r.status)).toEqual(['accepted', 'accepted', 'accepted']);
-      const again = [...(await ben.send(bens, plain)), ...(await dee.send(dees))];
-      expect(again[0]).toEqual({
-        changeId: bens.changeId,
-        status: 'conflict',
-        serverVersion: 0,
-        server: nothing,
-      });
+      const again = await retried();
+      expect([again[0], again[2], again[3]]).toEqual([
+        nothingFor(bens),
+        nothingFor(dees),
+        nothingFor(onTalk),
+      ]);
       expect(again[1]).toMatchObject({
         status: 'conflict',
         serverVersion: 2,
         server: { value: 'Demo: walked over from the park', version: 2, changedBy: ana.id },
-      });
-      expect(again[2]).toEqual({
-        changeId: dees.changeId,
-        status: 'conflict',
-        serverVersion: 0,
-        server: nothing,
       });
       // The author's own retry is answered with the field as it is.
       const own = await set(ana, n, 'systems.seen', ['lungs'], 0);
@@ -983,19 +1097,27 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
     });
 
-    it('a late change kept in history is sent with a field that holds nothing once a correction hides it', async () => {
+    it('a late change kept in history is sent with a field that holds nothing once its sender may no longer see what it could hold', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
         'general.notes': 'Demo: walked over from the shelter',
         'systems.seen': ['heart'],
       });
       await finishNote(ana, n, 'complete', 'completed');
       const late = await set(ben, n, 'systems.seen', ['lungs']);
-      const [kept] = await ben.send(late);
+      await setRole(h, t, ben.membershipId, examsRole);
+      let kept;
+      try {
+        [kept] = await ben.send(late);
+      } finally {
+        await setRole(h, t, ben.membershipId, 'healthcare_staff');
+      }
       expect(kept).toMatchObject({
         status: 'accepted',
         server: { value: ['heart'] },
         details: { outcome: 'history_only', problem: 'note_finished' },
       });
+      // Nothing GU is charted, and the retry still shows nothing: the picker could hold one.
+      expect((await ben.send(late))[0]).toEqual({ ...kept, server: nothing });
       const correction = await ana.phone.change({
         entity: 'note_correction',
         op: 'create',

@@ -12,7 +12,7 @@ import 'package:sineobex_field/forms/conditions.dart' show Answers, NoteReading,
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
-import 'package:sineobex_field/forms/paths.dart' show CodesHolds;
+import 'package:sineobex_field/forms/paths.dart' show CodesHolds, FieldNode;
 import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/visible.dart';
 import 'package:sineobex_field/patients/access.dart';
@@ -1505,10 +1505,11 @@ class FakeSyncServer {
     return 'hidden_field';
   }
 
-  /// A set of an answer the sender may not see (note.ts hiddenFromSender, lifecycle 6.4 rule 5): what
-  /// the answer holds now, or would hold, is hidden from them. Held for a Program Admin before
-  /// anything answers with the value held there. The acting author sees all of their note, and an
-  /// admin's accept passes. A section that needs a capability is _needsGate's.
+  /// A set of an answer that could hold something the sender may not see (note.ts hiddenFromSender,
+  /// lifecycle 6.4 rule 5; [mayHoldHidden]): asked of the definition and the sender's keys, never of
+  /// what the answer holds (review finding RD-10). Held for a Program Admin before anything answers
+  /// with the value held there. The acting author sees all of their note, and an admin's accept
+  /// passes. A section that needs a capability is _needsGate's.
   Map<String, Object?>? _hiddenFromSender(_SetContext s) {
     if (!s.field.startsWith('data.') || s.actor.approvedBy != null) return null;
     if (s.actor.userId == _actingAuthor(s.rec)) return null;
@@ -1516,13 +1517,7 @@ class FakeSyncServer {
     if (type == null) return null;
     final reader = noteReader(s.actor.permissions, credentialOf(s.actor.userId), actsAsAuthor: false);
     final path = s.field.substring('data.'.length);
-    final answers = _answersOf(s.rec);
-    final hidden = _byDefinition(
-      () =>
-          (answers.containsKey(path) && answerHidden(type, answers, path, answers[path], reader)) ||
-          answerHidden(type, answers, path, s.value, reader),
-    );
-    return hidden ? _rejected('permission') : null;
+    return _byDefinition(() => mayHoldHidden(type, path, reader)) ? _rejected('permission') : null;
   }
 
   /// A note the sender may not read at all (note.ts unreadableBySender, review finding RD-11): every
@@ -1540,9 +1535,10 @@ class FakeSyncServer {
   static const _nothingShown = <String, Object?>{'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
 
   /// A note's field as a retry of [userId]'s change is answered with it (note.ts fieldForSender,
-  /// lifecycle 4.4, 6.4 rule 2): as it is now, or, when what it holds is hidden from the sender, a
-  /// field that holds nothing, as their sync read leaves no key for it. Whoever acts as the author
-  /// is sent it as it is, and so is the field of a phase 2 note; an unreadable definition hides it.
+  /// lifecycle 4.4, 6.4 rule 2): as it is now, or, when the sender's keys no longer let them see all
+  /// it could hold ([mayHoldHidden]), a field that holds nothing, as a fresh set of it would be held.
+  /// Whoever acts as the author is sent it as it is, and so is the field of a phase 2 note; an
+  /// unreadable definition hides it.
   Map<String, Object?> _fieldForSender(String userId, FakeRecord note, String field) {
     final state = note.state(field);
     if (!field.startsWith('data.') || userId == _actingAuthor(note)) return state;
@@ -1550,11 +1546,7 @@ class FakeSyncServer {
       final type = _noteTypeOf(note);
       if (type == null) return state;
       final reader = noteReader(permissionsOf(userId), credentialOf(userId), actsAsAuthor: false);
-      final path = field.substring('data.'.length);
-      final answers = _answersOf(note);
-      final hidden = _byDefinition(
-        () => answers.containsKey(path) && answerHidden(type, answers, path, answers[path], reader),
-      );
+      final hidden = _byDefinition(() => mayHoldHidden(type, field.substring('data.'.length), reader));
       return hidden ? _nothingShown : state;
     } on _DefinitionError {
       return _nothingShown;
@@ -1574,6 +1566,43 @@ class FakeSyncServer {
       ordersMedications: can.orderMedications,
       sensitiveCodes: sensitiveCodeRanges,
     );
+  }
+
+  /// Whether the answer at [path] could hold something [reader] may not see, read from the
+  /// definition and the reader's keys alone, never from what the note holds (records.ts
+  /// mayHoldHidden; lifecycle 4.4, 6.4 rule 5; review finding RD-10): a note they may not read; a
+  /// sensitive exam's section, or a treatment record, they may not read; without view_sensitive,
+  /// every answer of a section that holds a diagnosis; without view_sensitive_exams, a field whose
+  /// options, rows or regions carry the mark, its Other text, and each entry's own answers in a
+  /// repeating section that holds one. Never for whoever acts as the author.
+  static bool mayHoldHidden(NoteTypeDef type, String path, NoteReader reader) {
+    if (reader.actsAsAuthor) return false;
+    if (visibleAnswers(type, const {}, reader) == null) return true;
+    final target = fieldAt(type, path);
+    if (target == null) return false;
+    final section = target.section;
+    if (section.sensitiveExam && !reader.viewSensitiveExams) return true;
+    if (section.treatmentRecord && !(reader.viewSensitive && reader.chartsMedical)) return true;
+    final nodes = [
+      for (final n in definitionModel(type).nodes)
+        if (n.section.section == section) n,
+    ];
+    if (!reader.viewSensitive && nodes.any((n) => n.field is ProblemDef)) return true;
+    if (reader.viewSensitiveExams) return false;
+    if (target.points == Points.entry) return nodes.any(_marked);
+    final node = target.leaf?.node ?? nodes.where((n) => n.field == target.field).firstOrNull;
+    return [node, node?.grid].any((n) => n != null && _marked(n));
+  }
+
+  /// A field whose options, rows or regions carry the sensitive-exam mark (records.ts marked).
+  static bool _marked(FieldNode node) {
+    final picked = node.picked?.holds;
+    final options = switch (node.field) {
+      ChoiceDef(:final options) || RegionDef(:final options) => options,
+      GridDef(:final rows) => rows ?? (picked is CodesHolds ? picked.options : const <OptionDef>[]),
+      _ => const <OptionDef>[],
+    };
+    return options.any((o) => o.sensitiveExam);
   }
 
   /// Whether [reader] may not see [value] as the answer at [path] of a note holding [answers]
@@ -3461,8 +3490,8 @@ T _byDefinition<T>(T Function() rule) {
 }
 
 /// The test-only note types the API's sign-off and read tests install beside [testNoteTypes]
-/// (packages/contract/test-vectors/sync-note-types.json): the Red flags note, and three with sections
-/// some readers may not see.
+/// (packages/contract/test-vectors/sync-note-types.json): the Red flags note, and four with sections
+/// or fields some readers may not see.
 final _noteTypesFile = jsonDecode(
   File('../../packages/contract/test-vectors/sync-note-types.json').readAsStringSync(),
 ) as Map<String, Object?>;
@@ -3474,6 +3503,7 @@ const TestNoteType testRedFlags = (key: 'test_red_flags', version: 1);
 const TestNoteType testRestricted = (key: 'test_restricted', version: 1);
 const TestNoteType testSensitive = (key: 'test_sensitive', version: 1);
 const TestNoteType testAssess = (key: 'test_assess', version: 1);
+const TestNoteType testMarked = (key: 'test_marked', version: 1);
 
 const _encounterFields = ['patientId', 'location', 'locationText', 'summary', 'kind'];
 

@@ -1635,75 +1635,172 @@ void main() {
       Map<String, Object?> set(String note, String path, Object? value, [int baseVersion = 1]) =>
           setOn(entityNote, note, 'data.$path', value, baseVersion);
 
-      test(
-        'is held for review, with nothing sent back of what the answer holds; the author always sets their own',
-        () async {
-          final n = restrictedNote(answers);
-          final danas = [
-            set(n, 'exam.findings', 'Demo: a small rash'),
-            // Not seen, and so a conflict with the answer held there, but held before that is asked.
-            set(n, 'exam.findings', 'Demo: something else', 0),
-            set(n, 'moud.dose', 'Demo: 12 mg'),
-            // An ordering credential's section.
-            set(n, 'meds.given', 'Demo: one tablet'),
-            // A sensitive option, put there or taken away.
-            set(n, 'systems.seen', ['lungs', 'gu']),
-            set(n, 'systems.seen', ['heart']),
-            set(n, 'general.notes', 'Demo: walked over from the park'),
-          ];
-          final answered = await send(dana, danas);
-          expect(answered.sublist(0, 6), [for (final c in danas.sublist(0, 6)) heldOnly(c)]);
-          expect(answered[6], taken(danas[6], 2));
-          // On a note whose restricted sections hold nothing: the section alone, or the value sent.
-          final bare = restrictedNote(const {
-            'general.notes': 'Demo: walked over from the shelter',
-            'systems.seen': ['heart'],
-          });
-          final onBare = [
-            set(bare, 'exam.findings', '', 0),
-            set(bare, 'moud.dose', '', 0),
-            set(bare, 'systems.seen', ['heart', 'gu']),
-            set(bare, 'systems.seen', ['heart', 'lungs']),
-          ];
-          final bareAnswers = await send(dana, onBare);
-          expect(bareAnswers.sublist(0, 3), [for (final c in onBare.sublist(0, 3)) heldOnly(c)]);
-          expect(bareAnswers[3], taken(onBare[3], 2));
+      test('is held for review by what the answer could hold, never by what it holds: one set, one answer, on any note; the author always sets their own', () async {
+        final n = restrictedNote(answers);
+        // Nothing here the sender may not see: no exam, no treatment, no sensitive option picked, and
+        // no sensitive diagnosis. Each set is answered here as on the note that holds them, so
+        // whether it is held tells the sender nothing of what a note holds (review finding RD-10).
+        const bareAnswers = <String, Object?>{
+          'general.notes': 'Demo: walked over from the shelter',
+          'systems.seen': ['heart'],
+          'dx.$e2.entryAt': at,
+          'dx.$e2.diagnosis.code': 'J02.9',
+        };
+        final bare = restrictedNote(bareAnswers);
+        final notes = {
+          n: {for (final path in answers.keys) path: 1},
+          bare: {for (final path in bareAnswers.keys) path: 1},
+        };
+        final cases = <(String, String, Object?, String, int?)>[
+          (dana, 'exam.findings', 'Demo: a small rash', 'held', null),
+          // Not seen, and so a conflict with the answer held there, but held before that is asked.
+          (dana, 'exam.findings', 'Demo: something else', 'held', 0),
+          (dana, 'moud.dose', 'Demo: 12 mg', 'held', null),
+          // An ordering credential's section.
+          (dana, 'meds.given', 'Demo: one tablet', 'held', null),
+          // A picker with a sensitive exam's option, whatever it holds and whatever is sent.
+          (dana, 'systems.seen', ['lungs', 'gu'], 'held', null),
+          (dana, 'systems.seen', ['heart'], 'held', null),
+          (dana, 'systems.seen', ['heart', 'lungs'], 'held', null),
+          (dana, 'general.notes', 'Demo: walked over from the park', 'accepted', null),
+          // With patients.view_sensitive, any diagnosis's entry.
+          (dana, 'dx.$e2.note', 'Demo: rest and fluids', 'accepted', null),
           // A student reads the treatment record, and orders nothing.
-          final blairs = [set(n, 'moud.dose', 'Demo: 12 mg'), set(n, 'meds.given', 'Demo: one tablet')];
-          expect(await send(blair, blairs), [taken(blairs[0], 2), heldOnly(blairs[1])]);
-          // Without patients.view_sensitive, the entry of a sensitive diagnosis.
-          final caseys = [
-            set(n, 'dx.$e1.note', 'Demo: something else'),
-            set(n, 'dx.$e2.note', 'Demo: rest and fluids', 0),
-          ];
-          expect(await send(casey, caseys), [heldOnly(caseys[0]), taken(caseys[1], 1)]);
-          // ...and any answer of a note they may not read at all.
-          final talk = restrictedNote(const {'talk.notes': 'Demo: talked about sleep'}, type: testSensitive);
-          final onTalk = set(talk, 'talk.notes', 'Demo: something else');
-          expect(await send(casey, [onTalk]), [heldOnly(onTalk)]);
-          // Whoever acts as the author sets every answer of their own note.
-          final own = set(n, 'exam.findings', 'Demo: a small rash');
-          expect(await send(alex, [own]), [taken(own, 2)]);
-          final held = server.records[n]!.fields;
-          expect(
-            [
-              for (final path in ['exam.findings', 'moud.dose', 'meds.given', 'systems.seen', 'dx.$e1.note'])
-                held['data.$path']!.value,
-            ],
-            [
-              'Demo: a small rash',
-              'Demo: 12 mg',
-              'Demo: none today',
-              ['heart', 'gu'],
-              'Demo: talk again next week',
-            ],
-          );
+          (blair, 'moud.dose', 'Demo: 12 mg', 'accepted', null),
+          (blair, 'meds.given', 'Demo: one tablet', 'held', null),
+          // Without patients.view_sensitive, every answer of a section of diagnoses, sensitive or not.
+          (casey, 'dx.$e1.note', 'Demo: something else', 'held', null),
+          (casey, 'dx.$e2.note', 'Demo: rest and fluids', 'held', null),
+          (casey, 'dx.$e2.entryRemoved', true, 'held', null),
+          (casey, 'general.notes', 'Demo: back at the shelter', 'accepted', null),
+        ];
+        final heldOnN = <Map<String, Object?>>[];
+        for (final (user, path, value, expected, base) in cases) {
+          for (final MapEntry(key: note, value: versions) in notes.entries) {
+            final c = set(note, path, value, base ?? versions[path] ?? 0);
+            final answer = (await send(user, [c])).single;
+            final label = '$user $path $value on ${note == n ? 'the full note' : 'the bare one'}';
+            if (expected == 'held') {
+              expect(answer, heldOnly(c), reason: label);
+              if (note == n) heldOnN.add(c);
+            } else {
+              expect(answer, taken(c, answer['serverVersion']! as int), reason: label);
+              versions[path] = answer['serverVersion']! as int;
+            }
+          }
+        }
+        // ...and any answer of a note they may not read at all.
+        final talk = restrictedNote(const {'talk.notes': 'Demo: talked about sleep'}, type: testSensitive);
+        final onTalk = set(talk, 'talk.notes', 'Demo: something else');
+        expect(await send(casey, [onTalk]), [heldOnly(onTalk)]);
+        // Whoever acts as the author sets every answer of their own note.
+        final own = set(n, 'exam.findings', 'Demo: a small rash');
+        expect(await send(alex, [own]), [taken(own, 2)]);
+        final held = server.records[n]!.fields;
+        expect(
+          [
+            for (final path in ['exam.findings', 'moud.dose', 'meds.given', 'systems.seen', 'dx.$e1.note'])
+              held['data.$path']!.value,
+          ],
+          [
+            'Demo: a small rash',
+            'Demo: 12 mg',
+            'Demo: none today',
+            ['heart', 'gu'],
+            'Demo: talk again next week',
+          ],
+        );
+        expect(server.records[bare]!.fields['data.systems.seen']!.value, ['heart']);
 
-          // An admin's accept is the approval: the held change applies as it was sent.
-          expect(server.acceptHeld(danas[3]['changeId']! as String)['status'], 'accepted');
-          expect(server.records[n]!.fields['data.meds.given']!.value, 'Demo: one tablet');
-        },
-      );
+        // An admin's accept is the approval: the held change applies as it was sent. Why it was
+        // held is the reviewer's to read, never its sender's.
+        final meds = heldOnN.firstWhere((c) => c['field'] == 'data.meds.given');
+        expect(server.held[meds['changeId']]!.reason, 'permission');
+        expect(server.acceptHeld(meds['changeId']! as String)['status'], 'accepted');
+        expect(server.records[n]!.fields['data.meds.given']!.value, 'Demo: one tablet');
+      });
+
+      test('every place a sensitive exam’s mark can sit is held without the key, whatever the note holds: an option, its Other text, a region, a grid’s rows, an entry around one', () async {
+        const w = 'e0000003';
+        // What the mark hides is there on one note, and only what it does not hide on the other.
+        const fullAnswers = <String, Object?>{
+          'look.systems': ['other'],
+          'look.systems_other': 'Demo: a scrape',
+          'look.skin.region': 'groin',
+          'look.rows.rectal': 'Demo: clear',
+          'wounds.$w.entryAt': at,
+          'wounds.$w.where': 'groin',
+          'look.notes': 'Demo: walked over',
+        };
+        const bareAnswers = <String, Object?>{
+          'look.systems': ['heart'],
+          'look.skin.region': 'arm',
+          'look.rows.head': 'Demo: clear',
+          'wounds.$w.entryAt': at,
+          'wounds.$w.where': 'arm',
+          'wounds.$w.size': 'Demo: 2 cm',
+          'look.notes': 'Demo: walked over',
+        };
+        final full = restrictedNote(fullAnswers, type: testMarked);
+        final bare = restrictedNote(bareAnswers, type: testMarked);
+        final notes = {
+          full: {for (final path in fullAnswers.keys) path: 1},
+          bare: {for (final path in bareAnswers.keys) path: 1},
+        };
+        final cases = <(String, Object?, String)>[
+          ('look.systems', ['heart'], 'held'),
+          ('look.systems_other', 'Demo: a cut', 'held'),
+          ('look.skin.region', 'arm', 'held'),
+          ('look.rows.head', 'Demo: a bump', 'held'),
+          ('look.rows.rectal', 'Demo: a bump', 'held'),
+          ('wounds.$w.where', 'arm', 'held'),
+          ('wounds.$w.entryAt', at, 'held'),
+          ('wounds.$w.size', 'Demo: 3 cm', 'accepted'),
+          ('look.notes', 'Demo: walked back', 'accepted'),
+        ];
+        Future<void> sendAs(String user, String path, Object? value, String expected) async {
+          for (final MapEntry(key: note, value: versions) in notes.entries) {
+            final c = set(note, path, value, versions[path] ?? 0);
+            final answer = (await send(user, [c])).single;
+            final label = '$user $path on ${note == full ? 'the full note' : 'the bare one'}';
+            if (expected == 'held') {
+              expect(answer, heldOnly(c), reason: label);
+            } else {
+              expect(answer, taken(c, answer['serverVersion']! as int), reason: label);
+              versions[path] = answer['serverVersion']! as int;
+            }
+          }
+        }
+
+        // Dana holds patients.view_sensitive and not patients.view_sensitive_exams.
+        for (final (path, value, expected) in cases) {
+          await sendAs(dana, path, value, expected);
+        }
+        // With the key, each is the draft rule's.
+        server.permissions[dana] = {...FakeSyncServer.healthcareStaff, 'patients.view_sensitive_exams'};
+        await sendAs(dana, 'look.skin.region', 'arm', 'accepted');
+        await sendAs(dana, 'wounds.$w.entryAt', '2026-10-20T14:55:00Z', 'accepted');
+        server.permissions.remove(dana);
+        expect(
+          [
+            for (final path in ['look.systems', 'look.skin.region', 'look.rows.rectal', 'wounds.$w.where'])
+              server.records[full]!.fields['data.$path']!.value,
+          ],
+          [
+            ['other'],
+            'arm',
+            'Demo: clear',
+            'groin',
+          ],
+        );
+        // Whoever acts as the author is never held by it: the set check asks that first, and so does
+        // the rule itself.
+        final type = NoteTypeDef.fromJson(restrictedNoteTypes.firstWhere((d) => d['key'] == testMarked.key));
+        final asAuthor = FakeSyncServer.noteReader({'patients.view', 'encounters.chart'}, 'none', actsAsAuthor: true);
+        expect(FakeSyncServer.mayHoldHidden(type, 'look.systems', asAuthor), isFalse);
+        final asOther = FakeSyncServer.noteReader({'patients.view', 'encounters.chart'}, 'none', actsAsAuthor: false);
+        expect(FakeSyncServer.mayHoldHidden(type, 'look.systems', asOther), isTrue);
+      });
 
       test('an answer that does not count is hidden by where it is: beside a sensitive diagnosis, or a pick of a sensitive exam', () async {
         const assess = <String, Object?>{
@@ -1780,12 +1877,10 @@ void main() {
         final caseys = [
           set(n, 'dx.$e1.entryRemoved', true, 0),
           set(n, 'dx.$e1.note', 'Demo: something else', 0),
-          // An entry she may see is hers to remove.
+          // An entry she may see is held too: any entry of the section could hold one (RD-10).
           set(n, 'dx.$e2.entryRemoved', true, 0),
         ];
-        final answered = await send(casey, caseys);
-        expect(answered.sublist(0, 2), [for (final c in caseys.sublist(0, 2)) heldOnly(c)]);
-        expect(answered[2], taken(caseys[2], 1));
+        expect(await send(casey, caseys), [for (final c in caseys) heldOnly(c)]);
         // Removed by its author, the entry still holds the diagnosis: nothing is written into it blind.
         final removal = set(n, 'dx.$e1.entryRemoved', true, 0);
         expect(await send(alex, [removal]), [taken(removal, 1)]);
@@ -1931,20 +2026,35 @@ void main() {
       Map<String, Object?> set(String note, String path, Object? value, [int baseVersion = 1]) =>
           setOn(entityNote, note, 'data.$path', value, baseVersion);
 
-      test('a conflict whose answer was hidden since is sent with a field that holds nothing; one still shown is sent as it is', () async {
+      test('a conflict whose answer the sender may no longer see is sent with a field that holds nothing, whatever it holds; one still shown is sent as it is', () async {
         final n = restrictedNote(const {
           'general.notes': 'Demo: walked over from the shelter',
           'systems.seen': ['heart'],
           'dx.$e2.entryAt': '2026-10-20T14:50:00Z',
           'dx.$e2.diagnosis.code': 'J02.9',
         });
-        // Neither saw the answer held there, which they may see: a conflict that shows it.
+        final talk = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient), testSensitive, const {'talk.notes': 'Demo: talked about sleep'}),
+          by: alex,
+        );
+        // Dana sees sensitive exams and Casey sensitive diagnoses when they push. Neither saw the
+        // answer held there, which they may see: a conflict that shows it.
         final danas = [
           set(n, 'systems.seen', ['lungs'], 0),
           set(n, 'general.notes', 'Demo: from Dana', 0),
         ];
-        final caseys = [set(n, 'dx.$e2.diagnosis.code', 'J03.9', 0)];
+        final caseys = [
+          set(n, 'dx.$e2.diagnosis.code', 'J03.9', 0),
+          // A note Casey will not be able to read at all.
+          set(talk, 'talk.notes', 'Demo: a guess', 0),
+        ];
+        server.permissions[dana] = {...FakeSyncServer.healthcareStaff, 'patients.view_sensitive_exams'};
+        server.permissions[casey] = FakeSyncServer.healthcareStaff;
         final first = [...await send(dana, danas), ...await send(casey, caseys)];
+        // Their roles are lowered again before the phones retry.
+        server.permissions.remove(dana);
+        server.permissions[casey] = {'patients.view', 'encounters.chart'};
         expect(
           [
             for (final r in first) [r['status'], (r['server']! as Map)['value']],
@@ -1956,32 +2066,35 @@ void main() {
             ],
             ['conflict', 'Demo: walked over from the shelter'],
             ['conflict', 'J02.9'],
+            ['conflict', 'Demo: talked about sleep'],
           ],
         );
-        // The author charts a GU exam and a sensitive diagnosis; the answers never reached the phones.
+        // A retry answers as a fresh set would be held: by what the field could hold, so the same
+        // before and after the author charts a GU exam and a sensitive diagnosis (review finding RD-10).
+        Map<String, Object?> nothingFor(Map<String, Object?> c) => {
+          'changeId': c['changeId'],
+          'status': 'conflict',
+          'serverVersion': 0,
+          'server': nothing,
+        };
+        Future<List<Map<String, Object?>>> retried() async => [
+          ...await send(dana, danas),
+          ...await send(casey, caseys),
+        ];
+        final before = await retried();
+        expect([before[0], before[2], before[3]], [nothingFor(danas[0]), nothingFor(caseys[0]), nothingFor(caseys[1])]);
         final alexs = [
           set(n, 'systems.seen', ['heart', 'gu']),
           set(n, 'dx.$e2.diagnosis.code', 'F11.20'),
           set(n, 'general.notes', 'Demo: walked over from the park'),
         ];
         expect([for (final r in await send(alex, alexs)) r['status']], ['accepted', 'accepted', 'accepted']);
-        final again = [...await send(dana, danas), ...await send(casey, caseys)];
-        expect(again[0], {
-          'changeId': danas[0]['changeId'],
-          'status': 'conflict',
-          'serverVersion': 0,
-          'server': nothing,
-        });
+        final again = await retried();
+        expect([again[0], again[2], again[3]], [nothingFor(danas[0]), nothingFor(caseys[0]), nothingFor(caseys[1])]);
         expect(
           again[1]['server'],
           allOf(containsPair('value', 'Demo: walked over from the park'), containsPair('version', 2)),
         );
-        expect(again[2], {
-          'changeId': caseys[0]['changeId'],
-          'status': 'conflict',
-          'serverVersion': 0,
-          'server': nothing,
-        });
         // The author's own retry is answered with the field as it is.
         final own = [
           set(n, 'systems.seen', ['lungs'], 0),
@@ -1991,39 +2104,40 @@ void main() {
         }
       });
 
-      test(
-        'a late change kept in history is sent with a field that holds nothing once a correction hides it',
-        () async {
-          final n = restrictedNote(const {
-            'general.notes': 'Demo: walked over from the shelter',
-            'systems.seen': ['heart'],
-          });
-          server.finishNote(n);
-          final late = [
-            set(n, 'systems.seen', ['lungs']),
-          ];
-          final kept = (await send(dana, late)).single;
-          expect(kept['server'], containsPair('value', ['heart']));
-          expect(kept['details'], {'outcome': 'history_only', 'problem': 'note_finished'});
-          final correction = change(entityCorrection, 'create', {
-            'noteId': n,
-            'changes': [
-              {
-                'field': 'data.systems.seen',
-                'newValue': ['heart', 'gu'],
-                'baseVersion': 1,
-              },
-            ],
-            'reason': 'Demo: the GU exam was left out',
-            'requestedByPatient': false,
-            'declined': false,
-            'claimedCredential': null,
-            'signoffId': null,
-          });
-          expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'corrected'));
-          expect((await send(dana, late)).single, {...kept, 'server': nothing});
-        },
-      );
+      test('a late change kept in history is sent with a field that holds nothing once its sender may no longer see what it could hold', () async {
+        final n = restrictedNote(const {
+          'general.notes': 'Demo: walked over from the shelter',
+          'systems.seen': ['heart'],
+        });
+        server.finishNote(n);
+        final late = [
+          set(n, 'systems.seen', ['lungs']),
+        ];
+        server.permissions[dana] = {...FakeSyncServer.healthcareStaff, 'patients.view_sensitive_exams'};
+        final kept = (await send(dana, late)).single;
+        server.permissions.remove(dana);
+        expect(kept['server'], containsPair('value', ['heart']));
+        expect(kept['details'], {'outcome': 'history_only', 'problem': 'note_finished'});
+        // Nothing GU is charted, and the retry still shows nothing: the picker could hold one.
+        expect((await send(dana, late)).single, {...kept, 'server': nothing});
+        final correction = change(entityCorrection, 'create', {
+          'noteId': n,
+          'changes': [
+            {
+              'field': 'data.systems.seen',
+              'newValue': ['heart', 'gu'],
+              'baseVersion': 1,
+            },
+          ],
+          'reason': 'Demo: the GU exam was left out',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': null,
+          'signoffId': null,
+        });
+        expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'corrected'));
+        expect((await send(dana, late)).single, {...kept, 'server': nothing});
+      });
     });
 
     // Rules 7 to 10: services/api/test/sync-signoffs.test.ts and sync-corrections.test.ts. Alex is an

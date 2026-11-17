@@ -1,9 +1,11 @@
 import { z } from '@hono/zod-openapi';
 import {
+  definitionModel,
   effectiveAnswers,
   fieldAt,
   isSensitiveCode,
   visibleAnswers,
+  type FieldNode,
   type NoteReader,
   type ResolvedNoteType,
 } from '@sineobex/forms';
@@ -454,6 +456,58 @@ export function answerHidden(
   if (reader.viewSensitiveExams || holds?.type !== 'codes') return false;
   const picked = new Set(typeof value === 'string' ? [value] : Array.isArray(value) ? value : []);
   return holds.options.some((o) => o.sensitiveExam === true && picked.has(o.code));
+}
+
+/**
+ * Whether the answer at [path] could hold something [reader] may not see, read from the definition
+ * and the reader's keys alone, never from what the note holds (lifecycle 4.4, 6.4 rule 5; review
+ * finding RD-10). The set check holds such a set from someone who does not act as the author
+ * whatever the note holds, so whether it is held or applied tells them nothing of what is there.
+ * answerHidden asks it of one value; this asks it of every value the answer, and the answers
+ * beside it, could hold:
+ *
+ *  - a note they may not read; a sensitive exam's section without view_sensitive_exams; a
+ *    treatment record without view_sensitive and a clinical credential;
+ *  - without view_sensitive, every answer of a section that holds a diagnosis (a problem field),
+ *    since a sensitive one takes its entry, or outside a repeating section its section, with it;
+ *  - without view_sensitive_exams, a field whose options, rows or regions carry the sensitive-exam
+ *    mark, the Other text of such a field, and, in a repeating section that holds one, each
+ *    entry's own answers: an entry the exam was all of goes whole (sensitive-exams.ts).
+ *
+ * Whoever acts as the author is never held by it. A path that names nothing holds nothing.
+ * Interpreter calls: callers wrap this in byDefinition.
+ */
+export function mayHoldHidden(type: ResolvedNoteType, path: string, reader: NoteReader): boolean {
+  if (reader.actsAsAuthor) return false;
+  if (visibleAnswers(type, {}, reader) === null) return true;
+  const target = fieldAt(type, path);
+  if (!target) return false;
+  const { section } = target;
+  if (section.sensitiveExam && !reader.viewSensitiveExams) return true;
+  if (section.treatmentRecord && !(reader.viewSensitive && reader.chartsMedical)) return true;
+  const nodes = definitionModel(type).nodes.filter((n) => n.section.section === section);
+  if (!reader.viewSensitive && nodes.some((n) => n.field.kind === 'problem')) return true;
+  if (reader.viewSensitiveExams) return false;
+  if (target.points === 'entry') return nodes.some(marked);
+  const node = target.leaf?.node ?? nodes.find((n) => n.field === target.field);
+  return node !== undefined && (marked(node) || (node.grid !== null && marked(node.grid)));
+}
+
+/** A field whose options, rows or regions carry the sensitive-exam mark: its own, or the picker's. */
+function marked(node: FieldNode): boolean {
+  const { field } = node;
+  const picked = node.picked?.holds;
+  const options =
+    field.kind === 'choice' || field.kind === 'region'
+      ? field.options
+      : field.kind === 'grid'
+        ? Array.isArray(field.rows)
+          ? field.rows
+          : picked?.type === 'codes'
+            ? picked.options
+            : []
+        : [];
+  return options.some((o) => o.sensitiveExam === true);
 }
 
 // ------------------------------------------------------------------------------------------------

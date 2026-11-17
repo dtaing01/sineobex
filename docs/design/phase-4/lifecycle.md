@@ -1519,8 +1519,10 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
   section for an answer hidden by a condition; under `redFlags`, `test_red_flags`
   (`auto: 'medical'`), which the sign-off tests install; under `restricted`, `test_restricted` (a
   sensitive exam section, a treatment record, a `needs` section, a picker with a sensitive option,
-  a repeating section of diagnoses), `test_sensitive` (`sensitivity: 'sensitive'`) and
-  `test_assess` (answers that do not count, beside a sensitive diagnosis). The API's fixtures
+  a repeating section of diagnoses), `test_sensitive` (`sensitivity: 'sensitive'`),
+  `test_assess` (answers that do not count, beside a sensitive diagnosis) and `test_marked` (each
+  place a sensitive exam's mark can sit outside an exam section: an Other option, a region, a
+  grid's row, a picker in a repeating section). The API's fixtures
   install the first two in every test team (`services/api/test/sync-fixtures.ts`); the phone's
   tests read them through `apps/mobile/test/sync/test_note_types.dart`, and the fake holds them.
   The live job's team gets them from the `db` command `install-test-note-types`, which
@@ -1542,33 +1544,41 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
   rule; the `needs` gate; a finished note's late change, through the draft rule, with no
   `checkAnswer` and no `notCounted`; a phase 2 note's answer by the draft rule alone; otherwise
   `checkAnswer` (its refusal names only the problem), the draft rule, then `notCounted`.
-- **A sensitive section, as built** (`hiddenFromSender`): a set is held when the value the field
-  holds, or the value sent, is hidden from the sender (`answerHidden`,
-  `services/api/src/sync/records.ts`): in a note type or a section they may not read, a sensitive
-  exam's option, or what visibleAnswers would cut away with a sensitive diagnosis's entry or
-  section. The reader is the sender's role and their credential now (`none` without a
-  membership), never as the author. Whoever acts as the author, an admin's accept and a phase 2
+- **A sensitive section, as built** (`hiddenFromSender`, with `mayHoldHidden` in
+  `services/api/src/sync/records.ts`; review finding RD-10, as the coordinator decided): whether a
+  set from someone who does not act as the author is held depends only on the definition and the
+  sender's keys, never on what the note holds, so one set gets one answer on every note. It is
+  held whenever the answer could hold something they may not see: in a note type or a section
+  they may not read; without `patients.view_sensitive_exams`, any field whose options, rows or
+  regions carry the sensitive-exam mark (every part of a region, every row of a grid), the Other
+  text of such a field, and, in a repeating section that holds one, each entry's own `entryAt` and
+  `entryRemoved`, since an entry the exam was all of goes whole; without `patients.view_sensitive`,
+  every answer of a section that holds a diagnosis (a `problem` field), in every entry of a
+  repeating one, since a sensitive diagnosis takes its entry or its section with it. So a removal
+  of an entry in such a section, and a write into one, are held whatever the entry holds (review
+  findings RD-5, NOT-9). The reader is the sender's role and their credential now (`none` without
+  a membership), never as the author. Whoever acts as the author, an admin's accept and a phase 2
   note pass. It answers before anything that would send the field back, a conflict or a late
-  change. An answer that does not count is hidden by where it is: when any answer of its entry, or
-  outside a repeating section of its section, is a sensitive diagnosis, counting or not, or when it
-  is itself a pick of a sensitive exam's option. So a removal of an entry that holds a sensitive
-  code, and a write into one, are held too (review findings RD-5, NOT-9). Not covered yet: an
-  answer that does not count in a sensitive exam's grid row, region or Other text, and an entry
-  hidden only by what an exam holds. "The acting author may always set their own note's answers"
-  stands for seeing (6.4 rule 1); a `needs` section still asks for the credential (4.2).
-- **Open** (review finding RD-10): whether a set is held or applied depends on hidden codes in the
-  value the field holds, so the outcome tells the sender something hidden is there. Two ways out:
-  hold every set from someone who does not act as the author of a field that can hold such codes,
-  or merge the set with the codes they never saw. **Open** (RD-5): a reader who may see the
-  section still meets the draft rule's conflict, which can send back an answer that does not
-  count; the existing tests pin that conflict.
+  change. The receipt says only that the change is held (`permission`); why is the reviewer's to
+  read. What it costs: of the standard roles only Program Admin holds
+  `patients.view_sensitive_exams`, so a teammate's set of an exam picker with a GU, breast or
+  rectal option (General primary care's `exam.systems`) on someone else's note always waits for
+  a Program Admin; Healthcare Staff holds `patients.view_sensitive`, so its sets of a diagnoses
+  section do not. "The acting author may always set their own note's answers" stands for seeing
+  (6.4 rule 1); a `needs` section still asks for the credential (4.2). `answerHidden` still
+  decides, value by value, what a reader is shown: the review queue and a correction in the sync
+  read.
+- **Open** (RD-5): a reader who may see the section still meets the draft rule's conflict, which
+  can send back an answer that does not count; the existing tests pin that conflict.
 - **A retry** is answered from its stored receipt with the field as its sender may see it now
   (`fieldForSender`, called from `apply.ts` `resultFromReceipt`; review findings NOT-4, RD-4). A
-  conflict or a value kept in history whose answer is hidden from them since keeps its status and
-  carries a field that holds nothing, `{ value: null, version: 0, changedBy: null,
-  changedAt: null }`: nothing was held, so it is not answered `permission`. Whoever acts as the
-  author, and a phase 2 note, are answered as before; a definition that cannot be read hides the
-  field.
+  conflict or a value kept in history keeps its status and carries a field that holds nothing,
+  `{ value: null, version: 0, changedBy: null, changedAt: null }`, when the field could hold
+  something the sender may not see now, by the set check's own rule (`mayHoldHidden`), so a
+  retry tells no more than a fresh set would (RD-10): their role or credential was lowered since
+  the push, or they no longer act as the author. Nothing was held, so it is not answered
+  `permission`. Whoever acts as the author, and a phase 2 note, are answered as before; a
+  definition that cannot be read hides the field.
 - **`notCounted`** is sent only on a set whose value is now on the chart (accepted, no `server`,
   not `keep_server`), never for a blank or for an entry's own `entryRemoved`: `removed_entry` when
   the entry is not among its section's entries (removed, or with no `entryAt`), else
@@ -2064,7 +2074,7 @@ the API test that holds the same rule, in `services/api/test/sync-{encounters,si
 | 13 | `_refreshVisit` | Its case is named after the db test `db/test/encounter-lifecycle.test.ts`, "the encounter’s status follows its notes", and reads `note-lifecycle.json`'s `encounterStatus` cases through the fake's sync read; no API test has that name |
 | 14 | `checkAnswer` in the note create and `_noteSet`, `notCounted`, `_byDefinition` and the `forged` rows, stored as `definition_error` by `_decide` | |
 | 15 | the registry's `auditIssues`, in `_decide` | |
-| 16 | `_fetch`, `_asRead`, `_noteAsRead`, `_noteSnapshot`, `_readSnapshot`, `_medicalHidden`; `_hiddenFromSender`, `_unreadableBySender`, `noteReader`, `answerHidden` | With the read rules of 6.4 as built, and a retry answered from `_Receipt.result` as its sender may see the field (4.4) |
+| 16 | `_fetch`, `_asRead`, `_noteAsRead`, `_noteSnapshot`, `_readSnapshot`, `_medicalHidden`; `_hiddenFromSender`, `_unreadableBySender`, `noteReader`, `mayHoldHidden`, `answerHidden` | With the read rules of 6.4 as built, a set held by what the answer could hold (`mayHoldHidden`, 4.4), and a retry answered from `_Receipt.result` as its sender may see the field (4.4) |
 | 17 | `_noteStatusSet`, `_kindSet`, `_envelopeKept`, effect `none`, `_correction`'s `not_author` and `draft_edit` | One case walks the second table of 4.1 row by row; `sync-corrections.test.ts` has the API test of its name (FAK-7) |
 
 What else the fake does, as the API does: `signedUnder` is a copy of `signed-under.ts`
@@ -2490,8 +2500,9 @@ Rules:
   a held addendum that names no note is shown to any reviewer with `encounters.chart`, though the
   sync read keeps a Medical visit's from a reader without what reads its notes (5.1).
 - **Rule 4** is the sign-off hash rule of 5.1.
-- **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set whose stored or sent
-  value is hidden from the sender, an answer that does not count by where it is (4.4); any change
+- **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set of an answer that
+  could hold something the sender may not see, read from the definition and their keys alone, never
+  from what the note holds (4.4; review finding RD-10); any change
   of a note the sender may not read at all, a set, a sign-off, a correction or an addendum, so
   that no answer tells its state, who finished it, or whether a guess of it matches (review
   finding RD-11); an answer of a `needs` section from a credential that does not order

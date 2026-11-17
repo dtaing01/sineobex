@@ -12,7 +12,6 @@ import type { Tx } from '../../db/database.ts';
 import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
 import {
-  answerHidden,
   bookkeeping,
   byDefinition,
   DefinitionError,
@@ -22,6 +21,7 @@ import {
   initialFieldState,
   invalid,
   jsonb,
+  mayHoldHidden,
   NoteCreate,
   noteReader,
   rejected,
@@ -267,11 +267,14 @@ async function noteSet(s: SetContext): Promise<Outcome> {
 }
 
 /**
- * A set of an answer the sender may not see (lifecycle 4.4, 6.4 rule 5): what the answer holds now,
- * or would hold, is hidden from them. It is held for a Program Admin, for a draft and a finished
- * note alike, before anything answers with the value held there: a conflict or a late change would
- * send it back. Whoever acts as the author sees all of their note (6.4 rule 1), and an admin's
- * accept passes, as through the Medical gate. A section that needs a capability is needsGate's.
+ * A set of an answer that could hold something the sender may not see (lifecycle 4.4, 6.4 rule 5;
+ * mayHoldHidden). Asked of the definition and the sender's keys only, never of what the answer
+ * holds or would hold: otherwise held or applied would tell them a hidden code is there (review
+ * finding RD-10). It is held for a Program Admin, for a draft and a finished note alike, before
+ * anything answers with the value held there: a conflict or a late change would send it back. The
+ * held change says why to its reviewer, never to its sender. Whoever acts as the author sees all
+ * of their note (6.4 rule 1), and an admin's accept passes, as through the Medical gate. A section
+ * that needs a capability is needsGate's.
  */
 async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
   if (!s.field.startsWith('data.') || s.actor.approvedBy !== null) return null;
@@ -280,13 +283,7 @@ async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
   if (type === undefined) return null;
   const reader = await senderReader(s.tx, s.actor);
   const path = s.field.slice('data.'.length);
-  const answers = answersOf(s.rec);
-  const hidden = byDefinition(
-    () =>
-      (Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader)) ||
-      answerHidden(type, answers, path, s.value, reader),
-  );
-  return hidden ? rejected('permission') : null;
+  return byDefinition(() => mayHoldHidden(type, path, reader)) ? rejected('permission') : null;
 }
 
 /** The sender as visibleAnswers reads them: their role's keys and their credential now, never as the author. */
@@ -300,11 +297,12 @@ const NOTHING_SHOWN: FieldStateValue = { value: null, version: 0, changedBy: nul
 
 /**
  * A note's field as a retry of [sender]'s change is answered with it (apply.ts resultFromReceipt;
- * lifecycle 4.4, 6.4 rule 2). A conflict or a value kept in history shows the field as it is now,
- * which may since hold an answer the sender may not see: then it is answered as a field that holds
- * nothing, as their sync read leaves no key for it, the way a fresh set of it would be held before
- * anything answered with it. Whoever acts as the author is sent it as it is, and so is the field of
- * a phase 2 note; one whose definition cannot be read hides it.
+ * lifecycle 4.4, 6.4 rule 2). A conflict or a value kept in history shows the field as it is now.
+ * When the sender's keys or credential no longer let them see all the field could hold, it is
+ * answered as a field that holds nothing, the way a fresh set of it would be held before anything
+ * answered with it: by what it could hold, never by what it holds (mayHoldHidden; review findings
+ * RD-4, RD-10). Whoever acts as the author is sent it as it is, and so is the field of a phase 2
+ * note; one whose definition cannot be read hides it.
  */
 export async function fieldForSender(
   tx: Tx,
@@ -318,11 +316,7 @@ export async function fieldForSender(
     const type = await noteTypeOf(tx, note);
     if (type === undefined) return state;
     const reader = await senderReader(tx, sender);
-    const path = field.slice('data.'.length);
-    const answers = answersOf(note);
-    const hidden = byDefinition(
-      () => Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader),
-    );
+    const hidden = byDefinition(() => mayHoldHidden(type, field.slice('data.'.length), reader));
     return hidden ? NOTHING_SHOWN : state;
   } catch (err) {
     if (err instanceof DefinitionError) return NOTHING_SHOWN;
