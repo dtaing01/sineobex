@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { checkAnswer } from '../src/interp/check-answer.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
 import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
@@ -32,6 +33,7 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
     const { points, at, entry, row, side, part, holds } = target;
     return { points, at, entry, row, side, part, stores: holds !== null };
   },
+  checkAnswer: (definition, c) => checkAnswer(definition, c.path as string, c.value),
 };
 
 describe('the conformance definitions', () => {
