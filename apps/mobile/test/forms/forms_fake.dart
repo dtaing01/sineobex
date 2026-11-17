@@ -28,7 +28,8 @@ Version edited(Version v, String title) {
 /// The two forms routes (phase 4 design, forms 3.3) as the API answers them, for each team, in
 /// front of another transport that answers everything else (the fake sync server).
 class FakeFormsServer {
-  /// Each team's versions. The list names each key's newest.
+  /// Each team's versions. The list names each key's newest. A team with no entry is not the
+  /// person's: both routes refuse it.
   final teams = <String, List<Version>>{};
 
   /// No answer from the forms routes (the rest of the API still answers).
@@ -59,7 +60,10 @@ class FakeFormsServer {
     if (offline) throw const NetworkException('offline');
     final hold = holds[path];
     if (hold != null) await hold.future;
-    final versions = teams[teamId] ?? const <Version>[];
+    // As the API's team scope: a team the person isn't in is refused, not answered empty (a test
+    // that wants an empty list sets `teams[id] = []`).
+    final versions = teams[teamId];
+    if (versions == null) throw const ApiException(403, 'not_a_member', 'You are not a member of this team.');
     if (path == listPath) {
       final newest = <String, Version>{};
       for (final v in versions) {

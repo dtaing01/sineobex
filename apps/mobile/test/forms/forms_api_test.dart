@@ -106,6 +106,17 @@ void main() {
     expect(await listed(), ['checks_demo v1', 'demo_visit v1']);
   });
 
+  test('a team the server refuses keeps no list: the phone asks to connect once, as the API leaves it', () async {
+    await expectLater(
+      sync.refresh(userId, teamId, api),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'not_a_member')),
+    );
+    expect(await store.team(userId, teamId), isNull);
+    server.teams[teamId] = [];
+    await sync.refresh(userId, teamId, api);
+    expect(await listed(), isEmpty, reason: 'an empty list the server gives is kept');
+  });
+
   test('a phone with no network still has the presets and what it fetched last', () async {
     server.teams[teamId] = [checks, visit];
     await sync.refresh(userId, teamId, api);
