@@ -1,6 +1,8 @@
 # Deploys the preview build (made-up patients only) from main: migrations and seed on the Supabase
 # database, the API as a Supabase Edge Function, and the portal and website on Vercel.
 # Every job skips with a notice until its secrets are configured (docs/setup.md lists them).
+# A run dispatched from any other branch skips every job: the preview seeds the released forms,
+# and a version released on a branch could still change there (forms design 4.2).
 # The pilot never deploys from here: it runs on AWS (deploy-aws.yml) against a fresh database.
 name: Deploy preview
 
@@ -19,6 +21,7 @@ concurrency:
 jobs:
   config:
     name: Check preview configuration
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       supabase: ${{ steps.check.outputs.supabase }}

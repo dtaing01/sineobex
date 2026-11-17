@@ -33,6 +33,18 @@ pnpm -s --filter @sineobex/forms golden >/dev/null
 # A released line never leaves the lock: the export alone would take a lock deleted or emptied.
 FORMS_BASE="$(git merge-base HEAD origin/main)"
 pnpm -s --filter @sineobex/forms lock-grows "$FORMS_BASE"
+# Nor a line the branch held before: main holds no lock while a release lives on a branch, so a
+# version released there and then edited would pass against main alone (forms design 4.2).
+# LOCK_BASE names another ref to hold the lock to.
+if [ -n "${LOCK_BASE:-}" ]; then
+  pnpm -s --filter @sineobex/forms lock-grows "$LOCK_BASE"
+fi
+FORMS_BRANCH="$(git symbolic-ref --quiet --short HEAD || true)"
+if [ -n "$FORMS_BRANCH" ] && git rev-parse --verify --quiet "refs/remotes/origin/$FORMS_BRANCH^{commit}" >/dev/null; then
+  pnpm -s --filter @sineobex/forms lock-grows "origin/$FORMS_BRANCH"
+else
+  echo "No origin/${FORMS_BRANCH:-<detached HEAD>}: the lock is held to origin/main only."
+fi
 FORMS_GENERATED=(packages/forms/generated apps/mobile/assets/forms)
 git diff --exit-code -- "${FORMS_GENERATED[@]}"
 # A generated file that was never committed is drift too, and git diff does not see it.

@@ -184,6 +184,20 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
         run: pnpm --filter @sineobex/forms lock-grows "$BASE"
+      # The base of a pull request holds no lock while a release lives on its branch, so a version
+      # released there and then edited would pass against the base alone (forms design 4.2): the
+      # lock is also held to the branch's own state before this push.
+      - name: Nor a line the branch held before
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "${BEFORE//0/}" ]; then
+            echo "No earlier state of the branch to compare the lock with."
+          elif ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "The branch's earlier state $BEFORE is not in this clone (a force push?): the lock is compared with the base only."
+          else
+            pnpm --filter @sineobex/forms lock-grows "$BEFORE"
+          fi
       - name: Generated forms files must be committed
         run: |
           if ! git diff --exit-code -- packages/forms/generated apps/mobile/assets/forms ||

@@ -982,18 +982,24 @@ the pull request's base, else the commit before the push, else `origin/main`, an
 the whole history. A run started by hand on `main` compares the lock with itself, and checks
 nothing.
 
-**Not closed yet (found in wave D's review).** On a pull request's branch every base is a commit
-of `main`, and `main` holds no lock until a release is merged. While the release sits on the
-branch, a released version could be edited and released again with every check green. A second
-`lock-grows` run against the branch's own earlier state closes it: in CI the commit before the
-push (`github.event.before`, which a pull request's update carries), locally `origin/<the
-branch>` when that ref exists.
+**The branch's own earlier state (found in wave D's review, closed).** On a pull request's
+branch every base is a commit of `main`, and `main` holds no lock until a release is merged.
+While the release sits on the branch, a released version could be edited and released again
+with every check green. So `lock-grows` runs a second time, against the branch's own earlier
+state: in CI against the commit before the push (`github.event.before`, which a pull request's
+update and a push carry), skipped with a printed note when there is none (all zeros, or a pull
+request just opened) or the clone cannot read it (a force push); locally against `origin/<the
+branch>` when HEAD is on a branch that has one, and against the ref `LOCK_BASE` names when it is
+set. A scratch repository showed it: a release, then outreach v1 edited and released again,
+passes against the merge base with `main` and fails against the release commit with three
+`lock.rehashed` lines. The preview deploy, which seeds the released forms, runs only from `main`:
+a run dispatched from another branch skips every job.
 
 **The drift step, as built** (`tools/ci-local.sh` and the `forms` job of
-`.github/workflows/ci.yml`): the export, the golden script (7.3), `lock-grows`, then a failure
-when `packages/forms/generated/` or `apps/mobile/assets/forms/` differs from what is committed,
-or holds a file that was never committed, which `git diff` does not see
-(`git status --porcelain`). So a contributor who changes a definition or the interpreter runs
+`.github/workflows/ci.yml`): the export, the golden script (7.3), `lock-grows` against the base
+and against the branch's earlier state, then a failure when `packages/forms/generated/` or
+`apps/mobile/assets/forms/` differs from what is committed, or holds a file that was never
+committed, which `git diff` does not see (`git status --porcelain`). So a contributor who changes a definition or the interpreter runs
 `pnpm forms:export` and then the golden script, and commits what they write.
 
 **The validator's rules, as built.** Each is reported as `validate.<rule>`, in the file and at
