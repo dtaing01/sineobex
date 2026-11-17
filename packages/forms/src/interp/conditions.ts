@@ -45,6 +45,15 @@ export function isBlank(value: unknown): boolean {
 
 const OTHER = '_other';
 
+/**
+ * The answers a field stores itself, at each row and side: what Complete waits for and one-tap
+ * Normal fills. Not the text of an Other option, which the option asks for, and nothing of the
+ * fields in a group or a grid's cell, which are fields of their own.
+ */
+export function ownLeaves(node: FieldNode): Leaf[] {
+  return node.leaves.filter((leaf) => leaf.node === node && leaf.fieldPath !== null);
+}
+
 /** A note's answers read against its definition: what shows, what counts, which entries are there. */
 export class NoteReading {
   readonly model: PathModel;
