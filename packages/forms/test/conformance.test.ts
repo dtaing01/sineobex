@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkAnswer } from '../src/interp/check-answer.ts';
+import type { Answers } from '../src/interp/conditions.ts';
+import { effectiveAnswers } from '../src/interp/effective.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
 import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
@@ -34,6 +36,7 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
     return { points, at, entry, row, side, part, stores: holds !== null };
   },
   checkAnswer: (definition, c) => checkAnswer(definition, c.path as string, c.value),
+  effectiveAnswers: (definition, c) => effectiveAnswers(definition, c.answers as Answers),
 };
 
 describe('the conformance definitions', () => {
@@ -50,10 +53,19 @@ describe('the conformance definitions', () => {
   // What 7.2 asks the definitions to use between them, so a later edit cannot quietly lose one.
   it('use every kind, option flag, condition form and section mark between them', () => {
     const used = new Set<string>();
-    const condition = (c: Condition, where: string, relative: string) => {
-      if ('all' in c) return [used.add(`${where} all`), c.all.forEach((d) => condition(d, where, relative))];
-      if ('any' in c) return [used.add(`${where} any`), c.any.forEach((d) => condition(d, where, relative))];
-      if ('not' in c) return [used.add(`${where} not`), condition(c.not, where, relative)];
+    const condition = (c: Condition, where: string, relative: string): void => {
+      if ('all' in c) {
+        used.add(`${where} all`);
+        return c.all.forEach((d) => condition(d, where, relative));
+      }
+      if ('any' in c) {
+        used.add(`${where} any`);
+        return c.any.forEach((d) => condition(d, where, relative));
+      }
+      if ('not' in c) {
+        used.add(`${where} not`);
+        return condition(c.not, where, relative);
+      }
       if (c.field.startsWith('./')) used.add(`./ in ${relative}`);
       used.add('filled' in c ? `${where} filled` : `${where} is ${Array.isArray(c.is) ? 'list' : 'one'}`);
     };

@@ -8,7 +8,7 @@
  */
 import type { ResolvedField, ResolvedNoteType, ResolvedSection } from '../resolve.ts';
 import { pathModel, RESERVED_IDS } from '../paths.ts';
-import type { FieldNode, Holds, Leaf, SectionNode } from '../paths.ts';
+import type { FieldNode, Holds, Leaf, PathModel, SectionNode } from '../paths.ts';
 import type { Option } from '../types.ts';
 
 /** An entry's ID: the letter e and seven characters from a-z0-9, made on the phone (2.3). */
@@ -53,7 +53,7 @@ export type PathTarget = {
 
 /** A target before the entry is known. */
 type Place = Omit<PathTarget, 'entry'>;
-type Index = { sections: Map<string, SectionNode>; places: Map<string, Place> };
+type Index = { model: PathModel; sections: Map<string, SectionNode>; places: Map<string, Place> };
 
 // A definition does not change once resolved, and every answer of a note is looked up in it.
 const indexes = new WeakMap<ResolvedNoteType, Index>();
@@ -93,11 +93,20 @@ export function fieldAt(definition: ResolvedNoteType, path: string): PathTarget 
   return place ? { ...place, entry } : null;
 }
 
+/**
+ * The definition's path model (src/paths.ts), built once per resolved definition and shared by the
+ * interpreter, so a leaf fieldAt returns is the same object the other functions walk from.
+ */
+export function definitionModel(definition: ResolvedNoteType): PathModel {
+  return indexOf(definition).model;
+}
+
 function indexOf(definition: ResolvedNoteType): Index {
   let index = indexes.get(definition);
   if (index) return index;
   const model = pathModel(definition);
   index = {
+    model,
     sections: new Map(model.sections.map((s) => [s.section.id, s])),
     places: new Map(),
   };

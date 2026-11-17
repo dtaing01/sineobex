@@ -13,3 +13,5 @@ export * from './shape-check.ts';
 // The interpreter (7.1): pure functions of a definition and a note's answers.
 export * from './interp/field-at.ts';
 export * from './interp/check-answer.ts';
+export * from './interp/conditions.ts';
+export * from './interp/effective.ts';

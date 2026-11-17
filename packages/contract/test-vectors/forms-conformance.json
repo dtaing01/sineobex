@@ -695,6 +695,198 @@
           ]
         }
       ]
+    },
+    "checkup": {
+      "key": "demo_checkup",
+      "version": 1,
+      "title": "Demo checkup",
+      "kinds": ["medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "general",
+          "title": "Demo general look",
+          "normal": true,
+          "fields": [
+            {
+              "id": "nerves",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo nerves",
+              "options": [
+                { "code": "intact", "label": "Demo grossly intact", "normal": true },
+                { "code": "focal", "label": "Demo focal finding" }
+              ]
+            },
+            {
+              "id": "nerveDetail",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo nerve detail",
+              "showWhen": { "not": { "field": "general.nerves", "is": "intact" } },
+              "options": [
+                { "code": "equal", "label": "Demo pupils equal", "normal": true },
+                { "code": "unequal", "label": "Demo pupils unequal" }
+              ]
+            },
+            {
+              "id": "blink",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo blink",
+              "showWhen": { "field": "general.nerves", "is": "intact" },
+              "options": [
+                { "code": "present", "label": "Demo present", "normal": true },
+                { "code": "absent", "label": "Demo absent" }
+              ]
+            },
+            {
+              "id": "skin",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo skin",
+              "options": [
+                { "code": "warm", "label": "Demo warm", "normal": true },
+                { "code": "rash", "label": "Demo rash" },
+                { "code": "dry", "label": "Demo dry", "normal": true }
+              ]
+            },
+            {
+              "id": "chaperone",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo chaperone present",
+              "required": true,
+              "noNormal": true,
+              "options": [
+                { "code": "yes", "label": "Demo yes", "normal": true },
+                { "code": "no", "label": "Demo no" }
+              ]
+            },
+            {
+              "id": "gait",
+              "kind": "group",
+              "label": "Demo gait",
+              "layout": "stack",
+              "noNormal": true,
+              "fields": [
+                {
+                  "id": "steady",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo steady",
+                  "options": [
+                    { "code": "yes", "label": "Demo yes", "normal": true },
+                    { "code": "no", "label": "Demo no" }
+                  ]
+                }
+              ]
+            },
+            { "id": "reach", "kind": "number", "label": "Demo reach score", "required": true, "min": 0, "max": 5, "decimals": 0, "normal": 3 },
+            { "id": "unableReach", "kind": "flag", "label": "Demo unable to test reach", "clears": ["reach"] },
+            { "id": "pain", "kind": "number", "label": "Demo pain score", "sides": true, "required": true, "min": 0, "max": 10, "decimals": 0, "normal": 0 },
+            { "id": "remarks", "kind": "text", "label": "Demo remarks", "lines": "one", "maxLength": 40 },
+            {
+              "id": "joints",
+              "kind": "grid",
+              "label": "Demo joints",
+              "rows": [
+                { "code": "knee", "label": "Demo knee" },
+                { "code": "hip", "label": "Demo hip" }
+              ],
+              "cell": {
+                "id": "motion",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo range of motion",
+                "required": true,
+                "options": [
+                  { "code": "full", "label": "Demo full", "normal": true },
+                  { "code": "limited", "label": "Demo limited" }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "history",
+          "title": "Demo history",
+          "fields": [
+            { "id": "story", "kind": "text", "label": "Demo what happened", "required": true, "lines": "many", "maxLength": 200 },
+            { "id": "onset", "kind": "date", "label": "Demo onset", "required": true, "range": "past" },
+            { "id": "seenAt", "kind": "time", "label": "Demo time seen", "required": true },
+            { "id": "howLong", "kind": "duration", "label": "Demo how long", "required": true },
+            { "id": "confirmed", "kind": "flag", "label": "Demo history confirmed", "required": true },
+            {
+              "id": "symptoms",
+              "kind": "choice",
+              "many": true,
+              "label": "Demo symptoms",
+              "required": true,
+              "options": [
+                { "code": "none", "label": "Demo none", "exclusive": true },
+                { "code": "cough", "label": "Demo cough" },
+                { "code": "fever", "label": "Demo fever" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "notes",
+          "title": "Demo notes",
+          "fields": [
+            { "id": "pupilNote", "kind": "text", "label": "Demo pupil note", "lines": "one", "maxLength": 80, "showWhen": { "field": "general.nerveDetail", "is": "unequal" } },
+            { "id": "reachNote", "kind": "text", "label": "Demo reach note", "lines": "one", "maxLength": 80, "showWhen": { "field": "general.reach", "filled": true } },
+            { "id": "noReach", "kind": "text", "label": "Demo why no reach", "lines": "one", "maxLength": 80, "showWhen": { "not": { "field": "general.reach", "filled": true } } }
+          ]
+        },
+        {
+          "id": "limbs",
+          "title": "Demo limbs",
+          "normal": true,
+          "repeat": { "max": 4, "itemTitle": "Demo limb {n}" },
+          "fields": [
+            {
+              "id": "limb",
+              "kind": "region",
+              "label": "Demo limb",
+              "options": [
+                { "code": "arm", "label": "Demo arm" },
+                { "code": "leg", "label": "Demo leg" }
+              ],
+              "side": [
+                { "code": "right", "label": "Demo right" },
+                { "code": "left", "label": "Demo left" }
+              ]
+            },
+            {
+              "id": "tone",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo tone",
+              "required": true,
+              "options": [
+                { "code": "normal", "label": "Demo normal", "normal": true },
+                { "code": "increased", "label": "Demo increased" }
+              ]
+            },
+            {
+              "id": "swelling",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo swelling",
+              "options": [
+                { "code": "none", "label": "Demo none", "normal": true },
+                { "code": "mild", "label": "Demo mild" },
+                { "code": "severe", "label": "Demo severe" }
+              ]
+            },
+            { "id": "extent", "kind": "number", "label": "Demo swelling extent", "min": 0, "max": 10, "decimals": 0, "normal": 0, "showWhen": { "field": "./swelling", "is": ["mild", "severe"] } },
+            { "id": "grip", "kind": "number", "label": "Demo grip", "min": 0, "max": 5, "decimals": 0, "normal": 5, "noNormal": true }
+          ]
+        }
+      ]
     }
   },
   "cases": {
@@ -1016,6 +1208,73 @@
       {"name": "entryRemoved of a diagnosis entry", "definition": "problems", "path": "dx.e0000001.entryRemoved", "value": true, "why": "forms.md 2.3 line 313: removing an entry sets its entryRemoved answer to true", "expected": null},
       {"name": "entryRemoved below a field", "definition": "wound", "path": "wounds.e1a2b3c4.type.entryRemoved", "value": true, "why": "forms.md 2.3 line 311: the entry's id is the second part, e and seven characters from a-z0-9", "expected": "unknown_path"},
       {"name": "a mapsTo target in a quick note type", "definition": "quick", "path": "wounds.e1a2b3c4.type", "value": "burn", "why": "the quick note type stores at its own paths; Expand writes the full note's", "expected": "unknown_path"}
+    ],
+    "effectiveAnswers": [
+      {"name": "every answer of a field with no condition counts", "definition": "visit", "answers": {"vitals.pulse": 80, "vitals.temp": 37.2, "vitals.alert": "alert", "vitals.measured": "09:30", "plan.next": "wound", "plan.notes": "Demo: ate today", "plan.followUp": "2026-12-01"}, "why": "forms.md 7.1 line 905: the answers of visible fields", "expected": {"vitals.pulse": 80, "vitals.temp": 37.2, "vitals.alert": "alert", "vitals.measured": "09:30", "plan.next": "wound", "plan.notes": "Demo: ate today", "plan.followUp": "2026-12-01"}},
+      {"name": "no answers: nothing counts", "definition": "visit", "answers": {}, "expected": {}},
+      {"name": "a set flag with clears: the group it names does not count, its fields included", "definition": "visit", "answers": {"vitals.unableBp": true, "vitals.bp.systolic": 120, "vitals.bp.diastolic": 80, "vitals.pulse": 70}, "why": "forms.md 2.3 lines 306-309: while the flag is set those fields do not count", "expected": {"vitals.unableBp": true, "vitals.pulse": 70}},
+      {"name": "the flag cleared: the group's answers count again", "definition": "visit", "answers": {"vitals.unableBp": null, "vitals.bp.systolic": 120, "vitals.bp.diastolic": 80}, "why": "forms.md 2.3 line 307 (while the flag is set); 7.1 line 921 (a hidden answer is not deleted, and is back when it shows); lifecycle 4.5 line 1397 (null is a blank)", "expected": {"vitals.bp.systolic": 120, "vitals.bp.diastolic": 80}},
+      {"name": "a follow-up whose condition does not hold does not count", "definition": "visit", "answers": {"meds.given": ["ondansetron"], "meds.doses": 2}, "why": "forms.md 7.1 line 920: a hidden field's answer does not count", "expected": {"meds.given": ["ondansetron"]}},
+      {"name": "is on a choose-many holds when one of its codes is picked", "definition": "visit", "answers": {"meds.given": ["naloxone", "ondansetron"], "meds.doses": 2}, "why": "forms.md 2.2 line 213: a choice at this path holds one of these codes", "expected": {"meds.given": ["naloxone", "ondansetron"], "meds.doses": 2}},
+      {"name": "an exclusive None picked: the follow-up does not count", "definition": "visit", "answers": {"meds.given": ["none"], "meds.doses": 2}, "why": "forms.md 2.2 line 213", "expected": {"meds.given": ["none"]}},
+      {"name": "answers at paths that store nothing do not count", "definition": "visit", "answers": {"vitals.height": 170, "labs.pulse": 60, "vitals.bp": 3, "vitals.seated": "Demo: seated", "vitals.pictures": "Demo: one", "plan.refer": true, "vitals.alert_other": "Demo: text", "vitals.pulse.right": 60, "Vitals.pulse": 61, "vitals": 1, "": 1, "vitals.pulse": 60}, "why": "forms.md 7.1 line 905: the answers of fields; an unknown path, a group's own path, an info, a photo, an action and an Other text with no Other option store nothing (2.3)", "expected": {"vitals.pulse": 60}},
+      {"name": "blank answers are no answers and are left out", "definition": "visit", "answers": {"vitals.pulse": null, "plan.notes": "", "meds.given": [], "vitals.alert": "alert", "plan.followUp": {}}, "why": "lifecycle 4.5 line 1397: null, \"\", [] and {} are blanks", "expected": {"vitals.alert": "alert"}},
+      {"name": "zero is an answer", "definition": "visit", "answers": {"vitals.strength": 0, "meds.given": ["none"]}, "why": "lifecycle 4.5 line 1397: only null, \"\", [] and {} are blanks", "expected": {"vitals.strength": 0, "meds.given": ["none"]}},
+      {"name": "an answer checkAnswer refuses does not count", "definition": "visit", "answers": {"vitals.pulse": "fast", "vitals.temp": 99, "vitals.alert": "sleepy", "plan.followUp": "2026-02-30", "vitals.bp.systolic": 120.5, "plan.next": "talk"}, "why": "forms.md 7.1 lines 925-929: the server and the phone refuse such an answer, so no note holds one; it is read as no answer", "expected": {"plan.next": "talk"}},
+      {"name": "a refused choose-many shows no follow-up", "definition": "visit", "answers": {"meds.given": ["naloxone", "none"], "meds.doses": 2}, "why": "exclusive_with_others (7.1 line 923) is no answer, and a condition reads only answers that count", "expected": {}},
+      {"name": "codes out of the definition's order are refused, and show nothing", "definition": "visit", "answers": {"meds.given": ["ondansetron", "naloxone"], "meds.doses": 2}, "why": "forms.md 2.3 line 291: a list of codes, in the definition's order; checkAnswer refuses another order", "expected": {}},
+      {"name": "a hidden section's answers do not count", "definition": "exam", "answers": {"systems.picked": ["lungs"], "heart.rhythm": "regular", "heart.murmur": "none", "lungs.sounds.right": "clear", "lungs.sounds.left": "clear"}, "why": "forms.md 6.3 line 786: a system's sections show when it is picked; 7.1 line 920", "expected": {"systems.picked": ["lungs"], "lungs.sounds.right": "clear", "lungs.sounds.left": "clear"}},
+      {"name": "no system picked: only the section with no condition counts", "definition": "exam", "answers": {"heart.rhythm": "regular", "lungs.sounds.right": "clear", "pulses.pulses.radial.right": "normal"}, "why": "forms.md 6.3 line 786", "expected": {"pulses.pulses.radial.right": "normal"}},
+      {"name": "all: the grade counts with a murmur present and the rhythm filled", "definition": "exam", "answers": {"systems.picked": ["heart"], "heart.rhythm": "irregular", "heart.murmur": "present", "heart.grade": 3}, "why": "forms.md 2.2 line 215: all", "expected": {"systems.picked": ["heart"], "heart.rhythm": "irregular", "heart.murmur": "present", "heart.grade": 3}},
+      {"name": "all: one part that does not hold hides the field", "definition": "exam", "answers": {"systems.picked": ["heart"], "heart.murmur": "present", "heart.grade": 3}, "why": "forms.md 2.2 line 215: all; filled on no answer does not hold", "expected": {"systems.picked": ["heart"], "heart.murmur": "present"}},
+      {"name": "conditions on conditions: the grade's own condition holds on answers that do not count", "definition": "exam", "answers": {"systems.picked": ["lungs", "skin"], "heart.rhythm": "irregular", "heart.murmur": "present", "heart.grade": 3}, "why": "forms.md 7.1 line 920; the heart section is hidden, so its answers do not count, and a condition reads only answers that count", "expected": {"systems.picked": ["lungs", "skin"]}},
+      {"name": "any: one side is enough", "definition": "exam", "answers": {"systems.picked": ["lungs"], "lungs.sounds.right": "clear", "lungs.sounds.left": "crackles", "lungs.where": "Demo: base"}, "why": "forms.md 2.2 line 215: any", "expected": {"systems.picked": ["lungs"], "lungs.sounds.right": "clear", "lungs.sounds.left": "crackles", "lungs.where": "Demo: base"}},
+      {"name": "any: neither part holds", "definition": "exam", "answers": {"systems.picked": ["lungs"], "lungs.sounds.right": "clear", "lungs.sounds.left": "clear", "lungs.where": "Demo: base"}, "why": "forms.md 2.2 line 215: any", "expected": {"systems.picked": ["lungs"], "lungs.sounds.right": "clear", "lungs.sounds.left": "clear"}},
+      {"name": "an Other text counts only beside its own side's Other pick", "definition": "exam", "answers": {"systems.picked": ["lungs"], "lungs.sounds.right": "other", "lungs.sounds_other.right": "Demo: rub", "lungs.sounds.left": "clear", "lungs.sounds_other.left": "Demo: left"}, "why": "forms.md 2.3 line 324: the Other text of a field with sides is at <field>_other.right and .left; it counts only with its Other option picked", "expected": {"systems.picked": ["lungs"], "lungs.sounds.right": "other", "lungs.sounds_other.right": "Demo: rub", "lungs.sounds.left": "clear"}},
+      {"name": "./ in a grid's cell reads the same row", "definition": "exam", "answers": {"pulses.reflexes.knee.grade": 2, "pulses.reflexes.knee.comment": "Demo: brisk", "pulses.reflexes.biceps.comment": "Demo: none"}, "why": "forms.md 2.2 line 220: inside the cell of a grid ./ means the row", "expected": {"pulses.reflexes.knee.grade": 2, "pulses.reflexes.knee.comment": "Demo: brisk"}},
+      {"name": "./ filled in a cell: a grade of zero is filled", "definition": "exam", "answers": {"pulses.reflexes.knee.grade": 0, "pulses.reflexes.knee.comment": "Demo: absent"}, "why": "lifecycle 4.5 line 1397: zero is not a blank", "expected": {"pulses.reflexes.knee.grade": 0, "pulses.reflexes.knee.comment": "Demo: absent"}},
+      {"name": "a sensitive exam's answers count like any other's", "definition": "exam", "answers": {"systems.picked": ["gu"], "gu.consent": "yes", "gu.findings": "Demo: unremarkable"}, "why": "forms.md 6.6: sensitiveExam decides who reads, not what counts (7.1)", "expected": {"systems.picked": ["gu"], "gu.consent": "yes", "gu.findings": "Demo: unremarkable"}},
+      {"name": "is on a choose-one: another code does not hold", "definition": "exam", "answers": {"systems.picked": ["gu"], "gu.consent": "no", "gu.findings": "Demo: unremarkable"}, "why": "forms.md 2.2 line 213", "expected": {"systems.picked": ["gu"], "gu.consent": "no"}},
+      {"name": "picked rows: a row whose option is not picked does not count", "definition": "outreach", "answers": {"supplies.vaccines": ["flu"], "supplies.status.flu": "given", "supplies.status.tetanus": "declined"}, "why": "forms.md 2.3 line 300: with rows { pickedIn }, a row whose option is no longer picked does not count", "expected": {"supplies.vaccines": ["flu"], "supplies.status.flu": "given"}},
+      {"name": "picked rows: the row is back when its option is picked again", "definition": "outreach", "answers": {"supplies.vaccines": ["flu", "tetanus"], "supplies.status.flu": "given", "supplies.status.tetanus": "declined"}, "why": "forms.md 2.3 line 300; 7.1 line 921: not deleted, back when it shows", "expected": {"supplies.vaccines": ["flu", "tetanus"], "supplies.status.flu": "given", "supplies.status.tetanus": "declined"}},
+      {"name": "picked rows: nothing picked, no row counts", "definition": "outreach", "answers": {"supplies.status.flu": "given", "supplies.status.hepa": "declined"}, "why": "forms.md 2.3 line 300", "expected": {}},
+      {"name": "the Other text of a picked row's cell counts with Other picked there", "definition": "outreach", "answers": {"supplies.vaccines": ["hepa"], "supplies.status.hepa": "other", "supplies.status.hepa_other": "Demo: next week"}, "why": "forms.md 2.3 line 326: in a grid's cell it is at <grid's path>.<row code>_other", "expected": {"supplies.vaccines": ["hepa"], "supplies.status.hepa": "other", "supplies.status.hepa_other": "Demo: next week"}},
+      {"name": "the Other text of a row that is not picked does not count", "definition": "outreach", "answers": {"supplies.vaccines": ["flu"], "supplies.status.hepa": "other", "supplies.status.hepa_other": "Demo: next week"}, "why": "forms.md 2.3 lines 300 and 326", "expected": {"supplies.vaccines": ["flu"]}},
+      {"name": "the Other text of a row whose cell holds another code does not count", "definition": "outreach", "answers": {"supplies.vaccines": ["hepa"], "supplies.status.hepa": "given", "supplies.status.hepa_other": "Demo: next week"}, "why": "forms.md 2.3 line 292", "expected": {"supplies.vaccines": ["hepa"], "supplies.status.hepa": "given"}},
+      {"name": "fixed rows always count", "definition": "outreach", "answers": {"supplies.counts.socks": 2, "supplies.counts.water": 0}, "why": "forms.md 2.3 line 300: only rows { pickedIn } hang on a pick", "expected": {"supplies.counts.socks": 2, "supplies.counts.water": 0}},
+      {"name": "the Other text of a choose-many counts with Other among the picks", "definition": "outreach", "answers": {"supplies.given": ["socks", "other"], "supplies.given_other": "Demo: soap"}, "why": "forms.md 2.3 line 292", "expected": {"supplies.given": ["socks", "other"], "supplies.given_other": "Demo: soap"}},
+      {"name": "the Other text of a choose-many without Other picked does not count", "definition": "outreach", "answers": {"supplies.given": ["socks"], "supplies.given_other": "Demo: soap"}, "why": "forms.md 2.3 line 292", "expected": {"supplies.given": ["socks"]}},
+      {"name": "an Other text with no answer beside it does not count", "definition": "outreach", "answers": {"supplies.given_other": "Demo: soap"}, "why": "forms.md 2.3 line 292", "expected": {}},
+      {"name": "an entry with its entryAt counts, entryAt included", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn", "wounds.eaaaaaa1.degree": "second", "wounds.eaaaaaa1.length": 2.5, "wounds.eaaaaaa1.where.region": "arm", "wounds.eaaaaaa1.where.side": "left", "wounds.eaaaaaa1.where.surface": "anterior", "wounds.eaaaaaa1.injuredOn": "2026-02-27", "wounds.eaaaaaa1.healing": 3, "care.teaching": "Demo: keep dry"}, "why": "forms.md 2.3 line 311: an entry exists when its entryAt answer does", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn", "wounds.eaaaaaa1.degree": "second", "wounds.eaaaaaa1.length": 2.5, "wounds.eaaaaaa1.where.region": "arm", "wounds.eaaaaaa1.where.side": "left", "wounds.eaaaaaa1.where.surface": "anterior", "wounds.eaaaaaa1.injuredOn": "2026-02-27", "wounds.eaaaaaa1.healing": 3, "care.teaching": "Demo: keep dry"}},
+      {"name": "without entryAt there is no entry", "definition": "wound", "answers": {"wounds.eaaaaaa1.type": "burn", "wounds.eaaaaaa1.length": 2, "care.teaching": "Demo: keep dry"}, "why": "forms.md 2.3 line 311", "expected": {"care.teaching": "Demo: keep dry"}},
+      {"name": "a removed entry does not count, its entryAt and entryRemoved included", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.entryRemoved": true, "wounds.eaaaaaa1.type": "burn", "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "abscess"}, "why": "forms.md 2.3 line 313: its other answers stop counting; 7.1 line 905: removed entries dropped", "expected": {"wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "abscess"}},
+      {"name": "a removal cleared: the entry counts again", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.entryRemoved": null, "wounds.eaaaaaa1.type": "burn"}, "why": "forms.md 2.3 line 313; lifecycle 4.5 line 1397: null is a blank", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn"}},
+      {"name": "./ in an entry reads the same entry", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn", "wounds.eaaaaaa1.degree": "first", "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "laceration", "wounds.ebbbbbb2.degree": "third"}, "why": "forms.md 2.2 line 219: inside a repeating section ./ is a field of the same entry", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn", "wounds.eaaaaaa1.degree": "first", "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "laceration"}},
+      {"name": "./ with a list of codes, entry by entry", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "ulcer", "wounds.eaaaaaa1.drainage": ["serous"], "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "laceration", "wounds.ebbbbbb2.drainage": ["none"]}, "why": "forms.md 2.2 lines 213 and 219", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "ulcer", "wounds.eaaaaaa1.drainage": ["serous"], "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "laceration"}},
+      {"name": "a flag clears in its own entry only", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.unableLength": true, "wounds.eaaaaaa1.length": 3, "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.length": 4}, "why": "forms.md 2.3 line 306: the flag clears the sibling fields it names", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.unableLength": true, "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.length": 4}},
+      {"name": "paths without a well-formed entry ID do not count", "definition": "wound", "answers": {"wounds.type": "burn", "wounds.eA234567.entryAt": "2026-03-01T10:00:00Z", "wounds.eA234567.type": "burn", "wounds.e123.entryAt": "2026-03-01T10:00:00Z", "wounds.e123.type": "burn", "wounds.entryAt": "2026-03-01T10:00:00Z"}, "why": "forms.md 2.3 line 310: the entry's ID is the letter e and seven characters from a-z0-9", "expected": {}},
+      {"name": "an Other text in an entry counts with Other picked in that entry", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "other", "wounds.eaaaaaa1.type_other": "Demo: bite", "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "burn", "wounds.ebbbbbb2.type_other": "Demo: stale"}, "why": "forms.md 2.3 line 292", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "other", "wounds.eaaaaaa1.type_other": "Demo: bite", "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "wounds.ebbbbbb2.type": "burn"}},
+      {"name": "an entryAt checkAnswer refuses makes no entry", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "yesterday", "wounds.eaaaaaa1.type": "burn"}, "why": "forms.md 7.1 lines 925-929: no note holds such an answer; it is read as no answer, and an entry exists when its entryAt answer does (2.3 line 311)", "expected": {}},
+      {"name": "an entryRemoved checkAnswer refuses neither removes the entry nor counts", "definition": "wound", "answers": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.entryRemoved": false, "wounds.eaaaaaa1.type": "burn"}, "why": "forms.md 2.3 line 313: removing sets entryRemoved to true; checkAnswer takes only true", "expected": {"wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "wounds.eaaaaaa1.type": "burn"}},
+      {"name": "a section shown by all of a filled time and not a fall", "definition": "ems", "answers": {"ems.called": "10:15", "ems.reason": "breathing", "transport.went": true, "transport.destination": "Demo: general"}, "why": "forms.md 2.2 line 215: all and not", "expected": {"ems.called": "10:15", "ems.reason": "breathing", "transport.went": true, "transport.destination": "Demo: general"}},
+      {"name": "not: the reason is a fall, the section is hidden", "definition": "ems", "answers": {"ems.called": "10:15", "ems.reason": "fall", "transport.went": true, "transport.destination": "Demo: general"}, "why": "forms.md 2.2 line 215: not", "expected": {"ems.called": "10:15", "ems.reason": "fall"}},
+      {"name": "all: no time, the section is hidden", "definition": "ems", "answers": {"ems.reason": "breathing", "transport.went": true}, "why": "forms.md 2.2 line 215", "expected": {"ems.reason": "breathing"}},
+      {"name": "not of is on no answer holds", "definition": "ems", "answers": {"ems.called": "10:15", "transport.went": true}, "why": "forms.md 2.2 line 213: is holds when the choice holds one of the codes; no answer holds none, so not of it holds", "expected": {"ems.called": "10:15", "transport.went": true}},
+      {"name": "filled on a flag with no answer does not hold", "definition": "ems", "answers": {"ems.called": "10:15", "ems.reason": "breathing", "transport.destination": "Demo: general"}, "why": "forms.md 2.2 line 214: filled", "expected": {"ems.called": "10:15", "ems.reason": "breathing"}},
+      {"name": "an Other pick shows what a not of another code shows", "definition": "ems", "answers": {"ems.called": "10:15", "ems.reason": "other", "ems.reason_other": "Demo: dizzy", "transport.went": true}, "why": "forms.md 2.2 line 215", "expected": {"ems.called": "10:15", "ems.reason": "other", "ems.reason_other": "Demo: dizzy", "transport.went": true}},
+      {"name": "any: housed but needing food shows the section", "definition": "social", "answers": {"housing.status": "housed", "housing.needs": ["food"], "shelter.place": "Demo: north shelter"}, "why": "forms.md 2.2 line 215: any", "expected": {"housing.status": "housed", "housing.needs": ["food"], "shelter.place": "Demo: north shelter"}},
+      {"name": "any: housed and not needing food hides the section", "definition": "social", "answers": {"housing.status": "housed", "housing.needs": ["talk"], "shelter.place": "Demo: north shelter", "shelter.tried": 14}, "why": "forms.md 2.2 line 215: any", "expected": {"housing.status": "housed", "housing.needs": ["talk"]}},
+      {"name": "any: no answer to where staying, so not housed holds", "definition": "social", "answers": {"shelter.tried": 14}, "why": "forms.md 2.2 line 213: no answer holds no code", "expected": {"shelter.tried": 14}},
+      {"name": "not: a blank mood shows the safety plan", "definition": "psych", "answers": {"mood.safety": "Demo: plan"}, "why": "forms.md 2.2 line 213", "expected": {"mood.safety": "Demo: plan"}},
+      {"name": "not: a good mood hides the safety plan", "definition": "psych", "answers": {"mood.mood": "good", "mood.safety": "Demo: plan"}, "why": "forms.md 2.2 line 215: not", "expected": {"mood.mood": "good"}},
+      {"name": "a treatment record's follow-up hidden by not", "definition": "psych", "answers": {"treatment.program": "none", "treatment.since": "2026-01-02", "treatment.length": 30}, "why": "forms.md 2.2 line 215: not", "expected": {"treatment.program": "none", "treatment.length": 30}},
+      {"name": "a problem's code and label count; not on ./ hides steps in a resolved entry only", "definition": "problems", "answers": {"dx.ecccccc3.entryAt": "2026-03-01T10:00:00Z", "dx.ecccccc3.problem.code": "J45", "dx.ecccccc3.problem.label": "Demo asthma", "dx.ecccccc3.status": "new", "dx.ecccccc3.steps": ["education", "other"], "dx.ecccccc3.steps_other": "Demo: inhaler shown", "dx.edddddd4.entryAt": "2026-03-01T11:00:00Z", "dx.edddddd4.status": "resolved", "dx.edddddd4.steps": ["referral"]}, "why": "forms.md 2.3 line 302; 2.2 line 219", "expected": {"dx.ecccccc3.entryAt": "2026-03-01T10:00:00Z", "dx.ecccccc3.problem.code": "J45", "dx.ecccccc3.problem.label": "Demo asthma", "dx.ecccccc3.status": "new", "dx.ecccccc3.steps": ["education", "other"], "dx.ecccccc3.steps_other": "Demo: inhaler shown", "dx.edddddd4.entryAt": "2026-03-01T11:00:00Z", "dx.edddddd4.status": "resolved"}},
+      {"name": "a condition reads only answers that count: a cleared answer is not filled", "definition": "checkup", "answers": {"general.reach": 3, "general.unableReach": true, "notes.reachNote": "Demo: a", "notes.noReach": "Demo: b"}, "why": "forms.md 2.3 line 307: cleared fields do not count; a condition reads only answers that count", "expected": {"general.unableReach": true, "notes.noReach": "Demo: b"}},
+      {"name": "the same answers with no flag set", "definition": "checkup", "answers": {"general.reach": 3, "notes.reachNote": "Demo: a", "notes.noReach": "Demo: b"}, "why": "forms.md 2.2 line 214: filled", "expected": {"general.reach": 3, "notes.reachNote": "Demo: a"}},
+      {"name": "a condition reads only answers that count: a hidden answer shows nothing", "definition": "checkup", "answers": {"general.nerves": "intact", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger"}, "why": "forms.md 7.1 line 920; the detail is hidden, so it does not count, and the note that hangs on it does not show", "expected": {"general.nerves": "intact"}},
+      {"name": "the chain shown: each answer counts", "definition": "checkup", "answers": {"general.nerves": "focal", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger", "general.blink": "absent"}, "why": "forms.md 2.2 line 215", "expected": {"general.nerves": "focal", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger"}},
+      {"name": "sides, a fixed row and a group's field", "definition": "checkup", "answers": {"general.pain.right": 0, "general.pain.left": 4, "general.joints.knee": "limited", "general.gait.steady": "no"}, "why": "forms.md 2.3 lines 299, 300 and 305", "expected": {"general.pain.right": 0, "general.pain.left": 4, "general.joints.knee": "limited", "general.gait.steady": "no"}},
+      {"name": "./ with a list of codes hides a number in its entry", "definition": "checkup", "answers": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.extent": 4, "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}, "why": "forms.md 2.2 line 219", "expected": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}}
     ]
   }
 }
