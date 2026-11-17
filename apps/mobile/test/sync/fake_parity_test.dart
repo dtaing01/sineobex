@@ -793,6 +793,23 @@ void main() {
         final more = change(entityNote, 'create', noteValue(id, testMedical));
         expect(await send(alex, [more]), [taken(more, 1)]);
         expect(server.records[id]!.fields['kind']!.version, 2);
+
+        // A Medical note held by the gate makes nothing Medical (review finding FAK-4).
+        final other = change(entityEncounter, 'create', {'kind': 'non_medical', 'patientId': p});
+        expect(await send(alex, [other]), [taken(other, 1)]);
+        final otherId = other['recordId']! as String;
+        server.credentials[dana] = 'chw';
+        final held = change(entityNote, 'create', noteValue(otherId, testMedical));
+        expect(await send(dana, [held]), [heldOnly(held)]);
+        final otherKind = server.records[otherId]!.fields['kind']!;
+        expect([otherKind.value, otherKind.version], ['non_medical', 1]);
+        expect(
+          [
+            for (final h in server.history)
+              if (h['recordId'] == otherId && h['field'] == 'kind') h['kind'],
+          ],
+          ['created'],
+        );
       });
 
       test('is taken whatever state the visit’s other notes are in', () async {
@@ -1672,6 +1689,17 @@ void main() {
         // The admin's accept applies the held set as it was sent.
         expect(server.acceptHeld(sets[0]['changeId']! as String)['status'], 'accepted');
         expect(server.records[own]!.fields['data.meds.given']!.value, 'Demo: one tablet');
+      });
+
+      test('whoever acts as the author once a note is assigned reads and sets its hidden answers; the first author no longer does', () async {
+        final n = restrictedNote(answers);
+        // Assigned by an admin once Alex has left (3.8): Dana acts as the author now (review finding RD-9).
+        server.records[n]!.assignedTo = dana;
+        final danas = [set(n, 'exam.findings', 'Demo: a small rash')];
+        final alexs = [set(n, 'exam.findings', 'Demo: something else', 2)];
+        expect(await send(dana, danas), [taken(danas.single, 2)]);
+        expect(await send(alex, alexs), [heldOnly(alexs.single)]);
+        expect(server.records[n]!.fields['data.exam.findings']!.value, 'Demo: a small rash');
       });
 
       test('on a finished note too: held, where a late change would send back the answer it keeps', () async {
@@ -2667,6 +2695,24 @@ void main() {
         expect(await send(dana, addenda), answered);
       });
 
+      test('believes the time it was written only once the server had its visit (lifecycle 3.5)', () async {
+        server.credentials[blair] = 'resident';
+        server.changeCredential(blair, 'attending', at: now.subtract(const Duration(minutes: 30)));
+        // A visit dated two hours back on the phone reaches the server only now.
+        String back(int hours) => now.subtract(Duration(hours: hours)).toIso8601String();
+        final create = change(
+          entityEncounter,
+          'create',
+          {'kind': 'medical', 'patientId': server.seedPatient()},
+          more: {'deviceTime': back(2), 'correctedTime': back(2)},
+        );
+        expect(await send(blair, [create]), [taken(create, 1)]);
+        // Written an hour back, before the server knew of the visit: not believed, so the credential now.
+        final written = addendum(create['recordId']! as String, null, at: back(1));
+        expect(await send(blair, [written]), [taken(written, 1)]);
+        expect(server.records[written['recordId']]!.attributes['authorCredential'], 'attending');
+      });
+
       test('records its author as they were when it was written, as a signature does (lifecycle 3.5)', () async {
         server.credentials[blair] = 'resident';
         final visit = visitOf(patientId: server.seedPatient());
@@ -3226,6 +3272,104 @@ void main() {
         final fix = correction(blair, note, [answer('care.plan', 'Demo: fluids')]);
         expect(await send(blair, [fix]), [heldOnly(fix)]);
         expect(server.records[note]!.fields['data.care.plan']!.value, 'Demo: rest');
+      });
+
+      test('a correction that leaves a signed note completed moves its visit with it', () async {
+        final visit = visitOf(patientId: patient);
+        final flags = server.seed(entityNote, noteValue(visit, testRedFlags, const {'flags.any': 'no'}), by: alex);
+        server.finishNote(flags, status: 'signed');
+        final note = server.seed(
+          entityNote,
+          noteValue(visit, testMedical, const {'care.plan': 'Demo: rest'}),
+          by: alex,
+        );
+        server.finishNote(note, status: 'signed');
+        server.records[note]!
+          ..signoffId = uuid()
+          ..attestation = 'not_needed';
+        expect(server.records[visit]!.status, 'signed');
+        // Lowered to a student, whose correction leaves no signature (3.6).
+        server.credentials[alex] = 'student';
+        final fix = correction(alex, note, [answer('care.plan', 'Demo: rest, fluids and sleep')]);
+        expect(await send(alex, [fix]), [corrected(fix, 'corrected', 'completed', 'not_needed')]);
+        expect(server.records[visit]!.status, 'completed');
+      });
+
+      test('a draft edit leaves an answer it names unchanged as it is: no new version', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient), testNote, const {
+            'care.plan': 'Demo: rest',
+            'care.followup': 'Demo: Friday',
+          }),
+          by: alex,
+        );
+        final edit = correction(alex, note, [
+          answer('care.plan', 'Demo: rest'),
+          answer('care.followup', 'Demo: Monday'),
+        ]);
+        expect(await send(alex, [edit]), [corrected(edit, 'draft_edit', 'draft', 'not_needed')]);
+        final fields = server.records[note]!.fields;
+        expect([fields['data.care.plan']!.version, fields['data.care.followup']!.version], [1, 2]);
+        expect(
+          [
+            for (final h in server.history)
+              if (h['recordId'] == note && h['changeId'] == edit['changeId']) h['field'],
+          ],
+          ['data.care.followup'],
+        );
+      });
+
+      test(
+        'a sign-off or a correction sent under a record ID already taken is refused record_exists, and changes nothing',
+        () async {
+          final note = server.seed(
+            entityNote,
+            noteValue(visitOf(), testNote, const {'care.plan': 'Demo: rest'}),
+            by: alex,
+          );
+          final signoff = change(entitySignoff, 'create', {
+            'noteId': note,
+            'act': 'complete',
+            'contentHash': noteContentHash(
+              noteId: note,
+              encounterId: server.records[note]!.attributes['encounterId']! as String,
+              patientId: null,
+              summary: null,
+              definition: NoteTypeDef.fromJson(server.noteTypes[(testNote.key, testNote.version)]!),
+              answers: const {'care.plan': 'Demo: rest'},
+            ),
+            'claimedCredential': null,
+            'statementVersion': 'complete-2026-11',
+          });
+          expect((await send(alex, [signoff])).single['details'], containsPair('effect', 'completed'));
+          final good = correction(alex, note, [answer('care.plan', 'Demo: fluids')]);
+          expect((await send(alex, [good])).single['details'], containsPair('outcome', 'corrected'));
+          final reused = [
+            change(entitySignoff, 'create', signoff['value'], recordId: signoff['recordId']! as String),
+            correction(alex, note, [answer('care.plan', 'Demo: sleep', 2)], recordId: good['recordId']! as String),
+          ];
+          expect(await send(alex, reused), [for (final _ in reused) refused('record_exists')]);
+          expect(server.records[note]!.fields['data.care.plan']!.value, 'Demo: fluids');
+        },
+      );
+
+      test('a correction of a phase 2 note is read whole by a teammate', () async {
+        // A phase 2 preview row: no version, so no definition to hide anything by.
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient), testNote, const {'care.plan': 'Demo: rest'}),
+          by: alex,
+        );
+        server.records[note]!.attributes['noteTypeVersion'] = null;
+        final edit = correction(alex, note, [answer('care.plan', 'Demo: fluids')]);
+        expect((await send(alex, [edit])).single['details'], containsPair('outcome', 'draft_edit'));
+        final read = await as(dana).fetchRecords(
+          body: FetchRecords(
+            records: [RecordRef(entity: RecordEntity.noteCorrection, id: edit['recordId']! as String)],
+          ),
+        );
+        expect(read.records.map((r) => r.id), [edit['recordId']]);
       });
 
       test('needs encounters.chart, names a note the team holds, and waits behind its sign-off', () async {

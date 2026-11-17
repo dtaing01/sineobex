@@ -387,6 +387,18 @@ void main() {
       expect(answerFields(await noteAs(alex, n)), ['data.care.plan', 'data.more.none']);
     });
 
+    test('whoever acts as the author once a note is assigned reads and sets its hidden answers; the first author no longer does', () async {
+      // The set is held in fake_parity_test.dart; here, the read (review finding RD-9).
+      server.credentials[alex] = 'attending';
+      server.permissions[alex] = FakeSyncServer.healthcareStaff;
+      final n = noteOn(visit(), testRestricted, answers);
+      expect(answerFields(await noteAs(alex, n)), all);
+      expect(answerFields(await noteAs(ben, n)), without(['exam', 'moud']));
+      server.records[n]!.assignedTo = ben;
+      expect(answerFields(await noteAs(ben, n)), all);
+      expect(answerFields(await noteAs(alex, n)), without(['exam']));
+    });
+
     test('a note the reader may not read is missing, like one the team does not have', () async {
       final v = visit();
       final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'});

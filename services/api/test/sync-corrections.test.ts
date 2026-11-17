@@ -247,6 +247,26 @@ describe('phase 4 sync: addenda and corrections', () => {
       await expectAudit(h, 'addendum.added', { after: mark, count: 4 });
     });
 
+    it('believes the time it was written only once the server had its visit (lifecycle 3.5)', async () => {
+      const nia = await who('nia@example.com', 'Nia (demo)', 'resident');
+      await setCredential(h, t, nia.membershipId, 'attending');
+      // A visit dated two hours back on the phone reaches the server only now.
+      const back = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+      const create = await nia.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+        deviceTime: back(2),
+        correctedTime: back(2),
+      });
+      expect((await nia.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      const visit = { encounterId: create.recordId, patientId, summary: null };
+      // Written an hour back, before the server knew of the visit: not believed, so the credential now.
+      const written = await addendum(nia, visit, null, { deviceTime: back(1), correctedTime: back(1) });
+      expect((await nia.send(written)).map((r) => r.status)).toEqual(['accepted']);
+      expect(await addendumRow(written.recordId)).toMatchObject({ authorCredential: 'attending' });
+    });
+
     it('records its author as they were when it was written, as a signature does (lifecycle 3.5)', async () => {
       const rae = await who('rae@example.com', 'Rae (demo)', 'resident');
       const visit = await visitOf(rae, patientId);
@@ -1139,6 +1159,83 @@ describe('phase 4 sync: addenda and corrections', () => {
       const [row] = await h.scratch.owner<{ data: Record<string, unknown> }[]>`
         select data from sineobex.encounter_notes where id = ${draft.noteId}`;
       expect(row!.data).toEqual({ 'care.plan': 'Demo: before' });
+    });
+
+    it('a correction that leaves a signed note completed moves its visit with it', async () => {
+      const kit = await who('kit@example.com', 'Kit (demo)', 'attending');
+      const visit = await visitOf(kit, patientId);
+      const note = await finishedMedical(kit, 'sign', 'signed', { 'care.plan': 'Demo: rest' }, visit);
+      const status = async () =>
+        (
+          await h.scratch.owner<{ status: string }[]>`
+            select status from sineobex.encounters where id = ${visit.encounterId}`
+        )[0]!.status;
+      expect(await status()).toBe('signed');
+      // Lowered to a student, whose correction leaves no signature (3.6).
+      await setCredential(h, t, kit.membershipId, 'student');
+      const fix = await correction(kit, note, [answer('care.plan', 'Demo: rest and fluids')]);
+      expect(await kit.send(fix)).toEqual([taken(fix, 'corrected', 'completed', 'not_needed')]);
+      expect(await status()).toBe('completed');
+      await setCredential(h, t, kit.membershipId, 'attending');
+    });
+
+    it('a draft edit leaves an answer it names unchanged as it is: no new version', async () => {
+      const visit = await visitOf(dev, patientId);
+      const note = await noteOn(dev, visit, TEST_NOTE_TYPE, {
+        'care.plan': 'Demo: rest',
+        'care.followup': 'Demo: Friday',
+      });
+      const edit = await correction(dev, note, [
+        answer('care.plan', 'Demo: rest'),
+        answer('care.followup', 'Demo: Monday'),
+      ]);
+      expect(await dev.send(edit)).toEqual([taken(edit, 'draft_edit', 'draft', 'not_needed')]);
+      expect((await noteRow(note.noteId)).fieldVersions).toMatchObject({
+        'data.care.plan': 1,
+        'data.care.followup': 2,
+      });
+      expect((await historyBy(note.noteId, edit.changeId)).map((r) => r.field)).toEqual([
+        'data.care.followup',
+      ]);
+    });
+
+    it('a sign-off or a correction sent under a record ID already taken is refused record_exists, and changes nothing', async () => {
+      const visit = await visitOf(dev, null);
+      const note = await noteOn(dev, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: rest' });
+      const signed = await finishNote(dev, note, 'complete', 'completed');
+      const good = await correction(dev, note, [answer('care.plan', 'Demo: fluids')]);
+      expect((await dev.send(good)).map((r) => r.details?.outcome)).toEqual(['corrected']);
+      const reused = [
+        await dev.phone.change({
+          entity: 'note_signoff',
+          op: 'create',
+          recordId: signed.recordId,
+          value: signed.value,
+        }),
+        await correction(dev, note, [answer('care.plan', 'Demo: sleep', 2)], { recordId: good.recordId }),
+      ];
+      expect(await dev.send(...reused)).toEqual(
+        reused.map((c) => rejectedAs(c, 'validation', { problem: 'record_exists' })),
+      );
+      expect((await noteRow(note.noteId)).data).toEqual({ 'care.plan': 'Demo: fluids' });
+    });
+
+    it('a correction of a phase 2 note is read whole by a teammate', async () => {
+      const visit = await visitOf(dev, patientId);
+      // A phase 2 preview row: no version, so no definition to hide anything by.
+      const noteId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data)
+        values (${noteId}, ${t.teamId}, ${visit.encounterId}, 'vitals', ${dev.id}, '{"pulse": 80}'::jsonb)`;
+      const edit = await correction(dev, { noteId }, [answer('pulse', 82, 0)]);
+      expect((await dev.send(edit)).map((r) => r.details?.outcome)).toEqual(['draft_edit']);
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: cora.token,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'note_correction', id: edit.recordId }] },
+      });
+      expect((read.body.records as { id: string }[]).map((r) => r.id)).toEqual([edit.recordId]);
     });
 
     it('needs encounters.chart, names a note the team holds, and waits behind its sign-off', async () => {

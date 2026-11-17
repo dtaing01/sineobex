@@ -752,6 +752,22 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await noteRow(own.noteId)).data).toMatchObject({ 'meds.given': 'Demo: one tablet' });
     });
 
+    it('whoever acts as the author once a note is assigned reads and sets its hidden answers; the first author no longer does', async () => {
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
+      expect(answerFields(await noteAs(ana, n))).toEqual(ALL);
+      expect(answerFields(await noteAs(ben, n))).toEqual(without('exam', 'moud'));
+      // Assigned by an admin once Ana has left (3.8): Ben acts as the author now (review finding RD-9).
+      await h.scratch
+        .owner`update sineobex.encounter_notes set assigned_user_id = ${ben.id} where id = ${n.noteId}`;
+      expect(answerFields(await noteAs(ben, n))).toEqual(ALL);
+      expect(answerFields(await noteAs(ana, n))).toEqual(without('exam'));
+      const bens = await set(ben, n, 'exam.findings', 'Demo: a small rash');
+      const anas = await set(ana, n, 'exam.findings', 'Demo: something else', 2);
+      expect((await ben.send(bens))[0]).toMatchObject({ status: 'accepted', serverVersion: 2 });
+      expect(await ana.send(anas)).toEqual([heldOnly(anas)]);
+      expect((await noteRow(n.noteId)).data).toMatchObject({ 'exam.findings': 'Demo: a small rash' });
+    });
+
     it('on a finished note too: held, where a late change would send back the answer it keeps', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
       await finishNote(ana, n, 'complete', 'completed');
