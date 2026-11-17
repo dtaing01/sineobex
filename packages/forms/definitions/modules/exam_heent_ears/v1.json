@@ -1,0 +1,84 @@
+{
+  "name": "exam_heent_ears",
+  "version": 1,
+  "sections": [
+    {
+      "id": "ears",
+      "title": "Ears",
+      "spec": "exam-heent-ears",
+      "showWhen": { "field": "exam.systems", "is": "heent" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "external",
+          "kind": "choice",
+          "many": true,
+          "label": "External ear",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "tender", "label": "Tender" },
+            { "code": "swelling", "label": "Swelling" },
+            { "code": "erythema", "label": "Erythema" },
+            { "code": "lesion", "label": "Lesion" },
+            { "code": "drainage", "label": "Drainage" }
+          ],
+          "sides": true
+        },
+        {
+          "id": "canal",
+          "kind": "choice",
+          "many": true,
+          "label": "Ear canal",
+          "options": [
+            { "code": "clear", "label": "Clear", "exclusive": true, "normal": true },
+            { "code": "cerumen", "label": "Cerumen" },
+            { "code": "erythema", "label": "Erythema" },
+            { "code": "edema", "label": "Edema" },
+            { "code": "discharge", "label": "Discharge" },
+            { "code": "foreign_body", "label": "Foreign body" }
+          ],
+          "sides": true
+        },
+        {
+          "id": "tympanic",
+          "kind": "choice",
+          "many": true,
+          "label": "Tympanic membrane",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "erythematous", "label": "Erythematous" },
+            { "code": "bulging", "label": "Bulging" },
+            { "code": "retracted", "label": "Retracted" },
+            { "code": "perforated", "label": "Perforated" },
+            { "code": "effusion", "label": "Effusion" },
+            {
+              "code": "unable_to_visualize",
+              "label": "Unable to visualize",
+              "exclusive": true,
+              "unable": true
+            }
+          ],
+          "sides": true
+        },
+        {
+          "id": "hearing",
+          "kind": "choice",
+          "many": false,
+          "label": "Hearing",
+          "options": [
+            { "code": "grossly_intact", "label": "Grossly intact", "normal": true },
+            { "code": "decreased", "label": "Decreased" }
+          ]
+        },
+        {
+          "id": "hearing_side",
+          "kind": "choice",
+          "many": false,
+          "label": "Hearing decreased on",
+          "options": { "list": "side" },
+          "showWhen": { "field": "ears.hearing", "is": "decreased" }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "name": "exam_heent_mouth",
+  "version": 1,
+  "sections": [
+    {
+      "id": "mouth",
+      "title": "Mouth / throat",
+      "spec": "exam-heent-mouth",
+      "showWhen": { "field": "exam.systems", "is": "heent" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "mucosa",
+          "kind": "choice",
+          "many": true,
+          "label": "Oral mucosa",
+          "options": [
+            { "code": "moist", "label": "Moist", "normal": true },
+            { "code": "dry", "label": "Dry" },
+            { "code": "pale", "label": "Pale" },
+            { "code": "lesions", "label": "Lesions" },
+            { "code": "ulcers", "label": "Ulcers" },
+            { "code": "thrush", "label": "Thrush" },
+            { "code": "bleeding", "label": "Bleeding" }
+          ],
+          "excludes": [["moist", "dry"]]
+        },
+        {
+          "id": "dentition",
+          "kind": "choice",
+          "many": true,
+          "label": "Dentition",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "poor_dentition", "label": "Poor dentition" },
+            { "code": "dental_caries", "label": "Dental caries" },
+            { "code": "broken_teeth", "label": "Broken teeth" },
+            { "code": "dental_abscess", "label": "Dental abscess" },
+            { "code": "tooth_pain", "label": "Tooth pain" },
+            { "code": "missing_teeth", "label": "Missing teeth" }
+          ]
+        },
+        {
+          "id": "pharynx",
+          "kind": "choice",
+          "many": true,
+          "label": "Pharynx",
+          "options": [
+            { "code": "clear", "label": "Clear", "exclusive": true, "normal": true },
+            { "code": "erythematous", "label": "Erythematous" },
+            { "code": "exudate", "label": "Exudate" },
+            { "code": "tonsillar_enlargement", "label": "Tonsillar enlargement" },
+            { "code": "ulceration", "label": "Ulceration" },
+            { "code": "postnasal_drainage", "label": "Postnasal drainage" }
+          ]
+        },
+        {
+          "id": "airway",
+          "kind": "choice",
+          "many": true,
+          "label": "Airway",
+          "options": [
+            { "code": "patent", "label": "Patent", "exclusive": true, "normal": true },
+            { "code": "swelling", "label": "Swelling" },
+            { "code": "difficulty_managing_secretions", "label": "Difficulty managing secretions" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "name": "exam_general_appearance",
+  "version": 1,
+  "sections": [
+    {
+      "id": "general_appearance",
+      "title": "General appearance",
+      "spec": "exam-general-appearance",
+      "showWhen": { "field": "exam.systems", "is": "general_appearance" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "status",
+          "kind": "choice",
+          "many": true,
+          "label": "Quick status",
+          "options": [
+            { "code": "well_appearing", "label": "Well appearing", "normal": true },
+            { "code": "no_acute_distress", "label": "No acute distress", "normal": true },
+            { "code": "mild_distress", "label": "Mild distress" },
+            { "code": "moderate_distress", "label": "Moderate distress" },
+            { "code": "severe_distress", "label": "Severe distress" },
+            { "code": "ill_appearing", "label": "Ill appearing" },
+            { "code": "toxic_appearing", "label": "Toxic appearing" },
+            { "code": "frail", "label": "Frail" },
+            { "code": "cachectic", "label": "Cachectic" },
+            { "code": "diaphoretic", "label": "Diaphoretic" },
+            { "code": "pale", "label": "Pale" },
+            { "code": "cyanotic", "label": "Cyanotic" },
+            { "code": "other", "label": "Other", "other": true }
+          ],
+          "excludes": [
+            ["no_acute_distress", "mild_distress"],
+            ["no_acute_distress", "moderate_distress"],
+            ["no_acute_distress", "severe_distress"],
+            ["mild_distress", "moderate_distress"],
+            ["mild_distress", "severe_distress"],
+            ["moderate_distress", "severe_distress"],
+            ["well_appearing", "ill_appearing"],
+            ["well_appearing", "toxic_appearing"]
+          ]
+        },
+        {
+          "id": "behavior",
+          "kind": "choice",
+          "many": true,
+          "label": "Mental / behavioral appearance",
+          "options": [
+            { "code": "alert", "label": "Alert", "normal": true },
+            { "code": "drowsy", "label": "Drowsy" },
+            { "code": "somnolent", "label": "Somnolent" },
+            { "code": "agitated", "label": "Agitated" },
+            { "code": "calm", "label": "Calm", "normal": true },
+            { "code": "cooperative", "label": "Cooperative", "normal": true },
+            { "code": "uncooperative", "label": "Uncooperative" }
+          ],
+          "excludes": [
+            ["alert", "drowsy"],
+            ["alert", "somnolent"],
+            ["drowsy", "somnolent"],
+            ["agitated", "calm"],
+            ["cooperative", "uncooperative"]
+          ]
+        },
+        {
+          "id": "additional",
+          "kind": "text",
+          "label": "Additional findings",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    }
+  ]
+}
