@@ -1404,8 +1404,9 @@ As built (unit F1):
   `quickOld` (its version 1, which maps answers the newest full note types do not all take),
   `problems`, `ems`, `social`, `checkup`, `intake`, `rehab` and `rules` (a Normal section built
   so that one-tap Normal's retry is the only way to its answer, and a diagnosis hidden by a
-  condition). `cases` maps each function of 7.1 to its cases, 586 in all, each `{ name, definition, why, expected }` with `why` optional, and
-  the inputs its function reads: `path`, with `value` for `checkAnswer`; for the rest `answers`,
+  condition). `cases` maps each function of 7.1 to its cases, 586 in all, each
+  `{ name, definition, why, expected }` with `why` optional, and the inputs its function reads:
+  `path`, with `value` for `checkAnswer`; for the rest `answers`,
   with `section` and an optional `entry` for `normalAnswers`, `corrections` for `readModel`,
   `reader` for `visibleAnswers`, and `full` (the full definition's name) and `newEntryIds` for
   `expandQuick`. A `handoffLines` case gives `notes`, a list of `{ definition, answers }`, with
@@ -1426,6 +1427,20 @@ As built (unit F1):
 - **The Dart reader** (`apps/mobile/test/forms/conformance_test.dart`) is unit F2's, and reads
   the file the same way. A rule either interpreter keeps is pinned by a case here, not by a unit
   test on one side only, so that breaking it on either side fails a test.
+
+  As built (unit F2), it holds no answer of its own. It reads each definition with
+  `NoteTypeDef.fromJson` (3.4), calls each function with a case's inputs, and writes the result
+  back as plain data to compare with `expected`: `fieldAt`'s target as the same projection, an
+  enum by its wire name, a problem, a line or a model through its `toJson`. Like the TypeScript
+  reader it runs every function the file holds, names the inputs each one reads, and refuses a
+  case with a key its function does not read or without one it needs, a name used twice, or a
+  definition (or a `full`, or a note's) that the file does not have. Dart's map equality ignores
+  key order, so for the four functions whose order is part of the answer it also checks that
+  the keys come in UTF-16 code-unit order (`String.compareTo`, as JavaScript's `<` on strings):
+  `effectiveAnswers`, which the content hash is taken over; `visibleAnswers`; and `normalAnswers`
+  and `expandQuick`'s answers, which the phone writes as changes in that order. It does not run
+  the validator or check what the definitions use between them: the TypeScript reader does that
+  over the same file.
 - **Beside the vectors**, `packages/forms/test/interp/one-meaning.test.ts` holds the validator's
   meaning of what counts (`validate.ts`) to the interpreter's. On 300 small definitions made from
   a fixed seed, each tried with every answer set where there are at most 256, and with a fixed
@@ -1434,10 +1449,19 @@ As built (unit F1):
   every set was tried; that `effectiveAnswers` of `visibleAnswers` is `visibleAnswers` for every
   reader, so what a reader sees counts by itself; and that one-tap Normal offers only answers
   `checkAnswer` takes, each of which counts once written, and hides none that counted.
+- **Beside the vectors on the phone**, a few Dart tests under `apps/mobile/test/forms/` hold what
+  the vectors cannot say, each naming it in its header: JSON is one thing to TypeScript and two
+  to Dart, where 3 and 3.0 are an int and a double, and the phone also hands the interpreter
+  values no JSON decoder made (`check_answer_test.dart`, `read_test.dart`); a map's key order and
+  whether a list was copied (`effective_test.dart`, `visible_test.dart`, `expand_test.dart`);
+  what Dart must not do with odd data that TypeScript cannot, throw or loop
+  (`effective_test.dart`); a definition read with its defaults, and a shape the validator would
+  never pass refused by its place (`definition_test.dart`); and two lists of different lengths,
+  which a vector case cannot give (`handoff_test.dart`).
 
 ### 7.3 The golden file (generated)
 
-`packages/forms/generated/golden.json` is written by the export. For every real note type
+`packages/forms/generated/golden.json` is written with the export (4.1). For every real note type
 version it holds what the TypeScript interpreter says for three sets of answers made by rule: no
 answers; every section opened and one-tap Normal applied; the first option of every choice
 picked. For each: `finishCheck`, `recapLines` and the hash of `readModel`.
@@ -1446,12 +1470,44 @@ The Dart test `apps/mobile/test/forms/golden_test.dart` recomputes all of it fro
 presets and compares. So the two interpreters are held together on the real forms, not only on
 the small ones, and a transcription card that trips a difference fails a test.
 
+As built (unit E, `packages/forms/scripts/golden.ts`, run as `pnpm --filter @sineobex/forms golden`
+after the export, from the `presets.json` it wrote):
+
+- **The three sets** are made from the definition alone, so the phone can make the same, and are
+  named `blank`, `normal` and `first`. `blank` has no answers. `normal` opens every section and
+  applies one-tap Normal to it, section by section in the definition's order, each against the
+  answers so far. `first` opens every section and picks the first option of every answer that
+  holds codes, hidden or not: each choice, each part of a region (the region, its side and its
+  surface), each grid cell and each side, a choose-many as a list of that one code. Nothing else
+  is made up: no text, number, flag, date, time, duration or problem. Opening a repeating
+  section adds one entry, `e0000001` at `2000-01-01T00:00:00Z` (`GOLDEN_ENTRY`); any other
+  section is opened by looking at it, which stores nothing. `first` is the run that tries every
+  condition on a choice once (10.4, risk 2).
+- **The file** is a list in the presets' order, each `{ key, version, hash, cases }`, the three
+  cases in that order, each `{ name, answers, finishCheck, recapLines, readModelHash }`.
+  `answers` are written in code-unit key order, so a difference in the answers made (one-tap
+  Normal on the phone, say) is told apart from a difference in what is said about them.
+  `readModelHash` is the SHA-256 of the canonical JSON of `readModel(definition, answers, [])`:
+  every label and value, without copying the whole model. It is `[]` while `presets.json` is.
+
 As built (unit F2): the test also holds the presets and the golden file to the same keys,
 versions and hashes. Until the definitions are typed, `golden.json` is empty, so the same check
 runs over `apps/mobile/test/forms/golden_sample.json` as well: the fixture note types and the
 vectors' definitions, with what TypeScript says about them. `packages/forms/test/golden.test.ts`
 writes that sample as a file snapshot, so a change on the TypeScript side fails there until the
 sample is written again, and the phone's test then says whether Dart agrees.
+
+- **What the phone's test checks**, for the bundled presets against `golden.json`, then for the
+  sample's presets against its golden list: the same keys, versions and hashes in the same order;
+  each preset's hash is `valueHash` of its definition; Dart makes the same three sets by the same
+  rules and the same entry, answer for answer and in the same key order; and over the golden
+  list's own answers, `finishCheck`, `recapLines` and the hash of `readModel` say the same.
+  Comparing over the file's answers keeps a fault in Normal apart from a fault in the recap.
+- **The sample cannot pass empty**: the test asks it for more than ten note types, and for
+  `normal` answers that fill a field as well as answers that open an entry.
+- **To write the sample again**, after a change to either interpreter, the fixture note types or
+  the vectors' definitions: `pnpm --filter @sineobex/forms exec vitest run test/golden.test.ts -u`,
+  then run the phone's test. The sample is about 130 KB.
 
 ## 8. The phone renderer and the portal read view
 
