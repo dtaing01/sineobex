@@ -76,6 +76,15 @@ shape file may pin a label, forms 4.2). In wave C, F3-install edited E's `forms/
 pair is `wrong_type` (forms 7.1), and F2-golden added a test to E's `forms/test/golden.test.ts`,
 the one that writes the phone's golden sample. Wave C's review had F2 add six cases and the
 `rules` definition to `vectors/forms-conformance.json`, in place of Dart-only tests (forms 7.2).
+In wave D, L1's cards shared more files than their rows planned:
+`services/api/src/sync/schemas.ts` (L1-signoff, L1-addendum, L1-correction and L1-referral each
+added their entity to `ChangeEntity` and `RecordEntity`; wave D's review, a held item's
+`hidden`), `records.ts` and `entities/note.ts` (six cards each), `vectors/sync-note-types.json`
+(four cards, and the review), and phase 2's and 3's tests: `api-test/sync.test.ts`,
+`sync-concurrency.test.ts` and `sync-patients.test.ts`. L1-note-create built D79 in F3-routes'
+`services/api/src/forms/definitions.ts`. L3-registry, L3-fake-encounter and L3-fake-rest changed
+the phase 2 phone tests that the new rules refused (`local_store_test.dart`,
+`sync_flow_test.dart`, `sync_scenarios_test.dart`).
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -279,21 +288,21 @@ already charted, which findings can be held together, and what counts once a fin
 
 | Card | Files | Needs |
 |---|---|---|
-| L1-legacy-tests | A test-only note type for the API fixtures, the fake and the phone tests; phase 2's status tests rewritten as sign-offs (`api-test/sync.test.ts`, `api-test/sync-fixtures.ts`, the phone's sync tests). The setup of "a signed note refuses changes" already signs through a sign-off row (L0) | L0, F3-install |
-| L1-lock-signer-gate | `entities/encounter.ts`, `entities/note.ts`, `api/encounters/signer.ts` (`noteRules.takesTeamLock` is already true, and every note path keeps it; `credentialChangesAfter` reads the `membership_changes` rows of kind `credential` and `restored`, each with its `old_value`) | L1-legacy-tests |
-| L1-encounter-fields | `records.ts`, `entities/encounter.ts` (new fields; `status` removed; `kind` to Medical only) | L1-lock-signer-gate |
-| L1-envelope-lock | `entities/encounter.ts`, `entities/fields.ts` (kept in history after a finished note; a blank patient can be filled; last seen) | L1-encounter-fields |
-| L1-note-create | `records.ts`, `entities/note.ts` (the create checks; the `medical` column; a Medical note makes its visit Medical) | L1-lock-signer-gate, F3-routes |
-| L1-note-answers | `entities/note.ts`, `entities/fields.ts`, `apply.ts` (`checkAnswer` after the load; 1,000 answers; `notCounted`; a throw becomes `definition_error`) | L1-note-create, F1-check-structure |
+| L1-legacy-tests | A test-only note type for the API fixtures, the fake and the phone tests; phase 2's status tests rewritten as sign-offs (`api-test/sync.test.ts`, `api-test/sync-fixtures.ts`, the phone's sync tests). The setup of "a signed note refuses changes" already signs through a sign-off row (L0). As built: two types, `test_note` and `test_medical`, in `vectors/sync-note-types.json`, which later cards grew; `api-test/sync-encounters.test.ts` begun; `phone-test/sync/test_note_types.dart` with its test, and `sync_scenarios_test.dart`. No status test became a sign-off here: the signed note's test kept its setup and now expects a late change kept (L1-note-late-reopen), and the phone's status sets went with L3-registry. Wave D's review added the live job's install of the types (`db/src/cli.ts`, `db/seed/seed.ts`, `db/test/install-presets.test.ts`, `tools/e2e-db.sh`, `tools/live-sync.sh`) and moved `phone-test/sync/live_api_test.dart` onto them (lifecycle 4.4) | L0, F3-install |
+| L1-lock-signer-gate | `entities/encounter.ts`, `entities/note.ts`, `api/encounters/signer.ts` (`noteRules.takesTeamLock` is already true, and every note path keeps it; `credentialChangesAfter` reads the `membership_changes` rows of kind `credential` and `restored`, each with its `old_value`). As built it also stores the note's `medical` column at the create and wires the gate into the create's check, ahead of L1-note-create; `api-test/sync-fixtures.ts` gives every credential its fields | L1-legacy-tests |
+| L1-encounter-fields | `records.ts`, `entities/encounter.ts` (new fields; `status` removed; `kind` to Medical only). As built also `entities/fields.ts`, and the phase 2 tests that set an encounter's status: `api-test/sync.test.ts`, `api-test/sync-concurrency.test.ts` | L1-lock-signer-gate |
+| L1-envelope-lock | `entities/encounter.ts`, `entities/fields.ts` (kept in history after a finished note; a blank patient can be filled; last seen). As built also `records.ts` (the draft rule's `keptInstead` hook, which the note's late change uses too) | L1-encounter-fields |
+| L1-note-create | `records.ts`, `entities/note.ts` (the create checks; the `medical` column; a Medical note makes its visit Medical). As built it changed `entities/note.ts` alone, the `medical` column having come with L1-lock-signer-gate; D79 was built with it, in F3-routes' `api/forms/definitions.ts` and `api-test/forms-routes.test.ts` (forms 3.3) | L1-lock-signer-gate, F3-routes |
+| L1-note-answers | `entities/note.ts`, `entities/fields.ts`, `apply.ts` (`checkAnswer` after the load; 1,000 answers; `notCounted`; a throw becomes `definition_error`). As built also `records.ts` (`MAX_NOTE_FIELDS`, `DefinitionError`, `byDefinition`, `definitionOf`) and `vectors/sync-note-types.json` (a section for an answer hidden by a condition) | L1-note-create, F1-check-structure |
 | L1-note-late-reopen | `entities/note.ts`, `entities/fields.ts` (late changes kept; the reopen table) | L1-note-answers |
-| L1-signoff | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` (the sign-off row first, then the note's `signoff_id`, both from the same loaded note; the database cannot see a sign-off's effect, so a test pins that a note names only a signature) | L1-note-late-reopen, L0, F1-finish |
-| L1-addendum | `entities/note-addendum.ts`, `entities/index.ts`, `entities/values.ts` (the `(encounterId, noteId)` pair is checked before the insert, so a mismatch answers `stale_reference`) | L1-signoff |
-| L1-correction | `entities/note-correction.ts`, `entities/index.ts`, `records.ts` (`corrected` history; `appendHistory` returns the row ID; `app.note_correction` set from the loaded row's ID) | L1-signoff |
-| L1-referral | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` (and the check for a visit of another patient; `error_by` written with the entered-in-error mark, which the database needs) | L1-lock-signer-gate |
-| L1-read-filter | `api/routes/sync.ts`, `review.ts`, `records.ts` (hidden content leaves no value, version or mark; the new records' read rule; a note's new attributes; the sensitive check first) | L1-correction, F1-visible |
+| L1-signoff | `entities/note-signoff.ts`, `entities/index.ts`, `entities/values.ts` (the sign-off row first, then the note's `signoff_id`, both from the same loaded note; the database cannot see a sign-off's effect, so a test pins that a note names only a signature). As built also `sync/schemas.ts` (each new entity joins `ChangeEntity` and `RecordEntity`), `entities/note.ts` (who acts as the author; the note's type and answers), `vectors/sync-note-types.json` (a test-only Red flags type) and `api-test/sync-signoffs.test.ts` | L1-note-late-reopen, L0, F1-finish |
+| L1-addendum | `entities/note-addendum.ts`, `entities/index.ts`, `entities/values.ts` (the `(encounterId, noteId)` pair is checked before the insert, so a mismatch answers `stale_reference`). As built also `records.ts`, `sync/schemas.ts` and `api-test/sync-corrections.test.ts` | L1-signoff |
+| L1-correction | `entities/note-correction.ts`, `entities/index.ts`, `records.ts` (`corrected` history; `appendHistory` returns the row ID; `app.note_correction` set from the loaded row's ID). As built also `entities/values.ts`, `sync/schemas.ts` and `api-test/sync-corrections.test.ts` | L1-signoff |
+| L1-referral | `entities/referral.ts`, `entities/index.ts`, `entities/values.ts` (and the check for a visit of another patient; `error_by` written with the entered-in-error mark, which the database needs). As built also `records.ts` (`visitOfOtherPatient`), `sync/schemas.ts` and `api-test/sync-referrals.test.ts`; wave D's review gave the same check to `entities/allergy.ts` and `entities/problem-note.ts` | L1-lock-signer-gate |
+| L1-read-filter | `api/routes/sync.ts`, `review.ts`, `records.ts` (hidden content leaves no value, version or mark; the new records' read rule; a note's new attributes; the sensitive check first). As built also `entities/note.ts`, where a note's attributes and its set rules are, `vectors/sync-note-types.json` (the restricted test types), the contract (the route's description) and `api-test/sync-reads.test.ts`. Wave D's review added `apply.ts` and `push.ts` (a retry answered as its sender may see the field) and `sync/schemas.ts` with the contract (a held item's `hidden`) | L1-correction, F1-visible |
 | L1-audit-actions | `entities/values.ts` (`ems_handoff.shown`, `notes_to_finish.viewed`) | L1-lock-signer-gate |
-| L1-problem-source | `entities/problem.ts` | L1-lock-signer-gate |
-| L1-contract | The generated contract and `vectors/sync-values.json` | the L1 cards above |
+| L1-problem-source | `entities/problem.ts` (as built with the check for a visit of another patient) | L1-lock-signer-gate |
+| L1-contract | The generated contract and `vectors/sync-values.json`. As built also `api-test/contract-vectors.test.ts` (every value read through the entities' rules), `api-test/sync-patients.test.ts`, and the phone's readers of the vectors, `phone-test/patients/entities_test.dart` and `phone-test/sync/patient_rules_test.dart`, which skipped the phase 4 cases until L3-registry | the L1 cards above |
 
 ### L2 Server routes (lifecycle 5, 6). Folder: `api/encounters/`, routes in `api/routes/encounters.ts`
 
@@ -318,14 +327,14 @@ already charted, which findings can be held together, and what counts once a fin
 
 | Card | Files | Needs |
 |---|---|---|
-| L3-registry | `phone/sync/entities.dart` (the changed and new entities; the patient of a new record; the referral's date rule; the two audit actions) | L1 |
+| L3-registry | `phone/sync/entities.dart` (the changed and new entities; the patient of a new record; the referral's date rule; the two audit actions). As built also `phone-test/patients/entities_test.dart` and `phone-test/sync/patient_rules_test.dart` (the phase 4 vectors run), and `phone-test/sync/local_store_test.dart` (two status sets the registry now refuses). After wave D's review a year below 100 is refused, with two cases in `vectors/sync-values.json`; the bound on `noteTypeVersion` is still owed (lifecycle 4.8) | L1 |
 | L3-store-finish | `phone/sync/local_store.dart`, `phone-test/sync/store_encounters_test.dart` (`finishNotes`: the hash shown, the fix path, the Red flags note first, hidden answers dropped) | L3-registry, L0-rules-dart, L0-content-hash-dart |
 | L3-store-lock | `phone/sync/local_store.dart` (the lock by effect; reopen gets through; a note on any encounter) | L3-store-finish |
 | L3-store-receipts | `phone/sync/local_store.dart` (receipts settle the effect; a sign-off held for review; the clock guard) | L3-store-lock |
-| L3-fake-encounter | `phone-test/sync/fake_server.dart` (rules 1 to 6 and 13 of lifecycle 4.9) | L3-registry |
-| L3-fake-signoff | `phone-test/sync/fake_server.dart` (rules 7 to 10) | L3-fake-encounter |
-| L3-fake-rest | `phone-test/sync/fake_server.dart` (rules 11, 12 and 14 to 17) | L3-fake-signoff |
-| L3-parity | `phone-test/sync/fake_parity_test.dart`, `fake_reads_test.dart` | L3-fake-rest |
+| L3-fake-encounter | `phone-test/sync/fake_server.dart` (rules 1 to 6 and 13 of lifecycle 4.9). As built with their cases in `fake_parity_test.dart`, and `phone-test/features/sync_flow_test.dart` and `phone-test/sync/sync_scenarios_test.dart` moved onto the test-only type | L3-registry |
+| L3-fake-signoff | `phone-test/sync/fake_server.dart` (rules 7 to 10), with their cases in `fake_parity_test.dart` | L3-fake-encounter |
+| L3-fake-rest | `phone-test/sync/fake_server.dart` (rules 11, 12 and 14 to 17), with their cases in `fake_parity_test.dart` and `fake_reads_test.dart`. As built also `phone-test/sync/sync_scenarios_test.dart`, whose answers now fit the type's 4,000 characters | L3-fake-signoff |
+| L3-parity | `phone-test/sync/fake_parity_test.dart`, `fake_reads_test.dart`. As built, each rule's cases were written with its code by the three cards above, and this card removed each rule to see its cases fail; wave D's review found rules that no case held, and added cases for them (lifecycle 4.9) | L3-fake-rest |
 
 ### L4 The phone's domain layer (lifecycle 3, 7, 8). Folder: `phone/encounters/`, tests under `phone-test/encounters/`
 
