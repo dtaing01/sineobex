@@ -1,0 +1,80 @@
+{
+  "name": "exam_rectal",
+  "version": 1,
+  "sections": [
+    {
+      "id": "rectal",
+      "title": "Rectal",
+      "spec": "exam-rectal",
+      "showWhen": { "field": "exam.systems", "is": "rectal" },
+      "normal": true,
+      "sensitiveExam": true,
+      "fields": [
+        { "id": "performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+        {
+          "id": "chaperone",
+          "kind": "choice",
+          "many": false,
+          "label": "Chaperone present",
+          "options": { "list": "yes_no" },
+          "noNormal": true,
+          "showWhen": { "field": "rectal.performed", "filled": true }
+        },
+        {
+          "id": "consented",
+          "kind": "flag",
+          "label": "Patient consented",
+          "required": true,
+          "noNormal": true,
+          "showWhen": { "field": "rectal.performed", "filled": true }
+        },
+        {
+          "id": "exam_type",
+          "kind": "choice",
+          "many": false,
+          "label": "Exam type",
+          "options": [
+            { "code": "external_inspection_only", "label": "External inspection only" },
+            { "code": "digital_rectal_examination_dre", "label": "Digital rectal examination (DRE)" }
+          ],
+          "showWhen": { "field": "rectal.performed", "filled": true }
+        },
+        {
+          "id": "findings",
+          "kind": "choice",
+          "many": true,
+          "label": "Findings",
+          "options": [
+            { "code": "hemorrhoids", "label": "Hemorrhoids" },
+            { "code": "fissure", "label": "Fissure" },
+            { "code": "bleeding", "label": "Bleeding" },
+            { "code": "mass", "label": "Mass" },
+            { "code": "tenderness", "label": "Tenderness" },
+            { "code": "other", "label": "Other", "other": true }
+          ],
+          "showWhen": { "field": "rectal.performed", "filled": true }
+        },
+        {
+          "id": "dre",
+          "kind": "group",
+          "label": "Digital rectal examination",
+          "layout": "stack",
+          "showWhen": { "field": "rectal.exam_type", "is": "digital_rectal_examination_dre" },
+          "fields": [
+            {
+              "id": "result",
+              "kind": "choice",
+              "many": false,
+              "label": "Result",
+              "options": [
+                { "code": "normal", "label": "Normal", "normal": true },
+                { "code": "abnormal", "label": "Abnormal" }
+              ]
+            },
+            { "id": "findings", "kind": "text", "label": "Findings", "lines": "many", "maxLength": 2000 }
+          ]
+        }
+      ]
+    }
+  ]
+}

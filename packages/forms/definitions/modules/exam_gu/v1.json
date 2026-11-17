@@ -1,0 +1,88 @@
+{
+  "name": "exam_gu",
+  "version": 1,
+  "sections": [
+    {
+      "id": "gu",
+      "title": "Genitourinary (GU)",
+      "spec": "exam-gu",
+      "showWhen": { "field": "exam.systems", "is": "gu" },
+      "normal": true,
+      "sensitiveExam": true,
+      "fields": [
+        {
+          "id": "general",
+          "kind": "choice",
+          "many": true,
+          "label": "General findings",
+          "options": [
+            { "code": "no_acute_findings", "label": "No acute findings", "exclusive": true, "normal": true },
+            { "code": "dysuria", "label": "Dysuria" },
+            { "code": "frequency", "label": "Frequency" },
+            { "code": "urgency", "label": "Urgency" },
+            { "code": "hematuria", "label": "Hematuria" },
+            { "code": "flank_pain", "label": "Flank pain" },
+            { "code": "pelvic_pain", "label": "Pelvic pain" },
+            { "code": "discharge", "label": "Discharge" },
+            { "code": "genital_lesion", "label": "Genital lesion" },
+            { "code": "testicular_pain_swelling", "label": "Testicular pain / swelling" }
+          ]
+        },
+        {
+          "id": "cva",
+          "kind": "choice",
+          "many": false,
+          "label": "Costovertebral angle (CVA)",
+          "options": [
+            { "code": "no_tenderness", "label": "No tenderness", "normal": true },
+            { "code": "right", "label": "Right" },
+            { "code": "left", "label": "Left" },
+            { "code": "bilateral", "label": "Bilateral" }
+          ]
+        },
+        { "id": "performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+        {
+          "id": "chaperone",
+          "kind": "choice",
+          "many": false,
+          "label": "Chaperone present",
+          "options": { "list": "yes_no" },
+          "noNormal": true,
+          "showWhen": { "field": "gu.performed", "filled": true }
+        },
+        {
+          "id": "consented",
+          "kind": "flag",
+          "label": "Patient consented",
+          "required": true,
+          "noNormal": true,
+          "showWhen": { "field": "gu.performed", "filled": true }
+        },
+        {
+          "id": "external",
+          "kind": "choice",
+          "many": true,
+          "label": "External exam",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "lesion", "label": "Lesion" },
+            { "code": "ulcer", "label": "Ulcer" },
+            { "code": "rash", "label": "Rash" },
+            { "code": "discharge", "label": "Discharge" },
+            { "code": "swelling", "label": "Swelling" },
+            { "code": "tenderness", "label": "Tenderness" }
+          ],
+          "showWhen": { "field": "gu.performed", "filled": true }
+        },
+        {
+          "id": "findings",
+          "kind": "text",
+          "label": "Findings",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": { "field": "gu.performed", "filled": true }
+        }
+      ]
+    }
+  ]
+}

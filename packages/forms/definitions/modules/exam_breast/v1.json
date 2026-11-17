@@ -1,0 +1,139 @@
+{
+  "name": "exam_breast",
+  "version": 1,
+  "sections": [
+    {
+      "id": "breast",
+      "title": "Breast",
+      "spec": "exam-breast",
+      "showWhen": { "field": "exam.systems", "is": "breast" },
+      "normal": true,
+      "sensitiveExam": true,
+      "fields": [
+        { "id": "performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+        {
+          "id": "chaperone",
+          "kind": "choice",
+          "many": false,
+          "label": "Chaperone present",
+          "options": { "list": "yes_no" },
+          "noNormal": true,
+          "showWhen": { "field": "breast.performed", "filled": true }
+        },
+        {
+          "id": "consented",
+          "kind": "flag",
+          "label": "Patient consented",
+          "required": true,
+          "noNormal": true,
+          "showWhen": { "field": "breast.performed", "filled": true }
+        },
+        {
+          "id": "inspection",
+          "kind": "choice",
+          "many": true,
+          "label": "Inspection",
+          "options": [
+            { "code": "symmetric", "label": "Symmetric", "normal": true },
+            { "code": "asymmetric", "label": "Asymmetric" },
+            { "code": "skin_changes", "label": "Skin changes" },
+            { "code": "retraction", "label": "Retraction" },
+            { "code": "dimpling", "label": "Dimpling" },
+            { "code": "erythema", "label": "Erythema" },
+            { "code": "discharge", "label": "Discharge" }
+          ],
+          "excludes": [["symmetric", "asymmetric"]],
+          "showWhen": { "field": "breast.performed", "filled": true }
+        },
+        {
+          "id": "inspection_side",
+          "kind": "choice",
+          "many": false,
+          "label": "Side of the inspection findings",
+          "options": { "list": "side" },
+          "showWhen": {
+            "field": "breast.inspection",
+            "is": ["asymmetric", "skin_changes", "retraction", "dimpling", "erythema", "discharge"]
+          }
+        },
+        {
+          "id": "finding",
+          "kind": "choice",
+          "many": true,
+          "label": "Finding",
+          "options": [
+            { "code": "no_mass", "label": "No mass", "exclusive": true, "normal": true },
+            { "code": "mass", "label": "Mass" },
+            { "code": "tenderness", "label": "Tenderness" },
+            { "code": "nodule", "label": "Nodule" },
+            { "code": "other", "label": "Other", "other": true }
+          ],
+          "showWhen": { "field": "breast.performed", "filled": true }
+        },
+        {
+          "id": "mass",
+          "kind": "group",
+          "label": "Mass",
+          "layout": "stack",
+          "showWhen": { "field": "breast.finding", "is": "mass" },
+          "fields": [
+            {
+              "id": "location",
+              "kind": "choice",
+              "many": false,
+              "label": "Location (clock position)",
+              "options": [
+                { "code": "clock_1", "label": "1 o’clock" },
+                { "code": "clock_2", "label": "2 o’clock" },
+                { "code": "clock_3", "label": "3 o’clock" },
+                { "code": "clock_4", "label": "4 o’clock" },
+                { "code": "clock_5", "label": "5 o’clock" },
+                { "code": "clock_6", "label": "6 o’clock" },
+                { "code": "clock_7", "label": "7 o’clock" },
+                { "code": "clock_8", "label": "8 o’clock" },
+                { "code": "clock_9", "label": "9 o’clock" },
+                { "code": "clock_10", "label": "10 o’clock" },
+                { "code": "clock_11", "label": "11 o’clock" },
+                { "code": "clock_12", "label": "12 o’clock" },
+                { "code": "central", "label": "Central" }
+              ]
+            },
+            {
+              "id": "side",
+              "kind": "choice",
+              "many": false,
+              "label": "Side",
+              "options": { "list": "side_rl" }
+            },
+            {
+              "id": "size",
+              "kind": "number",
+              "label": "Size",
+              "min": 0.1,
+              "max": 30,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": { "unit": "in", "perUnit": 2.54 }
+            },
+            {
+              "id": "characteristics",
+              "kind": "choice",
+              "many": true,
+              "label": "Characteristics",
+              "options": [
+                { "code": "mobile", "label": "Mobile" },
+                { "code": "fixed", "label": "Fixed" },
+                { "code": "tender", "label": "Tender" },
+                { "code": "non_tender", "label": "Non-tender" }
+              ],
+              "excludes": [
+                ["mobile", "fixed"],
+                ["tender", "non_tender"]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
