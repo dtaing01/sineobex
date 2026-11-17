@@ -6,7 +6,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/theme.dart';
 import 'package:sineobex_field/design/tokens.dart';
+import 'package:sineobex_field/features/forms/choice_field.dart';
 import 'package:sineobex_field/features/forms/field_host.dart';
+import 'package:sineobex_field/features/forms/flag_field.dart';
+import 'package:sineobex_field/features/forms/number_field.dart';
+import 'package:sineobex_field/features/forms/text_field.dart';
 import 'package:sineobex_field/forms/definition.dart';
 
 import '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, runs;
@@ -82,12 +86,49 @@ class TestAnswers with ChangeNotifier implements FormAnswers {
 Widget answering(TestAnswers answers, Widget Function() build) =>
     ListenableBuilder(listenable: answers, builder: (_, _) => build());
 
+/// The widget of a choice, number, text or tick at [path], bare, as a group or a grid draws one
+/// inside it: what the field host will give them, without its label, its "Waiting to send" or its
+/// conflict choice. Its changes go to [answers].
+Widget kindWidget(FieldDef field, String path, TestAnswers answers, {bool enabled = true}) {
+  final value = answers.values[path];
+  final key = ValueKey('form.$path');
+  void change(Object? v) => answers.change(path, v);
+  return switch (field) {
+    final ChoiceDef f => ChoiceField(
+      key: key,
+      field: f,
+      value: value,
+      onChanged: change,
+      other: answers.values['${path}_other'] as String?,
+      onOtherChanged: (v) => answers.change('${path}_other', v),
+      enabled: enabled,
+    ),
+    final NumberDef f => NumberField(
+      key: key,
+      field: f,
+      value: value is num ? value : null,
+      onChanged: change,
+      enabled: enabled,
+    ),
+    final TextDef f => NoteTextField(
+      key: key,
+      field: f,
+      value: value is String ? value : null,
+      onChanged: change,
+      enabled: enabled,
+    ),
+    final FlagDef f => FlagField(key: key, field: f, value: value == true, onChanged: change, enabled: enabled),
+    _ => throw ArgumentError('kindWidget draws a choice, number, text or tick, not a ${field.kind}'),
+  };
+}
+
 /// Puts [child] on a screen of a 390 × 844 phone (320 × 640 when [run] is narrow), in [run]'s
-/// theme and text size, in a scrolling list as the note form lays fields out.
-Future<void> pumpField(WidgetTester tester, Widget child, {Run? run}) async {
+/// theme and text size, in a scrolling list as the note form lays fields out. [size] puts it on a
+/// screen of that many logical pixels instead (a tablet's, say).
+Future<void> pumpField(WidgetTester tester, Widget child, {Run? run, Size? size}) async {
   final r = run ?? runs.first;
   tester.view.devicePixelRatio = 3;
-  tester.view.physicalSize = r.narrow ? const Size(960, 1920) : const Size(1170, 2532);
+  tester.view.physicalSize = size != null ? size * 3 : (r.narrow ? const Size(960, 1920) : const Size(1170, 2532));
   addTearDown(tester.view.reset);
   if (r.scale != 1) {
     tester.platformDispatcher.textScaleFactorTestValue = r.scale;
