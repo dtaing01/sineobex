@@ -746,7 +746,7 @@ As built (unit E, `packages/forms/scripts/export.ts`, run as `pnpm forms:export`
 - **Notes fail nothing.** Before any problem it prints, each as `note`, its file and its message:
   a piece no definition names yet, a module or list no note type uses yet (known only when every
   note type resolved), and for each note type version the most answers a note on it can hold
-  (2.4). The drift step leaves the notes out of what it prints.
+  (2.4). The local drift step (`tools/ci-local.sh`) leaves the notes out of what it prints.
 - **The release mode**, `pnpm forms:export --release` (card F6-release). A released file can
   never change again, so nothing is released that nothing checks or uses: what the notes call
   unused becomes a problem, `export.unused_file`, and nothing is written. When every check
@@ -1435,16 +1435,16 @@ As built (unit F1):
   As built (unit F2), it holds no answer of its own. It reads each definition with
   `NoteTypeDef.fromJson` (3.4), calls each function with a case's inputs, and writes the result
   back as plain data to compare with `expected`: `fieldAt`'s target as the same projection, an
-  enum by its wire name, a problem, a line or a model through its `toJson`. Like the TypeScript
-  reader it runs every function the file holds, names the inputs each one reads, and refuses a
-  case with a key its function does not read or without one it needs, a name used twice, or a
-  definition (or a `full`, or a note's) that the file does not have. Dart's map equality ignores
-  key order, so for the four functions whose order is part of the answer it also checks that
-  the keys come in UTF-16 code-unit order (`String.compareTo`, as JavaScript's `<` on strings):
-  `effectiveAnswers`, which the content hash is taken over; `visibleAnswers`; and `normalAnswers`
-  and `expandQuick`'s answers, which the phone writes as changes in that order. It does not run
-  the validator or check what the definitions use between them: the TypeScript reader does that
-  over the same file.
+  enum by its name, a problem by its code, a line or a model through its `toJson`. Like the
+  TypeScript reader it runs every function the file holds, names the inputs each one reads, and
+  refuses a case with a key its function does not read or without one it needs, a name used
+  twice, or a definition (or a `full`, or a note's) that the file does not have. Dart's map
+  equality ignores key order, so for the four functions whose order is part of the answer it also
+  checks that the keys come in UTF-16 code-unit order (`String.compareTo`, as JavaScript's `<` on
+  strings): `effectiveAnswers`, which the content hash is taken over; `visibleAnswers`; and
+  `normalAnswers` and `expandQuick`'s answers, which the phone writes as changes in that order. It
+  does not run the validator or check what the definitions use between them: the TypeScript reader
+  does that over the same file.
 - **Beside the vectors**, `packages/forms/test/interp/one-meaning.test.ts` holds the validator's
   meaning of what counts (`validate.ts`) to the interpreter's. On 300 small definitions made from
   a fixed seed, each tried with every answer set where there are at most 256, and with a fixed
