@@ -1006,7 +1006,13 @@ function canShow(
   const search = (): 'yes' | 'no' | 'too_many' => {
     if (++tries > MAX_TRIES) return 'too_many';
     counts.clear();
-    const verdict = allOf(visibility.rulesOf(site).shows, holds);
+    // Shown, and not cleared: a field a set flag clears is not asked for either (finishCheck).
+    const rules = visibility.rulesOf(site);
+    const verdict = allOf<Formula | Leaf>([...rules.shows, ...rules.clearedBy], (part) => {
+      if (!('key' in part)) return holds(part);
+      const set = answered(part, null);
+      return typeof set === 'boolean' ? !set : set;
+    });
     if (typeof verdict === 'boolean') return verdict ? 'yes' : 'no';
     const { leaf, option } = verdict;
     if (option !== undefined) {

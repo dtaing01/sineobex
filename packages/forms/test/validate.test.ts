@@ -2091,6 +2091,18 @@ describe('a required field that can never be visible', () => {
       'a field of another row than the flag’s',
       rowFlags({ all: [FILLED('visit.grid.a.gone'), FILLED('visit.grid.b.x')] }),
     );
+    // Shown only while the flag is set, and cleared while it is: Complete never asks for it.
+    broken(
+      'a field shown only by the flag that clears it',
+      (f) => {
+        push(f, { id: 'gone', kind: 'flag', label: 'Gone', clears: ['story'] });
+        story(f).showWhen = FILLED('visit.gone');
+      },
+      STORY,
+    );
+    fits('a field a flag clears, shown by something else', (f) => {
+      push(f, { id: 'gone', kind: 'flag', label: 'Gone', clears: ['story'] });
+    });
   });
 
   // The fault is the include's, in the note type: the module's own file may be right, released,
