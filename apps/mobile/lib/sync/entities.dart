@@ -144,11 +144,13 @@ final uuidPattern = RegExp(
 bool isUuid(Object? v) => v is String && uuidPattern.hasMatch(v);
 final _uuid = _string(pattern: uuidPattern);
 
-/// A real calendar date, YYYY-MM-DD.
+/// A real calendar date, YYYY-MM-DD. The API's Date.UTC reads years 0 to 99 as 1900 to 1999, so it
+/// refuses them; so does this, or the phone would queue a change the server is sure to refuse.
 bool isRealDate(String s) {
   final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(s);
   if (m == null) return false;
   final (y, mo, d) = (int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
+  if (y < 100) return false;
   final date = DateTime.utc(y, mo, d);
   return date.year == y && date.month == mo && date.day == d;
 }

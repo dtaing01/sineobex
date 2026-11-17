@@ -1489,6 +1489,22 @@
       }
     },
     {
+      "name": "a problem begun in the year 99",
+      "entity": "problem",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "title": "Cough",
+        "status": "new",
+        "onsetDate": "0099-12-31"
+      },
+      "expect": {
+        "paths": [
+          "onsetDate"
+        ]
+      }
+    },
+    {
       "name": "a code in lower case",
       "entity": "problem",
       "op": "create",
@@ -2127,6 +2143,22 @@
       },
       "expect": {
         "problem": "referral_in_future"
+      }
+    },
+    {
+      "name": "a referral dated in the year 50",
+      "entity": "referral",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "referredOn": "0050-06-01",
+        "details": "Demo: dental clinic on Main St",
+        "encounterId": "0e0e0000-0000-4000-8000-000000000001"
+      },
+      "expect": {
+        "paths": [
+          "referredOn"
+        ]
       }
     },
     {
