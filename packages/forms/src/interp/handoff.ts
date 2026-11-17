@@ -11,6 +11,7 @@ import type { Answers } from './conditions.ts';
 import { effectiveAnswers } from './effective.ts';
 import { layOut } from './layout.ts';
 import { recapLines } from './recap.ts';
+import { withoutSensitiveExams } from './sensitive-exams.ts';
 
 export type HandoffLine = {
   /** `field`: an answer of a field marked `handoff`. `recap`: a line of a note's recap. */
@@ -31,9 +32,9 @@ export type HandoffLine = {
  * may not see at all, gives no line.
  *
  * PLAN-OPEN: the content of the summary (forms.md 10.1 #6). The default built: first the answers
- * that count of every field marked `handoff` (with everything in it), note by note in the order
- * given, each laid out and written as the read model writes it, its labels joined by ', ', an
- * entry's title first in a repeating section; then each note's recap (recapLines), in the same
+ * that count of every field marked `handoff` (with everything in it), less what a sensitive exam
+ * put there, note by note in the order given, each laid out and written as the read model writes
+ * it, its labels joined by ', ', an entry's title first in a repeating section; then each note's recap (recapLines), in the same
  * order of notes. The patient's name, age and allergies come from the chart, not from here.
  */
 export function handoffLines(
@@ -49,9 +50,11 @@ export function handoffLines(
     if (!answers) return;
     const line = (section: string, labels: string[], value: string) =>
       fields.push({ kind: 'field', note, section, label: labels.join(', '), value });
+    // The summary is shown to EMS, so nothing a sensitive exam put there is in it, as in the recap
+    // (lifecycle 6.4 rule 8); the validator keeps a handoff field out of a restricted section.
     for (const { section, items, entries } of layOut(
       definition,
-      effectiveAnswers(definition, answers),
+      withoutSensitiveExams(definition, effectiveAnswers(definition, answers)),
       (node) => !marked(node),
     )) {
       // Nothing is struck here, so every item has a value.
