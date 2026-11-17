@@ -125,27 +125,24 @@ void main() {
     final enc = store.createEncounter(kind: 'medical');
     final note = store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 38});
     store.setField(note, 'data.pulse', 90);
-    store.setField(note, 'status', 'completed');
     final create = store.outbox()[1];
     store.confirm(store.outbox()[0], serverVersion: 1);
     store.reject(create, reason: 'stale_reference');
 
     store.fixRejected(create.changeId, {'encounterId': enc, 'noteTypeKey': 'vitals'});
     final sendable = store.sendable();
-    expect(sendable.map((e) => e.op), ['create', 'set']);
+    expect(sendable.map((e) => e.op), ['create']);
     expect(sendable.first.supersedes, create.changeId);
     expect(sendable.first.value, {
       'encounterId': enc,
       'noteTypeKey': 'vitals',
       'data': {'temp_c': 38, 'pulse': 90},
     });
-    expect(sendable.last.field, 'status');
-    expect(sendable.last.follows, sendable.first.changeId);
     expect(store.needsAttention(), isEmpty);
 
     store.confirm(sendable.first, serverVersion: 1);
     // The original rejection and the edits folded into the fix are gone with it.
-    expect(store.outbox().map((e) => e.changeId), [sendable.last.changeId]);
+    expect(store.outbox(), isEmpty);
   });
 
   test('a conflict is shown with both values; choosing mine sends one replace with my latest value', () {
@@ -653,7 +650,6 @@ void main() {
     // Each fits in a value of its own; together they are over the API's 64 KiB.
     store.setField(note, 'data.history', 'Demo history ${'h' * 40000}');
     store.setField(note, 'data.plan', 'Demo plan ${'p' * 30000}');
-    store.setField(note, 'status', 'completed');
     for (final e in store.sendable()) {
       store.reject(e, reason: 'stale_reference');
     }
@@ -663,8 +659,8 @@ void main() {
     store.fixRejected(refused.changeId, {'encounterId': enc, 'noteTypeKey': 'vitals'});
     expect(store.needsAttention(), isEmpty);
     final sendable = store.sendable();
-    expect(sendable.map((e) => e.op), ['create', 'set', 'set']);
-    final [fix, follow, status] = sendable;
+    expect(sendable.map((e) => e.op), ['create', 'set']);
+    final [fix, follow] = sendable;
     expect(fix.supersedes, refused.changeId);
     for (final e in sendable) {
       expect(utf8.encode(canonicalJson(e.value)).length, lessThanOrEqualTo(maxValueBytes));
@@ -674,7 +670,6 @@ void main() {
     expect({...inCreate, follow.field!.substring('data.'.length)}, {'temp_c', 'history', 'plan'});
     expect(inCreate, contains('temp_c'));
     expect([follow.baseVersion, follow.supersedes], [0, null]);
-    expect([status.field, status.value, status.follows], ['status', 'completed', fix.changeId]);
     expect(store.record(note)!.fields[follow.field]!.pendingChange, follow.changeId);
 
     // Refused and fixed again, it goes the same way, and nothing is left behind once confirmed.
@@ -683,10 +678,9 @@ void main() {
     }
     store.fixRejected(fix.changeId, {'encounterId': enc, 'noteTypeKey': 'vitals'});
     final again = store.sendable();
-    expect(again.map((e) => e.op), ['create', 'set', 'set']);
+    expect(again.map((e) => e.op), ['create', 'set']);
     store.confirm(again[0], serverVersion: 1);
     store.confirm(again[1], serverVersion: 1);
-    store.confirm(again[2], serverVersion: 2);
     expect(store.outbox(), isEmpty);
     final fields = store.record(note)!.fields;
     expect(fields.values.every((f) => f.confirmed), isTrue);

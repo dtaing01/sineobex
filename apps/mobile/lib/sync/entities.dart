@@ -22,6 +22,10 @@ const entityConsent = 'patient_consent';
 const entityProblem = 'problem';
 const entityProblemNote = 'problem_note';
 const entityIdLink = 'id_link';
+const entitySignoff = 'note_signoff';
+const entityAddendum = 'note_addendum';
+const entityCorrection = 'note_correction';
+const entityReferral = 'referral';
 
 /// How two values for one field are reconciled on the server (design 2.4).
 enum FieldClass { draft, keepBoth, identity, status, setOnce }
@@ -84,9 +88,13 @@ _Schema _nullable(_Schema s) => (v, path, issues) {
   if (v != null) s(v, path, issues);
 };
 
-typedef _Field = ({_Schema schema, bool optional});
-_Field _req(_Schema s) => (schema: s, optional: false);
-_Field _opt(_Schema s) => (schema: s, optional: true);
+typedef _Field = ({_Schema schema, bool optional, bool missingAborts});
+_Field _req(_Schema s) => (schema: s, optional: false, missingAborts: true);
+_Field _opt(_Schema s) => (schema: s, optional: true, missingAborts: false);
+
+/// A key that must hold a value of any kind (the API's JsonValue): Zod passes a missing one to the
+/// schema, whose refinement refuses it, so the object's own refinement still runs.
+_Field _present(_Schema s) => (schema: s, optional: false, missingAborts: false);
 
 /// A strict object: an unknown key is an issue on the object itself. Its refinement runs unless a
 /// field had the wrong type, as Zod 4 does.
@@ -100,7 +108,7 @@ _Schema _object(
     if (v.containsKey(name)) {
       f.schema(v[name], _at(path, name), issues);
     } else if (!f.optional) {
-      issues.add(_at(path, name), abort: true);
+      issues.add(_at(path, name), abort: f.missingAborts);
     }
   }
   if (v.keys.any((k) => !fields.containsKey(k))) issues.add(path);
@@ -115,13 +123,18 @@ _Schema _union(String key, Map<String, _Schema> options) => (v, path, issues) {
   option(v, path, issues);
 };
 
-_Schema _array(_Schema item, {required int max}) => (v, path, issues) {
-  if (v is! List<Object?>) return issues.add(path, abort: true);
-  if (v.length > max) issues.add(path);
-  for (final (i, x) in v.indexed) {
-    item(x, _at(path, '$i'), issues);
-  }
-};
+/// An array, with Zod's length checks and a refinement of the whole that runs unless an item had
+/// the wrong type.
+_Schema _array(_Schema item, {int min = 0, required int max, bool Function(List<Object?> v)? refine}) =>
+    (v, path, issues) {
+      if (v is! List<Object?>) return issues.add(path, abort: true);
+      final aborts = issues._aborts;
+      if (v.length < min || v.length > max) issues.add(path);
+      for (final (i, x) in v.indexed) {
+        item(x, _at(path, '$i'), issues);
+      }
+      if (refine != null && issues._aborts == aborts && !refine(v)) issues.add(path);
+    };
 
 /// Zod 4's `z.string().uuid()`: RFC 9562 versions 1 to 8, either case, or the nil and max IDs.
 final uuidPattern = RegExp(
@@ -345,7 +358,7 @@ final _idLinkCreate = _object({
   'reason': _req(_oneOf(idLinkReasons)),
 });
 
-/// Alias removal, allergy or problem entered in error: set once, with a reason.
+/// Alias removal, allergy, problem or referral entered in error: set once, with a reason.
 final _retraction = _object({'reason': _req(_syncReason)});
 
 /// Most patients one offline audit entry may list: Show more displays up to SEARCH_MAX (50).
@@ -358,6 +371,10 @@ const auditActions = {
   'id_link.copied',
   'encounter.viewed',
   'note.viewed',
+  // Phase 4 (lifecycle 4.8, 10.1): both screens show patients' details offline. The handoff's
+  // export is an online route's own event, never an offline one.
+  'ems_handoff.shown',
+  'notes_to_finish.viewed',
 };
 
 // PLAN-OPEN: search terms in the audit log (design 14.1, #9, for counsel). Never stored: an entry
@@ -382,17 +399,24 @@ final _location = _object({
   'accuracyM': _opt(_number(min: 0, max: 100000)),
 });
 
+final _encounterKind = _oneOf({'medical', 'non_medical'});
+
+/// The place typed by hand (PRD main 378) and the assessment written on the summary screen (433).
+final _locationText = _nullable(_trimmed(1, 200));
+final _summary = _nullable(_trimmed(1, 4000));
+
 final _encounterCreate = _object({
-  'kind': _req(_oneOf({'medical', 'non_medical'})),
+  'kind': _req(_encounterKind),
   'patientId': _opt(_nullable(_uuid)),
   'location': _opt(_nullable(_location)),
+  'locationText': _opt(_locationText),
 });
 
 /// A note data path (`vitals.temp_c`), as the API's DATA_PATH.
 final dataPathPattern = RegExp(r'^[a-z][a-zA-Z0-9_]{0,60}(\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$');
 
 /// The most data fields one note may have (MAX_NOTE_FIELDS in the API).
-const maxNoteFields = 300;
+const maxNoteFields = 1000;
 
 void _jsonValue(Object? v, String path, ValueIssues issues) {
   if (storableProblem(v) != null) issues.add(path);
@@ -412,23 +436,115 @@ final _noteCreate = _object({
   }),
 });
 
-const _draftStatus = {'draft', 'completed'};
+/// A note's status from the phone: `draft`, the reopen (lifecycle 4.4). A note is finished only by a
+/// sign-off; the API keeps an old build's `completed` in history, and this build never sends one.
+final _noteStatus = _oneOf({'draft'});
+
+/// The largest version a change may name (MAX_VERSION in the API, Postgres `integer`).
+const maxVersion = 2147483647;
+
+/// The credentials a membership holds (CREDENTIALS in services/api/src/auth/permissions.ts).
+const credentials = {'attending', 'resident', 'np', 'pa', 'student', 'chw', 'none'};
+
+final _credential = _nullable(_oneOf(credentials));
+
+/// Which wording a signer was shown (lifecycle 3.5): `sign-2026-11`.
+final _statementVersion = _string(pattern: RegExp(r'^[a-z0-9_.-]{1,40}$'));
+
+// Phase 4's records (services/api/src/sync/entities/values.ts, lifecycle 4.6 and 4.7).
+
+/// A sign-off: what the person asked for, the hash of the note as they saw it, the credential their
+/// saved profile showed, and the wording they were shown. A `complete` signs nothing, so it claims
+/// no credential.
+final _signoffCreate = _object(
+  {
+    'noteId': _req(_uuid),
+    'act': _req(_oneOf({'complete', 'sign'})),
+    'contentHash': _req(_string(pattern: RegExp(r'^[0-9a-f]{64}$'))),
+    'claimedCredential': _req(_credential),
+    'statementVersion': _req(_statementVersion),
+  },
+  refine: (v, path, issues) {
+    if (v['act'] != 'sign' && v['claimedCredential'] != null) issues.add(_at(path, 'claimedCredential'));
+  },
+);
+
+/// An addendum below a note of the visit, or below the visit itself when it names no note.
+/// `signoffId` is the phone's own sign-off of that note while it waits, named so the addendum waits
+/// behind it.
+final _addendumCreate = _object({
+  'encounterId': _req(_uuid),
+  'noteId': _req(_nullable(_uuid)),
+  'text': _req(_trimmed(1, 4000)),
+  'signoffId': _req(_nullable(_uuid)),
+});
+
+/// Answers one correction changes together (MAX_CORRECTION_CHANGES in the API).
+const maxCorrectionChanges = 10;
+
+/// A note's answer named as a field, `data.<path>` (AnswerField in the API).
+bool isAnswerField(String field) => field.startsWith('data.') && dataPathPattern.hasMatch(field.substring(5));
+
+final _correctionChange = _object({
+  'field': _req(_string(refine: [isAnswerField])),
+  'newValue': _present(_jsonValue),
+  'baseVersion': _req(_number(integer: true, min: 0, max: maxVersion)),
+});
+
+/// A correction of a finished note, or a patient's amendment request: one reason, one to ten answers
+/// changed together, each with the version the person was looking at. Only a request is declined.
+final _correctionCreate = _object(
+  {
+    'noteId': _req(_uuid),
+    'changes': _req(
+      _array(
+        _correctionChange,
+        min: 1,
+        max: maxCorrectionChanges,
+        refine: (changes) => {for (final c in changes) (c! as Map<String, Object?>)['field']}.length == changes.length,
+      ),
+    ),
+    'reason': _req(_trimmed(3, 500)),
+    'requestedByPatient': _req(_bool),
+    'declined': _req(_bool),
+    'claimedCredential': _req(_credential),
+    'signoffId': _req(_nullable(_uuid)),
+  },
+  refine: (v, path, issues) {
+    if (v['declined'] == true && v['requestedByPatient'] != true) issues.add(_at(path, 'declined'));
+  },
+);
+
+/// A referral: a date and free-text details, nothing else in V1 (PRD main 113, 507), and the visit it
+/// was made at or null.
+final _referralCreate = _object({
+  'patientId': _req(_uuid),
+  'referredOn': _req(_isoDate),
+  'details': _req(_trimmed(1, 2000)),
+  'encounterId': _req(_nullable(_uuid)),
+});
 
 // ------------------------------------------------------------------------------------------------
 // Rules a value breaks on its own (values.ts valueProblem)
 // ------------------------------------------------------------------------------------------------
 
-/// `birth_in_future`: a date after [today] (YYYY-MM-DD, the server's date) plus one day, or a year
-/// after this one.
+/// A date after [today] (YYYY-MM-DD, the server's date) plus one day: a phone a time zone ahead may
+/// already be on tomorrow.
+bool _afterTomorrow(String date, String today) {
+  final limit = DateTime.parse('${today}T00:00:00Z').add(const Duration(days: 1));
+  return date.compareTo(limit.toIso8601String().substring(0, 10)) > 0;
+}
+
+/// `birth_in_future`: a date after [today] plus one day, or a year after this one.
 String? birthProblem(Object? birth, String today) {
   if (birth is! Map<String, Object?>) return null;
-  if (birth['precision'] == 'day') {
-    final limit = DateTime.parse('${today}T00:00:00Z').add(const Duration(days: 1));
-    final date = birth['date']! as String;
-    return date.compareTo(limit.toIso8601String().substring(0, 10)) > 0 ? 'birth_in_future' : null;
-  }
+  if (birth['precision'] == 'day') return _afterTomorrow(birth['date']! as String, today) ? 'birth_in_future' : null;
   return (birth['year']! as num) > int.parse(today.substring(0, 4)) ? 'birth_in_future' : null;
 }
+
+/// `referral_in_future`: a referral dated after [today] plus one day (lifecycle 4.7).
+String? referralProblem(Map<String, Object?> referral, String today) =>
+    _afterTomorrow(referral['referredOn']! as String, today) ? 'referral_in_future' : null;
 
 /// `living_other_text`: the text goes with Other and only with Other.
 String? livingProblem(Object? living) {
@@ -452,6 +568,7 @@ class EntityRules {
     required this._permission,
     required this._parents,
     this._parentsOfSet,
+    this._patientVia,
     this._createdFields,
     this._attributes,
     this._initialStatus,
@@ -476,6 +593,7 @@ class EntityRules {
   final String Function(String op, String? field) _permission;
   final List<ParentRef> Function(Map<String, Object?> v) _parents;
   final List<ParentRef> Function(String field, Object? v)? _parentsOfSet;
+  final ParentRef? Function(Map<String, Object?> v)? _patientVia;
   final Map<String, Object?> Function(Map<String, Object?> v)? _createdFields;
   final Map<String, Object?> Function(Map<String, Object?> v)? _attributes;
   final String Function(Map<String, Object?> v)? _initialStatus;
@@ -509,9 +627,13 @@ class EntityRules {
   FieldClass? fieldClass(String field) => _schemaOf(field)?.$2;
 
   /// The rule a valid value breaks on its own, as the server's `details.problem`: a patient create
-  /// with nothing to recognise, a birth in the future, Other without its text. [today] is the
-  /// date the rule is checked on (the server's; the phone's corrected date before it sends).
+  /// with nothing to recognise, a birth in the future, Other without its text, a referral dated
+  /// ahead. [today] is the date the rule is checked on (the server's; the phone's corrected date
+  /// before it sends).
   String? valueProblem(String op, String? field, Object? value, String today) {
+    if (entity == entityReferral) {
+      return op == 'create' ? referralProblem(value! as Map<String, Object?>, today) : null;
+    }
     if (entity != entityPatient) return null;
     if (op == 'create') {
       final v = value! as Map<String, Object?>;
@@ -545,11 +667,11 @@ class EntityRules {
   String? statusAfter(String field, Object? value) {
     if (field == 'status') return value is Map<String, Object?> ? value['status'] as String? : value as String?;
     if (field == 'removal') return 'removed';
-    if (field == 'enteredInError' && entity == entityAllergy) return 'entered_in_error';
+    if (field == 'enteredInError' && (entity == entityAllergy || entity == entityReferral)) return 'entered_in_error';
     return null;
   }
 
-  /// The patient a create is about, when its value says (a problem note's is its problem's).
+  /// The patient a create is about, when its value names them.
   String? patientOfCreate(String recordId, Map<String, Object?> value) => switch (entity) {
     entityPatient => recordId,
     entityEncounter ||
@@ -557,9 +679,15 @@ class EntityRules {
     entityAllergy ||
     entityConsent ||
     entityProblem ||
-    entityIdLink => value['patientId'] as String?,
+    entityIdLink ||
+    entityReferral => value['patientId'] as String?,
     _ => null,
   };
+
+  /// The record whose patient a create's patient is, when its value names none (lifecycle 4.8): a
+  /// problem note's problem, a note's encounter, a sign-off's or a correction's note, an addendum's
+  /// visit.
+  ParentRef? patientVia(Map<String, Object?> value) => _patientVia?.call(value);
 }
 
 List<ParentRef> _refs(List<(String, Object?)> named) => [
@@ -570,6 +698,8 @@ List<ParentRef> _refs(List<(String, Object?)> named) => [
 const _chart = 'encounters.chart';
 const _edit = 'patients.edit';
 
+ParentRef? _via(String entity, Object? id) => id is String ? (entity: entity, id: id) : null;
+
 final Map<String, EntityRules> _registry = {
   entityEncounter: EntityRules._(
     entity: entityEncounter,
@@ -577,16 +707,26 @@ final Map<String, EntityRules> _registry = {
     pausesWithClock: true,
     patientSide: false,
     create: _encounterCreate,
+    // Its status is not a field: the server works it out from the visit's notes (lifecycle 2.2). The
+    // envelope follows the draft rule; the kind has its own, to Medical at any time and never back.
     fields: {
       'patientId': (_nullable(_uuid), FieldClass.draft),
       'location': (_nullable(_location), FieldClass.draft),
-      'status': (_oneOf(_draftStatus), FieldClass.draft),
+      'locationText': (_locationText, FieldClass.draft),
+      'summary': (_summary, FieldClass.draft),
+      'kind': (_encounterKind, FieldClass.status),
     },
     permission: (_, _) => _chart,
     parents: (v) => _refs([(entityPatient, v['patientId'])]),
     parentsOfSet: (field, v) => field == 'patientId' ? _refs([(entityPatient, v)]) : const [],
-    createdFields: (v) => {'patientId': v['patientId'], 'location': v['location'], 'status': 'draft'},
-    attributes: (v) => {'kind': v['kind']},
+    createdFields: (v) => {
+      'patientId': v['patientId'],
+      'location': v['location'],
+      'locationText': v['locationText'],
+      'kind': v['kind'],
+    },
+    // The server keeps when it started; the phone makes up nothing beside the fields.
+    attributes: (_) => {},
     initialStatus: (_) => 'draft',
   ),
   entityNote: EntityRules._(
@@ -595,9 +735,12 @@ final Map<String, EntityRules> _registry = {
     pausesWithClock: true,
     patientSide: false,
     create: _noteCreate,
-    fields: {'status': (_oneOf(_draftStatus), FieldClass.draft)},
+    // Its answers follow the draft rule (and the note type, which the domain layer checks first:
+    // forms 8.1); its status is the reopen's own rule.
+    fields: {'status': (_noteStatus, FieldClass.status)},
     permission: (_, _) => _chart,
     parents: (v) => _refs([(entityEncounter, v['encounterId'])]),
+    patientVia: (v) => _via(entityEncounter, v['encounterId']),
     createdFields: (v) => {
       'status': 'draft',
       for (final MapEntry(:key, :value) in ((v['data'] as Map<String, Object?>?) ?? const {}).entries)
@@ -692,6 +835,7 @@ final Map<String, EntityRules> _registry = {
     fields: const {},
     permission: (_, _) => _chart,
     parents: (v) => _refs([(entityProblem, v['problemId']), (entityEncounter, v['encounterId'])]),
+    patientVia: (v) => _via(entityProblem, v['problemId']),
     initialStatus: (_) => 'recorded',
   ),
   entityIdLink: EntityRules._(
@@ -706,6 +850,60 @@ final Map<String, EntityRules> _registry = {
     // The token stays in the outbox value until confirmed and in id_links, never in a record.
     attributes: (v) => {...v}..remove('token'),
     initialStatus: (_) => 'pending',
+  ),
+  // Phase 4 (lifecycle 4.6, 4.7): created, never changed. Each is about the patient of the note or
+  // visit it names and joins that patient's local work; its parents hold it behind them.
+  entitySignoff: EntityRules._(
+    entity: entitySignoff,
+    category: 'notes',
+    pausesWithClock: true,
+    patientSide: true,
+    create: _signoffCreate,
+    fields: const {},
+    permission: (_, _) => _chart,
+    parents: (v) => _refs([(entityNote, v['noteId'])]),
+    patientVia: (v) => _via(entityNote, v['noteId']),
+    // What it does to the note is the server's answer (its effect).
+    initialStatus: (_) => 'pending',
+  ),
+  entityAddendum: EntityRules._(
+    entity: entityAddendum,
+    category: 'notes',
+    pausesWithClock: true,
+    patientSide: true,
+    create: _addendumCreate,
+    fields: const {},
+    permission: (_, _) => _chart,
+    parents: (v) =>
+        _refs([(entityEncounter, v['encounterId']), (entityNote, v['noteId']), (entitySignoff, v['signoffId'])]),
+    patientVia: (v) => _via(entityEncounter, v['encounterId']),
+    initialStatus: (_) => 'written',
+  ),
+  entityCorrection: EntityRules._(
+    entity: entityCorrection,
+    category: 'notes',
+    pausesWithClock: true,
+    patientSide: true,
+    create: _correctionCreate,
+    fields: const {},
+    permission: (_, _) => _chart,
+    parents: (v) => _refs([(entityNote, v['noteId']), (entitySignoff, v['signoffId'])]),
+    patientVia: (v) => _via(entityNote, v['noteId']),
+    // Its outcome is the server's answer.
+    initialStatus: (_) => 'pending',
+  ),
+  // As an allergy: never overwritten, and taken back once, with a reason. Made by anyone who holds
+  // referrals.create, a community health worker included; its date is typed, so it never waits for
+  // the clock (lifecycle 3.11).
+  entityReferral: EntityRules._(
+    entity: entityReferral,
+    category: 'patients',
+    pausesWithClock: false,
+    patientSide: true,
+    create: _referralCreate,
+    fields: {'enteredInError': (_retraction, FieldClass.setOnce)},
+    permission: (_, _) => 'referrals.create',
+    parents: (v) => _refs([(entityPatient, v['patientId']), (entityEncounter, v['encounterId'])]),
   ),
 };
 

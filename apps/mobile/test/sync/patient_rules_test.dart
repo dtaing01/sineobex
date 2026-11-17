@@ -111,18 +111,7 @@ void main() {
     final vectors = jsonDecode(
       File('../../packages/contract/test-vectors/sync-values.json').readAsStringSync(),
     ) as Map<String, Object?>;
-    // Phase 4's records and offline reads (lifecycle 4.6 to 4.8) wait for the registry, which
-    // test/patients/entities_test.dart pins; the fake answers them once it takes them.
-    const phase4Entities = {'note_signoff', 'note_addendum', 'note_correction', 'referral'};
-    const phase4Actions = {'ems_handoff.shown', 'notes_to_finish.viewed'};
-    bool onPhone(Map<String, Object?> c) {
-      final value = c['value'];
-      return !phase4Entities.contains(c['entity']) &&
-          !(c['entity'] == entityAudit && value is Map<String, Object?> && phase4Actions.contains(value['action']));
-    }
-
-    List<Map<String, Object?>> cases(String key) =>
-        (vectors[key]! as List<Object?>).cast<Map<String, Object?>>().where(onPhone).toList();
+    List<Map<String, Object?>> cases(String key) => (vectors[key]! as List<Object?>).cast<Map<String, Object?>>();
     setUp(() => serverTime = DateTime.parse('${vectors['today']}T12:00:00Z'));
 
     Future<Map<String, Object?>> pushCase(Map<String, Object?> c) =>

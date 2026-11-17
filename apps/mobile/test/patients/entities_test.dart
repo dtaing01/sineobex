@@ -8,9 +8,6 @@ import 'package:sineobex_field/sync/entities.dart';
 /// sync-values.json), which the API's Zod schemas pass too: the same values are valid, an invalid
 /// one fails at the same issue paths or breaks the same named rule, and every valid change names
 /// the same parents. The fake server checks values with this registry, so it is pinned as well.
-/// Phase 4's records and offline reads in the vectors (lifecycle 4.6 to 4.8).
-const phase4Entities = {'note_signoff', 'note_addendum', 'note_correction', 'referral'};
-const phase4Actions = {'ems_handoff.shown', 'notes_to_finish.viewed'};
 
 void main() {
   final vectors = jsonDecode(
@@ -32,42 +29,20 @@ void main() {
     return rules?.valueProblem(c['op']! as String, c['field'] as String?, c['value'], today);
   }
 
-  /// Why [c] is skipped: a phase 4 record or offline read (lifecycle 4.6 to 4.8) the API takes and
-  /// the registry does not hold yet. The test below fails once it holds one, so the skip goes then.
-  String? notOnPhoneYet(Map<String, Object?> c) {
-    final value = c['value'];
-    final pending =
-        phase4Entities.contains(c['entity']) ||
-        (c['entity'] == entityAudit && value is Map<String, Object?> && phase4Actions.contains(value['action']));
-    return pending ? 'the registry takes phase 4’s records and audit actions with lifecycle 4.8' : null;
-  }
-
-  test('phase 4’s records and audit actions are not in the registry yet, so their cases are skipped', () {
-    for (final entity in phase4Entities) {
-      expect(rulesFor(entity), isNull, reason: entity);
-    }
-    for (final action in phase4Actions) {
-      expect(auditActions, isNot(contains(action)), reason: action);
-    }
-  });
-
   test('the vectors cover every patient-side entity, valid and invalid', () {
-    for (final entity in [
-      entityPatient,
-      entityAlias,
-      entityAllergy,
-      entityConsent,
-      entityProblem,
-      entityProblemNote,
-      entityIdLink,
-    ]) {
+    final patientSide = [
+      for (final e in recordEntities)
+        if (rulesFor(e)!.patientSide) e,
+    ];
+    expect(patientSide, hasLength(11));
+    for (final entity in patientSide) {
       expect(cases('valid').any((c) => c['entity'] == entity), isTrue, reason: entity);
       expect(cases('invalid').any((c) => c['entity'] == entity), isTrue, reason: entity);
     }
   });
 
   for (final c in cases('valid')) {
-    test(skip: notOnPhoneYet(c), 'accepts ${c['name']}, with its parents', () {
+    test('accepts ${c['name']}, with its parents', () {
       expect(issuesOf(c), isEmpty);
       expect(problemOf(c), isNull);
       if (c['op'] != 'append') {
@@ -85,7 +60,7 @@ void main() {
   }
 
   for (final c in cases('invalid')) {
-    test(skip: notOnPhoneYet(c), 'refuses ${c['name']}', () {
+    test('refuses ${c['name']}', () {
       final expected = c['expect']! as Map<String, Object?>;
       final paths = expected['paths'] as List<Object?>?;
       if (paths != null) {
@@ -109,6 +84,12 @@ void main() {
       entityProblem: true,
       entityProblemNote: true,
       entityIdLink: true,
+      // A signature, an addendum and a correction are dated by the clock; a referral's date is typed
+      // (lifecycle 3.11).
+      entitySignoff: true,
+      entityAddendum: true,
+      entityCorrection: true,
+      entityReferral: false,
     });
   });
 
@@ -125,6 +106,12 @@ void main() {
       expect(key(entity, 'create'), 'encounters.chart', reason: entity);
     }
     expect(key(entityProblem, 'set', 'enteredInError'), 'encounters.chart');
+    for (final entity in [entitySignoff, entityAddendum, entityCorrection]) {
+      expect(key(entity, 'create'), 'encounters.chart', reason: entity);
+    }
+    expect(key(entityEncounter, 'set', 'kind'), 'encounters.chart');
+    expect(key(entityReferral, 'create'), 'referrals.create');
+    expect(key(entityReferral, 'set', 'enteredInError'), 'referrals.create');
   });
 
   test('categories group the unsynced summary', () {
@@ -133,6 +120,10 @@ void main() {
     expect(categoryOf(entityProblemNote), 'problems');
     expect(categoryOf(entityAudit), 'activity');
     expect(categoryOf(entityEncounter), 'encounters');
+    for (final entity in [entityNote, entitySignoff, entityAddendum, entityCorrection]) {
+      expect(categoryOf(entity), 'notes', reason: entity);
+    }
+    expect(categoryOf(entityReferral), 'patients');
   });
 
   test('field classes follow the design (2.4)', () {
@@ -146,6 +137,192 @@ void main() {
     expect(rulesFor(entityAlias)!.fieldClass('removal'), FieldClass.setOnce);
     expect(rulesFor(entityConsent)!.settable('decision'), isFalse);
     expect(rulesFor(entityNote)!.fieldClass('data.vitals.temp_c'), FieldClass.draft);
+    // Their own rules (lifecycle 4.3, 4.4): a note's status is the reopen, a visit's kind goes one way.
+    expect(rulesFor(entityNote)!.fieldClass('status'), FieldClass.status);
+    expect(rulesFor(entityEncounter)!.fieldClass('kind'), FieldClass.status);
+    expect(rulesFor(entityReferral)!.fieldClass('enteredInError'), FieldClass.setOnce);
+    for (final entity in [entitySignoff, entityAddendum, entityCorrection]) {
+      expect(rulesFor(entity)!.settable('status'), isFalse, reason: entity);
+    }
+  });
+
+  group('the encounter (lifecycle 4.3)', () {
+    final encounter = rulesFor(entityEncounter)!;
+
+    test('its place, summary and kind are fields, and its status is not', () {
+      expect(encounter.settable('status'), isFalse);
+      for (final field in ['patientId', 'location', 'locationText', 'summary']) {
+        expect(encounter.fieldClass(field), FieldClass.draft, reason: field);
+      }
+      expect(encounter.createdFields({'kind': 'non_medical', 'patientId': 'p', 'locationText': 'Demo: lot'}), {
+        'patientId': 'p',
+        'location': null,
+        'locationText': 'Demo: lot',
+        'kind': 'non_medical',
+      });
+      // What the server keeps with an encounter (its start) the phone does not make up.
+      expect(encounter.attributes({'kind': 'medical'}), isEmpty);
+      expect(encounter.statusAfter('kind', 'medical'), isNull);
+    });
+
+    // The values of sync-encounters.test.ts, 'a summary holds 1 to 4,000 characters and a place 1 to
+    // 200, with no space at either end'.
+    test('a summary holds 1 to 4,000 characters and a place 1 to 200, with no space at either end', () {
+      for (final (field, value) in [
+        ('summary', ''),
+        ('summary', 'x' * 4001),
+        ('summary', ' Demo: a space before'),
+        ('summary', 'Demo: a line end after\n'),
+        ('summary', 42),
+        ('locationText', ''),
+        ('locationText', 'y' * 201),
+        ('locationText', 'Demo: a space after '),
+        ('kind', 'telehealth'),
+        ('kind', null),
+      ]) {
+        expect(encounter.fieldIssues(field, value), {''}, reason: '$field $value');
+      }
+      for (final (field, value) in [
+        ('summary', 'Demo:${'é' * 3995}'),
+        ('summary', null),
+        ('locationText', 'Demo:${'y' * 195}'),
+        ('locationText', null),
+        ('kind', 'medical'),
+        ('kind', 'non_medical'),
+      ]) {
+        expect(encounter.fieldIssues(field, value), isEmpty, reason: '$field $value');
+      }
+      expect(encounter.createIssues({'kind': 'non_medical', 'locationText': 'Demo: by the river steps'}), isEmpty);
+      for (final locationText in ['', 'y' * 201, ' Demo: padded']) {
+        expect(encounter.createIssues({'kind': 'medical', 'locationText': locationText}), {'locationText'});
+      }
+      // The summary is written on the summary screen, never with the create.
+      expect(encounter.createIssues({'kind': 'medical', 'summary': 'Demo: early'}), {''});
+    });
+  });
+
+  test('a note’s status takes draft only from the phone, and a note holds up to 1,000 answers (lifecycle 4.4)', () {
+    final note = rulesFor(entityNote)!;
+    expect(note.fieldIssues('status', 'draft'), isEmpty);
+    // Complete is a sign-off, and only a sign-off signs.
+    expect(note.fieldIssues('status', 'completed'), {''});
+    expect(note.fieldIssues('status', 'signed'), {''});
+    expect(maxNoteFields, 1000);
+  });
+
+  test('a new record’s patient is the one it names, or the one of the record it is about (lifecycle 4.8)', () {
+    final [patient, encounter, note, signoff] = [
+      '5eed0000-0000-4000-8000-000000000001',
+      '0e0e0000-0000-4000-8000-000000000001',
+      'a0a00000-0000-4000-8000-000000000001',
+      'b5b50000-0000-4000-8000-000000000001',
+    ];
+    final referral = {'patientId': patient, 'referredOn': '2026-10-22', 'details': 'Demo: dental', 'encounterId': null};
+    expect(rulesFor(entityReferral)!.patientOfCreate('r', referral), patient);
+    expect(rulesFor(entityReferral)!.patientVia(referral), isNull);
+    expect(rulesFor(entitySignoff)!.patientVia({'noteId': note}), (entity: entityNote, id: note));
+    expect(rulesFor(entityCorrection)!.patientVia({'noteId': note, 'signoffId': signoff}), (
+      entity: entityNote,
+      id: note,
+    ));
+    // An addendum names its visit even when it is about a note of it.
+    expect(rulesFor(entityAddendum)!.patientVia({'encounterId': encounter, 'noteId': note}), (
+      entity: entityEncounter,
+      id: encounter,
+    ));
+    expect(rulesFor(entityNote)!.patientVia({'encounterId': encounter}), (entity: entityEncounter, id: encounter));
+    expect(rulesFor(entityProblemNote)!.patientVia({'problemId': 'q'}), (entity: entityProblem, id: 'q'));
+    for (final entity in [entitySignoff, entityAddendum, entityCorrection]) {
+      expect(rulesFor(entity)!.patientOfCreate('r', {'noteId': note, 'encounterId': encounter}), isNull);
+    }
+    expect(rulesFor(entityPatient)!.patientVia({}), isNull);
+  });
+
+  test('a new record starts as the phone knows it: a sign-off and a correction wait for the server’s answer', () {
+    expect(rulesFor(entitySignoff)!.initialStatus({}), 'pending');
+    expect(rulesFor(entityCorrection)!.initialStatus({}), 'pending');
+    expect(rulesFor(entityAddendum)!.initialStatus({}), 'written');
+    expect(rulesFor(entityReferral)!.initialStatus({}), 'active');
+    expect(
+      rulesFor(entityReferral)!.statusAfter('enteredInError', const {'reason': 'Wrong patient'}),
+      'entered_in_error',
+    );
+    for (final entity in [entitySignoff, entityAddendum, entityCorrection, entityReferral]) {
+      expect(rulesFor(entity)!.createdFields(const {}), isEmpty, reason: entity);
+    }
+  });
+
+  // Beyond the shared vectors: where Zod 4 runs a refinement and where it does not, as the API's
+  // NoteCorrectionCreate and NoteSignoffCreate answered each of these values.
+  test('a correction or a sign-off fails at the paths the API names, its refinements included', () {
+    const note = 'a0a00000-0000-4000-8000-000000000001';
+    final base = <String, Object?>{
+      'noteId': note,
+      'changes': [
+        {'field': 'data.care.plan', 'newValue': 'Demo: rest', 'baseVersion': 1},
+      ],
+      'reason': 'Demo: typo',
+      'requestedByPatient': false,
+      'declined': false,
+      'claimedCredential': null,
+      'signoffId': null,
+    };
+    Map<String, Object?> change(String? field, {Object? newValue = 1, Object? baseVersion = 1, bool hasValue = true}) =>
+        {'field': ?field, if (hasValue) 'newValue': newValue, 'baseVersion': baseVersion};
+    Set<String> issues(Map<String, Object?> v) => rulesFor(entityCorrection)!.createIssues({...base, ...v});
+
+    expect(issues({}), isEmpty);
+    expect(issues({'changes': <Object?>[]}), {'changes'});
+    // A missing new value is refused by its refinement, so the object's own still runs.
+    expect(
+      issues({
+        'declined': true,
+        'changes': [change('data.a', hasValue: false)],
+      }),
+      {'changes.0.newValue', 'declined'},
+    );
+    expect(
+      issues({
+        'changes': [change('data.a', newValue: null)],
+      }),
+      isEmpty,
+    );
+    // A value of the wrong type stops the list's refinement; a field that is no answer does not.
+    expect(
+      issues({
+        'changes': [change('data.a'), change('data.a', baseVersion: 'x')],
+      }),
+      {'changes.1.baseVersion'},
+    );
+    expect(
+      issues({
+        'changes': [change('nope'), change('nope')],
+      }),
+      {'changes.0.field', 'changes.1.field', 'changes'},
+    );
+    expect(
+      issues({
+        'changes': [change(null, hasValue: false), change(null, hasValue: false)],
+      }),
+      {'changes.0.field', 'changes.0.newValue', 'changes.1.field', 'changes.1.newValue'},
+    );
+    expect(issues({'declined': true, 'reason': 'x'}), {'reason', 'declined'});
+    expect(issues({'declined': true, 'requestedByPatient': 'yes'}), {'requestedByPatient'});
+    expect(
+      rulesFor(entitySignoff)!.createIssues({
+        'noteId': note,
+        'act': 'complete',
+        'contentHash': 'AB',
+        'claimedCredential': 'attending',
+        'statementVersion': 'complete-2026-11',
+      }),
+      {'contentHash', 'claimedCredential'},
+    );
+  });
+
+  test('a phone logs the EMS handoff it showed and the notes to finish it listed (lifecycle 4.8)', () {
+    expect(auditActions, containsAll(['ems_handoff.shown', 'notes_to_finish.viewed']));
+    expect(auditActions, isNot(contains('ems_handoff.exported')));
   });
 
   test('a fill keeps what was recorded; an estimate is refined only within ESTIMATE_RANGE', () {
