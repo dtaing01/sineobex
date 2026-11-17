@@ -1,0 +1,83 @@
+{
+  "name": "exam_psychiatric",
+  "version": 1,
+  "sections": [
+    {
+      "id": "psych_observation",
+      "title": "Psychiatric / behavioral observation",
+      "spec": "exam-psychiatric",
+      "showWhen": { "field": "exam.systems", "is": "psych_observation" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "appearance",
+          "kind": "choice",
+          "many": true,
+          "label": "Appearance / behavior",
+          "options": [
+            { "code": "calm", "label": "Calm", "normal": true },
+            { "code": "cooperative", "label": "Cooperative", "normal": true },
+            { "code": "agitated", "label": "Agitated" },
+            { "code": "guarded", "label": "Guarded" },
+            { "code": "tearful", "label": "Tearful" },
+            { "code": "withdrawn", "label": "Withdrawn" },
+            { "code": "disorganized", "label": "Disorganized" }
+          ],
+          "excludes": [["calm", "agitated"]]
+        },
+        {
+          "id": "speech",
+          "kind": "choice",
+          "many": true,
+          "label": "Speech",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "rapid", "label": "Rapid" },
+            { "code": "pressured", "label": "Pressured" },
+            { "code": "slow", "label": "Slow" },
+            { "code": "slurred", "label": "Slurred" }
+          ],
+          "excludes": [["rapid", "slow"]]
+        },
+        {
+          "id": "affect",
+          "kind": "choice",
+          "many": true,
+          "label": "Affect",
+          "options": [
+            { "code": "appropriate", "label": "Appropriate", "exclusive": true, "normal": true },
+            { "code": "flat", "label": "Flat" },
+            { "code": "blunted", "label": "Blunted" },
+            { "code": "anxious", "label": "Anxious" },
+            { "code": "tearful", "label": "Tearful" },
+            { "code": "irritable", "label": "Irritable" }
+          ]
+        },
+        {
+          "id": "thought",
+          "kind": "choice",
+          "many": true,
+          "label": "Thought process",
+          "options": [
+            { "code": "linear", "label": "Linear", "exclusive": true, "normal": true },
+            { "code": "circumstantial", "label": "Circumstantial" },
+            { "code": "tangential", "label": "Tangential" },
+            { "code": "disorganized", "label": "Disorganized" }
+          ]
+        },
+        {
+          "id": "orientation",
+          "kind": "choice",
+          "many": true,
+          "label": "Oriented to",
+          "options": [
+            { "code": "person", "label": "Person", "normal": true },
+            { "code": "place", "label": "Place", "normal": true },
+            { "code": "time", "label": "Time", "normal": true },
+            { "code": "situation", "label": "Situation", "normal": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

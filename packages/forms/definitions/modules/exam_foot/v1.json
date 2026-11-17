@@ -1,0 +1,103 @@
+{
+  "name": "exam_foot",
+  "version": 1,
+  "sections": [
+    {
+      "id": "diabetic_foot",
+      "title": "Foot / diabetic foot exam",
+      "spec": "exam-foot",
+      "showWhen": { "field": "exam.systems", "is": "diabetic_foot" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "inspection",
+          "kind": "choice",
+          "many": true,
+          "label": "Inspection",
+          "options": [
+            { "code": "intact_skin", "label": "Intact skin", "exclusive": true, "normal": true },
+            { "code": "ulcer", "label": "Ulcer" },
+            { "code": "callus", "label": "Callus" },
+            { "code": "corn", "label": "Corn" },
+            { "code": "fissure", "label": "Fissure" },
+            { "code": "blister", "label": "Blister" },
+            { "code": "deformity", "label": "Deformity" },
+            { "code": "nail_abnormality", "label": "Nail abnormality" },
+            { "code": "erythema", "label": "Erythema" },
+            { "code": "swelling", "label": "Swelling" },
+            { "code": "necrosis", "label": "Necrosis" }
+          ]
+        },
+        {
+          "id": "pulses",
+          "kind": "grid",
+          "label": "Pulses",
+          "sides": true,
+          "rows": [
+            { "code": "dorsalis_pedis_dp", "label": "Dorsalis pedis (DP)" },
+            { "code": "posterior_tibial_pt", "label": "Posterior tibial (PT)" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Pulse",
+            "options": { "list": "pulse_scale" }
+          }
+        },
+        {
+          "id": "sensation",
+          "kind": "choice",
+          "many": false,
+          "label": "Sensation",
+          "options": [
+            { "code": "intact", "label": "Intact", "normal": true },
+            { "code": "decreased", "label": "Decreased" },
+            { "code": "absent", "label": "Absent" }
+          ]
+        },
+        {
+          "id": "monofilament",
+          "kind": "choice",
+          "many": false,
+          "label": "Monofilament",
+          "options": [
+            { "code": "normal", "label": "Normal", "normal": true },
+            { "code": "abnormal", "label": "Abnormal" }
+          ],
+          "sides": true
+        },
+        {
+          "id": "temperature",
+          "kind": "choice",
+          "many": true,
+          "label": "Temperature",
+          "options": [
+            { "code": "warm", "label": "Warm", "normal": true },
+            { "code": "cool", "label": "Cool" },
+            { "code": "asymmetric", "label": "Asymmetric" }
+          ],
+          "excludes": [["warm", "cool"]]
+        },
+        {
+          "id": "wound",
+          "kind": "choice",
+          "many": false,
+          "label": "Wound present?",
+          "options": [
+            { "code": "yes", "label": "Yes" },
+            { "code": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "wound_care",
+          "kind": "action",
+          "label": "Chart in Wound care",
+          "action": "open_note_type",
+          "noteType": "wound_care",
+          "showWhen": { "field": "diabetic_foot.wound", "is": "yes" }
+        }
+      ]
+    }
+  ]
+}
