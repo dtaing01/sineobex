@@ -60,7 +60,7 @@
     },
     {
       "line": 37,
-      "what": "Type is choose-many. Other asks for a short text. Picking Ulcer or Abscess shows an action, Chart in Wound care, which opens the encounter's Wound care note (open_note_type wound_care). Blister stays a Skin finding.",
+      "what": "Type is choose-many. Other asks for a short text. Picking Ulcer or Abscess shows an action, Chart in Wound care, which opens the encounter's Wound care note (open_note_type wound_care). Blister stays a Skin finding. While Ulcer or Abscess is picked, the finding stores only its location and type, and asks no Characteristics, Size or Photos: Wound care asks them of the wound, so nothing is charted twice.",
       "why": "PRD main 416; forms 6.7; focused-exam inventory default 8, 13, 31"
     },
     {

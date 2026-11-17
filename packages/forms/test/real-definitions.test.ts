@@ -126,3 +126,30 @@ describe('findings a clinician charts together on the real definitions', () => {
     expect(checkAnswer(general, path, value)).not.toBeNull();
   });
 });
+
+describe('what hands off to another note on the real definitions', () => {
+  // SEN-4: open skin hands off to Wound care "so nothing is charted twice" (PRD main 416, forms
+  // 6.7): a Skin finding of Ulcer or Abscess keeps its location and type, and its measurements,
+  // characteristics and photos are the wound's.
+  const finding = (type: string[]) =>
+    effectiveAnswers(
+      general,
+      exam(['skin'], {
+        [`skin_findings.${ENTRY}.entryAt`]: AT,
+        [`skin_findings.${ENTRY}.type`]: type,
+        [`skin_findings.${ENTRY}.characteristics`]: ['draining'],
+        [`skin_findings.${ENTRY}.size.length`]: 2,
+        [`skin_findings.${ENTRY}.size.width`]: 1,
+      }),
+    );
+  it.each([[['ulcer']], [['abscess']], [['rash', 'ulcer']]])(
+    'charts no size or characteristics for %j',
+    (type) => {
+      const counted = Object.keys(finding(type)).filter((path) => path.startsWith(`skin_findings.${ENTRY}.`));
+      expect(counted.sort()).toEqual([`skin_findings.${ENTRY}.entryAt`, `skin_findings.${ENTRY}.type`]);
+    },
+  );
+  it('charts them for a finding that stays in Skin', () => {
+    expect(finding(['rash'])[`skin_findings.${ENTRY}.size.length`]).toBe(2);
+  });
+});

@@ -78,9 +78,16 @@
         "scaling",
         "crusting",
         "draining"
-      ]
+      ],
+      "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
     },
-    { "path": "skin_findings.size", "kind": "group", "label": "Size", "layout": "row" },
+    {
+      "path": "skin_findings.size",
+      "kind": "group",
+      "label": "Size",
+      "layout": "row",
+      "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
+    },
     {
       "path": "skin_findings.size.length",
       "kind": "number",
@@ -101,7 +108,13 @@
       "unit": "cm",
       "altUnit": { "unit": "in", "perUnit": 2.54 }
     },
-    { "path": "skin_findings.photos", "kind": "photo", "label": "Photos", "max": 5 },
+    {
+      "path": "skin_findings.photos",
+      "kind": "photo",
+      "label": "Photos",
+      "max": 5,
+      "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
+    },
     {
       "path": "skin_findings.same_lesion",
       "kind": "choice",

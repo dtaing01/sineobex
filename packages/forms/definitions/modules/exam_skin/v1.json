@@ -92,13 +92,15 @@
             { "code": "scaling", "label": "Scaling" },
             { "code": "crusting", "label": "Crusting" },
             { "code": "draining", "label": "Draining" }
-          ]
+          ],
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
         },
         {
           "id": "size",
           "kind": "group",
           "label": "Size",
           "layout": "row",
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } },
           "fields": [
             {
               "id": "length",
@@ -122,7 +124,13 @@
             }
           ]
         },
-        { "id": "photos", "kind": "photo", "label": "Photos", "max": 5 },
+        {
+          "id": "photos",
+          "kind": "photo",
+          "label": "Photos",
+          "max": 5,
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
+        },
         {
           "id": "same_lesion",
           "kind": "choice",
