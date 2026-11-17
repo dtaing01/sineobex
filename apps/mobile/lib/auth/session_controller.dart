@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -146,6 +147,11 @@ abstract interface class LocalData {
   /// Marks every team database the user has here so its server copies are deleted first thing at
   /// its next open: a sign-out without the key can't open them.
   Future<void> markServerCopiesStale(String userId);
+
+  /// The person just signed in, online, and is unlocked: what every team of theirs needs offline
+  /// (its note types, phase 4 forms 3.4) is fetched now, before the phone leaves signal. Best
+  /// effort: it never throws, and the sign-in doesn't wait for it.
+  Future<void> afterSignIn(LocalUser user);
 }
 
 /// [LocalData] found when first used, for an owner created after the session (the sync
@@ -168,6 +174,9 @@ class DeferredLocalData implements LocalData {
 
   @override
   Future<void> markServerCopiesStale(String userId) => _find().markServerCopiesStale(userId);
+
+  @override
+  Future<void> afterSignIn(LocalUser user) => _find().afterSignIn(user);
 }
 
 /// Sign-in, PIN setup, lock and unlock (module 1 "Offline sign-in", module 9 "Device security").
@@ -321,6 +330,13 @@ class SessionController extends ChangeNotifier {
     final key = await vault.create(user.userId, pin);
     await _adopt(user, key, tokens);
     _set(Unlocked(user, biometric: false));
+    _afterSignIn(user);
+  }
+
+  /// Right after /v1/me, once the sign-in that read it is unlocked (the fetch needs a valid token).
+  void _afterSignIn(LocalUser user) {
+    final data = localData;
+    if (data != null) unawaited(data.afterSignIn(user).catchError((Object _) {}));
   }
 
   Future<void> _adopt(LocalUser user, Uint8List key, Tokens tokens) async {
@@ -355,6 +371,7 @@ class SessionController extends ChangeNotifier {
     // The profile may have changed while unlocking (a team dropped): unlock into the current one.
     final user = pending != null && pendingUser != null ? pendingUser : (_state as Locked).user;
     _set(Unlocked(user, biometric: biometric));
+    if (pending != null && pendingUser != null) _afterSignIn(user);
   }
 
   /// Throws [WrongPin]; on [VaultWiped] the phone forgets the user and shows why.

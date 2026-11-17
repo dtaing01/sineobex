@@ -787,6 +787,9 @@ class _AfterClear implements LocalData {
 
   @override
   Future<void> markServerCopiesStale(String userId) => inner.markServerCopiesStale(userId);
+
+  @override
+  Future<void> afterSignIn(LocalUser user) => inner.afterSignIn(user);
 }
 
 class _Refresher implements AfterSyncRefresher {

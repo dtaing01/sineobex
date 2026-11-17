@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 
 import '../api/generated/api.dart';
 import '../auth/session_controller.dart';
+import '../forms/definition_store.dart';
+import '../forms/forms_api.dart';
 import '../security/secure_store.dart';
 import 'clock.dart';
 import 'device_identity.dart';
@@ -103,7 +105,9 @@ class SyncController extends ChangeNotifier implements LocalData {
     this.refreshInterval = const Duration(minutes: 15),
     DateTime Function()? now,
     this.monotonic,
-  }) : _now = now ?? DateTime.now {
+    this.definitions,
+  }) : _now = now ?? DateTime.now,
+       _definitionSync = definitions == null ? null : DefinitionSync(definitions) {
     session.addListener(_onSession);
   }
 
@@ -134,6 +138,12 @@ class SyncController extends ChangeNotifier implements LocalData {
 
   /// For the clock check between syncs (tests drive it; the app uses a Stopwatch).
   final Duration Function()? monotonic;
+
+  /// The teams' note type definitions (phase 4 forms 3.4): fetched after sign-in and at each sync,
+  /// deleted with the team's data. None when null.
+  final DefinitionStore? definitions;
+  final DefinitionSync? _definitionSync;
+  Future<void>? _signInFetch;
 
   LocalDatabase? _db;
   LocalStore? _store;
@@ -281,6 +291,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     if (_db?.path == path) _close();
     await device.forgetTeam(teamId);
     LocalDatabase.deleteFiles(path);
+    await definitions?.forgetTeam(wipe.userId, teamId);
     await wipes.put(wipe.asDeleted());
     await _confirmWipe(wipes, wipe);
   }
@@ -309,6 +320,7 @@ class SyncController extends ChangeNotifier implements LocalData {
         final path = LocalDatabase.fileFor(dir, wipe.userId, wipe.teamId);
         if (_db?.path == path) continue; // Can't happen: _open finishes the wipe first.
         LocalDatabase.deleteFiles(path);
+        await definitions?.forgetTeam(wipe.userId, wipe.teamId);
         await wipes.put(wipe.asDeleted());
       }
       await _confirmWipe(wipes, wipe);
@@ -382,6 +394,7 @@ class SyncController extends ChangeNotifier implements LocalData {
   Future<void> ready() async {
     await _opening;
     await _sweeping;
+    await _signInFetch;
   }
 
   /// Bumped by every open and close: an open that a newer one or a close overtook while it
@@ -405,6 +418,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     for (final wipe in await UnconfirmedWipes(deviceStore).all()) {
       if (wipe.userId == userId && wipe.teamId == teamId && !wipe.deleted) {
         LocalDatabase.deleteFiles(LocalDatabase.fileFor(dir, userId, teamId));
+        await definitions?.forgetTeam(userId, teamId);
         await UnconfirmedWipes(deviceStore).put(wipe.asDeleted());
       }
     }
@@ -452,6 +466,13 @@ class SyncController extends ChangeNotifier implements LocalData {
       clock: clock,
       permissions: s.user.team?.permissions ?? const [],
     );
+    final definitionSync = _definitionSync;
+    if (definitionSync != null) {
+      // First: a note type list is small, and a slow index download shouldn't hold it up.
+      _engine!.refreshers.add(
+        DefinitionRefresher(definitionSync, FormsApi(_engine!.api), userId: userId, teamId: teamId),
+      );
+    }
     _engine!.refreshers.addAll(refreshers?.call(team) ?? const []);
     if (stale) await deviceStore.delete(serverCopiesStaleKey(path));
     await clock.check();
@@ -668,6 +689,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     } else {
       if (_db?.path == path) _close();
       LocalDatabase.deleteFiles(path);
+      await definitions?.forgetTeam(userId, teamId);
     }
     final user = switch (session.state) {
       Unlocked(:final user) || Locked(:final user) => user,
@@ -689,6 +711,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     for (final path in LocalDatabase.filesForUser(dir, userId)) {
       LocalDatabase.deleteFiles(path);
     }
+    await definitions?.forgetUser(userId);
   }
 
   @override
@@ -729,6 +752,8 @@ class SyncController extends ChangeNotifier implements LocalData {
         await deviceStore.write(serverCopiesStaleKey(path), '1');
       }
     }
+    // Server data too (forms 3.4), and plain files: no key is needed to delete them.
+    await definitions?.forgetUser(userId);
   }
 
   /// Sign-out from the lock screen: no key to open the files, so each is marked and cleared first
@@ -738,6 +763,28 @@ class SyncController extends ChangeNotifier implements LocalData {
     for (final path in LocalDatabase.filesForUser(await databaseDirectory(), userId)) {
       await deviceStore.write(serverCopiesStaleKey(path), '1');
     }
+    // These need no key, so they go now.
+    await definitions?.forgetUser(userId);
+  }
+
+  /// Every team's note type list and the definitions it names, fetched right after sign-in, so a
+  /// team first opened offline still offers its note types (forms 3.4). The open team's also
+  /// comes with its refreshers; a fetch already running for a team is shared. A team that fails
+  /// keeps what it had, and the next sync in that team tries again.
+  @override
+  Future<void> afterSignIn(LocalUser user) async {
+    final definitionSync = _definitionSync;
+    if (definitionSync == null) return;
+    final run = _signInFetch = () async {
+      for (final team in user.teams) {
+        try {
+          await definitionSync.refresh(user.userId, team.id, FormsApi(teamApi(team.id)));
+        } on Object {
+          // Offline, refused or signed out meanwhile: nothing was kept that didn't check out.
+        }
+      }
+    }();
+    await run;
   }
 
   /// Unsynced changes across [paths]; null if any of them can't be read with [key].

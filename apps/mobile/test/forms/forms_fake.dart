@@ -41,7 +41,7 @@ class FakeFormsServer {
   /// Requests to a path wait until its completer completes.
   final holds = <String, Completer<void>>{};
 
-  /// The forms requests, in order.
+  /// The forms requests, in order, answered or not.
   final requests = <String>[];
 
   int get listRequests => requests.where((r) => r == listPath).length;
@@ -55,8 +55,8 @@ class FakeFormsServer {
   ApiTransport transportFor(String teamId, [ApiTransport? inner]) => _FormsTransport(this, teamId, inner);
 
   Future<Object?> _handle(String teamId, String method, String path) async {
-    if (offline) throw const NetworkException('offline');
     requests.add(path);
+    if (offline) throw const NetworkException('offline');
     final hold = holds[path];
     if (hold != null) await hold.future;
     final versions = teams[teamId] ?? const <Version>[];
