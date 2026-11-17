@@ -1137,8 +1137,9 @@ Each function, as built:
   never refuses an answer; for an `entryAt`, a UTC time on a real date (2.3). The server's sync
   schema counts no characters in note data (it bounds a value at 64 KiB), so it never refuses for
   length an answer `checkAnswer` takes. It does refuse a text holding a NUL or half of a
-  surrogate pair (`jsonProblem`, `services/api/src/sync/records.ts`), which `checkAnswer` takes:
-  which side changes is open.
+  surrogate pair (`jsonProblem`, `services/api/src/sync/records.ts`), so `checkAnswer` refuses
+  such a text too, as `wrong_type`, before its length is counted (a text field, an Other text and
+  a problem's label alike): the phone never saves an answer the server would refuse.
 - **`effectiveAnswers`** holds each answer that counts as stored. Leaving blanks and refused
   answers out makes it exactly what the content hash takes (lifecycle 4.5), and a finished note
   holds no `null`. An entry that is there keeps its `entryAt`. The keys are in UTF-16 code-unit
@@ -1239,11 +1240,12 @@ As built (unit F1):
   alone cannot show: the entry ID and `entryAt` formats, the order of `checkAnswer`'s checks, how
   an item is laid out and its value written, the wording of the recap and the read model, the
   rules of `visibleAnswers`, `suggestions`, `handoffLines` and `expandQuick`. `definitions` maps a
-  name to a resolved definition. There are thirteen, made up, with keys `demo_*` and labels
+  name to a resolved definition. There are fourteen, made up, with keys `demo_*` and labels
   "Demo …": `visit`, `wound`, `exam`, `outreach`, `psych`, `quick` (`demo_quick` version 2),
   `quickOld` (its version 1, which maps answers the newest full note types do not all take),
-  `problems`, `ems`, `social`, `checkup`, `intake` and `rehab`. `cases` maps each function of 7.1
-  to its cases, 569 in all, each `{ name, definition, why, expected }` with `why` optional, and
+  `problems`, `ems`, `social`, `checkup`, `intake`, `rehab` and `rules` (a Normal section built
+  so that one-tap Normal's retry is the only way to its answer, and a diagnosis hidden by a
+  condition). `cases` maps each function of 7.1 to its cases, 586 in all, each `{ name, definition, why, expected }` with `why` optional, and
   the inputs its function reads: `path`, with `value` for `checkAnswer`; for the rest `answers`,
   with `section` and an optional `entry` for `normalAnswers`, `corrections` for `readModel`,
   `reader` for `visibleAnswers`, and `full` (the full definition's name) and `newEntryIds` for
@@ -1263,7 +1265,8 @@ As built (unit F1):
   file does not have. Then it runs every case and compares the result with `expected` as plain
   data, in which key order plays no part.
 - **The Dart reader** (`apps/mobile/test/forms/conformance_test.dart`) is unit F2's, and reads
-  the file the same way.
+  the file the same way. A rule either interpreter keeps is pinned by a case here, not by a unit
+  test on one side only, so that breaking it on either side fails a test.
 - **Beside the vectors**, `packages/forms/test/interp/one-meaning.test.ts` holds the validator's
   meaning of what counts (`validate.ts`) to the interpreter's. On 300 small definitions made from
   a fixed seed, each tried with every answer set where there are at most 256, and with a fixed
@@ -1283,6 +1286,13 @@ picked. For each: `finishCheck`, `recapLines` and the hash of `readModel`.
 The Dart test `apps/mobile/test/forms/golden_test.dart` recomputes all of it from the bundled
 presets and compares. So the two interpreters are held together on the real forms, not only on
 the small ones, and a transcription card that trips a difference fails a test.
+
+As built (unit F2): the test also holds the presets and the golden file to the same keys,
+versions and hashes. Until the definitions are typed, `golden.json` is empty, so the same check
+runs over `apps/mobile/test/forms/golden_sample.json` as well: the fixture note types and the
+vectors' definitions, with what TypeScript says about them. `packages/forms/test/golden.test.ts`
+writes that sample as a file snapshot, so a change on the TypeScript side fails there until the
+sample is written again, and the phone's test then says whether Dart agrees.
 
 ## 8. The phone renderer and the portal read view
 

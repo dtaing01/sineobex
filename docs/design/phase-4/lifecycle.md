@@ -1005,8 +1005,15 @@ functions. `input` is the function's one argument; for `encounterStatus` it is t
 notes, and the 0018 test reads those cases against the trigger. `signed-under.json` is
 `{ "note", "cases" }` with one list. The Dart functions take named parameters and answer with
 enums and sealed classes; `rules_test.dart` turns each answer back into the vector's JSON, so
-both sides are held to one file. The content hash's vector file, its readers and its two
-functions wait for the forms interpreter's `effectiveAnswers` (units F1 and F2).
+both sides are held to one file. The content hash (4.5) is
+`services/api/src/encounters/content-hash.ts` and `apps/mobile/lib/encounters/content_hash.dart`,
+each with `noteContent` (the map hashed) and `noteContentHash`; the TypeScript one is async, as
+WebCrypto is, and the Dart one is not. Both take the definition and read `noteTypeKey` and
+`noteTypeVersion` from it, and write a missing patient or summary as `null`. They are pinned by
+`packages/contract/test-vectors/note-content-hash.json` (`{ "note", "cases" }`, 21 cases, each
+naming one of `forms-conformance.json`'s definitions, with the inputs and, expected, `effective`
+(the answers that count), `content` (the text hashed) and `hash`), read by `services/api/test/note-content-hash.test.ts` and
+`apps/mobile/test/encounters/content_hash_test.dart`.
 
 The types the ten functions share:
 
