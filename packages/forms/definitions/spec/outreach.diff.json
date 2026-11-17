@@ -25,8 +25,8 @@
     },
     {
       "line": 10,
-      "what": "Choose-many. No is exclusive. Medical, Behavioral and Social suggest General / primary care, Behavioral health and Social needs on the summary screen. Emergency suggests nothing and shows no prompt: no note type answers it in a Non-Medical encounter, where Red flags and disposition cannot be added, unlike Behavioral health's Active and Wound care's Urgent, which point to it.",
-      "why": "inventory A1, A4; PRD main 433 (suggested next steps); inventory A31, A41; PRD main 413; PLAN-OPEN (forms 10.1 #1): should Emergency show Go to Red flags and disposition where it can be added?"
+      "what": "Choose-many. No is exclusive. Medical, Behavioral and Social suggest General / primary care, Behavioral health and Social needs on the summary screen. Emergency shows Go to Red flags and disposition, which opens the visit's Red flags note, as Behavioral health's Active and Wound care's Urgent do. The screen offers it only where that note type can be started (F5 and F7): a Non-Medical visit cannot take a Red flags note until it is made Medical.",
+      "why": "inventory A1, A4; PRD main 433 (suggested next steps); inventory A31, A41; PRD main 413; PLAN-OPEN (forms 10.1 #39): the default is Go to Red flags and disposition; the clinical team decides whether an emergency found on outreach should open it"
     },
     {
       "line": 13,

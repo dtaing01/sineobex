@@ -63,6 +63,14 @@
         }
       }
     },
+    {
+      "path": "outreach.red_flags",
+      "kind": "action",
+      "label": "Go to Red flags and disposition",
+      "action": "open_note_type",
+      "noteType": "red_flags_disposition",
+      "showWhen": { "field": "outreach.new_need", "is": "emergency" }
+    },
     { "path": "outreach.notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 },
     {
       "path": "outreach.follow_up",

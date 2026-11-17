@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkAnswer } from '../src/interp/check-answer.ts';
-import type { Answers } from '../src/interp/conditions.ts';
+import { NoteReading, type Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
 import { expandQuick } from '../src/interp/expand.ts';
 import { finishCheck } from '../src/interp/finish.ts';
@@ -175,6 +175,27 @@ describe('what hands off to another note on the real definitions', () => {
   });
   it('charts them for a finding that stays in Skin', () => {
     expect(finding(['rash'])[`skin_findings.${ENTRY}.size.length`]).toBe(2);
+  });
+});
+
+describe('what opens another note on the real definitions', () => {
+  /** The note types the actions shown in a note's sections open. */
+  const opened = (key: string, answers: Answers) => {
+    const reading = new NoteReading(definition(key), answers);
+    return reading.model.sections
+      .flatMap((section) => section.nodes)
+      .filter((node) => node.field.kind === 'action' && reading.fieldCounts(node, null, null))
+      .map((node) => (node.field.kind === 'action' ? node.field.noteType : null));
+  };
+  // TYP-8: an emergency found on outreach goes to the Red flags note, as Behavioral health's Active
+  // and Wound care's Urgent do (inventory A31, A41; forms 10.1 #39).
+  it('shows Go to Red flags and disposition for an Emergency on Outreach', () => {
+    expect(opened('outreach', { 'outreach.new_need': ['emergency'] })).toEqual(['red_flags_disposition']);
+    expect(opened('outreach', { 'outreach.new_need': ['medical', 'emergency'] })).toEqual([
+      'red_flags_disposition',
+    ]);
+    expect(opened('outreach', { 'outreach.new_need': ['medical'] })).toEqual([]);
+    expect(opened('psychological', { 'safety.immediate': 'yes' })).toEqual(['red_flags_disposition']);
   });
 });
 
