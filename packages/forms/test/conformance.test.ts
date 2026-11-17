@@ -19,6 +19,7 @@ import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
 import type { Condition, Option } from '../src/types.ts';
 import { validate } from '../src/validate.ts';
+import * as forms from '../src/index.ts';
 
 // The interpreter's answers are data (docs/design/phase-4/forms.md, 7.2): they live in
 // packages/contract/test-vectors/forms-conformance.json, and the phone's conformance_test.dart reads
@@ -164,6 +165,35 @@ describe('the conformance definitions', () => {
     ];
     expect(wanted.filter((w) => !used.has(w))).toEqual([]);
   });
+});
+
+// The table of forms.md 7.1: each function of the interpreter and how many arguments it takes.
+const INTERPRETER: Record<string, number> = {
+  fieldAt: 2,
+  checkAnswer: 3,
+  effectiveAnswers: 2,
+  finishCheck: 2,
+  normalAnswers: 4,
+  recapLines: 2,
+  readModel: 3,
+  visibleAnswers: 3,
+  handoffLines: 2,
+  suggestions: 2,
+  expandQuick: 4,
+};
+
+describe('the interpreter', () => {
+  it('is every function of the table in 7.1, run by this reader', () => {
+    expect(Object.keys(FUNCTIONS).sort()).toEqual(Object.keys(INTERPRETER).sort());
+  });
+
+  // The API and the scripts import the package's index, never a file inside it.
+  for (const [name, arity] of Object.entries(INTERPRETER))
+    it(`exports ${name} from the package, taking ${arity} arguments`, () => {
+      const fn = (forms as Record<string, unknown>)[name];
+      expect(typeof fn).toBe('function');
+      expect((fn as (...args: unknown[]) => unknown).length).toBe(arity);
+    });
 });
 
 describe('the conformance cases', () => {
