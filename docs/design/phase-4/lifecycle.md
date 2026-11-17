@@ -1262,9 +1262,11 @@ As built (unit L1, with wave D's review):
   | `patientId` set to nothing | kept, `patient_cannot_be_removed` | nobody |
   | the patient, the place or the summary after a finished note | kept, `encounter_has_finished_note` | the sender, and whoever acts as the author of each finished note of the visit, once each (4.3) |
   | an answer of a finished note | kept, `note_finished` | the sender, and the acting author when that is someone else (4.4) |
-  | a reopen from someone who does not act as the author | kept, `not_author`, when the acting author's own reopen would have applied; otherwise a late change, `note_finished` | the sender alone, `change_not_applied` |
+  | a reopen from someone who does not act as the author | kept, `not_author`, when the acting author's own reopen would have applied; otherwise a late change, `note_finished` | the sender alone, `change_not_applied`; a late change as the row above |
   | a sign-off from someone who does not act as the author | effect `none`, reason `not_author` | the sender alone, `change_not_applied` |
   | a correction from someone who does not act as the author | outcome `not_author` | the sender alone, `change_not_applied` |
+  | `sign` on a Non-Medical note | effect `completed`, as `signoffEffect` treats it as `complete` | nobody |
+  | a correction to a note that is a draft | outcome `draft_edit`, by the draft rule (4.7) | nobody |
 
   `not_author` answers before the Medical gate for all three (review finding RD-8): a non-author
   whose credential was lowered is stored with no effect, and nothing waits for an admin who could
@@ -2059,7 +2061,7 @@ the API test that holds the same rule, in `services/api/test/sync-{encounters,si
 | 10 | `_correction`, `_writeAnswers`, `_reviewersUndone` | Each step in the order of 4.7 as built |
 | 11 | `_create`'s referral, problem, allergy and problem note cases, through `_visitOfOtherPatient`; `_set`'s `mayChange` | |
 | 12 | `_medicalGate`, from the note create, `_noteSet`, `_signoff` and `_correction`; `_needsGate`, from all but `_signoff` | |
-| 13 | `_refreshVisit` | Its case is named after the db test `db/test/encounter-lifecycle.test.ts`, "the encounter's status follows its notes", and reads `note-lifecycle.json`'s `encounterStatus` cases through the fake's sync read; no API test has that name |
+| 13 | `_refreshVisit` | Its case is named after the db test `db/test/encounter-lifecycle.test.ts`, "the encounter’s status follows its notes", and reads `note-lifecycle.json`'s `encounterStatus` cases through the fake's sync read; no API test has that name |
 | 14 | `checkAnswer` in the note create and `_noteSet`, `notCounted`, `_byDefinition` and the `forged` rows, stored as `definition_error` by `_decide` | |
 | 15 | the registry's `auditIssues`, in `_decide` | |
 | 16 | `_fetch`, `_asRead`, `_noteAsRead`, `_noteSnapshot`, `_readSnapshot`, `_medicalHidden`; `_hiddenFromSender`, `_unreadableBySender`, `noteReader`, `answerHidden` | With the read rules of 6.4 as built, and a retry answered from `_Receipt.result` as its sender may see the field (4.4) |
@@ -2939,20 +2941,20 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | Complete's hard stops | 3.3 | `apps/mobile/test/encounters/complete_test.dart` |
 | Every row of the sign-off table | 3.4 | `note-lifecycle.json`; `services/api/test/sync-signoffs.test.ts` ("what a sign-off does", "refusals", "what a sign-off names, and what it is"); parity case 7, which sends every `signoffEffect` case through a real sign-off |
 | The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
-| A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts` ("the encounter's fields", "a finished note, and its reopen"); parity cases 2 and 5 |
+| A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts` ("the encounter’s fields", "a finished note, and its reopen"); parity cases 2 and 5 |
 | Reopen | 3.6, 4.4 | `sync-encounters.test.ts` ("the reopen: a set of status to draft"); parity case 6 |
 | Corrections, and what happens to the signature after one | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7"); parity case 10 |
 | Addenda | 3.6, 4.7 | `sync-corrections.test.ts` ("addenda"); parity case 9 |
 | What an addendum and a correction name: a note of the visit, a sign-off of the note | 4.1, 4.7 | `sync-corrections.test.ts`; parity "what an addendum and a correction name" |
-| Referrals, and a visit of another patient | 4.7, 8.3 | `services/api/test/sync-referrals.test.ts`; `sync-encounters.test.ts` ("an allergy and a problem's note made at a visit", "a problem made at a visit"); parity case 11 |
+| Referrals, and a visit of another patient | 4.7, 8.3 | `services/api/test/sync-referrals.test.ts`; `sync-encounters.test.ts` ("an allergy and a problem’s note made at a visit", "a problem made at a visit"); parity case 11 |
 | A correction waits behind a refused sign-off | 4.7 | `apps/mobile/test/sync/store_encounters_test.dart`; on the server, a correction or an addendum that names a held sign-off is held with it (`sync-corrections.test.ts`) |
 | Co-sign and attest: a second person, online, sees every section, hash matches | 3.7, 5.3, 5.4 | `services/api/test/encounters-cosign.test.ts`, `encounters-attest.test.ts` |
 | Assigning a note | 3.8, 5.5 | `services/api/test/encounters-assign.test.ts` |
 | Overdue after 24 hours, worked out when read | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` |
-| No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts` ("the note's create", "the encounter's fields"); parity case 3 |
+| No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts` ("the note’s create", "the encounter’s fields"); parity case 3 |
 | The clock pause covers sign-offs, addenda and corrections, not referrals | 3.11 | `apps/mobile/test/sync/store_encounters_test.dart`; the registry's `pausesWithClock` in `apps/mobile/test/patients/entities_test.dart` |
 | The content hash | 4.5 | `note-content-hash.json` through `services/api/test/note-content-hash.test.ts` and `apps/mobile/test/encounters/content_hash_test.dart`; a missing patient or summary hashed as `null`, in the TypeScript test alone (a vector cannot hold undefined); `sync-signoffs.test.ts` ("the content hash"); parity case 8, which sends every case through a real sign-off |
-| A note's create, its answers, `notCounted`, the 1,000-answer bound and `definition_error` | 4.1, 4.4 | `sync-encounters.test.ts` ("the note's create", "a note's answers"); parity cases 4 and 14 |
+| A note's create, its answers, `notCounted`, the 1,000-answer bound and `definition_error` | 4.1, 4.4 | `sync-encounters.test.ts` ("the note’s create", "a note’s answers"); parity cases 4 and 14 |
 | The test-only note types are definitions the export would take, held by every test team | 4.4 | `sync-encounters.test.ts` ("the test-only note types"); `sync-reads.test.ts`; `apps/mobile/test/sync/test_note_types_test.dart`; the live job's install in `db/test/install-presets.test.ts` |
 | A definition row is checked against its hash, its key and its version; two bounded maps | forms 3.3 (D79) | `services/api/test/forms-routes.test.ts` |
 | The Medical gate, and the gate of a `needs` section, hold a change for review | 4.2 | `sync-encounters.test.ts` ("the Medical gate"); `sync-reads.test.ts` ("the Medical gate", and the `needs` section that holds the author's create, set and correction); parity case 12 |
