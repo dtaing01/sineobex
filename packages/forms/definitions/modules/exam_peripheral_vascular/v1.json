@@ -64,20 +64,21 @@
           "excludes": [["warm", "cool"]]
         },
         {
-          "id": "refill_time",
-          "kind": "number",
-          "label": "Capillary refill time",
-          "min": 0,
-          "max": 10,
-          "decimals": 1,
-          "unit": "seconds"
-        },
-        {
           "id": "refill",
           "kind": "choice",
           "many": false,
           "label": "Capillary refill",
           "options": { "list": "capillary_refill" }
+        },
+        {
+          "id": "refill_time",
+          "kind": "number",
+          "label": "Capillary refill time",
+          "min": 2,
+          "max": 10,
+          "decimals": 1,
+          "unit": "seconds",
+          "showWhen": { "field": "peripheral_vascular.refill", "is": "greater_than_2_seconds" }
         },
         {
           "id": "symptoms",

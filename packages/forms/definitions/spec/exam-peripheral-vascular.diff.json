@@ -30,12 +30,12 @@
     },
     {
       "line": 55,
-      "what": "Capillary refill: _____ seconds is a number, Capillary refill time, in seconds from 0 to 10 with one decimal. Normal leaves it empty.",
-      "why": "focused-exam inventory default 42"
+      "what": "Capillary refill: _____ seconds is a number, Capillary refill time, in seconds from 2 to 10 with one decimal, asked after the choice and only while Capillary refill is Greater than 2 seconds, so a measured time and the choice never disagree. Normal leaves it empty.",
+      "why": "focused-exam inventory default 42; PLAN-OPEN (forms 10.1 #1): a refill time is charted only when it is prolonged, so one-tap Normal never fills Less than 2 seconds beside a measured 4 seconds"
     },
     {
       "line": 57,
-      "what": "The two refill bullets are a choose-one, Capillary refill, from the shared list capillary_refill, whose normal option is Less than 2 seconds. Neither field is worked out from the other.",
+      "what": "The two refill bullets are a choose-one, Capillary refill, from the shared list capillary_refill, whose normal option is Less than 2 seconds. It comes before the time it opens. Neither field is worked out from the other: the choice is kept and the number is optional.",
       "why": "focused-exam inventory section 5 (capillary refill), default 14, 26, 42"
     },
     {

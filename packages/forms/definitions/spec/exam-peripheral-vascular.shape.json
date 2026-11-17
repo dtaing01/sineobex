@@ -49,20 +49,21 @@
       "flags": { "normal": ["warm"] }
     },
     {
-      "path": "peripheral_vascular.refill_time",
-      "kind": "number",
-      "label": "Capillary refill time",
-      "min": 0,
-      "max": 10,
-      "decimals": 1,
-      "unit": "seconds"
-    },
-    {
       "path": "peripheral_vascular.refill",
       "kind": "choice",
       "many": false,
       "label": "Capillary refill",
       "options": { "list": "capillary_refill" }
+    },
+    {
+      "path": "peripheral_vascular.refill_time",
+      "kind": "number",
+      "label": "Capillary refill time",
+      "min": 2,
+      "max": 10,
+      "decimals": 1,
+      "unit": "seconds",
+      "showWhen": { "field": "peripheral_vascular.refill", "is": "greater_than_2_seconds" }
     },
     {
       "path": "peripheral_vascular.symptoms",

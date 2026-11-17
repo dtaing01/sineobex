@@ -77,6 +77,19 @@ describe('one-tap Normal on the real definitions', () => {
     expect(after['diabetic_foot.wound']).toBe('yes');
     expect(after['diabetic_foot.inspection']).toBeUndefined();
   });
+  // SEN-3: a measured refill of 4 seconds and a Normal "Less than 2 seconds" never stand together.
+  it('never holds a capillary refill under 2 seconds beside a refill time of 2 or more', () => {
+    const after = afterNormal(
+      general,
+      'peripheral_vascular',
+      exam(['peripheral_vascular'], { 'peripheral_vascular.refill_time': 4 }),
+    );
+    const time = after['peripheral_vascular.refill_time'] as number | undefined;
+    expect(
+      after['peripheral_vascular.refill'] === 'less_than_2_seconds' && time !== undefined && time >= 2,
+    ).toBe(false);
+    expect(checkAnswer(general, 'peripheral_vascular.refill_time', 1.5)).not.toBeNull();
+  });
 });
 
 describe('findings a clinician charts together on the real definitions', () => {
