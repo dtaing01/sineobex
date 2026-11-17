@@ -1,11 +1,18 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { listFile, moduleFile, noteTypeFile, SURFACE_LIST } from '../src/resolve.ts';
 import { checkFile } from '../src/schema.ts';
-import { codeOf, readShape, type Shape, type ShapeField, type ShapeOption } from '../src/shape-check.ts';
+import {
+  codeOf,
+  readShape,
+  type Shape,
+  type ShapeField,
+  type ShapeOption,
+  type ShapeSection,
+} from '../src/shape-check.ts';
 import { LEFT_OUT, readDiff, readPieces, specWords, type Diff } from '../src/spec-check.ts';
-import { OPTION_CODE, type Condition, type OptionList } from '../src/types.ts';
+import { OPTION_CODE, type Condition, type NoteType, type OptionList } from '../src/types.ts';
 
 // The files of packages/forms/definitions are well formed before any definition names them: each
 // piece of the field specification is read without a problem and is the inventories' range, and
@@ -131,9 +138,9 @@ const NOTE_PIECES: Record<string, string> = {
 const GENERAL = 'note-types/general_primary_care/v1.json';
 
 /**
- * The exam pieces whose plans are written (forms-inventory-focused-exam.md section 7, in its
- * order). Each is one module, named as the piece with underscores, which the General note type
- * includes (forms 6.3); the exam picker is a section of General itself.
+ * The exam pieces that are modules (forms-inventory-focused-exam.md section 7, in its order). Each
+ * is one module, named as the piece with underscores, which the General note type includes
+ * (forms 6.3); the exam picker, the 23rd piece, is a section of General itself.
  */
 const EXAM_PIECES = [
   'exam-general-appearance',
@@ -147,7 +154,19 @@ const EXAM_PIECES = [
   'exam-abdominal',
   'exam-msk-1',
   'exam-msk-2',
+  'exam-neuro-1',
+  'exam-neuro-2',
+  'exam-skin',
+  'exam-gu',
+  'exam-lymphatic',
+  'exam-peripheral-vascular',
+  'exam-breast',
+  'exam-rectal',
+  'exam-psychiatric',
+  'exam-foot',
+  'exam-neck',
 ];
+const PICKER_PIECE = 'exam-picker';
 const examModule = (piece: string): string => moduleFile(piece.replaceAll('-', '_'), 1);
 
 /**
@@ -174,10 +193,30 @@ const EXAM_SYSTEMS = [
 ];
 const PICKER = 'exam.systems';
 
+/** The sensitive exams (forms 5, 6.6): their picker options and their sections carry sensitiveExam. */
+const SENSITIVE_SYSTEMS = ['gu', 'breast', 'rectal'];
+
+/**
+ * The General note type's sections in order (forms 6.3: the exam lives after Vitals): the sections
+ * its pieces name, by id, and one include of version 1 for each exam module, by name, in the
+ * order of the exam pieces. The shape files cannot hold an include (an include names no piece), so
+ * this is the plan F6-general-assemble types, and the file is held to it once it exists.
+ */
+const GENERAL_PLAN: (string | { include: string; version: number })[] = [
+  'reason',
+  'hpi',
+  'preventive',
+  'vitals',
+  'exam',
+  ...EXAM_PIECES.map((piece) => ({ include: piece.replaceAll('-', '_'), version: 1 })),
+  'problems',
+];
+
 /** Every planned piece and the definition file it is typed into. */
 const PLANNED: Record<string, string> = {
   ...NOTE_PIECES,
   ...Object.fromEntries(EXAM_PIECES.map((piece) => [piece, examModule(piece)])),
+  [PICKER_PIECE]: GENERAL,
 };
 /** The note type whose answers a piece's fields become: a module's are General's, which includes it. */
 const noteTypeOf = (piece: string): string => NOTE_PIECES[piece] ?? GENERAL;
@@ -261,9 +300,6 @@ describe('the plans of the pieces', () => {
     (file) => {
       const names = Object.keys(PLANNED).filter((name) => noteTypeOf(name) === file);
       const fields = new Map(names.flatMap((name) => shapeOf(name).fields.map((f) => [f.path, f] as const)));
-      // The picker is the piece exam-picker's; until its plan is written, its codes are these.
-      if (file === GENERAL && !fields.has(PICKER))
-        fields.set(PICKER, { path: PICKER, kind: 'choice', many: true, options: EXAM_SYSTEMS });
       const parent = (path: string) => path.slice(0, path.lastIndexOf('.'));
       /** The answer a condition names, as a field of the plan: the field of a side or of a grid's row. */
       const fieldAt = (path: string): ShapeField | undefined => {
@@ -310,6 +346,15 @@ describe('the plans of the pieces', () => {
 describe('the plans of the exam pieces', () => {
   const { pieces } = readPieces(specTexts());
   const shapeOf = (name: string) => pieces[name]?.shape as Shape;
+  /** The system a section shows for: the picker's code its showWhen tests, alone or in an `all`. */
+  const systemOf = (section: ShapeSection): string | undefined => {
+    const showWhen = section.showWhen as Condition | undefined;
+    const conditions = showWhen && 'all' in showWhen ? showWhen.all : [showWhen];
+    const picked = conditions.find((c) => c !== undefined && 'field' in c && c.field === PICKER);
+    return (picked as { is?: string } | undefined)?.is;
+  };
+  const fieldsOf = (name: string, section: string) =>
+    shapeOf(name).fields.filter((field) => field.path.split('.')[0] === section);
 
   it.each(EXAM_PIECES)('%s is a module of its own, which has no header', (name) => {
     expect(shapeOf(name).file).toBe(examModule(name));
@@ -323,11 +368,8 @@ describe('the plans of the exam pieces', () => {
     (name) => {
       const systems = shapeOf(name).sections.map((section) => {
         expect(section.normal, section.id).toBe(true);
-        const showWhen = section.showWhen as Condition | undefined;
-        const conditions = showWhen && 'all' in showWhen ? showWhen.all : [showWhen];
-        const picked = conditions.find((c) => c !== undefined && 'field' in c && c.field === PICKER);
-        expect(picked, `${section.id}: shows when its system is picked`).toBeDefined();
-        return (picked as { is: string }).is;
+        expect(systemOf(section), `${section.id}: shows when its system is picked`).toBeDefined();
+        return systemOf(section);
       });
       expect(EXAM_SYSTEMS).toContain(systems[0]);
       expect(new Set(systems).size, 'one system per piece').toBe(1);
@@ -361,6 +403,152 @@ describe('the plans of the exam pieces', () => {
         ).toEqual([]);
       }
     }
+  });
+
+  it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
+    const shape = shapeOf(PICKER_PIECE);
+    expect(shape.header).toBeUndefined();
+    // The picker always shows, and has nothing for one-tap Normal to fill.
+    expect(shape.sections.map((section) => Object.keys(section).sort())).toEqual([['id', 'title']]);
+    expect(shape.sections[0]!.id).toBe(PICKER.split('.')[0]);
+    expect(shape.fields.map((field) => field.path)).toEqual([PICKER]);
+    const picker = shape.fields[0]!;
+    expect([picker.kind, picker.many]).toEqual(['choice', true]);
+    const { codes, flagged } = optionsOf(picker);
+    expect([...codes].sort()).toEqual([...EXAM_SYSTEMS, 'other'].sort());
+    // Other is kept as the free-text exam (focused-exam inventory, default 9).
+    expect(flagged('other')).toEqual(['other']);
+    expect([...flagged('sensitiveExam')].sort()).toEqual([...SENSITIVE_SYSTEMS].sort());
+  });
+
+  it('give every system of the picker a module, and show every module for one of them', () => {
+    const systems = EXAM_PIECES.map((name) => systemOf(shapeOf(name).sections[0]!));
+    expect([...new Set(systems)].sort()).toEqual([...EXAM_SYSTEMS].sort());
+  });
+
+  // forms 5 and 6.6: GU, Breast and Rectal carry sensitiveExam and the sensitive exam workflow,
+  // which one-tap Normal never fills and whose consent Complete waits for. Nothing else in the exam
+  // is required or kept from Normal (focused-exam inventory, default 53).
+  it.each(EXAM_PIECES)('%s is a sensitive exam exactly when its system is one, with the workflow', (name) => {
+    for (const section of shapeOf(name).sections) {
+      const sensitive = SENSITIVE_SYSTEMS.includes(systemOf(section) ?? '');
+      expect(section.sensitiveExam, section.id).toBe(sensitive ? true : undefined);
+      const fields = fieldsOf(name, section.id);
+      const held = fields.filter((field) => field.noNormal === true || field.required === true);
+      if (!sensitive) {
+        expect(held.map((field) => field.path)).toEqual([]);
+        continue;
+      }
+      const at = (id: string) => `${section.id}.${id}`;
+      const performed = { field: at('performed'), filled: true };
+      expect(held).toEqual([
+        { path: at('performed'), kind: 'flag', label: 'Exam performed', noNormal: true },
+        {
+          path: at('chaperone'),
+          kind: 'choice',
+          many: false,
+          label: 'Chaperone present',
+          options: { list: 'yes_no' },
+          noNormal: true,
+          showWhen: performed,
+        },
+        {
+          path: at('consented'),
+          kind: 'flag',
+          label: 'Patient consented',
+          required: true,
+          noNormal: true,
+          showWhen: performed,
+        },
+      ]);
+    }
+  });
+
+  // What Exam performed opens: the intimate exam. In GU the general findings and the CVA are
+  // charted without it (focused-exam inventory, default 35); Breast and Rectal are all intimate.
+  const OPEN_WITHOUT_PERFORMED: Record<string, string[]> = {
+    'exam-gu': ['gu.general', 'gu.cva', 'gu.performed'],
+    'exam-breast': ['breast.performed'],
+    'exam-rectal': ['rectal.performed'],
+  };
+  it.each(Object.entries(OPEN_WITHOUT_PERFORMED))(
+    '%s shows its findings only once the exam is marked performed, but %s',
+    (name, open) => {
+      const section = shapeOf(name).sections[0]!.id;
+      const fields = new Map(fieldsOf(name, section).map((field) => [field.path, field]));
+      /** Whether a field can show only while Exam performed is ticked, through its group or its condition. */
+      const gated = (path: string): boolean => {
+        if (path === `${section}.performed`) return true;
+        const above = path.slice(0, path.lastIndexOf('.'));
+        if (fields.has(above) && gated(above)) return true;
+        const showWhen = fields.get(path)?.showWhen as Condition | undefined;
+        const tests = (c: Condition): string[] =>
+          'all' in c ? c.all.flatMap(tests) : 'field' in c ? [c.field] : [];
+        return showWhen !== undefined && tests(showWhen).some((field) => field !== path && gated(field));
+      };
+      const ungated = [...fields.keys()].filter((path) => !gated(path));
+      expect(ungated).toEqual(open.filter((path) => path !== `${section}.performed`));
+    },
+  );
+
+  // validate.condition_reads_restricted (forms 6.6): what a condition outside a sensitive exam
+  // shows would tell a reader without the key that the exam was done, or what it found.
+  it('read a sensitive exam only from inside one', () => {
+    const names = Object.keys(PLANNED).filter((name) => noteTypeOf(name) === GENERAL);
+    const sensitive = new Set(
+      names.flatMap((name) =>
+        shapeOf(name)
+          .sections.filter((s) => s.sensitiveExam === true)
+          .map((s) => s.id),
+      ),
+    );
+    const reads = (condition: Condition, from: string) => {
+      if ('all' in condition) return condition.all.forEach((c) => reads(c, from));
+      if ('any' in condition) return condition.any.forEach((c) => reads(c, from));
+      if ('not' in condition) return reads(condition.not, from);
+      if (condition.field.startsWith('./')) return;
+      expect(sensitive.has(condition.field.split('.')[0]!), `${from}: ${condition.field}`).toBe(false);
+      if (condition.field === PICKER && 'is' in condition)
+        expect(
+          [condition.is].flat().filter((code) => SENSITIVE_SYSTEMS.includes(code)),
+          from,
+        ).toEqual([]);
+    };
+    for (const name of names)
+      for (const section of shapeOf(name).sections) {
+        if (section.sensitiveExam === true) continue;
+        if (section.showWhen) reads(section.showWhen as Condition, section.id);
+        for (const field of fieldsOf(name, section.id)) {
+          if (field.showWhen) reads(field.showWhen as Condition, field.path);
+          const rows = field.rows as { pickedIn?: string } | undefined;
+          if (rows?.pickedIn) reads({ field: rows.pickedIn, filled: true }, field.path);
+        }
+      }
+  });
+
+  it('lay out General as its plan has it: the exam after Vitals, then one include for each module', () => {
+    const own = Object.keys(PLANNED)
+      .filter((name) => PLANNED[name] === GENERAL)
+      .map((name) => shapeOf(name).sections.map((section) => section.id));
+    const ids = GENERAL_PLAN.filter((entry) => typeof entry === 'string');
+    expect([...ids].sort()).toEqual(own.flat().sort());
+    // Each piece's sections keep their shape file's order.
+    for (const sections of own)
+      expect(sections.map((id) => ids.indexOf(id))).toEqual(
+        sections.map((id) => ids.indexOf(id)).sort((a, b) => a - b),
+      );
+    expect(ids.indexOf('exam')).toBe(ids.indexOf('vitals') + 1);
+    const at = GENERAL_PLAN.indexOf('exam');
+    expect(GENERAL_PLAN.slice(at + 1, at + 1 + EXAM_PIECES.length)).toEqual(
+      EXAM_PIECES.map((piece) => ({ include: piece.replaceAll('-', '_'), version: 1 })),
+    );
+    // Once F6-general-assemble has typed the file, it is held to the plan. An include carries no
+    // showWhen: each section of a module already shows only while its system is picked.
+    if (!existsSync(`${root}${GENERAL}`)) return;
+    const written = JSON.parse(read(GENERAL)) as NoteType;
+    expect(written.sections.map((section) => ('include' in section ? section : section.id))).toEqual(
+      GENERAL_PLAN,
+    );
   });
 });
 

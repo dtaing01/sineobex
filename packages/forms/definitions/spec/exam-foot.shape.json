@@ -1,0 +1,90 @@
+{
+  "piece": "exam-foot",
+  "file": "modules/exam_foot/v1.json",
+  "sections": [
+    {
+      "id": "diabetic_foot",
+      "title": "Foot / diabetic foot exam",
+      "showWhen": { "field": "exam.systems", "is": "diabetic_foot" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "diabetic_foot.inspection",
+      "kind": "choice",
+      "many": true,
+      "label": "Inspection",
+      "options": [
+        "intact_skin",
+        "ulcer",
+        "callus",
+        "corn",
+        "fissure",
+        "blister",
+        "deformity",
+        "nail_abnormality",
+        "erythema",
+        "swelling",
+        "necrosis"
+      ],
+      "flags": { "exclusive": ["intact_skin"], "normal": ["intact_skin"] }
+    },
+    {
+      "path": "diabetic_foot.pulses",
+      "kind": "grid",
+      "label": "Pulses",
+      "sides": true,
+      "rows": ["dorsalis_pedis_dp", "posterior_tibial_pt"]
+    },
+    {
+      "path": "diabetic_foot.pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "diabetic_foot.sensation",
+      "kind": "choice",
+      "many": false,
+      "label": "Sensation",
+      "options": ["intact", "decreased", "absent"],
+      "flags": { "normal": ["intact"] }
+    },
+    {
+      "path": "diabetic_foot.monofilament",
+      "kind": "choice",
+      "many": false,
+      "label": "Monofilament",
+      "options": ["normal", "abnormal"],
+      "sides": true,
+      "flags": { "normal": ["normal"] }
+    },
+    {
+      "path": "diabetic_foot.temperature",
+      "kind": "choice",
+      "many": true,
+      "label": "Temperature",
+      "options": ["warm", "cool", "asymmetric"],
+      "excludes": [["warm", "cool"]],
+      "flags": { "normal": ["warm"] }
+    },
+    {
+      "path": "diabetic_foot.wound",
+      "kind": "choice",
+      "many": false,
+      "label": "Wound present?",
+      "options": ["yes", "no"],
+      "flags": { "normal": ["no"] }
+    },
+    {
+      "path": "diabetic_foot.wound_care",
+      "kind": "action",
+      "label": "Chart in Wound care",
+      "action": "open_note_type",
+      "noteType": "wound_care",
+      "showWhen": { "field": "diabetic_foot.wound", "is": "yes" }
+    }
+  ]
+}

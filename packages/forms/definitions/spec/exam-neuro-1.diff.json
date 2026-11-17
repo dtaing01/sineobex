@@ -1,0 +1,47 @@
+{
+  "piece": "exam-neuro-1",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_neuro_1, that the General note type includes: its section Neurologic: mental status and cranial nerves shows only while Neurologic (exam.systems is neurologic) is picked in the exam picker, and offers one-tap Normal. Neurologic is two modules, one for each piece; exam_neuro_2 is the other.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory section 7 (pieces 12 and 13), default 10"
+    },
+    {
+      "line": 3,
+      "what": "Mental status is choose-many. Normal fills Alert and Oriented ×4, so neither is exclusive. Oriented ×4 and Oriented ×3 exclude each other; Alert, Somnolent and Obtunded exclude one another. The codes are oriented_4 and oriented_3, as the rule makes them.",
+      "why": "focused-exam inventory 3.7, default 13, 17, 26; PLAN-OPEN (forms 10.1 #1): the pairs among Alert, Somnolent and Obtunded are this plan's reading of default 17"
+    },
+    {
+      "line": 19,
+      "what": "The guidance lines are not typed: they are why the screen comes first and the detail opens only when it is Abnormal.",
+      "why": "focused-exam inventory construct 25, 39"
+    },
+    {
+      "line": 21,
+      "what": "Cranial nerve screen is choose-one: Grossly intact (the normal option) or Abnormal.",
+      "why": "focused-exam inventory default 14, 26"
+    },
+    {
+      "line": 27,
+      "what": "If abnormal: a group, Cranial nerves, shown only while the screen is Abnormal, holding one field for each of the eight nerve groups, each labelled as its heading. One-tap Normal fills visible fields only, so while the screen is Grossly intact nothing of the group is stored.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 30"
+    },
+    {
+      "line": 29,
+      "what": "CN II, CN V, CN VII, CN VIII, CN XI and CN XII are two-way lists, each choose-one; the first option of each is its normal option.",
+      "why": "focused-exam inventory 3.7, default 14, 26"
+    },
+    {
+      "line": 35,
+      "what": "CN III / IV / VI is choose-many. Extraocular movements intact (EOMI) is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 63,
+      "what": "CN IX / X is choose-many. Palate symmetric is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    }
+  ]
+}

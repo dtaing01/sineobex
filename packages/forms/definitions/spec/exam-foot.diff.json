@@ -1,0 +1,56 @@
+{
+  "piece": "exam-foot",
+  "notOptions": [
+    "Right: 0 / 1+ / 2+ / 3+ / Unable",
+    "Left: 0 / 1+ / 2+ / 3+ / Unable",
+    "Yes → Open Wound Care module"
+  ],
+  "added": ["Dorsalis pedis (DP)", "Posterior tibial (PT)", "0", "1+", "2+", "3+", "Unable to assess", "Yes"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_foot, that the General note type includes: its section Foot / diabetic foot exam shows only while Foot (exam.systems is diabetic_foot) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "The guidance line is not typed: Foot is one picker entry like any other.",
+      "why": "focused-exam inventory construct 39, default 55"
+    },
+    {
+      "line": 5,
+      "what": "Inspection is choose-many. Intact skin is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 25, 26"
+    },
+    {
+      "line": 29,
+      "what": "Pulses is a grid with the rows Dorsalis pedis (DP) and Posterior tibial (PT) (added: the check reads a heading as no word), recorded for the right and the left (sides): the bullets Right and Left are its cells. Each cell is choose-one from the shared list pulse_scale: 0, 1+, 2+, 3+, Unable to assess (all added: the scale is written inside the bullets). Unable is the scale's Unable to assess. Normal fills 2+.",
+      "why": "PRD main 414; focused-exam inventory 3.15, default 1, 14, 28"
+    },
+    {
+      "line": 43,
+      "what": "Sensation is choose-one: Intact (the normal option), Decreased, Absent.",
+      "why": "focused-exam inventory default 14, 26"
+    },
+    {
+      "line": 51,
+      "what": "Monofilament is one choose-one, Normal (the normal option) or Abnormal, recorded for the right and the left (sides): the headings Right and Left are its sides.",
+      "why": "focused-exam inventory 3.15, construct 20, default 14, 26"
+    },
+    {
+      "line": 65,
+      "what": "Temperature is choose-many. Warm is the normal option; it does not clear Asymmetric, and it excludes Cool.",
+      "why": "focused-exam inventory default 13, 17, 25, 26; PLAN-OPEN (forms 10.1 #1): Warm is kept with Asymmetric rather than cleared by it"
+    },
+    {
+      "line": 73,
+      "what": "Wound Present? is choose-one: Yes (added) or No. Normal fills No. While it is Yes, an action, Chart in Wound care, opens the encounter's Wound care note (open_note_type wound_care), and the wound is charted there.",
+      "why": "PRD main 416; forms 6.7; focused-exam inventory default 29"
+    },
+    {
+      "line": 79,
+      "what": "The workflow requirement is the action at line 73; the line is not typed.",
+      "why": "PRD main 416; forms 6.7"
+    }
+  ]
+}

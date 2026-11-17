@@ -1,0 +1,75 @@
+{
+  "piece": "exam-peripheral-vascular",
+  "file": "modules/exam_peripheral_vascular/v1.json",
+  "sections": [
+    {
+      "id": "peripheral_vascular",
+      "title": "Peripheral vascular",
+      "showWhen": { "field": "exam.systems", "is": "peripheral_vascular" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "peripheral_vascular.pulses",
+      "kind": "grid",
+      "label": "Pulses",
+      "sides": true,
+      "rows": ["radial", "ulnar", "femoral", "popliteal", "dorsalis_pedis_dp", "posterior_tibial_pt"]
+    },
+    {
+      "path": "peripheral_vascular.pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "peripheral_vascular.extremity",
+      "kind": "choice",
+      "many": true,
+      "label": "Extremity findings",
+      "options": ["warm", "cool", "edema", "erythema", "cyanosis", "pallor", "hair_loss", "skin_changes"],
+      "excludes": [["warm", "cool"]],
+      "flags": { "normal": ["warm"] }
+    },
+    {
+      "path": "peripheral_vascular.refill_time",
+      "kind": "number",
+      "label": "Capillary refill time",
+      "min": 0,
+      "max": 10,
+      "decimals": 1,
+      "unit": "seconds"
+    },
+    {
+      "path": "peripheral_vascular.refill",
+      "kind": "choice",
+      "many": false,
+      "label": "Capillary refill",
+      "options": { "list": "capillary_refill" }
+    },
+    {
+      "path": "peripheral_vascular.symptoms",
+      "kind": "choice",
+      "many": true,
+      "label": "Vascular symptoms",
+      "options": [
+        "claudication",
+        "rest_pain",
+        "leg_swelling",
+        "unilateral_swelling",
+        "color_change",
+        "temperature_change"
+      ]
+    },
+    {
+      "path": "peripheral_vascular.temperature_change",
+      "kind": "choice",
+      "many": false,
+      "label": "Temperature change",
+      "options": ["warm", "cool"],
+      "showWhen": { "field": "peripheral_vascular.symptoms", "is": "temperature_change" }
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "piece": "exam-skin",
+  "file": "modules/exam_skin/v1.json",
+  "sections": [
+    { "id": "skin", "title": "Skin", "showWhen": { "field": "exam.systems", "is": "skin" }, "normal": true },
+    {
+      "id": "skin_findings",
+      "title": "Skin finding",
+      "showWhen": { "field": "exam.systems", "is": "skin" },
+      "normal": true,
+      "repeat": { "max": 20, "itemTitle": "Finding {n}" }
+    }
+  ],
+  "fields": [
+    {
+      "path": "skin.overall",
+      "kind": "choice",
+      "many": true,
+      "label": "Overall skin",
+      "options": ["warm", "cool", "dry", "moist", "diaphoretic", "pale", "cyanotic", "jaundiced"],
+      "excludes": [
+        ["warm", "cool"],
+        ["dry", "moist"],
+        ["dry", "diaphoretic"]
+      ],
+      "flags": { "normal": ["warm", "dry"] }
+    },
+    {
+      "path": "skin_findings.location",
+      "kind": "region",
+      "label": "Location",
+      "options": { "list": "body_region" },
+      "side": "side_rlm",
+      "surface": true
+    },
+    {
+      "path": "skin_findings.type",
+      "kind": "choice",
+      "many": true,
+      "label": "Type",
+      "options": [
+        "rash",
+        "macule",
+        "papule",
+        "plaque",
+        "vesicle",
+        "pustule",
+        "nodule",
+        "ulcer",
+        "blister",
+        "ecchymosis",
+        "petechiae",
+        "purpura",
+        "abscess",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "skin_findings.wound_care",
+      "kind": "action",
+      "label": "Chart in Wound care",
+      "action": "open_note_type",
+      "noteType": "wound_care",
+      "showWhen": { "field": "./type", "is": ["ulcer", "abscess"] }
+    },
+    {
+      "path": "skin_findings.characteristics",
+      "kind": "choice",
+      "many": true,
+      "label": "Characteristics",
+      "options": [
+        "erythematous",
+        "warm",
+        "tender",
+        "pruritic",
+        "fluctuant",
+        "indurated",
+        "scaling",
+        "crusting",
+        "draining"
+      ]
+    },
+    { "path": "skin_findings.size", "kind": "group", "label": "Size", "layout": "row" },
+    {
+      "path": "skin_findings.size.length",
+      "kind": "number",
+      "label": "Length",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "skin_findings.size.width",
+      "kind": "number",
+      "label": "Width",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    { "path": "skin_findings.photos", "kind": "photo", "label": "Photos", "max": 5 },
+    {
+      "path": "skin_findings.same_lesion",
+      "kind": "choice",
+      "many": false,
+      "label": "Is this the same lesion/wound documented previously?",
+      "options": { "list": "yes_no_unknown" }
+    }
+  ]
+}
