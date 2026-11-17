@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/forms/check_answer.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/field_at.dart';
 
@@ -15,7 +16,6 @@ typedef Case = Map<String, Object?>;
 /// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
 /// the last one empties it.
 const notWrittenYet = {
-  'checkAnswer',
   'effectiveAnswers',
   'finishCheck',
   'normalAnswers',
@@ -89,6 +89,7 @@ void main() {
         'stores': target.holds != null,
       };
     },
+    'checkAnswer': (definition, c) => checkAnswer(definition, c['path']! as String, c['value'])?.code,
   };
 
   group('the case reader', () {
