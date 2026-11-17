@@ -2,7 +2,7 @@
 
 This page states which role may see and do what with patient records, and the minimum-necessary reason for each (45 CFR §164.502(b), §164.514(d)). It describes what the software enforces as of phase 3 (patients). It is evidence for the risk analysis and for procurement questionnaires, not a legal opinion; counsel confirms the items marked **People**.
 
-The rules are enforced in the API on every request (`services/api/src/auth/`), never only by hiding a screen. Row-level security in the database is the second line. Every refusal is written to the audit log.
+The rules are enforced in the API on every request (`services/api/src/auth/`), never only by hiding a screen. Row-level security in the database is the second line. Every refusal is written to the audit log. A request for a team the person is not an active member of, or for a suspended team, is refused before any of that team's data is touched, and logged in the platform chain, which only platform owners read, so no team's log carries what an outsider tried; the entry names the rule, the route's pattern and the team, never a patient (phase 4, `7f12515`). If the entry can't be written, the request fails.
 
 ## 1. Roles
 
