@@ -138,6 +138,33 @@ const NOTE_PIECES: Record<string, string> = {
 const GENERAL = 'note-types/general_primary_care/v1.json';
 
 /**
+ * The note types' own keys as forms 5 sets them (and 6.2 for auto, 6.4 for quick): who is offered
+ * each, its timeline group, and who may read it. A slip here would give a sensitive note to every
+ * reader, so each header is held to this table and not only to the schema.
+ */
+const NOTE_TYPES: Record<string, Record<string, unknown>> = {
+  general_primary_care: { kinds: ['medical'], group: 'clinical', sensitivity: 'none' },
+  red_flags_disposition: { kinds: ['medical'], group: 'clinical', sensitivity: 'none', auto: 'medical' },
+  wound_care: { kinds: ['medical'], group: 'wound', sensitivity: 'none' },
+  harm_reduction: { kinds: ['medical'], group: 'harm_reduction', sensitivity: 'sensitive' },
+  psychological: { kinds: ['medical'], group: 'psych', sensitivity: 'sensitive' },
+  sexual_reproductive: { kinds: ['medical'], group: 'clinical', sensitivity: 'sensitive' },
+  social_needs: { kinds: ['medical', 'non_medical'], group: 'social', sensitivity: 'none' },
+  outreach: { kinds: ['medical', 'non_medical'], group: 'outreach', sensitivity: 'none' },
+  quick_encounter: { kinds: ['medical'], group: 'clinical', sensitivity: 'none', quick: true },
+};
+
+/**
+ * The marks a note type's sections and fields carry for who may read or change them: the
+ * treatment record of Harm reduction (forms 5), the Quick encounter's Medication (6.4), and the
+ * red-flag question and the EMS time the finish check asks for (6.2). Each is held where it is,
+ * and nowhere else.
+ */
+const TREATMENT_RECORD = ['harm-reduction', 'treatment'];
+const NEEDS_ORDER = ['quick-2', 'medication'];
+const REQUIRED_NOTE_FIELDS = ['red_flags.emergency', 'red_flags.ems_time'];
+
+/**
  * The exam pieces that are modules (forms-inventory-focused-exam.md section 7, in its order). Each
  * is one module, named as the piece with underscores, which the General note type includes
  * (forms 6.3); the exam picker, the 23rd piece, is a section of General itself.
@@ -267,8 +294,37 @@ describe('the plans of the pieces', () => {
       // The schema reads a header only as part of a note type, so it is given one section.
       const stub = { id: 'stub', title: 'Stub', fields: [{ id: 'stub', kind: 'info', label: 'Stub' }] };
       expect(checkFile('noteType', { ...header, sections: [stub] })).toEqual([]);
+      const { title: _title, version, key, ...rest } = header;
+      expect(version).toBe(1);
+      expect(rest, String(key)).toEqual(NOTE_TYPES[String(key)]);
     },
   );
+
+  it('give every note type of forms 5 a header', () => {
+    const keys = Object.keys(NOTE_PIECES).flatMap((name) => {
+      const key = shapeOf(name).header?.key;
+      return key === undefined ? [] : [String(key)];
+    });
+    expect(keys.sort()).toEqual(Object.keys(NOTE_TYPES).sort());
+  });
+
+  it('mark the treatment record, the ordering section and the red-flag questions, and nothing else', () => {
+    const marked = (key: string) =>
+      Object.keys(NOTE_PIECES).flatMap((name) =>
+        shapeOf(name)
+          .sections.filter((section) => section[key] !== undefined)
+          .map((section) => [name, section.id, section[key]]),
+      );
+    expect(marked('treatmentRecord')).toEqual([[...TREATMENT_RECORD, true]]);
+    expect(marked('needs')).toEqual([[...NEEDS_ORDER, 'orderMedications']]);
+    expect(marked('sensitiveExam')).toEqual([]);
+    const required = Object.keys(NOTE_PIECES).flatMap((name) =>
+      shapeOf(name)
+        .fields.filter((field) => field.required === true)
+        .map((field) => field.path),
+    );
+    expect(required.sort()).toEqual([...REQUIRED_NOTE_FIELDS].sort());
+  });
 
   // What the spec check finds of a diff file without a definition: a declaration that nothing in
   // the lines needs (spec.not_option_unused, spec.added_in_piece).
