@@ -1,5 +1,5 @@
 import type { z } from '@hono/zod-openapi';
-import { storeCreate, type EntityRules } from '../records.ts';
+import { rejected, storeCreate, visitOfOtherPatient, type EntityRules } from '../records.ts';
 import { ProblemNoteCreate, valueParents } from './values.ts';
 
 /**
@@ -36,6 +36,12 @@ export const problemNoteRules: EntityRules<Value> = {
     const [problem] = await ctx.tx<{ patientId: string; retracted: boolean }[]>`
       select patient_id, error_at is not null as retracted from sineobex.problems where id = ${v.problemId}`;
     return storeCreate(ctx, 'problem_note', {
+      // A visit of the problem's patient's merged group, or none (lifecycle 4.7, review finding REC-7).
+      check: async () =>
+        v.encounterId &&
+        (await visitOfOtherPatient(ctx.tx, ctx.actor.teamId, problem!.patientId, v.encounterId))
+          ? rejected('stale_reference', { problem: 'encounter_other_patient' })
+          : null,
       insert: async (input) => {
         const rows = await ctx.tx`
           insert into sineobex.problem_notes (id, team_id, problem_id, text, encounter_id, written_at,

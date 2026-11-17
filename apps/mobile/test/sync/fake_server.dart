@@ -861,7 +861,18 @@ class FakeSyncServer {
       case entityAlias:
         if (_active(entityAlias, v['patientId']) >= 20) return _invalid('too_many_aliases');
       case entityAllergy:
+        // A visit of the patient's merged group, or none (allergy.ts, lifecycle 4.7).
+        final encounterId = v['encounterId'] as String?;
+        if (encounterId != null && _visitOfOtherPatient(v['patientId']! as String, encounterId)) {
+          return _rejected('stale_reference', {'problem': 'encounter_other_patient'});
+        }
         if (_active(entityAllergy, v['patientId']) >= 30) return _invalid('too_many_allergies');
+      // A visit of the problem's patient's merged group, or none (problem-note.ts, lifecycle 4.7).
+      case entityProblemNote:
+        final encounterId = v['encounterId'] as String?;
+        if (encounterId != null && _visitOfOtherPatient(records[v['problemId']]!.patientId!, encounterId)) {
+          return _rejected('stale_reference', {'problem': 'encounter_other_patient'});
+        }
       case entityProblem:
         // A visit of the patient's merged group, or none (problem.ts), before the recurrence check.
         final encounterId = v['encounterId'] as String?;

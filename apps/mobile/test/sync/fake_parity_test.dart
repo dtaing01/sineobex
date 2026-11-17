@@ -3518,6 +3518,43 @@ void main() {
       },
     );
 
+    // services/api/test/sync-encounters.test.ts, 'an allergy and a problem’s note made at a visit'.
+    test('name a visit of their patient’s merged group or none, as a problem does', () async {
+      final p = server.seedPatient(preferredName: 'Demo Robin');
+      final other = server.seedPatient(preferredName: 'Demo Wren');
+      final twin = server.seedPatient(preferredName: 'Demo Robin two');
+      server.merge(twin, p);
+      final [ofP, ofOther, ofTwin] = [visitOf(patientId: p), visitOf(patientId: other), visitOf(patientId: twin)];
+      final problem = server.seed(entityProblem, {'patientId': p, 'title': 'Demo: cough', 'status': 'new'}, by: alex);
+      Map<String, Object?> allergy(String? encounterId) =>
+          change(entityAllergy, 'create', {'patientId': p, 'substance': 'Demo: latex', 'encounterId': encounterId});
+      Map<String, Object?> note(String? encounterId) => change(entityProblemNote, 'create', {
+        'problemId': problem,
+        'text': 'Demo: better today',
+        'encounterId': encounterId,
+      });
+      final changes = [
+        allergy(ofP),
+        allergy(ofOther),
+        allergy(ofTwin),
+        allergy(null),
+        note(ofP),
+        note(ofOther),
+        note(ofTwin),
+        note(null),
+      ];
+      const ok = ['accepted', null, null];
+      const elsewhere = ['rejected', 'stale_reference', 'encounter_other_patient'];
+      expect(
+        [
+          for (final r in await send(alex, changes))
+            [r['status'], r['reason'], (r['details'] as Map<String, Object?>?)?['problem']],
+        ],
+        [ok, elsewhere, ok, ok, ok, elsewhere, ok, ok],
+      );
+      expect([server.records[changes[1]['recordId']], server.records[changes[5]['recordId']]], [null, null]);
+    });
+
     // services/api/test/sync-encounters.test.ts, 'a problem made at a visit (lifecycle 8.3, 4.7)'.
     test('is marked as made at a visit, and names a visit of its patient’s merged group or none', () async {
       final p = server.seedPatient(preferredName: 'Demo Rowan');

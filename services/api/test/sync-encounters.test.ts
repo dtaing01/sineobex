@@ -1866,6 +1866,66 @@ describe('phase 4 sync: encounters and notes', () => {
     });
   });
 
+  describe('an allergy and a problem’s note made at a visit (lifecycle 4.7)', () => {
+    it('name a visit of their patient’s merged group or none, as a problem does', async () => {
+      const kim = await clinician('record-visit@example.com', 'Kim (demo)', 'attending');
+      const p = (await createPatient(h, t.teamId, kim.id, { preferredName: 'Demo Robin' })).id;
+      const other = (await createPatient(h, t.teamId, kim.id, { preferredName: 'Demo Wren' })).id;
+      const twin = (await createPatient(h, t.teamId, kim.id, { preferredName: 'Demo Robin two' })).id;
+      await mergeDirect(h, t.teamId, twin, p, t.adminId);
+      const [ofP, ofOther, ofTwin] = [
+        await encounterOf(kim, p),
+        await encounterOf(kim, other),
+        await encounterOf(kim, twin),
+      ];
+      const problem = await kim.phone.change({
+        entity: 'problem',
+        op: 'create',
+        value: { patientId: p, title: 'Demo: cough', status: 'new' },
+      });
+      expect((await kim.send(problem)).map((r) => r.status)).toEqual(['accepted']);
+      const allergy = (encounterId: string | null) =>
+        kim.phone.change({
+          entity: 'patient_allergy',
+          op: 'create',
+          value: { patientId: p, substance: 'Demo: latex', encounterId },
+        });
+      const note = (encounterId: string | null) =>
+        kim.phone.change({
+          entity: 'problem_note',
+          op: 'create',
+          value: { problemId: problem.recordId, text: 'Demo: better today', encounterId },
+        });
+      const changes = [
+        await allergy(ofP),
+        await allergy(ofOther),
+        await allergy(ofTwin),
+        await allergy(null),
+        await note(ofP),
+        await note(ofOther),
+        await note(ofTwin),
+        await note(null),
+      ];
+      const answers = await kim.send(...changes);
+      const ok = ['accepted', null, null];
+      const other_ = ['rejected', 'stale_reference', 'encounter_other_patient'];
+      expect(answers.map((r) => [r.status, r.reason ?? null, r.details?.problem ?? null])).toEqual([
+        ok,
+        other_,
+        ok,
+        ok,
+        ok,
+        other_,
+        ok,
+        ok,
+      ]);
+      const stored = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.patient_allergies where id = ${changes[1]!.recordId}
+        union all select id from sineobex.problem_notes where id = ${changes[5]!.recordId}`;
+      expect(stored).toEqual([]);
+    });
+  });
+
   describe('a problem made at a visit (lifecycle 8.3, 4.7)', () => {
     it('is marked as made at a visit, and names a visit of its patient’s merged group or none', async () => {
       const lee = await clinician('problem-source@example.com', 'Lee (demo)', 'attending');

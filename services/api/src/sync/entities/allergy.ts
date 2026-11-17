@@ -4,7 +4,9 @@ import {
   bookkeeping,
   historyOf,
   invalid,
+  rejected,
   storeCreate,
+  visitOfOtherPatient,
   when,
   type ChangeContext,
   type EntityRules,
@@ -98,6 +100,12 @@ export const allergyRules: EntityRules<Value> = {
   applyCreate: (ctx, v) =>
     storeCreate(ctx, 'patient_allergy', {
       check: async () => {
+        // A visit of the patient's merged group, or none (lifecycle 4.7, review finding REC-7).
+        if (
+          v.encounterId &&
+          (await visitOfOtherPatient(ctx.tx, ctx.actor.teamId, v.patientId, v.encounterId))
+        )
+          return rejected('stale_reference', { problem: 'encounter_other_patient' });
         const [row] = await ctx.tx<{ n: number }[]>`
           select count(*)::int as n from sineobex.patient_allergies
           where team_id = ${ctx.actor.teamId} and patient_id = ${v.patientId} and status = 'active'`;
