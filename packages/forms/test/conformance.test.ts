@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
+import { expandQuick } from '../src/interp/expand.ts';
+import type { NewEntries } from '../src/interp/expand.ts';
 import { finishCheck } from '../src/interp/finish.ts';
 import { handoffLines } from '../src/interp/handoff.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
@@ -32,7 +34,12 @@ const vectors = JSON.parse(
   readFileSync(new URL('../../contract/test-vectors/forms-conformance.json', import.meta.url), 'utf8'),
 ) as Vectors;
 
-const byKey = new Map(Object.values(vectors.definitions).map((d) => [d.key, d]));
+// The newest version of each note type: what a mapsTo, suggests or action names (forms.md 6.4). The
+// file holds an older version of the quick note type too, which the validator does not hold to the
+// newest full note types, as Expand from an old draft must cope with.
+const byKey = new Map<string, ResolvedNoteType>();
+for (const d of Object.values(vectors.definitions))
+  if ((byKey.get(d.key)?.version ?? 0) < d.version) byKey.set(d.key, d);
 
 /** Each function, called with a case's definition and its other inputs. */
 const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unknown> = {
@@ -54,6 +61,14 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
     readModel(definition, c.answers as Answers, c.corrections as NoteCorrection[]),
   visibleAnswers: (definition, c) => visibleAnswers(definition, c.answers as Answers, c.reader as NoteReader),
   suggestions: (definition, c) => suggestions(definition, c.answers as Answers),
+  // `full` names the full note type's definition: the newest version, as Expand writes into.
+  expandQuick: (definition, c) =>
+    expandQuick(
+      definition,
+      c.answers as Answers,
+      vectors.definitions[c.full as string]!,
+      c.newEntryIds as NewEntries,
+    ),
   // A handoff reads every note of a visit: `notes` names each one's definition, and the case's own
   // `definition` is the first's.
   handoffLines: (_, c) => {
@@ -72,8 +87,9 @@ describe('the conformance definitions', () => {
       expect(validate(definition, { noteType: (key) => byKey.get(key) })).toEqual([]);
     });
 
-  it('give each note type key once', () => {
-    expect(byKey.size).toBe(Object.keys(vectors.definitions).length);
+  it('give each version of a note type once', () => {
+    const versions = Object.values(vectors.definitions).map((d) => `${d.key} v${d.version}`);
+    expect(new Set(versions).size).toBe(versions.length);
   });
 
   // What 7.2 asks the definitions to use between them, so a later edit cannot quietly lose one.
@@ -162,6 +178,7 @@ describe('the conformance cases', () => {
         expect(new Set(cases.map((c) => c.name)).size).toBe(cases.length);
         for (const c of cases) {
           expect(Object.keys(vectors.definitions), c.name).toContain(c.definition);
+          if (c.full !== undefined) expect(Object.keys(vectors.definitions), c.name).toContain(c.full);
           for (const n of (c.notes ?? []) as { definition: string }[])
             expect(Object.keys(vectors.definitions), c.name).toContain(n.definition);
         }
