@@ -1,0 +1,137 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/field_at.dart';
+
+/// The interpreter's answers are data (phase 4 design, forms 7.2): they live in
+/// packages/contract/test-vectors/forms-conformance.json, and packages/forms/test/conformance.test.ts
+/// reads the same file. A phone that answered differently would save what the server refuses, or
+/// show a note otherwise than the portal. This reader holds no answer of its own: it calls each
+/// function with a case's inputs and writes the result back as plain data.
+typedef Case = Map<String, Object?>;
+
+/// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
+/// the last one empties it.
+const notWrittenYet = {
+  'checkAnswer',
+  'effectiveAnswers',
+  'finishCheck',
+  'normalAnswers',
+  'recapLines',
+  'readModel',
+  'visibleAnswers',
+  'handoffLines',
+  'suggestions',
+  'expandQuick',
+};
+
+/// The inputs each function reads from a case, beside name, definition, why and expected; the
+/// optional ones end in '?'. A case with any other key would be run without what it meant to give.
+const inputs = {
+  'fieldAt': ['path'],
+  'checkAnswer': ['path', 'value'],
+  'effectiveAnswers': ['answers'],
+  'finishCheck': ['answers'],
+  'normalAnswers': ['section', 'answers', 'entry?'],
+  'recapLines': ['answers'],
+  'readModel': ['answers', 'corrections'],
+  'visibleAnswers': ['answers', 'reader'],
+  'suggestions': ['answers'],
+  'expandQuick': ['answers', 'full', 'newEntryIds'],
+  'handoffLines': ['notes'],
+};
+
+/// What is wrong with a case's keys for its function: one it does not read, or one it needs.
+List<String> keyFaults(String function, Case c) {
+  final reads = inputs[function] ?? const <String>[];
+  final known = {'name', 'definition', 'why', 'expected', for (final k in reads) k.replaceAll('?', '')};
+  final needed = [
+    'name',
+    'definition',
+    'expected',
+    for (final k in reads)
+      if (!k.endsWith('?')) k,
+  ];
+  return [
+    for (final k in c.keys)
+      if (!known.contains(k)) 'reads no $k',
+    for (final k in needed)
+      if (!c.containsKey(k)) 'needs $k',
+  ];
+}
+
+void main() {
+  final vectors = jsonDecode(
+    File('../../packages/contract/test-vectors/forms-conformance.json').readAsStringSync(),
+  ) as Map<String, Object?>;
+  final definitions = (vectors['definitions']! as Map<String, Object?>).map(
+    (name, json) => MapEntry(name, NoteTypeDef.fromJson(json! as Map<String, Object?>)),
+  );
+  final cases = (vectors['cases']! as Map<String, Object?>).map(
+    (function, list) => MapEntry(function, (list! as List<Object?>).cast<Case>()),
+  );
+
+  /// Each function, called with a case's definition and its other inputs.
+  final functions = <String, Object? Function(NoteTypeDef definition, Case c)>{
+    // What a path points at, as plain data both readers can give.
+    'fieldAt': (definition, c) {
+      final target = fieldAt(definition, c['path']! as String);
+      if (target == null) return null;
+      return {
+        'points': target.points.name,
+        'at': target.at,
+        'entry': target.entry,
+        'row': target.row,
+        'side': target.side,
+        'part': target.part?.name,
+        'stores': target.holds != null,
+      };
+    },
+  };
+
+  group('the case reader', () {
+    test('runs every function of the file, or lists it as not written yet', () {
+      expect(cases.keys.toSet(), {...functions.keys, ...notWrittenYet});
+      expect(functions.keys.where(notWrittenYet.contains), isEmpty);
+    });
+    test('names the inputs of every function', () {
+      expect(inputs.keys.toSet(), cases.keys.toSet());
+    });
+    test('refuses a key a function does not read, and a missing input', () {
+      const base = {'name': 'x', 'definition': 'checkup', 'expected': <String, Object?>{}};
+      expect(keyFaults('normalAnswers', {...base, 'section': 'limbs', 'answers': {}, 'entryId': 'eaaaaaa1'}), [
+        'reads no entryId',
+      ]);
+      expect(keyFaults('effectiveAnswers', {...base, 'answer': {}}), ['reads no answer', 'needs answers']);
+      expect(keyFaults('normalAnswers', {...base, 'section': 'limbs', 'answers': {}, 'entry': 'eaaaaaa1'}), isEmpty);
+    });
+  });
+
+  for (final MapEntry(key: function, value: list) in cases.entries) {
+    group(function, () {
+      test('has cases, each named once, each on a definition of the file', () {
+        expect(list, isNotEmpty);
+        expect(list.map((c) => c['name']).toSet(), hasLength(list.length));
+        for (final c in list) {
+          final name = c['name'];
+          expect(definitions.keys, contains(c['definition']), reason: '$name');
+          if (c['full'] != null) expect(definitions.keys, contains(c['full']), reason: '$name');
+          for (final note in (c['notes'] as List<Object?>? ?? const []).cast<Case>()) {
+            expect(definitions.keys, contains(note['definition']), reason: '$name');
+          }
+          expect(keyFaults(function, c), isEmpty, reason: '$name');
+        }
+      });
+
+      final run = functions[function];
+      if (run == null) return;
+      for (final c in list) {
+        test(c['name']! as String, () {
+          expect(run(definitions[c['definition']]!, c), c['expected']);
+        });
+      }
+    });
+  }
+}
