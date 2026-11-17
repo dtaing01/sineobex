@@ -33,7 +33,7 @@
   "differences": [
     {
       "line": 1,
-      "what": "A module, exam_skin, that the General note type includes: its two sections, Skin (the overall skin) and Skin finding (one entry for each finding), show only while Skin (exam.systems is skin) is picked in the exam picker, and each offers one-tap Normal.",
+      "what": "A module, exam_skin, that the General note type includes: its two sections, Skin (the overall skin) and Skin finding (one entry for each finding), show only while Skin (exam.systems is skin) is picked in the exam picker. Skin offers one-tap Normal; Skin finding does not (line 23).",
       "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
     },
     {
@@ -85,6 +85,12 @@
       "line": 97,
       "what": "Longitudinal Tracking is one choose-one question at the end of each finding, Is this the same lesion/wound documented previously?, from the shared list yes_no_unknown (Yes, No, Unknown, added). The link to the earlier finding waits: the bullets are what the answer will do, not options.",
       "why": "PRD main 416; forms 6.7, 6.8; focused-exam inventory default 41"
-    }
+    },
+    {
+      "line": 99,
+      "what": "After adding a finding, automatically ask: is not typed as a step: the question it introduces (line 101) is a field of every finding, asked beside its other parts.",
+      "why": "PRD main 416; focused-exam inventory default 41"
+    },
+    { "line": 107, "what": "The guidance line is not typed.", "why": "focused-exam inventory construct 39" }
   ]
 }

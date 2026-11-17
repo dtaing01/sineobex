@@ -41,6 +41,11 @@
       "why": "focused-exam inventory default 13, 17, 24, 26"
     },
     {
+      "line": 21,
+      "what": "B. Palpation is a heading, not a field: what it holds is asked elsewhere, the location and side (lines 23 and 25) in the Mass group, and the finding (line 31) as Finding. No field is labelled Palpation.",
+      "why": "focused-exam inventory default 38, 39"
+    },
+    {
       "line": 23,
       "what": "Location: Breast clock / body map is a choose-one, Location (clock position), in the Mass group (line 43): 1 o’clock to 12 o’clock and Central, all added, with the codes clock_1 to clock_12 given (the rule makes none that starts with a letter). There is no drawing. It is the mass’s location, so it is asked only while Mass is picked.",
       "why": "focused-exam inventory default 38, 54; recipe step 5"

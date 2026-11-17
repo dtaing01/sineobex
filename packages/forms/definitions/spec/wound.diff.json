@@ -60,7 +60,7 @@
     },
     {
       "line": 12,
-      "what": "Wound type is choose-one from the shared list wound_type: Ulcer is replaced by Venous and Arterial (added), and Cellulitis is added (Oct 19). Other asks for a short text. An abscess with surrounding cellulitis is typed as one of the two.",
+      "what": "Wound type is choose-one from the shared list wound_type: Ulcer is replaced by Venous and Arterial (added), and Cellulitis is added (Oct 19). The order is the shared list's, PRD main 410's (Venous, Arterial, Pressure, Diabetic, Traumatic, Burn, Abscess, Surgical, Cellulitis, Other), not the lines'. Other asks for a short text. An abscess with surrounding cellulitis is typed as one of the two.",
       "why": "inventory A1, A2, A28; PRD main 103, 410; PLAN-OPEN (forms 10.1 #1): choose-one or choose-many, with the quick form's twin"
     },
     {

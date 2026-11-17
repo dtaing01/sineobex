@@ -19,6 +19,11 @@
       "why": "PRD main 414; focused-exam inventory default 1, 23, 28; forms 4.3, 6.3; PLAN-OPEN (forms 10.1 #1): which sites are routine, for the clinical team to confirm. The inventory names none; DP and PT are the sites its worked example (1928 to 1990) and the foot exam (1692 to 1704) record, and Radial the pulse taken with the vitals"
     },
     {
+      "line": 21,
+      "what": "For each pulse is a heading over the scale, not typed: the pulse grids' rows are the pulses, and each cell is the scale.",
+      "why": "focused-exam inventory 3.15, default 1"
+    },
+    {
       "line": 31,
       "what": "4+ is not a pulse grade: the one pulse scale stops at 3+.",
       "why": "PRD main 414; focused-exam inventory default 1"

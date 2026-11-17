@@ -55,8 +55,8 @@
     },
     {
       "line": 6,
-      "what": "Choose-one. Doubled-up becomes Couch surfing (added). Other asks for a short text.",
-      "why": "PRD main 111 (Oct 19); inventory A37"
+      "what": "Choose-one. Doubled-up becomes Couch surfing (added). Other is added, as PRD main 111 asks (the line has none; its word is line 4's), and asks for a short text.",
+      "why": "PRD main 111 (Oct 19); inventory A37; forms 10.1 #22"
     },
     {
       "line": 8,
