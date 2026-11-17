@@ -145,8 +145,8 @@
     },
     {
       "line": 57,
-      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels. The row mixes times and places, so Wound clinic in 1 week is one or the other.",
-      "why": "inventory A1, section 3.2; recipe step 5; PLAN-OPEN (forms 10.1 #1): choose-one, or a when and a where"
+      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels. The row mixes times and places, so Wound clinic in 1 week is one or the other. Each wound's follow-up is kept beside the Red flags and disposition note's, which is the visit's (forms 6.2): the two can differ, and the phase 7 follow-up task reads only the Red flags note's.",
+      "why": "inventory A1, section 3.2; recipe step 5; PLAN-OPEN (forms 10.1 #1): choose-one, or a when and a where; forms 6.2; lifecycle 9.6; PLAN-OPEN (forms 10.1 #1): what phase 7 does with a wound's own follow-up"
     }
   ]
 }

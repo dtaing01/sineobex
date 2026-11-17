@@ -35,6 +35,11 @@
       "why": "focused-exam inventory default 13, 16, 26"
     },
     {
+      "line": 29,
+      "what": "Wound in Inspection opens no hand-off to Wound care, unlike Skin's Ulcer and Abscess and the foot exam's Wound present?: the wound is only ticked here, so nothing about it is charted twice, and a Wound care note is added for it as for any wound. A hand-off would be opened by Inspection, which one-tap Normal fills, and no answer Normal fills opens a hand-off (forms 10.1 #29).",
+      "why": "PRD main 416 (names open skin in Skin and a wound found in the diabetic foot exam); forms 6.7; PLAN-OPEN (forms 10.1 #1): does a wound found in the MSK exam hand off to Wound care too?"
+    },
+    {
       "line": 47,
       "what": "Palpation is choose-many; No tenderness is the normal option and clears the others. Pain, a whole number from 0 to 10 out of 10, shows only while Tenderness is picked. Normal leaves Pain empty.",
       "why": "focused-exam inventory default 13, 16, 26, 28, 32, 44"

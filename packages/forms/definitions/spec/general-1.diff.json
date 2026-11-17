@@ -64,8 +64,8 @@
     },
     {
       "line": 20,
-      "what": "Six numbers, each in the EMS handoff summary. Blood pressure is two whole numbers in mmHg (systolic 0 to 300, diastolic 0 to 200); heart rate 0 to 300 bpm; SpO₂ 0 to 100 %; respiratory rate 0 to 80 breaths/min; temperature 50 to 115 °F with one decimal; pain a whole number out of 10. The lower limits refuse only what cannot be measured: an overdose before naloxone (respiratory rate 2, SpO₂ in the 40s) and hypothermia (heart rate below 20, temperature below 70 °F) are charted as measured.",
-      "why": "PLAN-OPEN (forms 10.1 #1): units and ranges of the vitals, inventory A10, to confirm with the clinical team; forms 10.1 #6 for the handoff"
+      "what": "Six numbers, each in the EMS handoff summary. Blood pressure is two whole numbers in mmHg (systolic 0 to 300, diastolic 0 to 200); heart rate 0 to 300 bpm; SpO₂ 0 to 100 %; respiratory rate 0 to 80 breaths/min; temperature 50 to 115 °F with one decimal; pain a whole number out of 10. The lower limits refuse only what cannot be measured: an overdose before naloxone (respiratory rate 2, SpO₂ in the 40s) and hypothermia (heart rate below 20, temperature below 70 °F) are charted as measured. A diastolic above the systolic (80 over 120, the boxes swapped) is taken: the format has no rule across two fields and the server checks one answer at a time, so only the renderer can warn.",
+      "why": "PLAN-OPEN (forms 10.1 #1): units and ranges of the vitals, inventory A10, to confirm with the clinical team; forms 10.1 #6 for the handoff; PLAN-OPEN (forms 10.1 #1): a warning on a diastolic above the systolic, for the renderer (F5)"
     },
     {
       "line": 20,

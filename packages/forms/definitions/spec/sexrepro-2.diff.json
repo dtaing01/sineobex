@@ -10,8 +10,8 @@
     },
     {
       "line": 4,
-      "what": "Gestational age is a duration: weeks and days, stored as days.",
-      "why": "forms 2.3"
+      "what": "Gestational age is a duration: weeks and days, stored as days. It has no bound of its own: a duration takes up to 36,525 days, so a slip such as 400 weeks for 40 is taken. A bound waits for the format to give a duration a most (forms 2.3).",
+      "why": "forms 2.3; PLAN-OPEN (forms 10.1 #19): the range of gestational age, 0 to 45 weeks once a duration can be bounded"
     },
     {
       "line": 6,

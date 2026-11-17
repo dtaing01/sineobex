@@ -25,8 +25,8 @@
     },
     {
       "line": 8,
-      "what": "Choose-many. None is exclusive. The row has no Buttons: label.",
-      "why": "inventory A1, A4"
+      "what": "Choose-many. None is exclusive. The row has no Buttons: label. This follow-up (Results needed, Referral, PCP) is kept beside the Red flags and disposition note's, which is the visit's (forms 6.2): it says what the follow-up is for, and the phase 7 follow-up task reads only the Red flags note's.",
+      "why": "inventory A1, A4; forms 6.2; lifecycle 9.6; PLAN-OPEN (forms 10.1 #1): what phase 7 does with this follow-up"
     }
   ]
 }

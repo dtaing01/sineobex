@@ -25,8 +25,8 @@
     },
     {
       "line": 10,
-      "what": "Blood pressure (two numbers), heart rate and temperature, with the units and ranges of the General note's vitals, each in the EMS handoff summary. Expand maps them to general_primary_care:vitals.bp.systolic, vitals.bp.diastolic, vitals.hr and vitals.temp.",
-      "why": "inventory A10; forms 6.4, 10.1 #6"
+      "what": "Blood pressure (two numbers), heart rate and temperature, with the units and ranges of the General note's vitals, each in the EMS handoff summary. Expand maps them to general_primary_care:vitals.bp.systolic, vitals.bp.diastolic, vitals.hr and vitals.temp. They, and the chief concern, stay in the handoff after Expand: a quick note is often the only note, and its vitals belong at the top of the summary. Once expanded, the summary shows each again beside its General twin, until the handoff leaves out a quick field whose twin holds an answer.",
+      "why": "inventory A10; forms 6.4, 7.1 (handoffLines), 10.1 #6"
     },
     {
       "line": 12,
@@ -41,7 +41,7 @@
     {
       "line": 17,
       "what": "A body region from the shared list body_region: the eight buttons of the line, then Feet, Face and Groin (added), as the full module offers them, with a side of the shared list side (Right, Left, Bilateral, added). Expand maps it to wound_care:wound.location.",
-      "why": "PRD main 103, 410; inventory A58; forms 6.4; PRD main 410 (one master list), 416; PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
+      "why": "PRD main 103, 410 (one master list), 416; inventory A58; forms 6.4; PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
     },
     {
       "line": 19,
