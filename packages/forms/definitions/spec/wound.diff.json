@@ -57,8 +57,8 @@
     },
     {
       "line": 12,
-      "what": "Wound type is choose-one from the shared list wound_type: Ulcer is replaced by Venous and Arterial (added), and Cellulitis is added (Oct 19). Other asks for a short text.",
-      "why": "inventory A1, A2, A28; PRD main 103, 410"
+      "what": "Wound type is choose-one from the shared list wound_type: Ulcer is replaced by Venous and Arterial (added), and Cellulitis is added (Oct 19). Other asks for a short text. An abscess with surrounding cellulitis is typed as one of the two.",
+      "why": "inventory A1, A2, A28; PRD main 103, 410; PLAN-OPEN (forms 10.1 #1): choose-one or choose-many, with the quick form's twin"
     },
     {
       "line": 16,
@@ -142,8 +142,8 @@
     },
     {
       "line": 57,
-      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels.",
-      "why": "inventory A1; recipe step 5"
+      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels. The row mixes times and places, so Wound clinic in 1 week is one or the other.",
+      "why": "inventory A1, section 3.2; recipe step 5; PLAN-OPEN (forms 10.1 #1): choose-one, or a when and a where"
     }
   ]
 }

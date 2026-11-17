@@ -39,8 +39,8 @@
     },
     {
       "line": 18,
-      "what": "Choose-one. Other asks for a short text.",
-      "why": "inventory A1, A2"
+      "what": "Choose-one. Other asks for a short text. A patient using two methods (the pill and condoms) records one.",
+      "why": "inventory A1, A2; PLAN-OPEN (forms 10.1 #1): choose-one or choose-many (A1 lists the line among the least certain)"
     },
     {
       "line": 21,

@@ -5,8 +5,8 @@
   "differences": [
     {
       "line": 1,
-      "what": "The section shows when the pregnancy test is Positive.",
-      "why": "inventory A44; PRD main 417"
+      "what": "The section shows when the pregnancy test is Positive. A pregnancy known before this visit, with no test today, does not open it: the danger signs of a known pregnancy cannot be charted without recording a test.",
+      "why": "inventory A44; PRD main 417; PLAN-OPEN (forms 10.1 #1): whether a known pregnancy also opens the section, for the clinical team"
     },
     {
       "line": 4,
