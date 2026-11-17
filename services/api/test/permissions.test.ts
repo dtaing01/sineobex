@@ -369,3 +369,50 @@ describe('phase 3 routes', () => {
     expect(((await res.json()) as { idLinkBaseUrl: string }).idLinkBaseUrl).toBe('http://localhost:3100');
   });
 });
+
+/**
+ * The note type routes (phase 4 design, forms 3.3): any member of the team, whatever the role, and
+ * nobody else. Definitions hold no patient data, so no permission key guards them.
+ */
+describe('phase 4 forms routes', () => {
+  let h: Harness;
+  let teamId: string;
+  let otherTeamId: string;
+
+  const FORMS_ROUTES = ['/v1/forms/note-types', '/v1/forms/note-types/demo_note/1'];
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Forms Team (demo)');
+    otherTeamId = await createTeam(h, 'Forms Other Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  for (const path of FORMS_ROUTES) {
+    const route = path.replace('demo_note/1', '{key}/{version}');
+
+    it(`GET ${route} lets every role past, one with no permission included, and refuses none`, async () => {
+      const roles = [...vectors.cases, { name: 'no permission', permissions: [] }];
+      for (const c of roles) {
+        const member = await memberWith(h, teamId, c.permissions as Permission[]);
+        const mark = await auditMark(h);
+        const res = await h.request(path, { token: member.token, teamId });
+        expect(res.status, c.name).not.toBe(403);
+        expect(res.status, c.name).not.toBe(422);
+        const denied = await h.scratch.owner`
+          select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+        expect(denied, c.name).toHaveLength(0);
+      }
+    });
+
+    it(`GET ${route} refuses a member of another team`, async () => {
+      const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+      const res = await h.request(path, { token: outsider.token, teamId });
+      expect(res.status).toBe(403);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
+    });
+  }
+});
