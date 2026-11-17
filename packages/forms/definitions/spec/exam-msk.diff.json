@@ -41,7 +41,7 @@
     },
     {
       "line": 63,
-      "what": "Range of motion is two fields, Active and Passive, each choose-many from the shared list range_of_motion: Full is its normal option and clears the others; Limited and Painful can be held together.",
+      "what": "Range of motion is two fields, Active and Passive, each choose-many from the shared list range_of_motion: Full is its normal option and clears the others, and so does Unable; Limited and Painful can be held together.",
       "why": "focused-exam inventory section 5 (range of motion), default 13, 16, 26"
     },
     {
@@ -76,7 +76,7 @@
     },
     {
       "line": 119,
-      "what": "Gait is the second section's one field, asked once for the exam, choose-many. Normal is the normal option and clears the others. Unable to assess is neither normal nor abnormal.",
+      "what": "Gait is the second section's one field, asked once for the exam, choose-many. Normal is the normal option and clears the others. Unable to assess is neither normal nor abnormal, and clears the others.",
       "why": "focused-exam inventory default 13, 26; forms 2.2 (unable)"
     },
     {

@@ -52,7 +52,11 @@
       "many": true,
       "label": "Coordination",
       "options": ["finger_to_nose_normal", "heel_to_shin_normal", "abnormal", "unable"],
-      "flags": { "normal": ["finger_to_nose_normal", "heel_to_shin_normal"], "unable": ["unable"] }
+      "flags": {
+        "exclusive": ["unable"],
+        "normal": ["finger_to_nose_normal", "heel_to_shin_normal"],
+        "unable": ["unable"]
+      }
     },
     {
       "path": "neuro_motor.reflexes",
@@ -75,7 +79,7 @@
       "many": true,
       "label": "Gait",
       "options": ["normal", "ataxic", "antalgic", "shuffling", "unsteady", "unable"],
-      "flags": { "exclusive": ["normal"], "normal": ["normal"], "unable": ["unable"] }
+      "flags": { "exclusive": ["normal", "unable"], "normal": ["normal"], "unable": ["unable"] }
     }
   ]
 }

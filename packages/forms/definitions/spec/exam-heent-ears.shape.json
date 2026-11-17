@@ -38,7 +38,11 @@
         "unable_to_visualize"
       ],
       "sides": true,
-      "flags": { "exclusive": ["normal"], "normal": ["normal"], "unable": ["unable_to_visualize"] }
+      "flags": {
+        "exclusive": ["normal", "unable_to_visualize"],
+        "normal": ["normal"],
+        "unable": ["unable_to_visualize"]
+      }
     },
     {
       "path": "ears.hearing",

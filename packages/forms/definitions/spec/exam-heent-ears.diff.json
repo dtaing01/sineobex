@@ -25,7 +25,7 @@
     },
     {
       "line": 31,
-      "what": "Tympanic membrane is choose-many. Normal is the normal option and clears the others. Unable to visualize is neither normal nor abnormal.",
+      "what": "Tympanic membrane is choose-many. Normal is the normal option and clears the others. Unable to visualize is neither normal nor abnormal, and clears the others too.",
       "why": "focused-exam inventory construct 11, default 13, 26; forms 2.2 (unable)"
     },
     {

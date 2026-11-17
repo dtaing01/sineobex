@@ -53,8 +53,8 @@
     },
     {
       "line": 25,
-      "what": "Coordination is choose-many. Normal fills Finger-to-nose normal and Heel-to-shin normal, so neither is exclusive. Unable is neither normal nor abnormal.",
-      "why": "focused-exam inventory 3.7, default 13, 26; forms 2.2 (unable)"
+      "what": "Coordination is choose-many. Normal fills Finger-to-nose normal and Heel-to-shin normal, so neither is exclusive. Unable is neither normal nor abnormal, and clears the others. Abnormal may be held with one normal option (the other test was abnormal); held with both it contradicts itself, which a pair of excludes cannot refuse.",
+      "why": "focused-exam inventory 3.7, default 13, 26; forms 2.2 (unable); PLAN-OPEN (forms 10.1 #1): Abnormal beside both normal options"
     },
     {
       "line": 35,
@@ -68,7 +68,7 @@
     },
     {
       "line": 59,
-      "what": "Gait is choose-many. Normal is the normal option and clears the others. Unable is neither normal nor abnormal.",
+      "what": "Gait is choose-many. Normal is the normal option and clears the others. Unable is neither normal nor abnormal, and clears the others.",
       "why": "focused-exam inventory default 13, 26; forms 2.2 (unable)"
     }
   ]

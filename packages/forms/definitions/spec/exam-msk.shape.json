@@ -162,7 +162,11 @@
       "many": true,
       "label": "Gait",
       "options": ["normal", "antalgic", "unsteady", "ataxic", "unable_to_assess"],
-      "flags": { "exclusive": ["normal"], "normal": ["normal"], "unable": ["unable_to_assess"] }
+      "flags": {
+        "exclusive": ["normal", "unable_to_assess"],
+        "normal": ["normal"],
+        "unable": ["unable_to_assess"]
+      }
     }
   ]
 }

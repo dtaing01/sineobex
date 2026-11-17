@@ -590,6 +590,19 @@ describe('the plans of the exam pieces', () => {
       expect((field.rows as { pickedIn?: string } | undefined)?.pickedIn, field.path).toBeUndefined();
   });
 
+  // An Unable answer says the finding could not be had, so nothing else is held beside it
+  // ("Bulging, Unable to visualize"): in a choose-many field it clears the others, as None does.
+  it.each(Object.keys(PLANNED))('%s: an Unable option of a choose-many field clears the others', (name) => {
+    for (const field of shapeOf(name).fields) {
+      if (field.kind !== 'choice' || field.many !== true) continue;
+      const { flagged } = optionsOf(field);
+      expect(
+        flagged('unable').filter((code) => !flagged('exclusive').includes(code)),
+        field.path,
+      ).toEqual([]);
+    }
+  });
+
   it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
     const shape = shapeOf(PICKER_PIECE);
     expect(shape.header).toBeUndefined();
@@ -808,7 +821,7 @@ const LIST_PINS: Record<string, string[]> = {
     'full=Full +exclusive +normal',
     'limited=Limited',
     'painful=Painful',
-    'unable=Unable +unable',
+    'unable=Unable +exclusive +unable',
   ],
   reflex_scale: ['zero=0', 'one_plus=1+', 'two_plus=2+ +normal', 'three_plus=3+', 'four_plus=4+'],
   side: ['right=Right', 'left=Left', 'bilateral=Bilateral'],
