@@ -159,6 +159,21 @@ const NOTE_TYPES: Record<string, Record<string, unknown>> = {
  * red-flag question and the EMS time the finish check asks for (6.2). Each is held where it is,
  * and nowhere else.
  */
+/**
+ * The next steps the summary screen suggests (PRD main 433): an option that names the note type a
+ * clinician is likely to add next, by the piece and field that hold it.
+ */
+const SUGGESTS: Record<string, Record<string, Record<string, string>>> = {
+  psychological: { 'reason.reasons': { substance_use: 'harm_reduction' } },
+  outreach: {
+    'outreach.new_need': {
+      medical: 'general_primary_care',
+      behavioral: 'psychological',
+      social: 'social_needs',
+    },
+  },
+};
+
 const TREATMENT_RECORD = ['harm-reduction', 'treatment'];
 const NEEDS_ORDER = ['quick-2', 'medication'];
 const REQUIRED_NOTE_FIELDS = ['red_flags.emergency', 'red_flags.ems_time'];
@@ -322,6 +337,18 @@ describe('the plans of the pieces', () => {
       return key === undefined ? [] : [String(key)];
     });
     expect(keys.sort()).toEqual(Object.keys(NOTE_TYPES).sort());
+  });
+
+  it('suggest the next steps of PRD main 433, each a note type of forms 5, and no others', () => {
+    const found: Record<string, Record<string, Record<string, string>>> = {};
+    for (const name of Object.keys(PLANNED))
+      for (const field of shapeOf(name).fields) {
+        const suggests = (field.flags as { suggests?: Record<string, string> } | undefined)?.suggests;
+        if (suggests === undefined) continue;
+        (found[name] ??= {})[field.path] = suggests;
+        for (const key of Object.values(suggests)) expect(Object.keys(NOTE_TYPES), field.path).toContain(key);
+      }
+    expect(found).toEqual(SUGGESTS);
   });
 
   it('mark the treatment record, the ordering section and the red-flag questions, and nothing else', () => {

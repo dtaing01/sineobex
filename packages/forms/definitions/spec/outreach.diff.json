@@ -25,8 +25,8 @@
     },
     {
       "line": 10,
-      "what": "Choose-many. No is exclusive.",
-      "why": "inventory A1, A4"
+      "what": "Choose-many. No is exclusive. Medical, Behavioral and Social suggest General / primary care, Behavioral health and Social needs on the summary screen.",
+      "why": "inventory A1, A4; PRD main 433 (suggested next steps)"
     },
     {
       "line": 13,

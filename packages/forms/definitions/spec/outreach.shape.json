@@ -54,7 +54,14 @@
       "many": true,
       "label": "New need identified",
       "options": ["no", "medical", "behavioral", "social", "emergency"],
-      "flags": { "exclusive": ["no"] }
+      "flags": {
+        "exclusive": ["no"],
+        "suggests": {
+          "medical": "general_primary_care",
+          "behavioral": "psychological",
+          "social": "social_needs"
+        }
+      }
     },
     { "path": "outreach.notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 },
     {

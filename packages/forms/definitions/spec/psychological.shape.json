@@ -33,7 +33,7 @@
         "medication",
         "other"
       ],
-      "flags": { "other": ["other"] }
+      "flags": { "other": ["other"], "suggests": { "substance_use": "harm_reduction" } }
     },
     {
       "path": "reason.concern",

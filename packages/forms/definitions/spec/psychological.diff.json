@@ -15,8 +15,8 @@
     },
     {
       "line": 4,
-      "what": "Choose-many. Other asks for a short text.",
-      "why": "inventory A1, A2"
+      "what": "Choose-many. Other asks for a short text. Substance Use suggests Harm reduction on the summary screen.",
+      "why": "inventory A1, A2; PRD main 433 (suggested next steps)"
     },
     {
       "line": 6,
