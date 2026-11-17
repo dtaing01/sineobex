@@ -4,6 +4,7 @@ import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
 import { finishCheck } from '../src/interp/finish.ts';
+import { normalAnswers } from '../src/interp/normal.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
 import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
@@ -39,6 +40,8 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
   checkAnswer: (definition, c) => checkAnswer(definition, c.path as string, c.value),
   effectiveAnswers: (definition, c) => effectiveAnswers(definition, c.answers as Answers),
   finishCheck: (definition, c) => finishCheck(definition, c.answers as Answers),
+  normalAnswers: (definition, c) =>
+    normalAnswers(definition, c.section as string, c.answers as Answers, c.entry as string | undefined),
 };
 
 describe('the conformance definitions', () => {

@@ -16,3 +16,4 @@ export * from './interp/check-answer.ts';
 export * from './interp/conditions.ts';
 export * from './interp/effective.ts';
 export * from './interp/finish.ts';
+export * from './interp/normal.ts';

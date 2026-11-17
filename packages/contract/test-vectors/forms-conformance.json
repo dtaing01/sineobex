@@ -710,6 +710,28 @@
           "normal": true,
           "fields": [
             {
+              "id": "gaze",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo gaze",
+              "showWhen": { "field": "general.nerves", "is": "intact" },
+              "options": [
+                { "code": "steady", "label": "Demo steady", "normal": true },
+                { "code": "drifting", "label": "Demo drifting" }
+              ]
+            },
+            {
+              "id": "recheck",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo recheck planned",
+              "showWhen": { "not": { "field": "general.nerves", "is": "intact" } },
+              "options": [
+                { "code": "yes", "label": "Demo yes", "normal": true },
+                { "code": "no", "label": "Demo no" }
+              ]
+            },
+            {
               "id": "nerves",
               "kind": "choice",
               "many": false,
@@ -1303,6 +1325,32 @@
       {"name": "a required time empty", "definition": "ems", "answers": {"ems.reason": "fall"}, "why": "forms.md 7.1 line 906", "expected": [{"section": "ems", "path": "ems.called", "problem": "required"}]},
       {"name": "a required time filled", "definition": "ems", "answers": {"ems.called": "10:15"}, "why": "forms.md 7.1 line 906", "expected": []},
       {"name": "a diagnosis entry without its status", "definition": "problems", "answers": {"dx.ecccccc3.entryAt": "2026-03-01T10:00:00Z", "dx.ecccccc3.problem.code": "J45", "dx.ecccccc3.problem.label": "Demo asthma"}, "why": "forms.md 7.1 line 906", "expected": [{"section": "dx", "path": "dx.ecccccc3.status", "problem": "required"}]}
+    ],
+    "normalAnswers": [
+      {"name": "an empty section: each visible field with a normal option or value, noNormal left alone", "definition": "checkup", "section": "general", "answers": {}, "why": "forms.md 6.3 lines 789-791: visible fields with no answer, each set to its normal option or a number to its normal value; never a noNormal field, nor a field in a noNormal group (chaperone, gait); a text, a flag and a field with no normal are left alone; a choose-many takes every normal option, in the definition's order; sides and rows each; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count: the gaze, written before the nerves, shows once they are Grossly intact and is filled; the recheck, written before them too and shown while they have no answer, is hidden once they are and is not", "expected": {"general.gaze": "steady", "general.nerves": "intact", "general.blink": "present", "general.skin": ["warm", "dry"], "general.reach": 3, "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full"}},
+      {"name": "a finding already charted is never overwritten, and what it shows is filled", "definition": "checkup", "section": "general", "answers": {"general.nerves": "focal"}, "why": "forms.md 6.3 line 790: it fills only fields that have no answer; the detail shows while the nerves are not intact, and the blink hides", "expected": {"general.recheck": "yes", "general.nerveDetail": "equal", "general.skin": ["warm", "dry"], "general.reach": 3, "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full"}},
+      {"name": "only the fields with no answer are filled", "definition": "checkup", "section": "general", "answers": {"general.skin": ["rash"], "general.pain.left": 6, "general.joints.hip": "limited", "general.chaperone": "yes"}, "why": "forms.md 6.3 line 790", "expected": {"general.gaze": "steady", "general.nerves": "intact", "general.blink": "present", "general.reach": 3, "general.pain.right": 0, "general.joints.knee": "full"}},
+      {"name": "a field a set flag clears is not filled", "definition": "checkup", "section": "general", "answers": {"general.unableReach": true}, "why": "forms.md 2.3 line 307: while the flag is set the field does not count and its widget is disabled; Normal fills visible fields only (6.3 line 799)", "expected": {"general.gaze": "steady", "general.nerves": "intact", "general.blink": "present", "general.skin": ["warm", "dry"], "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full"}},
+      {"name": "a blank answer is no answer, and is filled", "definition": "checkup", "section": "general", "answers": {"general.nerves": null, "general.skin": [], "general.reach": null}, "why": "lifecycle 4.5 line 1397: null and [] are blanks", "expected": {"general.gaze": "steady", "general.nerves": "intact", "general.blink": "present", "general.skin": ["warm", "dry"], "general.reach": 3, "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full"}},
+      {"name": "every field answered: nothing to add", "definition": "checkup", "section": "general", "answers": {"general.gaze": "steady", "general.nerves": "focal", "general.blink": "absent", "general.skin": ["warm", "dry"], "general.reach": 3, "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full", "general.nerveDetail": "unequal", "general.recheck": "no"}, "why": "forms.md 6.3 line 790", "expected": {}},
+      {"name": "a section without normal: true gives nothing", "definition": "checkup", "section": "history", "answers": {}, "why": "forms.md 2.2 line 151: normal offers one-tap Normal", "expected": {}},
+      {"name": "a section that does not exist gives nothing", "definition": "checkup", "section": "heart", "answers": {}, "expected": {}},
+      {"name": "normal options in a section that does not offer Normal give nothing", "definition": "psych", "section": "mood", "answers": {}, "why": "forms.md 2.2 line 151", "expected": {}},
+      {"name": "a hidden section gives nothing", "definition": "exam", "section": "heart", "answers": {"systems.picked": ["lungs"]}, "why": "forms.md 6.3 line 799: visible fields only", "expected": {}},
+      {"name": "a shown system: its choices set to their normal options, the grade has no normal", "definition": "exam", "section": "heart", "answers": {"systems.picked": ["heart"]}, "why": "forms.md 6.3 lines 786-791", "expected": {"heart.rhythm": "regular", "heart.murmur": "none"}},
+      {"name": "a murmur charted shows the grade, which has no normal value", "definition": "exam", "section": "heart", "answers": {"systems.picked": ["heart"], "heart.murmur": "present"}, "why": "forms.md 6.3 line 790; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count", "expected": {"heart.rhythm": "regular"}},
+      {"name": "sides: each side set to the normal option", "definition": "exam", "section": "lungs", "answers": {"systems.picked": ["lungs"]}, "why": "forms.md 2.3 line 305", "expected": {"lungs.sounds.right": "clear", "lungs.sounds.left": "clear"}},
+      {"name": "one side charted: only the other is filled", "definition": "exam", "section": "lungs", "answers": {"systems.picked": ["lungs"], "lungs.sounds.left": "wheeze"}, "why": "forms.md 6.3 line 790", "expected": {"lungs.sounds.right": "clear"}},
+      {"name": "grids: each row's cell, by side, and a number cell's normal value", "definition": "exam", "section": "pulses", "answers": {}, "why": "forms.md 6.3 lines 794 and 801: pulses and reflexes are grids on shared scales; a number's normal is what Normal fills", "expected": {"pulses.pulses.radial.right": "normal", "pulses.pulses.radial.left": "normal", "pulses.pulses.pedal.right": "normal", "pulses.pulses.pedal.left": "normal", "pulses.reflexes.biceps.grade": 2, "pulses.reflexes.knee.grade": 2}},
+      {"name": "a number's normal value and a choice's normal option; a flag and a number with no normal left alone", "definition": "visit", "section": "vitals", "answers": {"vitals.pulse": 72}, "why": "forms.md 2.2 line 191: normal is what one-tap Normal fills (strength: 5)", "expected": {"vitals.strength": 5, "vitals.alert": "alert"}},
+      {"name": "a section with needs and no normal gives nothing", "definition": "visit", "section": "meds", "answers": {}, "why": "forms.md 2.2 line 151", "expected": {}},
+      {"name": "a repeating section: the entry it is tapped in", "definition": "checkup", "section": "limbs", "entry": "eaaaaaa1", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z"}, "why": "forms.md 6.3 line 797: one-tap Normal takes the entry it is tapped in; the region has no normal option, grip is noNormal, and the extent stays hidden once swelling is None; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count", "expected": {"limbs.eaaaaaa1.tone": "normal", "limbs.eaaaaaa1.swelling": "none"}},
+      {"name": "an entry with swelling charted: its extent shows and takes its normal value", "definition": "checkup", "section": "limbs", "entry": "eaaaaaa1", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.eaaaaaa1.swelling": "mild"}, "why": "forms.md 6.3 line 790; 2.2 line 191", "expected": {"limbs.eaaaaaa1.tone": "normal", "limbs.eaaaaaa1.extent": 0}},
+      {"name": "another entry is left alone", "definition": "checkup", "section": "limbs", "entry": "ebbbbbb2", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z", "limbs.eaaaaaa1.tone": "increased"}, "why": "forms.md 6.3 line 797", "expected": {"limbs.ebbbbbb2.tone": "normal", "limbs.ebbbbbb2.swelling": "none"}},
+      {"name": "an entry that is not there gives nothing", "definition": "checkup", "section": "limbs", "entry": "ebbbbbb2", "answers": {"limbs.ebbbbbb2.swelling": "mild"}, "why": "forms.md 2.3 line 311: an entry exists when its entryAt answer does", "expected": {}},
+      {"name": "a removed entry gives nothing", "definition": "checkup", "section": "limbs", "entry": "eaaaaaa1", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.eaaaaaa1.entryRemoved": true}, "why": "forms.md 2.3 line 313", "expected": {}},
+      {"name": "a repeating section with no entry named gives nothing", "definition": "checkup", "section": "limbs", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z"}, "why": "forms.md 7.1 line 907: in that entry", "expected": {}},
+      {"name": "an entry named in a section that does not repeat gives nothing", "definition": "checkup", "section": "general", "entry": "eaaaaaa1", "answers": {}, "why": "forms.md 7.1 line 907: a section that does not repeat has no entry", "expected": {}}
     ]
   }
 }
