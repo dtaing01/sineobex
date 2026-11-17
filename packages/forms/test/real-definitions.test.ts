@@ -184,8 +184,10 @@ describe('what opens another note on the real definitions', () => {
     const reading = new NoteReading(definition(key), answers);
     return reading.model.sections
       .flatMap((section) => section.nodes)
-      .filter((node) => node.field.kind === 'action' && reading.fieldCounts(node, null, null))
-      .map((node) => (node.field.kind === 'action' ? node.field.noteType : null));
+      .filter((node) => reading.fieldCounts(node, null, null))
+      .flatMap(({ field }) =>
+        field.kind === 'action' && field.action === 'open_note_type' ? [field.noteType] : [],
+      );
   };
   // TYP-8: an emergency found on outreach goes to the Red flags note, as Behavioral health's Active
   // and Wound care's Urgent do (inventory A31, A41; forms 10.1 #39).
