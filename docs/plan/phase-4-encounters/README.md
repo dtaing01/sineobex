@@ -29,16 +29,17 @@ planned that way.
 
 | Level | Cards | Who writes the code | What stands between the code and the branch |
 |---|---|---|---|
-| S | 40 | The small local model | A machine check. The frontier model reads the diff when the unit is audited. |
+| S | 38 | The small local model | A machine check. The frontier model reads the diff when the unit is audited. |
 | T | 67 | The small local model | Tests the frontier model wrote first (the `tests` card of each unit), then its audit of the diff |
 | R | 64 | The small local model | The frontier model's audit of the diff and the screen |
 | X | 49 | The frontier model | A second review |
 
-220 cards. The table is how the phase was planned: the small model would have written the code
-of 171 of them and decided nothing on any of them. In this phase the frontier model writes the
-code of every level (see the Status above). A row's level still says how much judgment it takes:
-an S or T row is settled by its machine check or its tests, an R row needs its diff and its
-screen read, and an X row needs a second reader before it lands.
+218 cards (220 until wave B made Wound care and MSK one piece each). The table is how the phase
+was planned: the small model would have written the code of 169 of them and decided nothing on
+any of them. In this phase the frontier model writes the code of every level (see the Status
+above). A row's level still says how much judgment it takes: an S or T row is settled by its
+machine check or its tests, an R row needs its diff and its screen read, and an X row needs a
+second reader before it lands.
 
 ## Order
 
@@ -63,6 +64,13 @@ L5-location); the generated contract (F3-contract, L1-contract, L2-contract, eac
 unit's routes or schemas). Wave A's review had L0 edit three files L1 owns:
 `services/api/src/sync/entities/note.ts` (the team lock), `services/api/src/sync/review.ts` (a
 comment) and `services/api/test/sync.test.ts` (one test's setup); L1 builds on those edits.
+Wave B's review had F1 edit two files F0 owns, `forms/src/validate.ts` and
+`forms/test/validate.test.ts` (the rules `other_twice`, `normal_conflict`, `handoff_restricted`
+and `clears_with_sides`, a wider `condition_reads_restricted`, and `required_never_visible`
+counting a field's own clearing flag: forms 2.2, 4.2), and add
+`forms/test/interp/one-meaning.test.ts`, which holds the validator and the interpreter to one
+meaning of what counts (forms 7.2); and F6 edit one, `forms/src/shape-check.ts` with its test (a
+shape file may pin a label, forms 4.2).
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -95,21 +103,21 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F1-vectors | X | `vectors/forms-conformance.json`, `forms/test/conformance.test.ts`, `phone-test/forms/conformance_test.dart` | F0-schema |
+| F1-vectors | X | `vectors/forms-conformance.json`, `forms/test/conformance.test.ts` (the Dart reader of the vectors is F2's) | F0-schema |
 | F1-field-at | T | `forms/src/interp/field-at.ts` | F1-vectors |
 | F1-check-values | T | `forms/src/interp/check-answer.ts` (choice, text, number, flag, date, time, duration) | F1-field-at |
 | F1-check-structure | T | `forms/src/interp/check-answer.ts` (unknown paths, grid rows, region, problem, the text of an Other option, entries) | F1-check-values |
-| F1-conditions | T | `forms/src/interp/conditions.ts` | F1-field-at |
-| F1-effective | T | `forms/src/interp/effective.ts` | F1-conditions |
+| F1-conditions | T | `forms/src/interp/conditions.ts` (the rules every function shares: what counts, entries, conditions) | F1-field-at |
+| F1-effective | T | `forms/src/interp/effective.ts`, `forms/test/interp/effective.test.ts` (key order, copies) | F1-conditions |
 | F1-finish | T | `forms/src/interp/finish.ts` | F1-effective |
 | F1-normal | T | `forms/src/interp/normal.ts` | F1-effective |
-| F1-recap | T | `forms/src/interp/recap.ts` | F1-effective |
-| F1-read-sections | T | `forms/src/interp/read-model.ts` (sections, labels, display values) | F1-effective |
+| F1-recap | T | `forms/src/interp/recap.ts`, `forms/src/interp/layout.ts` (the items and values the recap, the read model and the handoff share) | F1-effective, F1-visible |
+| F1-read-sections | T | `forms/src/interp/read-model.ts` (sections, labels, display values, from `layout.ts`) | F1-recap |
 | F1-read-corrections | T | `forms/src/interp/read-model.ts` (corrected values with the old one) | F1-read-sections |
-| F1-visible | T | `forms/src/interp/visible.ts` | F1-effective |
-| F1-handoff | T | `forms/src/interp/handoff.ts` | F1-visible, F1-recap |
+| F1-visible | T | `forms/src/interp/visible.ts`, `forms/src/interp/sensitive-exams.ts` (what a sensitive exam leaves out, which the recap and the handoff read too), `forms/test/interp/visible.test.ts` | F1-effective |
+| F1-handoff | T | `forms/src/interp/handoff.ts`, `forms/test/interp/handoff.test.ts` | F1-visible, F1-recap |
 | F1-suggestions | T | `forms/src/interp/suggestions.ts` | F1-effective |
-| F1-expand | T | `forms/src/interp/expand.ts` | F1-effective |
+| F1-expand | T | `forms/src/interp/expand.ts`, `forms/test/interp/expand.test.ts` | F1-effective |
 
 ### E The export (forms 2.1, 4.2, 7.3)
 
@@ -125,7 +133,8 @@ One card per file under `phone/forms/`, each level T, each making `conformance_t
 for its function, each needing the same card of F1 that it mirrors: F2-field-at,
 F2-check-values, F2-check-structure, F2-conditions, F2-effective, F2-finish, F2-normal,
 F2-recap, F2-read-sections, F2-read-corrections, F2-visible, F2-handoff, F2-suggestions,
-F2-expand. Then:
+F2-expand. F2-field-at also writes the Dart reader of the vectors,
+`phone-test/forms/conformance_test.dart`, which F1-vectors left to this unit. Then:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
@@ -180,11 +189,11 @@ Every card is level R and includes its widget test file.
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F6-spec-pieces | X | `spec/<piece>.txt` for the 37 pieces, copied from the field specification, with `[left out]` where a line must not be copied. The red flags note type is a piece of its own: `general-2` is lines 29 to 35 and 61 to 62, and `red-flags` lines 36 to 60 (`forms-inventory.md` section 8) | F0-spec-check |
-| F6-shapes-notes | X | `spec/<piece>.shape.json` and `spec/<piece>.diff.json` for the 14 note type pieces, from `forms-inventory.md`. A shape file holds every key of every section and field, the option codes in order, the file it is for (`file`), the note type's header on exactly one shape file per note type, and `outside` for a section that names no piece; a diff file has all four keys, even when a list is empty (forms 4.1, 4.2) | F6-spec-pieces, F0-shape-check |
-| F6-shapes-exam-a | X | The shape and diff files of exam pieces 1 to 11, written as F6-shapes-notes says | F6-spec-pieces, F0-shape-check |
+| F6-spec-pieces | X | `spec/<piece>.txt` for the 35 pieces, copied from the field specification, with `[left out]` where a line must not be copied. The red flags note type is a piece of its own: `general-2` is lines 29 to 35 and 61 to 62, and `red-flags` lines 36 to 60 (`forms-inventory.md` section 8). Wound care is one piece, `wound` (63 to 119), and so is MSK, `exam-msk` (912 to 1068): a section names one piece, and each is one repeating section (forms 4.1). The pieces and their ranges are `PIECES` in `forms/test/definitions.test.ts` | F0-spec-check |
+| F6-shapes-notes | X | `spec/<piece>.shape.json` and `spec/<piece>.diff.json` for the 13 note type pieces, from `forms-inventory.md`. A shape file holds every key of every section and field, the option codes in order, the file it is for (`file`), the note type's header on exactly one shape file per note type, and `outside` for a section that names no piece; a diff file has all four keys, even when a list is empty (forms 4.1, 4.2) | F6-spec-pieces, F0-shape-check |
+| F6-shapes-exam-a | X | The shape and diff files of exam pieces 1 to 11 of `forms-inventory-focused-exam.md` section 7 (10 and 11, MSK, being one piece, `exam-msk`), written as F6-shapes-notes says | F6-spec-pieces, F0-shape-check |
 | F6-shapes-exam-b | X | The shape and diff files of exam pieces 12 to 23, written as F6-shapes-notes says | F6-spec-pieces, F0-shape-check |
-| F6-lists | R | `lists/*.json`: the shared lists of forms 4.4, `surface` (Anterior, Posterior) and Skin's side list (Right, Left, Midline) among them. A list has no shape file: a person reads its codes, order, flags and count against the lines when the unit is reviewed | F0-validate-flags |
+| F6-lists | R | `lists/*.json`: the shared lists of forms 4.4, `surface` (Anterior, Posterior) and Skin's side list (Right, Left, Midline) among them, 17 in all. A list has no shape file: a person reads its codes, order, flags and count against the lines when the unit is reviewed, and `forms/test/definitions.test.ts` pins each list's codes, labels, order and flags. A list no plan uses is removed (`yes_no_unsure` was): the test holds every list to a use | F0-validate-flags |
 | F6-red-flags | R | `note-types/red_flags_disposition/v1.json` (field specification lines 36 to 60: the piece `red-flags`, with its own three files) | F6-lists, E-presets, F6-shapes-notes |
 
 The transcription cards, each level S, each one definition file, each needing F6-lists,
@@ -194,20 +203,28 @@ E-presets and the shape card of its piece:
 |---|---|---|
 | F6-general-1 | 5 to 25 | `note-types/general_primary_care/v1.json` |
 | F6-general-2 | 29 to 35 and 61 to 62 | the same file, after F6-general-1 |
-| F6-wound-1 | 63 to 103 | `note-types/wound_care/v1.json` |
-| F6-wound-2 | 104 to 119 | the same file, after F6-wound-1 |
+| F6-wound | 63 to 119 (the treatment a group inside each wound) | `note-types/wound_care/v1.json` |
 | F6-harm-reduction | 120 to 148 | `note-types/harm_reduction/v1.json` |
 | F6-psychological | 150 to 171 | `note-types/psychological/v1.json` |
 | F6-sexrepro-1, -2, -3 | 173 to 203; 204 to 243; 244 to 251 | `note-types/sexual_reproductive/v1.json`, in order |
 | F6-social-needs | 252 to 267 | `note-types/social_needs/v1.json` |
 | F6-outreach | 268 to 282 | `note-types/outreach/v1.json` |
 | F6-quick-1, -2 | 283 to 307; 308 to 332 | `note-types/quick_encounter/v1.json`, in order |
-| F6-exam-01 to F6-exam-22 | the 22 exam pieces of `forms-inventory-focused-exam.md` section 7 | one module each: `modules/exam_<name>/v1.json` |
-| F6-exam-picker | 1780 to 1836 (piece 23) | the `exam` section of the General note type |
+| F6-exam-01 to F6-exam-09, F6-exam-12 to F6-exam-22 | the exam pieces of `forms-inventory-focused-exam.md` section 7 with those numbers | one module each: `modules/exam_<name>/v1.json` |
+| F6-exam-msk | 912 to 1068 (pieces 10 and 11, one piece) | `modules/exam_msk/v1.json`: the section `msk`, one entry per region, and `msk_gait`, gait once for the exam |
+| F6-exam-picker | 1780 to 1836 and 2032 to 2036 (piece 23) | the `exam` section of the General note type |
+
+Three transcription cards also name another note type, which the export refuses until that note
+type exists (`validate.unknown_note_type`), so each needs its card too. F6-wound needs
+F6-red-flags: a wound's Urgent infection concern opens the Red flags note. F6-psychological needs
+F6-red-flags, for its safety action, and F6-harm-reduction, which its reason Substance use
+suggests. F6-outreach needs F6-general-1, F6-psychological and F6-social-needs, which its new
+needs Medical, Behavioral and Social suggest (PRD main 433). The Skin and Foot modules open Wound
+care; General is checked with them once F6-general-assemble includes them, after F6-wound.
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F6-general-assemble | R | `note-types/general_primary_care/v1.json` (the 22 includes); `mapsTo` on `note-types/quick_encounter/v1.json`, and each `mapsTo` in the shape files of the Quick encounter's two pieces, in the same change (the shape check compares every key) | every F6 transcription card |
+| F6-general-assemble | R | `note-types/general_primary_care/v1.json`: the 21 includes, typed as `GENERAL_PLAN` in `forms/test/definitions.test.ts` says (version 1 of each exam module, after the `exam` section and before `problems`, in the order of `forms-inventory-focused-exam.md` section 7, and no `showWhen` on an include, the condition being on each module section; the test holds the file to it once the file exists). `mapsTo` on `note-types/quick_encounter/v1.json`, as the differences of `spec/quick-1.diff.json` and `spec/quick-2.diff.json` name them field by field, and each `mapsTo` in those two pieces' shape files, in the same change (the shape check compares every key); then quick-1's difference "No field carries mapsTo yet" goes | every F6 transcription card |
 | F6-release | X | `definitions.lock.json` (every released file, the three files of each piece a released definition names, and each released version's `#resolved` hash: `lockOf` with the pieces), the generated files | F6-general-assemble |
 
 ### F7 Flows (forms 6)
@@ -370,7 +387,7 @@ Every card is level R, except L5-labels, and includes its widget test file under
 | F3 | | 2 | 1 | 2 | 5 |
 | F4 | | 2 | | 2 | 4 |
 | F5 | | | 21 | 1 | 22 |
-| F6 | 36 | | 3 | 5 | 44 |
+| F6 | 34 | | 3 | 5 | 42 |
 | F7 | | 2 | 4 | 1 | 7 |
 | L0 | | 5 | | 5 | 10 |
 | L1 | | | | 15 | 15 |
@@ -380,4 +397,4 @@ Every card is level R, except L5-labels, and includes its widget test file under
 | L5 | 1 | | 20 | | 21 |
 | L6 | 1 | | 8 | | 9 |
 | L7 | | 2 | 1 | 2 | 5 |
-| **All** | **40** | **67** | **64** | **49** | **220** |
+| **All** | **38** | **67** | **64** | **49** | **218** |

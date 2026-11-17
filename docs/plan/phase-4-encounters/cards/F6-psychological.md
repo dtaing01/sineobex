@@ -1,6 +1,6 @@
 # Card F6-psychological: the Behavioral health note type
 
-Level: S. Window: 16,000. Needs: E-presets, F6-lists, F6-spec-pieces, F6-shapes-notes, F6-red-flags.
+Level: S. Window: 16,000. Needs: E-presets, F6-lists, F6-spec-pieces, F6-shapes-notes, F6-red-flags, F6-harm-reduction.
 
 ## Goal
 
@@ -42,7 +42,7 @@ of the field specification, and the export accepts it.
 
    | Section | `id` | Label | Kind | Options | Also |
    |---|---|---|---|---|---|
-   | `reason` | `reasons` | Reason for visit | choice, many | 10 buttons, line 4 | flag `other` on Other |
+   | `reason` | `reasons` | Reason for visit | choice, many | 10 buttons, line 4 | flag `other` on Other; `"suggests": "harm_reduction"` on Substance Use |
    | `reason` | `concern` | Current concern | text | | |
    | `safety` | `suicidal` | Suicidal thoughts | choice, one | 4 buttons, line 10 | flag `unable` on "Unable to assess" |
    | `safety` | `homicidal` | Homicidal thoughts | choice, one | 3 buttons, line 12 | flag `unable` on "Unable to assess" |

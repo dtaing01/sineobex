@@ -186,7 +186,7 @@ The ones that would change the most if answered differently:
 2. **Two interpreters and a hand-kept test server.** Every rule exists twice or three times. The
    vectors, the golden file and the parity tests are what hold them together; a rule added
    without one is plan risk 7 again.
-3. **The size.** 220 cards' worth of work, a third of it in the sync core. The frontier model
+3. **The size.** 218 cards' worth of work, a third of it in the sync core. The frontier model
    now writes all of it, so the narrow file list and the machine check a card gave are replaced
    by rule-removal runs and a review of each unit ("How this phase is built").
 4. **The defaults are clinical choices made by an engineer.** Until Brooke and Mercy go through

@@ -1201,9 +1201,9 @@ Each function, as built:
   `chartsMedical`, every `treatmentRecord` section; without `viewSensitive`, a diagnosis whose
   code is sensitive, with its entry, or outside a repeating section its whole section. A code is
   sensitive by phase 3's rule (`isSensitiveCode`, exported): its first characters, as many as a
-  range's `from` has, sort between `from` and `to`, both included. Only the code decides, so a diagnosis with a label
-  and no code is not sensitive. `ordersMedications` changes nothing: `needs` hides nothing from a
-  reader (2.2).
+  range's `from` has, sort between `from` and `to`, both included. Only the code decides, so a
+  diagnosis with a label and no code is not sensitive. `ordersMedications` changes nothing: `needs`
+  hides nothing from a reader (2.2).
 - **`handoffLines`** takes two lists side by side: `defs[i]` is the definition of note `i`'s own
   version, and `answersByNote[i]` the answers its reader may see (`visibleAnswers`, applied by the
   caller), or null for a note they may not see, which gives no line and keeps its place; lists of
@@ -1450,14 +1450,14 @@ their levels, files and order. This part's units, and what each owns:
 
 | Unit | Owns | Depends on |
 |---|---|---|
-| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/`, `scripts/` and `test/export.test.ts`: the schema, the types, the path model, the resolver, the validator, the lock, the version rules, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
-| **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/contract/test-vectors/forms-conformance.json` and its two readers | F0 |
+| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/`, `scripts/` and the tests of the units that own those (`test/interp/`, `test/conformance.test.ts`, `test/definitions.test.ts`, `test/export.test.ts`): the schema, the types, the path model, the resolver, the validator, the lock, the version rules, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
+| **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/contract/test-vectors/forms-conformance.json` and its TypeScript reader, `packages/forms/test/interp/`; in wave B's review, edits to F0's `src/validate.ts` and its test (2.2) | F0 |
 | **E** The export | `packages/forms/scripts/` and its test, `packages/forms/test/export.test.ts`; the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
-| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the golden test | F1 (the vectors), E (the golden file) |
+| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the Dart reader of the vectors, the golden test | F1 (the vectors), E (the golden file) |
 | **F3** Definitions on the server | `db/migrations/0017_note_type_versions.sql`, `packages/forms/src/install.ts`, `services/api/src/forms/`, `services/api/src/routes/forms.ts` | F0, E |
 | **F4** Definitions on the phone | `apps/mobile/lib/forms/definition_store.dart`, `forms_api.dart`, `forms_providers.dart`; one level X card adds the calls in `lib/auth` and `lib/sync` | F2, F3 |
 | **F5** The renderer | `apps/mobile/lib/features/forms/`, its tests | F2 |
-| **F6** The definitions | `packages/forms/definitions/`, `definitions.lock.json` | F0, E |
+| **F6** The definitions | `packages/forms/definitions/`, `definitions.lock.json`, `packages/forms/test/definitions.test.ts`; in wave B's review, an edit to F0's `src/shape-check.ts` and its test (4.2) | F0, E |
 | **F7** Flows | `apps/mobile/lib/encounters/{red_flags,expand_quick}.dart`, and named edits to F5's and the lifecycle's screens | F5, F6, lifecycle L4 |
 
 `installPresets` lives in the forms package, not in the API, because the seed calls it and the
