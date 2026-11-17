@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
+import { expandQuick } from '../src/interp/expand.ts';
 import { finishCheck } from '../src/interp/finish.ts';
+import { handoffLines } from '../src/interp/handoff.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
 import { noteTypeFile, resolve, type DefinitionFiles, type ResolvedNoteType } from '../src/resolve.ts';
 
@@ -229,5 +231,29 @@ describe('what a later phase reads on the real definitions', () => {
   ])('%s does not complete with %j and no answer at %s', (key, answers, path) => {
     const d = definition(key);
     expect(finishCheck(d, answers).map((problem) => problem.path)).toContain(path);
+  });
+});
+
+describe('the EMS handoff on the real definitions', () => {
+  // TYP-6: after Expand, the quick encounter's chief concern and vitals are in General too; the
+  // medic's summary showed each in two field lines (and both recaps) side by side.
+  it('lists a quick answer Expand carried into General once among the field lines', () => {
+    const quick = definition('quick_encounter');
+    const answers: Answers = {
+      'visit.parts': ['general'],
+      'general.concern': 'Demo: cough',
+      'general.hr': 130,
+    };
+    const expanded = expandQuick(quick, answers, general, {
+      vitals: { id: ENTRY, at: AT },
+      problems: { id: 'e2aaaaaa', at: AT },
+    }).answers;
+    expect(Object.keys(expanded)).toEqual(expect.arrayContaining(['reason.concern', `vitals.${ENTRY}.hr`]));
+    const fields = handoffLines([quick, general], [answers, expanded]).filter((l) => l.kind === 'field');
+    expect(fields.filter((l) => l.value === '130 bpm').map((l) => l.note)).toEqual([1]);
+    expect(fields.filter((l) => l.value === 'Demo: cough').map((l) => l.note)).toEqual([1]);
+    // Before Expand the quick note's own lines are the summary.
+    const alone = handoffLines([quick], [answers]).filter((l) => l.kind === 'field');
+    expect(alone.map((l) => l.value)).toEqual(expect.arrayContaining(['130 bpm', 'Demo: cough']));
   });
 });

@@ -1956,7 +1956,7 @@
     {
       "key": "demo_quick",
       "version": 2,
-      "hash": "627023362f7b150100fd1d9507078293225f874f8926c5538d31d5108d628f23",
+      "hash": "96144270efd1bdb9c799539c193de29f34f61d230dd82572581341c6d8e6f12e",
       "definition": {
         "key": "demo_quick",
         "version": 2,
@@ -2018,6 +2018,7 @@
                 "max": 200,
                 "decimals": 0,
                 "unit": "bpm",
+                "handoff": true,
                 "mapsTo": "demo_visit:vitals.pulse"
               },
               {
@@ -5471,7 +5472,7 @@
     {
       "key": "demo_quick",
       "version": 2,
-      "hash": "627023362f7b150100fd1d9507078293225f874f8926c5538d31d5108d628f23",
+      "hash": "96144270efd1bdb9c799539c193de29f34f61d230dd82572581341c6d8e6f12e",
       "cases": [
         {
           "name": "blank",
@@ -5726,6 +5727,13 @@
             }
           ],
           "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo pulse",
+              "value": "30 bpm"
+            },
             {
               "kind": "recap",
               "note": 0,

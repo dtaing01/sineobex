@@ -7,6 +7,7 @@ library;
 import 'conditions.dart';
 import 'definition.dart';
 import 'effective.dart';
+import 'field_at.dart';
 import 'layout.dart';
 import 'paths.dart';
 import 'recap.dart';
@@ -51,16 +52,19 @@ class HandoffLine {
 ///
 /// PLAN-OPEN: the content of the summary (forms.md 10.1 #6). The default built: first the answers
 /// that count of every field marked `handoff` (with everything in it), less what a sensitive exam
-/// put there, note by note in the order given, each laid out and written as the read model writes
-/// it, its labels joined by ', ', an entry's title first in a repeating section; then each note's
-/// recap (recapLines), less every `treatmentRecord` section, in the same order of notes. The patient's name, age and allergies come from
-/// the chart, not from here.
+/// put there and less a quick note's answer that Expand carried into a full note of the visit,
+/// which then answers at the field it maps to ([_expanded]), note by note in the order given, each
+/// laid out and written as the read model writes it, its labels joined by ', ', an entry's title
+/// first in a repeating section; then each note's recap (recapLines), less every `treatmentRecord`
+/// section, in the same order of notes. The patient's name, age and allergies come from the chart,
+/// not from here.
 List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> answersByNote) {
   if (definitions.length != answersByNote.length) {
     throw ArgumentError('handoffLines: ${definitions.length} definitions for ${answersByNote.length} notes');
   }
   final fields = <HandoffLine>[];
   final recaps = <HandoffLine>[];
+  final held = _answeredFields(definitions, answersByNote);
   for (final (note, definition) in definitions.indexed) {
     final answers = answersByNote[note];
     if (answers == null) continue;
@@ -70,7 +74,11 @@ List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> ans
     // The summary is shown to EMS, so nothing a sensitive exam put there is in it, as in the recap
     // (lifecycle 6.4 rule 8); the validator keeps a handoff field out of a restricted section.
     final shown = withoutSensitiveExams(definition, effectiveAnswers(definition, answers));
-    for (final LaidOutSection(:section, :items, :entries) in layOut(definition, shown, skip: (n) => !_marked(n))) {
+    for (final LaidOutSection(:section, :items, :entries) in layOut(
+      definition,
+      shown,
+      skip: (n) => !_marked(n) || _expanded(n, held),
+    )) {
       // Nothing is struck here, so every item has a value.
       for (final item in items) {
         line(section.id, item.labels, item.value!);
@@ -90,6 +98,41 @@ List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> ans
     }
   }
   return [...fields, ...recaps];
+}
+
+/// For each note type of the visit, by key, the answers that count in its notes, by their path
+/// without an entry's part (a leaf's key): what a `mapsTo` names.
+Map<String, Set<String>> _answeredFields(List<NoteTypeDef> definitions, List<Answers?> answersByNote) {
+  final held = <String, Set<String>>{};
+  for (final (note, definition) in definitions.indexed) {
+    final answers = answersByNote[note];
+    if (answers == null) continue;
+    final keys = held.putIfAbsent(definition.key, () => <String>{});
+    for (final path in effectiveAnswers(definition, answers).keys) {
+      final leaf = fieldAt(definition, path)?.leaf;
+      if (leaf != null) keys.add(leaf.key);
+    }
+  }
+  return held;
+}
+
+/// Whether a quick field's answer was carried into a full note of the visit (Expand, forms 6.4): it,
+/// or a group or grid around it, maps to a note type of which a note holds an answer that counts at
+/// the target of one of its answers. The full note's line stands for it, and stays right when that
+/// note is corrected; the quick note keeps the answer, and its recap still shows it.
+bool _expanded(FieldNode node, Map<String, Set<String>> held) {
+  FieldNode? mapped = node;
+  while (mapped != null && mapped.field.mapsTo == null) {
+    mapped = mapped.parent;
+  }
+  final mapsTo = mapped?.field.mapsTo;
+  final base = mapped?.base;
+  if (mapsTo == null || base == null) return false;
+  final colon = mapsTo.indexOf(':');
+  final answered = held[mapsTo.substring(0, colon)];
+  if (answered == null) return false;
+  final own = base.join('.');
+  return node.leaves.any((leaf) => answered.contains(mapsTo.substring(colon + 1) + leaf.key.substring(own.length)));
 }
 
 /// Whether a field is in the handoff, or holds a field that is: it, or a group or grid around it,
