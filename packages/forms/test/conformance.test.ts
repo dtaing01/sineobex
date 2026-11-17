@@ -8,6 +8,7 @@ import { normalAnswers } from '../src/interp/normal.ts';
 import { readModel } from '../src/interp/read-model.ts';
 import type { NoteCorrection } from '../src/interp/read-model.ts';
 import { recapLines } from '../src/interp/recap.ts';
+import { suggestions } from '../src/interp/suggestions.ts';
 import { visibleAnswers } from '../src/interp/visible.ts';
 import type { NoteReader } from '../src/interp/visible.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
@@ -51,6 +52,7 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
   readModel: (definition, c) =>
     readModel(definition, c.answers as Answers, c.corrections as NoteCorrection[]),
   visibleAnswers: (definition, c) => visibleAnswers(definition, c.answers as Answers, c.reader as NoteReader),
+  suggestions: (definition, c) => suggestions(definition, c.answers as Answers),
 };
 
 describe('the conformance definitions', () => {
