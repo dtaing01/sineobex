@@ -90,7 +90,8 @@
         {
           "id": "known",
           "kind": "flag",
-          "label": "Known pregnancy, no test today"
+          "label": "Known pregnancy, no test today",
+          "clears": ["test"]
         },
         {
           "id": "possible",

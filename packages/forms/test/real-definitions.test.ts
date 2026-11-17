@@ -180,6 +180,17 @@ describe('what a later phase reads on the real definitions', () => {
     },
   );
 
+  // TYP-4: "Known pregnancy, no test today" (forms 10.1 #24) means no test today is recorded.
+  it('holds no pregnancy test today beside a pregnancy known without one', () => {
+    const after = effectiveAnswers(definition('sexual_reproductive'), {
+      'reason.reasons': ['pregnancy'],
+      'pregnancy.test': 'negative',
+      'pregnancy.known': true,
+    });
+    expect(after['pregnancy.known']).toBe(true);
+    expect(after['pregnancy.test']).toBeUndefined();
+  });
+
   // TYP-3: the quick encounter's follow-up note (PRD main 404) has its one home in the Red flags
   // and disposition note, beside the date, where the phase 7 follow-up task reads it.
   it('keeps a follow-up note beside the follow-up the Red flags note records', () => {

@@ -393,6 +393,7 @@ describe('the plans of the pieces', () => {
       path: 'pregnancy.known',
       kind: 'flag',
       label: 'Known pregnancy, no test today',
+      clears: ['test'],
     });
     const showWhen = shapeOf('sexrepro-2').sections.find((section) => section.id === 'pregnant')
       ?.showWhen as Condition;

@@ -39,7 +39,7 @@
     },
     {
       "line": 13,
-      "what": "Beside the pregnancy test, a flag the lines do not have: Known pregnancy, no test today. A pregnancy known before this visit opens Current pregnancy without a test being recorded that was not done.",
+      "what": "Beside the pregnancy test, a flag the lines do not have: Known pregnancy, no test today. A pregnancy known before this visit opens Current pregnancy without a test being recorded that was not done. While it is ticked the Pregnancy test does not count and is disabled (clears), so a note never holds a test today beside No test today.",
       "why": "inventory A44; PRD main 417; PLAN-OPEN (forms 10.1 #1): a departure from the lines, for the clinical team to confirm"
     },
     {

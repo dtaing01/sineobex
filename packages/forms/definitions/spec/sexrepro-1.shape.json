@@ -55,7 +55,12 @@
       "label": "Pregnancy test",
       "options": ["positive", "negative"]
     },
-    { "path": "pregnancy.known", "kind": "flag", "label": "Known pregnancy, no test today" },
+    {
+      "path": "pregnancy.known",
+      "kind": "flag",
+      "label": "Known pregnancy, no test today",
+      "clears": ["test"]
+    },
     {
       "path": "pregnancy.possible",
       "kind": "choice",
