@@ -84,12 +84,12 @@ packages/forms/
   definitions.lock.json                the hashes of every released file, of the piece files a released
                                        definition names, and of each released version's resolved definition
   schema/definition.schema.json        the JSON Schema of the three file kinds
-  src/                                 the path model, the resolver, the validator, the lock, the version
-                                       rules, the spec and shape checks, and the interpreter (TypeScript)
-  scripts/export.ts                    writes everything under generated/ and the phone asset
+  src/                                 the path model, resolver, validator, lock, version rules, spec and shape
+                                       checks, the installer (3.2) and the interpreter (TypeScript)
+  scripts/                             export.ts, golden.ts and lock-grows.ts (4.1, 4.2, 7.3)
   generated/presets.json               every note type version with includes and lists resolved, and its hash
   generated/golden.json                what the interpreter says about each preset (7.3)
-apps/mobile/assets/forms/presets.json  a copy of generated/presets.json
+apps/mobile/assets/forms/presets.json  the same bytes as generated/presets.json, written by the export
 ```
 
 A **resolved** definition has no include and no list reference: every module and list is copied
@@ -675,7 +675,7 @@ is built from `handoffLines` on the server (lifecycle 5.7).
    example that names a real organization, SPEC 263 to 265) is replaced by the marker
    `[left out]`, which the spec check skips. The PHI guard's list of fixture folders gains
    `packages/forms/` and `packages/contract/test-vectors/`
-   (`tools/phi-guard-rules.mjs:4-10`), so copied text and made-up people in vectors are scanned.
+   (`tools/phi-guard-rules.mjs:4-14`), so copied text and made-up people in vectors are scanned.
 2. Its definition is written by hand as JSON, following the recipe
    `docs/plan/patterns/form-definition.md`.
 3. Every place the definition differs from the text on purpose is listed in
@@ -716,6 +716,43 @@ As built:
   names a list finds that file's faults again, so the export drops a problem it has already
   printed (same file, place and rule).
 
+As built (unit E, `packages/forms/scripts/export.ts`, run as `pnpm forms:export`):
+
+- **What it reads.** Every file under `definitions/`. A file under `spec/` is a piece's, and the
+  spec check reads its name. Any other file must sit where a note type version, a module version
+  or a shared list lives (`note-types/<key>/v<N>.json`, `modules/<name>/v<N>.json`,
+  `lists/<name>.json`), or it fails as `export.unknown_file`, since nothing would read it; a file
+  that does not parse fails as `export.bad_json`. Each is held to the schema of its kind. Any
+  problem so far stops the run.
+- **The order after that.** Each note type version is resolved once, and validated with the
+  newest version of each key as the note types it may name (`mapsTo`, `suggests`,
+  `open_note_type`). Then the lock (handed the parsed pieces), the version rules, the spec check
+  and the shape check run over the whole tree.
+- **Nothing is written while any problem stands**, so the generated files only ever hold
+  definitions that passed every check, which is all the server and the phone trust. Each problem
+  is printed once, as its file, its place, its rule and its message, then a count; the command
+  exits 1.
+- **What it writes**, when nothing fails: `generated/presets.json` and the phone's copy, the same
+  text in the same run. It holds every note type version that resolved, as
+  `{ key, version, hash, definition }`, ordered by key and then by version as a number (10 after
+  2). `hash` is `sha256Hex(canonicalJson(definition))`, as the server stores it (3.1), and
+  `definition` is that canonical JSON read back, so its keys are in canonical order: a file with
+  its keys in another order writes the same bytes, as the lock and the hash read it. With no note
+  type it writes `[]`.
+- **Notes fail nothing.** Before any problem it prints, each as `note`, its file and its message:
+  a piece no definition names yet, a module or list no note type uses yet (known only when every
+  note type resolved), and for each note type version the most answers a note on it can hold
+  (2.4). The drift step leaves the notes out of what it prints.
+- **The release mode**, `pnpm forms:export --release` (card F6-release). A released file can
+  never change again, so nothing is released that nothing checks or uses: what the notes call
+  unused becomes a problem, `export.unused_file`, and nothing is written. When every check
+  passes it writes `definitions.lock.json` (`lockOf` with the pieces) over every file present:
+  each note type version, module, list and piece file, and each version's `#resolved` hash.
+  Without `--release` the lock is never written, so nothing is released by accident. Any other
+  argument is refused.
+- **The golden file is a command of its own**, `pnpm --filter @sineobex/forms golden`
+  (`scripts/golden.ts`, 7.3), run after the export, whose presets it reads.
+
 ### 4.2 What the export checks (each failure names the file and the rule)
 
 | Check | What it catches |
@@ -727,7 +764,7 @@ As built:
 | Version rules (2.6, `src/versions.ts`) | A path or code reused for another meaning: a kind or a unit that changed, or a label that changed with no rename declared, against every earlier version |
 | The spec check (`src/spec-check.ts`) | For each file whose sections name a piece: a word of the piece that is no option label of those sections, and an option label there that is no word of the piece, unless `<piece>.diff.json` declares it; a declaration that nothing needs |
 | The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: every key of every section and field (path, kind, label, choose-one or choose-many, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal` and the rest), the option codes in order, the order of sections and fields, the file the piece is for and the note type's header (below). So a wrong choose-one, a wrong condition, a missing flag or a crossed code fails the export. |
-| Drift | Generated files that differ from what the export writes (`git diff --exit-code`, as the contract does) |
+| Drift | Generated files that differ from what the export writes (`git diff --exit-code`, as the contract does); a released line that left the lock or changed (`lock-grows`, below) |
 
 **The spec check** reads the bracketed tokens of the piece (`[ New concern ]`, with SPEC's
 escapes undone as inventory 1 describes) and the plain list lines, and compares them with the
@@ -812,6 +849,27 @@ a released definition names; and, at `<the version's file>#resolved`, the hash o
 version's resolved definition, computed as the server computes it. A change to the resolver that
 changes a released definition then fails the export, at the version's file, even though no file
 changed. A file is released by adding its line; a file with no line is a draft and may change.
+The export writes each preset's definition in canonical key order too (4.1), so the generated
+files do not change either when a file's keys are reordered.
+
+**The lock only grows, as built** (wave C's review). The export holds the tree to whatever lock it
+finds, so a lock deleted or emptied would release nothing and every check would pass. The drift
+step therefore also runs `pnpm --filter @sineobex/forms lock-grows <base>`
+(`packages/forms/scripts/lock-grows.ts`): every line of the lock at the base commit must still be
+there, with the same hash (`lock.removed`, `lock.rehashed`, at the lock's line). A line added is
+a release, and passes; a base with no lock passes; a base git cannot read fails the step, so the
+check never passes without looking. It is not a rule of the export, which cannot know what was
+released before. The base is the merge base with `origin/main` in `tools/ci-local.sh`; in CI it is
+the pull request's base, else the commit before the push, else `origin/main`, and the job fetches
+the whole history. A run started by hand on `main` compares the lock with itself, and checks
+nothing.
+
+**The drift step, as built** (`tools/ci-local.sh` and the `forms` job of
+`.github/workflows/ci.yml`): the export, the golden script (7.3), `lock-grows`, then a failure
+when `packages/forms/generated/` or `apps/mobile/assets/forms/` differs from what is committed,
+or holds a file that was never committed, which `git diff` does not see
+(`git status --porcelain`). So a contributor who changes a definition or the interpreter runs
+`pnpm forms:export` and then the golden script, and commits what they write.
 
 **The validator's rules, as built.** Each is reported as `validate.<rule>`, in the file and at
 the place it was written (through the resolver's origins), once:
