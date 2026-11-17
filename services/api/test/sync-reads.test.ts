@@ -10,7 +10,9 @@ import {
   finishNote,
   installNoteTypes,
   noteOn,
+  setCredential,
   setupTeam,
+  signoffOf,
   TEST_NOTE_TYPES,
   TEST_RED_FLAGS_TYPE,
   TEST_RESTRICTED_TYPE,
@@ -530,6 +532,90 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         server: { value: ANSWERS['general.notes'] },
         details: { outcome: 'history_only', problem: 'note_finished' },
       });
+    });
+  });
+
+  describe('the Medical gate (lifecycle 4.2; 4.9 rule 12)', () => {
+    it('holds every kind of change to a Medical note from a credential lowered offline; an addendum changes no note and is taken', async () => {
+      const kay = await clinician(h, t, 'kay@example.com', 'Kay (demo)', 'attending');
+      const visit = await visitOf(kay, patientId);
+      const flags = await noteOn(kay, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
+      await finishNote(kay, flags, 'sign', 'signed');
+      const draft = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: fluids' });
+      const completed = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: rest' });
+      await finishNote(kay, completed, 'complete', 'completed');
+      const signed = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: sleep' });
+      await finishNote(kay, signed, 'sign', 'signed');
+
+      // Made offline, before the credential went down; sent after.
+      const created = await kay.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: {
+          encounterId: visit.encounterId,
+          noteTypeKey: TEST_MEDICAL_TYPE.key,
+          noteTypeVersion: TEST_MEDICAL_TYPE.version,
+        },
+      });
+      const answer = await kay.phone.change({
+        entity: 'encounter_note',
+        recordId: draft.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: 'Demo: fluids and rest',
+        baseVersion: 1,
+      });
+      const reopen = await kay.phone.change({
+        entity: 'encounter_note',
+        recordId: completed.noteId,
+        op: 'set',
+        field: 'status',
+        value: 'draft',
+        baseVersion: 2,
+      });
+      const signoff = await signoffOf(kay, draft, 'sign');
+      const correction = await kay.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: signed.noteId,
+          changes: [{ field: 'data.care.plan', newValue: 'Demo: sleep and food', baseVersion: 1 }],
+          reason: 'Demo: left out',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: 'attending',
+          signoffId: null,
+        },
+      });
+      const addendum = await kay.phone.change({
+        entity: 'note_addendum',
+        op: 'create',
+        value: {
+          encounterId: visit.encounterId,
+          noteId: signed.noteId,
+          text: 'Demo: called back',
+          signoffId: null,
+        },
+      });
+      await setCredential(h, t, kay.membershipId, 'chw');
+      const gated = [created, answer, reopen, signoff, correction];
+      const answers = await kay.send(...gated, addendum);
+      expect(answers.slice(0, 5)).toEqual(gated.map(() => expect.objectContaining(held)));
+      expect(answers[5]).toMatchObject({ status: 'accepted', serverVersion: 1 });
+
+      // Nothing of the held changes reached the chart.
+      expect((await noteRow(draft.noteId)).data).toEqual({ 'care.plan': 'Demo: fluids' });
+      expect((await noteRow(completed.noteId)).status).toBe('completed');
+      expect((await noteRow(signed.noteId)).data).toEqual({ 'care.plan': 'Demo: sleep' });
+      const stored = await h.scratch.owner<{ n: number }[]>`
+        select (select count(*) from sineobex.encounter_notes where id = ${created.recordId})
+             + (select count(*) from sineobex.note_signoffs where id = ${signoff.recordId})
+             + (select count(*) from sineobex.note_corrections where id = ${correction.recordId}) as n`;
+      expect(Number(stored[0]!.n)).toBe(0);
+      const items = await h.scratch.owner<{ changeId: string; reason: string }[]>`
+        select change_id as "changeId", reason from sineobex.quarantine_items
+        where user_id = ${kay.id} order by received_at, id`;
+      expect(items).toEqual(gated.map((c) => ({ changeId: c.changeId, reason: 'permission' })));
     });
   });
 });
