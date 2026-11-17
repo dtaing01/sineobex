@@ -1389,8 +1389,16 @@ class FakeSyncServer {
       if (s.value == null) return (problem: 'patient_cannot_be_removed', notice: null);
       if (isBlankValue(s.cur['value'])) return null;
     }
-    if (!_notesOf(s.rec.id).any((n) => _noteStatusOf(n) != 'draft')) return null;
-    return (problem: 'encounter_has_finished_note', notice: (kind: 'late_change_kept', to: [s.actor.userId]));
+    // The sender, and whoever acts as the author of each finished note, once each (encounter.ts).
+    final authors = {
+      for (final n in _notesOf(s.rec.id))
+        if (_noteStatusOf(n) != 'draft') _actingAuthor(n),
+    };
+    if (authors.isEmpty) return null;
+    return (
+      problem: 'encounter_has_finished_note',
+      notice: (kind: 'late_change_kept', to: [s.actor.userId, ...authors.where((a) => a != s.actor.userId)]),
+    );
   }
 
   /// A visit's kind (encounter.ts kindSet): to Medical from any version, never back, never a conflict.

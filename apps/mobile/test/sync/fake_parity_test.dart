@@ -589,14 +589,37 @@ void main() {
               for (final c in changes) [c['field'], c['value'], 'kept_both'],
             ],
           );
-          expect(told(id), [for (final _ in changes) '$blair late_change_kept']);
+          // ...and so is whoever acts as the note's author (3.6; review finding REC-2).
+          expect(told(id), [
+            for (final _ in changes) '$alex late_change_kept',
+            for (final _ in changes) '$blair late_change_kept',
+          ]);
           expect(server.notices.every((n) => n.entity == entityEncounter), isTrue);
 
           // Sent twice, it answers the same, and nothing more is kept or told.
           expect(await send(blair, changes), answered);
-          expect(told(id), hasLength(changes.length));
+          expect(told(id), hasLength(2 * changes.length));
         },
       );
+
+      test('a late change to the envelope tells whoever acts as the author of each finished note, once each, never the sender twice', () async {
+        final id = visitOf(patientId: server.seedPatient());
+        // Two of Alex's notes, one of Casey's, and a draft of Blair's, which settles nothing.
+        server.finishNote(noteOn(id));
+        server.finishNote(noteOn(id));
+        server.finishNote(noteOn(id, by: casey));
+        noteOn(id, by: blair);
+        final fromBlair = setOn(entityEncounter, id, 'summary', 'Demo: one more line', 0);
+        final fromCasey = setOn(entityEncounter, id, 'summary', 'Demo: another line', 0);
+        expect((await send(blair, [fromBlair])).single['details'], late);
+        expect((await send(casey, [fromCasey])).single['details'], late);
+        final notices = [
+          for (final n in server.notices)
+            if (n.recordId == id) n.userId,
+        ];
+        expect(notices.sublist(0, 3), unorderedEquals([alex, blair, casey]));
+        expect(notices.sublist(3), unorderedEquals([alex, casey]));
+      });
 
       test(
         'a signed visit keeps a late change too, and takes a new note: an encounter is never locked whole',

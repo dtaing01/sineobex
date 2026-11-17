@@ -1273,6 +1273,7 @@ describe('phase 4 sync: encounters and notes', () => {
     const late = { outcome: 'history_only', problem: 'encounter_has_finished_note' };
 
     it('once a note is finished, a change to the patient, place or summary is kept in history, and the sender is told', async () => {
+      // ...and so is whoever acts as the note's author (3.6; review finding REC-2).
       const [first, second] = [
         await createPatient(h, t.teamId, t.adminId),
         await createPatient(h, t.teamId, t.adminId),
@@ -1310,8 +1311,11 @@ describe('phase 4 sync: encounters and notes', () => {
         select field, value, kind from sineobex.field_history
         where record_id = ${encounterId} and kind <> 'created' order by id`;
       expect(kept).toEqual(changes.map((c) => ({ field: c.field, value: c.value, kind: 'kept_both' })));
-      expect(await noticesOn(encounterId)).toEqual(
-        changes.map(() => ({ userId: bo.id, kind: 'late_change_kept', entity: 'encounter' })),
+      // Two to each change, made together, so in no order between them.
+      const notices = await noticesOn(encounterId);
+      expect(notices.every((n) => n.kind === 'late_change_kept' && n.entity === 'encounter')).toBe(true);
+      expect(changes.map((_, i) => [notices[2 * i]!.userId, notices[2 * i + 1]!.userId].sort())).toEqual(
+        changes.map(() => [bo.id, ash.id].sort()),
       );
       const events = await expectAudit(h, 'encounter.kept_in_history', {
         after: mark,
@@ -1331,8 +1335,26 @@ describe('phase 4 sync: encounters and notes', () => {
 
       // Sent twice, it answers the same, and nothing more is kept or told.
       expect(await bo.send(...changes)).toEqual(answered);
-      expect(await noticesOn(encounterId)).toHaveLength(changes.length);
+      expect(await noticesOn(encounterId)).toHaveLength(2 * changes.length);
       await expectAudit(h, 'encounter.kept_in_history', { after: mark, count: changes.length });
+    });
+
+    it('a late change to the envelope tells whoever acts as the author of each finished note, once each, never the sender twice', async () => {
+      const cy = await clinician('cy.e@example.com', 'Cy E (demo)', 'attending');
+      const p = await createPatient(h, t.teamId, t.adminId);
+      const encounterId = await encounterOf(ash, p.id);
+      // Two of Ash's notes, one of Cy's, and a draft of Bo's, which settles nothing.
+      await finish(await noteOn(ash, encounterId));
+      await finish(await noteOn(ash, encounterId));
+      await finish(await noteOn(cy, encounterId));
+      await noteOn(bo, encounterId);
+      const fromBo = await setOn(bo, encounterId, 'summary', 'Demo: one more line', 0);
+      const fromCy = await setOn(cy, encounterId, 'summary', 'Demo: another line', 0);
+      expect((await bo.send(fromBo)).map((r) => r.details)).toEqual([late]);
+      expect((await cy.send(fromCy)).map((r) => r.details)).toEqual([late]);
+      const told = (await noticesOn(encounterId)).map((n) => n.userId);
+      expect(told.slice(0, 3).sort()).toEqual([ash.id, bo.id, cy.id].sort());
+      expect(told.slice(3).sort()).toEqual([ash.id, cy.id].sort());
     });
 
     it('a signed visit keeps a late change too, and takes a new note: an encounter is never locked whole', async () => {

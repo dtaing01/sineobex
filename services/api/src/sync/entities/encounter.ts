@@ -140,27 +140,36 @@ export const encounterRules: EntityRules<Value> = {
  * The envelope lock (lifecycle 4.3). Asked by the draft rule once the value differs from the one
  * held. A patient is never taken off a visit (3.10); a visit with none can always be given one
  * (3.1); everything else waits on the visit's notes. The team lock, which every encounter and note
- * change takes first (4.2), keeps a note from being finished while this reads.
+ * change takes first (4.2), keeps a note from being finished while this reads. The sender is told,
+ * and so is whoever acts as the author of each finished note, once each, when that is someone else:
+ * the summary and the patient are part of what they signed (3.6, PRD main 100; review finding REC-2).
  */
 async function envelopeKept(s: SetContext): Promise<KeptInstead | null> {
   if (s.field === 'patientId') {
     if (s.value === null) return { problem: 'patient_cannot_be_removed' };
     if (isBlank(s.cur.value)) return null;
   }
-  if (!(await hasFinishedNote(s.tx, s.actor.teamId, s.rec.id))) return null;
+  const authors = await finishedNoteAuthors(s.tx, s.actor.teamId, s.rec.id);
+  if (authors.length === 0) return null;
   return {
     problem: 'encounter_has_finished_note',
-    notice: { kind: 'late_change_kept', to: [s.actor.authorId] },
+    notice: {
+      kind: 'late_change_kept',
+      to: [s.actor.authorId, ...authors.filter((a) => a !== s.actor.authorId)],
+    },
   };
 }
 
-/** A note of the visit is completed or signed: what a signer saw of the envelope is settled. */
-async function hasFinishedNote(tx: Tx, teamId: string, encounterId: string): Promise<boolean> {
-  const rows = await tx`
-    select 1 from sineobex.encounter_notes
+/**
+ * Who acts as the author (3.8) of each completed or signed note of the visit, once each: a finished
+ * note settles what its signer saw of the envelope.
+ */
+async function finishedNoteAuthors(tx: Tx, teamId: string, encounterId: string): Promise<string[]> {
+  const rows = await tx<{ userId: string }[]>`
+    select distinct coalesce(assigned_user_id, author_user_id) as user_id from sineobex.encounter_notes
     where team_id = ${teamId} and encounter_id = ${encounterId} and status <> 'draft'
-    limit 1`;
-  return rows.length > 0;
+    order by 1`;
+  return rows.map((r) => r.userId);
 }
 
 /**
