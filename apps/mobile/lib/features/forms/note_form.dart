@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../forms/conditions.dart';
 import '../../forms/definition.dart';
+import '../../forms/normal.dart';
 import '../../forms/paths.dart';
 import '../../forms/recap.dart';
 import 'action_field.dart';
@@ -16,7 +18,9 @@ import 'grid_field.dart';
 import 'group_field.dart';
 
 /// A note's form (phase 4 design, forms 8.1; lifecycle 9.5): its sections as an accordion in the
-/// definition's order, one open at a time, each drawing its fields with the field host.
+/// definition's order, one open at a time, each drawing its fields with the field host. A section
+/// that offers it has a one-tap Normal (6.3), in each entry where it repeats; a system whose exam
+/// is split over sections has one Normal for all of them as well (10.3 #7).
 ///
 /// Only what shows is drawn, as the interpreter reads the note (conditions.dart): a section or a
 /// field whose condition doesn't hold is not drawn, and its stored answer is left alone, so it is
@@ -111,6 +115,38 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
     }
   }
 
+  /// What the last Normal did, said under the Normal that was tapped: that Normal's key, the words.
+  (String, String)? _said;
+
+  /// One-tap Normal on [targets], each a section and, in a repeating one, an entry: writes what
+  /// normalAnswers gives each, one answer at a time (6.3), each target seeing what was written
+  /// before it. It fills only what has no answer, so a finding already charted stays.
+  void _normal(String at, List<(String, String?)> targets) {
+    final working = {...widget.answers};
+    var filled = 0;
+    for (final (section, entry) in targets) {
+      for (final MapEntry(:key, :value) in normalAnswers(widget.definition, section, working, entry).entries) {
+        working[key] = value;
+        change(key, value);
+        filled++;
+      }
+    }
+    final words = switch (filled) {
+      0 => 'Nothing left for Normal to fill.',
+      1 => '1 answer filled as normal.',
+      _ => '$filled answers filled as normal.',
+    };
+    setState(() => _said = (at, words));
+    // Where the platform takes announcements (iOS), one now; elsewhere the line is a live region.
+    if (MediaQuery.supportsAnnounceOf(context)) {
+      unawaited(SemanticsService.sendAnnouncement(View.of(context), words, Directionality.of(context)));
+    }
+  }
+
+  /// A Normal, with what it last did under it.
+  Widget _normalButton(String at, String name, List<(String, String?)> Function() targets) =>
+      _Normal(name: name, onPressed: () => _normal(at, targets()), said: _said?.$1 == at ? _said!.$2 : null);
+
   // The field host's view of the answers. A change made as a field leaves the screen still
   // reaches the screen: `widget` stays the last one given.
   @override
@@ -188,11 +224,39 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
     // Worked out each time it is shown and never stored (lifecycle 8.1); nothing from a sensitive
     // exam is in it, for anyone.
     final recaps = {for (final line in recapLines(widget.definition, widget.answers)) line.section: line.text};
+    // Each system's Normal goes above the first of its sections that shows.
+    final systems = <SectionNode, _System>{};
+    if (widget.enabled) {
+      for (final system in _systemsOf(reading.model)) {
+        final drawn = [
+          for (final s in system.sections)
+            if (shown.contains(s)) s,
+        ];
+        if (drawn.length > 1) systems[drawn.first] = _System(system.name, drawn);
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final (i, s) in shown.indexed) ...[
           if (i > 0) const SizedBox(height: FieldSpace.s3),
+          if (systems[s] case final system?) ...[
+            _SystemBand(
+              name: system.name,
+              normal: _normalButton(
+                'system ${system.name}',
+                system.name,
+                () => [
+                  for (final s in system.sections)
+                    if (s.section.repeat == null)
+                      (s.section.id, null)
+                    else
+                      for (final entry in reading.entries(s)) (s.section.id, entry),
+                ],
+              ),
+            ),
+            const SizedBox(height: FieldSpace.s3),
+          ],
           _Section(
             key: _keyOf(s.section.id),
             section: s.section,
@@ -225,7 +289,17 @@ class _Drawing {
 
   Widget section(SectionNode s) {
     final repeat = s.section.repeat;
-    if (repeat == null) return fields(s, null);
+    if (repeat == null) {
+      if (!s.section.normal || !widget.enabled) return fields(s, null);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          form._normalButton(s.section.id, s.section.title, () => [(s.section.id, null)]),
+          const SizedBox(height: FieldSpace.s4),
+          fields(s, null),
+        ],
+      );
+    }
     final entries = reading.entries(s);
     final noun = _noun(repeat.itemTitle);
     return Builder(
@@ -286,6 +360,10 @@ class _Drawing {
                 ),
             ],
           ),
+          if (s.section.normal && widget.enabled) ...[
+            const SizedBox(height: FieldSpace.s2),
+            form._normalButton('${s.section.id}.$entry', title, () => [(s.section.id, entry)]),
+          ],
           const SizedBox(height: FieldSpace.s2),
           fields(s, entry),
         ],
@@ -509,4 +587,88 @@ class _Section extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A system examined over several sections (forms 6.3): Cardiac is heart, then perfusion.
+class _System {
+  const _System(this.name, this.sections);
+  final String name;
+  final List<SectionNode> sections;
+}
+
+/// The systems of a definition: the sections that offer Normal and show while one option is picked
+/// in one choice (`showWhen: { field: 'exam.systems', is: 'cardiovascular' }`), named by that
+/// option, where more than one section does.
+List<_System> _systemsOf(PathModel model) {
+  final by = <String, List<SectionNode>>{};
+  final names = <String, String>{};
+  for (final s in model.sections) {
+    final when = s.section.showWhen;
+    if (!s.section.normal || when is! IsCondition || when.codes.length != 1) continue;
+    final key = '${when.field} ${when.codes.single}';
+    by.putIfAbsent(key, () => []).add(s);
+    final holds = leafAt(model, when.field, null, null).leaf?.holds;
+    final option = holds is CodesHolds ? holds.options.where((o) => o.code == when.codes.single).firstOrNull : null;
+    names[key] ??= option?.label ?? s.section.title;
+  }
+  return [
+    for (final MapEntry(:key, value: sections) in by.entries)
+      if (sections.length > 1) _System(names[key]!, sections),
+  ];
+}
+
+/// The band above a system's sections: its name, and its Normal.
+class _SystemBand extends StatelessWidget {
+  const _SystemBand({required this.name, required this.normal});
+  final String name;
+  final Widget normal;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // The Normal says the name itself.
+      ExcludeSemantics(child: Text(name, style: Theme.of(context).textTheme.titleMedium)),
+      const SizedBox(height: FieldSpace.s2),
+      normal,
+    ],
+  );
+}
+
+/// One-tap Normal for a section, an entry or a system, read as "All normal, " and its name, and what
+/// it last did under it.
+class _Normal extends StatelessWidget {
+  const _Normal({required this.name, required this.onPressed, this.said});
+  final String name;
+  final VoidCallback onPressed;
+  final String? said;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Semantics(
+          button: true,
+          label: 'All normal, $name',
+          onTap: onPressed,
+          excludeSemantics: true,
+          child: OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: const Icon(LucideIcons.check),
+            label: const Text('All normal'),
+          ),
+        ),
+      ),
+      if (said != null) ...[
+        const SizedBox(height: FieldSpace.s1),
+        Semantics(
+          container: true,
+          liveRegion: !MediaQuery.supportsAnnounceOf(context),
+          child: Text(said!, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      ],
+    ],
+  );
 }
