@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/forms/conditions.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
+import 'package:sineobex_field/forms/finish.dart';
 
 /// What the vectors cannot say (conformance_test.dart runs them): a map's equality ignores its key
 /// order and never sees whether a value was copied, and the content hash and a finished note's data
@@ -57,6 +58,7 @@ void main() {
       // In TypeScript the entry ID of `wounds.entryAt` slices to ''; a Dart substring would throw.
       final answers = {'wounds.entryAt': '2026-11-02T10:00:00Z', 'wounds..entryAt': '2026-11-02T10:00:00Z'};
       expect(effectiveAnswers(wound, answers), isEmpty);
+      expect(finishCheck(wound, answers), isEmpty);
     });
   });
 
