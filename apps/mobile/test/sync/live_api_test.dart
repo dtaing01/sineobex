@@ -9,6 +9,7 @@ import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
 import 'phone_harness.dart';
+import 'test_note_types.dart';
 
 /// The Phase 2 done-when scenarios against the real API and Postgres: the same engine as
 /// sync_scenarios_test.dart, with the real server instead of the in-memory one. It proves the
@@ -16,7 +17,7 @@ import 'phone_harness.dart';
 /// Dart and TypeScript, and Ed25519 signatures made in Dart and verified in Node.
 ///
 /// CI's "Phone sync against the real API" job starts the API and the dev identity provider on a
-/// seeded database (tools/e2e-db.sh) and sets:
+/// seeded database (tools/e2e-db.sh, with the test-only note types its notes chart on) and sets:
 ///   SINEOBEX_LIVE_API=http://localhost:8787  SINEOBEX_LIVE_IDP=http://localhost:8790
 void main() {
   final apiUrl = Platform.environment['SINEOBEX_LIVE_API'];
@@ -69,9 +70,14 @@ void main() {
 
   ({String encounter, String note}) chartVisit(TestPhone p) {
     final encounter = p.store.createEncounter(kind: 'medical', location: {'lat': 42.33, 'lng': -83.05});
-    final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.0});
-    p.store.setField(note, 'data.pulse', 96);
-    p.store.setField(note, 'data.temp_c', 38.4);
+    final note = p.store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.0},
+    );
+    p.store.setField(note, 'data.vitals.pulse', 96);
+    p.store.setField(note, 'data.vitals.temp_c', 38.4);
     p.store.appendAudit('patient.viewed', entity: 'patient', entityId: encounter);
     return (encounter: encounter, note: note);
   }
@@ -103,7 +109,7 @@ void main() {
     expect(p.store.outbox(), isEmpty);
     expect(p.store.record(visit.note), isNull);
     // 38.0 typed on the phone is 38 everywhere; the hashes matched or nothing would be confirmed.
-    expect(await serverFields(reader, visit.note), containsPair('data.temp_c', 38.4));
+    expect(await serverFields(reader, visit.note), containsPair('data.vitals.temp_c', 38.4));
   }, skip: skip);
 
   test('killing the app mid-sync: the committed batch is recovered by its receipts, applied once', () async {
@@ -118,7 +124,7 @@ void main() {
     expect(p.store.outbox(), isEmpty);
     expect(reader.store.record(visit.note), isNull);
     await reader.engine.openServerRecord(entityNote, visit.note);
-    expect(reader.store.record(visit.note)!.fields['data.temp_c']!.serverVersion, 2);
+    expect(reader.store.record(visit.note)!.fields['data.vitals.temp_c']!.serverVersion, 2);
   }, skip: skip);
 
   test('two people editing the same draft: merge, side-by-side conflict, explicit choice', () async {
@@ -127,26 +133,26 @@ void main() {
     final visit = chartVisit(a);
     await a.engine.syncAll();
     await b.engine.openServerRecord(entityNote, visit.note);
-    a.store.setField(visit.note, 'data.plan', '');
-    a.store.setField(visit.note, 'data.temp_c', 38.6);
+    a.store.setField(visit.note, 'data.care.plan', '');
+    a.store.setField(visit.note, 'data.vitals.temp_c', 38.6);
     await a.engine.syncAll(force: true);
     bNet.offline = true;
-    b.store.setField(visit.note, 'data.temp_c', 39.0);
-    b.store.setField(visit.note, 'data.plan', 'recheck Friday');
-    b.store.setField(visit.note, 'data.allergies', 'penicillin');
+    b.store.setField(visit.note, 'data.vitals.temp_c', 39.0);
+    b.store.setField(visit.note, 'data.care.plan', 'recheck Friday');
+    b.store.setField(visit.note, 'data.care.allergies', 'penicillin');
     bNet.offline = false;
     final res = await b.engine.syncAll(force: true) as SyncDone;
     expect(res.conflicts, 1);
     final shown = b.store.needsAttention().single;
-    expect([shown.field, shown.value, shown.server!.value], ['data.temp_c', 39.0, 38.6]);
+    expect([shown.field, shown.value, shown.server!.value], ['data.vitals.temp_c', 39.0, 38.6]);
     expect(b.store.resolveConflict(shown.changeId, keepMine: true), isTrue);
     await b.engine.syncAll(force: true);
     expect(b.store.outbox(), isEmpty);
     await a.engine.syncAll(force: true);
     final fields = a.store.record(visit.note)!.fields;
-    expect(fields['data.temp_c']!.value, 39.0);
-    expect(fields['data.plan']!.value, 'recheck Friday');
-    expect(fields['data.allergies']!.value, 'penicillin');
+    expect(fields['data.vitals.temp_c']!.value, 39.0);
+    expect(fields['data.care.plan']!.value, 'recheck Friday');
+    expect(fields['data.care.allergies']!.value, 'penicillin');
   }, skip: skip);
 
   test('a 7-minute clock offset pauses charting; saved data still syncs; fixing the clock resumes', () async {
@@ -156,10 +162,10 @@ void main() {
     await p.engine.syncAll();
     expect(p.clock.status.state, ClockState.off);
     expect(p.store.outbox(), isEmpty);
-    expect(() => p.store.setField(visit.note, 'data.pulse', 100), throwsA(isA<ChartingPaused>()));
+    expect(() => p.store.setField(visit.note, 'data.vitals.pulse', 100), throwsA(isA<ChartingPaused>()));
     p.skew = Duration.zero;
     expect((await p.clock.check()).state, ClockState.verified);
-    p.store.setField(visit.note, 'data.pulse', 100);
+    p.store.setField(visit.note, 'data.vitals.pulse', 100);
     await p.engine.syncAll(force: true);
     expect(p.store.outbox(), isEmpty);
   }, skip: skip);
@@ -169,52 +175,79 @@ void main() {
     // A note for an encounter the server doesn't have (deleted elsewhere, or a bad reference).
     final note = p.store.createNote(
       encounterId: '0d3e6f00-0000-4000-8000-0000000000ff',
-      noteTypeKey: 'vitals',
-      data: {'temp_c': 38.1},
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.1},
     );
-    p.store.setField(note, 'data.pulse', 88);
+    p.store.setField(note, 'data.vitals.pulse', 88);
     // Sent in one batch, the edit is refused with its create; a later one would be held.
     final first = await p.engine.syncAll(force: true) as SyncDone;
     expect(first.rejected, 2);
     expect(p.store.needsAttention().map((e) => e.reason), everyElement('stale_reference'));
-    p.store.setField(note, 'data.plan', 'fluids');
+    p.store.setField(note, 'data.care.plan', 'fluids');
     expect(p.store.heldCount(), 1);
     final encounter = p.store.createEncounter(kind: 'medical');
     await p.engine.syncAll(force: true);
     final create = p.store.needsAttention().firstWhere((e) => e.op == 'create');
-    p.store.fixRejected(create.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+    p.store.fixRejected(create.changeId, {
+      'encounterId': encounter,
+      'noteTypeKey': testNote.key,
+      'noteTypeVersion': testNote.version,
+    });
     expect(p.store.needsAttention(), isEmpty);
     await p.engine.syncAll(force: true);
     expect(p.store.outbox(), isEmpty);
     final (reader, _) = await phone('resident@example.com');
     expect(
       await serverFields(reader, note),
-      allOf(containsPair('data.temp_c', 38.1), containsPair('data.pulse', 88), containsPair('data.plan', 'fluids')),
+      allOf(
+        containsPair('data.vitals.temp_c', 38.1),
+        containsPair('data.vitals.pulse', 88),
+        containsPair('data.care.plan', 'fluids'),
+      ),
     );
   }, skip: skip);
 
   test('a refused note too large for one create is fixed as a create and edits sent with it', () async {
     final (p, _) = await phone('clinician@example.com');
-    final note = p.store.createNote(encounterId: '0d3e6f00-0000-4000-8000-0000000000fe', noteTypeKey: 'vitals');
-    final history = 'Demo history ${'h' * 40000}';
-    final plan = 'Demo plan ${'p' * 30000}';
-    p.store.setField(note, 'data.history', history);
-    p.store.setField(note, 'data.plan', plan);
+    // Three entries of the repeating section, each there from its entryAt: the answers of an entry
+    // that isn't there don't count, so a reader other than the author would not be shown them.
+    String row(int i) => 'rows.e${'$i'.padLeft(7, '0')}';
+    final at = DateTime.now().toUtc().toIso8601String();
+    final note = p.store.createNote(
+      encounterId: '0d3e6f00-0000-4000-8000-0000000000fe',
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {for (var i = 1; i <= 3; i++) '${row(i)}.entryAt': at},
+    );
+    // Five answers of about 16 KB each: the longest an answer of the test note type takes (4,000
+    // characters), at 4 bytes a character.
+    String longText(String label) => '$label ${'😴' * (3999 - label.runes.length)}';
+    final answers = {
+      'data.care.history': longText('Demo history'),
+      'data.care.plan': longText('Demo plan'),
+      for (var i = 1; i <= 3; i++) 'data.${row(i)}.text': longText('Demo row $i'),
+    };
+    for (final MapEntry(key: field, :value) in answers.entries) {
+      p.store.setField(note, field, value);
+    }
     final first = await p.engine.syncAll(force: true) as SyncDone;
-    expect(first.rejected, 3);
+    expect(first.rejected, 6);
     // Together the fields are over the API's 64 KiB for one value: one follows the fixed create
     // in the same push, as a field new to the note (version 0).
     final encounter = p.store.createEncounter(kind: 'medical');
-    p.store.fixRejected(p.store.needsAttention().first.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+    p.store.fixRejected(p.store.needsAttention().first.changeId, {
+      'encounterId': encounter,
+      'noteTypeKey': testNote.key,
+      'noteTypeVersion': testNote.version,
+    });
     expect(p.store.sendable().map((e) => e.op), ['create', 'create', 'set']);
     final done = await p.engine.syncAll(force: true) as SyncDone;
     expect([done.confirmed, done.rejected, done.conflicts], [3, 0, 0]);
     expect(p.store.outbox(), isEmpty);
     final (reader, _) = await phone('resident@example.com');
-    expect(
-      await serverFields(reader, note),
-      allOf(containsPair('data.history', history), containsPair('data.plan', plan)),
-    );
+    final onServer = await serverFields(reader, note);
+    expect({for (final field in answers.keys) field: onServer[field]}, answers);
   }, skip: skip);
 
   test('keeping the server’s value: a value that changed again since must be chosen again', () async {
@@ -223,12 +256,12 @@ void main() {
     final visit = chartVisit(a);
     await a.engine.syncAll();
     await b.engine.openServerRecord(entityNote, visit.note);
-    a.store.setField(visit.note, 'data.temp_c', 38.6);
+    a.store.setField(visit.note, 'data.vitals.temp_c', 38.6);
     await a.engine.syncAll(force: true);
-    b.store.setField(visit.note, 'data.temp_c', 39.0);
+    b.store.setField(visit.note, 'data.vitals.temp_c', 39.0);
     await b.engine.syncAll(force: true);
     final first = b.store.needsAttention().single;
-    a.store.setField(visit.note, 'data.temp_c', 38.8);
+    a.store.setField(visit.note, 'data.vitals.temp_c', 38.8);
     await a.engine.syncAll(force: true);
     // B keeps the 38.6 they saw; the server holds 38.8 now, so B is asked again.
     expect(b.store.resolveConflict(first.changeId, keepMine: false), isTrue);
@@ -238,20 +271,26 @@ void main() {
     expect(b.store.resolveConflict(again.changeId, keepMine: false), isTrue);
     await b.engine.syncAll(force: true);
     expect(b.store.outbox(), isEmpty);
-    expect(b.store.record(visit.note)!.fields['data.temp_c']!.value, 38.8);
+    expect(b.store.record(visit.note)!.fields['data.vitals.temp_c']!.value, 38.8);
   }, skip: skip);
 
-  test('numbers past 2^53 hash alike in Dart and TypeScript, so they are confirmed', () async {
+  test('numbers past 2^53 hash alike in Dart and TypeScript, so the server answers them', () async {
     final (p, _) = await phone('clinician@example.com');
-    final encounter = p.store.createEncounter(kind: 'medical');
+    // The smallest number there is, where a location takes it: confirmed.
+    final encounter = p.store.createEncounter(kind: 'medical', location: {'lat': 5e-324, 'lng': -83.05});
+    // No answer of a note type holds a number past 2^53, so these are refused by the answer check,
+    // which the server runs only after the value's hash matched: a mismatch would leave the note
+    // unanswered, not refused.
     p.store.createNote(
       encounterId: encounter,
-      noteTypeKey: 'vitals',
-      data: {'big': 1152921504606846976.0, 'bigger': 123456789012345680000.0, 'tiny': 5e-324},
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 1152921504606846976.0, 'vitals.pulse': 123456789012345680000.0},
     );
     final done = await p.engine.syncAll(force: true) as SyncDone;
-    expect([done.confirmed, done.unanswered], [2, 0]);
-    expect(p.store.outbox(), isEmpty);
+    expect([done.confirmed, done.rejected, done.unanswered], [1, 1, 0]);
+    final refused = p.store.needsAttention().single;
+    expect([refused.op, refused.reason, refused.details?['problem']], ['create', 'validation', 'out_of_range']);
   }, skip: skip);
 
   test('a slow, flaky network: timeouts after commit and a damaged hash never confirm wrongly', () async {
