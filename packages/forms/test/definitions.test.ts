@@ -475,6 +475,23 @@ describe('the plans of the pieces', () => {
   );
 });
 
+// forms 4.2: the shape check holds the order of the sections within a piece, and nothing holds
+// the order of pieces within a note type. A note type of several pieces is laid out as its pieces
+// follow the lines (NOTE_PIECES is in their order), and its file is held to that once it exists.
+// General has its own plan (GENERAL_PLAN), with the exam's includes.
+describe('the note types of several pieces', () => {
+  const { pieces } = readPieces(specTexts());
+  const files = [...new Set(Object.values(NOTE_PIECES))].filter((file) => file !== GENERAL);
+  it.each(files)('%s lays its sections out in the order of its pieces', (file) => {
+    const planned = Object.keys(NOTE_PIECES)
+      .filter((name) => NOTE_PIECES[name] === file)
+      .flatMap((name) => (pieces[name]?.shape as Shape).sections.map((section) => section.id));
+    if (!existsSync(`${root}${file}`)) return;
+    const written = JSON.parse(read(file)) as NoteType;
+    expect(written.sections.map((section) => ('include' in section ? section : section.id))).toEqual(planned);
+  });
+});
+
 describe('the plans of the exam pieces', () => {
   const { pieces } = readPieces(specTexts());
   const shapeOf = (name: string) => pieces[name]?.shape as Shape;
