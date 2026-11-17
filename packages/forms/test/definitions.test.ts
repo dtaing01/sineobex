@@ -369,6 +369,21 @@ describe('the plans of the pieces', () => {
     expect(required.sort()).toEqual([...REQUIRED_NOTE_FIELDS].sort());
   });
 
+  // Forms 6.2 and 6.7: a Medical visit's follow-up is the Red flags and disposition note's, added
+  // with every Medical note, and the phase 7 follow-up task reads it there. The quick encounter is
+  // a Medical note, so a follow-up of its own would ask the same question twice.
+  it('ask a Medical visit’s follow-up once, in the Red flags and disposition note', () => {
+    const asked = Object.keys(NOTE_PIECES).flatMap((name) =>
+      shapeOf(name)
+        .fields.filter(
+          (field) => field.kind === 'date' && /follow/i.test(`${field.path} ${String(field.label)}`),
+        )
+        .map((field) => `${name} ${field.path}`),
+    );
+    expect(asked).toEqual(['red-flags follow_up.date']);
+    expect(shapeOf('quick-2').sections.map((section) => section.id)).not.toContain('follow_up');
+  });
+
   // What the spec check finds of a diff file without a definition: a declaration that nothing in
   // the lines needs (spec.not_option_unused, spec.added_in_piece).
   it.each(Object.keys(PLANNED))(
@@ -421,7 +436,6 @@ describe('the plans of the pieces', () => {
     'sexrepro-2 pregnant.due_date': 'any',
     'sexrepro-3 testing.date': 'past',
     'red-flags follow_up.date': 'future',
-    'quick-2 follow_up.date': 'future',
   };
   it('give each date the range its answers can fall in', () => {
     const ranges = Object.fromEntries(

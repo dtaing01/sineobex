@@ -50,8 +50,8 @@
     },
     {
       "line": 21,
-      "what": "One Follow up section: a text box and a date in the future.",
-      "why": "inventory A57"
+      "what": "No Follow up section: the lines' text box and date (lines 21 to 25) are not typed, a departure from the lines. A quick encounter is a Medical note, so the visit's follow-up is the Red flags and disposition note's (when, and the date), which is added with it; the phase 7 follow-up task reads that note's. A follow-up here as well would be asked twice and could disagree.",
+      "why": "PRD main 409; forms 6.2, 6.7; inventory A57"
     }
   ]
 }

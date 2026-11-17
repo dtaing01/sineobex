@@ -8,8 +8,7 @@
       "title": "Medication",
       "showWhen": { "field": "visit.parts", "is": "medication" },
       "needs": "orderMedications"
-    },
-    { "id": "follow_up", "title": "Follow up" }
+    }
   ],
   "fields": [
     {
@@ -62,8 +61,6 @@
       "lines": "many",
       "maxLength": 2000,
       "showWhen": { "field": "medication.delivery", "is": "yes" }
-    },
-    { "path": "follow_up.notes", "kind": "text", "label": "Follow up", "lines": "many", "maxLength": 2000 },
-    { "path": "follow_up.date", "kind": "date", "label": "Date of follow up", "range": "future" }
+    }
   ]
 }
