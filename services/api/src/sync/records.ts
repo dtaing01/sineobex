@@ -304,6 +304,25 @@ export async function appendHistory(tx: Tx, e: HistoryEntry): Promise<string> {
   return row!.id;
 }
 
+/**
+ * A patient's record names a visit of someone else: one whose patient is outside the merged group
+ * of [patientId] (lifecycle 4.7, `encounter_other_patient`). A visit that names no patient names
+ * nobody else. Both exist: they were checked as parents first.
+ */
+export async function visitOfOtherPatient(
+  tx: Tx,
+  teamId: string,
+  patientId: string,
+  encounterId: string,
+): Promise<boolean> {
+  const rows = await tx`
+    select 1 from sineobex.encounters e
+    join sineobex.patients seen on seen.team_id = e.team_id and seen.id = e.patient_id
+    join sineobex.patients named on named.team_id = e.team_id and named.id = ${patientId}
+    where e.team_id = ${teamId} and e.id = ${encounterId} and seen.canonical_id <> named.canonical_id`;
+  return rows.length > 0;
+}
+
 // ------------------------------------------------------------------------------------------------
 // Rules that read a note type's definition
 // ------------------------------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { MAX_VERSION, type AnyRecordEntityName, type PatientEntityName } from '.
 
 /**
  * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs,
- * addenda and corrections (lifecycle 4.6, 4.7). Not OpenAPI components:
+ * addenda, corrections and referrals (lifecycle 4.6, 4.7). Not OpenAPI components:
  * values travel as `value: unknown`, as EncounterCreate does. The phone mirrors these in
  * lib/sync/entities.dart, and packages/contract/test-vectors/sync-values.json pins both, and the
  * phone's fake server, to each other.
@@ -334,7 +334,21 @@ export const NoteCorrectionCreate = z
     message: 'declined_needs_request',
   });
 
-/** Alias removal, allergy or problem entered in error: set once, with a reason. */
+/**
+ * A referral (lifecycle 4.7, 7): a date and free-text details, nothing else in V1 (PRD main 113,
+ * 507). `encounterId` is the visit it was made at, or null. The date is the one the worker typed,
+ * not a time the clock check covers; `referral_in_future` bounds it.
+ */
+export const ReferralCreate = z
+  .object({
+    patientId: Uuid,
+    referredOn: IsoDate,
+    details: Trimmed(1, 2000),
+    encounterId: Uuid.nullable(),
+  })
+  .strict();
+
+/** Alias removal, allergy, problem or referral entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
 
 /** Most patients one offline audit entry may list: Show more displays up to SEARCH_MAX (50). */
@@ -411,16 +425,23 @@ export function patientFieldSchema(entity: PatientEntityName, field: string): z.
 
 type BirthValue = z.infer<typeof Birth>;
 
+/** A date after server today plus one day: a phone a time zone ahead may already be on tomorrow. */
+function afterTomorrow(date: string, today: string): boolean {
+  const limit = new Date(`${today}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() + 1);
+  return date > limit.toISOString().slice(0, 10);
+}
+
 /** `birth_in_future`: a date after server today plus one day, or a year after this one. */
 export function birthProblem(birth: BirthValue | null | undefined, today: string): string | null {
   if (!birth) return null;
-  if (birth.precision === 'day') {
-    const limit = new Date(`${today}T00:00:00Z`);
-    limit.setUTCDate(limit.getUTCDate() + 1);
-    return birth.date > limit.toISOString().slice(0, 10) ? 'birth_in_future' : null;
-  }
+  if (birth.precision === 'day') return afterTomorrow(birth.date, today) ? 'birth_in_future' : null;
   return birth.year > Number(today.slice(0, 4)) ? 'birth_in_future' : null;
 }
+
+/** `referral_in_future`: a referral dated after server today plus one day (lifecycle 4.7). */
+export const referralProblem = (v: z.infer<typeof ReferralCreate>, today: string): string | null =>
+  afterTomorrow(v.referredOn, today) ? 'referral_in_future' : null;
 
 /** `living_other_text`: the text goes with Other and only with Other. */
 export function livingProblem(v: z.infer<typeof LivingSituation> | null | undefined): string | null {
@@ -431,15 +452,19 @@ export function livingProblem(v: z.infer<typeof LivingSituation> | null | undefi
 /**
  * The rules a parsed value breaks on its own, as the `details.problem` of a validation rejection:
  * `nothing_to_recognise` (a patient create with no name and no description), `birth_in_future`,
- * `living_other_text`. `today` is the server's date (YYYY-MM-DD). Null when the value is fine.
+ * `living_other_text`, `referral_in_future`. `today` is the server's date (YYYY-MM-DD). Null when
+ * the value is fine.
  */
 export function valueProblem(
-  entity: PatientEntityName,
+  entity: PatientEntityName | 'referral',
   op: 'create' | 'set',
   field: string | undefined,
   value: unknown,
   today: string,
 ): string | null {
+  if (entity === 'referral') {
+    return op === 'create' ? referralProblem(value as z.infer<typeof ReferralCreate>, today) : null;
+  }
   if (entity !== 'patient') return null;
   if (op === 'create') {
     const v = value as PatientCreateValue;
@@ -519,6 +544,10 @@ export function valueParents(
     case 'note_correction':
       add('encounter_note', v.noteId);
       add('note_signoff', v.signoffId);
+      break;
+    case 'referral':
+      add('patient', v.patientId);
+      add('encounter', v.encounterId);
       break;
     case 'patient':
       break;

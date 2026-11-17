@@ -13,6 +13,7 @@ import { noteRules } from './note.ts';
 import { patientRules } from './patient.ts';
 import { problemNoteRules } from './problem-note.ts';
 import { problemRules } from './problem.ts';
+import { referralRules } from './referral.ts';
 import type { ParentRef } from './values.ts';
 
 /**
@@ -33,6 +34,7 @@ export const RULES: Readonly<Record<AnyRecordEntityName, EntityRules>> = {
   note_signoff: noteSignoffRules as EntityRules,
   note_addendum: noteAddendumRules as EntityRules,
   note_correction: noteCorrectionRules as EntityRules,
+  referral: referralRules as EntityRules,
 };
 
 /** The rules of a change's entity; null for an activity log entry, which is no record. */

@@ -50,11 +50,14 @@ export const PATIENT_ENTITIES = [
  */
 export const NOTE_LIFE_ENTITIES = ['note_signoff', 'note_addendum', 'note_correction'] as const;
 
+/** Phase 4's referrals (lifecycle 4.7, 7): a patient's record, made and retracted as an allergy is. */
+export const REFERRAL_ENTITIES = ['referral'] as const;
+
 export const ChangeEntity = z
-  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES])
+  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES, ...REFERRAL_ENTITIES])
   .openapi('ChangeEntity');
 export const RecordEntity = z
-  .enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES])
+  .enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES, ...REFERRAL_ENTITIES])
   .openapi('RecordEntity');
 /** Every kind of record a change, a receipt or a snapshot can name. */
 export type AnyRecordEntityName = z.infer<typeof RecordEntity>;
