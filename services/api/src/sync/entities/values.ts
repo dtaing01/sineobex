@@ -1,10 +1,12 @@
 import { z } from '@hono/zod-openapi';
+import { CREDENTIALS } from '../../auth/permissions.ts';
 import { recognisableCreate } from '../../patients/recognisable.ts';
 import { Uuid } from '../../routes/schemas.ts';
 import type { AnyRecordEntityName, PatientEntityName } from '../schemas.ts';
 
 /**
- * The values patient-side changes carry (phase 3 design 2.1 and 2.8). Not OpenAPI components:
+ * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs
+ * (lifecycle 4.6). Not OpenAPI components:
  * values travel as `value: unknown`, as EncounterCreate does. The phone mirrors these in
  * lib/sync/entities.dart, and packages/contract/test-vectors/sync-values.json pins both, and the
  * phone's fake server, to each other.
@@ -254,6 +256,28 @@ export const IdLinkCreate = z
   })
   .strict();
 
+/** Which wording a signer was shown (lifecycle 3.5): `sign-2026-11`. */
+const StatementVersion = z.string().regex(/^[a-z0-9_.-]{1,40}$/);
+
+/**
+ * A sign-off (lifecycle 4.6): what the person asked for, the hash of the note as they saw it (4.5),
+ * the credential their phone's saved profile showed, and the wording they were shown. Its time is
+ * the change's. A `complete` signs nothing, so it claims no credential (3.5).
+ */
+export const NoteSignoffCreate = z
+  .object({
+    noteId: Uuid,
+    act: z.enum(['complete', 'sign']),
+    contentHash: z.string().regex(/^[0-9a-f]{64}$/),
+    claimedCredential: z.enum(CREDENTIALS).nullable(),
+    statementVersion: StatementVersion,
+  })
+  .strict()
+  .refine((v) => v.act === 'sign' || v.claimedCredential === null, {
+    path: ['claimedCredential'],
+    message: 'complete_claims_nothing',
+  });
+
 /** Alias removal, allergy or problem entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
 
@@ -427,6 +451,9 @@ export function valueParents(
     case 'problem_note':
       add('problem', v.problemId);
       add('encounter', v.encounterId);
+      break;
+    case 'note_signoff':
+      add('encounter_note', v.noteId);
       break;
     case 'patient':
       break;

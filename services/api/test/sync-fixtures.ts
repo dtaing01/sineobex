@@ -82,18 +82,25 @@ export class FakePhone {
   }
 }
 
+const noteTypesFile = JSON.parse(
+  readFileSync(
+    new URL('../../../packages/contract/test-vectors/sync-note-types.json', import.meta.url),
+    'utf8',
+  ),
+) as { noteTypes: ResolvedNoteType[]; redFlags: ResolvedNoteType };
+
 /**
  * The test-only note types (lifecycle 4.4): phase 2's tests chart on them, so every note they make
  * names a key and version its team holds. Shared with the phone's tests.
  */
-export const TEST_NOTE_TYPES: readonly ResolvedNoteType[] = (
-  JSON.parse(
-    readFileSync(
-      new URL('../../../packages/contract/test-vectors/sync-note-types.json', import.meta.url),
-      'utf8',
-    ),
-  ) as { noteTypes: ResolvedNoteType[] }
-).noteTypes;
+export const TEST_NOTE_TYPES: readonly ResolvedNoteType[] = noteTypesFile.noteTypes;
+
+/**
+ * A test-only Red flags note type (forms 6.2: `auto: 'medical'`), with one required answer,
+ * `flags.any` ('no' or 'yes'). Not in every team: the tests that finish Medical notes install it.
+ */
+export const TEST_RED_FLAGS_TYPE: ResolvedNoteType = noteTypesFile.redFlags;
+export const TEST_RED_FLAGS = { noteTypeKey: 'test_red_flags', noteTypeVersion: 1 } as const;
 
 /** A Non-Medical note type: what phase 2's tests chart on. Spread into a note's create. */
 export const TEST_NOTE = { noteTypeKey: 'test_note', noteTypeVersion: 1 } as const;

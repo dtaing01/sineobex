@@ -1,0 +1,1056 @@
+import { randomUUID } from 'node:crypto';
+import { checkAnswer, finishCheck, validate, type ResolvedNoteType } from '@sineobex/forms';
+import { checkFile } from '@sineobex/forms/schema';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Credential } from '../src/auth/permissions.ts';
+import { noteContentHash } from '../src/encounters/content-hash.ts';
+import { createHarness, type Harness } from './harness.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import {
+  addMember,
+  call,
+  CREDENTIAL_FIELDS,
+  FakePhone,
+  installNoteTypes,
+  push,
+  register,
+  results,
+  setupTeam,
+  TEST_MEDICAL,
+  TEST_NOTE,
+  TEST_NOTE_TYPES,
+  TEST_RED_FLAGS,
+  TEST_RED_FLAGS_TYPE,
+  type Team,
+} from './sync-fixtures.ts';
+
+type Change = Awaited<ReturnType<FakePhone['change']>>;
+
+// Phase 4's sign-off (lifecycle 4.6): the sync side of every row of the table in 3.4, each refusal
+// and its fix, the content hash of 4.5, and the credential a signature is recorded under (3.5).
+// signoffEffect itself is held by note-lifecycle.json (encounter-rules.test.ts); these hold what
+// the sync code gives it and what it writes. Every person and value is made up.
+
+describe('phase 4 sync: sign-offs', () => {
+  let h: Harness;
+  let t: Team;
+  let patientId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    t = await setupTeam(h);
+    await installNoteTypes(h, t.teamId, [TEST_RED_FLAGS_TYPE]);
+    patientId = (await createPatient(h, t.teamId, t.adminId)).id;
+  });
+  afterAll(() => h.close());
+
+  const TYPES = new Map([...TEST_NOTE_TYPES, TEST_RED_FLAGS_TYPE].map((d) => [d.key, d]));
+
+  /** A member with a credential, and a phone registered to them. */
+  async function clinician(email: string, displayName: string, credential: Credential) {
+    const member = await addMember(h, t, email, displayName, 'healthcare_staff', credential);
+    const phone = await FakePhone.create();
+    await register(h, phone, member.token, t.teamId);
+    const send = async (...changes: Change[]) =>
+      results((await push(h, phone, member.token, t.teamId, changes)).body);
+    return { ...member, displayName, credential, phone, send };
+  }
+  type Who = Awaited<ReturnType<typeof clinician>>;
+
+  /** An admin moves a member to another credential, as the members page does. */
+  async function setCredential(membershipId: string, credential: Credential) {
+    const r = await call(h, `/v1/team/members/${membershipId}/credential`, {
+      method: 'PUT',
+      token: t.adminToken,
+      teamId: t.teamId,
+      json: {
+        credential,
+        credentialFields: CREDENTIAL_FIELDS[credential],
+        reason: 'Demo: credential review',
+      },
+    });
+    expect(r.status).toBe(200);
+  }
+
+  interface Visit {
+    encounterId: string;
+    patientId: string | null;
+    summary: string | null;
+  }
+
+  /** A visit on the chart. A Medical note needs one that names a patient (4.4). */
+  async function visitOf(c: Who, patient: string | null = patientId): Promise<Visit> {
+    const create = await c.phone.change({
+      entity: 'encounter',
+      op: 'create',
+      value: { kind: 'medical', ...(patient ? { patientId: patient } : {}) },
+    });
+    expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+    return { encounterId: create.recordId, patientId: patient, summary: null };
+  }
+
+  /** A draft note as its phone holds it: enough to hash it the way the phone does. */
+  interface Held extends Visit {
+    noteId: string;
+    type: ResolvedNoteType;
+    answers: Record<string, unknown>;
+  }
+
+  async function noteOn(
+    c: Who,
+    visit: Visit,
+    type: { noteTypeKey: string; noteTypeVersion: number },
+    answers: Record<string, unknown>,
+  ): Promise<Held> {
+    const create = await c.phone.change({
+      entity: 'encounter_note',
+      op: 'create',
+      value: { encounterId: visit.encounterId, ...type, data: answers },
+    });
+    expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+    return { ...visit, noteId: create.recordId, type: TYPES.get(type.noteTypeKey)!, answers };
+  }
+
+  /** A visit with the person's Red flags note answered and a draft of [type]. */
+  async function chartedVisit(c: Who, type = TEST_MEDICAL, answers: Record<string, unknown> = {}) {
+    const visit = await visitOf(c);
+    const flags = await noteOn(c, visit, TEST_RED_FLAGS, { 'flags.any': 'no' });
+    const note = await noteOn(c, visit, type, { 'care.plan': 'Demo: rest and fluids', ...answers });
+    return { visit, flags, note };
+  }
+
+  /** The hash a phone sends: over what it holds, as the summary screen drew it (4.5). */
+  const hashOf = (n: Held) =>
+    noteContentHash({
+      noteId: n.noteId,
+      encounterId: n.encounterId,
+      patientId: n.patientId,
+      summary: n.summary,
+      definition: n.type,
+      answers: n.answers,
+    });
+
+  /** A sign-off as the phone makes one; a `sign` claims the credential its saved profile shows. */
+  async function signoff(
+    c: Who,
+    n: Held,
+    act: 'complete' | 'sign',
+    more: {
+      hash?: string;
+      claimed?: Credential | null;
+      recordId?: string;
+      supersedes?: string;
+      correctedTime?: string;
+      deviceTime?: string;
+      clockVerified?: boolean;
+    } = {},
+  ) {
+    const { hash, claimed, ...change } = more;
+    return c.phone.change({
+      entity: 'note_signoff',
+      op: 'create',
+      value: {
+        noteId: n.noteId,
+        act,
+        contentHash: hash ?? (await hashOf(n)),
+        claimedCredential: claimed !== undefined ? claimed : act === 'sign' ? c.credential : null,
+        statementVersion: act === 'sign' ? 'sign-2026-11' : 'complete-2026-11',
+      },
+      ...change,
+    });
+  }
+
+  /** The same sign-off record sent again, as the phone's fix path sends it (4.8). */
+  const again = (c: Who, n: Held, act: 'complete' | 'sign', refused: Change) =>
+    signoff(c, n, act, { recordId: refused.recordId, supersedes: refused.changeId });
+
+  const applied = (c: Change, effect: string, status: string, attestation: string) => ({
+    changeId: c.changeId,
+    status: 'accepted',
+    serverVersion: 1,
+    hash: c.valueHash,
+    details: { effect, status, attestation, hashMatches: true },
+  });
+  const refused = (c: Change, problem: string) => ({
+    changeId: c.changeId,
+    status: 'rejected',
+    reason: 'validation',
+    message: expect.any(String),
+    details: { problem },
+  });
+  const noEffect = (
+    c: Change,
+    reason: string,
+    status: string,
+    attestation: string,
+    hashMatches: boolean,
+  ) => ({
+    changeId: c.changeId,
+    status: 'accepted',
+    serverVersion: 1,
+    hash: c.valueHash,
+    details: { effect: 'none', reason, status, attestation, hashMatches },
+  });
+
+  const noteRow = async (id: string) =>
+    (
+      await h.scratch.owner<
+        {
+          status: string;
+          attestation: string;
+          completedAt: Date | null;
+          completedBy: string | null;
+          firstSignedAt: Date | null;
+          signoffId: string | null;
+          data: Record<string, unknown>;
+          fieldVersions: Record<string, number>;
+          version: number;
+        }[]
+      >`
+        select status, attestation, completed_at as "completedAt", completed_by as "completedBy",
+               first_signed_at as "firstSignedAt", signoff_id as "signoffId", data,
+               field_versions as "fieldVersions", version
+        from sineobex.encounter_notes where id = ${id}`
+    )[0]!;
+
+  const camel = (row: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()), v]),
+    );
+
+  /** The sign-off row, every column, by its camel-cased name. */
+  const signoffRow = async (id: string) => {
+    const [row] = await h.scratch.owner<Record<string, unknown>[]>`
+      select * from sineobex.note_signoffs where id = ${id}`;
+    return row && camel(row);
+  };
+
+  const visitStatus = async (id: string) =>
+    (await h.scratch.owner<{ status: string }[]>`select status from sineobex.encounters where id = ${id}`)[0]!
+      .status;
+
+  const noticesOn = (recordId: string) =>
+    h.scratch.owner<{ userId: string; kind: string; entity: string }[]>`
+      select user_id as "userId", kind, entity from sineobex.user_notices where record_id = ${recordId}
+      order by created_at, id`;
+
+  const eventsAfter = (mark: string) =>
+    h.scratch.owner<{ action: string; entity: string; entityId: string; patientId: string | null }[]>`
+      select action, entity, entity_id as "entityId", patient_id as "patientId" from sineobex.audit_events
+      where id > ${mark}::bigint order by id`;
+
+  describe('the test-only Red flags note type', () => {
+    it('is a definition the export would take: a Medical note marked as the Red flags note, with one required answer', () => {
+      expect(checkFile('noteType', TEST_RED_FLAGS_TYPE)).toEqual([]);
+      expect(validate(TEST_RED_FLAGS_TYPE, { noteType: () => undefined })).toEqual([]);
+      expect(TEST_RED_FLAGS_TYPE).toMatchObject({
+        ...{ key: 'test_red_flags', version: 1 },
+        kinds: ['medical'],
+      });
+      expect(TEST_RED_FLAGS_TYPE.auto).toBe('medical');
+      expect(TEST_NOTE_TYPES.some((d) => d.auto !== undefined)).toBe(false);
+      expect(checkAnswer(TEST_RED_FLAGS_TYPE, 'flags.any', 'no')).toBeNull();
+      expect(finishCheck(TEST_RED_FLAGS_TYPE, {}).map((p) => p.path)).toEqual(['flags.any']);
+      expect(finishCheck(TEST_RED_FLAGS_TYPE, { 'flags.any': 'yes' })).toEqual([]);
+    });
+  });
+
+  describe('what a sign-off does (lifecycle 3.4)', () => {
+    let lee: Who;
+    let dana: Who;
+    let rae: Who;
+    let sol: Who;
+
+    beforeAll(async () => {
+      // Charts, and cannot chart Medical: Non-Medical notes only.
+      lee = await clinician('lee@example.com', 'Lee (demo)', 'none');
+      dana = await clinician('dana@example.com', 'Dana (demo)', 'attending');
+      rae = await clinician('rae@example.com', 'Rae (demo)', 'resident');
+      sol = await clinician('sol@example.com', 'Sol (demo)', 'student');
+    });
+
+    it('a Non-Medical note is completed: the sign-off row, then the note, in one change with one audit event', async () => {
+      const visit = await visitOf(lee, null);
+      const note = await noteOn(lee, visit, TEST_NOTE, { 'care.plan': 'Demo: rest and fluids' });
+      const before = await noteRow(note.noteId);
+
+      const mark = await auditMark(h);
+      const done = await signoff(lee, note, 'complete');
+      const [answer] = await lee.send(done);
+      expect(answer).toEqual(applied(done, 'completed', 'completed', 'not_needed'));
+      const at = new Date(done.deviceTime);
+      expect(await noteRow(note.noteId)).toEqual({
+        ...before,
+        status: 'completed',
+        completedAt: at,
+        completedBy: lee.id,
+        firstSignedAt: null,
+        signoffId: null,
+        fieldVersions: { ...before.fieldVersions, status: 2 },
+        version: before.version + 1,
+      });
+      expect(await signoffRow(done.recordId)).toMatchObject({
+        teamId: t.teamId,
+        noteId: note.noteId,
+        act: 'complete',
+        effect: 'completed',
+        contentHash: (done.value as { contentHash: string }).contentHash,
+        signerUserId: lee.id,
+        signerName: 'Lee (demo)',
+        signerCredential: 'none',
+        signerNpi: null,
+        signerFields: {},
+        claimedCredential: null,
+        needsAttestation: false,
+        statementVersion: 'complete-2026-11',
+        signedAt: at,
+        signedDeviceTime: at,
+        clockVerified: true,
+        changeId: done.changeId,
+        createdDeviceId: lee.phone.deviceId,
+        approvedBy: null,
+      });
+      const [history] = await h.scratch.owner<Record<string, unknown>[]>`
+        select field, version, value, previous_value as "previousValue", kind, changed_by as "changedBy",
+               change_id as "changeId"
+        from sineobex.field_history where record_id = ${note.noteId} and kind <> 'created'`;
+      expect(history).toEqual({
+        field: 'status',
+        version: 2,
+        value: 'completed',
+        previousValue: 'draft',
+        kind: 'set',
+        changedBy: lee.id,
+        changeId: done.changeId,
+      });
+      // One audit event, the note's, naming the sign-off.
+      expect(await eventsAfter(mark)).toEqual([
+        { action: 'note.completed', entity: 'encounter_note', entityId: note.noteId, patientId: null },
+      ]);
+      const [event] = await expectAudit(h, 'note.completed', { after: mark, count: 1 });
+      expect(event!.details).toEqual({
+        changeId: done.changeId,
+        signoffId: done.recordId,
+        act: 'complete',
+        effect: 'completed',
+        clockVerified: true,
+      });
+      expect(await visitStatus(visit.encounterId)).toBe('completed');
+
+      // Sent twice, it answers the same from its receipt, and nothing more is written.
+      expect(await lee.send(done)).toEqual([answer]);
+      expect(await eventsAfter(mark)).toHaveLength(1);
+
+      // A Non-Medical note is never signed: `sign` is a `complete`, whatever the credential.
+      const social = await noteOn(dana, visit, TEST_NOTE, { 'care.plan': 'Demo: housing list' });
+      const signs = await signoff(dana, social, 'sign');
+      expect(await dana.send(signs)).toEqual([applied(signs, 'completed', 'completed', 'not_needed')]);
+      expect(await noteRow(social.noteId)).toMatchObject({ status: 'completed', signoffId: null });
+    });
+
+    it('a Medical note: an attending’s sign is signed with nothing held, a resident’s waits for attestation, and complete waits for a co-signer', async () => {
+      const ours = await chartedVisit(dana, TEST_MEDICAL, { 'vitals.pulse': 88 });
+      const mark = await auditMark(h);
+      const flags = await signoff(dana, ours.flags, 'sign');
+      const note = await signoff(dana, ours.note, 'sign');
+      expect(await dana.send(flags, note)).toEqual([
+        applied(flags, 'signed', 'signed', 'not_needed'),
+        applied(note, 'signed', 'signed', 'not_needed'),
+      ]);
+      const at = new Date(note.deviceTime);
+      expect(await noteRow(ours.note.noteId)).toMatchObject({
+        status: 'signed',
+        attestation: 'not_needed',
+        completedAt: at,
+        completedBy: dana.id,
+        firstSignedAt: at,
+        signoffId: note.recordId,
+      });
+      const { npi, ...fields } = CREDENTIAL_FIELDS.attending;
+      expect(await signoffRow(note.recordId)).toMatchObject({
+        act: 'sign',
+        effect: 'signed',
+        signerName: 'Dana (demo)',
+        signerCredential: 'attending',
+        signerNpi: npi,
+        signerFields: fields,
+        claimedCredential: 'attending',
+        needsAttestation: false,
+        statementVersion: 'sign-2026-11',
+      });
+      const signedEvents = await expectAudit(h, 'note.signed', { after: mark, count: 2 });
+      expect(signedEvents[1]).toMatchObject({
+        entity: 'encounter_note',
+        entityId: ours.note.noteId,
+        patientId,
+        details: {
+          changeId: note.changeId,
+          signoffId: note.recordId,
+          act: 'sign',
+          effect: 'signed',
+          clockVerified: true,
+          credential: 'attending',
+          needsAttestation: false,
+        },
+      });
+      expect(signedEvents[1]!.details).not.toHaveProperty('claimedCredential');
+      expect(await visitStatus(ours.visit.encounterId)).toBe('signed');
+
+      const hers = await chartedVisit(rae);
+      const raeFlags = await signoff(rae, hers.flags, 'sign');
+      const raeNote = await signoff(rae, hers.note, 'sign');
+      expect(await rae.send(raeFlags, raeNote)).toEqual([
+        applied(raeFlags, 'signed', 'signed', 'waiting'),
+        applied(raeNote, 'signed', 'signed', 'waiting'),
+      ]);
+      expect(await noteRow(hers.note.noteId)).toMatchObject({ status: 'signed', attestation: 'waiting' });
+      expect(await signoffRow(raeNote.recordId)).toMatchObject({
+        signerCredential: 'resident',
+        needsAttestation: true,
+      });
+      const [raeEvent] = (await expectAudit(h, 'note.signed', { after: mark, count: 4 })).slice(3);
+      expect(raeEvent!.details).toMatchObject({ credential: 'resident', needsAttestation: true });
+
+      // `complete` on a Medical note never signs, even from someone who can: it waits for a co-signer.
+      const waits = await chartedVisit(dana);
+      const completes = [
+        await signoff(dana, waits.flags, 'complete'),
+        await signoff(dana, waits.note, 'complete'),
+      ];
+      expect(await dana.send(...completes)).toEqual(
+        completes.map((c) => applied(c, 'completed', 'completed', 'not_needed')),
+      );
+      expect(await noteRow(waits.note.noteId)).toMatchObject({
+        status: 'completed',
+        signoffId: null,
+        firstSignedAt: null,
+      });
+      expect(await visitStatus(waits.visit.encounterId)).toBe('completed');
+      await expectAuditClean(h, ['Demo: rest and fluids', 'Dana (demo)'], mark);
+    });
+
+    it('sign from a credential that cannot sign is saved unsigned for a co-signer, and the signer is told', async () => {
+      const his = await chartedVisit(sol);
+      const mark = await auditMark(h);
+      // His phone's saved profile still showed resident.
+      const flags = await signoff(sol, his.flags, 'complete');
+      const note = await signoff(sol, his.note, 'sign', { claimed: 'resident' });
+      expect(await sol.send(flags, note)).toEqual([
+        applied(flags, 'completed', 'completed', 'not_needed'),
+        applied(note, 'saved_unsigned', 'completed', 'not_needed'),
+      ]);
+      expect(await noteRow(his.note.noteId)).toMatchObject({
+        status: 'completed',
+        attestation: 'not_needed',
+        signoffId: null,
+        firstSignedAt: null,
+      });
+      expect(await signoffRow(note.recordId)).toMatchObject({
+        effect: 'saved_unsigned',
+        signerCredential: 'student',
+        signerNpi: null,
+        claimedCredential: 'resident',
+        needsAttestation: true,
+      });
+      expect(await noticesOn(his.note.noteId)).toEqual([
+        { userId: sol.id, kind: 'note_saved_unsigned', entity: 'encounter_note' },
+      ]);
+      expect(await noticesOn(his.flags.noteId)).toEqual([]);
+      const [event] = await expectAudit(h, 'note.saved_unsigned', { after: mark, count: 1 });
+      expect(event!.details).toMatchObject({
+        signoffId: note.recordId,
+        act: 'sign',
+        effect: 'saved_unsigned',
+        credential: 'student',
+        claimedCredential: 'resident',
+        needsAttestation: true,
+      });
+      expect(await visitStatus(his.visit.encounterId)).toBe('completed');
+    });
+
+    it('a second sign-off of a finished note is stored and changes nothing; its receipt says whether it saw what was signed', async () => {
+      const ours = await chartedVisit(dana);
+      const first = [await signoff(dana, ours.flags, 'sign'), await signoff(dana, ours.note, 'sign')];
+      expect((await dana.send(...first)).map((r) => r.details?.effect)).toEqual(['signed', 'signed']);
+      const before = await noteRow(ours.note.noteId);
+
+      const mark = await auditMark(h);
+      // The same person from a second phone: what it showed, and something else.
+      const same = await signoff(dana, ours.note, 'sign');
+      const other = await signoff(dana, ours.note, 'complete', { hash: 'ab'.repeat(32) });
+      expect(await dana.send(same, other)).toEqual([
+        noEffect(same, 'already_finished', 'signed', 'not_needed', true),
+        noEffect(other, 'already_finished', 'signed', 'not_needed', false),
+      ]);
+      expect(await noteRow(ours.note.noteId)).toEqual(before);
+      expect(await signoffRow(same.recordId)).toMatchObject({ effect: 'none', act: 'sign' });
+      expect(await signoffRow(other.recordId)).toMatchObject({ effect: 'none', act: 'complete' });
+      const events = await expectAudit(h, 'note.signoff_repeated', { after: mark, count: 2 });
+      expect(events.map((e) => e.details)).toEqual([
+        { changeId: same.changeId, signoffId: same.recordId, reason: 'already_finished', hashMatches: true },
+        {
+          changeId: other.changeId,
+          signoffId: other.recordId,
+          reason: 'already_finished',
+          hashMatches: false,
+        },
+      ]);
+      expect(await noticesOn(ours.note.noteId)).toEqual([]);
+    });
+
+    it('a sign-off from someone who does not act as the author is stored with no effect, and the sender is told', async () => {
+      const ours = await chartedVisit(dana);
+      const theirs = await signoff(rae, ours.note, 'sign');
+      expect(await rae.send(theirs)).toEqual([noEffect(theirs, 'not_author', 'draft', 'not_needed', true)]);
+      expect(await noteRow(ours.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
+      expect(await signoffRow(theirs.recordId)).toMatchObject({ effect: 'none', signerUserId: rae.id });
+      expect(await noticesOn(ours.note.noteId)).toEqual([
+        { userId: rae.id, kind: 'change_not_applied', entity: 'encounter_note' },
+      ]);
+
+      // Assigned to Rae after Dana left (3.8): Rae acts as the author now, and Dana no longer does.
+      await h.scratch.owner`
+        update sineobex.encounter_notes set assigned_user_id = ${rae.id} where id = ${ours.note.noteId}`;
+      const flags = await signoff(dana, ours.flags, 'sign');
+      const writers = await signoff(dana, ours.note, 'sign');
+      expect(await dana.send(flags, writers)).toEqual([
+        applied(flags, 'signed', 'signed', 'not_needed'),
+        noEffect(writers, 'not_author', 'draft', 'not_needed', true),
+      ]);
+      const assignees = await signoff(rae, ours.note, 'sign');
+      expect(await rae.send(assignees)).toEqual([applied(assignees, 'signed', 'signed', 'waiting')]);
+      expect(await noteRow(ours.note.noteId)).toMatchObject({
+        status: 'signed',
+        completedBy: rae.id,
+        signoffId: assignees.recordId,
+      });
+    });
+
+    it('a note names only a signature of its own, a rule the database cannot see', async () => {
+      // Every note the tests above finished: a signoff_id is a sign-off of the note with effect signed.
+      const wrong = await h.scratch.owner`
+        select n.id from sineobex.encounter_notes n
+        left join sineobex.note_signoffs s on s.id = n.signoff_id
+        where n.team_id = ${t.teamId} and n.signoff_id is not null
+          and (s.effect is distinct from 'signed' or s.note_id <> n.id or n.status <> 'signed')`;
+      expect(wrong).toEqual([]);
+      const [counts] = await h.scratch.owner<{ signed: number; named: number; none: number }[]>`
+        select (select count(*)::int from sineobex.encounter_notes where team_id = ${t.teamId} and status = 'signed') as signed,
+               (select count(*)::int from sineobex.encounter_notes where team_id = ${t.teamId} and signoff_id is not null) as named,
+               (select count(*)::int from sineobex.note_signoffs where team_id = ${t.teamId} and effect <> 'signed') as none`;
+      expect(counts!.signed).toBeGreaterThan(0);
+      expect(counts!.named).toBe(counts!.signed);
+      expect(counts!.none).toBeGreaterThan(0);
+
+      // The key (0019) sees a note and a sign-off of it, never the sign-off's effect: a completed
+      // note named by its own `completed` sign-off as signed is taken. So the sync code is the rule.
+      const [row] = await h.scratch.owner<{ noteId: string; id: string }[]>`
+        select s.note_id as "noteId", s.id from sineobex.note_signoffs s
+        join sineobex.encounter_notes n on n.id = s.note_id
+        where s.team_id = ${t.teamId} and s.effect = 'completed' and n.status = 'completed' and n.medical
+        limit 1`;
+      const rolledBack = new Error('rolled back');
+      await expect(
+        h.scratch.owner.begin(async (sql) => {
+          await sql`
+            update sineobex.encounter_notes
+            set status = 'signed', first_signed_at = now(), signoff_id = ${row!.id}
+            where id = ${row!.noteId}`;
+          throw rolledBack;
+        }),
+      ).rejects.toBe(rolledBack);
+    });
+  });
+
+  describe('the content hash (lifecycle 4.5)', () => {
+    let ash: Who;
+    let bo: Who;
+
+    beforeAll(async () => {
+      ash = await clinician('ash@example.com', 'Ash (demo)', 'attending');
+      bo = await clinician('bo@example.com', 'Bo (demo)', 'attending');
+    });
+
+    const entry = (n: number) => `rows.e${String(n).padStart(7, '0')}`;
+    const at = '2026-10-20T14:40:00.000Z';
+
+    it('covers the visit’s patient and summary: a sign-off on what changed since is refused, and the same record sent again is taken', async () => {
+      const visit = await visitOf(ash);
+      const summary = await ash.phone.change({
+        entity: 'encounter',
+        recordId: visit.encounterId,
+        op: 'set',
+        field: 'summary',
+        value: 'Demo: seen by the river',
+      });
+      expect((await ash.send(summary)).map((r) => r.status)).toEqual(['accepted']);
+      const seen = { ...visit, summary: 'Demo: seen by the river' };
+      const flags = await noteOn(ash, seen, TEST_RED_FLAGS, { 'flags.any': 'no' });
+      const note = await noteOn(ash, seen, TEST_MEDICAL, { 'care.plan': 'Demo: rest' });
+      // Bo rewrites the summary while every note is a draft: the draft rule takes it.
+      const rewrite = await bo.phone.change({
+        entity: 'encounter',
+        recordId: visit.encounterId,
+        op: 'set',
+        field: 'summary',
+        value: 'Demo: seen by the bridge',
+        baseVersion: 1,
+      });
+      expect((await bo.send(rewrite)).map((r) => r.status)).toEqual(['accepted']);
+
+      const mark = await auditMark(h);
+      const stale = [await signoff(ash, flags, 'sign'), await signoff(ash, note, 'sign')];
+      expect(await ash.send(...stale)).toEqual(stale.map((c) => refused(c, 'content_changed')));
+      // Nothing is written but the stored rejection.
+      expect(await noteRow(note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
+      for (const c of stale) expect(await signoffRow(c.recordId)).toBeUndefined();
+      expect((await eventsAfter(mark)).map((e) => e.action)).toEqual(['sync.rejected', 'sync.rejected']);
+
+      // The person looks again and completes: the phone sends the same records with the new hash.
+      const now = { summary: 'Demo: seen by the bridge' };
+      const fixes = [
+        await again(ash, { ...flags, ...now }, 'sign', stale[0]!),
+        await again(ash, { ...note, ...now }, 'sign', stale[1]!),
+      ];
+      expect(await ash.send(...fixes)).toEqual(
+        fixes.map((c) => applied(c, 'signed', 'signed', 'not_needed')),
+      );
+      const settled = await h.scratch.owner<{ resolvedBy: string | null }[]>`
+        select resolved_by_change as "resolvedBy" from sineobex.sync_changes
+        where change_id in ${h.scratch.owner(stale.map((c) => c.changeId))} order by device_seq`;
+      expect(settled).toEqual(fixes.map((c) => ({ resolvedBy: c.changeId })));
+      await expectAudit(h, 'sync.rejection_fixed', { after: mark, count: 2 });
+
+      // A visit moved to another patient between what was seen and what is held: refused too.
+      const moved = await chartedVisit(ash);
+      const other = (await createPatient(h, t.teamId, t.adminId)).id;
+      const move = await bo.phone.change({
+        entity: 'encounter',
+        recordId: moved.visit.encounterId,
+        op: 'set',
+        field: 'patientId',
+        value: other,
+        baseVersion: 1,
+      });
+      expect((await bo.send(move)).map((r) => r.status)).toEqual(['accepted']);
+      const old = await signoff(ash, moved.flags, 'sign');
+      expect(await ash.send(old)).toEqual([refused(old, 'content_changed')]);
+      const fixed = await again(ash, { ...moved.flags, patientId: other }, 'sign', old);
+      expect(await ash.send(fixed)).toEqual([applied(fixed, 'signed', 'signed', 'not_needed')]);
+    });
+
+    it('is taken over the answers that count, and a finished note keeps only those, each one dropped in its history', async () => {
+      const visit = await visitOf(ash);
+      const flags = await noteOn(ash, visit, TEST_RED_FLAGS, { 'flags.any': 'no' });
+      const answers = {
+        'care.plan': 'Demo: dress daily',
+        // A clear holds no answer.
+        'care.followup': null,
+        // Hidden while "Nothing more" is ticked.
+        'more.none': true,
+        'more.detail': 'Demo: one more thing',
+        // A removed entry, and one that is there.
+        [`${entry(1)}.entryAt`]: at,
+        [`${entry(1)}.n`]: 3,
+        [`${entry(1)}.entryRemoved`]: true,
+        [`${entry(2)}.entryAt`]: at,
+        [`${entry(2)}.n`]: 4,
+      };
+      const note = await noteOn(ash, visit, TEST_MEDICAL, answers);
+      const before = await noteRow(note.noteId);
+      // A teammate's answer that does not count changes nothing that is signed.
+      const hidden = await bo.phone.change({
+        entity: 'encounter_note',
+        recordId: note.noteId,
+        op: 'set',
+        field: 'data.more.detail',
+        value: 'Demo: from Bo',
+        baseVersion: 1,
+      });
+      expect((await bo.send(hidden)).map((r) => r.details)).toEqual([{ notCounted: 'hidden_field' }]);
+      const held = { ...note, answers: { ...answers, 'more.detail': 'Demo: from Bo' } };
+
+      const signs = [await signoff(ash, flags, 'sign'), await signoff(ash, note, 'sign')];
+      expect(await ash.send(...signs)).toEqual(
+        signs.map((c) => applied(c, 'signed', 'signed', 'not_needed')),
+      );
+      expect(await hashOf(held)).toBe(await hashOf(note));
+
+      const counting = {
+        'care.plan': 'Demo: dress daily',
+        'more.none': true,
+        [`${entry(2)}.entryAt`]: at,
+        [`${entry(2)}.n`]: 4,
+      };
+      const dropped: [string, unknown][] = [
+        ['care.followup', null],
+        ['more.detail', 'Demo: from Bo'],
+        [`${entry(1)}.entryAt`, at],
+        [`${entry(1)}.n`, 3],
+        [`${entry(1)}.entryRemoved`, true],
+      ];
+      const after = await noteRow(note.noteId);
+      expect(after.data).toEqual(counting);
+      expect(after.fieldVersions).toEqual({
+        ...before.fieldVersions,
+        status: 2,
+        'data.more.detail': 3,
+        ...Object.fromEntries(dropped.filter(([p]) => p !== 'more.detail').map(([p]) => [`data.${p}`, 2])),
+      });
+      const history = await h.scratch.owner<{ field: string; value: unknown; previousValue: unknown }[]>`
+        select field, value, previous_value as "previousValue" from sineobex.field_history
+        where record_id = ${note.noteId} and change_id = ${signs[1]!.changeId} and field like 'data.%'`;
+      expect([...history].sort((a, b) => (a.field < b.field ? -1 : 1))).toEqual(
+        dropped
+          .map(([path, value]) => ({ field: `data.${path}`, value: null, previousValue: value }))
+          .sort((a, b) => (a.field < b.field ? -1 : 1)),
+      );
+    });
+  });
+
+  describe('refusals: nothing is written, and the same sign-off sent again is applied fresh', () => {
+    let cy: Who;
+
+    beforeAll(async () => {
+      cy = await clinician('cy@example.com', 'Cy (demo)', 'attending');
+    });
+
+    it('content_changed, incomplete and red_flags_first, each fixed by sending the same record again', async () => {
+      const visit = await visitOf(cy);
+      // The Red flags note the app added, not answered yet.
+      const flags = await noteOn(cy, visit, TEST_RED_FLAGS, {});
+      const note = await noteOn(cy, visit, TEST_MEDICAL, { 'care.plan': 'Demo: rest' });
+
+      const mark = await auditMark(h);
+      const noteFirst = await signoff(cy, note, 'sign', { hash: 'cd'.repeat(32) });
+      const flagsFirst = await signoff(cy, flags, 'sign');
+      expect(await cy.send(noteFirst, flagsFirst)).toEqual([
+        refused(noteFirst, 'content_changed'),
+        refused(flagsFirst, 'incomplete'),
+      ]);
+      // The hash now matches, and the visit's Red flags note is still a draft.
+      const noteSecond = await again(cy, note, 'sign', noteFirst);
+      expect(await cy.send(noteSecond)).toEqual([refused(noteSecond, 'red_flags_first')]);
+      for (const n of [flags, note]) expect(await noteRow(n.noteId)).toMatchObject({ status: 'draft' });
+      for (const c of [noteFirst, flagsFirst]) expect(await signoffRow(c.recordId)).toBeUndefined();
+      const events = await h.scratch.owner<{ action: string; problem: string }[]>`
+        select action, details->>'problem' as problem from sineobex.audit_events
+        where id > ${mark}::bigint order by id`;
+      expect(events).toEqual(
+        ['content_changed', 'incomplete', 'red_flags_first'].map((problem) => ({
+          action: 'sync.rejected',
+          problem,
+        })),
+      );
+
+      // One Complete fixes them all: the red-flag answer, then the Red flags note first.
+      const answer = await cy.phone.change({
+        entity: 'encounter_note',
+        recordId: flags.noteId,
+        op: 'set',
+        field: 'data.flags.any',
+        value: 'no',
+      });
+      const answered = { ...flags, answers: { 'flags.any': 'no' } };
+      const flagsFix = await again(cy, answered, 'sign', flagsFirst);
+      const noteFix = await again(cy, note, 'sign', noteSecond);
+      expect(await cy.send(answer, flagsFix, noteFix)).toEqual([
+        expect.objectContaining({ status: 'accepted' }),
+        applied(flagsFix, 'signed', 'signed', 'not_needed'),
+        applied(noteFix, 'signed', 'signed', 'not_needed'),
+      ]);
+      const open = await h.scratch.owner`
+        select change_id from sineobex.sync_changes
+        where record_id in ${h.scratch.owner([flagsFirst.recordId, noteFirst.recordId])}
+          and status = 'rejected' and resolved_by_change is null`;
+      expect(open).toEqual([]);
+    });
+
+    it('only a finished Red flags note of the visit counts, and a Non-Medical note never waits for one', async () => {
+      const elsewhere = await chartedVisit(cy);
+      const signed = await signoff(cy, elsewhere.flags, 'sign');
+      expect((await cy.send(signed)).map((r) => r.details?.effect)).toEqual(['signed']);
+
+      // This visit's Red flags note is answered but not finished; another visit's is finished.
+      const here = await chartedVisit(cy);
+      const social = await noteOn(cy, here.visit, TEST_NOTE, { 'care.plan': 'Demo: housing list' });
+      const medical = await signoff(cy, here.note, 'complete');
+      const nonMedical = await signoff(cy, social, 'complete');
+      expect(await cy.send(medical, nonMedical)).toEqual([
+        refused(medical, 'red_flags_first'),
+        applied(nonMedical, 'completed', 'completed', 'not_needed'),
+      ]);
+      // A completed Red flags note is finished: one that waits for a co-signer counts.
+      const flags = await signoff(cy, here.flags, 'complete');
+      const fix = await again(cy, here.note, 'sign', medical);
+      expect(await cy.send(flags, fix)).toEqual([
+        applied(flags, 'completed', 'completed', 'not_needed'),
+        applied(fix, 'signed', 'signed', 'not_needed'),
+      ]);
+    });
+  });
+
+  describe('the credential a sign-off is recorded under, and the Medical gate (lifecycle 3.5, 4.2)', () => {
+    /** A time from the server's own clock, for a signature whose time it can trust. */
+    const nowIso = () => new Date().toISOString();
+    const timed = (time: string) => ({ deviceTime: time, correctedTime: time });
+
+    it('signed Monday, promoted Tuesday, synced Wednesday: the signature keeps the credential it was signed under', async () => {
+      const kai = await clinician('kai@example.com', 'Kai (demo)', 'resident');
+      // Monday: the drafts reach the server, then Kai completes them offline.
+      const synced = await chartedVisit(kai);
+      const unverified = await chartedVisit(kai);
+      const monday = nowIso();
+      const flags = await signoff(kai, synced.flags, 'sign', timed(monday));
+      const note = await signoff(kai, synced.note, 'sign', timed(monday));
+      // A phone that could not check its clock: its time is its own word, and not believed.
+      const unchecked = [
+        await signoff(kai, unverified.flags, 'sign', { ...timed(monday), clockVerified: false }),
+        await signoff(kai, unverified.note, 'sign', { ...timed(monday), clockVerified: false }),
+      ];
+      // Offline too: a whole visit charted and signed before the server ever saw it.
+      const visit = await kai.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+      });
+      const offline: Held[] = [];
+      const creates: Change[] = [];
+      for (const [type, data] of [
+        [TEST_RED_FLAGS, { 'flags.any': 'no' }],
+        [TEST_MEDICAL, { 'care.plan': 'Demo: rest' }],
+      ] as const) {
+        const create = await kai.phone.change({
+          entity: 'encounter_note',
+          op: 'create',
+          value: { encounterId: visit.recordId, ...type, data },
+        });
+        creates.push(create);
+        offline.push({
+          encounterId: visit.recordId,
+          patientId,
+          summary: null,
+          noteId: create.recordId,
+          type: TYPES.get(type.noteTypeKey)!,
+          answers: data,
+        });
+      }
+      const offlineSigns = [
+        await signoff(kai, offline[0]!, 'sign', timed(monday)),
+        await signoff(kai, offline[1]!, 'sign', timed(monday)),
+      ];
+
+      // Tuesday: an admin makes Kai an attending.
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(kai.membershipId, 'attending');
+
+      // Wednesday: everything syncs.
+      expect(await kai.send(flags, note)).toEqual([
+        applied(flags, 'signed', 'signed', 'waiting'),
+        applied(note, 'signed', 'signed', 'waiting'),
+      ]);
+      expect(await signoffRow(note.recordId)).toMatchObject({
+        signerCredential: 'resident',
+        claimedCredential: 'resident',
+        needsAttestation: true,
+        signedAt: new Date(monday),
+        clockVerified: true,
+      });
+      expect(await kai.send(...unchecked)).toEqual(
+        unchecked.map((c) => applied(c, 'signed', 'signed', 'waiting')),
+      );
+      expect(await signoffRow(unchecked[1]!.recordId)).toMatchObject({
+        signerCredential: 'attending',
+        claimedCredential: 'resident',
+        clockVerified: false,
+      });
+      // The note reached the server after the time the signature claims: that time is not
+      // believed, so the credential is the one held now, and the claim keeps it waiting.
+      const answered = await kai.send(visit, ...creates, ...offlineSigns);
+      expect(answered.slice(3)).toEqual([
+        applied(offlineSigns[0]!, 'signed', 'signed', 'waiting'),
+        applied(offlineSigns[1]!, 'signed', 'signed', 'waiting'),
+      ]);
+      expect(await signoffRow(offlineSigns[1]!.recordId)).toMatchObject({
+        signerCredential: 'attending',
+        signerFields: { licenseNumber: 'DEMO-0001', licenseState: 'MI' },
+        claimedCredential: 'resident',
+        needsAttestation: true,
+      });
+      const [event] = await h.scratch.owner<{ details: Record<string, unknown> }[]>`
+        select details from sineobex.audit_events
+        where action = 'note.signed' and details->>'signoffId' = ${offlineSigns[1]!.recordId}`;
+      expect(event!.details).toMatchObject({ credential: 'attending', claimedCredential: 'resident' });
+    });
+
+    it('a credential lowered while the phone was offline holds the sign-off; an admin’s accept records it as it was signed', async () => {
+      const pat = await clinician('pat@example.com', 'Pat (demo)', 'np');
+      const charted = await chartedVisit(pat);
+      const made = nowIso();
+      const signs = [
+        await signoff(pat, charted.flags, 'sign', timed(made)),
+        await signoff(pat, charted.note, 'sign', timed(made)),
+      ];
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(pat.membershipId, 'chw');
+      const held = { status: 'rejected', reason: 'permission', quarantined: true };
+      expect(await pat.send(...signs)).toEqual(signs.map(() => expect.objectContaining(held)));
+      for (const c of signs) expect(await signoffRow(c.recordId)).toBeUndefined();
+
+      const mark = await auditMark(h);
+      for (const c of signs) {
+        const [item] = await h.scratch.owner<{ id: string }[]>`
+          select id from sineobex.quarantine_items where change_id = ${c.changeId}`;
+        const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision: 'accept', reason: 'Demo: checked with Pat' },
+        });
+        expect(decided.status).toBe(200);
+      }
+      expect(await noteRow(charted.note.noteId)).toMatchObject({ status: 'signed', attestation: 'waiting' });
+      expect(await signoffRow(signs[1]!.recordId)).toMatchObject({
+        signerCredential: 'np',
+        needsAttestation: true,
+        approvedBy: t.adminId,
+        signerUserId: pat.id,
+      });
+      const [event] = (await expectAudit(h, 'note.signed', { after: mark, count: 2 })).slice(1);
+      expect(event).toMatchObject({
+        actorUserId: t.adminId,
+        details: { onBehalfOf: pat.id, signoffId: signs[1]!.recordId, credential: 'np' },
+      });
+    });
+
+    it('a held sign-off’s time is checked against when its push arrived, not when an admin accepted it', async () => {
+      const quinn = await clinician('quinn@example.com', 'Quinn (demo)', 'np');
+      const charted = await chartedVisit(quinn);
+      const flags = await signoff(quinn, charted.flags, 'sign');
+      expect((await quinn.send(flags)).map((r) => r.details?.effect)).toEqual(['signed']);
+      const made = nowIso();
+      const sign = await signoff(quinn, charted.note, 'sign', timed(made));
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(quinn.membershipId, 'chw');
+      expect(await quinn.send(sign)).toEqual([
+        expect.objectContaining({ reason: 'permission', quarantined: true }),
+      ]);
+      // As if the push had arrived ten minutes before the time its signature claims: a phone clock
+      // running ahead. Accepted now, that time would be believed; it was not when it arrived.
+      const [item] = await h.scratch.owner<{ id: string; receivedAt: Date }[]>`
+        update sineobex.quarantine_items set received_at = ${new Date(Date.parse(made) - 10 * 60_000)}
+        where change_id = ${sign.changeId} returning id, received_at as "receivedAt"`;
+      const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Demo: checked with Quinn' },
+      });
+      expect(decided.status).toBe(200);
+      // So the credential is the one held now, which cannot sign.
+      expect(await signoffRow(sign.recordId)).toMatchObject({
+        effect: 'saved_unsigned',
+        signerCredential: 'chw',
+        receivedAt: item!.receivedAt,
+        approvedBy: t.adminId,
+      });
+      expect(await noteRow(charted.note.noteId)).toMatchObject({ status: 'completed', signoffId: null });
+    });
+  });
+
+  describe('what a sign-off names, and what it is', () => {
+    let fay: Who;
+    let kim: Who;
+
+    beforeAll(async () => {
+      fay = await clinician('fay@example.com', 'Fay (demo)', 'attending');
+      // Charts, and cannot chart Medical.
+      kim = await clinician('kim@example.com', 'Kim (demo)', 'chw');
+    });
+
+    it('a note the team holds, or it is refused stale_reference; a held note’s sign-off waits with it', async () => {
+      const visit = await visitOf(fay);
+      const missing: Held = {
+        ...visit,
+        noteId: randomUUID(),
+        type: TYPES.get('test_note')!,
+        answers: {},
+      };
+      const stray = await signoff(fay, missing, 'complete');
+      expect(await fay.send(stray)).toEqual([
+        expect.objectContaining({
+          status: 'rejected',
+          reason: 'stale_reference',
+          details: { problem: 'encounter_note_missing' },
+        }),
+      ]);
+
+      // Kim's Medical note is held by the gate; its sign-off waits for the same decision.
+      const create = await kim.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: visit.encounterId, ...TEST_MEDICAL, data: {} },
+      });
+      const heldNote: Held = {
+        ...visit,
+        noteId: create.recordId,
+        type: TYPES.get('test_medical')!,
+        answers: {},
+      };
+      const waits = await signoff(kim, heldNote, 'complete');
+      expect(await kim.send(create, waits)).toEqual([
+        expect.objectContaining({ status: 'rejected', reason: 'permission', quarantined: true }),
+        expect.objectContaining({ status: 'rejected', reason: 'awaiting_review', quarantined: true }),
+      ]);
+    });
+
+    it('is create-only, and its value is checked before anything is read', async () => {
+      const visit = await visitOf(fay, null);
+      const note = await noteOn(fay, visit, TEST_NOTE, { 'care.plan': 'Demo: rest' });
+      const done = await signoff(fay, note, 'complete');
+      expect((await fay.send(done)).map((r) => r.status)).toEqual(['accepted']);
+      const value = done.value as Record<string, unknown>;
+      const bad = async (v: Record<string, unknown>) =>
+        fay.phone.change({ entity: 'note_signoff', op: 'create', value: { ...value, ...v } });
+      const changes = [
+        await fay.phone.change({
+          entity: 'note_signoff',
+          recordId: done.recordId,
+          op: 'set',
+          field: 'effect',
+          value: 'signed',
+        }),
+        // A complete signs nothing, so it claims no credential.
+        await bad({ claimedCredential: 'attending' }),
+        await bad({ contentHash: 'AB'.repeat(32) }),
+        await bad({ act: 'cosign' }),
+        await bad({ statementVersion: 'Sign 2026' }),
+        await bad({ signedAt: '2026-10-20T14:50:00.000Z' }),
+      ];
+      const answered = await fay.send(...changes);
+      expect(answered.map((r) => [r.status, r.reason])).toEqual(
+        changes.map(() => ['rejected', 'validation']),
+      );
+      expect(answered[0]!.details).toEqual({ problem: 'unknown_field' });
+      expect(
+        answered.slice(1).map((r) => (r.details!.problems as { path: string }[]).map((p) => p.path)),
+      ).toEqual([['claimedCredential'], ['contentHash'], ['act'], ['statementVersion'], ['']]);
+    });
+
+    it('a note with no version has no type to hash it by: definition_error, and the queue goes on', async () => {
+      const visit = await visitOf(fay, null);
+      const noteId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, author_user_id, data)
+        values (${noteId}, ${t.teamId}, ${visit.encounterId}, 'wound_care', ${fay.id}, '{"plan": "Demo: dress daily"}')`;
+      const preview: Held = { ...visit, noteId, type: TYPES.get('test_note')!, answers: {} };
+      const stuck = await signoff(fay, preview, 'complete');
+      const next = await signoff(fay, await noteOn(fay, visit, TEST_NOTE, {}), 'complete');
+      expect(await fay.send(stuck, next)).toEqual([
+        refused(stuck, 'definition_error'),
+        applied(next, 'completed', 'completed', 'not_needed'),
+      ]);
+      expect(await signoffRow(stuck.recordId)).toBeUndefined();
+    });
+  });
+});

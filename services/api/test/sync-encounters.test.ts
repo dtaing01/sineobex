@@ -1864,7 +1864,7 @@ describe('phase 4 sync: encounters and notes', () => {
   });
 
   describe('the team lock (lifecycle 4.2)', () => {
-    it('every encounter and note change takes it first, a create naming no patient included', () => {
+    it('every encounter, note and sign-off change takes it first, a create naming no patient included', () => {
       const change = (c: Partial<Change> & Pick<Change, 'entity' | 'op' | 'value'>) =>
         ({
           changeId: randomUUID(),
@@ -1891,6 +1891,9 @@ describe('phase 4 sync: encounters and notes', () => {
         change({ entity: 'encounter_note', op: 'create', value: { encounterId, ...TEST_NOTE } }),
         change({ entity: 'encounter_note', op: 'set', field: 'data.vitals.pulse', value: 80 }),
         change({ entity: 'encounter_note', op: 'set', field: 'status', value: 'draft' }),
+        // A sign-off writes the note and, through the trigger of 0018, the visit.
+        change({ entity: 'note_signoff', op: 'create', value: { noteId: randomUUID(), act: 'sign' } }),
+        change({ entity: 'note_signoff', op: 'create', value: null }),
       ];
       expect(changes.map((c) => takesTeamLock(c as never))).toEqual(changes.map(() => true));
     });

@@ -6,6 +6,7 @@ import { allergyRules } from './allergy.ts';
 import { consentRules } from './consent.ts';
 import { encounterRules } from './encounter.ts';
 import { idLinkRules } from './id-link.ts';
+import { noteSignoffRules } from './note-signoff.ts';
 import { noteRules } from './note.ts';
 import { patientRules } from './patient.ts';
 import { problemNoteRules } from './problem-note.ts';
@@ -27,6 +28,7 @@ export const RULES: Readonly<Record<AnyRecordEntityName, EntityRules>> = {
   problem: problemRules as EntityRules,
   problem_note: problemNoteRules as EntityRules,
   id_link: idLinkRules as EntityRules,
+  note_signoff: noteSignoffRules as EntityRules,
 };
 
 /** The rules of a change's entity; null for an activity log entry, which is no record. */

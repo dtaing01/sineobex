@@ -44,10 +44,18 @@ export const PATIENT_ENTITIES = [
   'id_link',
 ] as const;
 
+/**
+ * Phase 4's records of a note's life (lifecycle 4.1): each a create that never changes. Their values
+ * are checked by the schemas in entities/values.ts, as the patient-side records' are.
+ */
+export const NOTE_LIFE_ENTITIES = ['note_signoff'] as const;
+
 export const ChangeEntity = z
-  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES])
+  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES])
   .openapi('ChangeEntity');
-export const RecordEntity = z.enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES]).openapi('RecordEntity');
+export const RecordEntity = z
+  .enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES])
+  .openapi('RecordEntity');
 /** Every kind of record a change, a receipt or a snapshot can name. */
 export type AnyRecordEntityName = z.infer<typeof RecordEntity>;
 export type PatientEntityName = (typeof PATIENT_ENTITIES)[number];

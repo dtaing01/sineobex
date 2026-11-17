@@ -1,5 +1,6 @@
 import type { z } from '@hono/zod-openapi';
 import { checkAnswer, fieldAt, isBlank, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
+import type { Tx } from '../../db/database.ts';
 import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
 import {
@@ -69,6 +70,7 @@ interface NoteRow {
   medical: boolean;
   assignedUserId: string | null;
   firstSignedAt: Date | null;
+  attestation: string;
   data: Record<string, unknown>;
   fieldVersions: Record<string, number>;
   fieldMeta: Record<string, FieldMeta>;
@@ -163,6 +165,7 @@ export const noteRules: EntityRules<Value> = {
         // Who acts as the author (3.8): the clinician an admin assigned after the author left.
         actingAuthorId: r.assignedUserId ?? r.authorUserId,
         everSigned: r.firstSignedAt !== null,
+        attestation: r.attestation,
       },
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
@@ -216,7 +219,7 @@ async function noteSet(s: SetContext): Promise<Outcome> {
   if (s.field === 'status') return statusSet(s);
   if (s.rec.status !== 'draft') return applyField('draft', s);
   const path = s.field.slice('data.'.length);
-  const type = await typeOfNote(s);
+  const type = await noteTypeOf(s.tx, s.rec);
   if (type === undefined) return applyField('draft', s);
   const problem = byDefinition(() => checkAnswer(type, path, s.value));
   if (problem) return invalid(problem);
@@ -280,25 +283,30 @@ async function statusSet(s: SetContext): Promise<Outcome> {
  * create checked that the team holds it; a note that names one the team does not hold was written
  * past every check, and nothing the worker does can fix it.
  */
-async function typeOfNote(s: SetContext): Promise<ResolvedNoteType | undefined> {
-  const { noteTypeKey, noteTypeVersion } = s.rec.attributes as {
+export async function noteTypeOf(tx: Tx, note: StoredRecord): Promise<ResolvedNoteType | undefined> {
+  const { noteTypeKey, noteTypeVersion } = note.attributes as {
     noteTypeKey: string;
     noteTypeVersion: number | null;
   };
   if (noteTypeVersion === null) return undefined;
-  const type = await definitionOf(s.tx, s.rec.teamId, noteTypeKey, noteTypeVersion);
+  const type = await definitionOf(tx, note.teamId, noteTypeKey, noteTypeVersion);
   if (!type) throw new DefinitionError();
   return type;
 }
 
-/** The note's answers, by path, with `value` at `path`. */
-function answersWith(rec: StoredRecord, path: string, value: unknown): Record<string, unknown> {
+/** A loaded note's answers, by path, as stored. */
+export function answersOf(note: StoredRecord): Record<string, unknown> {
   const answers: Record<string, unknown> = {};
-  for (const [field, held] of Object.entries(rec.values))
+  for (const [field, held] of Object.entries(note.values))
     if (field.startsWith('data.')) answers[field.slice('data.'.length)] = held;
-  answers[path] = value;
   return answers;
 }
+
+/** The note's answers, by path, with `value` at `path`. */
+const answersWith = (rec: StoredRecord, path: string, value: unknown) => ({
+  ...answersOf(rec),
+  [path]: value,
+});
 
 /**
  * Why an answer on the chart does not count (lifecycle 4.4), or null when it does: it is in an entry
