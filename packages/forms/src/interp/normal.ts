@@ -7,7 +7,7 @@
  */
 import type { ResolvedNoteType } from '../resolve.ts';
 import type { FieldNode, Leaf } from '../paths.ts';
-import { isBlank, NoteReading, ownLeaves } from './conditions.ts';
+import { NoteReading, ownLeaves } from './conditions.ts';
 import type { Answers } from './conditions.ts';
 
 /**
@@ -15,17 +15,24 @@ import type { Answers } from './conditions.ts';
  * for a section that does not offer Normal (`normal: true`), that is hidden, that repeats when no
  * entry that is there is named, or that does not repeat when an entry is named.
  *
- * A field is filled when it shows, no set flag clears it, nothing is stored at its path (a blank
- * is nothing), and neither it nor a group or grid around it is `noNormal`. A choose-one takes its
- * first normal option, a choose-many every normal option in the definition's order, a number its
- * `normal` value; each side and each counting row is filled on its own. Other kinds have no normal.
+ * A field is filled when it shows, no set flag clears it, it holds no answer (a blank, or a value
+ * checkAnswer refuses, is none: finishCheck asks for it too), and neither it nor a group or grid
+ * around it is `noNormal`. A choose-one takes its normal option, a choose-many every normal option
+ * in the definition's order (the validator holds that one answer takes them: normal_conflict), a
+ * number its `normal` value; each side and each counting row is filled on its own. Other kinds
+ * have no normal.
  *
  * Visible means visible once Normal's answers are in: every normal is put in at once, and only
  * those that count with all of them in are kept. A follow-up that a normal answer hides is not
  * filled (6.3: the cranial nerve groups that stay hidden while the screen is Grossly intact), one
- * that a normal answer shows is, and the order the fields are written in decides nothing. A kept
- * answer counts, and an answer left out never counted, so no condition read it: with these added,
- * every visible field that has a normal holds an answer.
+ * that a normal answer shows is, and the order the fields are written in decides nothing.
+ *
+ * Normal never makes an answer that counts stop counting (coordinator decision D2): a finding
+ * already charted in a follow-up stays, and the normal that would hide it is not filled. When the
+ * normals all in at once would hide one, they are taken one at a time, in the definition's order
+ * (fields as written, rows in their order, right before left), each kept when, with those kept
+ * before it, it hides no answer that counts; those passed over are tried again, in order, until a
+ * round keeps none. Only the kept ones that count with all of them in are returned.
  */
 export function normalAnswers(
   definition: ResolvedNoteType,
@@ -38,13 +45,34 @@ export function normalAnswers(
   const entry = entryId ?? null;
   if (!section?.section.normal || (section.section.repeat !== undefined) !== (entry !== null)) return {};
 
-  const added: Record<string, unknown> = {};
+  const offered: [string, unknown][] = [];
   for (const node of reading.model.nodes) {
     if (node.section !== section || noNormal(node)) continue;
     for (const leaf of ownLeaves(node)) {
       const value = normalOf(leaf);
       const path = reading.pathOf(leaf, entry);
-      if (value !== undefined && isBlank(reading.stored(path))) added[path] = value;
+      if (value !== undefined && reading.answer(path) === undefined) offered.push([path, value]);
+    }
+  }
+
+  // The answers that count now, which no normal may hide.
+  const counted = Object.keys(answers).filter((path) => reading.counting(path) !== undefined);
+  const hides = (added: Record<string, unknown>) => {
+    const after = new NoteReading(definition, { ...answers, ...added });
+    return counted.some((path) => after.counting(path) === undefined);
+  };
+  let added: Record<string, unknown> = Object.fromEntries(offered);
+  if (hides(added)) {
+    added = {};
+    let waiting = offered;
+    for (;;) {
+      const passed = waiting.filter(([path, value]) => {
+        if (hides({ ...added, [path]: value })) return true;
+        added[path] = value;
+        return false;
+      });
+      if (passed.length === waiting.length) break;
+      waiting = passed;
     }
   }
   const after = new NoteReading(definition, { ...answers, ...added });
