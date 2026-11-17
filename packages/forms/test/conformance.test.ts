@@ -5,6 +5,7 @@ import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
 import { finishCheck } from '../src/interp/finish.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
+import { recapLines } from '../src/interp/recap.ts';
 import { visibleAnswers } from '../src/interp/visible.ts';
 import type { NoteReader } from '../src/interp/visible.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
@@ -44,6 +45,7 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
   finishCheck: (definition, c) => finishCheck(definition, c.answers as Answers),
   normalAnswers: (definition, c) =>
     normalAnswers(definition, c.section as string, c.answers as Answers, c.entry as string | undefined),
+  recapLines: (definition, c) => recapLines(definition, c.answers as Answers),
   visibleAnswers: (definition, c) => visibleAnswers(definition, c.answers as Answers, c.reader as NoteReader),
 };
 
