@@ -39,7 +39,13 @@ export type ReadCorrection = {
   reason: string;
 };
 
-export type ReadItem = { path: string; labels: string[]; value: string; corrections: ReadCorrection[] };
+/** `value` is null for an answer a correction took away: only its old value is shown, struck through. */
+export type ReadItem = {
+  path: string;
+  labels: string[];
+  value: string | null;
+  corrections: ReadCorrection[];
+};
 export type ReadEntry = { id: string; title: string; items: ReadItem[] };
 export type ReadSection =
   { id: string; title: string; items: ReadItem[] } | { id: string; title: string; entries: ReadEntry[] };
@@ -54,9 +60,14 @@ export type ReadModel = { sections: ReadSection[] };
  * (visibleAnswers).
  *
  * An item's corrections are the changes of the `corrected` corrections, in the order given, to
- * an answer the item shows; the other outcomes left the note as it was.
- * PLAN-OPEN: a correction that cleared an answer, or hid it, marks nothing here, since the answer
- * is not shown; the visit read lists the correction itself (lifecycle 5.1).
+ * an answer the item shows; the other outcomes left the note as it was. A change to an answer that
+ * does not count now (the correction cleared it, or it is in a field the correction hid) whose old
+ * value was an answer is an item all the same, at its place in the definition, with value null, so
+ * the old value stays visible struck through (lifecycle 3.6 and 9.7, PRD main 460). Its section,
+ * or its entry when that entry is still there, is listed for it.
+ *
+ * The corrections, like the answers, are those the reader may see: the caller leaves out a
+ * correction whose old or new value holds what visibleAnswers hides from them (lifecycle 5.1).
  */
 export function readModel(
   definition: ResolvedNoteType,
@@ -70,7 +81,12 @@ export function readModel(
       for (const covered of covers) byPath.set(covered, item);
       return item;
     });
-  const sections = layOut(definition, effectiveAnswers(definition, answers)).map(
+  const counted = effectiveAnswers(definition, answers);
+  // The answers a correction took away that had a value: laid out with none, under their old one.
+  const struck = new Set<string>();
+  for (const { path, oldValue: old } of changes(corrections))
+    if (!Object.hasOwn(counted, path) && oldValue(definition, path, old) !== null) struck.add(path);
+  const sections = layOut(definition, counted, undefined, struck).map(
     ({ section, items, entries }): ReadSection =>
       entries
         ? {
@@ -80,22 +96,31 @@ export function readModel(
           }
         : { id: section.id, title: section.title, items: toRead(items) },
   );
-  for (const correction of corrections) {
-    if (correction.outcome !== 'corrected') continue;
-    for (const change of correction.changes) {
-      if (!change.field.startsWith('data.')) continue;
-      const path = change.field.slice('data.'.length);
-      byPath.get(path)?.corrections.push({
-        path,
-        old: oldValue(definition, path, change.oldValue),
-        by: correction.correctorName,
-        credential: correction.correctorCredential,
-        at: correction.correctedAt,
-        reason: correction.reason,
-      });
-    }
-  }
+  for (const { path, oldValue: old, correction } of changes(corrections))
+    byPath.get(path)?.corrections.push({
+      path,
+      old: oldValue(definition, path, old),
+      by: correction.correctorName,
+      credential: correction.correctorCredential,
+      at: correction.correctedAt,
+      reason: correction.reason,
+    });
   return { sections };
+}
+
+/** The changes to answers of the corrections that changed the note, in the order given. */
+function changes(corrections: readonly NoteCorrection[]) {
+  return corrections.flatMap((correction) =>
+    correction.outcome !== 'corrected'
+      ? []
+      : correction.changes
+          .filter((change) => change.field.startsWith('data.'))
+          .map((change) => ({
+            path: change.field.slice('data.'.length),
+            oldValue: change.oldValue,
+            correction,
+          })),
+  );
 }
 
 /** An old value written out as that answer alone would be; null for a blank, or a value it cannot hold. */

@@ -54,9 +54,10 @@ export function handoffLines(
       effectiveAnswers(definition, answers),
       (node) => !marked(node),
     )) {
-      for (const item of items) line(section.id, item.labels, item.value);
+      // Nothing is struck here, so every item has a value.
+      for (const item of items) line(section.id, item.labels, item.value!);
       for (const entry of entries ?? [])
-        for (const item of entry.items) line(section.id, [entry.title, ...item.labels], item.value);
+        for (const item of entry.items) line(section.id, [entry.title, ...item.labels], item.value!);
     }
     for (const { section, text } of recapLines(definition, answers))
       recaps.push({

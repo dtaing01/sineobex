@@ -17,7 +17,8 @@ export type Item = {
   path: string;
   /** The labels along the path: the groups', the grid's, the row's, the field's, then Right or Left. */
   labels: string[];
-  value: string;
+  /** Written out; null for an answer a correction took away (`struck`), which holds none now. */
+  value: string | null;
   /** Every answer path the item shows. */
   covers: string[];
 };
@@ -41,18 +42,23 @@ export const SIDE_LABELS: Readonly<Record<string, string>> = { right: 'Right', l
  *
  * An entry's number is its place among the entries that are there (entryAt, in the order added),
  * as the form numbers them; an entry with nothing to show is not listed, and keeps its number.
+ *
+ * `struck` are paths not in `answers` that are laid out all the same, at their place, with no value:
+ * the read model's answers a correction cleared or hid, whose old value it shows struck through.
+ * Only a path in an entry that is there can be laid out.
  */
 export function layOut(
   definition: ResolvedNoteType,
   answers: Readonly<Record<string, unknown>>,
   skip: (node: FieldNode) => boolean = () => false,
+  struck: ReadonlySet<string> = new Set(),
 ): LaidOutSection[] {
   const reading = new NoteReading(definition, answers);
   const laid: LaidOutSection[] = [];
   for (const section of reading.model.sections) {
     const itemsOf = (entry: string | null) => {
       const items: Item[] = [];
-      const walker = new Walker(reading, answers, entry, skip, items);
+      const walker = new Walker(reading, answers, entry, skip, struck, items);
       for (const node of section.nodes) walker.walk(node, [], null);
       return items;
     };
@@ -80,8 +86,14 @@ class Walker {
     private readonly answers: Readonly<Record<string, unknown>>,
     private readonly entry: string | null,
     private readonly skip: (node: FieldNode) => boolean,
+    private readonly struck: ReadonlySet<string>,
     private readonly items: Item[],
   ) {}
+
+  /** An answer is laid out when it is there, or when it is struck. */
+  private shown(path: string): boolean {
+    return Object.hasOwn(this.answers, path) || this.struck.has(path);
+  }
 
   /** `labels` are those above the field; `row` is the grid row it is in, if any. */
   walk(node: FieldNode, labels: string[], row: string | null): void {
@@ -120,10 +132,7 @@ class Walker {
   /** One answer, and for a choice the Other text beside it, on the same side. */
   private answer(node: FieldNode, leaf: Leaf, labels: string[]) {
     const path = this.reading.pathOf(leaf, this.entry);
-    if (!Object.hasOwn(this.answers, path)) return;
     const side = node.field.sides || node.grid?.field.sides ? leaf.parts.at(-1)! : null;
-    const covers = [path];
-    let text: string | undefined;
     const other = node.leaves.find(
       (l) =>
         l.node === node &&
@@ -131,19 +140,23 @@ class Walker {
         l.row === leaf.row &&
         (side === null || l.parts.at(-1) === side),
     );
-    if (other) {
-      const otherPath = this.reading.pathOf(other, this.entry);
-      if (Object.hasOwn(this.answers, otherPath)) {
-        covers.push(otherPath);
-        text = this.answers[otherPath] as string;
-      }
+    const otherPath = other ? this.reading.pathOf(other, this.entry) : null;
+    // An Other text is laid out with its choice, so a struck text alone marks the choice's item.
+    if (!this.shown(path) && !(otherPath !== null && this.struck.has(otherPath))) return;
+    const covers = [path];
+    let text: string | undefined;
+    if (otherPath !== null && this.shown(otherPath)) {
+      covers.push(otherPath);
+      if (Object.hasOwn(this.answers, otherPath)) text = this.answers[otherPath] as string;
     }
+    const held = Object.hasOwn(this.answers, path);
     const value = this.answers[path];
     this.items.push({
       path,
       labels: side === null ? labels : [...labels, SIDE_LABELS[side]!],
-      value:
-        leaf.holds.type === 'codes'
+      value: !held
+        ? null
+        : leaf.holds.type === 'codes'
           ? codeLabels(leaf.holds.options, value as string | string[], text)
           : displayValue(leaf.holds, value, node.field),
       covers,
@@ -152,18 +165,20 @@ class Walker {
 
   /** A region's region, side and surface, or a problem's code and label: one item at the field's path. */
   private whole(node: FieldNode, labels: string[], row: string | null) {
-    const leaves = node.leaves.filter((l) => l.node === node && l.row === row);
-    const held = leaves
-      .map((leaf) => ({ leaf, path: this.reading.pathOf(leaf, this.entry) }))
-      .filter(({ path }) => Object.hasOwn(this.answers, path));
-    if (held.length === 0) return;
-    const at = held[0]!.path;
+    const leaves = node.leaves
+      .filter((l) => l.node === node && l.row === row)
+      .map((leaf) => ({ leaf, path: this.reading.pathOf(leaf, this.entry) }));
+    const held = leaves.filter(({ path }) => Object.hasOwn(this.answers, path));
+    const struck = leaves.filter(({ path }) => !Object.hasOwn(this.answers, path) && this.struck.has(path));
+    if (held.length === 0 && struck.length === 0) return;
+    const at = (held[0] ?? struck[0])!.path;
     const shown = (part: string) => {
       const found = held.find(({ leaf }) => leaf.parts.at(-1) === part);
       return found ? displayValue(found.leaf.holds, this.answers[found.path], node.field) : undefined;
     };
-    let value: string;
-    if (node.field.kind === 'problem') {
+    let value: string | null;
+    if (held.length === 0) value = null;
+    else if (node.field.kind === 'problem') {
       const [code, label] = [shown('code'), shown('label')];
       value = code !== undefined && label !== undefined ? `${label} (${code})` : (label ?? code)!;
     } else
@@ -174,7 +189,7 @@ class Walker {
       path: at.slice(0, at.lastIndexOf('.')),
       labels,
       value,
-      covers: held.map(({ path }) => path),
+      covers: [...held, ...struck].map(({ path }) => path),
     });
   }
 }
