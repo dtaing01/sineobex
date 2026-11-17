@@ -686,6 +686,35 @@ describe('the plans of the exam pieces', () => {
     }
   });
 
+  // Focused-exam default 28 has one-tap Normal fill 2+ for pulses and reflexes, and it fills nothing
+  // in a collapsed group or grid: an optional part is left alone. So the reflex table (default 25)
+  // is collapsed, and each pulse grid of the lines is split into the sites a routine exam palpates,
+  // which Normal fills, and a collapsed grid of the further sites, which it leaves empty: a Normal
+  // must not chart a femoral or a popliteal pulse that was never felt.
+  const ROUTINE_PULSES = ['radial', 'dorsalis_pedis_dp', 'posterior_tibial_pt'];
+  const MORE_PULSES: Record<string, [string, string[]]> = {
+    'exam-cv-perfusion': ['cv_perfusion', ['brachial', 'femoral']],
+    'exam-peripheral-vascular': ['peripheral_vascular', ['ulnar', 'femoral', 'popliteal']],
+  };
+  it.each(Object.entries(MORE_PULSES))(
+    '%s asks the routine pulse sites, and the further ones in a collapsed grid',
+    (name, [section, more]) => {
+      const grids = shapeOf(name).fields.filter((field) => field.kind === 'grid');
+      expect(grids.map((grid) => [grid.path, grid.label, grid.collapsed, grid.sides, grid.rows])).toEqual([
+        [`${section}.pulses`, 'Pulses', undefined, true, ROUTINE_PULSES],
+        [`${section}.more_pulses`, 'More pulse sites', true, true, more],
+      ]);
+      for (const grid of grids)
+        expect(shapeOf(name).fields.find((field) => field.path === `${grid.path}.grade`)?.options).toEqual({
+          list: 'pulse_scale',
+        });
+    },
+  );
+  it('exam-neuro-2 keeps the reflex table collapsed', () => {
+    const reflexes = shapeOf('exam-neuro-2').fields.find((field) => field.path === 'neuro_motor.reflexes');
+    expect([reflexes?.kind, reflexes?.collapsed]).toEqual(['grid', true]);
+  });
+
   // One-tap Normal fills only what is empty (forms 6.3), so it can never know that a wound was
   // charted elsewhere in the section: a question that opens a hand-off to another note (6.7) is
   // left for the clinician, or Normal would answer "No wound" beside an ulcer and hide the hand-off.

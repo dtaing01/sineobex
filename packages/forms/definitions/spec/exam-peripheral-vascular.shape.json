@@ -15,10 +15,25 @@
       "kind": "grid",
       "label": "Pulses",
       "sides": true,
-      "rows": ["radial", "ulnar", "femoral", "popliteal", "dorsalis_pedis_dp", "posterior_tibial_pt"]
+      "rows": ["radial", "dorsalis_pedis_dp", "posterior_tibial_pt"]
     },
     {
       "path": "peripheral_vascular.pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "peripheral_vascular.more_pulses",
+      "kind": "grid",
+      "label": "More pulse sites",
+      "collapsed": true,
+      "sides": true,
+      "rows": ["ulnar", "femoral", "popliteal"]
+    },
+    {
+      "path": "peripheral_vascular.more_pulses.grade",
       "kind": "choice",
       "many": false,
       "label": "Pulse",

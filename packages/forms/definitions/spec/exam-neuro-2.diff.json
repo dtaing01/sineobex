@@ -58,8 +58,8 @@
     },
     {
       "line": 35,
-      "what": "Reflexes is a grid, collapsed until tapped, with a row for each reflex (Biceps, Triceps, Patellar, Achilles, added: the check reads a plain line as no word), recorded for the right and the left (sides), each cell choose-one from the shared list reflex_scale: 0, 1+, 2+, 3+, 4+ (added: the scale line is no word). Normal fills 2+.",
-      "why": "PRD main 414; forms 6.3; focused-exam inventory construct 26, default 25, 28"
+      "what": "Reflexes is a grid, collapsed until tapped, with a row for each reflex (Biceps, Triceps, Patellar, Achilles, added: the check reads a plain line as no word), recorded for the right and the left (sides), each cell choose-one from the shared list reflex_scale: 0, 1+, 2+, 3+, 4+ (added: the scale line is no word). The table is optional, so Normal leaves it empty, as it does every collapsed part: the scale's normal 2+ is filled only by hand.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory construct 26, default 25, 28 (one-tap Normal leaves an optional part alone)"
     },
     {
       "line": 39,

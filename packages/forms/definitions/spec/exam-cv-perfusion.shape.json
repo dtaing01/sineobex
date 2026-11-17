@@ -15,10 +15,25 @@
       "kind": "grid",
       "label": "Pulses",
       "sides": true,
-      "rows": ["radial", "brachial", "femoral", "dorsalis_pedis_dp", "posterior_tibial_pt"]
+      "rows": ["radial", "dorsalis_pedis_dp", "posterior_tibial_pt"]
     },
     {
       "path": "cv_perfusion.pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "cv_perfusion.more_pulses",
+      "kind": "grid",
+      "label": "More pulse sites",
+      "collapsed": true,
+      "sides": true,
+      "rows": ["brachial", "femoral"]
+    },
+    {
+      "path": "cv_perfusion.more_pulses.grade",
       "kind": "choice",
       "many": false,
       "label": "Pulse",
