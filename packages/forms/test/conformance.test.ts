@@ -81,6 +81,57 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
   },
 };
 
+/**
+ * The inputs each function reads from a case, beside name, definition, why and expected; the
+ * optional ones end in '?'. A case with any other key would be run without what it meant to give:
+ * a normalAnswers case written with `entryId` would run with no entry, and might pass.
+ */
+const INPUTS: Record<string, string[]> = {
+  fieldAt: ['path'],
+  checkAnswer: ['path', 'value'],
+  effectiveAnswers: ['answers'],
+  finishCheck: ['answers'],
+  normalAnswers: ['section', 'answers', 'entry?'],
+  recapLines: ['answers'],
+  readModel: ['answers', 'corrections'],
+  visibleAnswers: ['answers', 'reader'],
+  suggestions: ['answers'],
+  expandQuick: ['answers', 'full', 'newEntryIds'],
+  handoffLines: ['notes'],
+};
+
+/** What is wrong with a case's keys for its function: one it does not read, or one it needs. */
+function keyFaults(fn: string, c: Record<string, unknown>): string[] {
+  const inputs = INPUTS[fn] ?? [];
+  const known = new Set(['name', 'definition', 'why', 'expected', ...inputs.map((k) => k.replace('?', ''))]);
+  const needed = ['name', 'definition', 'expected', ...inputs.filter((k) => !k.endsWith('?'))];
+  return [
+    ...Object.keys(c)
+      .filter((k) => !known.has(k))
+      .map((k) => `reads no ${k}`),
+    ...needed.filter((k) => !Object.hasOwn(c, k)).map((k) => `needs ${k}`),
+  ];
+}
+
+describe('the case reader', () => {
+  it('names the inputs of every function it runs', () => {
+    expect(Object.keys(INPUTS).sort()).toEqual(Object.keys(FUNCTIONS).sort());
+  });
+  it('refuses a key a function does not read, and a missing input', () => {
+    const base = { name: 'x', definition: 'checkup', expected: {} };
+    expect(
+      keyFaults('normalAnswers', { ...base, section: 'limbs', answers: {}, entryId: 'eaaaaaa1' }),
+    ).toEqual(['reads no entryId']);
+    expect(keyFaults('effectiveAnswers', { ...base, answer: {} })).toEqual([
+      'reads no answer',
+      'needs answers',
+    ]);
+    expect(keyFaults('normalAnswers', { ...base, section: 'limbs', answers: {}, entry: 'eaaaaaa1' })).toEqual(
+      [],
+    );
+  });
+});
+
 describe('the conformance definitions', () => {
   for (const [name, definition] of Object.entries(vectors.definitions))
     it(`${name} passes the validator`, () => {
@@ -211,6 +262,7 @@ describe('the conformance cases', () => {
           if (c.full !== undefined) expect(Object.keys(vectors.definitions), c.name).toContain(c.full);
           for (const n of (c.notes ?? []) as { definition: string }[])
             expect(Object.keys(vectors.definitions), c.name).toContain(n.definition);
+          expect(keyFaults(fn, c), c.name).toEqual([]);
         }
       });
 
