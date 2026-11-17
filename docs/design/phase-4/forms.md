@@ -1133,9 +1133,15 @@ So they are one note type, `red_flags_disposition`, with `auto: 'medical'`:
   `required` while EMS activated is Yes.
 - Disposition is choose-many with `excludes` pairs (PRD main 102). Inventory A21 lists the pairs
   built by default.
-- **Follow-up is asked here only**, for every Medical note type. As planned in wave B, the Quick
-  encounter's own follow-up lines (SPEC 328 to 332) are not typed (6.4): asked twice, the two could
-  disagree. Phase 7's follow-up task reads this note's.
+- **Follow-up is the visit's, and is asked here**: when (Next street clinic, Specific date or
+  PRN), the date, required for a Specific date, and Follow-up details, a text box shown once a
+  follow-up is picked. Phase 7's follow-up task reads this note's. As planned in wave B, the
+  Quick encounter's own follow-up lines (SPEC 328 to 332) are not typed (6.4): asked twice, the
+  two could disagree. As built, their text box is this note's Follow-up details, so the quick
+  form's follow-up note still has a home (10.1 #40). Two Medical note types keep a follow-up of
+  their own beside this one, which can differ from it and which phase 7 does not read: each
+  wound's, in Wound care, and Sexual and reproductive health's (Results needed, Referral, PCP)
+  (10.1 #41).
 
 ### 6.3 The Focused Exam
 
@@ -1204,6 +1210,22 @@ As planned in wave B (unit F6; the plans are the shape files under `definitions/
   (tympanic membrane, neurologic gait and coordination, MSK gait): neither normal nor abnormal, it
   clears the rest. The shoulder tests' normal is Not performed (10.1 #18).
 
+As built in wave D, the modules are `modules/exam_<piece, with underscores>/v1.json`, included in
+General as planned. One-tap Normal stays per section, so Cardiovascular has two (heart rate,
+rhythm and sounds; perfusion, edema and JVD) and MSK one in each region's entry and one for gait;
+whether the renderer should offer one Normal for a whole system is open. The review changed the
+plans before release:
+
+- **MSK strength is two numbers**, Strength, right and Strength, left, each shown only for the
+  side the entry examines (Right or Bilateral; Left or Bilateral; both for Head / Neck and Back,
+  which have no side), so one-tap Normal never records 5 for a limb that was not examined.
+- **Five normal options are no longer exclusive**: Normal S1/S2, Patent, Supple, No mass and
+  Intact skin are each held beside the findings they do not rule out, excluding only their
+  opposites; and PERRLA clears the other pupil findings as PERRL does (10.1 #23). A capillary
+  refill time is asked only while the refill is Greater than 2 seconds (10.1 #36). Neurologic,
+  Diabetic foot and Peripheral vascular end with a Notes box, which says the side of a finding
+  the choices cannot (10.1 #34).
+
 ### 6.4 The Quick encounter
 
 "Staff can expand any part of a quick encounter into its full module partway through without
@@ -1258,15 +1280,34 @@ As built (`expandQuick`, unit F1, 7.1):
   left out as `wrong_type` without asking `checkAnswer`, which cannot see a unit: a 2 stored in
   inches would pass it as 2 cm. The validator holds the newest quick version to the unit
   (`maps_to_mismatch`); an older one is not.
-- **The quick fields' targets are planned** in the differences of `spec/quick-1.diff.json` and
-  `spec/quick-2.diff.json`: chief concern, HPI and the vitals into General, the wound's type,
-  location, measurements, drainage and dressing into Wound care (the dressing into
-  `wound.treatment.dressing`, inside the wound), the needs into Social needs. F6-general-assemble
-  adds each `mapsTo`, to the definition and to the two shape files, once every target note type
-  exists: with them earlier, the quick card's export would fail with `unknown_note_type`.
+- **The quick fields' targets, as built** (card F6-general-assemble, once every target note type
+  existed: earlier, the quick card's export would have failed with `unknown_note_type`). Fourteen
+  fields carry `mapsTo`, written as the field's last key, in the definition and in the two
+  pieces' shape files, as the differences of `spec/quick-1.diff.json` and
+  `spec/quick-2.diff.json` name them:
+  - into General: `general.concern` to `reason.concern`, `general.hpi_details` to
+    `hpi.narrative`, and `general.bp.systolic`, `general.bp.diastolic`, `general.hr` and
+    `general.temp` to `vitals.bp.systolic`, `vitals.bp.diastolic`, `vitals.hr` and `vitals.temp`;
+  - into Wound care: `wound.type` and `wound.location` to the same paths,
+    `wound.dimensions.length`, `.width` and `.depth` to `wound.measurements.length`, `.width` and
+    `.depth`, `wound.drainage` to `wound.drainage_amount`, and `wound.dressing` to
+    `wound.treatment.dressing`, inside the wound;
+  - into Social needs: `social.needs` to `needs.needs`.
+
+  The blood pressure's and the dimensions' parts are mapped one by one, since Expand writes to a
+  leaf's path and the diff files name the targets field by field. The assessment, the HPI choice,
+  support, referral, medication and photos have no twin and map nothing. `vitals` in General and
+  `wound` in Wound care repeat, so Expand into either takes a new entry (`newEntryIds`). The
+  golden file expands the quick encounter's `every` set into each of the three (7.3). Once Expand
+  has carried a quick answer into a full note of the visit, the EMS handoff's field lines list it
+  once, from the full note (7.1).
 - **The quick form asks no follow-up of its own**: a quick encounter is a Medical note, so its
-  follow-up is the Red flags and disposition note's (6.2). Its lines' follow-up text box and date
-  are declared left out in `spec/quick-2.diff.json`.
+  follow-up is the Red flags and disposition note's (6.2). Its lines' follow-up date is declared
+  left out in `spec/quick-2.diff.json`, and their text box is the Red flags note's Follow-up
+  details (10.1 #40).
+- **Two answers are required while they show** (wave D's review), because the step that acts on
+  each needs it: a referral's details (PRD main 113), and a medication delivery's instructions,
+  with which phase 7 creates the delivery task (PRD main 418).
 
 ### 6.5 Sexual and reproductive branching
 
@@ -1281,6 +1322,11 @@ the test, "Known pregnancy, no test today", is set (an `any` condition), so a pr
 before the visit is charted without a test being recorded that was not done. The flag is not in
 the lines: a departure for the clinical team (inventory A44; 10.1 #24). The estimated due date
 may be in the past, as an overdue pregnancy's is.
+
+As built (wave D's review), the flag clears the test (`clears`), so a note never holds a test
+today beside "no test today". Pregnancy also stays among Testing history's tests, as the lines
+write it, for an earlier test and its date: a positive result there opens nothing, and nothing
+stops it from disagreeing with today's (10.1 #24).
 
 ### 6.6 Sensitive exams
 
@@ -1312,7 +1358,9 @@ As built in wave B (units F1 and F6):
   either way.
 - **No field in a sensitive exam or a treatment record is marked `handoff`**
   (`validate.handoff_restricted`): the handoff goes to EMS. The handoff's field lines are laid
-  out from the answers less what a sensitive exam put there, as its recap lines are.
+  out from the answers less what a sensitive exam put there, as its recap lines are. As built in
+  wave D's review, its recap lines also leave out every treatment record section, for every
+  reader: one who may see the section would otherwise hand it to EMS (7.1).
 - **In the plans**, GU's, Breast's and Rectal's sections carry `sensitiveExam`, each with its
   three workflow fields and nothing else `required` or `noNormal`. In GU, Exam performed opens the
   external exam and the findings text, and general findings and CVA can be charted without it
@@ -1329,6 +1377,13 @@ the encounter's Wound care draft, or creates one. The Skin finding itself stores
 In the plans no field that such an action's condition reads has a normal option, so one-tap
 Normal never answers one: in the foot exam it would write "Wound present? No" beside an ulcer
 already ticked, and hide the hand-off (10.1 #29). Skin offers the action for Ulcer or Abscess.
+
+As built (wave D's review): while Ulcer or Abscess is picked, a Skin finding stores only its
+location and type, and asks no characteristics, size or photos, which Wound care asks of the
+wound. The foot exam's Wound present? is not asked while Inspection holds Intact skin, so one-tap
+Normal, which hides no answer that counts, leaves Inspection empty beside Wound present? Yes, and
+the two are never charted together (10.1 #29). A wound ticked in the MSK exam's Inspection opens
+no hand-off: Inspection has a Normal option, and no answer Normal fills opens one (10.1 #35).
 
 Skin findings also ask "Same lesion as documented before?" (PRD main 416). In phase 4 the answer
 is a choice (Yes, No, Unknown) stored with the finding. Linking it to the earlier finding waits
@@ -1370,7 +1425,7 @@ built (unit F1); what each does in full follows it.
 | `recapLines(def, answers)` | `{ section, text }[]`: one line per section that has an answer | lifecycle 8.1 |
 | `readModel(def, answers, corrections)` | `{ sections }`: each `{ id, title, items }`, or `{ id, title, entries }` with each entry `{ id, title, items }` for a repeating section; an item is `{ path, labels, value, corrections }`, `value` a string, or null for an answer a correction took away, and a correction `{ path, old, by, credential, at, reason }` | The visit read (3.5), the phone's read view |
 | `visibleAnswers(def, answers, reader)` | The answers that count that a reader may see, a subset of `effectiveAnswers` in its order, or null when the reader may not see the note at all. `reader` is `{ actsAsAuthor, viewSensitive, viewSensitiveExams, readsMedical, chartsMedical, ordersMedications, sensitiveCodes }`: six facts about the person, and phase 3's sensitive diagnosis codes as ranges `{ from, to }` | lifecycle 6.4 |
-| `handoffLines(defs, answersByNote)` | The EMS handoff summary of one visit's notes, `{ kind, note, section, label, value }[]`: first a `field` line for each answer of the fields marked `handoff`, then each note's `recap` lines (10.1 #6) | lifecycle 5.7, 9.8 |
+| `handoffLines(defs, answersByNote)` | The EMS handoff summary of one visit's notes, `{ kind, note, section, label, value }[]`: first a `field` line for each answer of the fields marked `handoff`, but a quick answer Expand carried into a full note of the visit, then each note's `recap` lines, but a treatment record's (10.1 #6) | lifecycle 5.7, 9.8 |
 | `suggestions(def, answers)` | The note type keys the options picked suggest, each once, in the definition's order | lifecycle 9.6 |
 | `expandQuick(quickDef, answers, fullDef, newEntryIds)` | `{ answers, leftOut }`: the answers to write into the full note, and `{ path, target, problem }` for each one left out. `newEntryIds` is `{ <section id>: { id, at } }`, the new entry of each repeating section of the full note | 6.4 |
 
@@ -1507,7 +1562,17 @@ Each function, as built:
   group or grid that is not marked, alone. `label` is the item's labels joined by `, `, with an
   entry's title first in a repeating section. Then come each note's recap lines, `label` being the
   section's title. `note` is the note's place in the lists, and the screen and the PDF head each
-  note with `defs[note].title`.
+  note with `defs[note].title`. Wave D's review added two rules, in both interpreters and the
+  vectors:
+  - **A quick answer Expand carried into a full note has no field line of its own**: a field is
+    left out of the field lines when its `mapsTo` (its own, or a group's or grid's around it)
+    names a note type of which a note in the lists holds an answer that counts at the target of
+    one of its answers. The full note's line stands for it, and stays right when that note is
+    corrected. Each note's recap still shows the answer, so after Expand a vital is in the
+    summary three times, not four (10.1 #6).
+  - **No recap line of a `treatmentRecord` section**, for any reader: EMS may not read a
+    treatment record (`validate.handoff_restricted`), and a reader who may see one, its author or
+    one with `view_sensitive` and a clinical credential, would otherwise hand it over.
 - **`suggestions`** reads only stored codes that count: a choice's, a region's parts, a choice in
   a grid's cell. A grid's fixed row is never picked, so a `suggests` on one suggests nothing. The
   order is the definition's (fields as written, a field's options as listed, a region's options,
@@ -1538,7 +1603,7 @@ As built (unit F1):
   `quickOld` (its version 1, which maps answers the newest full note types do not all take),
   `problems`, `ems`, `social`, `checkup`, `intake`, `rehab` and `rules` (a Normal section built
   so that one-tap Normal's retry is the only way to its answer, and a diagnosis hidden by a
-  condition). `cases` maps each function of 7.1 to its cases, 586 in all, each
+  condition). `cases` maps each function of 7.1 to its cases, 589 in all, each
   `{ name, definition, why, expected }` with `why` optional, and the inputs its function reads:
   `path`, with `value` for `checkAnswer`; for the rest `answers`,
   with `section` and an optional `entry` for `normalAnswers`, `corrections` for `readModel`,
@@ -1596,52 +1661,93 @@ As built (unit F1):
 ### 7.3 The golden file (generated)
 
 `packages/forms/generated/golden.json` is written with the export (4.1). For every real note type
-version it holds what the TypeScript interpreter says for three sets of answers made by rule: no
-answers; every section opened and one-tap Normal applied; the first option of every choice
-picked. For each: `finishCheck`, `recapLines` and the hash of `readModel`.
+version it holds what the TypeScript interpreter says for sets of answers made by rule, three as
+designed (five as built, below): no answers; every section opened and one-tap Normal applied; the
+first option of every choice picked. For each: `finishCheck`, `recapLines` and the hash of
+`readModel`.
 
 The Dart test `apps/mobile/test/forms/golden_test.dart` recomputes all of it from the bundled
 presets and compares. So the two interpreters are held together on the real forms, not only on
 the small ones, and a transcription card that trips a difference fails a test.
 
 As built (unit E, `packages/forms/scripts/golden.ts`, run as `pnpm --filter @sineobex/forms golden`
-after the export, from the `presets.json` it wrote):
+after the export, from the `presets.json` it wrote). Wave D's review found that three sets reached
+6 of General's 29 sections, and widened the file to five sets and more for each:
 
-- **The three sets** are made from the definition alone, so the phone can make the same, and are
-  named `blank`, `normal` and `first`. `blank` has no answers. `normal` opens every section and
-  applies one-tap Normal to it, section by section in the definition's order, each against the
-  answers so far. `first` opens every section and picks the first option of every answer that
-  holds codes, hidden or not: each choice, each part of a region (the region, its side and its
-  surface), each grid cell and each side, a choose-many as a list of that one code. Nothing else
-  is made up: no text, number, flag, date, time, duration or problem. Opening a repeating
-  section adds one entry, `e0000001` at `2000-01-01T00:00:00Z` (`GOLDEN_ENTRY`); any other
-  section is opened by looking at it, which stores nothing. `first` is the run that tries every
-  condition on a choice once (10.4, risk 2).
-- **The file** is a list in the presets' order, each `{ key, version, hash, cases }`, the three
-  cases in that order, each `{ name, answers, finishCheck, recapLines, readModelHash }`.
+- **The five sets** are made from the definition alone, so the phone can make the same, and are
+  named `blank`, `normal`, `first`, `systems` and `every`. `blank` has no answers. Each of the
+  others first opens every section: a repeating section gets one entry, `e0000001` at
+  `2000-01-01T00:00:00Z` (`GOLDEN_ENTRY`); any other section is opened by looking at it, which
+  stores nothing.
+  - `normal` applies one-tap Normal to each section, in the definition's order, each against the
+    answers so far.
+  - `first` picks the first option of every answer that holds codes, hidden or not: each choice,
+    each part of a region (the region, its side and its surface), each grid cell and each side, a
+    choose-many as a list of that one code. Nothing else is made up: no text, number, flag, date,
+    time, duration or problem. `first` is the run that tries every condition on a choice once
+    (10.4, risk 2).
+  - `systems` sets every answer that opens something, one a condition names or a grid picks its
+    rows in: a choose-many takes every option it can hold together (no exclusive option, and of
+    a blocked pair the first), a choose-one its first option, a flag is set, and nothing else is
+    made up. Then Normal, as in `normal`. So every exam system is picked and every module opened
+    before Normal runs on it, and a sensitive exam's Exam performed is ticked while its consent
+    is left blank, which `finishCheck` must ask for.
+  - `every` fills every answer, hidden or not: a choose-many as in `systems`, a choose-one its
+    last option, a flag set, and every other kind a fixed value (`FILLED`: the text "Demo" cut to
+    the field's `maxLength`, a number's `min`, the date 2000-01-01, the time 12:00, 10 days, and
+    the problem F11.20, "Demo problem"). Then Normal. So every system has a finding charted, and
+    every follow-up a finding opens is reached.
+- **Each case** is `{ name, answers, finishCheck, recapLines, handoffLines, effectiveKeys,
+  readModelHash, visibleHashes, contentHash, expansions }`. `handoffLines` is the note's alone, as
+  its author sees it; `effectiveKeys` are the keys of `effectiveAnswers`, in its order. The hashes
+  are SHA-256 of canonical JSON, which holds every label and value without copying them:
+  `readModelHash` of `readModel(definition, answers, [])`; `visibleHashes` of `visibleAnswers`,
+  null included, for three fixed readers (`GOLDEN_READERS`), none acting as the author, so every
+  rule of 7.1 runs: `full`, `noExams` (no `view_sensitive_exams` and no clinical credential, so no
+  sensitive exam and no treatment record) and `noSensitive` (no `view_sensitive`), with the
+  sensitive codes F10 to F19, among them `FILLED`'s; and `contentHash`, the hash a sign-off would
+  carry (lifecycle 4.5) for a fixed note, visit and patient (`GOLDEN_NOTE`). `expansions` gives,
+  for each note type a `mapsTo` names, what `expandQuick` writes into its newest version, a
+  repeating section's new entry being `e0000002` at `2000-01-02T00:00:00Z` (`GOLDEN_NEW_ENTRY`).
   `answers` are written in code-unit key order, so a difference in the answers made (one-tap
   Normal on the phone, say) is told apart from a difference in what is said about them.
-  `readModelHash` is the SHA-256 of the canonical JSON of `readModel(definition, answers, [])`:
-  every label and value, without copying the whole model. It is `[]` while `presets.json` is.
+- **The file** is a list in the presets' order, each `{ key, version, hash, cases }`, the five
+  cases in that order. It holds what the presets hold, the released versions (D78, 3.2), so it is
+  `[]` until F6-release, which adds nine note types of five cases each, about 190 KB.
+- **The content hash** is worked out by mirroring the API's `noteContent`, since the script cannot
+  load `services/api`. `services/api/test/note-content-hash.test.ts` holds the API's
+  `noteContentHash` to every case of `golden.json` and of the phone's sample, and the phone's test
+  holds its own.
+- **What the sets reach on the real note types** is held by `packages/forms/test/golden.test.ts`,
+  which resolves the definitions itself, so it runs before they are released. Between them
+  `first`, `systems` and `every` give every section of every note type an answer that counts;
+  `systems` opens each of General's exam modules before Normal runs on it, and ticks GU's,
+  Breast's and Rectal's Exam performed with consent blank, so `finishCheck` asks for consent; and
+  the quick encounter's `every` expands into General, Social needs and Wound care, with answers in
+  each. A trial on a released copy found the two interpreters, and the API's content hash,
+  agreeing on all 45 real cases.
 
 As built (unit F2): the test also holds the presets and the golden file to the same keys,
-versions and hashes. Until the definitions are typed, `golden.json` is empty, so the same check
-runs over `apps/mobile/test/forms/golden_sample.json` as well: the fixture note types and the
-vectors' definitions, with what TypeScript says about them. `packages/forms/test/golden.test.ts`
+versions and hashes. Until the definitions are released, `golden.json` is empty, so the same
+check runs over `apps/mobile/test/forms/golden_sample.json` as well: the fixture note types and
+the vectors' definitions, with what TypeScript says about them. `packages/forms/test/golden.test.ts`
 writes that sample as a file snapshot, so a change on the TypeScript side fails there until the
 sample is written again, and the phone's test then says whether Dart agrees.
 
 - **What the phone's test checks**, for the bundled presets against `golden.json`, then for the
   sample's presets against its golden list: the same keys, versions and hashes in the same order;
-  each preset's hash is `valueHash` of its definition; Dart makes the same three sets by the same
+  each preset's hash is `valueHash` of its definition; Dart makes the same five sets by the same
   rules and the same entry, answer for answer and in the same key order; and over the golden
-  list's own answers, `finishCheck`, `recapLines` and the hash of `readModel` say the same.
-  Comparing over the file's answers keeps a fault in Normal apart from a fault in the recap.
-- **The sample cannot pass empty**: the test asks it for more than ten note types, and for
-  `normal` answers that fill a field as well as answers that open an entry.
+  list's own answers, `finishCheck`, `recapLines`, `handoffLines`, the keys of `effectiveAnswers`
+  in their order, the hashes of `readModel` and of `visibleAnswers` for the three readers, the
+  content hash (`noteContentHash`) and each expansion say the same. Comparing over the file's
+  answers keeps a fault in Normal apart from a fault in the recap.
+- **The sample cannot pass empty**: the test asks it for more than ten note types, for `normal`
+  answers that fill a field as well as answers that open an entry, and for a quick note type
+  whose Expand writes something.
 - **To write the sample again**, after a change to either interpreter, the fixture note types or
   the vectors' definitions: `pnpm --filter @sineobex/forms exec vitest run test/golden.test.ts -u`,
-  then run the phone's test. The sample is about 130 KB.
+  then run the phone's test. The sample is about 260 KB.
 
 ## 8. The phone renderer and the portal read view
 
