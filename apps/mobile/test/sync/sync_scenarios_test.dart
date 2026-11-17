@@ -493,8 +493,9 @@ void main() {
       final p = phone(alex);
       final visit = chartVisit(p);
       await p.engine.syncAll();
-      // The note is signed on the server for a while: a stand-in for anything a later fix gets past.
-      server.serverEdit(visit.note, 'status', 'signed', by: blair);
+      // The note is gone from the server for a while: a stand-in for anything a later fix gets past
+      // (a finished note keeps a late change in history now, lifecycle 4.4).
+      final away = server.records.remove(visit.note)!;
       p.store.setField(visit.note, 'data.care.plan', 'rest');
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
@@ -503,7 +504,7 @@ void main() {
       final fix = p.store.needsAttention().single;
       expect(fix.supersedes, first.changeId);
 
-      server.serverEdit(visit.note, 'status', 'draft', by: blair);
+      server.records[visit.note] = away;
       p.store.fixRejected(fix.changeId, 'rest, fluids and a recheck');
       await p.engine.syncAll(force: true);
       expect(p.store.outbox(), isEmpty);
@@ -519,12 +520,12 @@ void main() {
       final p = phone(alex);
       final visit = chartVisit(p);
       await p.engine.syncAll();
-      server.serverEdit(visit.note, 'status', 'signed', by: blair);
+      final away = server.records.remove(visit.note)!;
       p.store.setField(visit.note, 'data.care.plan', 'rest');
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
-      // Unsigned again, and a teammate writes the plan meanwhile, so the fix meets their value.
-      server.serverEdit(visit.note, 'status', 'draft', by: blair);
+      // Back again, and a teammate writes the plan meanwhile, so the fix meets their value.
+      server.records[visit.note] = away;
       server.serverEdit(visit.note, 'data.care.plan', 'clinic Friday', by: blair);
       p.store.fixRejected(first.changeId, 'rest and fluids');
       await p.engine.syncAll(force: true);

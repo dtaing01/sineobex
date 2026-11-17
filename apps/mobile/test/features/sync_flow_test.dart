@@ -10,6 +10,7 @@ import 'package:sineobex_field/sync/local_store.dart';
 
 import '../auth/fakes.dart';
 import '../helpers/app_harness.dart';
+import '../sync/test_note_types.dart';
 
 /// The Phase 2 screens: sync status, the clock pause, Needs attention with conflicts side by side,
 /// signing out with unsynced work, remote wipe and removal. Every screen is checked against the
@@ -64,7 +65,12 @@ void main() {
       h.server.offline = true;
       final store = storeOf(h);
       final encounter = store.createEncounter(kind: 'medical');
-      store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+      store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'vitals.temp_c': 38.2},
+      );
       await syncNow(tester, h);
       expect(find.text('No connection'), findsOneWidget);
       expect(find.textContaining('2 changes saved on this phone'), findsOneWidget);
@@ -83,17 +89,22 @@ void main() {
       final h = await signedIn(tester, theme: theme);
       final store = storeOf(h);
       final encounter = store.createEncounter(kind: 'medical');
-      final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+      final note = store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'vitals.temp_c': 38.2},
+      );
       await syncNow(tester, h);
       // A teammate changes the temperature on the server; this phone changes it too.
-      h.server.serverEdit(note, 'data.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
-      store.setField(note, 'data.temp_c', 39.1);
+      h.server.serverEdit(note, 'data.vitals.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
+      store.setField(note, 'data.vitals.temp_c', 39.1);
       await syncNow(tester, h);
 
       expect(find.text('Needs attention'), findsOneWidget);
       await expectGuidelines(tester);
       await tapText(tester, 'Needs attention');
-      expect(find.text('Temp c'), findsOneWidget);
+      expect(find.text('Vitals temp c'), findsOneWidget);
       expect(find.text('Your value'), findsOneWidget);
       expect(find.text('39.1'), findsOneWidget);
       expect(find.textContaining('A teammate'), findsOneWidget);
@@ -104,7 +115,7 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pumpAndSettle();
       expect(find.text('Nothing needs attention.'), findsOneWidget);
-      expect(h.server.records[note]!.fields['data.temp_c']!.value, 39.1);
+      expect(h.server.records[note]!.fields['data.vitals.temp_c']!.value, 39.1);
       handle.dispose();
     });
 
@@ -137,7 +148,12 @@ void main() {
       h.server.offline = true;
       final store = storeOf(h);
       final encounter = store.createEncounter(kind: 'medical');
-      store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+      store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'vitals.temp_c': 38.2},
+      );
       store.appendAudit('patient.viewed', entity: 'patient', entityId: encounter);
       await tester.pumpAndSettle();
 
@@ -179,10 +195,15 @@ void main() {
     final h = await signedIn(tester);
     final store = storeOf(h);
     final encounter = store.createEncounter(kind: 'medical');
-    final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    final note = store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.2},
+    );
     await syncNow(tester, h);
-    h.server.serverEdit(note, 'data.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
-    store.setField(note, 'data.temp_c', 39.1);
+    h.server.serverEdit(note, 'data.vitals.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
+    store.setField(note, 'data.vitals.temp_c', 39.1);
     await syncNow(tester, h);
     await tapText(tester, 'Needs attention');
     // The hand-over starts with the card on screen; the controller hasn't said so yet.
@@ -230,7 +251,12 @@ void main() {
     await syncNow(tester, h);
     final store = storeOf(h);
     final encounter = store.createEncounter(kind: 'medical');
-    store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.2},
+    );
     h.server.removedUsers.add(demoUser().userId);
     await syncNow(tester, h);
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
@@ -345,11 +371,16 @@ void main() {
     final h = await signedIn(tester);
     final store = storeOf(h);
     final encounter = store.createEncounter(kind: 'medical');
-    final note = store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+    final note = store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.2},
+    );
     await syncNow(tester, h);
-    h.server.serverEdit(note, 'data.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
-    store.setField(note, 'data.temp_c', 39.0);
-    store.setField(note, 'data.temp_c', 39.4);
+    h.server.serverEdit(note, 'data.vitals.temp_c', 38.6, by: 'c0000000-0000-4000-8000-00000000000c');
+    store.setField(note, 'data.vitals.temp_c', 39.0);
+    store.setField(note, 'data.vitals.temp_c', 39.4);
     await syncNow(tester, h);
     await tapText(tester, 'Needs attention');
     expect(find.text('Your value'), findsOneWidget);
@@ -357,7 +388,7 @@ void main() {
     expect(find.text('39.0'), findsNothing);
     await tapText(tester, 'Use my value');
     await settle(tester);
-    expect(h.server.records[note]!.fields['data.temp_c']!.value, 39.4);
+    expect(h.server.records[note]!.fields['data.vitals.temp_c']!.value, 39.4);
     expect(store.outbox(), isEmpty);
   });
 

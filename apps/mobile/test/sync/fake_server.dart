@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/encounters/rules.dart'
+    show NoteStatus, ReopenEffect, encounterStatus, noteIsEmpty, reopenEffect;
 import 'package:sineobex_field/patients/access.dart';
 import 'package:sineobex_field/patients/dob.dart';
 import 'package:sineobex_field/patients/generated/sensitive_codes.dart';
@@ -13,6 +15,8 @@ import 'package:sineobex_field/patients/matching.dart';
 import 'package:sineobex_field/patients/recognisable.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/entities.dart';
+
+import 'test_note_types.dart';
 
 /// An in-memory server with the API's sync rules (services/api/src/sync), for engine tests. The
 /// live tests (live_api_test.dart, and lib/patients/'s) run the same scenarios against the real
@@ -24,6 +28,12 @@ import 'package:sineobex_field/sync/entities.dart';
 /// set once, the problem status rule) with their accepted outcomes; receipts that carry `server`
 /// and `details`, replayed the same; redirects for merged patients and problems; caps; the ID link
 /// handshake over the group; and duplicate matching with the phone's own scorer.
+///
+/// Phase 4 (lifecycle 4.9), each rule as services/api/src/sync/entities builds it and with its case
+/// in fake_parity_test.dart: an encounter's fields and the envelope lock (rules 1 and 2, encounter.ts);
+/// a note's type, a Medical note's patient and its visit made Medical (3 and 4, note.ts); a finished
+/// note's late changes and the reopen (5 and 6); the visit's status worked out from its notes, as the
+/// trigger of migration 0018 does (13).
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -52,6 +62,12 @@ class FakeSyncServer {
 
   /// Each person's permission keys in the team (D37); [healthcareStaff] for anyone not listed.
   final permissions = <String, Set<String>>{};
+
+  /// The note type versions the team holds (note_type_versions), by key and version: the test-only
+  /// types every API test team holds (test_note_types.dart).
+  final noteTypes = <(String, int), Map<String, Object?>>{
+    for (final d in testNoteTypes) (d['key']! as String, d['version']! as int): d,
+  };
 
   /// The Healthcare Staff role of 0002.
   static const healthcareStaff = {
@@ -137,6 +153,20 @@ class FakeSyncServer {
     final record = records[recordId]!;
     final current = record.fields[field];
     _write(record, field, value, (current?.version ?? 0) + 1, by, now().toUtc().toIso8601String(), null);
+  }
+
+  /// A note finished on the server, as a sign-off leaves it (lifecycle 4.6) and as the API's tests
+  /// write one: [status] at the version its status field had, finished now by its author.
+  /// [everSigned]: signed once, as a student's correction leaves a co-signed note.
+  void finishNote(String noteId, {String status = 'completed', bool everSigned = false}) {
+    final note = records[noteId]!;
+    final cur = note.fields['status']!;
+    note
+      ..fields['status'] = FakeField(status, cur.version, cur.by, cur.at, cur.changeId)
+      ..completedAt = _iso(now())
+      ..completedBy = note.author
+      ..everSigned = note.everSigned || everSigned || status == 'signed';
+    _refreshVisit(note.attributes['encounterId']);
   }
 
   /// A record made online (or seeded): [entity]'s create applied with every permission, as an
@@ -685,9 +715,16 @@ class FakeSyncServer {
     if (rules.entity == entityIdLink) return _idLinkHandshake(actor, c, v);
 
     // The entity's own checks, before the insert (storeCreate's `check`).
+    Map<String, Object?>? noteType;
     switch (rules.entity) {
+      // In this order (note.ts applyCreate): the type and the visit, which the worker can fix. A note
+      // is taken whatever state the visit's other notes are in.
       case entityNote:
-        if (records[v['encounterId']]?.fields['status']?.value == 'signed') return _rejected('record_locked');
+        noteType = noteTypes[(v['noteTypeKey'], v['noteTypeVersion'])];
+        if (noteType == null) return _invalid('unknown_note_type');
+        if (_medicalType(noteType) && records[v['encounterId']]!.fields['patientId']?.value == null) {
+          return _invalid('medical_note_needs_patient');
+        }
       case entityPatient:
         final consent = (v['consent']! as Map<String, Object?>)['id'];
         final notice = (v['privacyNotice']! as Map<String, Object?>)['id'];
@@ -732,6 +769,17 @@ class FakeSyncServer {
     }
     Map<String, Object?>? details;
     switch (rules.entity) {
+      case entityEncounter:
+        // What the server keeps with a visit and no set changes (encounter.ts load).
+        record.attributes.addAll({
+          'startedAt': at,
+          'startedDeviceTime': c['deviceTime'],
+          'clockVerified': c['clockVerified'] == true,
+        });
+      case entityNote:
+        record.medical = _medicalType(noteType!);
+        _refreshVisit(v['encounterId']);
+        if (record.medical) _makeMedical(actor, c, records[v['encounterId']]!);
       case entityPatient:
         for (final name in ['consent', 'privacyNotice']) {
           final decision = v[name]! as Map<String, Object?>;
@@ -876,7 +924,10 @@ class FakeSyncServer {
     final field = c['field'] as String?;
     if (field == null) return _invalid('field_missing');
     final cls = rules.fieldClass(field);
-    final issues = rules.fieldIssues(field, c['value']);
+    // The API's schema takes an old build's Complete (records.ts Status), which the note's status rule
+    // keeps in history; the phone's registry never sends one.
+    final oldComplete = rules.entity == entityNote && field == 'status' && c['value'] == 'completed';
+    final issues = oldComplete ? <String>{} : rules.fieldIssues(field, c['value']);
     if (issues == null || cls == null) return _invalid('unknown_field');
     if (issues.isNotEmpty) return _rejected('validation', _problems(issues));
     final value = c['value'];
@@ -905,12 +956,14 @@ class FakeSyncServer {
         ? c['baseVersion'] == cur['version'] || _followsCurrent(actor, c, rec, field, cur['version']! as int)
         : c['baseVersion'] == cur['version'] && _answersConflictOn(actor, c, rec.id);
     final s = _SetContext(actor, c, rules, rec, field, value, cur, saw, redirect);
-    final outcome = switch (cls) {
-      FieldClass.draft => _draftSet(s),
-      FieldClass.keepBoth => _keepBothSet(s),
-      FieldClass.identity => _identitySet(s),
-      FieldClass.setOnce => _setOnceSet(s),
-      FieldClass.status => _statusSet(s),
+    final outcome = switch ((rules.entity, cls)) {
+      (entityNote, _) => _noteSet(s),
+      (entityEncounter, FieldClass.status) => _kindSet(s),
+      (_, FieldClass.draft) => _draftSet(s),
+      (_, FieldClass.keepBoth) => _keepBothSet(s),
+      (_, FieldClass.identity) => _identitySet(s),
+      (_, FieldClass.setOnce) => _setOnceSet(s),
+      (_, FieldClass.status) => _statusSet(s),
     };
     // A conflict keeps its survivor on the receipt, so a retry shows the survivor again.
     if (redirect != null && outcome['status'] != 'rejected') {
@@ -1009,7 +1062,13 @@ class FakeSyncServer {
         // A confirmation moves only the check date, and it never moves back.
         final when = DateTime.parse(at);
         if (rec.checkedAt == null || when.isAfter(rec.checkedAt!)) rec.checkedAt = when;
+      // A reopen is the only status a sync writes: a draft holds no time of finishing (note.ts write).
+      case (entityNote, 'status') when value == 'draft':
+        rec
+          ..completedAt = null
+          ..completedBy = null;
     }
+    if (rec.entity == entityNote) _refreshVisit(rec.attributes['encounterId']);
   }
 
   /// One field history row (field_history): `at` is the corrected device time the rules compare,
@@ -1045,9 +1104,15 @@ class FakeSyncServer {
   });
 
   /// Kept in history, not applied: the other value of an open review ([needs]), or history only
-  /// (a stale observation, a second retraction, a clear that would leave nobody recognisable).
-  /// Accepted at the field's version, and the receipt carries the chart's value (design 2.5).
-  Map<String, Object?> _keepInHistory(_SetContext s, {String? needs, String? problem}) {
+  /// (a stale observation, a second retraction, a clear that would leave nobody recognisable, a late
+  /// change to a visit or a note). Accepted at the field's version, and the receipt carries the
+  /// chart's value (design 2.5). [notice] tells each person it names once (fields.ts keepInHistory).
+  Map<String, Object?> _keepInHistory(
+    _SetContext s, {
+    String? needs,
+    String? problem,
+    ({String kind, List<String> to})? notice,
+  }) {
     String? reviewId;
     if (needs != null) {
       final open = reviews.values
@@ -1067,6 +1132,9 @@ class FakeSyncServer {
       s.c,
       reviewId: reviewId,
     );
+    for (final userId in notice?.to ?? const <String>[]) {
+      notices.add(FakeNotice(_uuid(), userId, notice!.kind, s.rec.entity, s.rec.id, now()));
+    }
     return _accepted(
       s.cur['version']! as int,
       server: s.cur,
@@ -1107,16 +1175,24 @@ class FakeSyncServer {
 
   bool _same(Object? a, Object? b) => canonicalJson(a) == canonicalJson(b);
 
-  /// The draft rule (D9): encounters and notes.
+  /// The draft rule (D9): encounters and notes. A value the record takes no more of (the envelope of
+  /// a visit with a finished note, an answer to a finished note) is kept in history, the answer to a
+  /// conflict included, once it differs from the value held (fields.ts draftSet).
   Map<String, Object?> _draftSet(_SetContext s) {
-    if (s.rec.fields['status']?.value == 'signed') return _rejected('record_locked');
+    final resolution = s.c['resolution'];
+    if (resolution == 'keep_server') return _keepServer(s, notifyAuthor: true);
+    if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
+    final kept = switch (s.rec.entity) {
+      entityEncounter => _envelopeKept(s),
+      entityNote => _lateChange(s),
+      _ => null,
+    };
+    if (kept != null) return _keepInHistory(s, problem: kept.problem, notice: kept.notice);
+    // The bound is on what reaches the chart: a value kept in history adds no field.
     final dataFields = s.rec.fields.keys.where((f) => f.startsWith('data.')).length;
     if (s.field.startsWith('data.') && !s.rec.fields.containsKey(s.field) && dataFields >= maxNoteFields) {
       return _invalid('too_many_fields');
     }
-    final resolution = s.c['resolution'];
-    if (resolution == 'keep_server') return _keepServer(s, notifyAuthor: true);
-    if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
     if (resolution == 'replace') {
       return s.saw ? _writeValue(s, 'replaced_after_review', approvedBy: s.actor.decider) : _conflict(s);
     }
@@ -1124,6 +1200,108 @@ class FakeSyncServer {
     if (isBlankValue(s.cur['value'])) return _writeValue(s, 'filled_blank');
     // "A field that already holds a different value is never overwritten silently."
     return _conflict(s);
+  }
+
+  /// The envelope lock (encounter.ts envelopeKept): a patient is never taken off a visit; a visit
+  /// with none can always be given one; anything else waits on the visit's notes, and once one is
+  /// finished the change is kept and its sender told.
+  _Kept? _envelopeKept(_SetContext s) {
+    if (s.field == 'patientId') {
+      if (s.value == null) return (problem: 'patient_cannot_be_removed', notice: null);
+      if (isBlankValue(s.cur['value'])) return null;
+    }
+    if (!_notesOf(s.rec.id).any((n) => _noteStatusOf(n) != 'draft')) return null;
+    return (problem: 'encounter_has_finished_note', notice: (kind: 'late_change_kept', to: [s.actor.userId]));
+  }
+
+  /// A visit's kind (encounter.ts kindSet): to Medical from any version, never back, never a conflict.
+  Map<String, Object?> _kindSet(_SetContext s) {
+    if (s.c['resolution'] != null) return _invalid('nothing_to_resolve');
+    if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
+    if (s.value != 'medical') return _keepInHistory(s, problem: 'kind_cannot_go_back');
+    return _writeValue(s, 'set');
+  }
+
+  /// A set of a note's field (note.ts noteSet): the status's own rule; a finished note's late change,
+  /// kept by the draft rule; then the draft rule.
+  Map<String, Object?> _noteSet(_SetContext s) {
+    if (s.field == 'status') return _noteStatusSet(s);
+    return _draftSet(s);
+  }
+
+  /// A finished note keeps a late change (note.ts lateChange): its sender is told, and its acting
+  /// author when that is someone else.
+  _Kept? _lateChange(_SetContext s) => _noteStatusOf(s.rec) == 'draft' ? null : _lateKept(s);
+
+  _Kept _lateKept(_SetContext s) {
+    final author = _actingAuthor(s.rec);
+    final to = s.actor.userId == author ? [author] : [s.actor.userId, author];
+    return (problem: 'note_finished', notice: (kind: 'late_change_kept', to: to));
+  }
+
+  /// Who acts as a note's author (lifecycle 3.8): the clinician assigned after the author left.
+  static String _actingAuthor(FakeRecord note) => note.assignedTo ?? note.author;
+
+  /// A note's status from a phone (note.ts statusSet): `draft` is the reopen, by the table of
+  /// reopenEffect; `completed` is an old build's Complete, kept in history. It never conflicts.
+  Map<String, Object?> _noteStatusSet(_SetContext s) {
+    if (s.c['resolution'] != null) return _invalid('nothing_to_resolve');
+    if (s.value == 'completed') return _keepInHistory(s, problem: 'use_signoff');
+    ReopenEffect effect({required bool actsAsAuthor}) => reopenEffect(
+      noteStatus: NoteStatus.values.byName(_noteStatusOf(s.rec)),
+      everSigned: s.rec.everSigned,
+      medicalNote: s.rec.medical,
+      actsAsAuthor: actsAsAuthor,
+    );
+    switch (effect(actsAsAuthor: s.actor.userId == _actingAuthor(s.rec))) {
+      case ReopenEffect.nothing:
+        return _accepted(s.cur['version']! as int);
+      case ReopenEffect.apply:
+        return _writeValue(s, 'set');
+      case ReopenEffect.keepInHistory:
+        if (effect(actsAsAuthor: true) == ReopenEffect.apply) {
+          return _keepInHistory(s, problem: 'not_author', notice: (kind: 'change_not_applied', to: [s.actor.userId]));
+        }
+        final late = _lateKept(s);
+        return _keepInHistory(s, problem: late.problem, notice: late.notice);
+    }
+  }
+
+  /// A Medical note type is one offered for Medical encounters only (note.ts isMedicalType).
+  static bool _medicalType(Map<String, Object?> definition) =>
+      !(definition['kinds']! as List<Object?>).contains('non_medical');
+
+  /// A Medical note makes its visit Medical if it was not (note.ts makeMedical): this change's switch
+  /// of the visit's kind, its next version and its history.
+  void _makeMedical(_Actor actor, Map<String, Object?> c, FakeRecord visit) {
+    final cur = visit.state('kind');
+    if (cur['value'] == 'medical') return;
+    final version = (cur['version']! as int) + 1;
+    _write(visit, 'kind', 'medical', version, actor.userId, _when(c), c['changeId'] as String?);
+    _history(visit, 'kind', version, 'medical', cur['value'], 'set', actor, c);
+  }
+
+  static String _noteStatusOf(FakeRecord note) => note.fields['status']?.value as String? ?? 'draft';
+
+  Iterable<FakeRecord> _notesOf(String encounterId) =>
+      records.values.where((r) => r.entity == entityNote && r.attributes['encounterId'] == encounterId);
+
+  /// The trigger of migration 0018 (lifecycle 2.2): a visit's status, worked out from its notes each
+  /// time one is made or its status or answers change. An empty draft does not count.
+  void _refreshVisit(Object? encounterId) {
+    final visit = records[encounterId];
+    if (visit == null || encounterId is! String) return;
+    visit.status = encounterStatus([
+      for (final n in _notesOf(encounterId))
+        (
+          status: NoteStatus.values.byName(_noteStatusOf(n)),
+          medical: n.medical,
+          empty: noteIsEmpty({
+            for (final MapEntry(:key, :value) in n.fields.entries)
+              if (key.startsWith('data.')) key: value.value,
+          }),
+        ),
+    ]).name;
   }
 
   /// Patient demographics (keep both).
@@ -2093,14 +2271,15 @@ class FakeSyncServer {
         'entity': r.entity,
         'id': ref['id'],
         'version': 1,
-        'status': r.entity == entityEncounter || r.entity == entityNote
-            ? r.fields['status']?.value ?? 'draft'
-            : r.status,
+        'status': r.entity == entityNote ? _noteStatusOf(r) : r.status,
         'authorUserId': r.author,
         'createdAt': at,
         'updatedAt': at,
         'attributes': r.attributes,
-        'fields': {for (final name in r.fields.keys) name: r.state(name)},
+        // A visit shows each of its fields, at version 0 until one is written (encounter.ts load).
+        'fields': {
+          for (final name in r.entity == entityEncounter ? _encounterFields : r.fields.keys) name: r.state(name),
+        },
       });
     }
     return {'records': out, 'missing': missing};
@@ -2176,6 +2355,11 @@ class FakeSyncServer {
     }
   }
 }
+
+/// Why a value the draft rule would write is kept in history instead (records.ts KeptInstead).
+typedef _Kept = ({String problem, ({String kind, List<String> to})? notice});
+
+const _encounterFields = ['patientId', 'location', 'locationText', 'summary', 'kind'];
 
 class _Actor {
   _Actor(this.userId, this.deviceId, this.permissions, {required this.holdForReview, this.approvedBy});
@@ -2283,6 +2467,15 @@ class FakeRecord {
 
   /// When a problem's status was last observed; never moves back.
   DateTime? checkedAt;
+
+  /// A note's: whether its type is a Medical one (set at its create, never changed); the clinician a
+  /// Program Admin assigned it to after its author left; whether it was ever signed; when and by
+  /// whom it last left draft (lifecycle 2.2).
+  bool medical = false;
+  String? assignedTo;
+  bool everSigned = false;
+  String? completedAt;
+  String? completedBy;
 
   /// The field as a FieldState: version 0 and no value when never written.
   Map<String, Object?> state(String field) {
