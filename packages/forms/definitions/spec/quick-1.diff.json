@@ -9,11 +9,6 @@
       "why": "PRD main 409; forms 6.2, 6.4; inventory A55"
     },
     {
-      "line": 1,
-      "what": "No field carries mapsTo yet. F6-general-assemble adds each mapsTo named below, to the definition and to this piece's shape file, once every target note type exists.",
-      "why": "the card index, F6-general-assemble"
-    },
-    {
       "line": 3,
       "what": "Choose-many: each part picked shows its section.",
       "why": "inventory section 3.7, A1"

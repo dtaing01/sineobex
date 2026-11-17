@@ -23,7 +23,14 @@
       "kind": "choice",
       "many": true,
       "label": "Needs",
-      "options": ["housing", "transportation", { "code": "id", "label": "ID Documents" }, "phone", "benefits"]
+      "options": [
+        "housing",
+        "transportation",
+        { "code": "id", "label": "ID Documents" },
+        "phone",
+        "benefits"
+      ],
+      "mapsTo": "social_needs:needs.needs"
     },
     {
       "path": "social.referral",

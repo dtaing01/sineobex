@@ -53,7 +53,8 @@
           "label": "Chief concern",
           "lines": "many",
           "maxLength": 2000,
-          "handoff": true
+          "handoff": true,
+          "mapsTo": "general_primary_care:reason.concern"
         },
         {
           "id": "hpi",
@@ -84,7 +85,8 @@
           "showWhen": {
             "field": "general.hpi",
             "is": "yes"
-          }
+          },
+          "mapsTo": "general_primary_care:hpi.narrative"
         },
         {
           "id": "bp",
@@ -100,7 +102,8 @@
               "max": 300,
               "decimals": 0,
               "unit": "mmHg",
-              "handoff": true
+              "handoff": true,
+              "mapsTo": "general_primary_care:vitals.bp.systolic"
             },
             {
               "id": "diastolic",
@@ -110,7 +113,8 @@
               "max": 200,
               "decimals": 0,
               "unit": "mmHg",
-              "handoff": true
+              "handoff": true,
+              "mapsTo": "general_primary_care:vitals.bp.diastolic"
             }
           ]
         },
@@ -122,7 +126,8 @@
           "max": 300,
           "decimals": 0,
           "unit": "bpm",
-          "handoff": true
+          "handoff": true,
+          "mapsTo": "general_primary_care:vitals.hr"
         },
         {
           "id": "temp",
@@ -132,7 +137,8 @@
           "max": 115,
           "decimals": 1,
           "unit": "°F",
-          "handoff": true
+          "handoff": true,
+          "mapsTo": "general_primary_care:vitals.temp"
         },
         {
           "id": "assessment",
@@ -159,7 +165,8 @@
           "label": "Wound type",
           "options": {
             "list": "wound_type"
-          }
+          },
+          "mapsTo": "wound_care:wound.type"
         },
         {
           "id": "location",
@@ -168,7 +175,8 @@
           "options": {
             "list": "body_region"
           },
-          "side": "side"
+          "side": "side",
+          "mapsTo": "wound_care:wound.location"
         },
         {
           "id": "dimensions",
@@ -187,7 +195,8 @@
               "altUnit": {
                 "unit": "in",
                 "perUnit": 2.54
-              }
+              },
+              "mapsTo": "wound_care:wound.measurements.length"
             },
             {
               "id": "width",
@@ -200,7 +209,8 @@
               "altUnit": {
                 "unit": "in",
                 "perUnit": 2.54
-              }
+              },
+              "mapsTo": "wound_care:wound.measurements.width"
             },
             {
               "id": "depth",
@@ -213,7 +223,8 @@
               "altUnit": {
                 "unit": "in",
                 "perUnit": 2.54
-              }
+              },
+              "mapsTo": "wound_care:wound.measurements.depth"
             }
           ]
         },
@@ -224,7 +235,8 @@
           "label": "Drainage",
           "options": {
             "list": "drainage_amount"
-          }
+          },
+          "mapsTo": "wound_care:wound.drainage_amount"
         },
         {
           "id": "dressing",
@@ -253,7 +265,8 @@
               "label": "Other",
               "other": true
             }
-          ]
+          ],
+          "mapsTo": "wound_care:wound.treatment.dressing"
         },
         {
           "id": "photos",
@@ -330,7 +343,8 @@
               "code": "benefits",
               "label": "Benefits"
             }
-          ]
+          ],
+          "mapsTo": "social_needs:needs.needs"
         },
         {
           "id": "referral",

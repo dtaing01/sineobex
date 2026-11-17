@@ -29,7 +29,8 @@
       "label": "Chief concern",
       "lines": "many",
       "maxLength": 2000,
-      "handoff": true
+      "handoff": true,
+      "mapsTo": "general_primary_care:reason.concern"
     },
     {
       "path": "general.hpi",
@@ -44,7 +45,8 @@
       "label": "Describe the history of present illness",
       "lines": "many",
       "maxLength": 2000,
-      "showWhen": { "field": "general.hpi", "is": "yes" }
+      "showWhen": { "field": "general.hpi", "is": "yes" },
+      "mapsTo": "general_primary_care:hpi.narrative"
     },
     { "path": "general.bp", "kind": "group", "label": "Blood pressure", "layout": "row" },
     {
@@ -55,7 +57,8 @@
       "max": 300,
       "decimals": 0,
       "unit": "mmHg",
-      "handoff": true
+      "handoff": true,
+      "mapsTo": "general_primary_care:vitals.bp.systolic"
     },
     {
       "path": "general.bp.diastolic",
@@ -65,7 +68,8 @@
       "max": 200,
       "decimals": 0,
       "unit": "mmHg",
-      "handoff": true
+      "handoff": true,
+      "mapsTo": "general_primary_care:vitals.bp.diastolic"
     },
     {
       "path": "general.hr",
@@ -75,7 +79,8 @@
       "max": 300,
       "decimals": 0,
       "unit": "bpm",
-      "handoff": true
+      "handoff": true,
+      "mapsTo": "general_primary_care:vitals.hr"
     },
     {
       "path": "general.temp",
@@ -85,7 +90,8 @@
       "max": 115,
       "decimals": 1,
       "unit": "°F",
-      "handoff": true
+      "handoff": true,
+      "mapsTo": "general_primary_care:vitals.temp"
     },
     {
       "path": "general.assessment",
@@ -99,14 +105,16 @@
       "kind": "choice",
       "many": false,
       "label": "Wound type",
-      "options": { "list": "wound_type" }
+      "options": { "list": "wound_type" },
+      "mapsTo": "wound_care:wound.type"
     },
     {
       "path": "wound.location",
       "kind": "region",
       "label": "Location",
       "options": { "list": "body_region" },
-      "side": "side"
+      "side": "side",
+      "mapsTo": "wound_care:wound.location"
     },
     { "path": "wound.dimensions", "kind": "group", "label": "Dimensions (L × W × D)", "layout": "row" },
     {
@@ -117,7 +125,8 @@
       "max": 100,
       "decimals": 1,
       "unit": "cm",
-      "altUnit": { "unit": "in", "perUnit": 2.54 }
+      "altUnit": { "unit": "in", "perUnit": 2.54 },
+      "mapsTo": "wound_care:wound.measurements.length"
     },
     {
       "path": "wound.dimensions.width",
@@ -127,7 +136,8 @@
       "max": 100,
       "decimals": 1,
       "unit": "cm",
-      "altUnit": { "unit": "in", "perUnit": 2.54 }
+      "altUnit": { "unit": "in", "perUnit": 2.54 },
+      "mapsTo": "wound_care:wound.measurements.width"
     },
     {
       "path": "wound.dimensions.depth",
@@ -137,14 +147,16 @@
       "max": 30,
       "decimals": 1,
       "unit": "cm",
-      "altUnit": { "unit": "in", "perUnit": 2.54 }
+      "altUnit": { "unit": "in", "perUnit": 2.54 },
+      "mapsTo": "wound_care:wound.measurements.depth"
     },
     {
       "path": "wound.drainage",
       "kind": "choice",
       "many": false,
       "label": "Drainage",
-      "options": { "list": "drainage_amount" }
+      "options": { "list": "drainage_amount" },
+      "mapsTo": "wound_care:wound.drainage_amount"
     },
     {
       "path": "wound.dressing",
@@ -152,7 +164,8 @@
       "many": true,
       "label": "Dressing applied",
       "options": ["gauze", "abd", "xeroform", "compression", "other"],
-      "flags": { "other": ["other"] }
+      "flags": { "other": ["other"] },
+      "mapsTo": "wound_care:wound.treatment.dressing"
     },
     { "path": "wound.photos", "kind": "photo", "label": "Photos", "max": 5 }
   ]
