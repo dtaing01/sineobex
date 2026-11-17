@@ -505,6 +505,63 @@ describe('phase 4 sync: sign-offs', () => {
       expect(await noticesOn(ours.note.noteId)).toEqual([]);
     });
 
+    it('the second phone’s hash is compared with the signature that finished the note, not with the note as it is now', async () => {
+      // A Non-Medical note on a visit with no patient, completed from one phone (NOT-7).
+      const visit = await visitOf(lee, null);
+      const note = await noteOn(lee, visit, TEST_NOTE, { 'care.plan': 'Demo: rest and fluids' });
+      const first = await signoff(lee, note, 'complete');
+      expect(await lee.send(first)).toEqual([applied(first, 'completed', 'completed', 'not_needed')]);
+      // The visit is then given a patient, which is always allowed: the note's hash moves with it.
+      const named = await lee.phone.change({
+        entity: 'encounter',
+        op: 'set',
+        recordId: visit.encounterId,
+        field: 'patientId',
+        value: patientId,
+        baseVersion: 1,
+      });
+      expect((await lee.send(named)).map((r) => r.status)).toEqual(['accepted']);
+
+      // The second phone signed what the first one did: it saw exactly what was signed.
+      const same = await signoff(lee, note, 'complete');
+      const now = await signoff(lee, { ...note, patientId }, 'complete');
+      expect(await lee.send(same, now)).toEqual([
+        noEffect(same, 'already_finished', 'completed', 'not_needed', true),
+        noEffect(now, 'already_finished', 'completed', 'not_needed', false),
+      ]);
+
+      // Reopened, changed and finished again: the later signature is the one compared with.
+      const ours = await chartedVisit(dana);
+      const waits = [await signoff(dana, ours.flags, 'sign'), await signoff(dana, ours.note, 'complete')];
+      expect((await dana.send(...waits)).map((r) => r.details?.effect)).toEqual(['signed', 'completed']);
+      const reopen = await dana.phone.change({
+        entity: 'encounter_note',
+        recordId: ours.note.noteId,
+        op: 'set',
+        field: 'status',
+        value: 'draft',
+        baseVersion: 2,
+      });
+      const plan = await dana.phone.change({
+        entity: 'encounter_note',
+        recordId: ours.note.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: 'Demo: rest, fluids and a recheck',
+        baseVersion: 1,
+      });
+      expect((await dana.send(reopen, plan)).map((r) => [r.status, r.details ?? null])).toEqual([
+        ['accepted', null],
+        ['accepted', null],
+      ]);
+      const edited = { ...ours.note, answers: { 'care.plan': 'Demo: rest, fluids and a recheck' } };
+      const again = await signoff(dana, edited, 'complete');
+      expect((await dana.send(again)).map((r) => r.details?.effect)).toEqual(['completed']);
+      const old = await signoff(dana, ours.note, 'complete');
+      const fresh = await signoff(dana, edited, 'complete');
+      expect((await dana.send(old, fresh)).map((r) => r.details?.hashMatches)).toEqual([false, true]);
+    });
+
     it('a sign-off from someone who does not act as the author is stored with no effect, and the sender is told', async () => {
       const ours = await chartedVisit(dana);
       const theirs = await signoff(rae, ours.note, 'sign');

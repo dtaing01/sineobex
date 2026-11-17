@@ -2200,6 +2200,61 @@ void main() {
       });
 
       test(
+        'the second phone’s hash is compared with the signature that finished the note, not with the note as it is now',
+        () async {
+          // A Non-Medical note on a visit with no patient, completed from one phone (NOT-7).
+          final visit = visitOf(kind: 'non_medical');
+          final note = noteHeld(visit, testNote, const {'care.plan': 'Demo: rest and fluids'});
+          final first = signoff(alex, note, 'complete');
+          expect(await send(alex, [first]), [applied(first, 'completed', 'completed', 'not_needed')]);
+          // The visit is then given a patient, which is always allowed: the note's hash moves with it.
+          expect(
+            (await send(alex, [setOn(entityEncounter, visit, 'patientId', patient, 1)])).single['status'],
+            'accepted',
+          );
+
+          // The second phone signed what the first one did: it saw exactly what was signed.
+          final same = signoff(alex, note, 'complete');
+          final now = signoff(alex, (
+            noteId: note.noteId,
+            encounterId: visit,
+            patientId: patient,
+            summary: null,
+            type: testNote,
+            answers: note.answers,
+          ), 'complete');
+          expect(await send(alex, [same, now]), [
+            noEffect(same, 'already_finished', 'completed', 'not_needed', true),
+            noEffect(now, 'already_finished', 'completed', 'not_needed', false),
+          ]);
+
+          // Reopened, changed and finished again: the later signature is the one compared with.
+          final ours = chartedVisit(alex);
+          final waits = [signoff(alex, ours.flags, 'sign'), signoff(alex, ours.note, 'complete')];
+          expect((await send(alex, waits)).map((r) => (r['details']! as Map)['effect']), ['signed', 'completed']);
+          final reopen = setOn(entityNote, ours.note.noteId, 'status', 'draft', 2);
+          final plan = setOn(entityNote, ours.note.noteId, 'data.care.plan', 'Demo: rest, fluids and a recheck', 1);
+          expect((await send(alex, [reopen, plan])).map((r) => [r['status'], r['details']]), [
+            ['accepted', null],
+            ['accepted', null],
+          ]);
+          final edited = (
+            noteId: ours.note.noteId,
+            encounterId: ours.note.encounterId,
+            patientId: ours.note.patientId,
+            summary: ours.note.summary,
+            type: ours.note.type,
+            answers: const <String, Object?>{'care.plan': 'Demo: rest, fluids and a recheck'},
+          );
+          final again = signoff(alex, edited, 'complete');
+          expect((await send(alex, [again])).map((r) => (r['details']! as Map)['effect']), ['completed']);
+          final old = signoff(alex, ours.note, 'complete');
+          final fresh = signoff(alex, edited, 'complete');
+          expect((await send(alex, [old, fresh])).map((r) => (r['details']! as Map)['hashMatches']), [false, true]);
+        },
+      );
+
+      test(
         'a sign-off from someone who does not act as the author is stored with no effect, and the sender is told',
         () async {
           server.credentials[blair] = 'resident';

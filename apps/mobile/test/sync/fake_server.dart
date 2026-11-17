@@ -1861,6 +1861,10 @@ class FakeSyncServer {
       case SignoffRefused():
         throw StateError('refused above');
       case SignoffUnchanged(:final reason):
+        // Against the signature that finished it, not the note as it is now (note-signoff.ts).
+        final seen = reason == SignoffUnchangedReason.alreadyFinished
+            ? (_finishingHash(note) ?? _byDefinition(() => _contentHash(note, definition))) == v['contentHash']
+            : hashMatches;
         // "Only the note's author can do that. Nothing was changed."
         if (reason == SignoffUnchangedReason.notAuthor) {
           _notify(actor.userId, 'change_not_applied', entityNote, note.id);
@@ -1873,7 +1877,7 @@ class FakeSyncServer {
             'status': status,
             'attestation': note.attestation,
             // Only to whoever acts as the author (note-signoff.ts): to anyone else it checks a guess.
-            if (actor.userId == _actingAuthor(note)) 'hashMatches': hashMatches,
+            if (actor.userId == _actingAuthor(note)) 'hashMatches': seen,
           },
         );
       case SignoffApplied(effect: final outcome, :final statusAfter, :final attestationAfter):
@@ -1925,6 +1929,22 @@ class FakeSyncServer {
       ..attestation = attestationAfter.code;
     _refreshVisit(note.attributes['encounterId']);
   }
+
+  /// The hash of the sign-off that finished [note] (note-signoff.ts finishingHash): by whoever
+  /// completed it, at the time it was completed, with an effect. The latest stored wins a tie.
+  String? _finishingHash(FakeRecord note) =>
+      records.values
+              .where(
+                (s) =>
+                    s.entity == entitySignoff &&
+                    s.attributes['noteId'] == note.id &&
+                    s.status != 'none' &&
+                    s.author == note.completedBy &&
+                    s.attributes['signedAt'] == note.completedAt,
+              )
+              .lastOrNull
+              ?.attributes['contentHash']
+          as String?;
 
   /// The hash of a note as the server holds it (lifecycle 4.5): its visit's patient and summary now.
   String _contentHash(FakeRecord note, NoteTypeDef definition) {

@@ -207,11 +207,17 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
     // the one who completes from two phones (3.4): to anyone else it would check any guess of
     // what the note holds, a hidden answer included (review findings RD-2, NOT-6).
     const toAuthor = actor.authorId === actingAuthor(note);
+    // Against the signature that finished it, not the note as it is now: giving the visit a
+    // patient later moves the note's hash, and the second phone saw just what was signed (NOT-7).
+    const seen =
+      effect.reason === 'already_finished'
+        ? ((await finishingHash(tx, note)) ?? holds) === v.contentHash
+        : hashMatches;
     if (effect.reason === 'not_author') await notify(ctx, 'change_not_applied', note.id);
     await ctx.audit({
       ...audit,
       action: 'note.signoff_repeated',
-      details: { ...base, reason: effect.reason, hashMatches },
+      details: { ...base, reason: effect.reason, hashMatches: seen },
     });
     return {
       status: 'accepted',
@@ -221,7 +227,7 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
         reason: effect.reason,
         status: note.status,
         attestation: note.internal.attestation,
-        ...(toAuthor ? { hashMatches } : {}),
+        ...(toAuthor ? { hashMatches: seen } : {}),
       },
     };
   }
@@ -332,6 +338,22 @@ async function finishedRedFlags(
     if (definition && isRedFlags(definition)) return true;
   }
   return false;
+}
+
+/**
+ * The hash of the sign-off that finished [note]: the row by whoever completed it, at the time it
+ * was completed (a correction moves neither), with an effect. The latest received wins a tie.
+ */
+async function finishingHash(tx: Tx, note: StoredRecord): Promise<string | null> {
+  const [row] = await tx<{ hash: string }[]>`
+    select s.content_hash as hash
+    from sineobex.note_signoffs s
+    join sineobex.encounter_notes n on n.team_id = s.team_id and n.id = s.note_id
+    where s.team_id = ${note.teamId} and s.note_id = ${note.id} and s.effect <> 'none'
+      and s.signer_user_id = n.completed_by and s.signed_at = n.completed_at
+    order by s.received_at desc
+    limit 1`;
+  return row?.hash ?? null;
 }
 
 /**
