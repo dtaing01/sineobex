@@ -25,6 +25,12 @@ export type AnswerProblem =
  */
 export const MAX_PROBLEM_LABEL = 300;
 
+/**
+ * The longest duration, in days: a hundred years. The design sets none; without one a duration
+ * could be a number the phone cannot hold exactly, taken here and refused there.
+ */
+export const MAX_DURATION_DAYS = 36_525;
+
 /** ICD-10-CM by its shape only, as phase 3 checks it, so a code-set update never refuses an answer. */
 const PROBLEM_CODE = /^[A-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -61,7 +67,7 @@ export function checkAnswer(
       return null;
     case 'duration':
       if (typeof value !== 'number' || !Number.isInteger(value)) return 'wrong_type';
-      return value < 0 ? 'out_of_range' : null;
+      return value < 0 || value > MAX_DURATION_DAYS ? 'out_of_range' : null;
     case 'flag':
     case 'entryRemoved':
       // A tick and a removal store true; each is undone by clearing it.
