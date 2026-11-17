@@ -288,6 +288,7 @@ class FakeSyncServer {
     Map<String, Object?>? birth,
     String? usualArea,
     String by = 'seed-user',
+    DateTime? at,
   }) => seed(
     entityPatient,
     {
@@ -307,6 +308,7 @@ class FakeSyncServer {
     },
     id: id,
     by: by,
+    at: at,
   );
 
   /// Merges [mergedId] into [intoId] (design 3.4): nothing moves, the merged record points at the
@@ -955,6 +957,7 @@ class FakeSyncServer {
           'startedDeviceTime': c['deviceTime'],
           'clockVerified': c['clockVerified'] == true,
         });
+        if (v['patientId'] case final String patientId) _seen(patientId, DateTime.parse(at));
       case entityNote:
         record.medical = _medicalType(noteType!);
         _refreshVisit(v['encounterId']);
@@ -1232,7 +1235,19 @@ class FakeSyncServer {
       _rematch(s.rec.id, 'edit');
     }
     if (s.rec.entity == entityAlias) _rematch(s.rec.patientId!, 'edit');
+    // A patient set that applies moves the new patient's last seen to the visit's start (afterWrite).
+    if (s.rec.entity == entityEncounter && s.field == 'patientId' && s.value is String) {
+      _seen(s.value! as String, DateTime.parse(s.rec.attributes['startedAt']! as String));
+    }
     return _accepted(version);
+  }
+
+  /// The patient was seen when the visit started (encounter.ts seen): later only, and never past the
+  /// server's clock. The named record, merged or not: reads take the group's latest.
+  void _seen(String patientId, DateTime startedAt) {
+    final p = records[patientId];
+    if (p == null || startedAt.isAfter(now())) return;
+    if (startedAt.isAfter(p.seenAt)) p.lastSeenAt = startedAt.toUtc();
   }
 
   /// One field write and what it decides about its record.
@@ -2392,6 +2407,12 @@ class FakeSyncServer {
         },
   ];
 
+  /// The latest last seen of [canonicalId]'s group (team-index.ts, projection.ts: max(last_seen_at)).
+  DateTime _groupSeenAt(String canonicalId) => records.values
+      .where((r) => r.entity == entityPatient && canonicalOf(r.id) == canonicalId)
+      .map((r) => r.seenAt)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
+
   /// One team index entry (team-index.ts): only the PRD's list and bookkeeping, never a legal name.
   Map<String, Object?> _indexEntry(FakeRecord p) {
     final aliases = <Map<String, Object?>>[
@@ -2412,7 +2433,7 @@ class FakeSyncServer {
       'visualDescriptor': p.fields['visualDescriptor']?.value,
       'birth': p.fields['birth']?.value,
       'usualArea': p.fields['usualArea']?.value,
-      'lastSeenOn': _iso(p.createdAt).substring(0, 10),
+      'lastSeenOn': _iso(_groupSeenAt(p.id)).substring(0, 10),
       'allergyScreen': p.fields['allergyScreen']?.value ?? 'not_asked',
       'allergies': [
         for (final a in _ofGroup(entityAllergy, p.id))
@@ -2535,7 +2556,7 @@ class FakeSyncServer {
       'patient': _snapshot(p, {
         'registeredAt': _iso(p.createdAt),
         'clockVerified': p.clockVerified,
-        'lastSeenAt': _iso(p.createdAt),
+        'lastSeenAt': _iso(p.seenAt),
       }, patientFieldNames),
       'canonicalId': canonicalId,
       'mergedFrom': [
@@ -2715,7 +2736,7 @@ class FakeSyncServer {
               NameKey.of(NameSource.alias, a.attributes['alias'] as String?),
       ].nonNulls,
       births: [for (final r in group) Birth.fromJson(r.fields['birth']?.value)],
-      lastSeen: group.map((r) => r.createdAt).reduce((a, b) => a.isAfter(b) ? a : b),
+      lastSeen: group.map((r) => r.seenAt).reduce((a, b) => a.isAfter(b) ? a : b),
     );
   }
 
@@ -2749,7 +2770,7 @@ class FakeSyncServer {
       'birth': birth,
       'ageYears': age,
       'usualArea': p.fields['usualArea']?.value,
-      'lastSeenOn': _iso(p.createdAt).substring(0, 10),
+      'lastSeenOn': _iso(_groupSeenAt(p.id)).substring(0, 10),
       'allergy': {
         'screen': p.fields['allergyScreen']?.value ?? 'not_asked',
         'count': allergies.length,
@@ -3555,6 +3576,10 @@ class FakeRecord {
 
   /// A merged patient's or problem's survivor.
   String? mergedInto;
+
+  /// A patient's last seen once a visit moved it (encounter.ts seen); registration until then.
+  DateTime? lastSeenAt;
+  DateTime get seenAt => lastSeenAt ?? createdAt;
 
   /// A problem marked entered in error.
   bool retracted = false;

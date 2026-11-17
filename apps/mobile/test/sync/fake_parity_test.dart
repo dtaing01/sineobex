@@ -688,6 +688,70 @@ void main() {
         },
       );
 
+      test(
+        'a visit moves its patient’s last seen to when it started: later only, and never past the server’s clock',
+        () async {
+          // Read where the phone reads it: the team index, its version, and the match check (FAK-5).
+          final earlier = DateTime.utc(2026, 10, 1, 10);
+          final p = server.seedPatient(at: earlier);
+          Future<Map<String, Object?>> index() async =>
+              await server.handle(alex, team, 'POST', '/v1/patients/index', {'limit': 100}) as Map<String, Object?>;
+          String? lastSeenOn(Map<String, Object?> body) => [
+            for (final e in (body['entries']! as List<Object?>).cast<Map<String, Object?>>())
+              if (e['patientId'] == p) e['lastSeenOn'] as String?,
+          ].single;
+          final held = await index();
+          expect(lastSeenOn(held), '2026-10-01');
+          Map<String, Object?> visit(String? patientId, Map<String, Object?> time) =>
+              change(entityEncounter, 'create', {'kind': 'medical', 'patientId': ?patientId}, more: time);
+
+          // Started later than it was last seen (clock-corrected time): moved to the start.
+          final seen = visit(p, {'correctedTime': '2026-10-20T14:30:04.000Z'});
+          // Started earlier: not moved back. Stamped after the server's clock: not moved.
+          final older = visit(p, {'correctedTime': '2026-10-15T09:00:00.000Z'});
+          final ahead = visit(p, {'deviceTime': '2026-10-23T09:00:00.000Z'});
+          expect(
+            [
+              for (final r in await send(alex, [seen, older, ahead])) r['status'],
+            ],
+            ['accepted', 'accepted', 'accepted'],
+          );
+          expect(server.records[p]!.seenAt, DateTime.utc(2026, 10, 20, 14, 30, 4));
+          // The index the phone holds is no longer current.
+          final moved = await server.handle(alex, team, 'POST', '/v1/patients/index', {
+            'have': held['version'],
+            'limit': 100,
+          }) as Map<String, Object?>;
+          expect(moved['version'], isNot(held['version']));
+          expect(lastSeenOn(moved), '2026-10-20');
+
+          // A patient set that applies moves the new patient's last seen to the visit's start.
+          final q = server.seedPatient(at: earlier);
+          final unnamed = visit(null, {'correctedTime': '2026-10-19T12:00:00.000Z'});
+          expect(
+            [
+              for (final r in await send(alex, [unnamed])) r['status'],
+            ],
+            ['accepted'],
+          );
+          server.finishNote(noteOn(unnamed['recordId']! as String));
+          final named = setOn(entityEncounter, unnamed['recordId']! as String, 'patientId', q, 1);
+          expect(
+            [
+              for (final r in await send(alex, [named])) r['status'],
+            ],
+            ['accepted'],
+          );
+          expect(server.records[q]!.seenAt, DateTime.utc(2026, 10, 19, 12));
+
+          // One kept in history moves nothing.
+          final r = server.seedPatient(at: earlier);
+          final again = setOn(entityEncounter, unnamed['recordId']! as String, 'patientId', r, 2);
+          expect((await send(alex, [again])).single['details'], late);
+          expect(server.records[r]!.seenAt, earlier);
+        },
+      );
+
       test('a patient is never taken off a visit', () async {
         final p = server.seedPatient();
         final named = visitOf(patientId: p);
