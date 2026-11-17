@@ -55,7 +55,15 @@ void main() {
     return (p, link);
   }
 
-  /// A note with 20 long free-text fields, about 40 KB each: 22 changes, about 800 KB.
+  /// The longest text an answer takes is 4,000 characters (the test note type's, forms 2.4): at 4
+  /// bytes a character, about 16 KB.
+  String longText(String label) => '$label ${'😴' * (3999 - label.runes.length)}';
+
+  /// The text answer of entry [i] of the test note type's repeating section.
+  String rowText(int i) => 'data.rows.e${'$i'.padLeft(7, '0')}.text';
+
+  /// A note with 20 long free-text answers, about 16 KB each: 22 changes, about 320 KB, which takes
+  /// longer than the transport allows to send at 5 KB/s.
   String chartLongNote(TestPhone p) {
     final encounter = p.store.createEncounter(kind: 'medical');
     final note = p.store.createNote(
@@ -64,7 +72,7 @@ void main() {
       noteTypeVersion: testNote.version,
     );
     for (var i = 0; i < 20; i++) {
-      p.store.setField(note, 'data.narrative_$i', 'Demo narrative $i ${'x' * 40000}');
+      p.store.setField(note, rowText(i), longText('Demo narrative $i'));
     }
     return note;
   }
@@ -243,8 +251,8 @@ void main() {
           expect(pushes.first, 22);
         }
         // Batches that timed out were committed anyway; sent again, each change applied once.
-        expect(server.records[note]!.fields['data.narrative_0']!.version, 1);
-        expect(server.records[note]!.fields['data.narrative_19']!.version, 1);
+        expect(server.records[note]!.fields[rowText(0)]!.version, 1);
+        expect(server.records[note]!.fields[rowText(19)]!.version, 1);
       });
 
       test('a removal hands the same note over on a ${rate ~/ 1000} KB/s uplink in one go', () async {
@@ -642,6 +650,7 @@ void main() {
 
     test('batches stay under the API’s 1 MiB body limit, so large notes still sync', () async {
       // Review finding: 98 edits of an 11 KB narrative made one 1.1 MB push, refused every time.
+      // At 4 bytes a character, 2,800 characters are about 11 KB.
       final p = phone(alex);
       final encounter = p.store.createEncounter(kind: 'medical');
       final note = p.store.createNote(
@@ -650,7 +659,7 @@ void main() {
         noteTypeVersion: testNote.version,
       );
       for (var i = 0; i < 98; i++) {
-        p.store.setField(note, 'data.narrative', 'Demo narrative $i ${'x' * 11000}');
+        p.store.setField(note, 'data.care.plan', 'Demo narrative $i ${'😴' * 2800}');
       }
       final done = await p.engine.syncAll() as SyncDone;
       expect([done.confirmed, done.unanswered], [100, 0]);
@@ -668,16 +677,20 @@ void main() {
         noteTypeKey: testNote.key,
         noteTypeVersion: testNote.version,
       );
-      final history = 'Demo history ${'h' * 40000}';
-      final plan = 'Demo plan ${'p' * 30000}';
-      p.store.setField(note, 'data.care.history', history);
-      p.store.setField(note, 'data.care.plan', plan);
+      // Five answers of about 16 KB each: the most an answer holds, and 80 KB together.
+      final answers = {
+        'data.care.history': longText('Demo history'),
+        'data.care.plan': longText('Demo plan'),
+        for (var i = 1; i <= 3; i++) rowText(i): longText('Demo row $i'),
+      };
+      for (final MapEntry(key: field, :value) in answers.entries) {
+        p.store.setField(note, field, value);
+      }
       await p.engine.syncAll(force: true);
       final attention = p.store.needsAttention();
       expect(attention.map((e) => [e.op, e.reason]), [
         ['create', 'stale_reference'],
-        ['set', 'stale_reference'],
-        ['set', 'stale_reference'],
+        for (final _ in answers.keys) ['set', 'stale_reference'],
       ]);
 
       p.store.fixRejected(attention.first.changeId, {
@@ -689,7 +702,7 @@ void main() {
       expect([done.confirmed, done.rejected], [2, 0]);
       expect(p.store.outbox(), isEmpty);
       final onServer = server.records[note]!.fields;
-      expect([onServer['data.care.history']!.value, onServer['data.care.plan']!.value], [history, plan]);
+      expect({for (final field in answers.keys) field: onServer[field]!.value}, answers);
       expect(attention.every((e) => server.receipts[e.changeId]!.resolved), isTrue);
     });
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -6,6 +7,12 @@ import 'package:cryptography/cryptography.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/encounters/rules.dart'
     show NoteStatus, ReopenEffect, encounterStatus, noteIsEmpty, reopenEffect;
+import 'package:sineobex_field/forms/check_answer.dart';
+import 'package:sineobex_field/forms/conditions.dart' show Answers, NoteReading, isBlank;
+import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/effective.dart';
+import 'package:sineobex_field/forms/field_at.dart';
+import 'package:sineobex_field/forms/visible.dart';
 import 'package:sineobex_field/patients/access.dart';
 import 'package:sineobex_field/patients/dob.dart';
 import 'package:sineobex_field/patients/generated/sensitive_codes.dart';
@@ -68,6 +75,42 @@ class FakeSyncServer {
   final noteTypes = <(String, int), Map<String, Object?>>{
     for (final d in testNoteTypes) (d['key']! as String, d['version']! as int): d,
   };
+
+  /// Rows of [noteTypes] whose hash is not their definition's (D79): a rule that reads one fails
+  /// with definition_error, as definitionFor's DefinitionMismatch does.
+  final forged = <(String, int)>{};
+
+  /// Each person's credential in the team now (team_memberships.credential, read by loadSigner);
+  /// [defaultCredential] for anyone not listed, as [healthcareStaff] is their role.
+  final credentials = <String, String>{};
+  static const defaultCredential = 'attending';
+  String credentialOf(String userId) => credentials[userId] ?? defaultCredential;
+
+  /// Each person's credential changes and restores (membership_changes of kind credential and
+  /// restored), with the credential each replaced: what signedUnder reads after a signature.
+  final credentialChanges = <({String userId, DateTime changedAt, String oldCredential})>[];
+
+  /// An admin changes [userId]'s credential now (or [at]).
+  void changeCredential(String userId, String to, {DateTime? at}) {
+    credentialChanges.add((userId: userId, changedAt: (at ?? now()).toUtc(), oldCredential: credentialOf(userId)));
+    credentials[userId] = to;
+  }
+
+  /// When each change held for review was received (quarantine_items.received_at): a signature's
+  /// time is checked against it once an admin accepts it, not against the accept.
+  final heldAt = <String, DateTime>{};
+
+  /// What each credential may do (services/api/src/auth/permissions.ts CAPABILITIES).
+  static const capabilities =
+      <String, ({bool chartMedical, bool orderMedications, bool sign, bool billingNeedsAttestation})>{
+        'attending': (chartMedical: true, orderMedications: true, sign: true, billingNeedsAttestation: false),
+        'resident': (chartMedical: true, orderMedications: true, sign: true, billingNeedsAttestation: true),
+        'np': (chartMedical: true, orderMedications: true, sign: true, billingNeedsAttestation: true),
+        'pa': (chartMedical: true, orderMedications: true, sign: true, billingNeedsAttestation: true),
+        'student': (chartMedical: true, orderMedications: false, sign: false, billingNeedsAttestation: true),
+        'chw': (chartMedical: false, orderMedications: false, sign: false, billingNeedsAttestation: false),
+        'none': (chartMedical: false, orderMedications: false, sign: false, billingNeedsAttestation: false),
+      };
 
   /// The Healthcare Staff role of 0002.
   static const healthcareStaff = {
@@ -574,7 +617,14 @@ class FakeSyncServer {
       return actor.holdForReview ? _hold(actor, c, 'permission') : _rejected('permission');
     }
     if (op != 'create' && op != 'set') return _invalid('append_only_for_audit');
-    final outcome = op == 'create' ? _create(actor, c, rules) : _set(actor, c, rules);
+    final Map<String, Object?> outcome;
+    try {
+      outcome = op == 'create' ? _create(actor, c, rules) : _set(actor, c, rules);
+    } on _DefinitionError {
+      // apply.ts applyInSavepoint: a lasting fault, stored, and the queue goes on. Every rule here
+      // reads its definitions before it writes, so there is nothing to roll back.
+      return _invalid('definition_error');
+    }
     if (actor.holdForReview && outcome['status'] == 'rejected') {
       // Known only once the record is: a problem marked entered in error by someone else.
       if (outcome['reason'] == 'permission') return _hold(actor, c, 'permission');
@@ -591,6 +641,7 @@ class FakeSyncServer {
   Map<String, Object?> _hold(_Actor actor, Map<String, Object?> c, String reason, {String? waitsOn}) {
     quarantine[c['changeId']! as String] = c;
     held[c['changeId']! as String] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
+    heldAt[c['changeId']! as String] ??= now().toUtc();
     return {'status': 'rejected', 'reason': reason, 'quarantined': true};
   }
 
@@ -715,15 +766,24 @@ class FakeSyncServer {
     if (rules.entity == entityIdLink) return _idLinkHandshake(actor, c, v);
 
     // The entity's own checks, before the insert (storeCreate's `check`).
-    Map<String, Object?>? noteType;
+    NoteTypeDef? noteType;
     switch (rules.entity) {
-      // In this order (note.ts applyCreate): the type and the visit, which the worker can fix. A note
+      // In this order (note.ts applyCreate): the type and the visit, which the worker can fix; the
+      // gate, which holds the change for review; then each answer, as a set of it is checked. A note
       // is taken whatever state the visit's other notes are in.
       case entityNote:
-        noteType = noteTypes[(v['noteTypeKey'], v['noteTypeVersion'])];
+        final version = v['noteTypeVersion'] as int?;
+        noteType = version == null ? null : _definition(v['noteTypeKey']! as String, version);
         if (noteType == null) return _invalid('unknown_note_type');
-        if (_medicalType(noteType) && records[v['encounterId']]!.fields['patientId']?.value == null) {
+        final medical = _medicalType(noteType);
+        if (medical && records[v['encounterId']]!.fields['patientId']?.value == null) {
           return _invalid('medical_note_needs_patient');
+        }
+        final gated = _medicalGate(actor, medical);
+        if (gated != null) return gated;
+        for (final MapEntry(key: path, :value) in ((v['data'] as Map<String, Object?>?) ?? const {}).entries) {
+          final problem = _byDefinition(() => checkAnswer(noteType!, path, value));
+          if (problem != null) return _invalid(problem.code, {'path': path});
         }
       case entityPatient:
         final consent = (v['consent']! as Map<String, Object?>)['id'];
@@ -1222,12 +1282,151 @@ class FakeSyncServer {
     return _writeValue(s, 'set');
   }
 
-  /// A set of a note's field (note.ts noteSet): the status's own rule; a finished note's late change,
-  /// kept by the draft rule; then the draft rule.
+  /// A set of a note's field (note.ts noteSet): an answer the sender may not see, held; the Medical
+  /// gate; the status's own rule; a finished note's late change, kept by the draft rule; then, for a
+  /// note with a version, the answer's check against its type, the draft rule, and whether the
+  /// answer now on the chart counts. A phase 2 note with no version keeps the open path rule.
   Map<String, Object?> _noteSet(_SetContext s) {
+    final hidden = _hiddenFromSender(s);
+    if (hidden != null) return hidden;
+    final gated = _medicalGate(s.actor, s.rec.medical);
+    if (gated != null) return gated;
     if (s.field == 'status') return _noteStatusSet(s);
-    return _draftSet(s);
+    if (_noteStatusOf(s.rec) != 'draft') return _draftSet(s);
+    final type = _noteTypeOf(s.rec);
+    if (type == null) return _draftSet(s);
+    final path = s.field.substring('data.'.length);
+    final problem = _byDefinition(() => checkAnswer(type, path, s.value));
+    if (problem != null) return _invalid(problem.code);
+    // What the write would leave, taken back if the count throws: the API's savepoint rolls back.
+    final before = (field: s.rec.fields[s.field], history: history.length, notices: notices.length);
+    final outcome = _draftSet(s);
+    // Told only of a value now on the chart: not a conflict, a value kept in history, or the answer
+    // to a conflict that kept the server's value.
+    if (outcome['status'] != 'accepted' || outcome.containsKey('server') || s.c['resolution'] == 'keep_server') {
+      return outcome;
+    }
+    final String? why;
+    try {
+      why = _byDefinition(() => notCounted(type, {..._answersOf(s.rec), path: s.value}, path));
+    } on _DefinitionError {
+      if (before.field == null) {
+        s.rec.fields.remove(s.field);
+      } else {
+        s.rec.fields[s.field] = before.field!;
+      }
+      history.removeRange(before.history, history.length);
+      notices.removeRange(before.notices, notices.length);
+      _refreshVisit(s.rec.attributes['encounterId']);
+      rethrow;
+    }
+    if (why == null) return outcome;
+    return {
+      ...outcome,
+      'details': {...?outcome['details'] as Map<String, Object?>?, 'notCounted': why},
+    };
   }
+
+  /// Why an answer on the chart does not count (note.ts notCounted), or null when it does: it is in
+  /// an entry that is not there, or its field is hidden now. A clear and a removal are never told.
+  static String? notCounted(NoteTypeDef type, Answers answers, String path) {
+    final target = fieldAt(type, path);
+    if (target == null || target.part == AnswerPart.entryRemoved || isBlank(answers[path])) return null;
+    final reading = NoteReading(type, answers);
+    if (reading.counts(path)) return null;
+    if (target.entry != null) {
+      final section = reading.model.sections.firstWhere((node) => node.section == target.section);
+      if (!reading.entries(section).contains(target.entry)) return 'removed_entry';
+    }
+    return 'hidden_field';
+  }
+
+  /// A set of an answer the sender may not see (note.ts hiddenFromSender, lifecycle 6.4 rule 5): what
+  /// the answer holds now, or would hold, is hidden from them, or its section needs a capability their
+  /// credential lacks. Held for a Program Admin before anything answers with the value held there.
+  /// The acting author always sets their own note's answers, and an admin's accept passes.
+  Map<String, Object?>? _hiddenFromSender(_SetContext s) {
+    if (!s.field.startsWith('data.') || s.actor.approvedBy != null) return null;
+    if (s.actor.userId == _actingAuthor(s.rec)) return null;
+    final type = _noteTypeOf(s.rec);
+    if (type == null) return null;
+    final reader = noteReader(s.actor.permissions, credentialOf(s.actor.userId), actsAsAuthor: false);
+    final path = s.field.substring('data.'.length);
+    final answers = _answersOf(s.rec);
+    final hidden = _byDefinition(
+      () =>
+          (fieldAt(type, path)?.section.needs == 'orderMedications' && !reader.ordersMedications) ||
+          (answers.containsKey(path) && answerHidden(type, answers, path, answers[path], reader)) ||
+          answerHidden(type, answers, path, s.value, reader),
+    );
+    return hidden ? _rejected('permission') : null;
+  }
+
+  /// A person as visibleAnswers reads them (records.ts noteReader): their role's keys and their
+  /// credential now. A Medical note is read by whoever may read the problem list (D37).
+  static NoteReader noteReader(Set<String> permissions, String credential, {required bool actsAsAuthor}) {
+    final can = capabilities[credential]!;
+    return NoteReader(
+      actsAsAuthor: actsAsAuthor,
+      viewSensitive: permissions.contains('patients.view_sensitive'),
+      viewSensitiveExams: permissions.contains('patients.view_sensitive_exams'),
+      readsMedical: mayViewProblems(permissions),
+      chartsMedical: can.chartMedical,
+      ordersMedications: can.orderMedications,
+      sensitiveCodes: sensitiveCodeRanges,
+    );
+  }
+
+  /// Whether [reader] may not see [value] as the answer at [path] of a note holding [answers]
+  /// (records.ts answerHidden): the note, its section, or what visibleAnswers makes of the value.
+  static bool answerHidden(NoteTypeDef type, Answers answers, String path, Object? value, NoteReader reader) {
+    if (reader.actsAsAuthor) return false;
+    final placed = {...answers, path: value};
+    final seen = visibleAnswers(type, placed, reader);
+    if (seen == null) return true;
+    final section = fieldAt(type, path)?.section;
+    if ((section?.sensitiveExam ?? false) && !reader.viewSensitiveExams) return true;
+    if ((section?.treatmentRecord ?? false) && !(reader.viewSensitive && reader.chartsMedical)) return true;
+    final counted = effectiveAnswers(type, placed);
+    if (!counted.containsKey(path)) return false;
+    return !seen.containsKey(path) || canonicalJson(seen[path]) != canonicalJson(counted[path]);
+  }
+
+  /// The Medical gate (note.ts medicalGate, lifecycle 4.2): a change to a Medical note needs a
+  /// credential that charts Medical, read now. The worker has nothing to fix, so it is held for a
+  /// Program Admin (`permission` on a push), and an admin's accept passes.
+  Map<String, Object?>? _medicalGate(_Actor actor, bool medical) {
+    if (!medical || actor.approvedBy != null) return null;
+    return chartsMedical(actor.userId) ? null : _rejected('permission');
+  }
+
+  /// signer.ts chartsMedical: an active member whose credential charts Medical.
+  bool chartsMedical(String userId) => !_removed(userId) && capabilities[credentialOf(userId)]!.chartMedical;
+
+  /// The definition of a version the team holds (records.ts definitionOf), or null when it holds
+  /// none; a forged row, or one the reader cannot read, is a definition error.
+  NoteTypeDef? _definition(String key, int version) {
+    final json = noteTypes[(key, version)];
+    if (json == null) return null;
+    if (forged.contains((key, version))) throw _DefinitionError();
+    return _parsed[json] ??= _byDefinition(() => NoteTypeDef.fromJson(json));
+  }
+
+  final _parsed = Expando<NoteTypeDef>();
+
+  /// The definition of a note's own type (note.ts noteTypeOf): null for a phase 2 note with no
+  /// version; a version the team does not hold is nothing the worker can fix.
+  NoteTypeDef? _noteTypeOf(FakeRecord note) {
+    final version = note.attributes['noteTypeVersion'] as int?;
+    if (version == null) return null;
+    return _definition(note.attributes['noteTypeKey']! as String, version) ?? (throw _DefinitionError());
+  }
+
+  /// A note's answers, by path, as stored.
+  static Answers _answersOf(FakeRecord note) => {
+    for (final MapEntry(:key, :value) in note.fields.entries)
+      if (key.startsWith('data.')) key.substring('data.'.length): value.value,
+  };
 
   /// A finished note keeps a late change (note.ts lateChange): its sender is told, and its acting
   /// author when that is someone else.
@@ -1268,8 +1467,7 @@ class FakeSyncServer {
   }
 
   /// A Medical note type is one offered for Medical encounters only (note.ts isMedicalType).
-  static bool _medicalType(Map<String, Object?> definition) =>
-      !(definition['kinds']! as List<Object?>).contains('non_medical');
+  static bool _medicalType(NoteTypeDef definition) => !definition.kinds.contains(NoteKind.nonMedical);
 
   /// A Medical note makes its visit Medical if it was not (note.ts makeMedical): this change's switch
   /// of the visit's kind, its next version and its history.
@@ -2358,6 +2556,37 @@ class FakeSyncServer {
 
 /// Why a value the draft rule would write is kept in history instead (records.ts KeptInstead).
 typedef _Kept = ({String problem, ({String kind, List<String> to})? notice});
+
+/// A rule could not apply a note type's definition (records.ts DefinitionError): its row is forged,
+/// a note names a version the team does not hold, or the interpreter threw on it.
+class _DefinitionError implements Exception {}
+
+/// Runs the interpreter for a rule (records.ts byDefinition): any throw is a definition error.
+T _byDefinition<T>(T Function() rule) {
+  try {
+    return rule();
+  } on _DefinitionError {
+    rethrow;
+    // The interpreter's own faults are Errors as well as Exceptions: a condition cycle, a bad cast.
+    // ignore: avoid_catches_without_on_clauses
+  } catch (_) {
+    throw _DefinitionError();
+  }
+}
+
+/// The test-only note types the API's sign-off and read tests install beside [testNoteTypes]
+/// (packages/contract/test-vectors/sync-note-types.json): the Red flags note, and two with sections
+/// some readers may not see.
+final _noteTypesFile = jsonDecode(
+  File('../../packages/contract/test-vectors/sync-note-types.json').readAsStringSync(),
+) as Map<String, Object?>;
+final redFlagsNoteType = _noteTypesFile['redFlags']! as Map<String, Object?>;
+final restrictedNoteTypes = [
+  for (final d in _noteTypesFile['restricted']! as List<Object?>) d! as Map<String, Object?>,
+];
+const TestNoteType testRedFlags = (key: 'test_red_flags', version: 1);
+const TestNoteType testRestricted = (key: 'test_restricted', version: 1);
+const TestNoteType testSensitive = (key: 'test_sensitive', version: 1);
 
 const _encounterFields = ['patientId', 'location', 'locationText', 'summary', 'kind'];
 

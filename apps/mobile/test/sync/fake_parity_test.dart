@@ -19,6 +19,7 @@ void main() {
   const alex = 'a0000000-0000-4000-8000-00000000000a';
   const blair = 'b0000000-0000-4000-8000-00000000000b';
   const casey = 'c0000000-0000-4000-8000-00000000000c';
+  const dana = 'd0000000-0000-4000-8000-00000000000d';
   const admin = 'ad000000-0000-4000-8000-0000000000ad';
   final now = DateTime.utc(2026, 10, 22, 15);
   late FakeSyncServer server;
@@ -297,7 +298,7 @@ void main() {
   // db/test/encounter-lifecycle.test.ts) and expects what that test expects of the API.
   group('phase 4: the encounter and its notes', () {
     setUp(() async {
-      for (final user in [alex, blair, casey]) {
+      for (final user in [alex, blair, casey, dana]) {
         await register(user, 'dev-$user');
       }
     });
@@ -346,6 +347,23 @@ void main() {
       containsPair('reason', 'validation'),
       containsPair('details', {'problem': problem}),
     );
+
+    /// Refused, with exactly these details.
+    Matcher refusedWith(Map<String, Object?> details) => allOf(
+      containsPair('status', 'rejected'),
+      containsPair('reason', 'validation'),
+      containsPair('details', details),
+    );
+
+    /// Held for a Program Admin (lifecycle 4.2): the phone may let go of it, and is told nothing more.
+    Map<String, Object?> heldOnly(Map<String, Object?> c) => {
+      'changeId': c['changeId'],
+      'status': 'rejected',
+      'reason': 'permission',
+      'message': 'rejected: permission',
+      'quarantined': true,
+      'hash': c['valueHash'],
+    };
 
     Matcher refusedAt(String path) => allOf(
       containsPair('status', 'rejected'),
@@ -988,6 +1006,417 @@ void main() {
           expect(await send(alex, answers), [refused('nothing_to_resolve'), refused('nothing_to_resolve')]);
           expect(server.records[note]!.fields['status']!.value, 'completed');
         });
+      });
+    });
+
+    // Rule 12: services/api/test/sync-encounters.test.ts, 'the Medical gate (lifecycle 4.2)'. Alex
+    // is an attending, Blair a student, Casey a community health worker, Dana holds no credential.
+    group('the Medical gate (lifecycle 4.2)', () {
+      late String patient;
+      setUp(() {
+        patient = server.seedPatient();
+        server.credentials
+          ..[blair] = 'student'
+          ..[casey] = 'chw'
+          ..[dana] = 'none';
+      });
+
+      test('a Medical note’s create needs a credential that charts Medical: held for review, never refused', () async {
+        final id = visitOf(patientId: patient);
+        for (final who in [casey, dana]) {
+          final create = change(entityNote, 'create', noteValue(id, testMedical, const {'vitals.pulse': 88}));
+          expect(await send(who, [create]), [heldOnly(create)]);
+          expect(server.records[create['recordId']], isNull);
+          expect(server.held[create['changeId']]!.reason, 'permission');
+        }
+        for (final who in [alex, blair]) {
+          final create = change(entityNote, 'create', noteValue(id, testMedical, const {'vitals.pulse': 88}));
+          expect(await send(who, [create]), [taken(create, 1)]);
+          expect(server.records[create['recordId']]!.medical, isTrue);
+        }
+      });
+
+      test('a Non-Medical note is not gated and is not Medical', () async {
+        final id = visitOf(patientId: patient);
+        final typed = change(entityNote, 'create', noteValue(id, testNote, const {'care.plan': 'Demo: rest'}));
+        expect(await send(dana, [typed]), [taken(typed, 1)]);
+        expect(server.records[typed['recordId']]!.medical, isFalse);
+        final edit = setOn(entityNote, typed['recordId']! as String, 'data.care.plan', 'Demo: fluids', 1);
+        expect(await send(dana, [edit]), [taken(edit, 2)]);
+      });
+
+      test(
+        'a set of an answer or of the status of a Medical note is held for someone who cannot chart Medical',
+        () async {
+          final note = server.seed(
+            entityNote,
+            noteValue(visitOf(patientId: patient), testMedical, const {'vitals.pulse': 88}),
+            by: alex,
+          );
+          for (final who in [casey, dana]) {
+            final changes = [
+              setOn(entityNote, note, 'data.vitals.pulse', 90, 1),
+              setOn(entityNote, note, 'status', 'draft', 1),
+              // The gate comes first: an answer the type refuses is held too, and checked when accepted.
+              setOn(entityNote, note, 'data.vitals.pulse', 'fast', 1),
+            ];
+            expect(await send(who, changes), [for (final c in changes) heldOnly(c)]);
+          }
+          expect(server.records[note]!.fields['data.vitals.pulse']!.value, 88);
+          final own = setOn(entityNote, note, 'data.vitals.pulse', 92, 1);
+          final students = setOn(entityNote, note, 'data.care.plan', 'Demo: fluids', 0);
+          expect(await send(alex, [own]), [taken(own, 2)]);
+          expect(await send(blair, [students]), [taken(students, 1)]);
+        },
+      );
+
+      test(
+        'a credential lowered while the phone was offline holds its change; an admin’s accept lets it through',
+        () async {
+          server.credentials[dana] = 'np';
+          final create = change(
+            entityNote,
+            'create',
+            noteValue(visitOf(patientId: patient, by: dana), testMedical, const {'vitals.temp_c': 38.2}),
+          );
+          expect(await send(dana, [create]), [taken(create, 1)]);
+          final note = create['recordId']! as String;
+          // Made offline, before the credential went down; sent after.
+          final late = setOn(entityNote, note, 'data.vitals.temp_c', 38.6, 1);
+          server.changeCredential(dana, 'chw');
+          expect(await send(dana, [late]), [heldOnly(late)]);
+          expect(server.records[note]!.fields['data.vitals.temp_c']!.value, 38.2);
+
+          expect(
+            server.acceptHeld(late['changeId']! as String, by: admin),
+            taken(late, 2)
+              ..remove('changeId')
+              ..remove('hash'),
+          );
+          expect(server.records[note]!.fields['data.vitals.temp_c']!.value, 38.6);
+          final written = server.history.lastWhere((h) => h['recordId'] == note && h['field'] == 'data.vitals.temp_c');
+          expect([written['version'], written['by'], written['approvedBy']], [2, dana, admin]);
+        },
+      );
+    });
+
+    // Rule 14: services/api/test/sync-encounters.test.ts, 'a note’s answers (lifecycle 4.4)'. Alex and
+    // Blair chart on the Non-Medical test type.
+    group('a note’s answers (lifecycle 4.4)', () {
+      late String visit;
+      setUp(() => visit = visitOf(patientId: server.seedPatient()));
+      String noteWith(Map<String, Object?> data) => server.seed(entityNote, noteValue(visit, testNote, data), by: alex);
+      Map<String, Object?> setNote(String note, String field, Object? value, [int baseVersion = 0]) =>
+          setOn(entityNote, note, field, value, baseVersion);
+      String entry(int n) => 'rows.e${'$n'.padLeft(7, '0')}';
+      const at = '2026-10-20T14:40:00.000Z';
+
+      test('each answer is checked against the note’s type once the note is loaded', () async {
+        final note = noteWith(const {'vitals.pulse': 88});
+        final wrong = [
+          ('data.vitals.pulse', 'fast', 'wrong_type'),
+          ('data.vitals.pulse', 301, 'out_of_range'),
+          // One decimal: 38.25 is not one of its values.
+          ('data.vitals.temp_c', 38.25, 'out_of_range'),
+          ('data.care.followup', 'Demo: ${'x' * 200}', 'too_long'),
+          ('data.vitals.bp', 120, 'unknown_path'),
+          ('data.rows.notanentry.text', 'Demo: a row', 'unknown_path'),
+          ('data.rows.e0000001.n', 'two', 'wrong_type'),
+          // A tick stores true; unticking writes null.
+          ('data.more.none', false, 'wrong_type'),
+        ];
+        final sets = [for (final (field, value, _) in wrong) setNote(note, field, value)];
+        final right = [
+          setNote(note, 'data.vitals.pulse', 96, 1),
+          setNote(note, 'data.vitals.temp_c', 38.2),
+          // Null clears an answer, wherever one is stored.
+          setNote(note, 'data.care.followup', null),
+        ];
+        expect(await send(alex, [...sets, ...right]), [
+          for (final (_, _, problem) in wrong) refused(problem),
+          taken(right[0], 2),
+          taken(right[1], 1),
+          taken(right[2], 0),
+        ]);
+        expect(
+          [
+            server.records[note]!.fields['data.vitals.pulse']!.value,
+            server.records[note]!.fields['data.vitals.temp_c']!.value,
+          ],
+          [96, 38.2],
+        );
+        // Phase 2's open pattern still answers first, before the note is loaded.
+        expect(await send(alex, [setNote(note, 'data.Vitals', 1)]), [refused('unknown_field')]);
+      });
+
+      test('a create’s answers are checked too, each refusal naming the answer’s path', () async {
+        final cases = [
+          (const {'vitals.pulse': 'fast'}, const {'problem': 'wrong_type', 'path': 'vitals.pulse'}),
+          (const {'care.plan': 'Demo: rest', 'vitals.bp': 120}, const {'problem': 'unknown_path', 'path': 'vitals.bp'}),
+          (const {'wound.length_cm': 100}, const {'problem': 'out_of_range', 'path': 'wound.length_cm'}),
+        ];
+        final creates = [for (final (data, _) in cases) change(entityNote, 'create', noteValue(visit, testNote, data))];
+        final fine = change(
+          entityNote,
+          'create',
+          noteValue(visit, testNote, const {'vitals.pulse': 88, 'care.plan': null}),
+        );
+        expect(await send(alex, [...creates, fine]), [
+          for (final (_, details) in cases) refusedWith(details),
+          taken(fine, 1),
+        ]);
+        for (final c in creates) {
+          expect(server.records[c['recordId']], isNull);
+        }
+      });
+
+      test('a note holds up to 1,000 answers', () async {
+        expect(maxNoteFields, 1000);
+        final data = {
+          for (var i = 0; i < maxNoteFields / 2; i++) ...{'${entry(i)}.entryAt': at, '${entry(i)}.n': i},
+        };
+        final full = change(entityNote, 'create', noteValue(visit, testNote, data));
+        final over = change(entityNote, 'create', noteValue(visit, testNote, {...data, 'care.plan': 'Demo: one more'}));
+        final [made, refusedOver] = await send(alex, [full, over]);
+        expect(made, taken(full, 1));
+        expect(refusedOver, allOf(containsPair('status', 'rejected'), containsPair('reason', 'validation')));
+        final again = setNote(full['recordId']! as String, 'data.${entry(0)}.n', 7, 1);
+        final more = setNote(full['recordId']! as String, 'data.care.plan', 'Demo: one more');
+        expect(await send(alex, [again, more]), [taken(again, 2), refused('too_many_fields')]);
+      });
+
+      test('an answer that will not count is taken, and its receipt says why', () async {
+        // Blair removed the first row and ticked "Nothing more"; Alex, offline, wrote into both.
+        final note = noteWith({
+          '${entry(1)}.entryAt': at,
+          '${entry(1)}.entryRemoved': true,
+          '${entry(2)}.entryAt': at,
+          'more.none': true,
+        });
+        Map<String, Object?> counted(Map<String, Object?> c, int version, [String? why]) => {
+          ...taken(c, version),
+          if (why != null) 'details': {'notCounted': why},
+        };
+        final sets = [
+          setNote(note, 'data.${entry(1)}.text', 'Demo: the first row'),
+          setNote(note, 'data.${entry(1)}.entryAt', at, 1),
+          setNote(note, 'data.more.detail', 'Demo: more to say'),
+          // In an entry that is there, and in a field that shows: nothing to say.
+          setNote(note, 'data.${entry(2)}.text', 'Demo: the second row'),
+          setNote(note, 'data.care.plan', 'Demo: rest'),
+          // A clear holds no answer to count. The removal itself is what it says.
+          setNote(note, 'data.more.detail', null, 1),
+          setNote(note, 'data.${entry(2)}.entryRemoved', true),
+          setNote(note, 'data.${entry(2)}.text', 'Demo: the second row, again', 1),
+        ];
+        final answered = await send(alex, sets);
+        expect(answered, [
+          counted(sets[0], 1, 'removed_entry'),
+          counted(sets[1], 1, 'removed_entry'),
+          counted(sets[2], 1, 'hidden_field'),
+          counted(sets[3], 1),
+          counted(sets[4], 1),
+          counted(sets[5], 2),
+          counted(sets[6], 1),
+          counted(sets[7], 2, 'removed_entry'),
+        ]);
+        // Kept on the chart as sent: shown again if the field shows again.
+        expect(server.records[note]!.fields['data.${entry(1)}.text']!.value, 'Demo: the first row');
+        // Sent twice, it answers the same, from its receipt.
+        expect(await send(alex, sets), answered);
+
+        // Only a value on the chart is told so: a conflict, or the answer to one that keeps the
+        // server's value, says nothing of it.
+        final blairs = setNote(note, 'data.more.detail', 'Demo: from Blair', 2);
+        expect(await send(blair, [blairs]), [counted(blairs, 3, 'hidden_field')]);
+        final unseen = setNote(note, 'data.more.detail', 'Demo: from Alex', 2);
+        final [conflict] = await send(alex, [unseen]);
+        expect([conflict['status'], conflict.containsKey('details')], ['conflict', isFalse]);
+        final keep = setOn(
+          entityNote,
+          note,
+          'data.more.detail',
+          'Demo: from Alex',
+          3,
+          more: {'conflictOf': unseen['changeId'], 'resolution': 'keep_server'},
+        );
+        expect(await send(alex, [keep]), [taken(keep, 3)]);
+        // The same value again is still a value that does not count.
+        final same = setNote(note, 'data.more.detail', 'Demo: from Blair', 3);
+        expect(await send(blair, [same]), [counted(same, 3, 'hidden_field')]);
+      });
+
+      test(
+        'a rule that throws on a definition is refused definition_error, writes nothing, and the queue goes on',
+        () async {
+          final testNoteType = testNoteTypes.first;
+          // A row whose hash is not its definition's (D79).
+          server.noteTypes[('test_forged', 1)] = {...testNoteType, 'key': 'test_forged'};
+          server.forged.add(('test_forged', 1));
+          // Two fields that each show only while the other is filled: the interpreter throws on it.
+          server.noteTypes[('test_looped', 1)] = {
+            ...testNoteType,
+            'key': 'test_looped',
+            'sections': [
+              {
+                'id': 'loop',
+                'title': 'Loop',
+                'fields': [
+                  for (final (id, other) in [('a', 'b'), ('b', 'a')])
+                    {
+                      'id': id,
+                      'kind': 'text',
+                      'label': id.toUpperCase(),
+                      'lines': 'one',
+                      'maxLength': 200,
+                      'showWhen': {'field': 'loop.$other', 'filled': true},
+                    },
+                ],
+              },
+            ],
+          };
+          final looped = change(entityNote, 'create', noteValue(visit, (key: 'test_looped', version: 1)));
+          expect(await send(alex, [looped]), [taken(looped, 1)]);
+          // A note naming a version the team does not hold, from before any check: none can be made now.
+          final stray = noteWith(const {});
+          server.records[stray]!.attributes['noteTypeVersion'] = 9;
+
+          final throwing = [
+            change(entityNote, 'create', noteValue(visit, (key: 'test_forged', version: 1))),
+            setNote(looped['recordId']! as String, 'data.loop.a', 'Demo: round and round'),
+            setNote(stray, 'data.care.plan', 'Demo: rest'),
+          ];
+          final after = change(entityNote, 'create', noteValue(visit, testNote));
+          expect(await send(alex, [...throwing, after]), [
+            for (final _ in throwing) refused('definition_error'),
+            taken(after, 1),
+          ]);
+          expect(server.records[throwing[0]['recordId']], isNull);
+          expect(server.records[looped['recordId']]!.fields.keys, ['status']);
+          expect(historyOf(looped['recordId']! as String, 'data.loop.a'), isEmpty);
+        },
+      );
+    });
+
+    // Rule 16, a set: services/api/test/sync-reads.test.ts, 'a set of an answer the sender may not see
+    // (4.4, 6.4 rule 5)'. Alex (Ana there) is an attending and the author; Dana (Ben) holds no
+    // credential; Blair (Sky) is a student; Casey (Dee) has a custom role with patients.view and
+    // encounters.chart only, and no credential.
+    group('a set of an answer the sender may not see (4.4, 6.4 rule 5)', () {
+      const e1 = 'e0000001';
+      const e2 = 'e0000002';
+      const at = '2026-10-20T14:50:00Z';
+      const answers = <String, Object?>{
+        'general.notes': 'Demo: walked over from the shelter',
+        'exam.findings': 'Demo: no lesions seen',
+        'moud.dose': 'Demo: 8 mg',
+        'meds.given': 'Demo: none today',
+        'systems.seen': ['heart', 'gu'],
+        // A diagnosis whose code is on the sensitive list, and one whose code is not.
+        'dx.$e1.entryAt': at,
+        'dx.$e1.diagnosis.code': 'F11.20',
+        'dx.$e1.diagnosis.label': 'Demo: opioid use',
+        'dx.$e1.note': 'Demo: talk again next week',
+        'dx.$e2.entryAt': at,
+        'dx.$e2.diagnosis.code': 'J02.9',
+        'dx.$e2.diagnosis.label': 'Demo: sore throat',
+      };
+      late String patient;
+      setUp(() {
+        for (final d in restrictedNoteTypes) {
+          server.noteTypes[(d['key']! as String, d['version']! as int)] = d;
+        }
+        patient = server.seedPatient();
+        server.credentials
+          ..[dana] = 'none'
+          ..[blair] = 'student'
+          ..[casey] = 'none';
+        server.permissions[casey] = {'patients.view', 'encounters.chart'};
+      });
+      String restrictedNote(Map<String, Object?> data, {TestNoteType type = testRestricted}) =>
+          server.seed(entityNote, noteValue(visitOf(patientId: patient), type, data), by: alex);
+      Map<String, Object?> set(String note, String path, Object? value, [int baseVersion = 1]) =>
+          setOn(entityNote, note, 'data.$path', value, baseVersion);
+
+      test(
+        'is held for review, with nothing sent back of what the answer holds; the author always sets their own',
+        () async {
+          final n = restrictedNote(answers);
+          final danas = [
+            set(n, 'exam.findings', 'Demo: a small rash'),
+            // Not seen, and so a conflict with the answer held there, but held before that is asked.
+            set(n, 'exam.findings', 'Demo: something else', 0),
+            set(n, 'moud.dose', 'Demo: 12 mg'),
+            // An ordering credential's section.
+            set(n, 'meds.given', 'Demo: one tablet'),
+            // A sensitive option, put there or taken away.
+            set(n, 'systems.seen', ['lungs', 'gu']),
+            set(n, 'systems.seen', ['heart']),
+            set(n, 'general.notes', 'Demo: walked over from the park'),
+          ];
+          final answered = await send(dana, danas);
+          expect(answered.sublist(0, 6), [for (final c in danas.sublist(0, 6)) heldOnly(c)]);
+          expect(answered[6], taken(danas[6], 2));
+          // On a note whose restricted sections hold nothing: the section alone, or the value sent.
+          final bare = restrictedNote(const {
+            'general.notes': 'Demo: walked over from the shelter',
+            'systems.seen': ['heart'],
+          });
+          final onBare = [
+            set(bare, 'exam.findings', '', 0),
+            set(bare, 'moud.dose', '', 0),
+            set(bare, 'systems.seen', ['heart', 'gu']),
+            set(bare, 'systems.seen', ['heart', 'lungs']),
+          ];
+          final bareAnswers = await send(dana, onBare);
+          expect(bareAnswers.sublist(0, 3), [for (final c in onBare.sublist(0, 3)) heldOnly(c)]);
+          expect(bareAnswers[3], taken(onBare[3], 2));
+          // A student reads the treatment record, and orders nothing.
+          final blairs = [set(n, 'moud.dose', 'Demo: 12 mg'), set(n, 'meds.given', 'Demo: one tablet')];
+          expect(await send(blair, blairs), [taken(blairs[0], 2), heldOnly(blairs[1])]);
+          // Without patients.view_sensitive, the entry of a sensitive diagnosis.
+          final caseys = [
+            set(n, 'dx.$e1.note', 'Demo: something else'),
+            set(n, 'dx.$e2.note', 'Demo: rest and fluids', 0),
+          ];
+          expect(await send(casey, caseys), [heldOnly(caseys[0]), taken(caseys[1], 1)]);
+          // ...and any answer of a note they may not read at all.
+          final talk = restrictedNote(const {'talk.notes': 'Demo: talked about sleep'}, type: testSensitive);
+          final onTalk = set(talk, 'talk.notes', 'Demo: something else');
+          expect(await send(casey, [onTalk]), [heldOnly(onTalk)]);
+          // Whoever acts as the author sets every answer of their own note.
+          final own = set(n, 'exam.findings', 'Demo: a small rash');
+          expect(await send(alex, [own]), [taken(own, 2)]);
+          final held = server.records[n]!.fields;
+          expect(
+            [
+              for (final path in ['exam.findings', 'moud.dose', 'meds.given', 'systems.seen', 'dx.$e1.note'])
+                held['data.$path']!.value,
+            ],
+            [
+              'Demo: a small rash',
+              'Demo: 12 mg',
+              'Demo: none today',
+              ['heart', 'gu'],
+              'Demo: talk again next week',
+            ],
+          );
+
+          // An admin's accept is the approval: the held change applies as it was sent.
+          expect(server.acceptHeld(danas[3]['changeId']! as String)['status'], 'accepted');
+          expect(server.records[n]!.fields['data.meds.given']!.value, 'Demo: one tablet');
+        },
+      );
+
+      test('on a finished note too: held, where a late change would send back the answer it keeps', () async {
+        final n = restrictedNote(answers);
+        server.finishNote(n);
+        final hidden = set(n, 'exam.findings', 'Demo: a small rash');
+        final plain = set(n, 'general.notes', 'Demo: later');
+        expect(await send(dana, [hidden, plain]), [
+          heldOnly(hidden),
+          kept(plain, answers['general.notes'], 1, 'note_finished'),
+        ]);
       });
     });
 
