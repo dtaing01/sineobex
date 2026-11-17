@@ -187,7 +187,9 @@ describe('what a released file is made of', () => {
   it('a draft may include a draft', async () => {
     const files = definitionFiles();
     const lock: Record<string, string> = await lockOf(files);
+    // A draft has neither line: its resolved line alone would make it a preset (lock.resolved_alone).
     delete lock[CHECKS];
+    delete lock[resolvedEntry(CHECKS)];
     delete lock[EXAM];
     expect(await found(lock, files)).toEqual([]);
   });
@@ -297,5 +299,37 @@ describe('what a released definition is checked against, and what the server sto
     const lock = await lockOf(files);
     delete lock[resolvedEntry(FULL)];
     expect(await found(lock, files)).toEqual(sorted([[FULL, '$', 'lock.unreleased_part']]));
+  });
+});
+
+describe('a version is released whole', () => {
+  // The export makes a version a preset by its resolved line (D78). Without its file's line the
+  // file and its parts would be checked as a draft, so they could change or go while the preset
+  // stayed, or left the presets with nothing said (review DIF-3).
+  it('a resolved hash held without its file’s line', async () => {
+    const files = definitionFiles();
+    const lock = await lockOf(files);
+    delete lock[FULL];
+    expect(await found(lock, files)).toEqual(
+      sorted([[LOCK_FILE, `$[${JSON.stringify(resolvedEntry(FULL))}]`, 'lock.resolved_alone']]),
+    );
+  });
+
+  it('a lock of resolved lines alone, and a version’s file then deleted', async () => {
+    const files = definitionFiles();
+    const lock = Object.fromEntries(
+      Object.entries(await lockOf(files)).filter(([entry]) => entry.endsWith('#resolved')),
+    );
+    const versions = Object.keys(files.noteTypes);
+    delete files.noteTypes[CHECKS];
+    expect(await found(lock, files)).toEqual(
+      sorted(
+        versions.map((file) => [
+          LOCK_FILE,
+          `$[${JSON.stringify(resolvedEntry(file))}]`,
+          'lock.resolved_alone',
+        ]),
+      ),
+    );
   });
 });

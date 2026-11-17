@@ -85,6 +85,8 @@ export function lockText(lock: Lock): string {
  *  - `lock.unreleased_part`: a released file that includes a module version, names a list or a
  *    piece, that is not released; or a released note type version whose resolved hash is not held.
  *    Its resolved content, or what it is checked against, could then still change under it.
+ *  - `lock.resolved_alone`: a resolved line whose note type version file the lock does not hold.
+ *    The resolved line makes the version a preset, so it is released whole or not at all.
  */
 export async function checkLock(
   lock: unknown,
@@ -123,6 +125,18 @@ export async function checkLock(
     const file = resolvedOf ?? entry;
     const content = Object.hasOwn(present, entry) ? present[entry] : undefined;
     if (resolvedOf !== null) {
+      // The resolved line is what makes a version a preset (the export's isReleased). Without the
+      // file's own line, the file and its parts would be checked as a draft: they could change, or
+      // the file go and the version leave the presets, with nothing said.
+      if (!Object.hasOwn(lock, resolvedOf)) {
+        problems.push({
+          file: LOCK_FILE,
+          path: `$[${JSON.stringify(entry)}]`,
+          rule: 'lock.resolved_alone',
+          message: `holds the resolved hash of ${resolvedOf} but not the file itself: a version is released whole, its file with its resolved line`,
+        });
+        continue;
+      }
       // Gone with its file (reported as missing), or no longer resolving (the resolver says why).
       if (content !== undefined && (await hashOf(content)) !== hash)
         resolvedChanges.push({
