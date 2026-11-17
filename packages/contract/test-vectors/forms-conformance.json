@@ -402,6 +402,26 @@
                   { "id": "comment", "kind": "text", "label": "Demo comment", "lines": "one", "maxLength": 40, "showWhen": { "field": "./grade", "filled": true } }
                 ]
               }
+            },
+            {
+              "id": "more",
+              "kind": "group",
+              "label": "Demo further checks",
+              "layout": "stack",
+              "collapsed": true,
+              "fields": [
+                {
+                  "id": "bruit",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo bruit",
+                  "sides": true,
+                  "options": [
+                    { "code": "none", "label": "Demo none", "normal": true },
+                    { "code": "present", "label": "Demo present" }
+                  ]
+                }
+              ]
             }
           ]
         },
@@ -1773,7 +1793,8 @@
       {"name": "a murmur charted shows the grade, which has no normal value", "definition": "exam", "section": "heart", "answers": {"systems.picked": ["heart"], "heart.murmur": "present"}, "why": "forms.md 6.3 line 790; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count", "expected": {"heart.rhythm": "regular"}},
       {"name": "sides: each side set to the normal option", "definition": "exam", "section": "lungs", "answers": {"systems.picked": ["lungs"]}, "why": "forms.md 2.3 line 305", "expected": {"lungs.sounds.right": "clear", "lungs.sounds.left": "clear"}},
       {"name": "one side charted: only the other is filled", "definition": "exam", "section": "lungs", "answers": {"systems.picked": ["lungs"], "lungs.sounds.left": "wheeze"}, "why": "forms.md 6.3 line 790", "expected": {"lungs.sounds.right": "clear"}},
-      {"name": "grids: each row's cell, by side, and a number cell's normal value", "definition": "exam", "section": "pulses", "answers": {}, "why": "forms.md 6.3 lines 794 and 801: pulses and reflexes are grids on shared scales; a number's normal is what Normal fills", "expected": {"pulses.pulses.radial.right": "normal", "pulses.pulses.radial.left": "normal", "pulses.pulses.pedal.right": "normal", "pulses.pulses.pedal.left": "normal", "pulses.reflexes.biceps.grade": 2, "pulses.reflexes.knee.grade": 2}},
+      {"name": "grids: each row's cell, by side; nothing in a collapsed grid or a collapsed group", "definition": "exam", "section": "pulses", "answers": {}, "why": "forms.md 6.3 lines 794 and 801: pulses and reflexes are grids on shared scales; coordinator decision B3 (review finding EXM-2): a part marked collapsed is optional, so one-tap Normal fills no field inside a collapsed group (the bruit, each side) and no cell of a collapsed grid (the reflex grades, whose normal is 2)", "expected": {"pulses.pulses.radial.right": "normal", "pulses.pulses.radial.left": "normal", "pulses.pulses.pedal.right": "normal", "pulses.pulses.pedal.left": "normal"}},
+      {"name": "a collapsed part opened and partly charted is still left alone", "definition": "exam", "section": "pulses", "answers": {"pulses.reflexes.knee.grade": 3, "pulses.more.bruit.left": "present", "pulses.pulses.radial.right": "weak"}, "why": "coordinator decision B3 (review finding EXM-2): what is charted in a collapsed part stays as it is, and the rest of it (the biceps grade, the right bruit) is not filled: only the clinician says an optional part was examined", "expected": {"pulses.pulses.radial.left": "normal", "pulses.pulses.pedal.right": "normal", "pulses.pulses.pedal.left": "normal"}},
       {"name": "a number's normal value and a choice's normal option; a flag and a number with no normal left alone", "definition": "visit", "section": "vitals", "answers": {"vitals.pulse": 72}, "why": "forms.md 2.2 line 191: normal is what one-tap Normal fills (strength: 5)", "expected": {"vitals.strength": 5, "vitals.alert": "alert"}},
       {"name": "a section with needs and no normal gives nothing", "definition": "visit", "section": "meds", "answers": {}, "why": "forms.md 2.2 line 151", "expected": {}},
       {"name": "a repeating section: the entry it is tapped in", "definition": "checkup", "section": "limbs", "entry": "eaaaaaa1", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z"}, "why": "forms.md 6.3 line 797: one-tap Normal takes the entry it is tapped in; the region has no normal option, grip is noNormal, and the extent stays hidden once swelling is None; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count", "expected": {"limbs.eaaaaaa1.tone": "normal", "limbs.eaaaaaa1.swelling": "none"}},

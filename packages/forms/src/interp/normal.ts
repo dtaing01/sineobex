@@ -17,7 +17,9 @@ import type { Answers } from './conditions.ts';
  *
  * A field is filled when it shows, no set flag clears it, it holds no answer (a blank, or a value
  * checkAnswer refuses, is none: finishCheck asks for it too), and neither it nor a group or grid
- * around it is `noNormal`. A choose-one takes its normal option, a choose-many every normal option
+ * around it is `noNormal` or `collapsed`. A collapsed part is optional (coordinator decision B3):
+ * only the clinician says it was examined, so Normal fills nothing in it, a grid's cells included,
+ * even once it is opened and partly charted. A choose-one takes its normal option, a choose-many every normal option
  * in the definition's order (the validator holds that one answer takes them: normal_conflict), a
  * number its `normal` value; each side and each counting row is filled on its own. Other kinds
  * have no normal.
@@ -47,7 +49,7 @@ export function normalAnswers(
 
   const offered: [string, unknown][] = [];
   for (const node of reading.model.nodes) {
-    if (node.section !== section || noNormal(node)) continue;
+    if (node.section !== section || leftAlone(node)) continue;
     for (const leaf of ownLeaves(node)) {
       const value = normalOf(leaf);
       const path = reading.pathOf(leaf, entry);
@@ -82,9 +84,12 @@ export function normalAnswers(
   return Object.fromEntries(kept.map((path) => [path, added[path]]));
 }
 
-/** `noNormal` on the field or on a group or grid it is in. */
-function noNormal(node: FieldNode): boolean {
-  for (let at: FieldNode | null = node; at; at = at.parent) if (at.field.noNormal) return true;
+/** `noNormal` on the field or on a group or grid it is in, or `collapsed` on such a group or grid. */
+function leftAlone(node: FieldNode): boolean {
+  for (let at: FieldNode | null = node; at; at = at.parent) {
+    const { field } = at;
+    if (field.noNormal || ((field.kind === 'group' || field.kind === 'grid') && field.collapsed)) return true;
+  }
   return false;
 }
 
