@@ -13,8 +13,8 @@ import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
 import { asApp, makeTeam, makeUser } from './helpers.ts';
 
-// installPresets (phase 4 design, forms 3.1 and 3.2) against 0017. The real presets.json holds
-// nothing until the definitions are typed, so these install the made-up fixture note types.
+// installPresets (phase 4 design, forms 3.1 and 3.2) against 0017. Most cases install the made-up
+// fixture note types, whose versions they can edit and number; the last installs the released ones.
 
 type Row = { key: string; version: number; hash: string; origin: string; presetVersion: number | null };
 
@@ -195,5 +195,24 @@ describe('installing the presets', () => {
     }
     await seed(db.owner, { presets });
     expect([await rowsOf(DEMO_TEAM_ID), await rowsOf(NEIGHBOUR_TEAM_ID)]).toEqual(first);
+  });
+
+  // Wave D released the nine note types (forms 3.2, 10.1): a team made now starts with every one.
+  it('gives a new team the nine released note types when no presets are named', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Released');
+    const result = await asPlatform((tx) => installPresets(tx, team));
+    expect(keyVersions(result.installed)).toEqual([
+      'general_primary_care v1',
+      'harm_reduction v1',
+      'outreach v1',
+      'psychological v1',
+      'quick_encounter v1',
+      'red_flags_disposition v1',
+      'sexual_reproductive v1',
+      'social_needs v1',
+      'wound_care v1',
+    ]);
+    for (const row of await rowsOf(team))
+      expect(await sha256Hex(canonicalJson(row.definition))).toBe(row.hash);
   });
 });

@@ -8,8 +8,9 @@ import { definitionFor, listNoteTypes } from '../src/forms/definitions.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createTeam, expectAudit, logSpy, memberWith, type LogSpy } from './patient-fixtures.ts';
 
-// Definitions on the server (phase 4 design, forms 3). The real presets.json holds nothing until
-// the definitions are typed, so the installer reads the made-up fixture note types here.
+// Definitions on the server (phase 4 design, forms 3). The installer reads the made-up fixture
+// note types here, whose fields these cases name; db/test/install-presets.test.ts installs the
+// released ones.
 // The factory imports the fixtures itself: it runs before this file's own imports are bound.
 vi.mock('../../../packages/forms/generated/presets.json', async () => {
   const fixtures = await import('../../../packages/forms/test/fixtures/presets.ts');
