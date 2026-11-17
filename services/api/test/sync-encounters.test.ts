@@ -7,7 +7,7 @@ import { chartsMedical, credentialChangesAfter, loadSigner } from '../src/encoun
 import { takesTeamLock } from '../src/sync/entities/index.ts';
 import { MAX_NOTE_FIELDS } from '../src/sync/records.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createPatient, createTeam, expectAudit } from './patient-fixtures.ts';
+import { auditMark, createPatient, createTeam, expectAudit, mergeDirect } from './patient-fixtures.ts';
 import {
   addMember,
   call,
@@ -1859,6 +1859,86 @@ describe('phase 4 sync: encounters and notes', () => {
           ),
         );
         expect((await noteState(noteId)).status).toBe('completed');
+      });
+    });
+  });
+
+  describe('a problem made at a visit (lifecycle 8.3, 4.7)', () => {
+    it('is marked as made at a visit, and names a visit of its patient’s merged group or none', async () => {
+      const lee = await clinician('problem-source@example.com', 'Lee (demo)', 'attending');
+      const p = (await createPatient(h, t.teamId, lee.id, { preferredName: 'Demo Rowan' })).id;
+      const other = (await createPatient(h, t.teamId, lee.id, { preferredName: 'Demo Sage' })).id;
+      // One person, two records: a visit of either is a visit of the person.
+      const twin = (await createPatient(h, t.teamId, lee.id, { preferredName: 'Demo Rowan two' })).id;
+      await mergeDirect(h, t.teamId, twin, p, t.adminId);
+      const [ofP, ofOther, ofTwin] = [
+        await encounterOf(lee, p),
+        await encounterOf(lee, other),
+        await encounterOf(lee, twin),
+      ];
+      const nobody = await encounterOf(lee);
+      const problem = (encounterId?: string | null, recordId?: string) =>
+        lee.phone.change({
+          entity: 'problem',
+          op: 'create',
+          ...(recordId ? { recordId } : {}),
+          value: {
+            patientId: p,
+            title: 'Demo: cellulitis, left shin',
+            status: 'new',
+            ...(encounterId === undefined ? {} : { encounterId }),
+          },
+        });
+      const changes = [
+        await problem(ofP),
+        await problem(),
+        await problem(null),
+        await problem(ofOther),
+        await problem(ofTwin),
+        await problem(nobody),
+      ];
+      const answers = await lee.send(...changes);
+      expect(answers.map((r) => [r.status, r.reason ?? null, r.details?.problem ?? null])).toEqual([
+        ['accepted', null, null],
+        ['accepted', null, null],
+        ['accepted', null, null],
+        ['rejected', 'stale_reference', 'encounter_other_patient'],
+        ['accepted', null, null],
+        ['accepted', null, null],
+      ]);
+      expect(answers[3]!.quarantined).toBeUndefined();
+      const rows = await h.scratch.owner<{ id: string; source: string; createdEncounterId: string | null }[]>`
+        select id, source, created_encounter_id as "createdEncounterId" from sineobex.problems
+        where id in ${h.scratch.owner(changes.map((c) => c.recordId))}`;
+      const stored = (c: Change) => rows.find((r) => r.id === c.recordId);
+      expect(stored(changes[0]!)).toMatchObject({ source: 'encounter', createdEncounterId: ofP });
+      expect(stored(changes[1]!)).toMatchObject({ source: 'manual', createdEncounterId: null });
+      expect(stored(changes[2]!)).toMatchObject({ source: 'manual', createdEncounterId: null });
+      expect(stored(changes[3]!)).toBeUndefined();
+      expect(stored(changes[4]!)).toMatchObject({ source: 'encounter', createdEncounterId: ofTwin });
+      expect(stored(changes[5]!)).toMatchObject({ source: 'encounter', createdEncounterId: nobody });
+
+      // Send without the visit (8.4): the same record with no visit settles the refusal.
+      const without = await lee.phone.change({
+        entity: 'problem',
+        op: 'create',
+        recordId: changes[3]!.recordId,
+        supersedes: changes[3]!.changeId,
+        value: { ...(changes[3]!.value as Record<string, unknown>), encounterId: null },
+      });
+      expect((await lee.send(without)).map((r) => r.status)).toEqual(['accepted']);
+      const [fixed] = await h.scratch.owner<{ source: string }[]>`
+        select source from sineobex.problems where id = ${without.recordId}`;
+      expect(fixed!.source).toBe('manual');
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: lee.token,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'problem', id: changes[0]!.recordId }] },
+      });
+      expect((read.body.records as { attributes: Record<string, unknown> }[])[0]!.attributes).toMatchObject({
+        source: 'encounter',
+        createdEncounterId: ofP,
       });
     });
   });

@@ -6,7 +6,9 @@ import {
   initialFieldState,
   invalid,
   jsonb,
+  rejected,
   storeCreate,
+  visitOfOtherPatient,
   when,
   type EntityRules,
   type FieldMeta,
@@ -24,6 +26,11 @@ import { patientFieldSchema, ProblemCreate, valueParents } from './values.ts';
  * Status is an observation with a time: the latest observation wins, every observation is a
  * history row, and only an admin moves a problem out of Resolved (D36). Work that arrives for a
  * problem marked entered in error is kept in its history, never refused (review finding 7).
+ *
+ * A problem added from a visit (Add to the problem list, phase 4 lifecycle 8.3) names that visit,
+ * and is marked as made at one (`source`). The visit is one of the patient's merged group, or one
+ * that names no patient: a visit of someone else is refused as a stale reference the worker fixes
+ * by sending the problem without it (4.7, 8.4).
  */
 
 type Value = z.infer<typeof ProblemCreate>;
@@ -168,6 +175,9 @@ export const problemRules: EntityRules<Value> = {
     return storeCreate(ctx, 'problem', {
       // A recurrence, or a reversal request, stands beside a Resolved entry of the same person.
       check: async () => {
+        if (v.encounterId && (await visitOfOtherPatient(tx, ctx.actor.teamId, v.patientId, v.encounterId))) {
+          return rejected('stale_reference', { problem: 'encounter_other_patient' });
+        }
         if (!origin) return null;
         const [earlier] = await tx<{ status: string; canonicalId: string }[]>`
           select pr.status, p.canonical_id from sineobex.problems pr
@@ -185,13 +195,14 @@ export const problemRules: EntityRules<Value> = {
         const rows = await tx`
           insert into sineobex.problems (id, team_id, patient_id, title, code_system, code, code_display,
             sensitive, status, status_encounter_id, status_changed_at, status_changed_by, status_checked_at,
-            recurrence_of, resolved_in_error_of, reversal_request, created_encounter_id, onset_date,
+            recurrence_of, resolved_in_error_of, reversal_request, source, created_encounter_id, onset_date,
             author_user_id, created_device_id, field_versions, field_meta)
           values (${input.id}, ${input.teamId}, ${v.patientId}, ${v.title}, ${v.code?.system ?? null},
                   ${v.code?.code ?? null}, ${v.code?.display ?? null}, ${sensitive}, ${v.status},
                   ${v.encounterId ?? null}, ${input.at}, ${input.authorUserId}, ${input.at},
                   ${v.recurrenceOf ?? null}, ${v.resolvedInErrorOf ?? null},
-                  ${v.resolvedInErrorOf ? 'open' : null}, ${v.encounterId ?? null}, ${v.onsetDate ?? null}::date,
+                  ${v.resolvedInErrorOf ? 'open' : null}, ${v.encounterId ? 'encounter' : 'manual'},
+                  ${v.encounterId ?? null}, ${v.onsetDate ?? null}::date,
                   ${input.authorUserId}, ${input.deviceId}, ${jsonb(tx, versions)}, ${jsonb(tx, meta)})
           on conflict (id) do nothing
           returning id`;
