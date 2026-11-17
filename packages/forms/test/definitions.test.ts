@@ -472,7 +472,7 @@ describe('the plans of the exam pieces', () => {
     'exam-rectal': ['rectal.performed'],
   };
   it.each(Object.entries(OPEN_WITHOUT_PERFORMED))(
-    '%s shows its findings only once the exam is marked performed, but %s',
+    '%s shows its findings only once the exam is marked performed, but for those it names',
     (name, open) => {
       const section = shapeOf(name).sections[0]!.id;
       const fields = new Map(fieldsOf(name, section).map((field) => [field.path, field]));

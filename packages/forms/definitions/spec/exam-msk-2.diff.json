@@ -5,7 +5,7 @@
   "differences": [
     {
       "line": 1,
-      "what": "A module, exam_msk_2, that the General note type includes: its section Musculoskeletal: strength, neurovascular, gait and tests shows only while MSK (exam.systems is msk) and a region is picked is picked in the exam picker, and offers one-tap Normal. Each part is asked for each region picked, as a grid whose rows are the regions picked in exam_msk_1, for the reason its diff file gives at line 1.",
+      "what": "A module, exam_msk_2, that the General note type includes: its section Musculoskeletal: strength, neurovascular, gait and tests shows only while MSK (exam.systems is msk) is picked in the exam picker and a region is picked in Where are you examining?, and offers one-tap Normal. Each part is asked for each region picked, as a grid whose rows are the regions picked in exam_msk_1, for the reason its diff file gives at line 1.",
       "why": "PRD main 414; forms 6.3; focused-exam inventory default 10, 16"
     },
     {
