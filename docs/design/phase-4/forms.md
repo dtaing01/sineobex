@@ -908,6 +908,13 @@ the place it was written (through the resolver's origins), once:
   offered for Non-Medical encounters too, `quick` with no `mapsTo`, an `itemTitle` without `{n}`,
   a problem field outside a repeating section. Neither interpreter nor the renderer depends on
   them.
+- **Open (wave C's review): a grid with sides whose cell is, or holds, a region or a problem.**
+  `sides_not_allowed` refuses `sides` on a region or a problem, and on a cell whose grid has
+  sides, but not on such a grid. It passes, and that cell stores no side: a region has a side of
+  its own, and the path model of both interpreters gives the cell none (2.3), so the two agree.
+  Either the validator refuses it, or such a cell gets its sides in both path models, with
+  `fieldAt` vectors to hold them together. No piece's plan holds such a grid: the seven grids with
+  sides have a choice or a number in their cell.
 
 ### 4.3 How one piece of SPEC maps to data
 
