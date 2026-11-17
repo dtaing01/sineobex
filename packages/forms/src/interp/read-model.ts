@@ -66,6 +66,12 @@ export type ReadModel = { sections: ReadSection[] };
  * the old value stays visible struck through (lifecycle 3.6 and 9.7, PRD main 460). Its section,
  * or its entry when that entry is still there, is listed for it.
  *
+ * PLAN-OPEN: what the visit read shows of an answer a correction took away (forms.md 10.1 #13).
+ * The default built: an answer the correction cleared, or hid while changing it, is marked as
+ * above. An entry a correction removed, and an answer it hid without changing it, mark nothing:
+ * this sees only the answers that count now, so marking them would need the note's stored answers,
+ * or the visit read laying them out from the corrections themselves.
+ *
  * The corrections, like the answers, are those the reader may see: the caller leaves out a
  * correction whose old or new value holds what visibleAnswers hides from them (lifecycle 5.1).
  */
