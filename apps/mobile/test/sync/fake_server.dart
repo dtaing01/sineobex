@@ -12,6 +12,7 @@ import 'package:sineobex_field/forms/conditions.dart' show Answers, NoteReading,
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
+import 'package:sineobex_field/forms/paths.dart' show CodesHolds;
 import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/visible.dart';
 import 'package:sineobex_field/patients/access.dart';
@@ -1507,17 +1508,41 @@ class FakeSyncServer {
 
   /// Whether [reader] may not see [value] as the answer at [path] of a note holding [answers]
   /// (records.ts answerHidden): the note, its section, or what visibleAnswers makes of the value.
+  /// An answer that does not count is told by what it would be if it counted: any answer of its
+  /// entry, or of its section outside a repeating one, is a sensitive diagnosis, counting or not; or
+  /// it picks a sensitive exam's option.
   static bool answerHidden(NoteTypeDef type, Answers answers, String path, Object? value, NoteReader reader) {
     if (reader.actsAsAuthor) return false;
     final placed = {...answers, path: value};
     final seen = visibleAnswers(type, placed, reader);
     if (seen == null) return true;
-    final section = fieldAt(type, path)?.section;
+    final target = fieldAt(type, path);
+    final section = target?.section;
     if ((section?.sensitiveExam ?? false) && !reader.viewSensitiveExams) return true;
     if ((section?.treatmentRecord ?? false) && !(reader.viewSensitive && reader.chartsMedical)) return true;
     final counted = effectiveAnswers(type, placed);
-    if (!counted.containsKey(path)) return false;
-    return !seen.containsKey(path) || canonicalJson(seen[path]) != canonicalJson(counted[path]);
+    if (counted.containsKey(path)) {
+      return !seen.containsKey(path) || canonicalJson(seen[path]) != canonicalJson(counted[path]);
+    }
+    if (target == null) return false;
+    final scope = target.entry == null ? '${target.section.id}.' : '${target.section.id}.${target.entry}.';
+    if (!reader.viewSensitive) {
+      for (final MapEntry(key: p, value: v) in placed.entries) {
+        if (!p.startsWith(scope) || v is! String) continue;
+        final at = fieldAt(type, p);
+        if (at?.field is ProblemDef && at?.part == AnswerPart.code && isSensitiveCode(v, reader.sensitiveCodes)) {
+          return true;
+        }
+      }
+    }
+    final holds = target.holds;
+    if (reader.viewSensitiveExams || holds is! CodesHolds) return false;
+    final picked = value is String
+        ? {value}
+        : value is List
+        ? value.toSet()
+        : const <Object?>{};
+    return holds.options.any((o) => o.sensitiveExam && picked.contains(o.code));
   }
 
   /// The Medical gate (note.ts medicalGate, lifecycle 4.2): a change to a Medical note needs a
@@ -3276,7 +3301,7 @@ T _byDefinition<T>(T Function() rule) {
 }
 
 /// The test-only note types the API's sign-off and read tests install beside [testNoteTypes]
-/// (packages/contract/test-vectors/sync-note-types.json): the Red flags note, and two with sections
+/// (packages/contract/test-vectors/sync-note-types.json): the Red flags note, and three with sections
 /// some readers may not see.
 final _noteTypesFile = jsonDecode(
   File('../../packages/contract/test-vectors/sync-note-types.json').readAsStringSync(),
@@ -3288,6 +3313,7 @@ final restrictedNoteTypes = [
 const TestNoteType testRedFlags = (key: 'test_red_flags', version: 1);
 const TestNoteType testRestricted = (key: 'test_restricted', version: 1);
 const TestNoteType testSensitive = (key: 'test_sensitive', version: 1);
+const TestNoteType testAssess = (key: 'test_assess', version: 1);
 
 const _encounterFields = ['patientId', 'location', 'locationText', 'summary', 'kind'];
 

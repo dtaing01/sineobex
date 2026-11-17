@@ -2,6 +2,7 @@ import { z } from '@hono/zod-openapi';
 import {
   effectiveAnswers,
   fieldAt,
+  isSensitiveCode,
   visibleAnswers,
   type NoteReader,
   type ResolvedNoteType,
@@ -409,8 +410,13 @@ export function noteReader(
  * (lifecycle 5.1, 6.4): the note is one they may not read, the answer is in a section they may not
  * read (a sensitive exam, a treatment record), or, put in place, it is something visibleAnswers
  * takes out or cuts down (a sensitive exam's option, the entry of a sensitive diagnosis). A change
- * is tested with its old value and then its new one, since either would give the answer away. An
- * answer that does not count leaves only its section to go by. Interpreter calls: callers wrap
+ * is tested with its old value and then its new one, since either would give the answer away.
+ *
+ * visibleAnswers gives no reader an answer that does not count, so one is told by what it would be
+ * if it counted (review findings RD-5 and NOT-9): it is hidden when any answer of its entry, or
+ * outside a repeating section of its section, is a sensitive diagnosis, counting or not, which
+ * takes the entry or section with it (a removal takes an entry out of what counts, never out of the
+ * note); or when it is itself a pick of a sensitive exam's option. Interpreter calls: callers wrap
  * this in byDefinition.
  */
 export function answerHidden(
@@ -424,12 +430,27 @@ export function answerHidden(
   const placed = { ...answers, [path]: value };
   const seen = visibleAnswers(type, placed, reader);
   if (seen === null) return true;
-  const section = fieldAt(type, path)?.section;
+  const target = fieldAt(type, path);
+  const section = target?.section;
   if (section?.sensitiveExam && !reader.viewSensitiveExams) return true;
   if (section?.treatmentRecord && !(reader.viewSensitive && reader.chartsMedical)) return true;
   const counted = effectiveAnswers(type, placed);
-  if (!Object.hasOwn(counted, path)) return false;
-  return !Object.hasOwn(seen, path) || !sameValue(seen[path], counted[path]);
+  if (Object.hasOwn(counted, path))
+    return !Object.hasOwn(seen, path) || !sameValue(seen[path], counted[path]);
+  if (!target) return false;
+  const scope = target.entry === null ? `${target.section.id}.` : `${target.section.id}.${target.entry}.`;
+  if (!reader.viewSensitive) {
+    for (const [p, v] of Object.entries(placed)) {
+      if (!p.startsWith(scope) || typeof v !== 'string') continue;
+      const at = fieldAt(type, p);
+      if (at?.field?.kind === 'problem' && at.part === 'code' && isSensitiveCode(v, reader.sensitiveCodes))
+        return true;
+    }
+  }
+  const holds = target.holds;
+  if (reader.viewSensitiveExams || holds?.type !== 'codes') return false;
+  const picked = new Set(typeof value === 'string' ? [value] : Array.isArray(value) ? value : []);
+  return holds.options.some((o) => o.sensitiveExam === true && picked.has(o.code));
 }
 
 // ------------------------------------------------------------------------------------------------

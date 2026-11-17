@@ -104,15 +104,18 @@ export const TEST_RED_FLAGS_TYPE: ResolvedNoteType = noteTypesFile.redFlags;
 export const TEST_RED_FLAGS = { noteTypeKey: 'test_red_flags', noteTypeVersion: 1 } as const;
 
 /**
- * Two Non-Medical note types for who may read and change what (lifecycle 6.4). test_restricted:
+ * Three Non-Medical note types for who may read and change what (lifecycle 6.4). test_restricted:
  * a sensitive exam section (`exam`), a treatment record section (`moud`), a section only an
  * ordering credential changes (`meds`), a picker with a sensitive exam option (`systems.seen`, gu)
- * and a repeating section of diagnoses (`dx`). test_sensitive: a sensitive note type. Not in every
- * team: the tests of the sync read install them.
+ * and a repeating section of diagnoses (`dx`). test_sensitive: a sensitive note type. test_assess:
+ * one section, not repeated, with a diagnosis (`assess.diagnosis`), and a detail (`assess.detail`)
+ * and a picker with a sensitive exam option (`assess.seen`, gu) that do not count while
+ * `assess.none` is ticked. Not in every team: the tests of the sync read install them.
  */
 export const TEST_RESTRICTED_TYPES: readonly ResolvedNoteType[] = noteTypesFile.restricted;
 export const TEST_RESTRICTED_TYPE: ResolvedNoteType = noteTypesFile.restricted[0]!;
 export const TEST_SENSITIVE_TYPE: ResolvedNoteType = noteTypesFile.restricted[1]!;
+export const TEST_ASSESS_TYPE: ResolvedNoteType = noteTypesFile.restricted[2]!;
 
 /** A Non-Medical note type: what phase 2's tests chart on. Spread into a note's create. */
 export const TEST_NOTE = { noteTypeKey: 'test_note', noteTypeVersion: 1 } as const;

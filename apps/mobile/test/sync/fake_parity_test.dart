@@ -1495,6 +1495,104 @@ void main() {
         },
       );
 
+      test('an answer that does not count is hidden by where it is: beside a sensitive diagnosis, or a pick of a sensitive exam', () async {
+        const assess = <String, Object?>{
+          'assess.diagnosis.code': 'F11.20',
+          'assess.diagnosis.label': 'Demo: opioid use',
+          'assess.none': true,
+          // Does not count while assess.none is ticked, in the section the diagnosis takes with it.
+          'assess.detail': 'Demo: takes it daily under the bridge',
+        };
+        final n = restrictedNote(assess, type: testAssess);
+        // Not seen, and so a conflict, a fill or a write into a section Casey may not see: held.
+        final caseys = [
+          set(n, 'assess.detail', 'Demo: something else', 0),
+          set(n, 'assess.detail', 'Demo: written blind'),
+        ];
+        expect(await send(casey, caseys), [for (final c in caseys) heldOnly(c)]);
+        expect(server.records[n]!.fields['data.assess.detail']!.value, assess['assess.detail']);
+        // Dana may see the section: an answer that does not count there is the draft rule's, as before.
+        final danas = [set(n, 'assess.detail', 'Demo: from Dana', 0)];
+        expect((await send(dana, danas)).single['status'], 'conflict');
+
+        // A pick of a sensitive exam's option that does not count, beside a diagnosis that is not sensitive.
+        final picked = restrictedNote(const {
+          'assess.diagnosis.code': 'J02.9',
+          'assess.none': true,
+          'assess.seen': ['heart', 'gu'],
+        }, type: testAssess);
+        final onPicked = [
+          set(picked, 'assess.seen', ['heart'], 0),
+          set(picked, 'assess.seen', ['gu'], 0),
+          set(picked, 'assess.detail', 'Demo: from Dana', 0),
+        ];
+        final answered = await send(dana, onPicked);
+        expect(answered.sublist(0, 2), [for (final c in onPicked.sublist(0, 2)) heldOnly(c)]);
+        expect(answered[2]['details'], {'notCounted': 'hidden_field'});
+
+        // A correction of the answer that does not count is missing for Casey, and her late change is held.
+        server.finishNote(n);
+        final correction = change(entityCorrection, 'create', {
+          'noteId': n,
+          'changes': [
+            {'field': 'data.assess.detail', 'newValue': 'Demo: uses daily under the bridge', 'baseVersion': 1},
+          ],
+          'reason': 'Demo: left out',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': null,
+          'signoffId': null,
+        });
+        expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'corrected'));
+        Future<List<String>> reads(String user) async => [
+          for (final r in (await as(user).fetchRecords(
+            body: FetchRecords(
+              records: [RecordRef(entity: RecordEntity.noteCorrection, id: correction['recordId']! as String)],
+            ),
+          )).records)
+            r.id,
+        ];
+        expect(await reads(casey), isEmpty);
+        expect(await reads(dana), [correction['recordId']]);
+        final late = [set(n, 'assess.detail', 'Demo: later', 0)];
+        expect(await send(casey, late), [heldOnly(late.single)]);
+      });
+
+      test('a removal of an entry hidden from the sender, and a write into a removed one that holds a sensitive diagnosis, are held', () async {
+        final n = restrictedNote(const {
+          'general.notes': 'Demo: walked over from the shelter',
+          'dx.$e1.entryAt': at,
+          'dx.$e1.diagnosis.code': 'F11.20',
+          'dx.$e2.entryAt': at,
+          'dx.$e2.diagnosis.code': 'J02.9',
+        });
+        // Casey's phone still holds E1's ID from before its code became sensitive.
+        final caseys = [
+          set(n, 'dx.$e1.entryRemoved', true, 0),
+          set(n, 'dx.$e1.note', 'Demo: something else', 0),
+          // An entry she may see is hers to remove.
+          set(n, 'dx.$e2.entryRemoved', true, 0),
+        ];
+        final answered = await send(casey, caseys);
+        expect(answered.sublist(0, 2), [for (final c in caseys.sublist(0, 2)) heldOnly(c)]);
+        expect(answered[2], taken(caseys[2], 1));
+        // Removed by its author, the entry still holds the diagnosis: nothing is written into it blind.
+        final removal = set(n, 'dx.$e1.entryRemoved', true, 0);
+        expect(await send(alex, [removal]), [taken(removal, 1)]);
+        final into = set(n, 'dx.$e1.note', 'Demo: written blind', 0);
+        expect(await send(casey, [into]), [heldOnly(into)]);
+        // Dana, who may see the diagnosis, writes into the removed entry as the draft rule says.
+        final danas = [set(n, 'dx.$e1.note', 'Demo: from Dana', 0)];
+        expect((await send(dana, danas)).single['details'], {'notCounted': 'removed_entry'});
+        final held = server.records[n]!.fields;
+        expect(
+          [
+            for (final path in ['diagnosis.code', 'entryRemoved', 'note']) held['data.dx.$e1.$path']!.value,
+          ],
+          ['F11.20', true, 'Demo: from Dana'],
+        );
+      });
+
       test('on a finished note too: held, where a late change would send back the answer it keeps', () async {
         final n = restrictedNote(answers);
         server.finishNote(n);

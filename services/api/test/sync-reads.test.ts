@@ -14,6 +14,7 @@ import {
   setupTeam,
   signoffOf,
   TEST_NOTE_TYPES,
+  TEST_ASSESS_TYPE,
   TEST_RED_FLAGS_TYPE,
   TEST_RESTRICTED_TYPE,
   TEST_RESTRICTED_TYPES,
@@ -579,6 +580,113 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
       expect(decided.status).toBe(200);
       expect((await noteRow(n.noteId)).data).toMatchObject({ 'meds.given': 'Demo: one tablet' });
+    });
+
+    it('an answer that does not count is hidden by where it is: beside a sensitive diagnosis, or a pick of a sensitive exam', async () => {
+      const assess = {
+        [`assess.diagnosis.code`]: 'F11.20',
+        [`assess.diagnosis.label`]: 'Demo: opioid use',
+        'assess.none': true,
+        // Does not count while assess.none is ticked, in the section the diagnosis takes with it.
+        'assess.detail': 'Demo: takes it daily under the bridge',
+      };
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_ASSESS_TYPE, assess);
+      expect(answerFields(await noteAs(dee, n))).toEqual([]);
+      // Not seen, and so a conflict, a fill or a write into a section Dee may not see: held.
+      const dees = [
+        await set(dee, n, 'assess.detail', 'Demo: something else', 0),
+        await set(dee, n, 'assess.detail', 'Demo: written blind'),
+      ];
+      expect(await dee.send(...dees)).toEqual(dees.map(heldOnly));
+      expect((await noteRow(n.noteId)).data).toEqual(assess);
+      // Ben may see the section: an answer that does not count there is the draft rule's, as before.
+      const bens = await set(ben, n, 'assess.detail', 'Demo: from Ben', 0);
+      expect((await ben.send(bens))[0]).toMatchObject({ status: 'conflict' });
+
+      // A pick of a sensitive exam's option that does not count, beside a diagnosis that is not sensitive.
+      const picked = await noteOn(ana, await visitOf(ana, patientId), TEST_ASSESS_TYPE, {
+        [`assess.diagnosis.code`]: 'J02.9',
+        'assess.none': true,
+        'assess.seen': ['heart', 'gu'],
+      });
+      const onPicked = [
+        await set(ben, picked, 'assess.seen', ['heart'], 0),
+        await set(ben, picked, 'assess.seen', ['gu'], 0),
+        await set(ben, picked, 'assess.detail', 'Demo: from Ben', 0),
+      ];
+      const answered = await ben.send(...onPicked);
+      expect(answered.slice(0, 2)).toEqual(onPicked.slice(0, 2).map(heldOnly));
+      expect(answered[2]).toMatchObject({ status: 'accepted', details: { notCounted: 'hidden_field' } });
+
+      // A correction of the answer that does not count is missing for Dee, and her late change is held.
+      await finishNote(
+        ana,
+        { ...n, answers: { ...assess, 'assess.detail': undefined } },
+        'complete',
+        'completed',
+      );
+      const correction = await ana.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: n.noteId,
+          // The finish dropped the answer that did not count, at version 2.
+          changes: [
+            { field: 'data.assess.detail', newValue: 'Demo: uses daily under the bridge', baseVersion: 2 },
+          ],
+          reason: 'Demo: left out',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: null,
+          signoffId: null,
+        },
+      });
+      expect((await ana.send(correction))[0]!.details).toMatchObject({ outcome: 'corrected' });
+      expect(await read(dee.token, [{ entity: 'note_correction', id: correction.recordId }])).toMatchObject({
+        records: [],
+        missing: [{ entity: 'note_correction', id: correction.recordId }],
+      });
+      expect(
+        (await read(ben.token, [{ entity: 'note_correction', id: correction.recordId }])).records,
+      ).toHaveLength(1);
+      const late = await set(dee, n, 'assess.detail', 'Demo: later', 0);
+      expect(await dee.send(late)).toEqual([heldOnly(late)]);
+    });
+
+    it('a removal of an entry hidden from the sender, and a write into a removed one that holds a sensitive diagnosis, are held', async () => {
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
+        'general.notes': 'Demo: walked over from the shelter',
+        [`dx.${E1}.entryAt`]: AT,
+        [`dx.${E1}.diagnosis.code`]: 'F11.20',
+        [`dx.${E2}.entryAt`]: AT,
+        [`dx.${E2}.diagnosis.code`]: 'J02.9',
+      });
+      // Dee's phone still holds E1's ID from before its code became sensitive.
+      const dees = [
+        await set(dee, n, `dx.${E1}.entryRemoved`, true, 0),
+        await set(dee, n, `dx.${E1}.note`, 'Demo: something else', 0),
+        // An entry she may see is hers to remove.
+        await set(dee, n, `dx.${E2}.entryRemoved`, true, 0),
+      ];
+      const answered = await dee.send(...dees);
+      expect(answered.slice(0, 2)).toEqual(dees.slice(0, 2).map(heldOnly));
+      expect(answered[2]).toMatchObject({ status: 'accepted', serverVersion: 1 });
+      // Removed by its author, the entry still holds the diagnosis: nothing is written into it blind.
+      const removal = await set(ana, n, `dx.${E1}.entryRemoved`, true, 0);
+      expect((await ana.send(removal))[0]).toMatchObject({ status: 'accepted' });
+      const into = await set(dee, n, `dx.${E1}.note`, 'Demo: written blind', 0);
+      expect(await dee.send(into)).toEqual([heldOnly(into)]);
+      // Ben, who may see the diagnosis, writes into the removed entry as the draft rule says.
+      const bens = await set(ben, n, `dx.${E1}.note`, 'Demo: from Ben', 0);
+      expect((await ben.send(bens))[0]).toMatchObject({
+        status: 'accepted',
+        details: { notCounted: 'removed_entry' },
+      });
+      expect((await noteRow(n.noteId)).data).toMatchObject({
+        [`dx.${E1}.diagnosis.code`]: 'F11.20',
+        [`dx.${E1}.entryRemoved`]: true,
+        [`dx.${E1}.note`]: 'Demo: from Ben',
+      });
     });
 
     it('on a finished note too: held, where a late change would send back the answer it keeps', async () => {
