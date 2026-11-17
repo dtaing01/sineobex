@@ -677,12 +677,94 @@ under the assets of `apps/mobile/pubspec.yaml`. The export writes it with the sa
 `packages/forms/generated/presets.json`, in the same run, and the Forms drift step fails CI when
 either differs from what the export writes (4.2). Each entry is
 `{ key, version, hash, definition }`, in key and version order, the definition in canonical key
-order. It is an empty list until the definitions are typed. The phone reads a definition with
-`NoteTypeDef.fromJson` (`apps/mobile/lib/forms/definition.dart`), which refuses a shape the
-validator would never pass with a `FormatException` that names its place, never a cast error
-deep in a screen. The golden test holds each bundled preset's hash to its definition's (7.3).
-The definition store, the download and the calls after `/v1/me` and at each sync are unit F4's,
-not built yet.
+order. It is an empty list until the definitions are released (D78, 3.2). The phone reads a
+definition with `NoteTypeDef.fromJson` (`apps/mobile/lib/forms/definition.dart`), which refuses
+a shape the validator would never pass with a `FormatException` that names its place, never a
+cast error deep in a screen. The golden test holds each bundled preset's hash to its
+definition's (7.3).
+
+As built (unit F4, with the changes of wave D's review):
+
+- **The files** (`DefinitionStore`, `apps/mobile/lib/forms/definition_store.dart`) are in
+  `<databases>/forms`, inside the databases' folder, so backups leave them out as they do the
+  databases. Under it is one folder per person, named as the databases name the person (the first
+  16 hex characters of the SHA-256 of the user ID), so no one is named on disk and one person's
+  files go at their sign-out. In it is one folder per team, holding `list.json`, the team's list
+  as last kept (each key, version and hash: what Start reads offline), and a
+  `<key>.<version>.json` for each version the team listed or the phone downloaded. A version file
+  names the hash the team gave that version, and holds the definition only where no bundled
+  preset has that hash: a preset is read from the bundle, never copied, and a team's own version
+  that shares a key and version with a preset is told apart from it by hash (3.2 never
+  overwrites a row with another hash). A file is written whole, through a temporary file. A key,
+  version or team ID that could name another folder is refused.
+- **What it keeps.** `keep` refuses a definition (`DefinitionRefused`, nothing written) whose hash
+  is not the one listed, that names another key or version, or that `NoteTypeDef.fromJson`
+  cannot read. `keepList` keeps a list only once every version it names is held, so the phone
+  never keeps a list Start cannot use; until then the list kept before stays. A bundled preset
+  whose hash is not its definition's is not used. A file changed on disk is ignored and deleted,
+  and the next fetch writes it again. Every version a team ever listed stays readable
+  (`definition`), and `TeamNoteTypes.startable` offers only the listed one.
+- **When it fetches** (`apps/mobile/lib/forms/forms_api.dart`; the calls in
+  `lib/auth/session_controller.dart` and `lib/sync/sync_controller.dart`):
+  - *After sign-in*, every team's list, one team after another (`LocalData.afterSignIn`), once
+    the sign-in that read `/v1/me` is unlocked: when the PIN is set, or when it is entered on a
+    phone that already holds the person's vault. The fetch needs the session's token, and a
+    sign-in left at the PIN screen leaves nothing on disk. Every team, not only the one chosen,
+    so a team first opened offline has its list. The fetch belongs to its sign-in: each team's
+    generation is taken before the first request, and the loop stops once the person is no
+    longer the one unlocked, so a sign-out part way asks for nothing more and writes nothing back,
+    even with the next person's token.
+  - *At each sync*, through `DefinitionRefresher`, first among the open team's refreshers, so it
+    also runs at open, on the 15-minute timer and on pull to refresh, with no throttle: one small
+    `no-store` request each time. It fetches the open team's list, and then, whether the list came
+    or not, each version the team's notes name that the phone does not hold
+    (`SyncController.heldNoteTypes`: the phone domain layer's query, which L4 supplies; until
+    then the app passes none). Its failure never becomes the sync's outcome, and the next run
+    tries again.
+  - *A fetch* asks for the list, downloads each version neither the presets nor the files hold,
+    keeps it only as the listed key, version and hash, and keeps the list last. A fetch that
+    fails part way, or brings a definition the phone refuses, leaves the list it had; what
+    checked out stays. Two fetches for one team at once are one, but a fetch begun after a
+    sign-out is never joined to one begun before it. `fetchVersion`, for a version no list
+    names, keeps an answer only when its definition has the hash the server gives, names the key
+    and version asked, and can be read.
+- **What goes, and when.** Every file of the person's (`forgetUser`) at every sign-out: with
+  nothing unsynced and at the tenth wrong PIN (`eraseUser`), at "Log out anyway"
+  (`clearServerCopies`), and at a sign-out from the lock screen (`markServerCopiesStale`: plain
+  files need no key). A team's folder (`forgetTeam`) with the team's database: at a remote wipe,
+  and the wipe that ends a removal's hand-over (`_wipe`); when an unfinished wipe is completed at
+  the next device check or at the team's open; and when the team's device ID is gone
+  (`_wipeTeam`). Each forget changes the store's generation for that person and team (a
+  sign-out, every team's), and `keep` and `keepList` write nothing for a fetch begun before it; a
+  wipe of one team stops no fetch of another. A team the person was removed from and never
+  opened keeps its folder until they sign out: the phone learns of such a removal only from the
+  next sign-in, which a sign-out comes before.
+- **The screens** read `teamNoteTypesProvider`, the open team's listed versions with their
+  definitions, or null where the phone holds no list and Start shows `connectOnceMessage`; and
+  `noteTypeDefinitionProvider`, one key and version, listed or not, for a note the phone holds.
+  Both recompute when the open team changes or the store keeps or forgets something, so a screen
+  waiting on an old draft's version opens it once the version is kept.
+- **The wiring.** `syncControllerProvider` passes `appDefinitionStore()`
+  (`apps/mobile/lib/app_providers.dart`), with the presets from the asset bundle. Its folder is
+  asked for once, since each call of `databaseDirectory` goes through the platform's backup
+  exclusion, and asked again after a failure. The app harness (`test/helpers/app_harness.dart`)
+  wires the same store with the presets read from the file (an asset bundle decodes a large file
+  on another isolate, which a widget test's fake clock never waits for), and puts the fake forms
+  routes (`test/forms/forms_fake.dart`) in front of the fake sync server. Each harness team lists
+  the bundled presets, and a team that is not the person's is refused with 403 `not_a_member`, as
+  the API refuses it. `SyncController.ready()` does not wait for the sign-in's fetch, which
+  starts in the zone that unlocked, a widget test's fake clock; tests wait with
+  `definitionsFetched()`.
+- **Where this departs from the bullets above, decided in wave D.** The fetch comes once the
+  sign-in is unlocked, not right after `/v1/me`, and covers every team. "At each sync" is a
+  refresher, with no throttle. The definitions go at every sign-out, "Log out anyway" included,
+  though drafts stay, so the phone does not keep the definition of every note it holds: a draft
+  on a version the list no longer names opens offline again only once its version is fetched
+  back, at the team's first open online after the next sign-in (once L4 supplies the query
+  above). A team not opened online after that sign-in lacks such versions until it is. A list
+  that names a version this app cannot read is refused whole (PLAN-OPEN, 10.1 #33). Whether a
+  note should carry its definition's hash, so that `fetchVersion` could check an old version
+  against what the note was charted on, is still open.
 
 ### 3.5 The portal
 
