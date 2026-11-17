@@ -4,16 +4,32 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { canonicalJson, sha256Hex } from '../src/canonical.ts';
+import { effectiveAnswers } from '../src/interp/effective.ts';
+import { expandQuick } from '../src/interp/expand.ts';
 import { finishCheck } from '../src/interp/finish.ts';
+import { handoffLines } from '../src/interp/handoff.ts';
 import { readModel } from '../src/interp/read-model.ts';
 import { recapLines } from '../src/interp/recap.ts';
-import type { ResolvedNoteType } from '../src/resolve.ts';
+import { visibleAnswers } from '../src/interp/visible.ts';
+import { definitionModel } from '../src/interp/field-at.ts';
+import { resolve } from '../src/resolve.ts';
+import type { DefinitionFiles, ResolvedNoteType } from '../src/resolve.ts';
 import { exportDefinitions, PRESETS_FILE } from '../scripts/export.ts';
 import type { Preset } from '../scripts/export.ts';
-import { GOLDEN_ENTRY, GOLDEN_FILE, goldenOf, main, writeGolden } from '../scripts/golden.ts';
+import {
+  FILLED,
+  GOLDEN_ENTRY,
+  GOLDEN_FILE,
+  GOLDEN_NEW_ENTRY,
+  GOLDEN_READERS,
+  goldenOf,
+  main,
+  writeGolden,
+} from '../scripts/golden.ts';
+import { definitionFiles } from './fixtures/load.ts';
 import { fixturePresets } from './fixtures/presets.ts';
 
-// The golden file (forms 7.3): what the TypeScript interpreter says about every preset for three
+// The golden file (forms 7.3): what the TypeScript interpreter says about every preset for five
 // sets of answers made by rule, which the phone's interpreter is held to. Each case runs the export
 // and then the golden script over a scratch copy of the fixture trees: the real tree is never
 // written by a test.
@@ -137,14 +153,14 @@ const caseOf = (golden: Awaited<ReturnType<typeof goldenOf>>, key: string, name:
 };
 
 describe('the golden file', () => {
-  it('holds every preset in the presets’ order, with its hash, and three cases named by their rule', async () => {
+  it('holds every preset in the presets’ order, with its hash, and five cases named by their rule', async () => {
     const t = await exported('definitions', 'example');
     const golden = await writeGolden({ root: t.root });
     expect(golden.map(({ key, version, hash }) => ({ key, version, hash }))).toEqual(
       t.presets.map(({ key, version, hash }) => ({ key, version, hash })),
     );
     for (const preset of golden)
-      expect(preset.cases.map((c) => c.name)).toEqual(['blank', 'normal', 'first']);
+      expect(preset.cases.map((c) => c.name)).toEqual(['blank', 'normal', 'first', 'systems', 'every']);
     const written = readFileSync(t.golden, 'utf8');
     expect(JSON.parse(written)).toEqual(golden);
     expect(written.endsWith(']\n')).toBe(true);
@@ -161,10 +177,16 @@ describe('the golden file', () => {
         expect(c.finishCheck).toEqual(finishCheck(definition, c.answers));
         expect(c.recapLines).toEqual(recapLines(definition, c.answers));
         expect(c.readModelHash).toBe(await sha256Hex(canonicalJson(readModel(definition, c.answers, []))));
+        expect(c.handoffLines).toEqual(handoffLines([definition], [c.answers]));
+        expect(c.effectiveKeys).toEqual(Object.keys(effectiveAnswers(definition, c.answers)));
+        for (const [who, reader] of Object.entries(GOLDEN_READERS))
+          expect(c.visibleHashes[who as keyof typeof GOLDEN_READERS]).toBe(
+            await sha256Hex(canonicalJson(visibleAnswers(definition, c.answers, reader))),
+          );
         checked++;
       }
     }
-    expect(checked).toBe(4 * 3);
+    expect(checked).toBe(4 * 5);
   });
 
   it('starts from no answers', async () => {
@@ -233,6 +255,64 @@ describe('the golden file', () => {
     });
   });
 
+  it('sets every answer that opens something, then applies one-tap Normal', async () => {
+    const t = await exported('definitions', 'example');
+    const golden = await writeGolden({ root: t.root });
+    // Pupils opens Detail, so it takes its first option; Normal then fills Detail, now shown.
+    expect(caseOf(golden, 'normal_demo', 'systems').answers).toEqual({
+      'vitals.pupils': 'unequal',
+      'vitals.detail': ['left_larger'],
+      'vitals.pulse': 70,
+      [`sets.${ENTRY}.entryAt`]: AT,
+      [`sets.${ENTRY}.rhythm`]: 'regular',
+    });
+    const checks = caseOf(golden, 'checks_demo', 'systems').answers;
+    // What did you examine? opens the exam's sections: every option it can hold together, not None.
+    expect(checks['visit.systems']).toEqual(['eyes', 'ears', 'skin', 'other']);
+    // Nothing that opens nothing is made up: no text, and no number Normal does not fill.
+    for (const value of Object.values(checks)) expect(typeof value).not.toBe('number');
+  });
+
+  it('fills every answer, a choose-one with its last option and a choose-many with all it can hold', async () => {
+    const t = await exported('definitions', 'example');
+    const golden = await writeGolden({ root: t.root });
+    const every = caseOf(golden, 'normal_demo', 'every');
+    expect(every.answers).toEqual({
+      'vitals.pupils': 'equal',
+      'vitals.detail': ['left_larger', 'right_larger'],
+      'vitals.pulse': 0,
+      [`sets.${ENTRY}.entryAt`]: AT,
+      [`sets.${ENTRY}.rhythm`]: 'regular',
+      'plan.next': ['rest', 'return'],
+    });
+    // Every kind of answer is reached somewhere in the fixtures, at the value FILLED gives it.
+    const values = new Set(
+      golden.flatMap((g) =>
+        Object.values(caseOf(golden, g.key, 'every').answers).map((v) => JSON.stringify(v)),
+      ),
+    );
+    for (const value of Object.values(FILLED)) expect(values).toContain(JSON.stringify(value));
+    expect(values).toContain('true');
+  });
+
+  it('expands a quick note into each note type its mapsTo name, into a new entry where it repeats', async () => {
+    const t = await exported('definitions', 'example');
+    const golden = await writeGolden({ root: t.root });
+    const definitions = new Map<string, ResolvedNoteType>(t.presets.map((p) => [p.key, p.definition]));
+    const every = caseOf(golden, 'checks_demo', 'every');
+    expect(every.expansions.map((e) => e.key)).toEqual(['full_demo']);
+    const [expansion] = every.expansions;
+    const entries = { wounds: GOLDEN_NEW_ENTRY };
+    expect(expansion).toEqual({
+      key: 'full_demo',
+      version: 1,
+      ...expandQuick(definitions.get('checks_demo')!, every.answers, definitions.get('full_demo')!, entries),
+    });
+    expect(Object.keys(expansion!.answers).length).toBeGreaterThan(0);
+    for (const preset of golden)
+      if (preset.key !== 'checks_demo') for (const c of preset.cases) expect(c.expansions).toEqual([]);
+  });
+
   it('writes the answers in code-unit key order, and the same bytes on a second run', async () => {
     const t = await exported('definitions', 'example');
     const golden = await writeGolden({ root: t.root });
@@ -273,6 +353,76 @@ describe('the golden file', () => {
   });
 });
 
+// What the golden file will hold once the definitions are released: the real note types as the
+// export would write them, resolved here so a draft is held too. Each case of the phone's golden
+// test is only as good as the answers reach (review DIF-1): every section of every note type, each
+// exam module opened before Normal runs on it, a sensitive exam's consent asked for, and Expand
+// into each note type the quick encounter names.
+describe('the golden cases on the real note types', async () => {
+  const files = definitionFiles('../../definitions') as DefinitionFiles;
+  const presets: Preset[] = [];
+  for (const file of Object.keys(files.noteTypes).sort()) {
+    const resolved = resolve(file, files);
+    if (!resolved.ok) throw new Error(`${file} does not resolve`);
+    const { definition } = resolved;
+    presets.push({
+      key: definition.key,
+      version: definition.version,
+      hash: await sha256Hex(canonicalJson(definition)),
+      definition,
+    });
+  }
+  const golden = await goldenOf(presets);
+  const sections = (key: string) =>
+    definitionModel(presets.find((p) => p.key === key)!.definition).sections.map((s) => s.section);
+  const counted = (key: string, name: string) =>
+    new Set(
+      caseOf(golden, key, name)
+        .effectiveKeys.filter((path) => !path.endsWith('.entryAt'))
+        .map((path) => path.split('.')[0]),
+    );
+
+  it('reaches every section of every note type with an answer that counts', () => {
+    for (const { key } of golden) {
+      const reached = new Set(['first', 'systems', 'every'].flatMap((name) => [...counted(key, name)]));
+      expect(
+        sections(key)
+          .filter((s) => !reached.has(s.id))
+          .map((s) => `${key} ${s.id}`),
+      ).toEqual([]);
+    }
+  });
+
+  it('opens every exam module before Normal runs on it', () => {
+    const general = sections('general_primary_care').filter((s) => s.normal);
+    expect(general.length).toBeGreaterThan(20);
+    const systems = counted('general_primary_care', 'systems');
+    expect(general.filter((s) => !systems.has(s.id)).map((s) => s.id)).toEqual([]);
+  });
+
+  it('asks for the consent of each sensitive exam whose questions it opened, which Normal never fills', () => {
+    const exams = sections('general_primary_care').filter((s) => s.sensitiveExam);
+    expect(exams.map((s) => s.id)).toEqual(expect.arrayContaining(['gu', 'breast', 'rectal']));
+    const { finishCheck: problems, answers } = caseOf(golden, 'general_primary_care', 'systems');
+    for (const { id } of exams) {
+      expect(answers[`${id}.performed`]).toBe(true);
+      expect(answers).not.toHaveProperty(`${id}.consented`);
+      expect(problems).toContainEqual({ section: id, path: `${id}.consented`, problem: 'required' });
+    }
+  });
+
+  it('expands the quick encounter into each note type it names, writing answers into each', () => {
+    const every = caseOf(golden, 'quick_encounter', 'every');
+    expect(every.expansions.map((e) => e.key)).toEqual([
+      'general_primary_care',
+      'social_needs',
+      'wound_care',
+    ]);
+    for (const expansion of every.expansions)
+      expect(Object.keys(expansion.answers), expansion.key).not.toEqual([]);
+  });
+});
+
 // The phone's golden test (apps/mobile/test/forms/golden_test.dart) holds its interpreter to
 // golden.json, which is empty until the definitions are typed. So it also reads this sample: the
 // fixture note types and the conformance vectors' definitions as presets, and what this
@@ -308,7 +458,7 @@ describe('the command', () => {
     const t = await exported('definitions');
     const lines: string[] = [];
     expect(await main([], { root: t.root, print: (line) => lines.push(line) })).toBe(0);
-    expect(lines).toEqual([`Wrote ${GOLDEN_FILE}: 3 note type version(s), 3 cases each.`]);
+    expect(lines).toEqual([`Wrote ${GOLDEN_FILE}: 3 note type version(s), 5 cases each.`]);
     await expect(main(['--release'], { root: t.root, print: () => {} })).rejects.toThrow(/no argument/);
   });
 });

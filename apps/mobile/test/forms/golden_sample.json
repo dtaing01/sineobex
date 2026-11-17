@@ -3512,7 +3512,23 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "fe1adee7099d412da6338d7fc33202a1a9fe11296a80352b4ffb774edee19b86",
+          "expansions": [
+            {
+              "key": "full_demo",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "normal",
@@ -3527,7 +3543,23 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "fe1adee7099d412da6338d7fc33202a1a9fe11296a80352b4ffb774edee19b86",
+          "expansions": [
+            {
+              "key": "full_demo",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "first",
@@ -3593,7 +3625,318 @@
               "text": "Where: Arm, Right, Anterior; Type: Cut"
             }
           ],
-          "readModelHash": "9d41561e1ea7027ed49286ed11f698b6146ed3ca485fe61e00b17f6508a97228"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "visit",
+              "label": "Visit",
+              "value": "What did you examine?: None; New concern?: Yes; Plan: Sent to ED"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "ears",
+              "label": "Ears",
+              "value": "Hearing, Right: Grossly intact; Hearing, Left: Grossly intact"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "status",
+              "label": "Status",
+              "value": "For each system examined, None, Seen before?: Yes; Reflexes, Knee, Right: 0; Reflexes, Knee, Left: 0; Reflexes, Ankle, Right: 0; Reflexes, Ankle, Left: 0"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "injury",
+              "label": "Injury",
+              "value": "Where: Arm, Right, Anterior; Type: Cut"
+            }
+          ],
+          "effectiveKeys": [
+            "ears.hearing.left",
+            "ears.hearing.right",
+            "injury.type",
+            "injury.where.region",
+            "injury.where.side",
+            "injury.where.surface",
+            "status.each.none.seen",
+            "status.reflexes.ankle.left",
+            "status.reflexes.ankle.right",
+            "status.reflexes.knee.left",
+            "status.reflexes.knee.right",
+            "visit.concern",
+            "visit.plan",
+            "visit.systems"
+          ],
+          "readModelHash": "9d41561e1ea7027ed49286ed11f698b6146ed3ca485fe61e00b17f6508a97228",
+          "visibleHashes": {
+            "full": "9549f1292d77ee1c2c9b4d61c4250fa784fc70bb37d3aa743815c18ac72b3a89",
+            "noExams": "9549f1292d77ee1c2c9b4d61c4250fa784fc70bb37d3aa743815c18ac72b3a89",
+            "noSensitive": "9549f1292d77ee1c2c9b4d61c4250fa784fc70bb37d3aa743815c18ac72b3a89"
+          },
+          "contentHash": "165a1e7785354ae81ecddee150f0707270507c3525dd60f302bfc6d18ea6f60f",
+          "expansions": [
+            {
+              "key": "full_demo",
+              "version": 1,
+              "answers": {
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z",
+                "wounds.e0000002.type": "cut",
+                "wounds.e0000002.where.region": "arm",
+                "wounds.e0000002.where.side": "right",
+                "wounds.e0000002.where.surface": "anterior"
+              },
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "eyes.pupils": "zero",
+            "findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "findings.e0000001.type": "cut",
+            "visit.concern": "yes",
+            "visit.systems": [
+              "eyes",
+              "ears",
+              "skin",
+              "other"
+            ]
+          },
+          "finishCheck": [
+            {
+              "section": "visit",
+              "path": "visit.story",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "visit",
+              "text": "What did you examine?: Eyes, Ears, Skin, Other; New concern?: Yes"
+            },
+            {
+              "section": "eyes",
+              "text": "Pupils: 0"
+            },
+            {
+              "section": "findings",
+              "text": "Finding 1: Type: Cut"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "visit",
+              "label": "Visit",
+              "value": "What did you examine?: Eyes, Ears, Skin, Other; New concern?: Yes"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "eyes",
+              "label": "Eyes",
+              "value": "Pupils: 0"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "findings",
+              "label": "Findings",
+              "value": "Finding 1: Type: Cut"
+            }
+          ],
+          "effectiveKeys": [
+            "eyes.pupils",
+            "findings.e0000001.entryAt",
+            "findings.e0000001.type",
+            "visit.concern",
+            "visit.systems"
+          ],
+          "readModelHash": "582daf1c6382a35741c95d285ab3843ebf1017f035a3dcaa6a3e9aa643876337",
+          "visibleHashes": {
+            "full": "32751ddd0269520fc2e36589f99ece868f7aa2cae9553167232313e4bc014c51",
+            "noExams": "32751ddd0269520fc2e36589f99ece868f7aa2cae9553167232313e4bc014c51",
+            "noSensitive": "32751ddd0269520fc2e36589f99ece868f7aa2cae9553167232313e4bc014c51"
+          },
+          "contentHash": "a047bc834c8b0707380e85776eb43d46e525c57e951845e3181242bcef1547e4",
+          "expansions": [
+            {
+              "key": "full_demo",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "every",
+          "answers": {
+            "ears.hearing.left": "decreased",
+            "ears.hearing.right": "decreased",
+            "eyes.notes": "Demo",
+            "eyes.pupils": "unable",
+            "findings.e0000001.depth": 0,
+            "findings.e0000001.diagnosis.code": "F11.20",
+            "findings.e0000001.diagnosis.label": "Demo problem",
+            "findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "findings.e0000001.pulses.pedal": "unable",
+            "findings.e0000001.pulses.radial": "unable",
+            "findings.e0000001.type": "burn",
+            "findings.e0000001.where.region": "back",
+            "findings.e0000001.where.side": "left",
+            "findings.e0000001.where.surface": "posterior",
+            "injury.type": "burn",
+            "injury.where.region": "leg",
+            "injury.where.side": "left",
+            "injury.where.surface": "posterior",
+            "status.each.ears.note": "Demo",
+            "status.each.ears.seen": "no",
+            "status.each.eyes.note": "Demo",
+            "status.each.eyes.seen": "no",
+            "status.each.none.note": "Demo",
+            "status.each.none.seen": "no",
+            "status.each.other.note": "Demo",
+            "status.each.other.seen": "no",
+            "status.each.skin.note": "Demo",
+            "status.each.skin.seen": "no",
+            "status.reflexes.ankle.left": "unable",
+            "status.reflexes.ankle.right": "unable",
+            "status.reflexes.knee.left": "unable",
+            "status.reflexes.knee.right": "unable",
+            "visit.called": "12:00",
+            "visit.concern": "no",
+            "visit.lasting": 10,
+            "visit.length.left": 0,
+            "visit.length.right": 0,
+            "visit.onset": "2000-01-01",
+            "visit.plan": [
+              "sent",
+              "follow_up"
+            ],
+            "visit.pressure.lower": 0,
+            "visit.pressure.upper": 0,
+            "visit.story": "Demo",
+            "visit.systems": [
+              "eyes",
+              "ears",
+              "skin",
+              "other"
+            ],
+            "visit.systems_other": "Demo",
+            "visit.unable": true
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "visit",
+              "text": "What did you examine?: Eyes, Ears, Skin, Other: Demo; New concern?: No; Unable to measure: Yes; Onset: 2000-01-01; Time called: 12:00; How long: 1 week 3 days; Blood pressure, Upper: 0; Blood pressure, Lower: 0; Plan: Sent to ED, Follow up"
+            },
+            {
+              "section": "findings",
+              "text": "Finding 1: Where: Back, Left, Posterior; Diagnosis: Demo problem (F11.20); Type: Burn; Depth: 0 mm; Pulses, Radial: Unable to assess; Pulses, Pedal: Unable to assess"
+            },
+            {
+              "section": "status",
+              "text": "For each system examined, Eyes, Seen before?: No; For each system examined, Ears, Seen before?: No; For each system examined, Skin, Seen before?: No; For each system examined, Other, Seen before?: No; Reflexes, Knee, Right: Unable to assess; Reflexes, Knee, Left: Unable to assess; Reflexes, Ankle, Right: Unable to assess; Reflexes, Ankle, Left: Unable to assess"
+            },
+            {
+              "section": "injury",
+              "text": "Where: Leg, Left, Posterior; Type: Burn"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "visit",
+              "label": "Visit",
+              "value": "What did you examine?: Eyes, Ears, Skin, Other: Demo; New concern?: No; Unable to measure: Yes; Onset: 2000-01-01; Time called: 12:00; How long: 1 week 3 days; Blood pressure, Upper: 0; Blood pressure, Lower: 0; Plan: Sent to ED, Follow up"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "findings",
+              "label": "Findings",
+              "value": "Finding 1: Where: Back, Left, Posterior; Diagnosis: Demo problem (F11.20); Type: Burn; Depth: 0 mm; Pulses, Radial: Unable to assess; Pulses, Pedal: Unable to assess"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "status",
+              "label": "Status",
+              "value": "For each system examined, Eyes, Seen before?: No; For each system examined, Ears, Seen before?: No; For each system examined, Skin, Seen before?: No; For each system examined, Other, Seen before?: No; Reflexes, Knee, Right: Unable to assess; Reflexes, Knee, Left: Unable to assess; Reflexes, Ankle, Right: Unable to assess; Reflexes, Ankle, Left: Unable to assess"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "injury",
+              "label": "Injury",
+              "value": "Where: Leg, Left, Posterior; Type: Burn"
+            }
+          ],
+          "effectiveKeys": [
+            "findings.e0000001.depth",
+            "findings.e0000001.diagnosis.code",
+            "findings.e0000001.diagnosis.label",
+            "findings.e0000001.entryAt",
+            "findings.e0000001.pulses.pedal",
+            "findings.e0000001.pulses.radial",
+            "findings.e0000001.type",
+            "findings.e0000001.where.region",
+            "findings.e0000001.where.side",
+            "findings.e0000001.where.surface",
+            "injury.type",
+            "injury.where.region",
+            "injury.where.side",
+            "injury.where.surface",
+            "status.each.ears.seen",
+            "status.each.eyes.seen",
+            "status.each.other.seen",
+            "status.each.skin.seen",
+            "status.reflexes.ankle.left",
+            "status.reflexes.ankle.right",
+            "status.reflexes.knee.left",
+            "status.reflexes.knee.right",
+            "visit.called",
+            "visit.concern",
+            "visit.lasting",
+            "visit.onset",
+            "visit.plan",
+            "visit.pressure.lower",
+            "visit.pressure.upper",
+            "visit.systems",
+            "visit.systems_other",
+            "visit.unable"
+          ],
+          "readModelHash": "420132f222cb007c3008605d5c995c96b1eed29a318c87975a2de04ac4dd2294",
+          "visibleHashes": {
+            "full": "0e1974104e33e81051e490a873dab92cc41bad35cafdd62a62638b0296983105",
+            "noExams": "0e1974104e33e81051e490a873dab92cc41bad35cafdd62a62638b0296983105",
+            "noSensitive": "015adf7168ec1d2ce6d84567c44e7825144678bbd85baccf472aa3f448ac026d"
+          },
+          "contentHash": "cab4c82ac9d3afc8fe899b31b084af0480b6380b3a4751fb6a4e40679b2f1866",
+          "expansions": [
+            {
+              "key": "full_demo",
+              "version": 1,
+              "answers": {
+                "history.pressure.lower": 0,
+                "history.pressure.upper": 0,
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z",
+                "wounds.e0000002.type": "burn",
+                "wounds.e0000002.where.region": "leg",
+                "wounds.e0000002.where.side": "left",
+                "wounds.e0000002.where.surface": "posterior"
+              },
+              "leftOut": []
+            }
+          ]
         }
       ]
     },
@@ -3607,7 +3950,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "773557f255f65621f17a7fd6a747896abd2f7a94040acf49aaed6628a19adffd",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -3616,7 +3968,18 @@
           },
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [
+            "wounds.e0000001.entryAt"
+          ],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noExams": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noSensitive": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b"
+          },
+          "contentHash": "cafd8c02a601bb7107e1915226bdf52356126e1da5417d737c824cbaa0bd6a57",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3634,7 +3997,114 @@
               "text": "Wound 1: Where: Arm, Right, Anterior; Type: Cut"
             }
           ],
-          "readModelHash": "d9591df3682738d0f25f3acf89a4fad561ef563121212453def36a2611229152"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "wounds",
+              "label": "Wounds",
+              "value": "Wound 1: Where: Arm, Right, Anterior; Type: Cut"
+            }
+          ],
+          "effectiveKeys": [
+            "wounds.e0000001.entryAt",
+            "wounds.e0000001.type",
+            "wounds.e0000001.where.region",
+            "wounds.e0000001.where.side",
+            "wounds.e0000001.where.surface"
+          ],
+          "readModelHash": "d9591df3682738d0f25f3acf89a4fad561ef563121212453def36a2611229152",
+          "visibleHashes": {
+            "full": "fbe92f8fcbfadd731e3ac0c95fed436b00664c574126efc42c66e0656375143d",
+            "noExams": "fbe92f8fcbfadd731e3ac0c95fed436b00664c574126efc42c66e0656375143d",
+            "noSensitive": "fbe92f8fcbfadd731e3ac0c95fed436b00664c574126efc42c66e0656375143d"
+          },
+          "contentHash": "9d32bc71368e5ecaecda20c5464aff90ffd554d011069cfb318a39948496837f",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z"
+          },
+          "finishCheck": [],
+          "recapLines": [],
+          "handoffLines": [],
+          "effectiveKeys": [
+            "wounds.e0000001.entryAt"
+          ],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noExams": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noSensitive": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b"
+          },
+          "contentHash": "cafd8c02a601bb7107e1915226bdf52356126e1da5417d737c824cbaa0bd6a57",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "history.length.left": 0,
+            "history.length.right": 0,
+            "history.pressure.lower": 0,
+            "history.pressure.upper": 0,
+            "history.story": "Demo",
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "wounds.e0000001.type": "other",
+            "wounds.e0000001.type_other": "Demo",
+            "wounds.e0000001.where.region": "back",
+            "wounds.e0000001.where.side": "bilateral",
+            "wounds.e0000001.where.surface": "posterior"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "history",
+              "text": "What happened?: Demo; Length, Right: 0.0 cm; Length, Left: 0.0 cm; Blood pressure, Upper: 0; Blood pressure, Lower: 0"
+            },
+            {
+              "section": "wounds",
+              "text": "Wound 1: Where: Back, Bilateral, Posterior; Type: Other: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "history",
+              "label": "History",
+              "value": "What happened?: Demo; Length, Right: 0.0 cm; Length, Left: 0.0 cm; Blood pressure, Upper: 0; Blood pressure, Lower: 0"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "wounds",
+              "label": "Wounds",
+              "value": "Wound 1: Where: Back, Bilateral, Posterior; Type: Other: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "history.length.left",
+            "history.length.right",
+            "history.pressure.lower",
+            "history.pressure.upper",
+            "history.story",
+            "wounds.e0000001.entryAt",
+            "wounds.e0000001.type",
+            "wounds.e0000001.type_other",
+            "wounds.e0000001.where.region",
+            "wounds.e0000001.where.side",
+            "wounds.e0000001.where.surface"
+          ],
+          "readModelHash": "b3053d8ee2cb5849db623833cb34f786d3cc0edb18945892348ad3696380e2d8",
+          "visibleHashes": {
+            "full": "efba4b96c341a874ffd64877733b30b250ea8a99183e3e2837d717f9266c2819",
+            "noExams": "efba4b96c341a874ffd64877733b30b250ea8a99183e3e2837d717f9266c2819",
+            "noSensitive": "efba4b96c341a874ffd64877733b30b250ea8a99183e3e2837d717f9266c2819"
+          },
+          "contentHash": "0aef29483b9fb8459b4947fc12e386a8fd074084752f029522fbcc0b3681d84c",
+          "expansions": []
         }
       ]
     },
@@ -3648,7 +4118,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "a7e1116c42b02334236ababed2242bbf4e14145301760d49c0f44a5347a525eb",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -3663,7 +4142,34 @@
               "text": "Demo grip strength: 5 of 5; Demo level of alertness: Demo alert"
             }
           ],
-          "readModelHash": "9ca180d70d0994f19e0500900e98d8462bbd97e6d09cb5228ab6b6c56db41fd4"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo level of alertness",
+              "value": "Demo alert"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo grip strength: 5 of 5; Demo level of alertness: Demo alert"
+            }
+          ],
+          "effectiveKeys": [
+            "vitals.alert",
+            "vitals.strength"
+          ],
+          "readModelHash": "9ca180d70d0994f19e0500900e98d8462bbd97e6d09cb5228ab6b6c56db41fd4",
+          "visibleHashes": {
+            "full": "52cbaf86ec281dbd0d909829e6e7cdc36bb3eaeff9da6dd7a4d3366a0375baef",
+            "noExams": "52cbaf86ec281dbd0d909829e6e7cdc36bb3eaeff9da6dd7a4d3366a0375baef",
+            "noSensitive": "52cbaf86ec281dbd0d909829e6e7cdc36bb3eaeff9da6dd7a4d3366a0375baef"
+          },
+          "contentHash": "95c7802bb7c2c9b939813552f2464adb4b716d6242a764ee48994d6e43a40659",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3689,7 +4195,205 @@
               "text": "Demo next step: Demo wound care"
             }
           ],
-          "readModelHash": "aeba027dea258183aa1562e48e5199060f3ae9f55177a5e0d2e50f2a635a269b"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo level of alertness",
+              "value": "Demo alert"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo level of alertness: Demo alert"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo none"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "plan",
+              "label": "Demo plan",
+              "value": "Demo next step: Demo wound care"
+            }
+          ],
+          "effectiveKeys": [
+            "meds.given",
+            "plan.next",
+            "vitals.alert"
+          ],
+          "readModelHash": "aeba027dea258183aa1562e48e5199060f3ae9f55177a5e0d2e50f2a635a269b",
+          "visibleHashes": {
+            "full": "f4497a5f1afedd470e4403ca48f6f4fd50bfdbd4a1406735b87e0754fdaf5f14",
+            "noExams": "f4497a5f1afedd470e4403ca48f6f4fd50bfdbd4a1406735b87e0754fdaf5f14",
+            "noSensitive": "f4497a5f1afedd470e4403ca48f6f4fd50bfdbd4a1406735b87e0754fdaf5f14"
+          },
+          "contentHash": "a5becdf58e7bac2e2be9fa2516709a544c84345a089d6b4027cc69ec57c249f9",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "meds.given": [
+              "naloxone",
+              "ondansetron",
+              "ibuprofen"
+            ],
+            "vitals.alert": "alert",
+            "vitals.strength": 5
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "vitals",
+              "text": "Demo grip strength: 5 of 5; Demo level of alertness: Demo alert"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo naloxone, Demo ondansetron, Demo ibuprofen"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo level of alertness",
+              "value": "Demo alert"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo grip strength: 5 of 5; Demo level of alertness: Demo alert"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo naloxone, Demo ondansetron, Demo ibuprofen"
+            }
+          ],
+          "effectiveKeys": [
+            "meds.given",
+            "vitals.alert",
+            "vitals.strength"
+          ],
+          "readModelHash": "45ff50254f99b7f1a78ead2d274eb97ca73d4dfac0a0ed00d8ed992092d4f90d",
+          "visibleHashes": {
+            "full": "ff0915cfe5e3dca7771da5e1cb15099c3126da1d136bc4c0902bf337a3ca2789",
+            "noExams": "ff0915cfe5e3dca7771da5e1cb15099c3126da1d136bc4c0902bf337a3ca2789",
+            "noSensitive": "ff0915cfe5e3dca7771da5e1cb15099c3126da1d136bc4c0902bf337a3ca2789"
+          },
+          "contentHash": "a8d92c0f6d0ad1267aa6bbb419d2fb34984cf0343d7272d173cd3700ab9b7247",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "meds.doses": 1,
+            "meds.given": [
+              "naloxone",
+              "ondansetron",
+              "ibuprofen"
+            ],
+            "plan.followUp": "2000-01-01",
+            "plan.next": "none",
+            "plan.notes": "Demo",
+            "vitals.alert": "unresponsive",
+            "vitals.bp.diastolic": 30,
+            "vitals.bp.systolic": 50,
+            "vitals.measured": "12:00",
+            "vitals.pulse": 20,
+            "vitals.strength": 0,
+            "vitals.temp": 30,
+            "vitals.unableBp": true,
+            "vitals.weight": 0.5
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "vitals",
+              "text": "Demo unable to measure: Yes; Demo pulse: 20 bpm; Demo temperature: 30.0 C; Demo weight: 0.50 kg; Demo grip strength: 0 of 5; Demo level of alertness: Demo unresponsive"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo naloxone, Demo ondansetron, Demo ibuprofen; Demo naloxone doses: 1 doses"
+            },
+            {
+              "section": "plan",
+              "text": "Demo next step: Demo nothing more; Demo plan notes: Demo; Demo follow-up date: 2000-01-01"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo pulse",
+              "value": "20 bpm"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo level of alertness",
+              "value": "Demo unresponsive"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo unable to measure: Yes; Demo pulse: 20 bpm; Demo temperature: 30.0 C; Demo weight: 0.50 kg; Demo grip strength: 0 of 5; Demo level of alertness: Demo unresponsive"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo naloxone, Demo ondansetron, Demo ibuprofen; Demo naloxone doses: 1 doses"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "plan",
+              "label": "Demo plan",
+              "value": "Demo next step: Demo nothing more; Demo plan notes: Demo; Demo follow-up date: 2000-01-01"
+            }
+          ],
+          "effectiveKeys": [
+            "meds.doses",
+            "meds.given",
+            "plan.followUp",
+            "plan.next",
+            "plan.notes",
+            "vitals.alert",
+            "vitals.measured",
+            "vitals.pulse",
+            "vitals.strength",
+            "vitals.temp",
+            "vitals.unableBp",
+            "vitals.weight"
+          ],
+          "readModelHash": "d398c03b6c7392150f36e1e97ed6d671a8b579dc9f7fb08fc01a2561fea12b91",
+          "visibleHashes": {
+            "full": "3fffa48730450b1a57eaa5bb8741d81425956507e05a2b86f483c6be30da7e92",
+            "noExams": "3fffa48730450b1a57eaa5bb8741d81425956507e05a2b86f483c6be30da7e92",
+            "noSensitive": "3fffa48730450b1a57eaa5bb8741d81425956507e05a2b86f483c6be30da7e92"
+          },
+          "contentHash": "7ff72462dfd1bb3a6bd606010b3aa78ff1d0371720637c8f1a9377e0cb7fa65b",
+          "expansions": []
         }
       ]
     },
@@ -3703,7 +4407,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "ea61710dbb083edb076e02b58f8916a72e05950681d5c353d1047a3878af89bb",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -3718,7 +4431,18 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [
+            "wounds.e0000001.entryAt"
+          ],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noExams": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b",
+            "noSensitive": "1c95b3fb8af6142854b2fa134d59c32944c547910952c1964da952c5a8cdc22b"
+          },
+          "contentHash": "c3c79c8de8539ba679e77a2e773d813f68acdbcce5d6b1b4f0907e8af2e7cb08",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3744,7 +4468,163 @@
               "text": "Demo wound 1: Demo location: Demo arm, Demo right, Anterior; Demo wound type: Demo laceration; Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo pulses near, Demo radial: Demo absent; Demo pulses near, Demo pedal: Demo absent"
             }
           ],
-          "readModelHash": "3253f1dd2d7f5516760f9d5db37e448f2a0d2ecca64f56253e79fba5782fe4d6"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "wounds",
+              "label": "Demo wounds",
+              "value": "Demo wound 1: Demo location: Demo arm, Demo right, Anterior; Demo wound type: Demo laceration; Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo pulses near, Demo radial: Demo absent; Demo pulses near, Demo pedal: Demo absent"
+            }
+          ],
+          "effectiveKeys": [
+            "wounds.e0000001.edge.left",
+            "wounds.e0000001.edge.right",
+            "wounds.e0000001.entryAt",
+            "wounds.e0000001.pulses.pedal",
+            "wounds.e0000001.pulses.radial",
+            "wounds.e0000001.type",
+            "wounds.e0000001.where.region",
+            "wounds.e0000001.where.side",
+            "wounds.e0000001.where.surface"
+          ],
+          "readModelHash": "3253f1dd2d7f5516760f9d5db37e448f2a0d2ecca64f56253e79fba5782fe4d6",
+          "visibleHashes": {
+            "full": "017de85c6f01de19433c7985086207f49364fa92edb828f025abdecdae97321e",
+            "noExams": "017de85c6f01de19433c7985086207f49364fa92edb828f025abdecdae97321e",
+            "noSensitive": "017de85c6f01de19433c7985086207f49364fa92edb828f025abdecdae97321e"
+          },
+          "contentHash": "67241641883eedc282f1888236e1c37b75d2945da6eb0e0e1f515d9170bf9091",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "wounds.e0000001.type": "laceration",
+            "wounds.e0000001.where.side": "right"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "wounds",
+              "text": "Demo wound 1: Demo location: Demo right; Demo wound type: Demo laceration"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "wounds",
+              "label": "Demo wounds",
+              "value": "Demo wound 1: Demo location: Demo right; Demo wound type: Demo laceration"
+            }
+          ],
+          "effectiveKeys": [
+            "wounds.e0000001.entryAt",
+            "wounds.e0000001.type",
+            "wounds.e0000001.where.side"
+          ],
+          "readModelHash": "1454e1ce480823f23632f9026bdca9e12c6186c4f73d13ea4fddee372449fc6f",
+          "visibleHashes": {
+            "full": "cc430fdf5948b71a55ca27cfaea34a07311804a850b82a5db01ce1d70fe01715",
+            "noExams": "cc430fdf5948b71a55ca27cfaea34a07311804a850b82a5db01ce1d70fe01715",
+            "noSensitive": "cc430fdf5948b71a55ca27cfaea34a07311804a850b82a5db01ce1d70fe01715"
+          },
+          "contentHash": "7d53bcee6409080a6d91a5b8cce268986bd56e1425577a1312861f439b663494",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "care.changeBy": "2000-01-01",
+            "care.teaching": "Demo",
+            "wounds.e0000001.degree": "third",
+            "wounds.e0000001.drainage": [
+              "serous",
+              "bloody",
+              "other"
+            ],
+            "wounds.e0000001.drainage_other": "Demo",
+            "wounds.e0000001.edge.left": "other",
+            "wounds.e0000001.edge.right": "other",
+            "wounds.e0000001.edge_other.left": "Demo",
+            "wounds.e0000001.edge_other.right": "Demo",
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "wounds.e0000001.healing": 10,
+            "wounds.e0000001.injuredOn": "2000-01-01",
+            "wounds.e0000001.length": 0,
+            "wounds.e0000001.pulses.pedal": "other",
+            "wounds.e0000001.pulses.pedal_other": "Demo",
+            "wounds.e0000001.pulses.radial": "other",
+            "wounds.e0000001.pulses.radial_other": "Demo",
+            "wounds.e0000001.size.len": 0,
+            "wounds.e0000001.size.wid": 0,
+            "wounds.e0000001.type": "other",
+            "wounds.e0000001.type_other": "Demo",
+            "wounds.e0000001.unableLength": true,
+            "wounds.e0000001.where.region": "back",
+            "wounds.e0000001.where.side": "bilateral",
+            "wounds.e0000001.where.surface": "posterior"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "wounds",
+              "text": "Demo wound 1: Demo location: Demo back, Demo bilateral, Posterior; Demo wound type: Demo other: Demo; Demo unable to measure: Yes; Demo date of injury: 2000-01-01; Demo time healing: 1 week 3 days; Demo wound edge, Right: Demo other: Demo; Demo wound edge, Left: Demo other: Demo; Demo size, Demo size length: 0.0 cm; Demo size, Demo size width: 0.0 cm; Demo pulses near, Demo radial: Demo other: Demo; Demo pulses near, Demo pedal: Demo other: Demo"
+            },
+            {
+              "section": "care",
+              "text": "Demo change dressing by: 2000-01-01; Demo teaching given: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "wounds",
+              "label": "Demo wounds",
+              "value": "Demo wound 1: Demo location: Demo back, Demo bilateral, Posterior; Demo wound type: Demo other: Demo; Demo unable to measure: Yes; Demo date of injury: 2000-01-01; Demo time healing: 1 week 3 days; Demo wound edge, Right: Demo other: Demo; Demo wound edge, Left: Demo other: Demo; Demo size, Demo size length: 0.0 cm; Demo size, Demo size width: 0.0 cm; Demo pulses near, Demo radial: Demo other: Demo; Demo pulses near, Demo pedal: Demo other: Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "care",
+              "label": "Demo care",
+              "value": "Demo change dressing by: 2000-01-01; Demo teaching given: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "care.changeBy",
+            "care.teaching",
+            "wounds.e0000001.edge.left",
+            "wounds.e0000001.edge.right",
+            "wounds.e0000001.edge_other.left",
+            "wounds.e0000001.edge_other.right",
+            "wounds.e0000001.entryAt",
+            "wounds.e0000001.healing",
+            "wounds.e0000001.injuredOn",
+            "wounds.e0000001.pulses.pedal",
+            "wounds.e0000001.pulses.pedal_other",
+            "wounds.e0000001.pulses.radial",
+            "wounds.e0000001.pulses.radial_other",
+            "wounds.e0000001.size.len",
+            "wounds.e0000001.size.wid",
+            "wounds.e0000001.type",
+            "wounds.e0000001.type_other",
+            "wounds.e0000001.unableLength",
+            "wounds.e0000001.where.region",
+            "wounds.e0000001.where.side",
+            "wounds.e0000001.where.surface"
+          ],
+          "readModelHash": "1e0a5336dceca4d561328a1973ac8f16e790dda49edc534da99c4eccb0c5669c",
+          "visibleHashes": {
+            "full": "aa109965c96eeccdad843dca19a9fff957e02b4f293628cf8739f50d5f9f9322",
+            "noExams": "aa109965c96eeccdad843dca19a9fff957e02b4f293628cf8739f50d5f9f9322",
+            "noSensitive": "aa109965c96eeccdad843dca19a9fff957e02b4f293628cf8739f50d5f9f9322"
+          },
+          "contentHash": "6e4690c3783040fba1db71f5f09bb7b88fd4feda81c81c4444319701057a367c",
+          "expansions": []
         }
       ]
     },
@@ -3758,7 +4638,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "ba394003d43352d1cd8ebc510498eace355c8077ce78c5bca6c466b4cce9d368",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -3776,7 +4665,57 @@
               "text": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal"
             }
           ],
-          "readModelHash": "b8432d1ceb7deb292d438a16cdaa7bdef54a93d79e69081133592fdad55e8a89"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses and reflexes",
+              "value": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal"
+            }
+          ],
+          "effectiveKeys": [
+            "pulses.pulses.pedal.left",
+            "pulses.pulses.pedal.right",
+            "pulses.pulses.radial.left",
+            "pulses.pulses.radial.right"
+          ],
+          "readModelHash": "b8432d1ceb7deb292d438a16cdaa7bdef54a93d79e69081133592fdad55e8a89",
+          "visibleHashes": {
+            "full": "48e8a1b35b90e8bcac9479704fb414ab4274b5e23b74fa95f8237f75a8d0633f",
+            "noExams": "48e8a1b35b90e8bcac9479704fb414ab4274b5e23b74fa95f8237f75a8d0633f",
+            "noSensitive": "48e8a1b35b90e8bcac9479704fb414ab4274b5e23b74fa95f8237f75a8d0633f"
+          },
+          "contentHash": "149535e19a1caebd3865279c0ed4713fec3fc7e3547cb6eb75c81951f7316916",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3815,7 +4754,374 @@
               "text": "Demo pulses, Demo radial, Right: Demo absent; Demo pulses, Demo radial, Left: Demo absent; Demo pulses, Demo pedal, Right: Demo absent; Demo pulses, Demo pedal, Left: Demo absent; Demo further checks, Demo bruit, Right: Demo none; Demo further checks, Demo bruit, Left: Demo none"
             }
           ],
-          "readModelHash": "80ea38ff2cd56c8afa7a5209c9a6c9cdcfde7620ffb53b3d18c0d12e88f71f75"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Right",
+              "value": "Demo absent"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Left",
+              "value": "Demo absent"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Right",
+              "value": "Demo absent"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Left",
+              "value": "Demo absent"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "systems",
+              "label": "Demo systems",
+              "value": "Demo systems examined: Demo heart"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "heart",
+              "label": "Demo heart",
+              "value": "Demo rhythm: Demo regular; Demo murmur: Demo none"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses and reflexes",
+              "value": "Demo pulses, Demo radial, Right: Demo absent; Demo pulses, Demo radial, Left: Demo absent; Demo pulses, Demo pedal, Right: Demo absent; Demo pulses, Demo pedal, Left: Demo absent; Demo further checks, Demo bruit, Right: Demo none; Demo further checks, Demo bruit, Left: Demo none"
+            }
+          ],
+          "effectiveKeys": [
+            "heart.murmur",
+            "heart.rhythm",
+            "pulses.more.bruit.left",
+            "pulses.more.bruit.right",
+            "pulses.pulses.pedal.left",
+            "pulses.pulses.pedal.right",
+            "pulses.pulses.radial.left",
+            "pulses.pulses.radial.right",
+            "systems.picked"
+          ],
+          "readModelHash": "80ea38ff2cd56c8afa7a5209c9a6c9cdcfde7620ffb53b3d18c0d12e88f71f75",
+          "visibleHashes": {
+            "full": "f9aed290a0ba4761aa8883263df9b5e7e7cde5686d1cf6337d119e64a9bf092e",
+            "noExams": "f9aed290a0ba4761aa8883263df9b5e7e7cde5686d1cf6337d119e64a9bf092e",
+            "noSensitive": "f9aed290a0ba4761aa8883263df9b5e7e7cde5686d1cf6337d119e64a9bf092e"
+          },
+          "contentHash": "c78f73261f9651741433f916db1bb75edfd08cf2180fd0fbd3d9e26867e47faf",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "gu.consent": "yes",
+            "heart.murmur": "none",
+            "heart.rhythm": "regular",
+            "lungs.sounds.left": "clear",
+            "lungs.sounds.right": "clear",
+            "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "msk.e0000001.tests.ext": "full",
+            "msk.e0000001.tests.flex": "full",
+            "pulses.pulses.pedal.left": "normal",
+            "pulses.pulses.pedal.right": "normal",
+            "pulses.pulses.radial.left": "normal",
+            "pulses.pulses.radial.right": "normal",
+            "systems.picked": [
+              "heart",
+              "lungs",
+              "skin",
+              "gu",
+              "msk"
+            ]
+          },
+          "finishCheck": [
+            {
+              "section": "msk",
+              "path": "msk.e0000001.joint",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "systems",
+              "text": "Demo systems examined: Demo heart, Demo lungs, Demo skin, Demo joints"
+            },
+            {
+              "section": "heart",
+              "text": "Demo rhythm: Demo regular; Demo murmur: Demo none"
+            },
+            {
+              "section": "lungs",
+              "text": "Demo breath sounds, Right: Demo clear; Demo breath sounds, Left: Demo clear"
+            },
+            {
+              "section": "pulses",
+              "text": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal"
+            },
+            {
+              "section": "msk",
+              "text": "Demo joint 1: Demo movement, Demo flexion: Demo full; Demo movement, Demo extension: Demo full"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "systems",
+              "label": "Demo systems",
+              "value": "Demo systems examined: Demo heart, Demo lungs, Demo skin, Demo joints"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "heart",
+              "label": "Demo heart",
+              "value": "Demo rhythm: Demo regular; Demo murmur: Demo none"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "lungs",
+              "label": "Demo lungs",
+              "value": "Demo breath sounds, Right: Demo clear; Demo breath sounds, Left: Demo clear"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses and reflexes",
+              "value": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "msk",
+              "label": "Demo joints",
+              "value": "Demo joint 1: Demo movement, Demo flexion: Demo full; Demo movement, Demo extension: Demo full"
+            }
+          ],
+          "effectiveKeys": [
+            "gu.consent",
+            "heart.murmur",
+            "heart.rhythm",
+            "lungs.sounds.left",
+            "lungs.sounds.right",
+            "msk.e0000001.entryAt",
+            "msk.e0000001.tests.ext",
+            "msk.e0000001.tests.flex",
+            "pulses.pulses.pedal.left",
+            "pulses.pulses.pedal.right",
+            "pulses.pulses.radial.left",
+            "pulses.pulses.radial.right",
+            "systems.picked"
+          ],
+          "readModelHash": "a793543dc1103a09c308e464108923531e5599051d49b508b42dc4df586797e4",
+          "visibleHashes": {
+            "full": "1b0789aed5bb5ccc35dddcac6aa11c75e2c220ef732f17dbc0d72cf8fb2e25ff",
+            "noExams": "6f277ada480acab9c751e6ba495b140e7278b679bbf70c9dfc865a69dc9acce5",
+            "noSensitive": "6f277ada480acab9c751e6ba495b140e7278b679bbf70c9dfc865a69dc9acce5"
+          },
+          "contentHash": "3eac4d02f35530522933912e7bcb26b9e734ec5344bf2cc7b313742c5991bffa",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "gu.consent": "no",
+            "gu.findings": "Demo",
+            "heart.grade": 1,
+            "heart.murmur": "present",
+            "heart.rhythm": "unable",
+            "lungs.sounds.left": "other",
+            "lungs.sounds.right": "other",
+            "lungs.sounds_other.left": "Demo",
+            "lungs.sounds_other.right": "Demo",
+            "lungs.where": "Demo",
+            "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "msk.e0000001.joint": "knee",
+            "msk.e0000001.tests.ext": "limited",
+            "msk.e0000001.tests.flex": "limited",
+            "pulses.more.bruit.left": "present",
+            "pulses.more.bruit.right": "present",
+            "pulses.pulses.pedal.left": "normal",
+            "pulses.pulses.pedal.right": "normal",
+            "pulses.pulses.radial.left": "normal",
+            "pulses.pulses.radial.right": "normal",
+            "pulses.reflexes.biceps.comment": "Demo",
+            "pulses.reflexes.biceps.grade": 0,
+            "pulses.reflexes.knee.comment": "Demo",
+            "pulses.reflexes.knee.grade": 0,
+            "systems.picked": [
+              "heart",
+              "lungs",
+              "skin",
+              "gu",
+              "msk"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "systems",
+              "text": "Demo systems examined: Demo heart, Demo lungs, Demo skin, Demo joints"
+            },
+            {
+              "section": "heart",
+              "text": "Demo rhythm: Demo unable to assess; Demo murmur: Demo present; Demo murmur grade: 1 of 6"
+            },
+            {
+              "section": "lungs",
+              "text": "Demo breath sounds, Right: Demo other: Demo; Demo breath sounds, Left: Demo other: Demo"
+            },
+            {
+              "section": "pulses",
+              "text": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal; Demo reflexes, Demo biceps, Demo grade: 0; Demo reflexes, Demo biceps, Demo comment: Demo; Demo reflexes, Demo knee, Demo grade: 0; Demo reflexes, Demo knee, Demo comment: Demo; Demo further checks, Demo bruit, Right: Demo present; Demo further checks, Demo bruit, Left: Demo present"
+            },
+            {
+              "section": "msk",
+              "text": "Demo joint 1: Demo joint: Demo knee; Demo movement, Demo flexion: Demo limited; Demo movement, Demo extension: Demo limited"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo radial, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Right",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses, Demo pedal, Left",
+              "value": "Demo normal"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "systems",
+              "label": "Demo systems",
+              "value": "Demo systems examined: Demo heart, Demo lungs, Demo skin, Demo joints"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "heart",
+              "label": "Demo heart",
+              "value": "Demo rhythm: Demo unable to assess; Demo murmur: Demo present; Demo murmur grade: 1 of 6"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "lungs",
+              "label": "Demo lungs",
+              "value": "Demo breath sounds, Right: Demo other: Demo; Demo breath sounds, Left: Demo other: Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "pulses",
+              "label": "Demo pulses and reflexes",
+              "value": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal; Demo reflexes, Demo biceps, Demo grade: 0; Demo reflexes, Demo biceps, Demo comment: Demo; Demo reflexes, Demo knee, Demo grade: 0; Demo reflexes, Demo knee, Demo comment: Demo; Demo further checks, Demo bruit, Right: Demo present; Demo further checks, Demo bruit, Left: Demo present"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "msk",
+              "label": "Demo joints",
+              "value": "Demo joint 1: Demo joint: Demo knee; Demo movement, Demo flexion: Demo limited; Demo movement, Demo extension: Demo limited"
+            }
+          ],
+          "effectiveKeys": [
+            "gu.consent",
+            "heart.grade",
+            "heart.murmur",
+            "heart.rhythm",
+            "lungs.sounds.left",
+            "lungs.sounds.right",
+            "lungs.sounds_other.left",
+            "lungs.sounds_other.right",
+            "msk.e0000001.entryAt",
+            "msk.e0000001.joint",
+            "msk.e0000001.tests.ext",
+            "msk.e0000001.tests.flex",
+            "pulses.more.bruit.left",
+            "pulses.more.bruit.right",
+            "pulses.pulses.pedal.left",
+            "pulses.pulses.pedal.right",
+            "pulses.pulses.radial.left",
+            "pulses.pulses.radial.right",
+            "pulses.reflexes.biceps.comment",
+            "pulses.reflexes.biceps.grade",
+            "pulses.reflexes.knee.comment",
+            "pulses.reflexes.knee.grade",
+            "systems.picked"
+          ],
+          "readModelHash": "0554aa58f25c6142de27efb0a13abefe1f723d90556b4d8bae3331f28ff3213d",
+          "visibleHashes": {
+            "full": "aadf5048642fc60d1288a8b9b58adeda986f692c6b93f32d19f7f37e9b7ddf0c",
+            "noExams": "5e186c7ae2eca171942fcf2084ec1aa607ec1ce14517e2e8c564ab7ce35876b5",
+            "noSensitive": "5e186c7ae2eca171942fcf2084ec1aa607ec1ce14517e2e8c564ab7ce35876b5"
+          },
+          "contentHash": "50e48017bac44f42e8c21138daf15c658426c5776c90e2d727f1771cd2369292",
+          "expansions": []
         }
       ]
     },
@@ -3829,14 +5135,32 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "3736e196437da71e40f3fec9efc9c3082e3427cb7ed1c864a09257fcb5cbcc07",
+          "expansions": []
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "3736e196437da71e40f3fec9efc9c3082e3427cb7ed1c864a09257fcb5cbcc07",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3858,7 +5182,128 @@
               "text": "Demo supplies given: Demo none; Demo vaccines offered: Demo flu; Demo vaccine status, Demo flu: Demo given"
             }
           ],
-          "readModelHash": "e1b22180c8618ae1ff374a752091159c86fb874dccef0f51b7e6ef9f1c5de952"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "supplies",
+              "label": "Demo supplies",
+              "value": "Demo supplies given: Demo none; Demo vaccines offered: Demo flu; Demo vaccine status, Demo flu: Demo given"
+            }
+          ],
+          "effectiveKeys": [
+            "supplies.given",
+            "supplies.status.flu",
+            "supplies.vaccines"
+          ],
+          "readModelHash": "e1b22180c8618ae1ff374a752091159c86fb874dccef0f51b7e6ef9f1c5de952",
+          "visibleHashes": {
+            "full": "dcaba6238e00b5b53b5033c61dbf6047837508fc54d9873859e2abee5c069192",
+            "noExams": "dcaba6238e00b5b53b5033c61dbf6047837508fc54d9873859e2abee5c069192",
+            "noSensitive": "dcaba6238e00b5b53b5033c61dbf6047837508fc54d9873859e2abee5c069192"
+          },
+          "contentHash": "cf3fbb95658c3c4dcae5cef1dc0eef14fb32770163c6dafe90753159ed95a13a",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "supplies.vaccines": [
+              "flu",
+              "tetanus",
+              "hepa"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "supplies",
+              "text": "Demo vaccines offered: Demo flu, Demo tetanus, Demo hepatitis A"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "supplies",
+              "label": "Demo supplies",
+              "value": "Demo vaccines offered: Demo flu, Demo tetanus, Demo hepatitis A"
+            }
+          ],
+          "effectiveKeys": [
+            "supplies.vaccines"
+          ],
+          "readModelHash": "3d42f71582098eefb27b613715c1b9e8fd925e7bd84bf1bf143a016ac21e7cb1",
+          "visibleHashes": {
+            "full": "27f719b30b22c32fa55c9e885c1107063f8210f66cbfff35ed6e123db1b0eb74",
+            "noExams": "27f719b30b22c32fa55c9e885c1107063f8210f66cbfff35ed6e123db1b0eb74",
+            "noSensitive": "27f719b30b22c32fa55c9e885c1107063f8210f66cbfff35ed6e123db1b0eb74"
+          },
+          "contentHash": "df3536a57891632ba68e70ed0780fa7b694e137931843873fefb9c82f803d2b5",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "supplies.counts.socks": 0,
+            "supplies.counts.water": 0,
+            "supplies.given": [
+              "socks",
+              "water",
+              "other"
+            ],
+            "supplies.given_other": "Demo",
+            "supplies.seenAt": "12:00",
+            "supplies.status.flu": "other",
+            "supplies.status.flu_other": "Demo",
+            "supplies.status.hepa": "other",
+            "supplies.status.hepa_other": "Demo",
+            "supplies.status.tetanus": "other",
+            "supplies.status.tetanus_other": "Demo",
+            "supplies.vaccines": [
+              "flu",
+              "tetanus",
+              "hepa"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "supplies",
+              "text": "Demo supplies given: Demo socks, Demo water, Demo other: Demo; Demo vaccines offered: Demo flu, Demo tetanus, Demo hepatitis A; Demo vaccine status, Demo flu: Demo other: Demo; Demo vaccine status, Demo tetanus: Demo other: Demo; Demo vaccine status, Demo hepatitis A: Demo other: Demo; Demo how many, Demo socks: 0; Demo how many, Demo water: 0; Demo time seen: 12:00"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "supplies",
+              "label": "Demo supplies",
+              "value": "Demo supplies given: Demo socks, Demo water, Demo other: Demo; Demo vaccines offered: Demo flu, Demo tetanus, Demo hepatitis A; Demo vaccine status, Demo flu: Demo other: Demo; Demo vaccine status, Demo tetanus: Demo other: Demo; Demo vaccine status, Demo hepatitis A: Demo other: Demo; Demo how many, Demo socks: 0; Demo how many, Demo water: 0; Demo time seen: 12:00"
+            }
+          ],
+          "effectiveKeys": [
+            "supplies.counts.socks",
+            "supplies.counts.water",
+            "supplies.given",
+            "supplies.given_other",
+            "supplies.seenAt",
+            "supplies.status.flu",
+            "supplies.status.flu_other",
+            "supplies.status.hepa",
+            "supplies.status.hepa_other",
+            "supplies.status.tetanus",
+            "supplies.status.tetanus_other",
+            "supplies.vaccines"
+          ],
+          "readModelHash": "3d043ba7253ddf5c839c7fc1956cd62053da70455e5d93990a53b3b0e3a76814",
+          "visibleHashes": {
+            "full": "66a7a3610a7f853ca3a76de84a3cefcaaf7bb4f794dbd419cd1225fe0320cb30",
+            "noExams": "66a7a3610a7f853ca3a76de84a3cefcaaf7bb4f794dbd419cd1225fe0320cb30",
+            "noSensitive": "66a7a3610a7f853ca3a76de84a3cefcaaf7bb4f794dbd419cd1225fe0320cb30"
+          },
+          "contentHash": "609d7558b9fa54834b253df0caadc70679669e7c36b888abd61b88e9ca584633",
+          "expansions": []
         }
       ]
     },
@@ -3872,14 +5317,32 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "contentHash": "4a9a512ae6fee61942d29663da71c6c53c77ba2b0fc7317fc39b629368bf51ed",
+          "expansions": []
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "contentHash": "4a9a512ae6fee61942d29663da71c6c53c77ba2b0fc7317fc39b629368bf51ed",
+          "expansions": []
         },
         {
           "name": "first",
@@ -3898,7 +5361,110 @@
               "text": "Demo program: Demo clinic program"
             }
           ],
-          "readModelHash": "614cdf94075db8d0de65debad2ef28f7878c4a07ba5f9ed439f6ad078f985c34"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "mood",
+              "label": "Demo mood",
+              "value": "Demo mood today: Demo good"
+            }
+          ],
+          "effectiveKeys": [
+            "mood.mood",
+            "treatment.program"
+          ],
+          "readModelHash": "614cdf94075db8d0de65debad2ef28f7878c4a07ba5f9ed439f6ad078f985c34",
+          "visibleHashes": {
+            "full": "ced29cc4ea7162d4d2684c21128f94d6c5f7ac180eab417be0eb4e8b95418bb3",
+            "noExams": "678ab4b41ac64ebfef0a66a8debc81ada413cc34cfee693c5d724d122d6dfc0e",
+            "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "contentHash": "fd06c94a1845415f571029ccb696dfcfe56b734974466e51436033ff98b833cd",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "mood.mood": "good",
+            "treatment.program": "clinic"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "mood",
+              "text": "Demo mood today: Demo good"
+            },
+            {
+              "section": "treatment",
+              "text": "Demo program: Demo clinic program"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "mood",
+              "label": "Demo mood",
+              "value": "Demo mood today: Demo good"
+            }
+          ],
+          "effectiveKeys": [
+            "mood.mood",
+            "treatment.program"
+          ],
+          "readModelHash": "614cdf94075db8d0de65debad2ef28f7878c4a07ba5f9ed439f6ad078f985c34",
+          "visibleHashes": {
+            "full": "ced29cc4ea7162d4d2684c21128f94d6c5f7ac180eab417be0eb4e8b95418bb3",
+            "noExams": "678ab4b41ac64ebfef0a66a8debc81ada413cc34cfee693c5d724d122d6dfc0e",
+            "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "contentHash": "fd06c94a1845415f571029ccb696dfcfe56b734974466e51436033ff98b833cd",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "mood.mood": "anxious",
+            "mood.safety": "Demo",
+            "treatment.length": 10,
+            "treatment.program": "none",
+            "treatment.since": "2000-01-01"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "mood",
+              "text": "Demo mood today: Demo anxious; Demo safety plan: Demo"
+            },
+            {
+              "section": "treatment",
+              "text": "Demo program: Demo no program; Demo time in program: 1 week 3 days"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "mood",
+              "label": "Demo mood",
+              "value": "Demo mood today: Demo anxious; Demo safety plan: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "mood.mood",
+            "mood.safety",
+            "treatment.length",
+            "treatment.program"
+          ],
+          "readModelHash": "46bd8b0e87ee2bd6e4fc63713a7e512d5a340afe5c132bd433c44a275474c1ac",
+          "visibleHashes": {
+            "full": "1e5d977be569d8a42b0a5a7bb927d2e620221b6847ded41307f0c0d9021e1738",
+            "noExams": "638e9888dfdae83cd6cf2f299d7d57e39b29da9e413167db1c9eb2cc1fe7e6d2",
+            "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "contentHash": "70f29cfeb2b477c8867f024d7c23f7415e246d3a6102b4c64a0c96b20f2e2f1c",
+          "expansions": []
         }
       ]
     },
@@ -3912,14 +5478,58 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "f9a615cc4a106f3298c6d455a444ec38d357b6410ef8cd238217d30faf0e7c71",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "f9a615cc4a106f3298c6d455a444ec38d357b6410ef8cd238217d30faf0e7c71",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "first",
@@ -3954,7 +5564,254 @@
               "text": "Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo location: Demo arm, Demo right; Demo pulses near, Demo radial: Demo absent"
             }
           ],
-          "readModelHash": "3b73f90a5782365d9fbb009eb1ae2527215d52f0c0c6f841ae4a31a665e8a459"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo yes"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo wound type: Demo laceration"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo none"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "found",
+              "label": "Demo wound found",
+              "value": "Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo location: Demo arm, Demo right; Demo pulses near, Demo radial: Demo absent"
+            }
+          ],
+          "effectiveKeys": [
+            "found.edge.left",
+            "found.edge.right",
+            "found.pulses.radial",
+            "found.where.region",
+            "found.where.side",
+            "hpi.concern",
+            "meds.given",
+            "vitals.woundType"
+          ],
+          "readModelHash": "3b73f90a5782365d9fbb009eb1ae2527215d52f0c0c6f841ae4a31a665e8a459",
+          "visibleHashes": {
+            "full": "cd7d01be549f88cabe367925c137428d545e0177a82d9e1f769ccad8f7200e2c",
+            "noExams": "cd7d01be549f88cabe367925c137428d545e0177a82d9e1f769ccad8f7200e2c",
+            "noSensitive": "cd7d01be549f88cabe367925c137428d545e0177a82d9e1f769ccad8f7200e2c"
+          },
+          "contentHash": "947db214a5dfc17ae73d61054e125667b94fdad4c700a24d15096611f6bd6f82",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {
+                "meds.given": [
+                  "none"
+                ]
+              },
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {
+                "wounds.e0000002.edge.left": "clean",
+                "wounds.e0000002.edge.right": "clean",
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z",
+                "wounds.e0000002.pulses.radial": "absent",
+                "wounds.e0000002.type": "laceration",
+                "wounds.e0000002.where.region": "arm",
+                "wounds.e0000002.where.side": "right"
+              },
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "hpi.concern": "yes"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo yes"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo yes"
+            }
+          ],
+          "effectiveKeys": [
+            "hpi.concern"
+          ],
+          "readModelHash": "8b399f5a6f38a09fc089bf7c2e4c1a03abbf3d2bd8b07c5b4ccffeb3a159ed81",
+          "visibleHashes": {
+            "full": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532",
+            "noExams": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532",
+            "noSensitive": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532"
+          },
+          "contentHash": "af2060d33c77a6f093ae2f1fd6771badf9ce71c203f6beb725220bcc1e1575bf",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "every",
+          "answers": {
+            "found.edge.left": "other",
+            "found.edge.right": "other",
+            "found.edge_other.left": "Demo",
+            "found.edge_other.right": "Demo",
+            "found.pulses.radial": "other",
+            "found.pulses.radial_other": "Demo",
+            "found.size.len": 0,
+            "found.size.wid": 0,
+            "found.where.region": "leg",
+            "found.where.side": "left",
+            "hpi.concern": "unknown",
+            "hpi.details": "Demo",
+            "meds.given": [
+              "naloxone"
+            ],
+            "vitals.pulse": 30,
+            "vitals.woundLength": 0,
+            "vitals.woundType": "abscess"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo unknown"
+            },
+            {
+              "section": "vitals",
+              "text": "Demo pulse: 30 bpm; Demo wound type: Demo abscess; Demo wound length: 0.0 cm"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo naloxone"
+            },
+            {
+              "section": "found",
+              "text": "Demo wound edge, Right: Demo other: Demo; Demo wound edge, Left: Demo other: Demo; Demo location: Demo leg, Demo left; Demo size, Demo size length: 0.0 cm; Demo size, Demo size width: 0.0 cm; Demo pulses near, Demo radial: Demo other: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo unknown"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo pulse: 30 bpm; Demo wound type: Demo abscess; Demo wound length: 0.0 cm"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo naloxone"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "found",
+              "label": "Demo wound found",
+              "value": "Demo wound edge, Right: Demo other: Demo; Demo wound edge, Left: Demo other: Demo; Demo location: Demo leg, Demo left; Demo size, Demo size length: 0.0 cm; Demo size, Demo size width: 0.0 cm; Demo pulses near, Demo radial: Demo other: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "found.edge.left",
+            "found.edge.right",
+            "found.edge_other.left",
+            "found.edge_other.right",
+            "found.pulses.radial",
+            "found.pulses.radial_other",
+            "found.size.len",
+            "found.size.wid",
+            "found.where.region",
+            "found.where.side",
+            "hpi.concern",
+            "meds.given",
+            "vitals.pulse",
+            "vitals.woundLength",
+            "vitals.woundType"
+          ],
+          "readModelHash": "b1106bffaf091cae2adc42141c4e01c5f87cbc0775b208e0eccceab0bdde7add",
+          "visibleHashes": {
+            "full": "7f5c50a69205aae225b76927f15f3adfef7ab05a410508bbf7690b7494934540",
+            "noExams": "7f5c50a69205aae225b76927f15f3adfef7ab05a410508bbf7690b7494934540",
+            "noSensitive": "7f5c50a69205aae225b76927f15f3adfef7ab05a410508bbf7690b7494934540"
+          },
+          "contentHash": "c002aaa67c1bd0f22671e39cdf6ba24f579fb043f2ca961efdb1015296dc0b03",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {
+                "meds.given": [
+                  "naloxone"
+                ],
+                "vitals.pulse": 30
+              },
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {
+                "wounds.e0000002.edge.left": "other",
+                "wounds.e0000002.edge.right": "other",
+                "wounds.e0000002.edge_other.left": "Demo",
+                "wounds.e0000002.edge_other.right": "Demo",
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z",
+                "wounds.e0000002.length": 0,
+                "wounds.e0000002.pulses.radial": "other",
+                "wounds.e0000002.pulses.radial_other": "Demo",
+                "wounds.e0000002.size.len": 0,
+                "wounds.e0000002.size.wid": 0,
+                "wounds.e0000002.type": "abscess",
+                "wounds.e0000002.where.region": "leg",
+                "wounds.e0000002.where.side": "left"
+              },
+              "leftOut": []
+            }
+          ]
         }
       ]
     },
@@ -3968,14 +5825,58 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "8bd0bac66be9759577e07a98f205add6d7bd3af5b0987974aa8229aa99ea5a97",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "8bd0bac66be9759577e07a98f205add6d7bd3af5b0987974aa8229aa99ea5a97",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
         },
         {
           "name": "first",
@@ -4006,7 +5907,249 @@
               "text": "Demo burn degree: Demo first"
             }
           ],
-          "readModelHash": "80d844acb683e3020c72318073703cf5683229bd03963f56a7d94929d257fdf3"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo yes"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo wound type: Demo laceration"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo ondansetron"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "found",
+              "label": "Demo wound found",
+              "value": "Demo burn degree: Demo first"
+            }
+          ],
+          "effectiveKeys": [
+            "found.degree",
+            "hpi.concern",
+            "meds.given",
+            "vitals.woundType"
+          ],
+          "readModelHash": "80d844acb683e3020c72318073703cf5683229bd03963f56a7d94929d257fdf3",
+          "visibleHashes": {
+            "full": "3c62863ddf21b4db1f35c07dabea8c29c3b4f44ac20a998f674029d8fc546225",
+            "noExams": "3c62863ddf21b4db1f35c07dabea8c29c3b4f44ac20a998f674029d8fc546225",
+            "noSensitive": "3c62863ddf21b4db1f35c07dabea8c29c3b4f44ac20a998f674029d8fc546225"
+          },
+          "contentHash": "840613a5e3212372b44b4c5411888a5033b483a56812d4708891fa716bb6afb1",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {
+                "meds.given": [
+                  "ondansetron"
+                ]
+              },
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {
+                "wounds.e0000002.degree": "first",
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z",
+                "wounds.e0000002.type": "laceration"
+              },
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "hpi.concern": "yes"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo yes"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo yes"
+            }
+          ],
+          "effectiveKeys": [
+            "hpi.concern"
+          ],
+          "readModelHash": "8b399f5a6f38a09fc089bf7c2e4c1a03abbf3d2bd8b07c5b4ccffeb3a159ed81",
+          "visibleHashes": {
+            "full": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532",
+            "noExams": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532",
+            "noSensitive": "686340e788bc9673f51aa820b48d09e99e8e02d1f8bcc01bb3465ab5a5dc2532"
+          },
+          "contentHash": "7f0a0b306a119c50a777e32159e5ae504a3d3d55e9db1c6455474a71be76e20c",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {},
+              "leftOut": []
+            }
+          ]
+        },
+        {
+          "name": "every",
+          "answers": {
+            "found.degree": "third",
+            "found.degree_other": "Demo",
+            "hpi.concern": "unknown",
+            "hpi.details": "Demo",
+            "meds.given": [
+              "ondansetron",
+              "naloxone"
+            ],
+            "vitals.pulse": 10,
+            "vitals.spo2": 50,
+            "vitals.woundLength": 0,
+            "vitals.woundType": "bite"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo unknown"
+            },
+            {
+              "section": "vitals",
+              "text": "Demo pulse: 10 bpm; Demo oxygen saturation: 50 %; Demo wound type: Demo bite; Demo wound length: 0.0 in"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo ondansetron, Demo naloxone"
+            },
+            {
+              "section": "found",
+              "text": "Demo burn degree: Demo deeper: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "hpi",
+              "label": "Demo history",
+              "value": "Demo new concern: Demo unknown"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "vitals",
+              "label": "Demo vitals",
+              "value": "Demo pulse: 10 bpm; Demo oxygen saturation: 50 %; Demo wound type: Demo bite; Demo wound length: 0.0 in"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "meds",
+              "label": "Demo medications",
+              "value": "Demo medications given: Demo ondansetron, Demo naloxone"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "found",
+              "label": "Demo wound found",
+              "value": "Demo burn degree: Demo deeper: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "found.degree",
+            "found.degree_other",
+            "hpi.concern",
+            "meds.given",
+            "vitals.pulse",
+            "vitals.spo2",
+            "vitals.woundLength",
+            "vitals.woundType"
+          ],
+          "readModelHash": "02b2af07f505897995cadf35beca0575c083047fc0d871e8e83af78aba00efcd",
+          "visibleHashes": {
+            "full": "5030debac3399e86471b18afd0fcbf1015a9a43c70465615b4f40120a2880343",
+            "noExams": "5030debac3399e86471b18afd0fcbf1015a9a43c70465615b4f40120a2880343",
+            "noSensitive": "5030debac3399e86471b18afd0fcbf1015a9a43c70465615b4f40120a2880343"
+          },
+          "contentHash": "297e2315d939bb84ae854e277e6ccc31d4dabdd7956e664dffc6a08ee8686a78",
+          "expansions": [
+            {
+              "key": "demo_visit",
+              "version": 1,
+              "answers": {
+                "meds.given": [
+                  "naloxone",
+                  "ondansetron"
+                ]
+              },
+              "leftOut": [
+                {
+                  "path": "vitals.pulse",
+                  "target": "vitals.pulse",
+                  "problem": "out_of_range"
+                },
+                {
+                  "path": "vitals.spo2",
+                  "target": "vitals.spo2",
+                  "problem": "unknown_path"
+                }
+              ]
+            },
+            {
+              "key": "demo_wound",
+              "version": 1,
+              "answers": {
+                "wounds.e0000002.degree": "third",
+                "wounds.e0000002.entryAt": "2000-01-02T00:00:00Z"
+              },
+              "leftOut": [
+                {
+                  "path": "vitals.woundType",
+                  "target": "wounds.type",
+                  "problem": "unknown_option"
+                },
+                {
+                  "path": "vitals.woundLength",
+                  "target": "wounds.length",
+                  "problem": "wrong_type"
+                },
+                {
+                  "path": "found.degree_other",
+                  "target": "wounds.degree_other",
+                  "problem": "unknown_path"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4020,7 +6163,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "720e7aaf2e2b567e604a7e79b0530e43eef728c0b00da5d27f07500b8f77394e",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -4035,7 +6187,18 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [
+            "dx.e0000001.entryAt"
+          ],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "d6f54a98299d410f71fd9be098237674a5f4a023e28652d86e80befd9897dc9d",
+            "noExams": "d6f54a98299d410f71fd9be098237674a5f4a023e28652d86e80befd9897dc9d",
+            "noSensitive": "d6f54a98299d410f71fd9be098237674a5f4a023e28652d86e80befd9897dc9d"
+          },
+          "contentHash": "a584bbdcf82f0457caa9bfb01d929548526e2d4ea4236c8e5d982fc9cf3b08d7",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4053,7 +6216,116 @@
               "text": "Demo diagnosis 1: Demo status: Demo new; Demo what was done: Demo education"
             }
           ],
-          "readModelHash": "2413fdeee6228755131f5e6bdf61f6fe879b07d1fbe3189485b0e9148f4f2381"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnoses",
+              "value": "Demo diagnosis 1: Demo status: Demo new; Demo what was done: Demo education"
+            }
+          ],
+          "effectiveKeys": [
+            "dx.e0000001.entryAt",
+            "dx.e0000001.status",
+            "dx.e0000001.steps"
+          ],
+          "readModelHash": "2413fdeee6228755131f5e6bdf61f6fe879b07d1fbe3189485b0e9148f4f2381",
+          "visibleHashes": {
+            "full": "f58f4b2a92d7ff80adb2d5c66a6b1265bd6a5aa1f973dc790aaa517952abb89e",
+            "noExams": "f58f4b2a92d7ff80adb2d5c66a6b1265bd6a5aa1f973dc790aaa517952abb89e",
+            "noSensitive": "f58f4b2a92d7ff80adb2d5c66a6b1265bd6a5aa1f973dc790aaa517952abb89e"
+          },
+          "contentHash": "6cf332e5dd116d03b78ebb8e76e0ac29d9299f44ab115d747caec896590e8f30",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "dx.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "dx.e0000001.status": "new"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "dx",
+              "text": "Demo diagnosis 1: Demo status: Demo new"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnoses",
+              "value": "Demo diagnosis 1: Demo status: Demo new"
+            }
+          ],
+          "effectiveKeys": [
+            "dx.e0000001.entryAt",
+            "dx.e0000001.status"
+          ],
+          "readModelHash": "871a4d8ec1eff4474cc22e4d2310a5aec459b48656fd1f15e127f64682d7c8a8",
+          "visibleHashes": {
+            "full": "25190907dc9c1c831adf345feea79fac4763431a5390d96d89636724c50af578",
+            "noExams": "25190907dc9c1c831adf345feea79fac4763431a5390d96d89636724c50af578",
+            "noSensitive": "25190907dc9c1c831adf345feea79fac4763431a5390d96d89636724c50af578"
+          },
+          "contentHash": "f51637c0f154bff83bed873ea8bacb3bc3d314e62a9865ae8310a43aa444d669",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "dx.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "dx.e0000001.problem.code": "F11.20",
+            "dx.e0000001.problem.label": "Demo problem",
+            "dx.e0000001.status": "resolved",
+            "dx.e0000001.steps": [
+              "education",
+              "referral",
+              "medication",
+              "other"
+            ],
+            "dx.e0000001.steps_other": "Demo"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "dx",
+              "text": "Demo diagnosis 1: Demo diagnosis: Demo problem (F11.20); Demo status: Demo resolved"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnosis 1, Demo diagnosis",
+              "value": "Demo problem (F11.20)"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnoses",
+              "value": "Demo diagnosis 1: Demo diagnosis: Demo problem (F11.20); Demo status: Demo resolved"
+            }
+          ],
+          "effectiveKeys": [
+            "dx.e0000001.entryAt",
+            "dx.e0000001.problem.code",
+            "dx.e0000001.problem.label",
+            "dx.e0000001.status"
+          ],
+          "readModelHash": "5632c844754ece05f600f4fd5a54ec27388671d1c51f4ae847c8473a2b702666",
+          "visibleHashes": {
+            "full": "1e72f074d3e2e16ec6f4752483ad55efec7d3505a775f02acf3228492f39e47d",
+            "noExams": "1e72f074d3e2e16ec6f4752483ad55efec7d3505a775f02acf3228492f39e47d",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "13c734977a1241e7f41739c09262fe21fc5a4ee1bd75d2b779674df3de013ee4",
+          "expansions": []
         }
       ]
     },
@@ -4073,7 +6345,16 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "883934d947936b594ab827e223647658ca0eba16e683e1362efbf3a7de2433a2",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -4086,7 +6367,16 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "883934d947936b594ab827e223647658ca0eba16e683e1362efbf3a7de2433a2",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4106,7 +6396,160 @@
               "text": "Demo reason: Demo trouble breathing"
             }
           ],
-          "readModelHash": "6b19be9d1b2e09e3dd7e7e8cd3d37a72ab3815de074be5d64e32381c62fbe133"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo reason",
+              "value": "Demo trouble breathing"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo EMS",
+              "value": "Demo reason: Demo trouble breathing"
+            }
+          ],
+          "effectiveKeys": [
+            "ems.reason"
+          ],
+          "readModelHash": "6b19be9d1b2e09e3dd7e7e8cd3d37a72ab3815de074be5d64e32381c62fbe133",
+          "visibleHashes": {
+            "full": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e",
+            "noExams": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e",
+            "noSensitive": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e"
+          },
+          "contentHash": "36ca06cf37e6253d2cc3c03bcdc6dbf9261e70e38644a5dd2f21765413c54513",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "ems.reason": "breathing",
+            "transport.went": true
+          },
+          "finishCheck": [
+            {
+              "section": "ems",
+              "path": "ems.called",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "ems",
+              "text": "Demo reason: Demo trouble breathing"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo reason",
+              "value": "Demo trouble breathing"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo EMS",
+              "value": "Demo reason: Demo trouble breathing"
+            }
+          ],
+          "effectiveKeys": [
+            "ems.reason"
+          ],
+          "readModelHash": "6b19be9d1b2e09e3dd7e7e8cd3d37a72ab3815de074be5d64e32381c62fbe133",
+          "visibleHashes": {
+            "full": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e",
+            "noExams": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e",
+            "noSensitive": "ac8c90db7624d47dec1789d558c2b2443e0329db4751b924ea2601f5fc6b0d5e"
+          },
+          "contentHash": "36ca06cf37e6253d2cc3c03bcdc6dbf9261e70e38644a5dd2f21765413c54513",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "ems.called": "12:00",
+            "ems.reason": "other",
+            "ems.reason_other": "Demo",
+            "transport.destination": "Demo",
+            "transport.went": true
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "ems",
+              "text": "Demo time EMS called: 12:00; Demo reason: Demo other: Demo"
+            },
+            {
+              "section": "transport",
+              "text": "Demo transported: Yes; Demo destination: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo time EMS called",
+              "value": "12:00"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo reason",
+              "value": "Demo other: Demo"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "transport",
+              "label": "Demo transported",
+              "value": "Yes"
+            },
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "transport",
+              "label": "Demo destination",
+              "value": "Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "ems",
+              "label": "Demo EMS",
+              "value": "Demo time EMS called: 12:00; Demo reason: Demo other: Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "transport",
+              "label": "Demo transport",
+              "value": "Demo transported: Yes; Demo destination: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "ems.called",
+            "ems.reason",
+            "ems.reason_other",
+            "transport.destination",
+            "transport.went"
+          ],
+          "readModelHash": "2b2ee58fb60750114d0e9532a25ce1cf16de92976abb02cf8fa2825eb0d6da49",
+          "visibleHashes": {
+            "full": "1ee05ba9cc9c770b6c82baaf883efa4ee7408d19df9805931906a90460ddb5e7",
+            "noExams": "1ee05ba9cc9c770b6c82baaf883efa4ee7408d19df9805931906a90460ddb5e7",
+            "noSensitive": "1ee05ba9cc9c770b6c82baaf883efa4ee7408d19df9805931906a90460ddb5e7"
+          },
+          "contentHash": "0b50253d9aca900be1477f8463dcab793b14c44571e823cb38180da6007099a9",
+          "expansions": []
         }
       ]
     },
@@ -4120,14 +6563,32 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "f32ba73cc8ec05306480ca026dde089aa3a217d1946c87224708b2986d7c84f2",
+          "expansions": []
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "f32ba73cc8ec05306480ca026dde089aa3a217d1946c87224708b2986d7c84f2",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4144,7 +6605,120 @@
               "text": "Demo where staying: Demo housed; Demo needs today: Demo food"
             }
           ],
-          "readModelHash": "501580682fa2b460d475ca30420aacb171c86070e4c170004750f93ac3a50116"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "housing",
+              "label": "Demo housing",
+              "value": "Demo where staying: Demo housed; Demo needs today: Demo food"
+            }
+          ],
+          "effectiveKeys": [
+            "housing.needs",
+            "housing.status"
+          ],
+          "readModelHash": "501580682fa2b460d475ca30420aacb171c86070e4c170004750f93ac3a50116",
+          "visibleHashes": {
+            "full": "93a68c12e950ae6596ddd2d8ccadfec61996a9571f3661c10ace77f2ece1ffe4",
+            "noExams": "93a68c12e950ae6596ddd2d8ccadfec61996a9571f3661c10ace77f2ece1ffe4",
+            "noSensitive": "93a68c12e950ae6596ddd2d8ccadfec61996a9571f3661c10ace77f2ece1ffe4"
+          },
+          "contentHash": "c301ebe78521812caa9b674aa803846eb669f96690ab643d560cd5cdea4fae66",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "housing.needs": [
+              "food",
+              "wound",
+              "talk"
+            ],
+            "housing.status": "housed"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "housing",
+              "text": "Demo where staying: Demo housed; Demo needs today: Demo food, Demo wound looked at, Demo someone to talk to"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "housing",
+              "label": "Demo housing",
+              "value": "Demo where staying: Demo housed; Demo needs today: Demo food, Demo wound looked at, Demo someone to talk to"
+            }
+          ],
+          "effectiveKeys": [
+            "housing.needs",
+            "housing.status"
+          ],
+          "readModelHash": "83fc0b45030aa8d6928d605690fa41768b04feb5dcf42958b134fe5d619f7c63",
+          "visibleHashes": {
+            "full": "fb51a6c67c89a8a61a726c2679d87bfb226f5f2a23e7eb7ff077cefa73d09a31",
+            "noExams": "fb51a6c67c89a8a61a726c2679d87bfb226f5f2a23e7eb7ff077cefa73d09a31",
+            "noSensitive": "fb51a6c67c89a8a61a726c2679d87bfb226f5f2a23e7eb7ff077cefa73d09a31"
+          },
+          "contentHash": "757f580297ef3a8f8b179fe24932d835ac80892d899d5be8b253262e61afde8a",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "housing.needs": [
+              "food",
+              "wound",
+              "talk"
+            ],
+            "housing.status": "outside",
+            "shelter.place": "Demo",
+            "shelter.tried": 10
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "housing",
+              "text": "Demo where staying: Demo outside; Demo needs today: Demo food, Demo wound looked at, Demo someone to talk to"
+            },
+            {
+              "section": "shelter",
+              "text": "Demo time looking: 1 week 3 days; Demo shelter tried: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "housing",
+              "label": "Demo housing",
+              "value": "Demo where staying: Demo outside; Demo needs today: Demo food, Demo wound looked at, Demo someone to talk to"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "shelter",
+              "label": "Demo shelter search",
+              "value": "Demo time looking: 1 week 3 days; Demo shelter tried: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "housing.needs",
+            "housing.status",
+            "shelter.place",
+            "shelter.tried"
+          ],
+          "readModelHash": "060e9e2367f1364125271cfaffa02f76299c12650851dc1f647c5b2df6af0446",
+          "visibleHashes": {
+            "full": "79e72c84f587e6761af48f24efe0dcfb51c7d373deac192eec41407a8abd7323",
+            "noExams": "79e72c84f587e6761af48f24efe0dcfb51c7d373deac192eec41407a8abd7323",
+            "noSensitive": "79e72c84f587e6761af48f24efe0dcfb51c7d373deac192eec41407a8abd7323"
+          },
+          "contentHash": "d2cd4d4fecff137a724849894cd4466b08d08be454b27c3f726a7185ed9ffec8",
+          "expansions": []
         }
       ]
     },
@@ -4219,7 +6793,16 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "700e467fb4b91116f706be1eb518cfa7047ae2ea44ff191cf76426e1a4d8d988",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -4287,7 +6870,44 @@
               "text": "Demo limb 1: Demo tone: Demo normal; Demo swelling: Demo none"
             }
           ],
-          "readModelHash": "ccb1e72b8c0d8352e7e2e6030c7293e75b91a4e72d69b8ce05123314e83a85ae"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "general",
+              "label": "Demo general look",
+              "value": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm, Demo dry; Demo reach score: 3; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "limbs",
+              "label": "Demo limbs",
+              "value": "Demo limb 1: Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "effectiveKeys": [
+            "general.blink",
+            "general.gaze",
+            "general.joints.hip",
+            "general.joints.knee",
+            "general.nerves",
+            "general.pain.left",
+            "general.pain.right",
+            "general.reach",
+            "general.skin",
+            "limbs.e0000001.entryAt",
+            "limbs.e0000001.swelling",
+            "limbs.e0000001.tone"
+          ],
+          "readModelHash": "ccb1e72b8c0d8352e7e2e6030c7293e75b91a4e72d69b8ce05123314e83a85ae",
+          "visibleHashes": {
+            "full": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d",
+            "noExams": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d",
+            "noSensitive": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d"
+          },
+          "contentHash": "fe4b400b912ca1c0415d5effc8e3e6872a6ec22b56b3e64a1c9e86bed3f93c32",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4369,7 +6989,288 @@
               "text": "Demo limb 1: Demo limb: Demo arm, Demo right; Demo tone: Demo normal; Demo swelling: Demo none"
             }
           ],
-          "readModelHash": "b239fa689407efd9409757b68cbd383fd9da5ef926de3e6c8d21a363d513a8bf"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "general",
+              "label": "Demo general look",
+              "value": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm; Demo chaperone present: Demo yes; Demo gait, Demo steady: Demo yes; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "history",
+              "label": "Demo history",
+              "value": "Demo symptoms: Demo none"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "limbs",
+              "label": "Demo limbs",
+              "value": "Demo limb 1: Demo limb: Demo arm, Demo right; Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "effectiveKeys": [
+            "general.blink",
+            "general.chaperone",
+            "general.gait.steady",
+            "general.gaze",
+            "general.joints.hip",
+            "general.joints.knee",
+            "general.nerves",
+            "general.skin",
+            "history.symptoms",
+            "limbs.e0000001.entryAt",
+            "limbs.e0000001.limb.region",
+            "limbs.e0000001.limb.side",
+            "limbs.e0000001.swelling",
+            "limbs.e0000001.tone"
+          ],
+          "readModelHash": "b239fa689407efd9409757b68cbd383fd9da5ef926de3e6c8d21a363d513a8bf",
+          "visibleHashes": {
+            "full": "02dbf24a4718f9725ed635486eb17c816a6213c2427c3ba1cc125f19ebb21fcf",
+            "noExams": "02dbf24a4718f9725ed635486eb17c816a6213c2427c3ba1cc125f19ebb21fcf",
+            "noSensitive": "02dbf24a4718f9725ed635486eb17c816a6213c2427c3ba1cc125f19ebb21fcf"
+          },
+          "contentHash": "ac640b8fe682e488b504d4558dc36d50b392499fa8b63433e5f466884acc00c3",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "general.blink": "present",
+            "general.gaze": "steady",
+            "general.joints.hip": "full",
+            "general.joints.knee": "full",
+            "general.nerveDetail": "equal",
+            "general.nerves": "intact",
+            "general.pain.left": 0,
+            "general.pain.right": 0,
+            "general.reach": 3,
+            "general.skin": [
+              "warm",
+              "dry"
+            ],
+            "limbs.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "limbs.e0000001.swelling": "none",
+            "limbs.e0000001.tone": "normal"
+          },
+          "finishCheck": [
+            {
+              "section": "general",
+              "path": "general.chaperone",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.story",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.onset",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.seenAt",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.howLong",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.confirmed",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.symptoms",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "general",
+              "text": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm, Demo dry; Demo reach score: 3; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "section": "limbs",
+              "text": "Demo limb 1: Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "general",
+              "label": "Demo general look",
+              "value": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm, Demo dry; Demo reach score: 3; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "limbs",
+              "label": "Demo limbs",
+              "value": "Demo limb 1: Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "effectiveKeys": [
+            "general.blink",
+            "general.gaze",
+            "general.joints.hip",
+            "general.joints.knee",
+            "general.nerves",
+            "general.pain.left",
+            "general.pain.right",
+            "general.reach",
+            "general.skin",
+            "limbs.e0000001.entryAt",
+            "limbs.e0000001.swelling",
+            "limbs.e0000001.tone"
+          ],
+          "readModelHash": "ccb1e72b8c0d8352e7e2e6030c7293e75b91a4e72d69b8ce05123314e83a85ae",
+          "visibleHashes": {
+            "full": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d",
+            "noExams": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d",
+            "noSensitive": "1d8829d33193537d000106d943f16ec0333908060cf3df54fbfa19c1c3e59c5d"
+          },
+          "contentHash": "fe4b400b912ca1c0415d5effc8e3e6872a6ec22b56b3e64a1c9e86bed3f93c32",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "general.blink": "absent",
+            "general.chaperone": "no",
+            "general.gait.steady": "no",
+            "general.gaze": "drifting",
+            "general.joints.hip": "limited",
+            "general.joints.knee": "limited",
+            "general.nerveDetail": "unequal",
+            "general.nerves": "focal",
+            "general.pain.left": 0,
+            "general.pain.right": 0,
+            "general.reach": 0,
+            "general.recheck": "no",
+            "general.remarks": "Demo",
+            "general.skin": [
+              "warm",
+              "rash",
+              "dry"
+            ],
+            "general.unableReach": true,
+            "history.confirmed": true,
+            "history.howLong": 10,
+            "history.onset": "2000-01-01",
+            "history.seenAt": "12:00",
+            "history.story": "Demo",
+            "history.symptoms": [
+              "cough",
+              "fever"
+            ],
+            "limbs.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "limbs.e0000001.extent": 0,
+            "limbs.e0000001.grip": 0,
+            "limbs.e0000001.limb.region": "groin",
+            "limbs.e0000001.limb.side": "left",
+            "limbs.e0000001.swelling": "severe",
+            "limbs.e0000001.tone": "increased",
+            "notes.noReach": "Demo",
+            "notes.pupilNote": "Demo",
+            "notes.reachNote": "Demo"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "general",
+              "text": "Demo recheck planned: Demo no; Demo nerves: Demo focal finding; Demo nerve detail: Demo pupils unequal; Demo skin: Demo warm, Demo rash, Demo dry; Demo chaperone present: Demo no; Demo gait, Demo steady: Demo no; Demo unable to test reach: Yes; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo remarks: Demo; Demo joints, Demo knee: Demo limited; Demo joints, Demo hip: Demo limited"
+            },
+            {
+              "section": "history",
+              "text": "Demo what happened: Demo; Demo onset: 2000-01-01; Demo time seen: 12:00; Demo how long: 1 week 3 days; Demo history confirmed: Yes; Demo symptoms: Demo cough, Demo fever"
+            },
+            {
+              "section": "notes",
+              "text": "Demo pupil note: Demo; Demo why no reach: Demo"
+            },
+            {
+              "section": "limbs",
+              "text": "Demo limb 1: Demo tone: Demo increased; Demo swelling: Demo severe; Demo swelling extent: 0; Demo grip: 0"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "general",
+              "label": "Demo general look",
+              "value": "Demo recheck planned: Demo no; Demo nerves: Demo focal finding; Demo nerve detail: Demo pupils unequal; Demo skin: Demo warm, Demo rash, Demo dry; Demo chaperone present: Demo no; Demo gait, Demo steady: Demo no; Demo unable to test reach: Yes; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo remarks: Demo; Demo joints, Demo knee: Demo limited; Demo joints, Demo hip: Demo limited"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "history",
+              "label": "Demo history",
+              "value": "Demo what happened: Demo; Demo onset: 2000-01-01; Demo time seen: 12:00; Demo how long: 1 week 3 days; Demo history confirmed: Yes; Demo symptoms: Demo cough, Demo fever"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "notes",
+              "label": "Demo notes",
+              "value": "Demo pupil note: Demo; Demo why no reach: Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "limbs",
+              "label": "Demo limbs",
+              "value": "Demo limb 1: Demo tone: Demo increased; Demo swelling: Demo severe; Demo swelling extent: 0; Demo grip: 0"
+            }
+          ],
+          "effectiveKeys": [
+            "general.chaperone",
+            "general.gait.steady",
+            "general.joints.hip",
+            "general.joints.knee",
+            "general.nerveDetail",
+            "general.nerves",
+            "general.pain.left",
+            "general.pain.right",
+            "general.recheck",
+            "general.remarks",
+            "general.skin",
+            "general.unableReach",
+            "history.confirmed",
+            "history.howLong",
+            "history.onset",
+            "history.seenAt",
+            "history.story",
+            "history.symptoms",
+            "limbs.e0000001.entryAt",
+            "limbs.e0000001.extent",
+            "limbs.e0000001.grip",
+            "limbs.e0000001.limb.region",
+            "limbs.e0000001.limb.side",
+            "limbs.e0000001.swelling",
+            "limbs.e0000001.tone",
+            "notes.noReach",
+            "notes.pupilNote"
+          ],
+          "readModelHash": "45199f0e5ce6fcafd48d8f571b2a52ac9359a633941408bfa9d28691247ad99f",
+          "visibleHashes": {
+            "full": "74b116aeb33228311a5b21c58fc50d5fcfb6520b3936aeebec449d502b9a4f2f",
+            "noExams": "810ba980a28bb6996defcf2dd48272bdfb13471d7b11ee53abc1e20ba7ac116d",
+            "noSensitive": "810ba980a28bb6996defcf2dd48272bdfb13471d7b11ee53abc1e20ba7ac116d"
+          },
+          "contentHash": "49b2fd836cb6477a986114277410f30c8d38c87019f6007f93728ad3eb664068",
+          "expansions": []
         }
       ]
     },
@@ -4383,14 +7284,32 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "8acd752d5cd6e1b95c627d6f94896ccf42a7a2d289aa834f1f33dc0647cf6977",
+          "expansions": []
         },
         {
           "name": "normal",
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "8acd752d5cd6e1b95c627d6f94896ccf42a7a2d289aa834f1f33dc0647cf6977",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4410,7 +7329,129 @@
               "text": "Demo areas checked: Demo head; Demo marks found, Demo head: Demo none; Demo spot: Demo arm, Demo right"
             }
           ],
-          "readModelHash": "7ead9c8ee5c1965d26852a04ceee3be84faea178707c9bd210cfdfd4874fa28f"
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "body",
+              "label": "Demo areas checked",
+              "value": "Demo head"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "body",
+              "label": "Demo body check",
+              "value": "Demo areas checked: Demo head; Demo marks found, Demo head: Demo none; Demo spot: Demo arm, Demo right"
+            }
+          ],
+          "effectiveKeys": [
+            "body.areas",
+            "body.marks.groin",
+            "body.marks.head",
+            "body.spot.region",
+            "body.spot.side"
+          ],
+          "readModelHash": "7ead9c8ee5c1965d26852a04ceee3be84faea178707c9bd210cfdfd4874fa28f",
+          "visibleHashes": {
+            "full": "f2a27e027da03d0f1e7dd27640ebb46ee198cb7a561b4ebd0cdcc336f6f80bee",
+            "noExams": "34f74e60de8df5b6fcc63a9353151d55d0d141687a0ae1e1b0b54e9124cf453e",
+            "noSensitive": "34f74e60de8df5b6fcc63a9353151d55d0d141687a0ae1e1b0b54e9124cf453e"
+          },
+          "contentHash": "37ab4d6c735541e7e3035f18eb8e806b1797a39f473e8f2776c682057294cdcb",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "8acd752d5cd6e1b95c627d6f94896ccf42a7a2d289aa834f1f33dc0647cf6977",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "body.areas": [
+              "head",
+              "groin",
+              "private",
+              "other"
+            ],
+            "body.areas_other": "Demo",
+            "body.marks.groin": "other",
+            "body.marks.groin_other": "Demo",
+            "body.marks.head": "other",
+            "body.marks.head_other": "Demo",
+            "body.spot.region": "groin",
+            "body.spot.side": "left",
+            "reason.dx.code": "F11.20",
+            "reason.dx.label": "Demo problem",
+            "reason.since": "2000-01-01"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "reason",
+              "text": "Demo main diagnosis: Demo problem (F11.20); Demo since: 2000-01-01"
+            },
+            {
+              "section": "body",
+              "text": "Demo areas checked: Demo head, Demo other; Demo marks found, Demo head: Demo other: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "field",
+              "note": 0,
+              "section": "body",
+              "label": "Demo areas checked",
+              "value": "Demo head, Demo other"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "reason",
+              "label": "Demo reason for visit",
+              "value": "Demo main diagnosis: Demo problem (F11.20); Demo since: 2000-01-01"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "body",
+              "label": "Demo body check",
+              "value": "Demo areas checked: Demo head, Demo other; Demo marks found, Demo head: Demo other: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "body.areas",
+            "body.areas_other",
+            "body.marks.groin",
+            "body.marks.groin_other",
+            "body.marks.head",
+            "body.marks.head_other",
+            "body.spot.region",
+            "body.spot.side",
+            "reason.dx.code",
+            "reason.dx.label",
+            "reason.since"
+          ],
+          "readModelHash": "3e136b18b969c09d5e8ceee1f45bf02ffa1da096a1e7ff1b0684e5b1d89ba578",
+          "visibleHashes": {
+            "full": "a9abde7387047c1f2f3977230dc047aa01ce74694d1c8a64d01767b263850718",
+            "noExams": "88379fd16b270027869955157a2fbeb9d361b44e2811c54e38b100557bf96586",
+            "noSensitive": "d2071accc8ff7b01694a68d3b590ad863233597953506740b9f183ef1ddad6cc"
+          },
+          "contentHash": "99cd7497a6484716a396a52b2e4d16f207f701aae2c950df426a3a9a4ca63e72",
+          "expansions": []
         }
       ]
     },
@@ -4435,7 +7476,16 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "81390f2bf727b9b970628e0581b596516499872b9332e58de95747996c175e02",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -4453,7 +7503,16 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "81390f2bf727b9b970628e0581b596516499872b9332e58de95747996c175e02",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4471,7 +7530,116 @@
             }
           ],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "81390f2bf727b9b970628e0581b596516499872b9332e58de95747996c175e02",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "strength",
+              "path": "strength.hands.grip.score",
+              "problem": "required"
+            },
+            {
+              "section": "strength",
+              "path": "strength.hands.pinch.score",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "81390f2bf727b9b970628e0581b596516499872b9332e58de95747996c175e02",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "assess.dx.code": "F11.20",
+            "assess.dx.label": "Demo problem",
+            "assessMore.more": "Demo",
+            "care.plan": "Demo",
+            "strength.hands.grip.score": 0,
+            "strength.hands.grip.unable": true,
+            "strength.hands.pinch.score": 0,
+            "strength.hands.pinch.unable": true,
+            "strength.notes.comment": "Demo"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "strength",
+              "text": "Demo hands, Demo grip, Demo unable to test: Yes; Demo hands, Demo pinch, Demo unable to test: Yes"
+            },
+            {
+              "section": "care",
+              "text": "Demo plan: Demo"
+            },
+            {
+              "section": "assess",
+              "text": "Demo diagnosis: Demo problem (F11.20)"
+            },
+            {
+              "section": "assessMore",
+              "text": "Demo more: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "strength",
+              "label": "Demo strength",
+              "value": "Demo hands, Demo grip, Demo unable to test: Yes; Demo hands, Demo pinch, Demo unable to test: Yes"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "assess",
+              "label": "Demo assessment",
+              "value": "Demo diagnosis: Demo problem (F11.20)"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "assessMore",
+              "label": "Demo more assessment",
+              "value": "Demo more: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "assess.dx.code",
+            "assess.dx.label",
+            "assessMore.more",
+            "care.plan",
+            "strength.hands.grip.unable",
+            "strength.hands.pinch.unable",
+            "strength.notes.comment"
+          ],
+          "readModelHash": "0cfb17a54be2e82586c736f7c7d7cda607b89e3e0ea7a9a410d160bcdb7ab8a8",
+          "visibleHashes": {
+            "full": "8e47594993e6900deeba8febb4bec3a8552f913d74d9f74238df3e16d28b3b57",
+            "noExams": "c254169648f01965549e8ed0d30289aade63ea7a4c6f598a1327e9ae07f59911",
+            "noSensitive": "9f119cdca8ec975597dc6a0e8fdde7322a59b74529d2bfec8a5301c79be6a90c"
+          },
+          "contentHash": "8d0d2aee77c4ef7314adb41cfe34012b3826efb8020cbb209ee025c19561c925",
+          "expansions": []
         }
       ]
     },
@@ -4485,7 +7653,16 @@
           "answers": {},
           "finishCheck": [],
           "recapLines": [],
-          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+          "handoffLines": [],
+          "effectiveKeys": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+          "visibleHashes": {
+            "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "contentHash": "aba8030d6645b483f1f8c199d745ff639b3b8eb080969c525e5eaf4de417f33a",
+          "expansions": []
         },
         {
           "name": "normal",
@@ -4501,7 +7678,28 @@
               "text": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
             }
           ],
-          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "look",
+              "label": "Demo look",
+              "value": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            }
+          ],
+          "effectiveKeys": [
+            "look.a",
+            "look.b",
+            "look.c"
+          ],
+          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5",
+          "visibleHashes": {
+            "full": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0",
+            "noExams": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0",
+            "noSensitive": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0"
+          },
+          "contentHash": "e907d7f4320636035dfd6810f1a337a2bf347ec253447903399210b76b78f5cf",
+          "expansions": []
         },
         {
           "name": "first",
@@ -4517,7 +7715,136 @@
               "text": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
             }
           ],
-          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5"
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "look",
+              "label": "Demo look",
+              "value": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            }
+          ],
+          "effectiveKeys": [
+            "look.a",
+            "look.b",
+            "look.c"
+          ],
+          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5",
+          "visibleHashes": {
+            "full": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0",
+            "noExams": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0",
+            "noSensitive": "d4b805c5f5f9c930e422bc4c8274d79b5324f3aee23ba342bcd77e23234bced0"
+          },
+          "contentHash": "e907d7f4320636035dfd6810f1a337a2bf347ec253447903399210b76b78f5cf",
+          "expansions": []
+        },
+        {
+          "name": "systems",
+          "answers": {
+            "dx.none": true,
+            "look.a": "ok",
+            "look.b": "ok",
+            "look.c": "ok"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "look",
+              "text": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            },
+            {
+              "section": "dx",
+              "text": "Demo nothing found: Yes"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "look",
+              "label": "Demo look",
+              "value": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnosis",
+              "value": "Demo nothing found: Yes"
+            }
+          ],
+          "effectiveKeys": [
+            "dx.none",
+            "look.a",
+            "look.b",
+            "look.c"
+          ],
+          "readModelHash": "88afd8f10a739b9eb6b931ad58adbe02c27513ad7795198a63540ec497eda986",
+          "visibleHashes": {
+            "full": "d8341439ef2c031c71d60f7f93461019235f41005b8fab2b9cc0ed1ef928c743",
+            "noExams": "d8341439ef2c031c71d60f7f93461019235f41005b8fab2b9cc0ed1ef928c743",
+            "noSensitive": "d8341439ef2c031c71d60f7f93461019235f41005b8fab2b9cc0ed1ef928c743"
+          },
+          "contentHash": "20c5e39ae6442e4c8081971c87dff5c9592033f214fedb2fd7306f4aa13b1fb0",
+          "expansions": []
+        },
+        {
+          "name": "every",
+          "answers": {
+            "dx.none": true,
+            "dx.notes": "Demo",
+            "dx.problem.code": "F11.20",
+            "dx.problem.label": "Demo problem",
+            "look.a": "bad",
+            "look.b": "bad",
+            "look.c": "bad",
+            "look.d": "Demo",
+            "look.e": "Demo"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "look",
+              "text": "Demo a: Demo bad; Demo b: Demo bad; Demo c: Demo bad; Demo d: Demo; Demo e: Demo"
+            },
+            {
+              "section": "dx",
+              "text": "Demo nothing found: Yes; Demo notes: Demo"
+            }
+          ],
+          "handoffLines": [
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "look",
+              "label": "Demo look",
+              "value": "Demo a: Demo bad; Demo b: Demo bad; Demo c: Demo bad; Demo d: Demo; Demo e: Demo"
+            },
+            {
+              "kind": "recap",
+              "note": 0,
+              "section": "dx",
+              "label": "Demo diagnosis",
+              "value": "Demo nothing found: Yes; Demo notes: Demo"
+            }
+          ],
+          "effectiveKeys": [
+            "dx.none",
+            "dx.notes",
+            "look.a",
+            "look.b",
+            "look.c",
+            "look.d",
+            "look.e"
+          ],
+          "readModelHash": "a71779c3dabfde25b5dfb911ff47fdb5925f4298a14445c85c6c2933423ce473",
+          "visibleHashes": {
+            "full": "cf627461449cfd37399ba6ea6453b9c54f6dec00f727455dc7af2f97d1917e76",
+            "noExams": "cf627461449cfd37399ba6ea6453b9c54f6dec00f727455dc7af2f97d1917e76",
+            "noSensitive": "cf627461449cfd37399ba6ea6453b9c54f6dec00f727455dc7af2f97d1917e76"
+          },
+          "contentHash": "4aebe3201b01b0a2b53e02fae71b625528de29b582f0cd146ce593bb0974135d",
+          "expansions": []
         }
       ]
     }

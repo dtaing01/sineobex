@@ -131,3 +131,47 @@ describe('note content hash', () => {
     });
   }
 });
+
+// The forms package's golden file pins a content hash for every case it makes on the real note
+// types, worked out by packages/forms/scripts/golden.ts (which cannot load this service), and the
+// phone's golden test holds its own noteContentHash to it. This holds that hash to the API's, so
+// the three agree on the real forms, not only on the vectors' small definitions.
+describe('the content hashes of the forms golden file', () => {
+  type Golden = {
+    key: string;
+    cases: { name: string; answers: Answers; contentHash: string }[];
+  }[];
+  type Preset = { key: string; version: number; definition: ResolvedNoteType };
+  const read = (path: string) =>
+    JSON.parse(readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8')) as unknown;
+  const sample = read('apps/mobile/test/forms/golden_sample.json') as { presets: Preset[]; golden: Golden };
+  const sets: [string, Preset[], Golden][] = [
+    [
+      'the real note types',
+      read('packages/forms/generated/presets.json') as Preset[],
+      read('packages/forms/generated/golden.json') as Golden,
+    ],
+    ['the sample', sample.presets, sample.golden],
+  ];
+  const NOTE = {
+    noteId: '00000000-0000-4000-8000-000000000001',
+    encounterId: '00000000-0000-4000-8000-000000000002',
+    patientId: '00000000-0000-4000-8000-000000000003',
+    summary: 'Demo summary',
+  };
+
+  for (const [what, presets, golden] of sets)
+    it(`${what}: each case's content hash is the API's`, async () => {
+      expect(golden.length).toBe(presets.length);
+      for (const [index, preset] of presets.entries())
+        for (const c of golden[index]!.cases)
+          expect(
+            await noteContentHash({ ...NOTE, definition: preset.definition, answers: c.answers }),
+            `${preset.key} ${c.name}`,
+          ).toBe(c.contentHash);
+    });
+
+  it('the sample has cases to hold', () => {
+    expect(sample.golden.flatMap((g) => g.cases).length).toBeGreaterThan(50);
+  });
+});
