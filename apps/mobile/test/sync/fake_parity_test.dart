@@ -4149,7 +4149,8 @@ void main() {
     // version...', 'a patient is never taken off a visit', 'a sign-off from someone who does not act as
     // the author...', 'keeps the rest in history: ... someone else’s reopen', '1. whoever does not act
     // as the author is told...', 'a Non-Medical note is completed: ...' and '2. a note reopened since
-    // is edited as a draft...'.
+    // is edited as a draft...'. services/api/test/sync-corrections.test.ts walks the same rows under
+    // this case's name (review finding FAK-7).
     test('what is accepted with no effect, in place of a refusal: each row of the second table of 4.1', () async {
       server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
       final p = server.seedPatient();

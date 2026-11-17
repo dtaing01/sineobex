@@ -1419,4 +1419,97 @@ describe('phase 4 sync: addenda and corrections', () => {
       ]);
     });
   });
+
+  // Rule 17 of lifecycle 4.9: the second table of 4.1, row by row, on one visit, as the parity case of
+  // the same name walks it (apps/mobile/test/sync/fake_parity_test.dart; review finding FAK-7). Each
+  // row also has its own case where its rule is built.
+  it('what is accepted with no effect, in place of a refusal: each row of the second table of 4.1', async () => {
+    const alex = await who('alex17@example.com', 'Alex (demo)', 'attending');
+    const blair = await who('blair17@example.com', 'Blair (demo)', 'attending');
+    const visit = await visitOf(alex, patientId);
+    await finishNote(
+      alex,
+      await noteOn(alex, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' }),
+      'sign',
+      'signed',
+    );
+    const answers = { 'care.plan': 'Demo: rest and fluids' };
+    const medical = await noteOn(alex, visit, TEST_MEDICAL_TYPE, answers);
+    const social = await noteOn(alex, visit, TEST_NOTE_TYPE, answers);
+    const waiting = await noteOn(alex, visit, TEST_MEDICAL_TYPE, answers);
+    await finishNote(alex, waiting, 'complete', 'completed');
+    const finished = await noteOn(alex, visit, TEST_MEDICAL_TYPE, answers);
+    await finishNote(alex, finished, 'sign', 'signed');
+
+    const set = (
+      c: Clinician,
+      entity: 'encounter' | 'encounter_note',
+      recordId: string,
+      field: string,
+      value: unknown,
+      baseVersion = 1,
+    ) => c.phone.change({ entity, recordId, op: 'set', field, value, baseVersion });
+    const correction = (c: Clinician, n: HeldNote) =>
+      c.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: n.noteId,
+          changes: [{ field: 'data.care.plan', newValue: 'Demo: fluids', baseVersion: 1 }],
+          reason: 'Demo: the wrong field was picked',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: null,
+          signoffId: null,
+        },
+      });
+    const since = new Date();
+    const rows: [Clinician, Change, Record<string, unknown>][] = [
+      // A set of a note's status to completed (an old build): kept in history.
+      [
+        alex,
+        await set(alex, 'encounter_note', medical.noteId, 'status', 'completed'),
+        { outcome: 'history_only', problem: 'use_signoff' },
+      ],
+      // The kind back to Non-Medical, a patient taken off: kept in history.
+      [
+        alex,
+        await set(alex, 'encounter', visit.encounterId, 'kind', 'non_medical'),
+        { outcome: 'history_only', problem: 'kind_cannot_go_back' },
+      ],
+      [
+        alex,
+        await set(alex, 'encounter', visit.encounterId, 'patientId', null),
+        { outcome: 'history_only', problem: 'patient_cannot_be_removed' },
+      ],
+      // A sign-off, a reopen or a correction from someone who does not act as the author: stored with
+      // no effect, and the sender told.
+      [blair, await signoffOf(blair, medical, 'sign'), { effect: 'none', reason: 'not_author' }],
+      [
+        blair,
+        await set(blair, 'encounter_note', waiting.noteId, 'status', 'draft', 2),
+        { outcome: 'history_only', problem: 'not_author' },
+      ],
+      [blair, await correction(blair, finished), { outcome: 'not_author' }],
+      // `sign` on a Non-Medical note is a `complete`.
+      [alex, await signoffOf(alex, social, 'sign'), { effect: 'completed' }],
+      // A correction to a note that is a draft is an edit to the draft.
+      [alex, await correction(alex, medical), { outcome: 'draft_edit' }],
+    ];
+    for (const [c, change, details] of rows) {
+      const [answered] = await c.send(change);
+      expect(answered, `${change.entity} ${change.field ?? change.op}`).toMatchObject({
+        status: 'accepted',
+        details,
+      });
+    }
+    const notices = await h.scratch.owner<{ userId: string; kind: string }[]>`
+      select user_id as "userId", kind from sineobex.user_notices where created_at >= ${since}
+        and user_id in (${alex.id}, ${blair.id}) order by created_at, id`;
+    expect(notices).toEqual([1, 2, 3].map(() => ({ userId: blair.id, kind: 'change_not_applied' })));
+    const [care] = await h.scratch.owner<{ plan: string; status: string }[]>`
+      select (select data->>'care.plan' from sineobex.encounter_notes where id = ${medical.noteId}) as plan,
+             (select status from sineobex.encounter_notes where id = ${social.noteId}) as status`;
+    expect(care).toEqual({ plan: 'Demo: fluids', status: 'completed' });
+  });
 });
