@@ -546,7 +546,7 @@ As built (unit F3):
   or platform scope, the two arms of 0017's policy. `presets` is `PRESETS` when left out, the
   export's `generated/presets.json` imported as JSON. The tests install the fixture note types
   instead (passed in, or put in that file's place for the API's tests), since the real file is
-  empty until the definitions are typed.
+  empty until the definitions are released (D78, below).
 - **What it does.** It reads the key, version and hash of every row the team holds, then writes
   every preset the team lacks in one statement (`insert ... select ... from
   jsonb_to_recordset(...) on conflict do nothing returning key, version`), each row
@@ -573,16 +573,31 @@ As built (unit F3):
   team and how many versions) and is not named: the log's allowlist has no key for it, and the
   team's rows name it. The list still answers, with the row the team holds for that key.
 
-**Decided Nov 17 (D78), built in wave D before the first release: a draft is never a preset.**
-As built in wave C, the export writes every version it resolves to `generated/presets.json`,
-drafts included, and the installer keeps what it is given for good. A draft installed in a team
-and then changed, as a draft may be (4.2), would be reported as "a released version was edited":
-the list route would skip every version of that key in each team holding the old draft, and a
-second seed would throw. So the export writes to the presets, and so to the phone's copy and the
-golden file, only the versions whose `#resolved` line the lock holds, and prints each draft as a
-note; a release run writes the lock first and the presets after it. A version a team holds then
-never changes, and `PresetDiffers` means what it says. A released flag on each preset was the
-other way out; it would put one rule in two places, the installer and the phone.
+**Decided Nov 17 (D78), built in wave D (`ed3da5b`): a draft is never a preset.** As built in
+wave C, the export wrote every version it resolved to `generated/presets.json`, drafts included,
+and the installer keeps what it is given for good. A draft installed in a team and then changed,
+as a draft may be (4.2), would be reported as "a released version was edited": the list route
+would skip every version of that key in each team holding the old draft, and a second seed would
+throw. So a version a team holds must never change, and then `PresetDiffers` means what it says.
+A released flag on each preset was the other way out; it would put one rule in two places, the
+installer and the phone.
+
+As built:
+
+- **The export still checks every version**, drafts included, and writes to the presets, and so
+  to the phone's copy and the golden file, only those whose `<file>#resolved` line the lock holds.
+  The lock holds that line only with the file's own (`lock.resolved_alone`, 4.2). Every other
+  version is printed as a note: "is a draft: the lock does not hold its resolved line, so it is
+  checked and not written to the presets".
+- **A release run** works out the lock (`lockOf`), writes it, and only then writes the presets,
+  from that lock: every version it releases is a preset in the same run, and the presets never
+  name a version the lock on disk does not hold. The command's last line counts the released
+  versions it wrote, and on a release says so first: "Released the tree in
+  definitions.lock.json; wrote generated/presets.json and the phone's copy: N released note type
+  version(s)."
+- **Until F6-release** the tree has no lock, so the presets, the phone's copy and `golden.json`
+  are `[]` though every note type is typed. A test that needs presets releases a fixture tree
+  first.
 
 ### 3.3 Routes
 
@@ -743,23 +758,24 @@ As built (unit E, `packages/forms/scripts/export.ts`, run as `pnpm forms:export`
   is printed once, as its file, its place, its rule and its message, then a count; the command
   exits 1.
 - **What it writes**, when nothing fails: `generated/presets.json` and the phone's copy, the same
-  text in the same run. It holds every note type version that resolved, as
-  `{ key, version, hash, definition }`, ordered by key and then by version as a number (10 after
-  2). `hash` is `sha256Hex(canonicalJson(definition))`, as the server stores it (3.1), and
-  `definition` is that canonical JSON read back, so its keys are in canonical order: a file with
-  its keys in another order writes the same bytes, as the lock and the hash read it. With no note
-  type it writes `[]`.
+  text in the same run. It holds every released note type version (D78, 3.2: a draft is checked
+  and never written), as `{ key, version, hash, definition }`, ordered by key and then by version
+  as a number (10 after 2). `hash` is `sha256Hex(canonicalJson(definition))`, as the server
+  stores it (3.1), and `definition` is that canonical JSON read back, so its keys are in canonical
+  order: a file with its keys in another order writes the same bytes, as the lock and the hash
+  read it. With no version released it writes `[]`.
 - **Notes fail nothing.** Before any problem it prints, each as `note`, its file and its message:
   a piece no definition names yet, a module or list no note type uses yet (known only when every
-  note type resolved), and for each note type version the most answers a note on it can hold
-  (2.4). The local drift step (`tools/ci-local.sh`) leaves the notes out of what it prints.
+  note type resolved), for each note type version the most answers a note on it can hold (2.4),
+  and each version that is a draft (3.2). The local drift step (`tools/ci-local.sh`) leaves the
+  notes out of what it prints.
 - **The release mode**, `pnpm forms:export --release` (card F6-release). A released file can
   never change again, so nothing is released that nothing checks or uses: what the notes call
   unused becomes a problem, `export.unused_file`, and nothing is written. When every check
   passes it writes `definitions.lock.json` (`lockOf` with the pieces) over every file present:
-  each note type version, module, list and piece file, and each version's `#resolved` hash.
-  Without `--release` the lock is never written, so nothing is released by accident. Any other
-  argument is refused.
+  each note type version, module, list and piece file, and each version's `#resolved` hash. Then
+  it writes the presets, from that lock (3.2). Without `--release` the lock is never written, so
+  nothing is released by accident. Any other argument is refused.
 - **The golden file is a command of its own**, `pnpm --filter @sineobex/forms golden`
   (`scripts/golden.ts`, 7.3), run after the export, whose presets it reads.
 
@@ -770,7 +786,7 @@ As built (unit E, `packages/forms/scripts/export.ts`, run as `pnpm forms:export`
 | The JSON Schema (`src/schema.ts`, `checkFile`) | A misspelt key, a missing label, a wrong type, a pattern or a limit of 2.2 and 2.4 |
 | The resolver (`src/resolve.ts`) | A note type file that is not there (`resolve.missing_file`); an include of a module or version that does not exist (`resolve.unknown_module`); a list that does not exist, the `surface` list a region asks for included (`resolve.unknown_list`); a file whose content names another key, name or version than its path (`resolve.misplaced_file`) |
 | The semantic validator (`src/validate.ts`) | Two fields with one ID; a reserved ID (`entryAt`, `entryRemoved`); a condition that names no field; a path of five parts, or a path part the server would refuse; an option code used twice; an exclusive option in a choose-one field; a `required` field that can never be visible; a `mapsTo` that names no field. Every rule, with its name, is listed below the table. |
-| The lock (`definitions.lock.json`, `src/lock.ts`) | A released version file, module, list or piece file whose content changed (`lock.changed`) or that is gone (`lock.missing`); a released version whose resolved definition's hash changed while its files did not (`lock.changed`, at the version's file); a released file that includes, names or is checked against a part that is not released, or a released version whose resolved hash the lock does not hold (`lock.unreleased_part`) |
+| The lock (`definitions.lock.json`, `src/lock.ts`) | A released version file, module, list or piece file whose content changed (`lock.changed`) or that is gone (`lock.missing`); a released version whose resolved definition's hash changed while its files did not (`lock.changed`, at the version's file); a released file that includes, names or is checked against a part that is not released, or a released version whose resolved hash the lock does not hold (`lock.unreleased_part`); a version's resolved hash held without its file's own line (`lock.resolved_alone`, at the lock's line) |
 | Version rules (2.6, `src/versions.ts`) | A path or code reused for another meaning: a kind or a unit that changed, or a label that changed with no rename declared, against every earlier version |
 | The spec check (`src/spec-check.ts`) | For each file whose sections name a piece: a word of the piece that is no option label of those sections, and an option label there that is no word of the piece, unless `<piece>.diff.json` declares it; a declaration that nothing needs |
 | The shape check (`src/shape-check.ts`) | A definition whose structure differs from `definitions/spec/<piece>.shape.json`, which the planner writes for each piece: every key of every section and field (path, kind, label, choose-one or choose-many, which options carry which flag, `showWhen`, `required`, `sides`, `noNormal` and the rest), the option codes in order, the order of sections and fields, the file the piece is for and the note type's header (below). So a wrong choose-one, a wrong condition, a missing flag or a crossed code fails the export. |
@@ -862,6 +878,14 @@ changed. A file is released by adding its line; a file with no line is a draft a
 The export writes each preset's definition in canonical key order too (4.1), so the generated
 files do not change either when a file's keys are reordered.
 
+**A version is released whole, as built** (wave D's review). The `#resolved` line is what makes
+a version a preset (3.2). Held without the file's own line, in a lock written by hand, it would
+make a preset of a version whose file and parts are checked as a draft: they could change, or
+the file go and the version leave the presets, with nothing said. So `checkLock`
+refuses such a line as `lock.resolved_alone`, at the line, and a version is released with both
+lines or not at all. A version whose file is gone with both lines still held is `lock.missing`,
+from its file's line.
+
 **The lock only grows, as built** (wave C's review). The export holds the tree to whatever lock it
 finds, so a lock deleted or emptied would release nothing and every check would pass. The drift
 step therefore also runs `pnpm --filter @sineobex/forms lock-grows <base>`
@@ -873,6 +897,13 @@ released before. The base is the merge base with `origin/main` in `tools/ci-loca
 the pull request's base, else the commit before the push, else `origin/main`, and the job fetches
 the whole history. A run started by hand on `main` compares the lock with itself, and checks
 nothing.
+
+**Not closed yet (found in wave D's review).** On a pull request's branch every base is a commit
+of `main`, and `main` holds no lock until a release is merged. While the release sits on the
+branch, a released version could be edited and released again with every check green. A second
+`lock-grows` run against the branch's own earlier state closes it: in CI the commit before the
+push (`github.event.before`, which a pull request's update carries), locally `origin/<the
+branch>` when that ref exists.
 
 **The drift step, as built** (`tools/ci-local.sh` and the `forms` job of
 `.github/workflows/ci.yml`): the export, the golden script (7.3), `lock-grows`, then a failure
@@ -915,12 +946,16 @@ the place it was written (through the resolver's origins), once:
   a problem field outside a repeating section. Neither interpreter nor the renderer depends on
   them.
 - **A grid with sides whose cell is, or holds, a region or a problem is refused (D80, decided
-  Nov 17, built in wave D).** As built in wave C, `sides_not_allowed` refuses `sides` on a region
-  or a problem, and on a cell whose grid has sides, but not on such a grid. It passes, and that
-  cell stores no side: a region has a side of its own, and the path model of both interpreters
-  gives the cell none (2.3). Refusing it keeps one path model; giving such a cell sides would need
-  a second side part and new `fieldAt` vectors for a shape no piece's plan holds (the seven grids
-  with sides have a choice or a number in their cell).
+  Nov 17, built in wave D, `282c155`).** As built in wave C, `sides_not_allowed` refused `sides`
+  on a region or a problem, and on a cell whose grid has sides, but not on such a grid. It passed,
+  and that cell stored no side: a region has a side of its own, and the path model of both
+  interpreters gives the cell none (2.3). Now `sides_not_allowed` is reported at the grid's
+  `sides` when its cell is a region or a problem, or is a group holding one at any depth. Refusing
+  it keeps one path model; giving such a cell sides would need a second side part and new
+  `fieldAt` vectors for a shape no piece's plan holds (the seven grids with sides in the plans,
+  and the two in the fixtures and vectors, have a choice or a number in their cell). A group cell
+  is refused twice: every field in it already has a path of five parts (`path_too_long`), and the
+  grid's own problem says what is wrong with the grid.
 
 ### 4.3 How one piece of SPEC maps to data
 
