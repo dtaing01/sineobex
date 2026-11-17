@@ -844,7 +844,9 @@ class FakeSyncServer {
         if (medical && records[v['encounterId']]!.fields['patientId']?.value == null) {
           return _invalid('medical_note_needs_patient');
         }
-        final gated = _medicalGate(actor, medical);
+        final gated =
+            _medicalGate(actor, medical) ??
+            _needsGate(actor, noteType, ((v['data'] as Map<String, Object?>?) ?? const {}).keys);
         if (gated != null) return gated;
         for (final MapEntry(key: path, :value) in ((v['data'] as Map<String, Object?>?) ?? const {}).entries) {
           final problem = _byDefinition(() => checkAnswer(noteType!, path, value));
@@ -1396,6 +1398,8 @@ class FakeSyncServer {
     final gated = _medicalGate(s.actor, s.rec.medical);
     if (gated != null) return gated;
     if (s.field == 'status') return _noteStatusSet(s);
+    final needed = _needsGate(s.actor, _noteTypeOf(s.rec), [s.field.substring('data.'.length)]);
+    if (needed != null) return needed;
     if (_noteStatusOf(s.rec) != 'draft') return _draftSet(s);
     final type = _noteTypeOf(s.rec);
     if (type == null) return _draftSet(s);
@@ -1446,9 +1450,9 @@ class FakeSyncServer {
   }
 
   /// A set of an answer the sender may not see (note.ts hiddenFromSender, lifecycle 6.4 rule 5): what
-  /// the answer holds now, or would hold, is hidden from them, or its section needs a capability their
-  /// credential lacks. Held for a Program Admin before anything answers with the value held there.
-  /// The acting author always sets their own note's answers, and an admin's accept passes.
+  /// the answer holds now, or would hold, is hidden from them. Held for a Program Admin before
+  /// anything answers with the value held there. The acting author sees all of their note, and an
+  /// admin's accept passes. A section that needs a capability is _needsGate's.
   Map<String, Object?>? _hiddenFromSender(_SetContext s) {
     if (!s.field.startsWith('data.') || s.actor.approvedBy != null) return null;
     if (s.actor.userId == _actingAuthor(s.rec)) return null;
@@ -1459,7 +1463,6 @@ class FakeSyncServer {
     final answers = _answersOf(s.rec);
     final hidden = _byDefinition(
       () =>
-          (fieldAt(type, path)?.section.needs == 'orderMedications' && !reader.ordersMedications) ||
           (answers.containsKey(path) && answerHidden(type, answers, path, answers[path], reader)) ||
           answerHidden(type, answers, path, s.value, reader),
     );
@@ -1543,6 +1546,19 @@ class FakeSyncServer {
         ? value.toSet()
         : const <Object?>{};
     return holds.options.any((o) => o.sensitiveExam && picked.contains(o.code));
+  }
+
+  /// The gate of a section that needs a capability (note.ts needsGate, lifecycle 4.2, 6.4 rule 5): an
+  /// answer of a `needs: orderMedications` section, in a create, a set or a correction, needs an
+  /// active credential that orders medications, read now, whoever acts as the author. Held for a
+  /// Program Admin, whose accept passes.
+  Map<String, Object?>? _needsGate(_Actor actor, NoteTypeDef? type, Iterable<String> paths) {
+    if (type == null || actor.approvedBy != null) return null;
+    final needs = _byDefinition(() => paths.any((path) => fieldAt(type, path)?.section.needs == 'orderMedications'));
+    if (!needs) return null;
+    return !_removed(actor.userId) && capabilities[credentialOf(actor.userId)]!.orderMedications
+        ? null
+        : _rejected('permission');
   }
 
   /// The Medical gate (note.ts medicalGate, lifecycle 4.2): a change to a Medical note needs a
@@ -2035,10 +2051,13 @@ class FakeSyncServer {
     }
     final gated = _medicalGate(actor, note.medical);
     if (gated != null) return gated;
-    if (v['declined'] == true) return store('declined');
-
     // A phase 2 note has no type to check a correction by; as a draft it keeps the open path rule.
     final definition = _noteTypeOf(note);
+    // So does a section that needs a capability (_needsGate), for the author too.
+    final needed = _needsGate(actor, definition, [for (final a in asked) a.path]);
+    if (needed != null) return needed;
+    if (v['declined'] == true) return store('declined');
+
     final draft = status == 'draft';
     if (definition == null && !draft) throw _DefinitionError();
     if (definition != null) {

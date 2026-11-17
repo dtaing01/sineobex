@@ -24,7 +24,7 @@ import {
   type Outcome,
   type StoredRecord,
 } from '../records.ts';
-import { actingAuthor, answersOf, medicalGate, noteRules, noteTypeOf } from './note.ts';
+import { actingAuthor, answersOf, medicalGate, needsGate, noteRules, noteTypeOf } from './note.ts';
 import { NoteCorrectionCreate, valueParents } from './values.ts';
 
 /**
@@ -173,11 +173,18 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
   // changes a Medical note as any set of it does, and the gate holds every such change.
   const gated = await medicalGate(ctx, note.internal.medical === true);
   if (gated) return gated;
+  // A phase 2 note has no type to check a correction by; as a draft it keeps the open path rule.
+  const definition = await noteTypeOf(tx, note);
+  // So does a section that needs a capability (needsGate), for the author too.
+  const needed = await needsGate(
+    ctx,
+    definition,
+    asked.map((a) => a.path),
+  );
+  if (needed) return needed;
   // A declined request changes nothing, whatever state the note is in.
   if (v.declined) return store('declined');
 
-  // A phase 2 note has no type to check a correction by; as a draft it keeps the open path rule.
-  const definition = await noteTypeOf(tx, note);
   const draft = note.status === 'draft';
   if (!definition && !draft) throw new DefinitionError();
   if (definition) {

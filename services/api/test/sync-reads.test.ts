@@ -689,6 +689,69 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
     });
 
+    it('a section that needs an ordering credential holds the author’s create, set and correction too, until an admin accepts', async () => {
+      // Sky is a student: she charts, and orders nothing. A resident lowered offline is the same.
+      const visit = await visitOf(sky, patientId);
+      const create = await sky.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: {
+          encounterId: visit.encounterId,
+          noteTypeKey: TEST_RESTRICTED_TYPE.key,
+          noteTypeVersion: TEST_RESTRICTED_TYPE.version,
+          data: { 'general.notes': 'Demo: walked over', 'meds.given': 'Demo: two tablets' },
+        },
+      });
+      const own = await noteOn(sky, visit, TEST_RESTRICTED_TYPE, { 'general.notes': 'Demo: walked over' });
+      const sets = [
+        await set(sky, own, 'meds.given', 'Demo: one tablet', 0),
+        await set(sky, own, 'general.notes', 'Demo: later'),
+      ];
+      const answered = await sky.send(create, ...sets);
+      expect(answered.slice(0, 2)).toEqual([heldOnly(create), heldOnly(sets[0]!)]);
+      expect(answered[2]).toMatchObject({ status: 'accepted', serverVersion: 2 });
+      expect((await noteRow(own.noteId)).data).toEqual({ 'general.notes': 'Demo: later' });
+      const made = await h.scratch
+        .owner`select 1 from sineobex.encounter_notes where id = ${create.recordId}`;
+      expect(made).toHaveLength(0);
+      // A correction of a finished note's Medication section, by its author.
+      const finished = await noteOn(ana, visit, TEST_RESTRICTED_TYPE, { 'meds.given': 'Demo: none today' });
+      await finishNote(ana, finished, 'complete', 'completed');
+      await setCredential(h, t, ana.membershipId, 'student');
+      const correction = await ana.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: finished.noteId,
+          changes: [{ field: 'data.meds.given', newValue: 'Demo: one tablet', baseVersion: 1 }],
+          reason: 'Demo: the wrong amount',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: 'student',
+          signoffId: null,
+        },
+      });
+      try {
+        expect(await ana.send(correction)).toEqual([heldOnly(correction)]);
+      } finally {
+        await setCredential(h, t, ana.membershipId, 'attending');
+      }
+      // An attending orders: the author's own set goes through.
+      const anas = await set(ana, finished, 'general.notes', 'Demo: later');
+      expect((await ana.send(anas))[0]).toMatchObject({ status: 'accepted' });
+      // The admin's accept applies the held set as it was sent.
+      const [item] = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.quarantine_items where change_id = ${sets[0]!.changeId}`;
+      const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Demo: checked with Sky' },
+      });
+      expect(decided.status).toBe(200);
+      expect((await noteRow(own.noteId)).data).toMatchObject({ 'meds.given': 'Demo: one tablet' });
+    });
+
     it('on a finished note too: held, where a late change would send back the answer it keeps', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
       await finishNote(ana, n, 'complete', 'completed');

@@ -1593,6 +1593,53 @@ void main() {
         );
       });
 
+      test('a section that needs an ordering credential holds the author’s create, set and correction too, until an admin accepts', () async {
+        // Blair is a student: she charts, and orders nothing. A resident lowered offline is the same.
+        final visit = visitOf(patientId: patient, by: blair);
+        final create = change(
+          entityNote,
+          'create',
+          noteValue(visit, testRestricted, const {
+            'general.notes': 'Demo: walked over',
+            'meds.given': 'Demo: two tablets',
+          }),
+        );
+        final own = server.seed(
+          entityNote,
+          noteValue(visit, testRestricted, const {'general.notes': 'Demo: walked over'}),
+          by: blair,
+        );
+        final sets = [set(own, 'meds.given', 'Demo: one tablet', 0), set(own, 'general.notes', 'Demo: later')];
+        final answered = await send(blair, [create, ...sets]);
+        expect(answered.sublist(0, 2), [heldOnly(create), heldOnly(sets[0])]);
+        expect(answered[2], taken(sets[1], 2));
+        expect(server.records.containsKey(create['recordId']), isFalse);
+        expect(server.records[own]!.fields.containsKey('data.meds.given'), isFalse);
+        // A correction of a finished note's Medication section, by its author.
+        final finished = restrictedNote(const {'meds.given': 'Demo: none today'});
+        server.finishNote(finished);
+        server.credentials[alex] = 'student';
+        final correction = change(entityCorrection, 'create', {
+          'noteId': finished,
+          'changes': [
+            {'field': 'data.meds.given', 'newValue': 'Demo: one tablet', 'baseVersion': 1},
+          ],
+          'reason': 'Demo: the wrong amount',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': 'student',
+          'signoffId': null,
+        });
+        expect(await send(alex, [correction]), [heldOnly(correction)]);
+        server.credentials[alex] = 'attending';
+        // An attending orders: the author's own set goes through.
+        final anas = [set(finished, 'general.notes', 'Demo: later', 0)];
+        expect((await send(alex, anas)).single['status'], 'accepted');
+        // The admin's accept applies the held set as it was sent.
+        expect(server.acceptHeld(sets[0]['changeId']! as String)['status'], 'accepted');
+        expect(server.records[own]!.fields['data.meds.given']!.value, 'Demo: one tablet');
+      });
+
       test('on a finished note too: held, where a late change would send back the answer it keeps', () async {
         final n = restrictedNote(answers);
         server.finishNote(n);

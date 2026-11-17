@@ -1,5 +1,6 @@
 import type { z } from '@hono/zod-openapi';
 import { checkAnswer, fieldAt, isBlank, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
+import { CAPABILITIES } from '../../auth/permissions.ts';
 import type { Tx } from '../../db/database.ts';
 import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
@@ -106,7 +107,11 @@ export const noteRules: EntityRules<Value> = {
       check: async () => {
         if (!type) return invalid('unknown_note_type');
         if (medical && encounter.patientId === null) return invalid('medical_note_needs_patient');
-        return (await medicalGate(ctx, medical)) ?? answersProblem(type, value.data ?? {});
+        return (
+          (await medicalGate(ctx, medical)) ??
+          (await needsGate(ctx, type, Object.keys(value.data ?? {}))) ??
+          answersProblem(type, value.data ?? {})
+        );
       },
       insert: async (input) => {
         const data = value.data ?? {};
@@ -232,6 +237,8 @@ async function noteSet(s: SetContext): Promise<Outcome> {
   const gated = await medicalGate(s, s.rec.internal.medical === true);
   if (gated) return gated;
   if (s.field === 'status') return statusSet(s);
+  const needed = await needsGate(s, await noteTypeOf(s.tx, s.rec), [s.field.slice('data.'.length)]);
+  if (needed) return needed;
   if (s.rec.status !== 'draft') return applyField('draft', s);
   const path = s.field.slice('data.'.length);
   const type = await noteTypeOf(s.tx, s.rec);
@@ -249,11 +256,10 @@ async function noteSet(s: SetContext): Promise<Outcome> {
 
 /**
  * A set of an answer the sender may not see (lifecycle 4.4, 6.4 rule 5): what the answer holds now,
- * or would hold, is hidden from them, or its section needs a capability their credential lacks (the
- * Quick encounter's Medication section needs an ordering credential). It is held for a Program
- * Admin, for a draft and a finished note alike, before anything answers with the value held there:
- * a conflict or a late change would send it back. Whoever acts as the author may always set their
- * own note's answers, and an admin's accept passes, as through the Medical gate.
+ * or would hold, is hidden from them. It is held for a Program Admin, for a draft and a finished
+ * note alike, before anything answers with the value held there: a conflict or a late change would
+ * send it back. Whoever acts as the author sees all of their note (6.4 rule 1), and an admin's
+ * accept passes, as through the Medical gate. A section that needs a capability is needsGate's.
  */
 async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
   if (!s.field.startsWith('data.') || s.actor.approvedBy !== null) return null;
@@ -265,7 +271,6 @@ async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
   const answers = answersOf(s.rec);
   const hidden = byDefinition(
     () =>
-      (fieldAt(type, path)?.section.needs === 'orderMedications' && !reader.ordersMedications) ||
       (Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader)) ||
       answerHidden(type, answers, path, s.value, reader),
   );
@@ -421,6 +426,28 @@ async function makeMedical(ctx: ChangeContext, visit: StoredRecord): Promise<voi
   if (visit.values.kind === 'medical') return;
   const kind = { field: 'kind', value: 'medical', cur: fieldState(visit, 'kind'), saw: true, redirect: null };
   await writeValue({ ...ctx, rules: encounterRules, rec: visit, ...kind }, 'set');
+}
+
+/**
+ * The gate of a section that needs a capability (lifecycle 4.2, 6.4 rule 5; forms.md: "changed by
+ * a credential with this capability only"): an answer of the Quick encounter's Medication section,
+ * in a create, a set or a correction, needs a credential that orders medications, read now from the
+ * sender's membership. It is a gate on the credential, as the Medical gate is, so whoever acts as
+ * the author passes it only with that credential (rule 1 is about seeing, review finding NOT-1): one
+ * lowered while the phone was offline is held for a Program Admin, whose accept passes.
+ */
+export async function needsGate(
+  ctx: ChangeContext,
+  type: ResolvedNoteType | undefined,
+  paths: readonly string[],
+): Promise<Outcome | null> {
+  if (type === undefined || ctx.actor.approvedBy !== null) return null;
+  const needs = byDefinition(() =>
+    paths.some((path) => fieldAt(type, path)?.section.needs === 'orderMedications'),
+  );
+  if (!needs) return null;
+  const sender = await loadSigner(ctx.tx, ctx.actor.teamId, ctx.actor.authorId);
+  return sender?.active && CAPABILITIES[sender.credential].orderMedications ? null : rejected('permission');
 }
 
 /**
