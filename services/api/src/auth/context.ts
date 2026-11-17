@@ -274,6 +274,28 @@ export class TeamScope {
   }
 }
 
+/**
+ * Every refusal is logged, this one too. It goes to the platform chain, as the owner console's
+ * refusal does: the person acts in no team of theirs, and a team's chain must not carry what an
+ * outsider tried. The tried team's ID (a UUID, checked above) is what lets an investigator see
+ * which team it was. If the event can't be written the request fails all the same.
+ */
+async function logTeamRefusal(
+  c: Context<AppEnv>,
+  deps: Deps,
+  principal: Principal,
+  rule: 'not_a_member' | 'team_suspended',
+  teamId: string,
+): Promise<void> {
+  const meta = await ownDeviceMeta(c, deps, principal);
+  await deps.db.tx({ userId: principal.userId, platform: true }, (tx) =>
+    writeAudit(tx, null, { userId: principal.userId, roleKey: null, credential: null }, meta, {
+      action: 'access.denied',
+      details: { rule, route: c.req.routePath, teamId: teamId.toLowerCase() },
+    }),
+  );
+}
+
 export async function teamScope(
   c: Context<AppEnv>,
   deps: Deps,
@@ -322,8 +344,14 @@ export async function teamScope(
     where m.team_id = ${teamId} and m.user_id = ${principal.userId}`,
   );
   const row = rows[0];
-  if (!row || row.status !== 'active') throw forbidden('You are not a member of this team.', 'not_a_member');
-  if (row.teamStatus !== 'active') throw forbidden('This team is suspended.', 'team_suspended');
+  if (!row || row.status !== 'active') {
+    await logTeamRefusal(c, deps, principal, 'not_a_member', teamId);
+    throw forbidden('You are not a member of this team.', 'not_a_member');
+  }
+  if (row.teamStatus !== 'active') {
+    await logTeamRefusal(c, deps, principal, 'team_suspended', teamId);
+    throw forbidden('This team is suspended.', 'team_suspended');
+  }
 
   const team: TeamContext = {
     teamId: teamId.toLowerCase(),

@@ -407,12 +407,184 @@ describe('phase 4 forms routes', () => {
       }
     });
 
-    it(`GET ${route} refuses a member of another team`, async () => {
+    it(`GET ${route} refuses a member of another team, and logs it`, async () => {
       const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+      const mark = await auditMark(h);
       const res = await h.request(path, { token: outsider.token, teamId });
       expect(res.status).toBe(403);
       expect(res.headers.get('cache-control')).toBe('no-store');
       expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
+      const denied = await h.scratch.owner<{ teamId: string | null; details: Record<string, unknown> }[]>`
+        select team_id as "teamId", details from sineobex.audit_events
+        where action = 'access.denied' and actor_user_id = ${outsider.userId} and id > ${mark}::bigint`;
+      expect(denied).toEqual([
+        { teamId: null, details: { rule: 'not_a_member', route: expect.any(String), teamId } },
+      ]);
     });
   }
+});
+
+/**
+ * The team scope's own refusals: a person asking for a team they are not an active member of, or
+ * for a suspended team. Every refusal is written to the audit log (access policy), so each writes
+ * one access.denied event, in the platform chain as the owner console's refusal does: the person
+ * acts in no team they belong to, and a team's chain must not hold what an outsider tried.
+ */
+describe('team scope refusals', () => {
+  let h: Harness;
+  let teamId: string;
+  let otherTeamId: string;
+
+  interface DeniedRow {
+    teamId: string | null;
+    platformChain: boolean;
+    actorUserId: string | null;
+    actorRole: string | null;
+    actorCredential: string | null;
+    entity: string | null;
+    entityId: string | null;
+    patientId: string | null;
+    deviceId: string | null;
+    ip: string | null;
+    requestId: string | null;
+    details: Record<string, unknown>;
+  }
+
+  const denials = (after: string) => h.scratch.owner<DeniedRow[]>`
+    select team_id as "teamId", chain_key = sineobex.platform_chain() as "platformChain",
+           actor_user_id as "actorUserId", actor_role as "actorRole",
+           actor_credential as "actorCredential", entity, entity_id as "entityId",
+           patient_id as "patientId", device_id as "deviceId", host(ip) as ip,
+           request_id as "requestId", details
+    from sineobex.audit_events
+    where action = 'access.denied' and id > ${after}::bigint
+    order by id`;
+
+  const ip = '203.0.113.7';
+  const ask = (path: string, token: string, team: string, deviceId?: string) =>
+    h.request(path, {
+      token,
+      teamId: team,
+      ...(deviceId ? { deviceId } : {}),
+      headers: { 'x-forwarded-for': ip },
+    });
+
+  async function device(userId: string, team: string): Promise<string> {
+    const deviceId = randomUUID();
+    await h.scratch.owner`
+      insert into sineobex.devices (id, team_id, user_id, platform, app_version, public_key)
+      values (${deviceId}, ${team}, ${userId}, 'android', '1.0.0', ${'A'.repeat(43)})`;
+    return deviceId;
+  }
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Scope Team (demo)');
+    otherTeamId = await createTeam(h, 'Scope Other Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  it('logs a member of another team asking for this one, in the platform chain', async () => {
+    const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+    // Their own phone, registered in the team they belong to.
+    const phone = await device(outsider.userId, otherTeamId);
+    const mark = await auditMark(h);
+    const res = await ask('/v1/forms/note-types', outsider.token, teamId, phone);
+    expect(res.status).toBe(403);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
+    expect(await denials(mark)).toEqual([
+      {
+        teamId: null,
+        platformChain: true,
+        actorUserId: outsider.userId,
+        actorRole: null,
+        actorCredential: null,
+        entity: null,
+        entityId: null,
+        patientId: null,
+        deviceId: phone,
+        ip,
+        requestId: res.headers.get('x-request-id'),
+        details: { rule: 'not_a_member', route: '/v1/forms/note-types', teamId },
+      },
+    ]);
+  });
+
+  it('logs a removed member as not a member, and names no patient from the path', async () => {
+    const removed = await memberWith(h, teamId, ['patients.view']);
+    await h.scratch.owner`
+      update sineobex.team_memberships set status = 'removed', removed_at = now()
+      where id = ${removed.membershipId}`;
+    // A teammate's phone in the header is not pinned on this person.
+    const teammate = await memberWith(h, teamId, ['patients.view']);
+    const theirPhone = await device(teammate.userId, teamId);
+    const patientId = randomUUID();
+    const mark = await auditMark(h);
+    const res = await ask(`/v1/patients/${patientId}`, removed.token, teamId, theirPhone);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
+    const rows = await denials(mark);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      teamId: null,
+      platformChain: true,
+      actorUserId: removed.userId,
+      actorRole: null,
+      patientId: null,
+      deviceId: null,
+      details: { rule: 'not_a_member', route: '/v1/patients/:patientId', teamId },
+    });
+    expect(JSON.stringify(rows[0]!.details)).not.toContain(patientId);
+  });
+
+  it('logs a member of a suspended team', async () => {
+    const suspendedTeam = await createTeam(h, 'Scope Suspended Team (demo)');
+    const member = await memberWith(h, suspendedTeam, ['patients.view']);
+    await h.scratch.owner`update sineobex.teams set status = 'suspended' where id = ${suspendedTeam}`;
+    const mark = await auditMark(h);
+    const res = await ask('/v1/forms/note-types', member.token, suspendedTeam);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('team_suspended');
+    expect(await denials(mark)).toEqual([
+      expect.objectContaining({
+        teamId: null,
+        platformChain: true,
+        actorUserId: member.userId,
+        actorRole: null,
+        actorCredential: null,
+        patientId: null,
+        deviceId: null,
+        ip,
+        details: { rule: 'team_suspended', route: '/v1/forms/note-types', teamId: suspendedTeam },
+      }),
+    ]);
+  });
+
+  it('logs nothing for a member of the team', async () => {
+    const member = await memberWith(h, teamId, []);
+    const mark = await auditMark(h);
+    const res = await ask('/v1/forms/note-types', member.token, teamId);
+    expect(res.status).toBe(200);
+    expect(await denials(mark)).toEqual([]);
+  });
+
+  it('still refuses when the refusal cannot be logged', async () => {
+    const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+    const mark = await auditMark(h);
+    await h.scratch.owner.unsafe('revoke execute on function sineobex.append_audit from sineobex_app');
+    let res: Response;
+    try {
+      res = await ask('/v1/forms/note-types', outsider.token, teamId);
+    } finally {
+      await h.scratch.owner.unsafe('grant execute on function sineobex.append_audit to sineobex_app');
+    }
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: { code: string }; noteTypes?: unknown };
+    expect(body.error.code).toBe('internal');
+    expect(body.noteTypes).toBeUndefined();
+    expect(await denials(mark)).toEqual([]);
+  });
 });
