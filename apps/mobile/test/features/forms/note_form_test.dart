@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/forms/action_field.dart';
 import 'package:sineobex_field/features/forms/field_host.dart';
-import 'package:sineobex_field/features/forms/note_form.dart';
-import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/recap.dart';
 
 import 'forms_test_helpers.dart';
@@ -63,58 +61,9 @@ void main() {
     },
   ]);
 
-  Future<TestAnswers> openForm(
-    WidgetTester tester,
-    NoteTypeDef definition, {
-    Map<String, Object?>? values,
-    Run? run,
-    bool enabled = true,
-    Set<String> capabilities = const {},
-    ActionHandler? actions,
-    String? openSection,
-  }) async {
-    final answers = TestAnswers(values);
-    await pumpField(
-      tester,
-      answering(
-        answers,
-        () => NoteForm(
-          definition: definition,
-          answers: answers.values,
-          pending: answers.pending,
-          conflicts: answers.conflicts,
-          onChanged: answers.change,
-          enabled: enabled,
-          capabilities: capabilities,
-          actions: actions,
-          openSection: openSection,
-        ),
-      ),
-      run: run,
-    );
-    return answers;
-  }
-
-  /// The IDs of the sections drawn, in order.
-  List<String> sections() => [
-    for (final e in find.byWidgetPredicate((w) => w.key is ValueKey<String>).evaluate())
-      if ((e.widget.key! as ValueKey<String>).value case final k when k.startsWith('form.section.'))
-        k.substring('form.section.'.length),
-  ];
-
-  Finder header(String id) => find.byKey(ValueKey('form.section.$id'));
-  Finder host(String path) => find.byKey(ValueKey('host.$path'));
-
-  Future<void> toggle(WidgetTester tester, String id) async {
-    await tester.ensureVisible(header(id));
-    await tester.pumpAndSettle();
-    await tester.tap(header(id));
-    await tester.pumpAndSettle();
-  }
-
   forEachRun('the sections open one at a time, each to its fields', (tester, run) async {
     final quick = presetDefinition('quick_encounter');
-    await openForm(
+    await pumpForm(
       tester,
       quick,
       run: run,
@@ -122,13 +71,13 @@ void main() {
         'visit.parts': ['general', 'wound'],
       },
     );
-    expect(sections(), ['visit', 'general', 'wound']);
+    expect(formSections(), ['visit', 'general', 'wound']);
     await expectFieldOk(tester);
     // The first starts open.
-    for (final (i, id) in sections().indexed) {
-      if (i > 0) await toggle(tester, id);
+    for (final (i, id) in formSections().indexed) {
+      if (i > 0) await toggleSection(tester, id);
       expect(
-        tester.getSemantics(header(id)),
+        tester.getSemantics(sectionHeader(id)),
         isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: true),
       );
       await expectFieldOk(tester);
@@ -137,38 +86,38 @@ void main() {
 
   testWidgets('a section header is a button that says whether it is open', (tester) async {
     final handle = tester.ensureSemantics();
-    await openForm(tester, demo, values: {'visit.seen': true});
+    await pumpForm(tester, demo, values: {'visit.seen': true});
     // The first section that shows starts open.
     expect(
-      tester.getSemantics(header('visit')),
+      tester.getSemantics(sectionHeader('visit')),
       isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: true),
     );
     expect(
-      tester.getSemantics(header('later')),
+      tester.getSemantics(sectionHeader('later')),
       isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: false),
     );
-    expect(host('later.when'), findsNothing);
+    expect(fieldHost('later.when'), findsNothing);
     // Opening one closes the other, and a screen reader's tap opens it as a finger does.
     tester.semantics.tap(find.semantics.byLabel('Demo: later'));
     await tester.pumpAndSettle();
-    expect(host('later.when'), findsOneWidget);
-    expect(host('visit.seen'), findsNothing);
+    expect(fieldHost('later.when'), findsOneWidget);
+    expect(fieldHost('visit.seen'), findsNothing);
     // Tapping the open one closes it.
-    await toggle(tester, 'later');
-    expect(host('later.when'), findsNothing);
-    expect(tester.getSemantics(header('later')), isSemantics(hasExpandedState: true, isExpanded: false));
+    await toggleSection(tester, 'later');
+    expect(fieldHost('later.when'), findsNothing);
+    expect(tester.getSemantics(sectionHeader('later')), isSemantics(hasExpandedState: true, isExpanded: false));
     handle.dispose();
   });
 
   testWidgets('the screen can open the form at a section', (tester) async {
-    await openForm(tester, demo, values: {'visit.seen': true}, openSection: 'later');
-    expect(host('later.when'), findsOneWidget);
-    expect(host('visit.seen'), findsNothing);
+    await pumpForm(tester, demo, values: {'visit.seen': true}, openSection: 'later');
+    expect(fieldHost('later.when'), findsOneWidget);
+    expect(fieldHost('visit.seen'), findsNothing);
   });
 
   testWidgets('a closed section’s header shows its recap line, and an open one its fields', (tester) async {
     final handle = tester.ensureSemantics();
-    final answers = await openForm(
+    final answers = await pumpForm(
       tester,
       demo,
       values: {'visit.seen': true, 'visit.length': '4', 'later.when': 'Demo: Friday'},
@@ -177,13 +126,13 @@ void main() {
     expect(find.text('Seen today: Yes; Length: 4'), findsNothing);
     expect(find.text('When next: Demo: Friday'), findsOneWidget);
     expect(
-      tester.getSemantics(header('later')),
+      tester.getSemantics(sectionHeader('later')),
       isSemantics(label: 'Demo: later', value: 'When next: Demo: Friday', isButton: true),
     );
-    await toggle(tester, 'later');
+    await toggleSection(tester, 'later');
     expect(find.text('When next: Demo: Friday'), findsNothing);
     expect(find.text('Seen today: Yes; Length: 4'), findsOneWidget);
-    expect(tester.getSemantics(header('visit')), isSemantics(value: 'Seen today: Yes; Length: 4'));
+    expect(tester.getSemantics(sectionHeader('visit')), isSemantics(value: 'Seen today: Yes; Length: 4'));
     // The line follows the answers: an answer that stops counting leaves it.
     answers.change('visit.unable', true);
     await tester.pumpAndSettle();
@@ -194,10 +143,10 @@ void main() {
   testWidgets('a section with no answer that counts has no recap line', (tester) async {
     final handle = tester.ensureSemantics();
     // Visit notes are hidden until Seen today is ticked, so what they hold is not in the line.
-    await openForm(tester, demo, values: {'visit.notes': 'Demo: by the bridge'}, capabilities: {'orderMedications'});
-    await toggle(tester, 'visit');
+    await pumpForm(tester, demo, values: {'visit.notes': 'Demo: by the bridge'}, capabilities: {'orderMedications'});
+    await toggleSection(tester, 'visit');
     expect(find.textContaining('Demo: by the bridge'), findsNothing);
-    expect(tester.getSemantics(header('visit')), isSemantics(label: 'Demo: visit', value: ''));
+    expect(tester.getSemantics(sectionHeader('visit')), isSemantics(label: 'Demo: visit', value: ''));
     handle.dispose();
   });
 
@@ -209,63 +158,63 @@ void main() {
       'gu.general': ['dysuria'],
       'skin.overall': ['warm', 'dry'],
     };
-    await openForm(tester, general, values: values, openSection: 'reason');
+    await pumpForm(tester, general, values: values, openSection: 'reason');
     final lines = {for (final l in recapLines(general, values)) l.section: l.text};
     expect(lines.keys, isNot(contains('gu')));
     expect(find.text(lines['skin']!), findsOneWidget);
-    expect(tester.getSemantics(header('gu')), isSemantics(label: 'Genitourinary (GU)', value: ''));
+    expect(tester.getSemantics(sectionHeader('gu')), isSemantics(label: 'Genitourinary (GU)', value: ''));
     handle.dispose();
   });
 
   testWidgets('a section whose condition does not hold is not drawn, and its answers are left alone', (tester) async {
-    final answers = await openForm(tester, demo, values: {'later.when': 'Demo: Friday'});
-    expect(sections(), ['visit']);
+    final answers = await pumpForm(tester, demo, values: {'later.when': 'Demo: Friday'});
+    expect(formSections(), ['visit']);
     // Ticking what the section hangs on shows it, with what it held.
     await tester.tap(find.text('Seen today'));
     await tester.pumpAndSettle();
-    expect(sections(), ['visit', 'later']);
-    await toggle(tester, 'later');
+    expect(formSections(), ['visit', 'later']);
+    await toggleSection(tester, 'later');
     expect(find.text('Demo: Friday'), findsOneWidget);
-    await toggle(tester, 'visit');
+    await toggleSection(tester, 'visit');
     await tester.tap(find.text('Seen today'));
     await tester.pumpAndSettle();
-    expect(sections(), ['visit']);
+    expect(formSections(), ['visit']);
     expect(answers.changes, [('visit.seen', true), ('visit.seen', null)]);
     expect(answers.values['later.when'], 'Demo: Friday');
   });
 
   testWidgets('a field whose condition does not hold is not drawn, and its answer is left alone', (tester) async {
-    final answers = await openForm(tester, demo, values: {'visit.notes': 'Demo: by the bridge'});
-    expect(host('visit.notes'), findsNothing);
+    final answers = await pumpForm(tester, demo, values: {'visit.notes': 'Demo: by the bridge'});
+    expect(fieldHost('visit.notes'), findsNothing);
     expect(find.text('Demo: by the bridge'), findsNothing);
     await tester.tap(find.text('Seen today'));
     await tester.pumpAndSettle();
-    expect(host('visit.notes'), findsOneWidget);
+    expect(fieldHost('visit.notes'), findsOneWidget);
     expect(find.text('Demo: by the bridge'), findsOneWidget);
     await tester.tap(find.text('Seen today'));
     await tester.pumpAndSettle();
-    expect(host('visit.notes'), findsNothing);
+    expect(fieldHost('visit.notes'), findsNothing);
     expect(answers.changes.map((c) => c.$1), everyElement('visit.seen'));
   });
 
   testWidgets('a section that needs a capability shows only to a credential that has it', (tester) async {
-    await openForm(tester, demo);
-    expect(sections(), isNot(contains('meds')));
-    await openForm(tester, demo, capabilities: {'orderMedications'});
-    expect(sections(), contains('meds'));
+    await pumpForm(tester, demo);
+    expect(formSections(), isNot(contains('meds')));
+    await pumpForm(tester, demo, capabilities: {'orderMedications'});
+    expect(formSections(), contains('meds'));
     final quick = presetDefinition('quick_encounter');
     final parts = {
       'visit.parts': ['medication'],
     };
-    await openForm(tester, quick, values: parts);
-    expect(sections(), ['visit']);
-    await openForm(tester, quick, values: parts, capabilities: {'orderMedications'});
-    expect(sections(), ['visit', 'medication']);
+    await pumpForm(tester, quick, values: parts);
+    expect(formSections(), ['visit']);
+    await pumpForm(tester, quick, values: parts, capabilities: {'orderMedications'});
+    expect(formSections(), ['visit', 'medication']);
   });
 
   testWidgets('while a flag of the section is set, the fields it clears are read-only', (tester) async {
     final handle = tester.ensureSemantics();
-    final answers = await openForm(tester, demo, values: {'visit.length': '4'});
+    final answers = await pumpForm(tester, demo, values: {'visit.length': '4'});
     expect(find.byKey(const ValueKey('phi.form.length')), findsOneWidget);
     await tester.tap(find.text('Unable to measure'));
     await tester.pumpAndSettle();
@@ -286,7 +235,7 @@ void main() {
   testWidgets('a flag in a group makes the fields it clears read-only', (tester) async {
     final wound = presetDefinition('wound_care');
     const e = 'e0000001';
-    await openForm(
+    await pumpForm(
       tester,
       wound,
       values: {
@@ -295,8 +244,8 @@ void main() {
         'wound.$e.measurements.length': 2,
       },
     );
-    expect(tester.widget<FieldHost>(host('wound.$e.measurements.length')).enabled, isFalse);
-    expect(tester.widget<FieldHost>(host('wound.$e.measurements.unable')).enabled, isTrue);
+    expect(tester.widget<FieldHost>(fieldHost('wound.$e.measurements.length')).enabled, isFalse);
+    expect(tester.widget<FieldHost>(fieldHost('wound.$e.measurements.unable')).enabled, isTrue);
   });
 
   testWidgets('a field in a group shows by its own condition', (tester) async {
@@ -304,9 +253,9 @@ void main() {
     final values = <String, Object?>{
       'exam.systems': ['cardiovascular'],
     };
-    await openForm(tester, general, values: values, openSection: 'heart');
-    expect(host('heart.murmur.character'), findsNothing);
-    await openForm(
+    await pumpForm(tester, general, values: values, openSection: 'heart');
+    expect(fieldHost('heart.murmur.character'), findsNothing);
+    await pumpForm(
       tester,
       general,
       values: {
@@ -315,12 +264,12 @@ void main() {
       },
       openSection: 'heart',
     );
-    expect(host('heart.murmur.character'), findsOneWidget);
+    expect(fieldHost('heart.murmur.character'), findsOneWidget);
   });
 
   testWidgets('a grid draws a cell for each row and side, at the cell’s path', (tester) async {
     final general = presetDefinition('general_primary_care');
-    await openForm(
+    await pumpForm(
       tester,
       general,
       values: {
@@ -330,11 +279,11 @@ void main() {
     );
     for (final row in ['radial', 'dorsalis_pedis_dp', 'posterior_tibial_pt']) {
       for (final side in ['right', 'left']) {
-        expect(host('cv_perfusion.pulses.$row.$side'), findsOneWidget, reason: '$row $side');
+        expect(fieldHost('cv_perfusion.pulses.$row.$side'), findsOneWidget, reason: '$row $side');
       }
     }
     // A collapsed grid is closed until tapped.
-    expect(host('cv_perfusion.more_pulses.brachial.right'), findsNothing);
+    expect(fieldHost('cv_perfusion.more_pulses.brachial.right'), findsNothing);
   });
 
   testWidgets('a grid of picked rows has a row for each option picked, and a cell shows by its row', (tester) async {
@@ -344,15 +293,15 @@ void main() {
       'lymphatic.nodes': ['cervical', 'inguinal'],
       'lymphatic.node_findings.inguinal.findings': ['enlarged'],
     };
-    await openForm(tester, general, values: values, openSection: 'lymphatic');
-    expect(host('lymphatic.node_findings.cervical.findings'), findsOneWidget);
-    expect(host('lymphatic.node_findings.inguinal.findings'), findsOneWidget);
-    expect(host('lymphatic.node_findings.axillary.findings'), findsNothing);
+    await pumpForm(tester, general, values: values, openSection: 'lymphatic');
+    expect(fieldHost('lymphatic.node_findings.cervical.findings'), findsOneWidget);
+    expect(fieldHost('lymphatic.node_findings.inguinal.findings'), findsOneWidget);
+    expect(fieldHost('lymphatic.node_findings.axillary.findings'), findsNothing);
     // Size shows once that row's findings are in (./findings, from the row).
-    expect(host('lymphatic.node_findings.cervical.size'), findsNothing);
-    expect(host('lymphatic.node_findings.inguinal.size'), findsOneWidget);
+    expect(fieldHost('lymphatic.node_findings.cervical.size'), findsNothing);
+    expect(fieldHost('lymphatic.node_findings.inguinal.size'), findsOneWidget);
     // A row whose option is unpicked is not drawn, and what it held is left alone.
-    await openForm(
+    await pumpForm(
       tester,
       general,
       values: {
@@ -361,15 +310,15 @@ void main() {
       },
       openSection: 'lymphatic',
     );
-    expect(host('lymphatic.node_findings.inguinal.findings'), findsNothing);
+    expect(fieldHost('lymphatic.node_findings.inguinal.findings'), findsNothing);
   });
 
   testWidgets('an action is offered only where the screen gives it something to do', (tester) async {
-    await openForm(tester, demo);
+    await pumpForm(tester, demo);
     expect(find.text('Open the demo note'), findsNothing);
     final asked = <(String, String)>[];
     var opened = 0;
-    await openForm(
+    await pumpForm(
       tester,
       demo,
       actions: (field, path) {
@@ -385,14 +334,14 @@ void main() {
     await tester.tap(find.text('Open the demo note'));
     expect(opened, 1);
     // Nothing to do there: not drawn at all, so it leaves no gap among the fields.
-    await openForm(tester, demo, actions: (field, path) => null);
+    await pumpForm(tester, demo, actions: (field, path) => null);
     expect(find.text('Open the demo note'), findsNothing);
     expect(find.byType(ActionField), findsNothing);
   });
 
   testWidgets('a read-only form opens its sections to be read, and offers nothing to change', (tester) async {
     final handle = tester.ensureSemantics();
-    final answers = await openForm(
+    final answers = await pumpForm(
       tester,
       demo,
       enabled: false,
@@ -406,7 +355,7 @@ void main() {
       tester.getSemantics(find.bySemanticsLabel('Seen today')),
       isSemantics(hasEnabledState: true, isEnabled: false),
     );
-    await toggle(tester, 'later');
+    await toggleSection(tester, 'later');
     expect(find.text('Demo: Friday'), findsOneWidget);
     expect(answers.changes, isEmpty);
     handle.dispose();

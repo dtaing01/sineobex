@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/theme.dart';
 import 'package:sineobex_field/design/tokens.dart';
+import 'package:sineobex_field/features/forms/action_field.dart' show ActionHandler;
 import 'package:sineobex_field/features/forms/choice_field.dart';
 import 'package:sineobex_field/features/forms/field_host.dart';
 import 'package:sineobex_field/features/forms/flag_field.dart';
+import 'package:sineobex_field/features/forms/note_form.dart';
 import 'package:sineobex_field/features/forms/number_field.dart';
 import 'package:sineobex_field/features/forms/text_field.dart';
 import 'package:sineobex_field/forms/definition.dart';
@@ -177,6 +179,65 @@ Future<void> expectFieldOk(WidgetTester tester) async {
   for (final r in tester.allRenderObjects.whereType<RenderFlex>()) {
     expect(r.toStringShort(), isNot(contains('OVERFLOWING')));
   }
+}
+
+/// Opens a note form on [definition] holding [values], every change drawn again as the screen
+/// draws the form with the answers it now holds.
+Future<TestAnswers> pumpForm(
+  WidgetTester tester,
+  NoteTypeDef definition, {
+  Map<String, Object?>? values,
+  Run? run,
+  bool enabled = true,
+  Set<String> capabilities = const {},
+  ActionHandler? actions,
+  String? openSection,
+  String Function()? newEntryId,
+  DateTime Function()? clock,
+}) async {
+  final answers = TestAnswers(values);
+  await pumpField(
+    tester,
+    answering(
+      answers,
+      () => NoteForm(
+        definition: definition,
+        answers: answers.values,
+        pending: answers.pending,
+        conflicts: answers.conflicts,
+        onChanged: answers.change,
+        enabled: enabled,
+        capabilities: capabilities,
+        actions: actions,
+        openSection: openSection,
+        newEntryId: newEntryId ?? makeEntryId,
+        clock: clock ?? DateTime.now,
+      ),
+    ),
+    run: run,
+  );
+  return answers;
+}
+
+/// The IDs of the sections a note form draws, in order.
+List<String> formSections() => [
+  for (final e in find.byWidgetPredicate((w) => w.key is ValueKey<String>).evaluate())
+    if ((e.widget.key! as ValueKey<String>).value case final k when k.startsWith('form.section.'))
+      k.substring('form.section.'.length),
+];
+
+/// A section's header in a note form.
+Finder sectionHeader(String id) => find.byKey(ValueKey('form.section.$id'));
+
+/// The field host at [path] in a note form.
+Finder fieldHost(String path) => find.byKey(ValueKey('host.$path'));
+
+/// Opens a section of a note form, or closes it when open.
+Future<void> toggleSection(WidgetTester tester, String id) async {
+  await tester.ensureVisible(sectionHeader(id));
+  await tester.pumpAndSettle();
+  await tester.tap(sectionHeader(id));
+  await tester.pumpAndSettle();
 }
 
 /// The semantics node of the control a screen reader names [label], exactly.

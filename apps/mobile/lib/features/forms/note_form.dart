@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -38,6 +41,8 @@ class NoteForm extends StatefulWidget {
     this.actions,
     this.enabled = true,
     this.openSection,
+    this.newEntryId = makeEntryId,
+    this.clock = DateTime.now,
   });
 
   /// The note type version the note is written on.
@@ -70,6 +75,12 @@ class NoteForm extends StatefulWidget {
   /// The section to open, by its ID (the summary's "jumps to it", lifecycle 9.6). Without one the
   /// first section that shows is open.
   final String? openSection;
+
+  /// Makes the ID of an entry added to a repeating section.
+  final String Function() newEntryId;
+
+  /// The time an entry is added, its `entryAt`.
+  final DateTime Function() clock;
 
   @override
   State<NoteForm> createState() => _NoteFormState();
@@ -111,6 +122,43 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
 
   @override
   void change(String path, Object? value) => widget.onChanged(path, value);
+
+  /// Adds an entry to a repeating section: its `entryAt`, the time it was added, at an ID no answer
+  /// of the note uses, a removed entry's included (forms 2.3).
+  void _add(SectionDef section) {
+    for (var tries = 0; tries < 100; tries++) {
+      final id = widget.newEntryId();
+      final prefix = '${section.id}.$id.';
+      if (widget.answers.keys.any((path) => path.startsWith(prefix))) continue;
+      change('${prefix}entryAt', widget.clock().toUtc().toIso8601String());
+      return;
+    }
+    throw StateError('no unused entry ID was made');
+  }
+
+  /// Removes an entry: its `entryRemoved`, so its answers stop counting and stay in the note.
+  /// An entry that holds an answer asks first.
+  Future<void> _remove(SectionDef section, String entry, String title) async {
+    final prefix = '${section.id}.$entry.';
+    final holds = widget.answers.entries.any(
+      (a) => a.key.startsWith(prefix) && a.key != '${prefix}entryAt' && !isBlank(a.value),
+    );
+    if (holds) {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Remove $title?'),
+          content: const Text('Its answers will no longer count. They stay in the note’s history.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
+          ],
+        ),
+      );
+      if (sure != true || !mounted) return;
+    }
+    change('${prefix}entryRemoved', true);
+  }
 
   GlobalKey _keyOf(String section) => _keys.putIfAbsent(section, GlobalKey.new);
 
@@ -159,6 +207,14 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
   }
 }
 
+/// An entry's ID (forms 2.3): `e` and seven characters from a-z0-9, made on the phone. Two phones
+/// that each add an entry offline write to different paths, so nothing conflicts.
+String makeEntryId([Random? random]) {
+  final r = random ?? Random.secure();
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  return 'e${String.fromCharCodes([for (var i = 0; i < 7; i++) chars.codeUnitAt(r.nextInt(chars.length))])}';
+}
+
 /// Draws a section's fields from the note as it is now read.
 class _Drawing {
   _Drawing(this.form, this.reading);
@@ -170,15 +226,79 @@ class _Drawing {
   Widget section(SectionNode s) {
     final repeat = s.section.repeat;
     if (repeat == null) return fields(s, null);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final (i, entry) in reading.entries(s).indexed) ...[
-          if (i > 0) const SizedBox(height: FieldSpace.s5),
+    final entries = reading.entries(s);
+    final noun = _noun(repeat.itemTitle);
+    return Builder(
+      builder: (context) {
+        final text = Theme.of(context).textTheme;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (i, entry) in entries.indexed) ...[
+              if (i > 0) Divider(height: FieldSpace.s6, color: context.field.line),
+              // Numbered among the entries that are there, as the recap and the read view number them.
+              _entry(context, s, entry, repeat.itemTitle.replaceAll('{n}', '${i + 1}')),
+            ],
+            if (entries.isEmpty) Text('No $noun added yet.', style: text.bodyLarge),
+            if (widget.enabled) ...[
+              const SizedBox(height: FieldSpace.s4),
+              if (entries.length < repeat.max)
+                OutlinedButton.icon(
+                  onPressed: () => form._add(s.section),
+                  icon: const Icon(LucideIcons.plus),
+                  label: Text('Add $noun'),
+                )
+              else
+                Text('A note holds at most ${repeat.max}. Remove one to add another.', style: text.bodyLarge),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// One entry: its title, Remove, and its fields, named by its title for a screen reader.
+  Widget _entry(BuildContext context, SectionNode s, String entry, String title) {
+    void remove() => unawaited(form._remove(s.section, entry, title));
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: ExcludeSemantics(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+              ),
+              if (widget.enabled)
+                Semantics(
+                  button: true,
+                  label: 'Remove $title',
+                  onTap: remove,
+                  excludeSemantics: true,
+                  child: TextButton.icon(
+                    onPressed: remove,
+                    icon: const Icon(LucideIcons.trash2),
+                    label: const Text('Remove'),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: FieldSpace.s2),
           fields(s, entry),
         ],
-      ],
+      ),
     );
+  }
+
+  /// What an entry is called in a sentence: "Wound {n}" is a wound.
+  static String _noun(String itemTitle) {
+    final noun = itemTitle.replaceAll('{n}', '').trim();
+    // An initialism keeps its capitals.
+    if (noun.length > 1 && noun[1] == noun[1].toLowerCase()) return noun[0].toLowerCase() + noun.substring(1);
+    return noun;
   }
 
   /// The section's own fields, in an entry of a repeating section. A set flag among them makes the
