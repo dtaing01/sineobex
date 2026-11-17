@@ -1507,6 +1507,120 @@ void main() {
       });
     });
 
+    group('a retry is answered from its receipt, as the sender may see the field now (4.4, 6.4 rule 2)', () {
+      const e2 = 'e0000002';
+      const nothing = {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
+      late String patient;
+      setUp(() {
+        for (final d in restrictedNoteTypes) {
+          server.noteTypes[(d['key']! as String, d['version']! as int)] = d;
+        }
+        patient = server.seedPatient();
+        server.credentials
+          ..[dana] = 'none'
+          ..[casey] = 'none';
+        server.permissions[casey] = {'patients.view', 'encounters.chart'};
+      });
+      String restrictedNote(Map<String, Object?> data) =>
+          server.seed(entityNote, noteValue(visitOf(patientId: patient), testRestricted, data), by: alex);
+      Map<String, Object?> set(String note, String path, Object? value, [int baseVersion = 1]) =>
+          setOn(entityNote, note, 'data.$path', value, baseVersion);
+
+      test('a conflict whose answer was hidden since is sent with a field that holds nothing; one still shown is sent as it is', () async {
+        final n = restrictedNote(const {
+          'general.notes': 'Demo: walked over from the shelter',
+          'systems.seen': ['heart'],
+          'dx.$e2.entryAt': '2026-10-20T14:50:00Z',
+          'dx.$e2.diagnosis.code': 'J02.9',
+        });
+        // Neither saw the answer held there, which they may see: a conflict that shows it.
+        final danas = [
+          set(n, 'systems.seen', ['lungs'], 0),
+          set(n, 'general.notes', 'Demo: from Dana', 0),
+        ];
+        final caseys = [set(n, 'dx.$e2.diagnosis.code', 'J03.9', 0)];
+        final first = [...await send(dana, danas), ...await send(casey, caseys)];
+        expect(
+          [
+            for (final r in first) [r['status'], (r['server']! as Map)['value']],
+          ],
+          [
+            [
+              'conflict',
+              ['heart'],
+            ],
+            ['conflict', 'Demo: walked over from the shelter'],
+            ['conflict', 'J02.9'],
+          ],
+        );
+        // The author charts a GU exam and a sensitive diagnosis; the answers never reached the phones.
+        final alexs = [
+          set(n, 'systems.seen', ['heart', 'gu']),
+          set(n, 'dx.$e2.diagnosis.code', 'F11.20'),
+          set(n, 'general.notes', 'Demo: walked over from the park'),
+        ];
+        expect([for (final r in await send(alex, alexs)) r['status']], ['accepted', 'accepted', 'accepted']);
+        final again = [...await send(dana, danas), ...await send(casey, caseys)];
+        expect(again[0], {
+          'changeId': danas[0]['changeId'],
+          'status': 'conflict',
+          'serverVersion': 0,
+          'server': nothing,
+        });
+        expect(
+          again[1]['server'],
+          allOf(containsPair('value', 'Demo: walked over from the park'), containsPair('version', 2)),
+        );
+        expect(again[2], {
+          'changeId': caseys[0]['changeId'],
+          'status': 'conflict',
+          'serverVersion': 0,
+          'server': nothing,
+        });
+        // The author's own retry is answered with the field as it is.
+        final own = [
+          set(n, 'systems.seen', ['lungs'], 0),
+        ];
+        for (var i = 0; i < 2; i++) {
+          expect(((await send(alex, own)).single['server']! as Map)['value'], ['heart', 'gu']);
+        }
+      });
+
+      test(
+        'a late change kept in history is sent with a field that holds nothing once a correction hides it',
+        () async {
+          final n = restrictedNote(const {
+            'general.notes': 'Demo: walked over from the shelter',
+            'systems.seen': ['heart'],
+          });
+          server.finishNote(n);
+          final late = [
+            set(n, 'systems.seen', ['lungs']),
+          ];
+          final kept = (await send(dana, late)).single;
+          expect(kept['server'], containsPair('value', ['heart']));
+          expect(kept['details'], {'outcome': 'history_only', 'problem': 'note_finished'});
+          final correction = change(entityCorrection, 'create', {
+            'noteId': n,
+            'changes': [
+              {
+                'field': 'data.systems.seen',
+                'newValue': ['heart', 'gu'],
+                'baseVersion': 1,
+              },
+            ],
+            'reason': 'Demo: the GU exam was left out',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': null,
+          });
+          expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'corrected'));
+          expect((await send(dana, late)).single, {...kept, 'server': nothing});
+        },
+      );
+    });
+
     // Rules 7 to 10: services/api/test/sync-signoffs.test.ts and sync-corrections.test.ts. Alex is an
     // attending unless a case says otherwise. The phone's hash is worked out here from what the test
     // holds, as the API's tests do, never read from the fake.

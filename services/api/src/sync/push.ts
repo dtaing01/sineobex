@@ -149,7 +149,7 @@ async function processOne(
     if (existing) {
       if (existing.userId !== actor.authorId || existing.deviceId !== actor.deviceId)
         return reused(change.changeId);
-      return resultFromReceipt(tx, existing);
+      return resultFromReceipt(tx, existing, actor);
     }
     // An ID held anywhere else stays its holder's: a removed person's change held for review (or
     // the admin could never apply it), or a change in another team, which this one can't see.

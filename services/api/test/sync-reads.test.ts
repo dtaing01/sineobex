@@ -535,6 +535,103 @@ describe('phase 4 sync: who may read and change what in a note', () => {
     });
   });
 
+  describe('a retry is answered from its receipt, as the sender may see the field now (4.4, 6.4 rule 2)', () => {
+    const set = (c: Clinician, n: { noteId: string }, path: string, value: unknown, baseVersion = 1) =>
+      c.phone.change({
+        entity: 'encounter_note',
+        recordId: n.noteId,
+        op: 'set',
+        field: `data.${path}`,
+        value,
+        baseVersion,
+      });
+    const nothing = { value: null, version: 0, changedBy: null, changedAt: null };
+
+    it('a conflict whose answer was hidden since is sent with a field that holds nothing; one still shown is sent as it is', async () => {
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
+        'general.notes': 'Demo: walked over from the shelter',
+        'systems.seen': ['heart'],
+        [`dx.${E2}.entryAt`]: AT,
+        [`dx.${E2}.diagnosis.code`]: 'J02.9',
+      });
+      // Neither saw the answer held there, which they may see: a conflict that shows it.
+      const bens = await set(ben, n, 'systems.seen', ['lungs'], 0);
+      const dees = await set(dee, n, `dx.${E2}.diagnosis.code`, 'J03.9', 0);
+      const plain = await set(ben, n, 'general.notes', 'Demo: from Ben', 0);
+      const first = [...(await ben.send(bens, plain)), ...(await dee.send(dees))];
+      expect(first.map((r) => [r.status, r.server?.value])).toEqual([
+        ['conflict', ['heart']],
+        ['conflict', 'Demo: walked over from the shelter'],
+        ['conflict', 'J02.9'],
+      ]);
+      // The author charts a GU exam and a sensitive diagnosis; the answers never reached the phones.
+      const anas = [
+        await set(ana, n, 'systems.seen', ['heart', 'gu']),
+        await set(ana, n, `dx.${E2}.diagnosis.code`, 'F11.20'),
+        await set(ana, n, 'general.notes', 'Demo: walked over from the park'),
+      ];
+      expect((await ana.send(...anas)).map((r) => r.status)).toEqual(['accepted', 'accepted', 'accepted']);
+      const again = [...(await ben.send(bens, plain)), ...(await dee.send(dees))];
+      expect(again[0]).toEqual({
+        changeId: bens.changeId,
+        status: 'conflict',
+        serverVersion: 0,
+        server: nothing,
+      });
+      expect(again[1]).toMatchObject({
+        status: 'conflict',
+        serverVersion: 2,
+        server: { value: 'Demo: walked over from the park', version: 2, changedBy: ana.id },
+      });
+      expect(again[2]).toEqual({
+        changeId: dees.changeId,
+        status: 'conflict',
+        serverVersion: 0,
+        server: nothing,
+      });
+      // The author's own retry is answered with the field as it is.
+      const own = await set(ana, n, 'systems.seen', ['lungs'], 0);
+      expect((await ana.send(own))[0]).toMatchObject({
+        status: 'conflict',
+        server: { value: ['heart', 'gu'] },
+      });
+      expect((await ana.send(own))[0]).toMatchObject({
+        status: 'conflict',
+        server: { value: ['heart', 'gu'] },
+      });
+    });
+
+    it('a late change kept in history is sent with a field that holds nothing once a correction hides it', async () => {
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, {
+        'general.notes': 'Demo: walked over from the shelter',
+        'systems.seen': ['heart'],
+      });
+      await finishNote(ana, n, 'complete', 'completed');
+      const late = await set(ben, n, 'systems.seen', ['lungs']);
+      const [kept] = await ben.send(late);
+      expect(kept).toMatchObject({
+        status: 'accepted',
+        server: { value: ['heart'] },
+        details: { outcome: 'history_only', problem: 'note_finished' },
+      });
+      const correction = await ana.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: n.noteId,
+          changes: [{ field: 'data.systems.seen', newValue: ['heart', 'gu'], baseVersion: 1 }],
+          reason: 'Demo: the GU exam was left out',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: null,
+          signoffId: null,
+        },
+      });
+      expect((await ana.send(correction))[0]!.details).toMatchObject({ outcome: 'corrected' });
+      expect((await ben.send(late))[0]).toEqual({ ...kept, server: nothing });
+    });
+  });
+
   describe('the Medical gate (lifecycle 4.2; 4.9 rule 12)', () => {
     it('holds every kind of change to a Medical note from a credential lowered offline; an addendum changes no note and is taken', async () => {
       const kay = await clinician(h, t, 'kay@example.com', 'Kay (demo)', 'attending');

@@ -1465,6 +1465,31 @@ class FakeSyncServer {
     return hidden ? _rejected('permission') : null;
   }
 
+  /// A field that holds nothing, as a retry is answered with an answer hidden from its sender.
+  static const _nothingShown = <String, Object?>{'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
+
+  /// A note's field as a retry of [userId]'s change is answered with it (note.ts fieldForSender,
+  /// lifecycle 4.4, 6.4 rule 2): as it is now, or, when what it holds is hidden from the sender, a
+  /// field that holds nothing, as their sync read leaves no key for it. Whoever acts as the author
+  /// is sent it as it is, and so is the field of a phase 2 note; an unreadable definition hides it.
+  Map<String, Object?> _fieldForSender(String userId, FakeRecord note, String field) {
+    final state = note.state(field);
+    if (!field.startsWith('data.') || userId == _actingAuthor(note)) return state;
+    try {
+      final type = _noteTypeOf(note);
+      if (type == null) return state;
+      final reader = noteReader(permissionsOf(userId), credentialOf(userId), actsAsAuthor: false);
+      final path = field.substring('data.'.length);
+      final answers = _answersOf(note);
+      final hidden = _byDefinition(
+        () => answers.containsKey(path) && answerHidden(type, answers, path, answers[path], reader),
+      );
+      return hidden ? _nothingShown : state;
+    } on _DefinitionError {
+      return _nothingShown;
+    }
+  }
+
   /// A person as visibleAnswers reads them (records.ts noteReader): their role's keys and their
   /// credential now. A Medical note is read by whoever may read the problem list (D37).
   static NoteReader noteReader(Set<String> permissions, String credential, {required bool actsAsAuthor}) {
@@ -3513,10 +3538,15 @@ class _Receipt {
   bool resolved = false;
 
   /// The answer for this change, as the API gives it: a conflict, and a value kept but not applied,
-  /// show the field as the server holds it now (apply.ts resultFromReceipt).
+  /// show the field as the server holds it now, as its sender may see it (apply.ts
+  /// resultFromReceipt, note.ts fieldForSender).
   Map<String, Object?> result(FakeSyncServer s, String changeId) {
-    Map<String, Object?> current(String id) =>
-        s.records[id]?.state(field ?? '') ?? {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
+    Map<String, Object?> current(String id) {
+      final rec = s.records[id];
+      if (rec == null) return FakeSyncServer._nothingShown;
+      return rec.entity == entityNote ? s._fieldForSender(userId, rec, field ?? '') : rec.state(field ?? '');
+    }
+
     // A redirected change was answered with the survivor's field, a conflict included.
     final on = details?['redirectedTo'] as String? ?? recordId;
     switch (status) {

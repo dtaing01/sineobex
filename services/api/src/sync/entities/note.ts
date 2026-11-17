@@ -18,6 +18,7 @@ import {
   noteReader,
   rejected,
   storeCreate,
+  type ApplyActor,
   type ChangeContext,
   type EntityRules,
   type FieldMeta,
@@ -28,6 +29,7 @@ import {
 } from '../records.ts';
 import { encounterRules, loadEncounter } from './encounter.ts';
 import { applyField, keepInHistory, NOTHING_TO_RESOLVE, writeValue } from './fields.ts';
+import type { FieldStateValue } from '../schemas.ts';
 import { valueParents } from './values.ts';
 
 /**
@@ -258,8 +260,7 @@ async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
   if (s.actor.authorId === actingAuthor(s.rec)) return null;
   const type = await noteTypeOf(s.tx, s.rec);
   if (type === undefined) return null;
-  const sender = await loadSigner(s.tx, s.actor.teamId, s.actor.authorId);
-  const reader = noteReader(s.actor.permissions, sender?.credential ?? 'none', false);
+  const reader = await senderReader(s.tx, s.actor);
   const path = s.field.slice('data.'.length);
   const answers = answersOf(s.rec);
   const hidden = byDefinition(
@@ -269,6 +270,47 @@ async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
       answerHidden(type, answers, path, s.value, reader),
   );
   return hidden ? rejected('permission') : null;
+}
+
+/** The sender as visibleAnswers reads them: their role's keys and their credential now, never as the author. */
+async function senderReader(tx: Tx, actor: Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>) {
+  const sender = await loadSigner(tx, actor.teamId, actor.authorId);
+  return noteReader(actor.permissions, sender?.credential ?? 'none', false);
+}
+
+/** A field that holds nothing, as a retry is answered with an answer hidden from its sender. */
+const NOTHING_SHOWN: FieldStateValue = { value: null, version: 0, changedBy: null, changedAt: null };
+
+/**
+ * A note's field as a retry of [sender]'s change is answered with it (apply.ts resultFromReceipt;
+ * lifecycle 4.4, 6.4 rule 2). A conflict or a value kept in history shows the field as it is now,
+ * which may since hold an answer the sender may not see: then it is answered as a field that holds
+ * nothing, as their sync read leaves no key for it, the way a fresh set of it would be held before
+ * anything answered with it. Whoever acts as the author is sent it as it is, and so is the field of
+ * a phase 2 note; one whose definition cannot be read hides it.
+ */
+export async function fieldForSender(
+  tx: Tx,
+  sender: Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>,
+  note: StoredRecord,
+  field: string,
+): Promise<FieldStateValue> {
+  const state = fieldState(note, field);
+  if (!field.startsWith('data.') || sender.authorId === actingAuthor(note)) return state;
+  try {
+    const type = await noteTypeOf(tx, note);
+    if (type === undefined) return state;
+    const reader = await senderReader(tx, sender);
+    const path = field.slice('data.'.length);
+    const answers = answersOf(note);
+    const hidden = byDefinition(
+      () => Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader),
+    );
+    return hidden ? NOTHING_SHOWN : state;
+  } catch (err) {
+    if (err instanceof DefinitionError) return NOTHING_SHOWN;
+    throw err;
+  }
 }
 
 /** Who acts as a loaded note's author (lifecycle 3.8). */

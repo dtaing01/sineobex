@@ -3,6 +3,7 @@ import type { AuditFn } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { canonicalJson } from './canonical.ts';
 import { applyField } from './entities/fields.ts';
+import { fieldForSender } from './entities/note.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
@@ -150,14 +151,20 @@ export const sameOwner = (a: ChangeOwner, b: ChangeOwner) =>
 /**
  * The answer for a change the server already has, so a retry gets the answer the first attempt
  * got. A conflict, and a value kept but not applied (kept both, history only), show the field as
- * the server holds it now.
+ * the server holds it now, as [sender] may see it: a note's answer hidden from them since is sent
+ * as a field that holds nothing (note.ts fieldForSender).
  */
-export async function resultFromReceipt(tx: Tx, r: Receipt): Promise<SyncResultValue> {
+export async function resultFromReceipt(
+  tx: Tx,
+  r: Receipt,
+  sender: Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>,
+): Promise<SyncResultValue> {
   const current = async (recordId: string) => {
     const record = await rulesFor(r.entity)?.load(tx, recordId, false);
-    return record && r.field
-      ? fieldState(record, r.field)
-      : { value: null, version: 0, changedBy: null, changedAt: null };
+    if (!record || !r.field) return { value: null, version: 0, changedBy: null, changedAt: null };
+    return record.entity === 'encounter_note'
+      ? fieldForSender(tx, sender, record, r.field)
+      : fieldState(record, r.field);
   };
   // A redirected change was answered with the survivor's field, a conflict included.
   const on = typeof r.details?.redirectedTo === 'string' ? r.details.redirectedTo : r.recordId;
