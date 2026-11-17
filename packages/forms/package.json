@@ -11,6 +11,7 @@
   "scripts": {
     "export": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/export.ts",
     "golden": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/golden.ts",
+    "lock-grows": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/lock-grows.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

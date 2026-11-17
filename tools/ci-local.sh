@@ -30,6 +30,9 @@ step "Forms drift"
 # The export's notes (pieces and lists nothing uses yet) are left out; its problems are not.
 pnpm -s forms:export | grep -v '^note '
 pnpm -s --filter @sineobex/forms golden >/dev/null
+# A released line never leaves the lock: the export alone would take a lock deleted or emptied.
+FORMS_BASE="$(git merge-base HEAD origin/main)"
+pnpm -s --filter @sineobex/forms lock-grows "$FORMS_BASE"
 FORMS_GENERATED=(packages/forms/generated apps/mobile/assets/forms)
 git diff --exit-code -- "${FORMS_GENERATED[@]}"
 # A generated file that was never committed is drift too, and git diff does not see it.

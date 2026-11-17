@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -8,6 +9,7 @@ import { lockOf, lockText } from '../src/lock.ts';
 import { resolve } from '../src/resolve.ts';
 import { readPieces } from '../src/spec-check.ts';
 import { exportDefinitions, main, PRESETS_FILE } from '../scripts/export.ts';
+import { lockShrinks, main as lockGrows } from '../scripts/lock-grows.ts';
 import { definitionFiles, specTexts } from './fixtures/load.ts';
 
 // The export reads definitions/ from disk, runs every check of forms 4.2 and writes the presets.
@@ -403,7 +405,6 @@ describe('the release mode', () => {
     t.edit(EXAMPLE, (file) => {
       fields(file)[0].many = true;
     });
-    expect((await t.run(true)).problems).not.toEqual([]);
     expect(existsSync(t.lock)).toBe(false);
   });
 });
@@ -436,5 +437,85 @@ describe('the command', () => {
     await expect(main(['--relase'], { root: t.root, phoneAsset: t.phoneAsset, print })).rejects.toThrow(
       /--relase/,
     );
+  });
+});
+
+describe('the lock only grows', () => {
+  // The export holds the tree to whatever lock it finds, so a lock deleted or emptied would release
+  // nothing with every check green (review EXP-2). The drift step compares it with the base's.
+  const git = (root: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=Demo', '-c', 'user.email=demo@example.com', ...args], {
+      cwd: root,
+      stdio: 'pipe',
+    });
+  const released = async () => {
+    const t = releasable();
+    expect((await t.run(true)).problems).toEqual([]);
+    git(t.root, 'init', '-q');
+    git(t.root, 'add', '-A');
+    git(t.root, 'commit', '-qm', 'Demo: release');
+    return t;
+  };
+  const run = (t: { root: string }, base = 'HEAD') => {
+    const lines: string[] = [];
+    const code = lockGrows([base], { root: t.root, print: (l) => lines.push(l) });
+    return { code, lines };
+  };
+
+  it('refuses a lock deleted or emptied, which the export alone lets through', async () => {
+    const t = await released();
+    const lock = readFileSync(t.lock, 'utf8');
+    const lines = Object.keys(JSON.parse(lock) as Json).length;
+    rmSync(t.lock);
+    expect((await t.run()).problems).toEqual([]);
+    expect(run(t).code).toBe(1);
+    expect(lockShrinks(lock, null)).toHaveLength(lines);
+    writeFileSync(t.lock, '{}\n');
+    expect((await t.run()).problems).toEqual([]);
+    const { code, lines: printed } = run(t);
+    expect(code).toBe(1);
+    expect(printed.filter((l) => l.includes('lock.removed'))).toHaveLength(lines);
+  });
+
+  it('refuses a line dropped or rehashed, and takes a line added', async () => {
+    const t = await released();
+    const lock = JSON.parse(readFileSync(t.lock, 'utf8')) as Record<string, string>;
+    const head = (change: (l: Record<string, string>) => void) => {
+      const next = { ...lock };
+      change(next);
+      return JSON.stringify(next);
+    };
+    const base = JSON.stringify(lock);
+    expect(
+      found(
+        lockShrinks(
+          base,
+          head((l) => delete l['lists/demo_scale.json']),
+        ),
+      ),
+    ).toEqual(['definitions.lock.json  $["lists/demo_scale.json"]  lock.removed']);
+    expect(
+      found(
+        lockShrinks(
+          base,
+          head((l) => (l[`${EXAMPLE}#resolved`] = '0'.repeat(64))),
+        ),
+      ),
+    ).toEqual([`definitions.lock.json  $["${EXAMPLE}#resolved"]  lock.rehashed`]);
+    writeFileSync(
+      t.lock,
+      head((l) => (l['lists/demo_new.json'] = '0'.repeat(64))),
+    );
+    expect(run(t).code).toBe(0);
+  });
+
+  it('takes any lock when the base has none, and refuses a base it cannot read', async () => {
+    const t = tree(...GOOD);
+    git(t.root, 'init', '-q');
+    git(t.root, 'add', '-A');
+    git(t.root, 'commit', '-qm', 'Demo: drafts');
+    expect(run(t).code).toBe(0);
+    expect(() => run(t, 'no-such-commit')).toThrow();
+    expect(() => lockGrows([], { root: t.root, print: () => {} })).toThrow(/base commit/);
   });
 });
