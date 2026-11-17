@@ -1,0 +1,345 @@
+{
+  "key": "harm_reduction",
+  "version": 1,
+  "title": "Harm reduction",
+  "kinds": ["medical"],
+  "group": "harm_reduction",
+  "sensitivity": "sensitive",
+  "sections": [
+    {
+      "id": "use",
+      "title": "Substance use",
+      "spec": "harm-reduction",
+      "fields": [
+        {
+          "id": "substances",
+          "kind": "choice",
+          "many": true,
+          "label": "Substances",
+          "options": [
+            {
+              "code": "opioids",
+              "label": "Opioids"
+            },
+            {
+              "code": "fentanyl",
+              "label": "Fentanyl"
+            },
+            {
+              "code": "stimulants",
+              "label": "Stimulants"
+            },
+            {
+              "code": "alcohol",
+              "label": "Alcohol"
+            },
+            {
+              "code": "benzodiazepines",
+              "label": "Benzodiazepines"
+            },
+            {
+              "code": "cannabis",
+              "label": "Cannabis"
+            },
+            {
+              "code": "tobacco",
+              "label": "Tobacco"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "last_use",
+          "kind": "choice",
+          "many": false,
+          "label": "Last use",
+          "options": [
+            {
+              "code": "today",
+              "label": "Today"
+            },
+            {
+              "code": "past_week",
+              "label": "Past week"
+            },
+            {
+              "code": "past_month",
+              "label": "Past month"
+            },
+            {
+              "code": "not_currently",
+              "label": "Not currently"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        },
+        {
+          "id": "overdose_history",
+          "kind": "choice",
+          "many": false,
+          "label": "Overdose history",
+          "options": [
+            {
+              "code": "never",
+              "label": "Never"
+            },
+            {
+              "code": "previous_overdose",
+              "label": "Previous overdose"
+            },
+            {
+              "code": "recent_overdose",
+              "label": "Recent overdose"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        },
+        {
+          "id": "risk_factors",
+          "kind": "choice",
+          "many": true,
+          "label": "Risk factors",
+          "options": [
+            {
+              "code": "using_alone",
+              "label": "Using alone"
+            },
+            {
+              "code": "mixing_substances",
+              "label": "Mixing substances"
+            },
+            {
+              "code": "reduced_tolerance",
+              "label": "Reduced tolerance"
+            },
+            {
+              "code": "fentanyl_exposure",
+              "label": "Fentanyl exposure"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "provided",
+      "title": "Harm reduction provided",
+      "spec": "harm-reduction",
+      "fields": [
+        {
+          "id": "naloxone",
+          "kind": "choice",
+          "many": false,
+          "label": "Naloxone",
+          "options": [
+            {
+              "code": "offered",
+              "label": "Offered"
+            },
+            {
+              "code": "accepted",
+              "label": "Accepted"
+            },
+            {
+              "code": "declined",
+              "label": "Declined"
+            },
+            {
+              "code": "already_has",
+              "label": "Already has"
+            }
+          ]
+        },
+        {
+          "id": "naloxone_doses",
+          "kind": "number",
+          "label": "Doses",
+          "min": 1,
+          "max": 20,
+          "decimals": 0,
+          "unit": "doses",
+          "display": "stepper",
+          "showWhen": {
+            "field": "provided.naloxone",
+            "is": "accepted"
+          }
+        },
+        {
+          "id": "supplies",
+          "kind": "choice",
+          "many": true,
+          "label": "Supplies",
+          "options": [
+            {
+              "code": "fentanyl_strips",
+              "label": "Fentanyl strips"
+            },
+            {
+              "code": "safer_use_supplies",
+              "label": "Safer-use supplies"
+            },
+            {
+              "code": "sharps",
+              "label": "Sharps"
+            },
+            {
+              "code": "safer_smoking_supplies",
+              "label": "Safer smoking supplies"
+            },
+            {
+              "code": "condoms",
+              "label": "Condoms"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "education",
+          "kind": "choice",
+          "many": true,
+          "label": "Education",
+          "options": [
+            {
+              "code": "overdose_response",
+              "label": "Overdose response"
+            },
+            {
+              "code": "safer_use",
+              "label": "Safer use"
+            },
+            {
+              "code": "never_use_alone",
+              "label": "Never use alone"
+            },
+            {
+              "code": "moud",
+              "label": "MOUD"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "treatment",
+      "title": "MOUD / SUD treatment",
+      "spec": "harm-reduction",
+      "treatmentRecord": true,
+      "fields": [
+        {
+          "id": "receiving",
+          "kind": "choice",
+          "many": false,
+          "label": "Currently receiving treatment?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        },
+        {
+          "id": "discussed",
+          "kind": "choice",
+          "many": false,
+          "label": "Treatment discussed?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "id": "interested",
+          "kind": "choice",
+          "many": false,
+          "label": "Interested in treatment?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "maybe",
+              "label": "Maybe"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "id": "interested_in",
+          "kind": "choice",
+          "many": true,
+          "label": "Which treatment?",
+          "showWhen": {
+            "field": "treatment.interested",
+            "is": ["yes", "maybe"]
+          },
+          "options": [
+            {
+              "code": "buprenorphine",
+              "label": "Buprenorphine"
+            },
+            {
+              "code": "methadone",
+              "label": "Methadone"
+            },
+            {
+              "code": "naltrexone",
+              "label": "Naltrexone"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "connect",
+          "kind": "action",
+          "label": "Connect to resource",
+          "action": "add_referral"
+        }
+      ]
+    }
+  ]
+}
