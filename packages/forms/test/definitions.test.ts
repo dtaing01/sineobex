@@ -494,6 +494,29 @@ describe('the plans of the exam pieces', () => {
     }
   });
 
+  // One-tap Normal fills only what is empty (forms 6.3), so it can never know that a wound was
+  // charted elsewhere in the section: a question that opens a hand-off to another note (6.7) is
+  // left for the clinician, or Normal would answer "No wound" beside an ulcer and hide the hand-off.
+  it.each(EXAM_PIECES)('%s leaves to the clinician every answer that opens a hand-off', (name) => {
+    const fields = new Map(shapeOf(name).fields.map((field) => [field.path, field]));
+    const read = (c: Condition): string[] =>
+      'all' in c
+        ? c.all.flatMap(read)
+        : 'any' in c
+          ? c.any.flatMap(read)
+          : 'not' in c
+            ? read(c.not)
+            : [c.field];
+    for (const action of shapeOf(name).fields.filter((field) => field.action === 'open_note_type')) {
+      const section = action.path.split('.')[0]!;
+      for (const path of read(action.showWhen as Condition)) {
+        const field = fields.get(path.startsWith('./') ? `${section}.${path.slice(2)}` : path);
+        expect(field, `${action.path}: ${path}`).toBeDefined();
+        expect(optionsOf(field).flagged('normal'), `${action.path}: ${path}`).toEqual([]);
+      }
+    }
+  });
+
   it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
     const shape = shapeOf(PICKER_PIECE);
     expect(shape.header).toBeUndefined();
