@@ -4,7 +4,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fixturePresets } from '../../../packages/forms/test/fixtures/presets.ts';
 import type { TeamScope } from '../src/auth/context.ts';
 import type { Tx } from '../src/db/database.ts';
-import { definitionFor, listNoteTypes } from '../src/forms/definitions.ts';
+import {
+  DefinitionMismatch,
+  definitionFor,
+  listNoteTypes,
+  MAX_DEFINITION_NAMES,
+  MAX_DEFINITIONS,
+} from '../src/forms/definitions.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createTeam, expectAudit, logSpy, memberWith, type LogSpy } from './patient-fixtures.ts';
 
@@ -334,6 +340,22 @@ describe('GET /v1/forms/note-types/{key}/{version}', () => {
     }
   });
 
+  it('answers an error, never the definition, for a row whose hash is not its definition’s', async () => {
+    // 0017 checks a hash's form and not what it hashes (forms 3.1); definitionFor checks it (D79).
+    const [p] = presets;
+    const forged = { ...p!.definition, version: 7, title: 'Checks, under a hash not its own (test)' };
+    await h.scratch.owner`
+      insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+      values (${teamId}, ${p!.key}, 7, ${JSON.stringify(forged)}::text::jsonb, ${p!.hash}, 'team')`;
+    // Never kept either: the second request is refused as the first was.
+    for (const attempt of [1, 2]) {
+      const res = await h.request(`/v1/forms/note-types/${p!.key}/7`, { token, teamId });
+      expect(res.status, `attempt ${attempt}`).toBe(500);
+      expect(await res.text()).not.toContain('not its own');
+      expect(res.headers.get('cache-control')).toBe('no-store');
+    }
+  });
+
   it('refuses someone outside the team', async () => {
     const elsewhere = await createTeam(h, 'Demo Forms Elsewhere Team');
     const outsider = await memberWith(h, elsewhere, []);
@@ -416,5 +438,107 @@ describe('definitionFor', () => {
     rows.set(`${teamId}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: p!.definition });
     expect(await definitionFor(tx as unknown as Tx, teamId, p!.key, p!.version)).toBeDefined();
     expect(tx.reads).toBe(2);
+  });
+
+  // D79 (forms 3.3): what definitionFor keeps, and the check of each row it reads.
+
+  /** One version of the first fixture note type per number, each with the hash of its own definition. */
+  const versions = async (count: number) => {
+    const [p] = await fixturePresets();
+    return Promise.all(
+      Array.from({ length: count }, async (_, i) => {
+        const definition = { ...p!.definition, version: i + 1, title: `Checks ${i + 1} (test)` };
+        return { key: p!.key, version: i + 1, hash: await sha256Hex(canonicalJson(definition)), definition };
+      }),
+    );
+  };
+
+  it('checks a row against its hash the first time it reads it: a row that fails is an error, never answered or kept', async () => {
+    const [p] = await fixturePresets();
+    const teamId = randomUUID();
+    // The hash of another definition, as 0017 lets a row hold: it checks the hash's form only.
+    const forged = { ...p!.definition, title: 'Checks, edited under the old hash (test)' };
+    const tx = fakeTx(
+      new Map([[`${teamId}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: forged }]]),
+    );
+    await expect(definitionFor(tx as unknown as Tx, teamId, p!.key, p!.version)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+    await expect(definitionFor(tx as unknown as Tx, teamId, p!.key, p!.version)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+    expect(tx.reads).toBe(2);
+    // Nor is the right definition, kept under that hash for another team, answered for this row.
+    const other = randomUUID();
+    const good = fakeTx(
+      new Map([[`${other}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: p!.definition }]]),
+    );
+    expect(await definitionFor(good as unknown as Tx, other, p!.key, p!.version)).toBeDefined();
+    await expect(definitionFor(tx as unknown as Tx, teamId, p!.key, p!.version)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+  });
+
+  it('keeps one frozen copy per hash, shared by every team that holds it', async () => {
+    const [p] = await fixturePresets();
+    const [one, two] = [randomUUID(), randomUUID()];
+    // Each team's row is its own object, as two reads of the database give.
+    const tx = fakeTx(
+      new Map([
+        [`${one}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: structuredClone(p!.definition) }],
+        [`${two}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: structuredClone(p!.definition) }],
+      ]),
+    );
+    const first = await definitionFor(tx as unknown as Tx, one, p!.key, p!.version);
+    const second = await definitionFor(tx as unknown as Tx, two, p!.key, p!.version);
+    expect(second).toBe(first);
+    expect(tx.reads).toBe(2);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first!.definition.sections[0]!.fields[0])).toBe(true);
+    expect(() => {
+      (first!.definition as { title: string }).title = 'Changed (test)';
+    }).toThrow(TypeError);
+  });
+
+  it('keeps at most 64 definitions, and drops the one used least recently', async () => {
+    expect(MAX_DEFINITIONS).toBe(64);
+    const all = await versions(MAX_DEFINITIONS + 1);
+    const teamId = randomUUID();
+    const tx = fakeTx(new Map(all.map((v) => [`${teamId}/${v.key}/${v.version}`, v])));
+    const read = (v: (typeof all)[number]) => definitionFor(tx as unknown as Tx, teamId, v.key, v.version);
+    for (const v of all.slice(0, MAX_DEFINITIONS)) await read(v);
+    expect(tx.reads).toBe(MAX_DEFINITIONS);
+    // The first is used again, so the second is now the one used least recently.
+    expect((await read(all[0]!))!.hash).toBe(all[0]!.hash);
+    expect(tx.reads).toBe(MAX_DEFINITIONS);
+    await read(all[MAX_DEFINITIONS]!);
+    expect(tx.reads).toBe(MAX_DEFINITIONS + 1);
+    await read(all[0]!);
+    expect(tx.reads).toBe(MAX_DEFINITIONS + 1);
+    // Its team, key and version are still mapped to its hash; the definition must be read again.
+    expect((await read(all[1]!))!.hash).toBe(all[1]!.hash);
+    expect(tx.reads).toBe(MAX_DEFINITIONS + 2);
+  });
+
+  it('maps at most 4,096 teams, keys and versions to a hash, and drops the one used least recently', async () => {
+    expect(MAX_DEFINITION_NAMES).toBe(4096);
+    const [p] = await fixturePresets();
+    const teams = Array.from({ length: MAX_DEFINITION_NAMES + 1 }, () => randomUUID());
+    const tx = fakeTx(
+      new Map(
+        teams.map((id) => [`${id}/${p!.key}/${p!.version}`, { hash: p!.hash, definition: p!.definition }]),
+      ),
+    );
+    const read = (teamId: string) => definitionFor(tx as unknown as Tx, teamId, p!.key, p!.version);
+    for (const id of teams.slice(0, MAX_DEFINITION_NAMES)) await read(id);
+    expect(tx.reads).toBe(MAX_DEFINITION_NAMES);
+    await read(teams[0]!);
+    expect(tx.reads).toBe(MAX_DEFINITION_NAMES);
+    await read(teams[MAX_DEFINITION_NAMES]!);
+    expect(tx.reads).toBe(MAX_DEFINITION_NAMES + 1);
+    await read(teams[0]!);
+    expect(tx.reads).toBe(MAX_DEFINITION_NAMES + 1);
+    expect(await read(teams[1]!)).toBeDefined();
+    expect(tx.reads).toBe(MAX_DEFINITION_NAMES + 2);
   });
 });
