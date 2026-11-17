@@ -6,11 +6,15 @@ import {
   fieldSchema,
   initialFieldState,
   invalid,
+  isBlank,
   jsonb,
   sameValue,
   storeCreate,
+  when,
+  type ApplyActor,
   type EntityRules,
   type FieldMeta,
+  type KeptInstead,
   type Outcome,
   type SetContext,
   type StoredRecord,
@@ -34,6 +38,11 @@ import { valueParents } from './values.ts';
  * Its status is no longer a field: the trigger of 0018 owns the column (lifecycle 4.3). Its kind is
  * one, with a rule of its own (the `status` class, the hook a problem's status uses): it moves to
  * Medical at any time (PRD main 379) and never back.
+ *
+ * The envelope (patient, location, place and summary) follows the draft rule while every note of the
+ * visit is a draft. Once one is finished, what the signer saw is settled: a later change is kept in
+ * history and its sender told, never refused, since the worker has nothing to fix. A visit with no
+ * patient can still be given one; a patient is never taken off a visit.
  */
 
 type Value = z.infer<typeof EncounterCreate>;
@@ -91,11 +100,16 @@ export const encounterRules: EntityRules<Value> = {
       },
       patientId: value.patientId ?? null,
       action: 'encounter.created',
+      after: async () => {
+        if (value.patientId) await seen(ctx, value.patientId, when(ctx.change));
+        return undefined;
+      },
     }),
 
   fieldClass: (field) => (field === 'kind' ? 'status' : fieldSchema('encounter', field) ? 'draft' : null),
   fieldSchema: (field) => fieldSchema('encounter', field),
   applyStatus: kindSet,
+  keptInstead: envelopeKept,
   load: loadEncounter,
 
   async write(tx, rec, field, value, version, meta) {
@@ -114,7 +128,54 @@ export const encounterRules: EntityRules<Value> = {
       where id = ${rec.id} returning version`;
     return rows[0]!.version;
   },
+
+  async afterWrite(s) {
+    if (s.field === 'patientId' && typeof s.value === 'string') {
+      await seen(s, s.value, new Date(s.rec.attributes.startedAt as string));
+    }
+  },
 };
+
+/**
+ * The envelope lock (lifecycle 4.3). Asked by the draft rule once the value differs from the one
+ * held. A patient is never taken off a visit (3.10); a visit with none can always be given one
+ * (3.1); everything else waits on the visit's notes. The team lock, which every encounter and note
+ * change takes first (4.2), keeps a note from being finished while this reads.
+ */
+async function envelopeKept(s: SetContext): Promise<KeptInstead | null> {
+  if (s.field === 'patientId') {
+    if (s.value === null) return { problem: 'patient_cannot_be_removed' };
+    if (isBlank(s.cur.value)) return null;
+  }
+  if (!(await hasFinishedNote(s.tx, s.actor.teamId, s.rec.id))) return null;
+  return {
+    problem: 'encounter_has_finished_note',
+    notice: { kind: 'late_change_kept', to: [s.actor.authorId] },
+  };
+}
+
+/** A note of the visit is completed or signed: what a signer saw of the envelope is settled. */
+async function hasFinishedNote(tx: Tx, teamId: string, encounterId: string): Promise<boolean> {
+  const rows = await tx`
+    select 1 from sineobex.encounter_notes
+    where team_id = ${teamId} and encounter_id = ${encounterId} and status <> 'draft'
+    limit 1`;
+  return rows.length > 0;
+}
+
+/**
+ * The patient was seen when the visit started (lifecycle 4.3): their last seen moves there if that
+ * is later than what it holds, and not later than the server's clock, so a phone's wrong clock never
+ * sets it in the future. It never moves back. The named record, merged or not: reads take the
+ * group's latest (D27).
+ */
+async function seen(ctx: { tx: Tx; actor: ApplyActor }, patientId: string, startedAt: Date) {
+  if (startedAt > ctx.actor.now) return;
+  await ctx.tx`
+    update sineobex.patients set last_seen_at = ${startedAt}
+    where team_id = ${ctx.actor.teamId} and id = ${patientId}
+      and (last_seen_at is null or last_seen_at < ${startedAt})`;
+}
 
 /**
  * A visit's kind goes from Non-Medical to Medical at any time, finished notes or not, and never back

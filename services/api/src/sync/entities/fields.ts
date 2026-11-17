@@ -13,6 +13,7 @@ import {
   when,
   type FieldClass,
   type HistoryKind,
+  type KeptInstead,
   type Outcome,
   type SetContext,
 } from '../records.ts';
@@ -23,7 +24,9 @@ import {
  * and followed a redirect; `s.cur` is the field as the server holds it and `s.saw` whether the
  * person saw that version.
  *
- * - draft (encounters and notes, D9): a different non-blank value is a conflict, shown side by side.
+ * - draft (encounters and notes, D9): a different non-blank value is a conflict, shown side by side;
+ *   a value the record takes no more of (the envelope of a visit with a finished note) is kept in
+ *   history instead.
  * - keep-both (patient demographics, module 9): the chart keeps its value, the other is kept in
  *   history, and a field review opens. Accepted either way, so it never waits in Needs attention.
  * - identity (legal name, birth): a fill only from someone who saw the current value, or into a
@@ -91,19 +94,26 @@ export async function writeValue(
 /**
  * Keeps the value in the field's history without applying it. With `needs`, it is the other value
  * of an open field review (kept both); otherwise history only (a stale observation, a second
- * retraction, a clear that would leave nobody recognisable). Either way the server holds exactly
- * the value the phone hashed, so the change is accepted, at the field's current version, and the
- * receipt carries the chart's value (design 2.5).
+ * retraction, a clear that would leave nobody recognisable, a late change to a visit). Either way
+ * the server holds exactly the value the phone hashed, so the change is accepted, at the field's
+ * current version, and the receipt carries the chart's value (design 2.5). A notice, when asked
+ * for, goes to each person named (the caller names each once); a retry is answered from its receipt
+ * and tells nobody again.
  */
 export async function keepInHistory(
   s: SetContext,
-  opts: { needs?: 'patients.edit' | 'patients.correct_identity'; problem?: string } = {},
+  opts: { needs?: 'patients.edit' | 'patients.correct_identity' } & Partial<KeptInstead> = {},
 ): Promise<Outcome> {
   const reviewId = opts.needs ? await openReview(s, opts.needs) : null;
   await appendHistory(s.tx, {
     ...historyOf(s, s.rules.entity, s.rec.id, s.field, s.cur.version, s.value, s.cur.value, 'kept_both'),
     reviewId,
   });
+  for (const userId of opts.notice?.to ?? []) {
+    await s.tx`
+      insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
+      values (${s.actor.teamId}, ${userId}, ${opts.notice!.kind}, ${s.rules.entity}, ${s.rec.id})`;
+  }
   const audit = {
     entity: s.rules.entity,
     entityId: s.rec.id,
@@ -207,6 +217,10 @@ async function draftSet(s: SetContext): Promise<Outcome> {
 
   // Already the server's value: nothing to write, and the phone now holds the current version.
   if (sameValue(cur.value, s.value)) return { status: 'accepted', serverVersion: cur.version };
+  // A field that takes no more values keeps this one, the answer to a conflict included: a refusal
+  // would wait for a fix the worker cannot make, and a conflict would ask them to choose for nothing.
+  const kept = await s.rules.keptInstead?.(s);
+  if (kept) return keepInHistory(s, kept);
 
   if (c.resolution === 'replace') {
     if (!s.saw) return { status: 'conflict', server: cur };

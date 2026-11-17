@@ -193,9 +193,12 @@ export function fieldState(record: StoredRecord, field: string): FieldStateValue
   };
 }
 
-/** A signed encounter or note takes no more changes (phase 4 adds addenda). */
+/**
+ * A signed note takes no more changes (phase 4 adds addenda). An encounter is never locked whole:
+ * once a note of it is finished, its envelope keeps a late change in history instead (lifecycle 4.3).
+ */
 export function isLocked(record: StoredRecord): boolean {
-  return (record.entity === 'encounter' || record.entity === 'encounter_note') && record.status === 'signed';
+  return record.entity === 'encounter_note' && record.status === 'signed';
 }
 
 export function snapshot(record: StoredRecord): RecordSnapshotValue {
@@ -453,6 +456,15 @@ export interface Redirect {
   details: { redirectedTo: string; mergeId?: string };
 }
 
+/**
+ * Why a value the draft rule would write is kept in history instead (lifecycle 4.1): a rule the
+ * worker cannot fix is no refusal. `notice` tells the people named, by a notice with no text.
+ */
+export interface KeptInstead {
+  problem: string;
+  notice?: { kind: string; to: readonly string[] };
+}
+
 /** The field a set applies to, and what the server knows about it. */
 export interface SetContext extends ChangeContext {
   rules: EntityRules;
@@ -511,6 +523,11 @@ export interface EntityRules<C = unknown> {
   redirect?(tx: Tx, rec: StoredRecord, field: string): Promise<Redirect | null>;
   /** The status class's rule (problems, design 9.2). */
   applyStatus?(s: SetContext): Promise<Outcome>;
+  /**
+   * The draft rule asks it before it writes a different value: the envelope of a visit with a
+   * finished note, a patient taken off a visit (lifecycle 4.3). Null: the draft rule decides.
+   */
+  keptInstead?(s: SetContext): Promise<KeptInstead | null>;
   /** The audit action of a write to [field], when it isn't `${auditPrefix}.updated`. */
   writeAction?(field: string): string | null;
   /** After a value reached the chart (matching re-runs on a name). */

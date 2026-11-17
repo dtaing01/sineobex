@@ -745,6 +745,258 @@ describe('phase 4 sync: encounters and notes', () => {
       ]);
       expect(await historyOf(encounterId, 'kind')).toHaveLength(3);
     });
+
+    /** A note of the visit, on the chart. */
+    async function noteOn(
+      c: Awaited<ReturnType<typeof clinician>>,
+      encounterId: string,
+      type: object = TEST_NOTE,
+    ) {
+      const create = await c.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId, ...type, data: { 'care.plan': 'Demo: rest and fluids' } },
+      });
+      expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      return create.recordId;
+    }
+
+    /** Finished as a sign-off with effect `completed` leaves it (the database's own rules, 0018). */
+    const finish = (noteId: string) => h.scratch.owner`
+      update sineobex.encounter_notes set status = 'completed', completed_at = now(), completed_by = author_user_id
+      where id = ${noteId}`;
+
+    /** Signed as the database requires (0018, 0019): the sign-off row first, then the note. */
+    async function sign(noteId: string) {
+      const signoffId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.note_signoffs (id, team_id, note_id, act, effect, content_hash, signer_user_id,
+          signer_name, signer_credential, needs_attestation, statement_version, signed_at, clock_verified)
+        select ${signoffId}, team_id, id, 'sign', 'signed', ${'cd'.repeat(32)}, author_user_id, 'Demo Signer',
+          'attending', false, 'demo-1', now(), true
+        from sineobex.encounter_notes where id = ${noteId}`;
+      await h.scratch.owner`
+        update sineobex.encounter_notes
+        set status = 'signed', completed_at = now(), completed_by = author_user_id, first_signed_at = now(),
+            signoff_id = ${signoffId}
+        where id = ${noteId}`;
+    }
+
+    const noticesOn = (recordId: string) =>
+      h.scratch.owner<{ userId: string; kind: string; entity: string }[]>`
+        select user_id as "userId", kind, entity from sineobex.user_notices where record_id = ${recordId}
+        order by created_at, id`;
+
+    const late = { outcome: 'history_only', problem: 'encounter_has_finished_note' };
+
+    it('once a note is finished, a change to the patient, place or summary is kept in history, and the sender is told', async () => {
+      const [first, second] = [
+        await createPatient(h, t.teamId, t.adminId),
+        await createPatient(h, t.teamId, t.adminId),
+      ];
+      const encounterId = await encounterOf(ash, first.id);
+      await finish(await noteOn(ash, encounterId));
+      const before = await encounterRow(encounterId);
+
+      const mark = await auditMark(h);
+      const changes = [
+        await setOn(bo, encounterId, 'summary', 'Demo: written after the note was done', 0),
+        await setOn(bo, encounterId, 'locationText', 'Demo: south parking lot', 1),
+        await setOn(bo, encounterId, 'location', { lat: 42.3, lng: -83.0 }, 1),
+        await setOn(bo, encounterId, 'patientId', second.id, 1),
+        // The answer to a conflict, which saw the value it replaces, is kept all the same.
+        await setOn(bo, encounterId, 'locationText', 'Demo: by the clinic van', 1, { resolution: 'replace' }),
+      ];
+      const answered = await bo.send(...changes);
+      const held = { summary: null, locationText: null, location: null, patientId: first.id };
+      expect(answered).toEqual(
+        changes.map((c) => ({
+          changeId: c.changeId,
+          status: 'accepted',
+          serverVersion: c.field === 'summary' ? 0 : 1,
+          hash: c.valueHash,
+          server: expect.objectContaining({
+            value: held[c.field as keyof typeof held],
+            version: c.field === 'summary' ? 0 : 1,
+          }),
+          details: late,
+        })),
+      );
+      expect(await encounterRow(encounterId)).toEqual(before);
+      const kept = await h.scratch.owner<{ field: string; value: unknown; kind: string }[]>`
+        select field, value, kind from sineobex.field_history
+        where record_id = ${encounterId} and kind <> 'created' order by id`;
+      expect(kept).toEqual(changes.map((c) => ({ field: c.field, value: c.value, kind: 'kept_both' })));
+      expect(await noticesOn(encounterId)).toEqual(
+        changes.map(() => ({ userId: bo.id, kind: 'late_change_kept', entity: 'encounter' })),
+      );
+      const events = await expectAudit(h, 'encounter.kept_in_history', {
+        after: mark,
+        count: changes.length,
+      });
+      expect(events.map((e) => e.details)).toEqual(
+        changes.map((c) =>
+          expect.objectContaining({
+            changeId: c.changeId,
+            field: c.field,
+            problem: 'encounter_has_finished_note',
+          }),
+        ),
+      );
+      expect(events.every((e) => e.patientId === first.id)).toBe(true);
+      await expectAudit(h, 'encounter.updated', { after: mark, count: 0 });
+
+      // Sent twice, it answers the same, and nothing more is kept or told.
+      expect(await bo.send(...changes)).toEqual(answered);
+      expect(await noticesOn(encounterId)).toHaveLength(changes.length);
+      await expectAudit(h, 'encounter.kept_in_history', { after: mark, count: changes.length });
+    });
+
+    it('a signed visit keeps a late change too, and takes a new note: an encounter is never locked whole', async () => {
+      const dana = await clinician('dana.e@example.com', 'Dana E (demo)', 'attending');
+      const p = await createPatient(h, t.teamId, t.adminId);
+      const encounterId = await encounterOf(dana, p.id);
+      await sign(await noteOn(dana, encounterId, TEST_MEDICAL));
+      expect(await encounterRow(encounterId)).toMatchObject({ status: 'signed' });
+      const summary = await setOn(dana, encounterId, 'summary', 'Demo: one more line', 0);
+      expect(await dana.send(summary)).toEqual([
+        expect.objectContaining({ status: 'accepted', serverVersion: 0, details: late }),
+      ]);
+      expect(await noticesOn(encounterId)).toEqual([
+        { userId: dana.id, kind: 'late_change_kept', entity: 'encounter' },
+      ]);
+      // The note is the unit (4.4): a teammate's new note on the signed visit is taken, and the visit
+      // is a draft again while it is.
+      await noteOn(ash, encounterId);
+      expect(await encounterRow(encounterId)).toMatchObject({ status: 'draft' });
+    });
+
+    it('while every note of the visit is a draft, the draft rule applies; another visit’s finished note is no lock', async () => {
+      const finished = await encounterOf(ash);
+      await finish(await noteOn(ash, finished));
+      const open = await encounterOf(ash);
+      await noteOn(ash, open);
+      const summary = await setOn(ash, open, 'summary', 'Demo: still writing', 0);
+      expect(await ash.send(summary)).toEqual([
+        { changeId: summary.changeId, status: 'accepted', serverVersion: 1, hash: summary.valueHash },
+      ]);
+      expect(await encounterRow(open)).toMatchObject({ summary: 'Demo: still writing' });
+      expect(await noticesOn(open)).toEqual([]);
+    });
+
+    it('the kind still goes to Medical after a finished note, and still never back', async () => {
+      const create = await ash.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical' },
+      });
+      expect((await ash.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      await finish(await noteOn(ash, create.recordId));
+      const medical = await setOn(ash, create.recordId, 'kind', 'medical', 1);
+      const back = await setOn(ash, create.recordId, 'kind', 'non_medical', 2);
+      expect(await ash.send(medical, back)).toEqual([
+        { changeId: medical.changeId, status: 'accepted', serverVersion: 2, hash: medical.valueHash },
+        expect.objectContaining({ details: { outcome: 'history_only', problem: 'kind_cannot_go_back' } }),
+      ]);
+      expect(await encounterRow(create.recordId)).toMatchObject({ kind: 'medical' });
+      expect(await noticesOn(create.recordId)).toEqual([]);
+    });
+
+    it('a visit with no patient can be given one after a finished note; one with the same value is no change', async () => {
+      const p = await createPatient(h, t.teamId, t.adminId);
+      const encounterId = await encounterOf(ash);
+      await finish(await noteOn(ash, encounterId));
+      // Bo never saw the blank (version 0): a blank holds nothing to overwrite.
+      const named = await setOn(bo, encounterId, 'patientId', p.id, 0);
+      const same = await setOn(bo, encounterId, 'locationText', null, 0);
+      expect(await bo.send(named, same)).toEqual([
+        { changeId: named.changeId, status: 'accepted', serverVersion: 2, hash: named.valueHash },
+        { changeId: same.changeId, status: 'accepted', serverVersion: 1, hash: same.valueHash },
+      ]);
+      expect(await encounterRow(encounterId)).toMatchObject({ patientId: p.id });
+      expect((await historyOf(encounterId, 'patientId')).map((r) => r.kind)).toEqual([
+        'created',
+        'filled_blank',
+      ]);
+      expect(await noticesOn(encounterId)).toEqual([]);
+      // Named now, it is held like the rest of the envelope.
+      const other = await createPatient(h, t.teamId, t.adminId);
+      const moved = await setOn(bo, encounterId, 'patientId', other.id, 2);
+      expect(await bo.send(moved)).toEqual([expect.objectContaining({ status: 'accepted', details: late })]);
+      expect(await encounterRow(encounterId)).toMatchObject({ patientId: p.id });
+    });
+
+    it('a patient is never taken off a visit', async () => {
+      const p = await createPatient(h, t.teamId, t.adminId);
+      const named = await encounterOf(ash, p.id);
+      const off = await setOn(ash, named, 'patientId', null, 1);
+      const [kept] = await ash.send(off);
+      expect(kept).toEqual({
+        changeId: off.changeId,
+        status: 'accepted',
+        serverVersion: 1,
+        hash: off.valueHash,
+        server: expect.objectContaining({ value: p.id, version: 1 }),
+        details: { outcome: 'history_only', problem: 'patient_cannot_be_removed' },
+      });
+      expect(await encounterRow(named)).toMatchObject({ patientId: p.id });
+      expect(await noticesOn(named)).toEqual([]);
+      // A move to another patient, before any note is finished, is the draft rule's.
+      const other = await createPatient(h, t.teamId, t.adminId);
+      const moved = await setOn(ash, named, 'patientId', other.id, 1);
+      expect((await ash.send(moved)).map((r) => [r.status, r.serverVersion])).toEqual([['accepted', 2]]);
+      // Nobody to take off: nothing changes.
+      const nobody = await encounterOf(ash);
+      const none = await setOn(ash, nobody, 'patientId', null, 1);
+      expect(await ash.send(none)).toEqual([
+        { changeId: none.changeId, status: 'accepted', serverVersion: 1, hash: none.valueHash },
+      ]);
+    });
+
+    it('a visit moves its patient’s last seen to when it started: later only, and never past the server’s clock', async () => {
+      const lastSeen = async (id: string) =>
+        (
+          await h.scratch.owner<
+            { at: Date }[]
+          >`select last_seen_at as at from sineobex.patients where id = ${id}`
+        )[0]!.at.toISOString();
+      const earlier = new Date('2026-10-01T10:00:00.000Z');
+      const p = await createPatient(h, t.teamId, t.adminId, { at: earlier });
+      const visit = (patientId: string | null, time: { deviceTime?: string; correctedTime?: string }) =>
+        ash.phone.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind: 'medical', ...(patientId ? { patientId } : {}) },
+          ...time,
+        });
+
+      // Started later than it was last seen (clock-corrected time): moved to the start.
+      const seen = await visit(p.id, { correctedTime: '2026-10-20T14:30:04.000Z' });
+      // Started earlier: not moved back. Stamped after the server's clock (15:00): not moved.
+      const older = await visit(p.id, { correctedTime: '2026-10-15T09:00:00.000Z' });
+      const ahead = await visit(p.id, { deviceTime: '2026-10-21T09:00:00.000Z' });
+      expect((await ash.send(seen, older, ahead)).map((r) => r.status)).toEqual([
+        'accepted',
+        'accepted',
+        'accepted',
+      ]);
+      expect(await lastSeen(p.id)).toBe('2026-10-20T14:30:04.000Z');
+
+      // A patient set that applies moves the new patient's last seen to the visit's start.
+      const q = await createPatient(h, t.teamId, t.adminId, { at: earlier });
+      const unnamed = await visit(null, { correctedTime: '2026-10-19T12:00:00.000Z' });
+      expect((await ash.send(unnamed)).map((r) => r.status)).toEqual(['accepted']);
+      await finish(await noteOn(ash, unnamed.recordId));
+      const named = await setOn(ash, unnamed.recordId, 'patientId', q.id, 1);
+      expect((await ash.send(named)).map((r) => r.status)).toEqual(['accepted']);
+      expect(await lastSeen(q.id)).toBe('2026-10-19T12:00:00.000Z');
+
+      // One kept in history moves nothing.
+      const r = await createPatient(h, t.teamId, t.adminId, { at: earlier });
+      const moved = await setOn(ash, unnamed.recordId, 'patientId', r.id, 2);
+      expect(await ash.send(moved)).toEqual([expect.objectContaining({ details: late })]);
+      expect(await lastSeen(r.id)).toBe(earlier.toISOString());
+    });
   });
 
   describe('the team lock (lifecycle 4.2)', () => {
