@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { canonicalJson, sha256Hex } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fixturePresets } from '../../../packages/forms/test/fixtures/presets.ts';
+import type { TeamScope } from '../src/auth/context.ts';
 import type { Tx } from '../src/db/database.ts';
-import { definitionFor } from '../src/forms/definitions.ts';
+import { definitionFor, listNoteTypes } from '../src/forms/definitions.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createTeam, expectAudit, logSpy, memberWith, type LogSpy } from './patient-fixtures.ts';
 
@@ -247,6 +248,29 @@ describe('GET /v1/forms/note-types', () => {
     expect(after).toEqual(before);
   });
 
+  it('names the team in its own query, not only through row-level security', async () => {
+    // A platform-scope transaction reads every team's rows (0017's policy), so here only the
+    // query's own team filter keeps the other team's key out.
+    const mine = await createTeam(h, 'Demo Forms Filter Team');
+    const theirs = await createTeam(h, 'Demo Forms Filter Other Team');
+    const [checks] = presets;
+    await insertRow(
+      h,
+      theirs,
+      { ...checks!.definition, key: 'demo_their_own', title: 'Theirs (test)' },
+      'team',
+    );
+    const scope = {
+      team: { teamId: mine },
+      meta: { requestId: 'demo-request' },
+      deps: { log: spy.log },
+      tx: <T>(fn: (tx: Tx, audit: (e: unknown) => Promise<void>) => Promise<T>) =>
+        h.db.tx({ teamId: mine, platform: true }, (tx) => fn(tx, async () => {})),
+    } as unknown as TeamScope;
+    const listed = await listNoteTypes(scope);
+    expect(listed.map((e) => e.key)).toEqual(presets.map((p) => p.key));
+  });
+
   it('needs a team, and a sign-in', async () => {
     const teamId = await createTeam(h, 'Demo Forms Header Team');
     const member = await memberWith(h, teamId, []);
@@ -318,6 +342,29 @@ describe('GET /v1/forms/note-types/{key}/{version}', () => {
     });
     expect(res.status).toBe(403);
     expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('the cache headers', () => {
+  let h: Harness;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    // Added before the first request, while the router can still take a route.
+    h.app.get('/v1/test-own-cache-control', (c) => {
+      c.header('Cache-Control', 'private, max-age=60');
+      return c.json({});
+    });
+  });
+  afterAll(() => h.close());
+
+  it('keeps no-store on any other response that sets its own Cache-Control', async () => {
+    // Only the definition's exact header is let through (app.ts): a handler that sets some other
+    // lifetime, on a response that may hold patient data, still gets no-store and Pragma.
+    const res = await h.request('/v1/test-own-cache-control');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('pragma')).toBe('no-cache');
   });
 });
 
