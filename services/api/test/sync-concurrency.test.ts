@@ -2,14 +2,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
 import { createPatient, logSpy } from './patient-fixtures.ts';
 import {
+  clinician,
   createEncounter,
   FakePhone,
   intakeValue,
+  noteOn,
   push,
   register,
   results,
   setupTeam,
+  signoffOf,
   TEST_NOTE,
+  TEST_NOTE_TYPES,
   type Team,
 } from './sync-fixtures.ts';
 
@@ -262,6 +266,80 @@ describe('phase 3 sync: lock order', () => {
       expect(answered.map((r) => r.map((x) => x.status))).toEqual([['accepted'], ['accepted']]);
     }
     expect(spy.lines.filter((l) => l.includes('sync.change_failed')).length).toBe(failedBefore);
+  });
+
+  it('two sign-offs and a kind change of one visit at once are each answered, and the visit’s status follows its notes', async () => {
+    // Lifecycle 4.2, 11.2: each takes the team lock first, so each writes the visit (a sign-off
+    // through the trigger of 0018) one after the other, and none waits for the row while holding it.
+    const [nonMedical] = TEST_NOTE_TYPES;
+    const p = await createPatient(h, t.teamId, t.aId);
+    const ash = await clinician(h, t, 'ash-concurrent@example.com', 'Ash (demo)', 'none');
+    const bay = await clinician(h, t, 'bay-concurrent@example.com', 'Bay (demo)', 'none');
+    const failedBefore = spy.lines.filter((l) => l.includes('sync.change_failed')).length;
+    for (let i = 0; i < 10; i++) {
+      const visit = await ash.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical', patientId: p.id },
+      });
+      expect((await ash.send(visit)).map((r) => r.status)).toEqual(['accepted']);
+      const at = { encounterId: visit.recordId, patientId: p.id, summary: null };
+      const ashes = await noteOn(ash, at, nonMedical!, { 'care.plan': 'Demo: rest' });
+      const bays = await noteOn(bay, at, nonMedical!, { 'care.plan': 'Demo: fluids' });
+      const kind = await phoneA.change({
+        entity: 'encounter',
+        recordId: visit.recordId,
+        op: 'set',
+        field: 'kind',
+        value: 'medical',
+        baseVersion: 1,
+      });
+      const answered = await Promise.all([
+        ash.send(await signoffOf(ash, ashes, 'complete')),
+        bay.send(await signoffOf(bay, bays, 'complete')),
+        asA(kind),
+      ]);
+      expect(answered.map((r) => r.map((x) => [x.status, x.details?.effect ?? null]))).toEqual([
+        [['accepted', 'completed']],
+        [['accepted', 'completed']],
+        [['accepted', null]],
+      ]);
+      const [row] = await h.scratch.owner<{ status: string; worked: string; kind: string }[]>`
+        select status, sineobex.encounter_status(id) as worked, kind from sineobex.encounters
+        where id = ${visit.recordId}`;
+      expect(row).toEqual({ status: 'completed', worked: 'completed', kind: 'medical' });
+    }
+    expect(spy.lines.filter((l) => l.includes('sync.change_failed')).length).toBe(failedBefore);
+  });
+
+  it('a sign-off waits for another writer of the team before it locks its note or its visit', async () => {
+    // Taken at its audit event instead, the lock would come after the sign-off had locked its note
+    // and, through the trigger of 0018, its visit: the order a kind change or a patient move, which
+    // holds the team lock and waits for the visit, would deadlock with.
+    const [nonMedical] = TEST_NOTE_TYPES;
+    const p = await createPatient(h, t.teamId, t.aId);
+    const cy = await clinician(h, t, 'cy-concurrent@example.com', 'Cy (demo)', 'none');
+    const visit = {
+      encounterId: await createEncounter(h, t.teamId, t.aId, p.id),
+      patientId: p.id,
+      summary: null,
+    };
+    const note = await noteOn(cy, visit, nonMedical!, { 'care.plan': 'Demo: rest' });
+    const other = await h.scratch.owner.reserve();
+    try {
+      await other`begin`;
+      await other`set local lock_timeout = '3s'`;
+      await other`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${t.teamId}::uuid::text, 0))`;
+      const pushing = cy.send(await signoffOf(cy, note, 'complete'));
+      await pushWaitsForTeamLock();
+      await other`select id from sineobex.encounters where id = ${visit.encounterId} for no key update`;
+      await other`select id from sineobex.encounter_notes where id = ${note.noteId} for no key update`;
+      await other`commit`;
+      expect((await pushing).map((r) => [r.status, r.details?.effect])).toEqual([['accepted', 'completed']]);
+    } finally {
+      await other`rollback`.catch(() => {});
+      other.release();
+    }
   });
 
   it('merges and pushes naming the merged patient finish in either order, without a deadlock', async () => {
