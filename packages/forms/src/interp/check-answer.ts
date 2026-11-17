@@ -114,6 +114,13 @@ function checkMany(holds: Codes, value: unknown): AnswerProblem | null {
 
 function checkText(value: unknown, maxLength: number): AnswerProblem | null {
   if (typeof value !== 'string') return 'wrong_type';
+  // Postgres stores no NUL and no half of a surrogate pair, so the server's sync check refuses both
+  // (services/api/src/sync/records.ts, jsonProblem); refused here too, the phone never saves one.
+  // A string walks by code point, so a half with no partner is the only one in the surrogate range.
+  for (const c of value) {
+    const point = c.codePointAt(0)!;
+    if (point === 0 || (point >= 0xd800 && point <= 0xdfff)) return 'wrong_type';
+  }
   // Characters, not UTF-16 units: an emoji is one character to the person typing it.
   let length = 0;
   for (const _ of value) if (++length > maxLength) return 'too_long';
