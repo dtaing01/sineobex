@@ -105,6 +105,14 @@
       "label": "Follow-up date",
       "range": "future",
       "showWhen": { "field": "follow_up.when", "is": "specific_date" }
+    },
+    {
+      "path": "follow_up.details",
+      "kind": "text",
+      "label": "Follow-up details",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "follow_up.when", "filled": true }
     }
   ]
 }

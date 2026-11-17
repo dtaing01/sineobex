@@ -162,3 +162,18 @@ describe('what hands off to another note on the real definitions', () => {
     expect(finding(['rash'])[`skin_findings.${ENTRY}.size.length`]).toBe(2);
   });
 });
+
+describe('what a later phase reads on the real definitions', () => {
+  const redFlags = definition('red_flags_disposition');
+
+  // TYP-3: the quick encounter's follow-up note (PRD main 404) has its one home in the Red flags
+  // and disposition note, beside the date, where the phase 7 follow-up task reads it.
+  it('keeps a follow-up note beside the follow-up the Red flags note records', () => {
+    const note = 'Demo: recheck the wound at the camp on Friday';
+    const after = effectiveAnswers(redFlags, {
+      'follow_up.when': 'next_street_clinic',
+      'follow_up.details': note,
+    });
+    expect(after['follow_up.details']).toBe(note);
+  });
+});

@@ -217,6 +217,14 @@
             "field": "follow_up.when",
             "is": "specific_date"
           }
+        },
+        {
+          "id": "details",
+          "kind": "text",
+          "label": "Follow-up details",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": { "field": "follow_up.when", "filled": true }
         }
       ]
     }

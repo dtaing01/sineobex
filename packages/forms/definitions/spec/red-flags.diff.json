@@ -57,6 +57,11 @@
       "line": 25,
       "what": "Choose-one. Specific date shows a date in the future.",
       "why": "inventory A1, A22"
+    },
+    {
+      "line": 25,
+      "what": "Follow-up details, a text box (up to 2000 characters), shows once a follow-up is picked. It is not in these lines: it is the quick form's Follow up text box (quick-2 line 21), which has its one home here, so what the follow-up needs (where, what to bring) reaches the phase 7 follow-up task with the date.",
+      "why": "PRD main 404 (the quick encounter's follow-up note and date); forms 6.2, 6.4; inventory A57; PLAN-OPEN (forms 10.1 #1)"
     }
   ]
 }
