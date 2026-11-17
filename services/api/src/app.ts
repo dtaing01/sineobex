@@ -7,6 +7,7 @@ import { ApiError, type ErrorBody } from './lib/errors.ts';
 import { registerAuditRoutes } from './routes/audit-log.ts';
 import { registerDeviceRoutes } from './routes/devices.ts';
 import { registerDuplicateRoutes } from './routes/duplicates.ts';
+import { IMMUTABLE_NO_PHI, registerFormRoutes } from './routes/forms.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import { registerMemberRoutes } from './routes/members.ts';
 import { registerOwnerRoutes } from './routes/owner.ts';
@@ -75,9 +76,11 @@ export function createApp(deps: Deps): App {
     }),
   );
 
-  // Patient data must never sit in a browser, proxy or CDN cache (module 9, desktop column).
+  // Patient data must never sit in a browser, proxy or CDN cache (module 9, desktop column). The one
+  // exception is a note type definition, which holds none and never changes (routes/forms.ts).
   app.use('*', async (c, next) => {
     await next();
+    if (c.res.headers.get('Cache-Control') === IMMUTABLE_NO_PHI) return;
     c.header('Cache-Control', 'no-store');
     c.header('Pragma', 'no-cache');
   });
@@ -107,6 +110,7 @@ export function createApp(deps: Deps): App {
   registerProblemRoutes(app, deps);
   registerDuplicateRoutes(app, deps);
   registerDeviceRoutes(app, deps);
+  registerFormRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {
     app.doc31('/openapi.json', openApiInfo);

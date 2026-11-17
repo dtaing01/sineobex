@@ -77,6 +77,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/forms/note-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The team’s note types, each at its newest version
+         * @description Any member of the team. Installs the platform’s presets the team does not hold yet first, and audits that install when it writes; the list itself holds no patient data and is not audited.
+         */
+        get: operations["listNoteTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/forms/note-types/{key}/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One version of a note type, resolved. It never changes, so it may be kept
+         * @description Any member of the team. Holds no patient data and is not audited.
+         */
+        get: operations["getNoteTypeDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -1516,6 +1556,48 @@ export interface components {
             /** @enum {string} */
             teamStatus: "active" | "suspended";
         };
+        NoteTypeDefinition: {
+            /** @description The resolved definition, in the format of @sineobex/forms */
+            definition: {
+                [key: string]: unknown;
+            };
+            hash: string;
+            /**
+             * @description A note type’s key, as migration 0017 allows it
+             * @example wound_care
+             */
+            key: string;
+            version: number;
+        };
+        NoteTypeEntry: {
+            /**
+             * @description Added by itself with the first Medical note of an encounter
+             * @enum {string|null}
+             */
+            auto: "medical" | null;
+            /** @description SHA-256 of the definition’s canonical JSON */
+            hash: string;
+            /**
+             * @description A note type’s key, as migration 0017 allows it
+             * @example wound_care
+             */
+            key: string;
+            /** @description Which encounters offer it */
+            kinds: ("medical" | "non_medical")[];
+            /** @description The Quick encounter */
+            quick: boolean;
+            /**
+             * @description `sensitive` needs patients.view_sensitive to read
+             * @enum {string}
+             */
+            sensitivity: "none" | "sensitive";
+            title: string;
+            /** @description The newest version the team holds */
+            version: number;
+        };
+        NoteTypeList: {
+            noteTypes: components["schemas"]["NoteTypeEntry"][];
+        };
         Notice: {
             /** Format: date-time */
             createdAt: string;
@@ -2348,6 +2430,123 @@ export interface operations {
             };
             /** @description Not signed in, or the session expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listNoteTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeList"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getNoteTypeDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+                /** @description A version, 1 or more */
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeDefinition"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

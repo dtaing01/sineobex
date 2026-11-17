@@ -689,6 +689,39 @@ enum MyTeamTeamStatus {
   String toJson() => wire;
 }
 
+enum NoteTypeEntryKindsItem {
+  medical('medical'),
+  nonMedical('non_medical'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeEntryKindsItem(this.wire);
+  final String wire;
+
+  static NoteTypeEntryKindsItem fromJson(String value) =>
+      NoteTypeEntryKindsItem.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeEntryKindsItem.unknown);
+
+  String toJson() => wire;
+}
+
+/// `sensitive` needs patients.view_sensitive to read
+enum NoteTypeEntrySensitivity {
+  none('none'),
+  sensitive('sensitive'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeEntrySensitivity(this.wire);
+  final String wire;
+
+  static NoteTypeEntrySensitivity fromJson(String value) =>
+      NoteTypeEntrySensitivity.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeEntrySensitivity.unknown);
+
+  String toJson() => wire;
+}
+
 enum OwnerTeamStatus {
   active('active'),
   suspended('suspended'),
@@ -3118,6 +3151,103 @@ class MyTeam {
       };
 }
 
+class NoteTypeDefinition {
+  const NoteTypeDefinition({
+    required this.definition,
+    required this.hash,
+    required this.key,
+    required this.version,
+  });
+
+  /// The resolved definition, in the format of @sineobex/forms
+  final Map<String, Object?> definition;
+  final String hash;
+  /// A note type’s key, as migration 0017 allows it
+  final String key;
+  final int version;
+
+  factory NoteTypeDefinition.fromJson(Map<String, dynamic> json) => NoteTypeDefinition(
+        definition: Map<String, Object?>.from(json['definition'] as Map),
+        hash: json['hash'] as String,
+        key: json['key'] as String,
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'definition': definition,
+        'hash': hash,
+        'key': key,
+        'version': version,
+      };
+}
+
+class NoteTypeEntry {
+  const NoteTypeEntry({
+    required this.auto,
+    required this.hash,
+    required this.key,
+    required this.kinds,
+    required this.quick,
+    required this.sensitivity,
+    required this.title,
+    required this.version,
+  });
+
+  /// Added by itself with the first Medical note of an encounter
+  final String? auto;
+  /// SHA-256 of the definition’s canonical JSON
+  final String hash;
+  /// A note type’s key, as migration 0017 allows it
+  final String key;
+  /// Which encounters offer it
+  final List<NoteTypeEntryKindsItem> kinds;
+  /// The Quick encounter
+  final bool quick;
+  /// `sensitive` needs patients.view_sensitive to read
+  final NoteTypeEntrySensitivity sensitivity;
+  final String title;
+  /// The newest version the team holds
+  final int version;
+
+  factory NoteTypeEntry.fromJson(Map<String, dynamic> json) => NoteTypeEntry(
+        auto: json['auto'] == null ? null : json['auto'] as String,
+        hash: json['hash'] as String,
+        key: json['key'] as String,
+        kinds: (json['kinds'] as List<dynamic>).map((e) => NoteTypeEntryKindsItem.fromJson(e as String)).toList(),
+        quick: json['quick'] as bool,
+        sensitivity: NoteTypeEntrySensitivity.fromJson(json['sensitivity'] as String),
+        title: json['title'] as String,
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'auto': auto == null ? null : auto!,
+        'hash': hash,
+        'key': key,
+        'kinds': kinds.map((e) => e.toJson()).toList(),
+        'quick': quick,
+        'sensitivity': sensitivity.toJson(),
+        'title': title,
+        'version': version,
+      };
+}
+
+class NoteTypeList {
+  const NoteTypeList({
+    required this.noteTypes,
+  });
+
+  final List<NoteTypeEntry> noteTypes;
+
+  factory NoteTypeList.fromJson(Map<String, dynamic> json) => NoteTypeList(
+        noteTypes: (json['noteTypes'] as List<dynamic>).map((e) => NoteTypeEntry.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'noteTypes': noteTypes.map((e) => e.toJson()).toList(),
+      };
+}
+
 class Notice {
   const Notice({
     required this.createdAt,
@@ -5249,6 +5379,12 @@ class SineobexApi {
     return (json as List<dynamic>).map((e) => MembershipChange.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// One version of a note type, resolved. It never changes, so it may be kept
+  Future<NoteTypeDefinition> getNoteTypeDefinition({required String key, required String version}) async {
+    final json = await _transport.send('GET', '/v1/forms/note-types/${Uri.encodeComponent(key)}/${Uri.encodeComponent(version)}');
+    return NoteTypeDefinition.fromJson(json as Map<String, dynamic>);
+  }
+
   /// A patient’s chart, as the role may see it. A merged ID answers the kept chart.
   Future<PatientChart> getPatient({required String patientId}) async {
     final json = await _transport.send('GET', '/v1/patients/${Uri.encodeComponent(patientId)}');
@@ -5307,6 +5443,12 @@ class SineobexApi {
   Future<MergePage> listMerges({String? afterId}) async {
     final json = await _transport.send('GET', '/v1/team/merges', query: <String, String>{if (afterId != null) 'afterId': (afterId).toString()}, );
     return MergePage.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The team’s note types, each at its newest version
+  Future<NoteTypeList> listNoteTypes() async {
+    final json = await _transport.send('GET', '/v1/forms/note-types');
+    return NoteTypeList.fromJson(json as Map<String, dynamic>);
   }
 
   /// Things the signed-in person should look at, without patient details

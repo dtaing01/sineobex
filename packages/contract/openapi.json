@@ -2259,6 +2259,118 @@
         ],
         "type": "object"
       },
+      "NoteTypeDefinition": {
+        "properties": {
+          "definition": {
+            "additionalProperties": {},
+            "description": "The resolved definition, in the format of @sineobex/forms",
+            "type": "object"
+          },
+          "hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "key": {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "example": "wound_care",
+            "pattern": "^[a-z][a-z0-9_]{1,60}$",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "hash",
+          "definition"
+        ],
+        "type": "object"
+      },
+      "NoteTypeEntry": {
+        "properties": {
+          "auto": {
+            "description": "Added by itself with the first Medical note of an encounter",
+            "enum": [
+              "medical",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hash": {
+            "description": "SHA-256 of the definition’s canonical JSON",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "key": {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "example": "wound_care",
+            "pattern": "^[a-z][a-z0-9_]{1,60}$",
+            "type": "string"
+          },
+          "kinds": {
+            "description": "Which encounters offer it",
+            "items": {
+              "enum": [
+                "medical",
+                "non_medical"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "quick": {
+            "description": "The Quick encounter",
+            "type": "boolean"
+          },
+          "sensitivity": {
+            "description": "`sensitive` needs patients.view_sensitive to read",
+            "enum": [
+              "none",
+              "sensitive"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "description": "The newest version the team holds",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "title",
+          "kinds",
+          "sensitivity",
+          "quick",
+          "auto",
+          "hash"
+        ],
+        "type": "object"
+      },
+      "NoteTypeList": {
+        "properties": {
+          "noteTypes": {
+            "items": {
+              "$ref": "#/components/schemas/NoteTypeEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "noteTypes"
+        ],
+        "type": "object"
+      },
       "Notice": {
         "properties": {
           "createdAt": {
@@ -4664,6 +4776,166 @@
         "summary": "Report that this phone deleted its data and key for the team",
         "tags": [
           "devices"
+        ]
+      }
+    },
+    "/v1/forms/note-types": {
+      "get": {
+        "description": "Any member of the team. Installs the platform’s presets the team does not hold yet first, and audits that install when it writes; the list itself holds no patient data and is not audited.",
+        "operationId": "listNoteTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTypeList"
+                }
+              }
+            },
+            "description": "The list"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team’s note types, each at its newest version",
+        "tags": [
+          "forms"
+        ]
+      }
+    },
+    "/v1/forms/note-types/{key}/{version}": {
+      "get": {
+        "description": "Any member of the team. Holds no patient data and is not audited.",
+        "operationId": "getNoteTypeDefinition",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A version, 1 or more",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "A version, 1 or more",
+              "example": "1",
+              "pattern": "^[1-9][0-9]{0,8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTypeDefinition"
+                }
+              }
+            },
+            "description": "The definition"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One version of a note type, resolved. It never changes, so it may be kept",
+        "tags": [
+          "forms"
         ]
       }
     },
