@@ -530,6 +530,14 @@ function checkFlags(model: PathModel, report: Report) {
         if (id === field.id || !node.siblings.some((sibling) => sibling.field.id === id))
           report(`${at}.clears[${index}]`, 'clears_unknown_field', `"${id}" is not a field beside this flag`);
       });
+    // A flag with sides is ticked for one side, but what it clears has no side to match: a tick on
+    // the right would stop a length charted on the left from counting (coordinator decision B4).
+    if (field.kind === 'flag' && field.sides && field.clears?.length)
+      report(
+        `${at}.clears`,
+        'clears_with_sides',
+        'a flag with sides is set for one side, and would clear the fields beside it on both',
+      );
   }
 }
 

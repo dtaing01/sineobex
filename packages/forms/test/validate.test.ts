@@ -1578,6 +1578,21 @@ describe('a flag that clears', () => {
     UNKNOWN,
   ]);
   broken('itself', (f) => (visit(f, 'unable').clears = ['unable']), [CHECKS, CLEARS, UNKNOWN]);
+  // Coordinator decision B4 (review finding INT-3): a tick on the right would clear the length on
+  // both sides, and a length charted on the left would stop counting.
+  broken('and has sides', (f) => (visit(f, 'unable').sides = true), [
+    CHECKS,
+    `${V('unable')}.clears`,
+    rule('clears_with_sides'),
+  ]);
+  fits('with sides, clearing nothing', (f) => {
+    visit(f, 'unable').sides = true;
+    delete visit(f, 'unable').clears;
+  });
+  fits('with sides, clearing no field', (f) => {
+    visit(f, 'unable').sides = true;
+    visit(f, 'unable').clears = [];
+  });
   fits('a group beside it', (f) => (visit(f, 'unable').clears = ['pressure']));
   fits('two fields beside it', (f) => (visit(f, 'unable').clears = ['length', 'lasting']));
 });
