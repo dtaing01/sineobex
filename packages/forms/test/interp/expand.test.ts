@@ -65,6 +65,8 @@ describe('expandQuick', () => {
       'validate.maps_to_unknown_field',
       'validate.maps_to_mismatch',
       'validate.maps_to_mismatch',
+      // The degree's Other text: the wound's burn degree has no Other option.
+      'validate.maps_to_mismatch',
     ]);
   });
 });

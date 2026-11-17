@@ -199,7 +199,50 @@
             { "id": "unableLength", "kind": "flag", "label": "Demo unable to measure", "clears": ["length"] },
             { "id": "injuredOn", "kind": "date", "label": "Demo date of injury", "range": "past" },
             { "id": "healing", "kind": "duration", "label": "Demo time healing" },
-            { "id": "photos", "kind": "photo", "label": "Demo wound photos", "max": 5 }
+            { "id": "photos", "kind": "photo", "label": "Demo wound photos", "max": 5 },
+            {
+              "id": "edge",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo wound edge",
+              "sides": true,
+              "options": [
+                { "code": "clean", "label": "Demo clean" },
+                { "code": "ragged", "label": "Demo ragged" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ]
+            },
+            {
+              "id": "size",
+              "kind": "group",
+              "label": "Demo size",
+              "layout": "row",
+              "fields": [
+                { "id": "len", "kind": "number", "label": "Demo size length", "min": 0, "max": 50, "decimals": 1, "unit": "cm" },
+                { "id": "wid", "kind": "number", "label": "Demo size width", "min": 0, "max": 50, "decimals": 1, "unit": "cm" }
+              ]
+            },
+            {
+              "id": "pulses",
+              "kind": "grid",
+              "label": "Demo pulses near",
+              "rows": [
+                { "code": "radial", "label": "Demo radial" },
+                { "code": "pedal", "label": "Demo pedal" }
+              ],
+              "cell": {
+                "id": "strength",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo strength",
+                "options": [
+                  { "code": "absent", "label": "Demo absent" },
+                  { "code": "weak", "label": "Demo weak" },
+                  { "code": "normal", "label": "Demo normal" },
+                  { "code": "other", "label": "Demo other", "other": true }
+                ]
+              }
+            }
           ]
         },
         {
@@ -606,6 +649,67 @@
               "mapsTo": "demo_visit:meds.given"
             }
           ]
+        },
+        {
+          "id": "found",
+          "title": "Demo wound found",
+          "fields": [
+            {
+              "id": "edge",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo wound edge",
+              "sides": true,
+              "options": [
+                { "code": "clean", "label": "Demo clean" },
+                { "code": "other", "label": "Demo other", "other": true }
+              ],
+              "mapsTo": "demo_wound:wounds.edge"
+            },
+            {
+              "id": "where",
+              "kind": "region",
+              "label": "Demo location",
+              "options": [
+                { "code": "arm", "label": "Demo arm" },
+                { "code": "leg", "label": "Demo leg" }
+              ],
+              "side": [
+                { "code": "right", "label": "Demo right" },
+                { "code": "left", "label": "Demo left" }
+              ],
+              "mapsTo": "demo_wound:wounds.where"
+            },
+            {
+              "id": "size",
+              "kind": "group",
+              "label": "Demo size",
+              "layout": "row",
+              "mapsTo": "demo_wound:wounds.size",
+              "fields": [
+                { "id": "len", "kind": "number", "label": "Demo size length", "min": 0, "max": 20, "decimals": 1, "unit": "cm" },
+                { "id": "wid", "kind": "number", "label": "Demo size width", "min": 0, "max": 20, "decimals": 1, "unit": "cm" }
+              ]
+            },
+            {
+              "id": "pulses",
+              "kind": "grid",
+              "label": "Demo pulses near",
+              "rows": [{ "code": "radial", "label": "Demo radial" }],
+              "mapsTo": "demo_wound:wounds.pulses",
+              "cell": {
+                "id": "strength",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo strength",
+                "options": [
+                  { "code": "absent", "label": "Demo absent" },
+                  { "code": "normal", "label": "Demo normal" },
+                  { "code": "other", "label": "Demo other", "other": true }
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -673,6 +777,23 @@
                 { "code": "none", "label": "Demo none", "exclusive": true }
               ],
               "mapsTo": "demo_visit:meds.given"
+            }
+          ]
+        },
+        {
+          "id": "found",
+          "title": "Demo wound found",
+          "fields": [
+            {
+              "id": "degree",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo burn degree",
+              "options": [
+                { "code": "first", "label": "Demo first" },
+                { "code": "third", "label": "Demo deeper", "other": true }
+              ],
+              "mapsTo": "demo_wound:wounds.degree"
             }
           ]
         }
@@ -1752,7 +1873,10 @@
       {"name": "an older quick version: an answer the newest full version takes is written", "definition": "quickOld", "answers": {"vitals.pulse": 72}, "full": "visit", "newEntryIds": {}, "why": "forms.md 10.1 #12: written where the newest full version takes it", "expected": {"answers": {"vitals.pulse": 72}, "leftOut": []}},
       {"name": "a choose-many is written in the full field's order of options", "definition": "quickOld", "answers": {"meds.given": ["ondansetron", "naloxone"]}, "full": "visit", "newEntryIds": {}, "why": "forms.md 2.3: a choose-many stores its codes in the definition's order, and checkAnswer refuses another order; the full field lists naloxone before ondansetron, so the same picks are written in its order", "expected": {"answers": {"meds.given": ["naloxone", "ondansetron"]}, "leftOut": []}},
       {"name": "an older quick version: nothing for the entry is taken, so no entry is made", "definition": "quickOld", "answers": {"vitals.woundType": "bite", "vitals.woundLength": 2}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "bite is no option of the newest wound type (unknown_option); the old length is in inches and the full field stores cm, so 2 would be read as 2 cm (forms.md 6.4: Expand copies the stored number; left out as wrong_type)", "expected": {"answers": {}, "leftOut": [{"path": "vitals.woundType", "target": "wounds.type", "problem": "unknown_option"}, {"path": "vitals.woundLength", "target": "wounds.length", "problem": "wrong_type"}]}},
-      {"name": "an older quick version: the entry holds what was taken", "definition": "quickOld", "answers": {"vitals.woundType": "laceration", "vitals.woundLength": 2}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "forms.md 6.4 and 10.1 #12: the type is taken and goes into the new entry with its entryAt; the length in inches is left out", "expected": {"answers": {"wounds.e7k2m9q1.entryAt": "2026-11-17T15:04:05Z", "wounds.e7k2m9q1.type": "laceration"}, "leftOut": [{"path": "vitals.woundLength", "target": "wounds.length", "problem": "wrong_type"}]}}
+      {"name": "an older quick version: the entry holds what was taken", "definition": "quickOld", "answers": {"vitals.woundType": "laceration", "vitals.woundLength": 2}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "forms.md 6.4 and 10.1 #12: the type is taken and goes into the new entry with its entryAt; the length in inches is left out", "expected": {"answers": {"wounds.e7k2m9q1.entryAt": "2026-11-17T15:04:05Z", "wounds.e7k2m9q1.type": "laceration"}, "leftOut": [{"path": "vitals.woundLength", "target": "wounds.length", "problem": "wrong_type"}]}},
+      {"name": "a sided choice with its Other text, a region, a group and a grid: each answer at the target's path with what follows the quick field's own path", "definition": "quick", "answers": {"found.edge.right": "other", "found.edge_other.right": "Demo: rolled", "found.edge.left": "clean", "found.where.region": "arm", "found.where.side": "left", "found.size.len": 2.5, "found.size.wid": 1, "found.pulses.radial": "other", "found.pulses.radial_other": "Demo: faint"}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "forms.md 6.4 and 2.3: the mapsTo path, then whatever follows the quick field's own path: a side (after _other, which belongs to the field's own part), a region's part, a group child's id, a grid's row code and its _other; all go into the one new entry (review finding INT-4)", "expected": {"answers": {"wounds.e7k2m9q1.edge.left": "clean", "wounds.e7k2m9q1.edge.right": "other", "wounds.e7k2m9q1.edge_other.right": "Demo: rolled", "wounds.e7k2m9q1.entryAt": "2026-11-17T15:04:05Z", "wounds.e7k2m9q1.pulses.radial": "other", "wounds.e7k2m9q1.pulses.radial_other": "Demo: faint", "wounds.e7k2m9q1.size.len": 2.5, "wounds.e7k2m9q1.size.wid": 1, "wounds.e7k2m9q1.where.region": "arm", "wounds.e7k2m9q1.where.side": "left"}, "leftOut": []}},
+      {"name": "an older quick version: an Other text whose target field has no Other option is left out as unknown_path", "definition": "quickOld", "answers": {"found.degree": "third", "found.degree_other": "Demo: to the bone"}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "forms.md 6.4 and 10.1 #12: the code is an option of the full field and is written; the full field has no Other option, so no answer is stored at the text's target path (review finding INT-4)", "expected": {"answers": {"wounds.e7k2m9q1.degree": "third", "wounds.e7k2m9q1.entryAt": "2026-11-17T15:04:05Z"}, "leftOut": [{"path": "found.degree_other", "target": "wounds.degree_other", "problem": "unknown_path"}]}},
+      {"name": "an Other text without its Other option picked does not count and is not written", "definition": "quickOld", "answers": {"found.degree": "first", "found.degree_other": "Demo: written before first was picked"}, "full": "wound", "newEntryIds": {"wounds": {"id": "e7k2m9q1", "at": "2026-11-17T15:04:05Z"}}, "why": "forms.md 7.1: the text of an Other option counts only while an Other option is picked", "expected": {"answers": {"wounds.e7k2m9q1.degree": "first", "wounds.e7k2m9q1.entryAt": "2026-11-17T15:04:05Z"}, "leftOut": []}}
     ],
     "suggestions": [
       {"name": "no answer: no suggestion", "definition": "visit", "answers": {}, "why": "lifecycle 9.6 line 2098: suggested next steps come from the options picked (forms.md 7.1 line 912); nothing is picked", "expected": []},
