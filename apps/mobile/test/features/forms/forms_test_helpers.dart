@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/theme.dart';
 import 'package:sineobex_field/design/tokens.dart';
+import 'package:sineobex_field/features/forms/field_host.dart';
 import 'package:sineobex_field/forms/definition.dart';
 
 import '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, runs;
@@ -50,6 +51,25 @@ FieldDef presetField(String key, String path) {
     fields = found is GroupDef ? found.fields : const [];
   }
   return found;
+}
+
+/// The answers a form hands its fields, in memory; [changes] records every change a widget made.
+class TestAnswers implements FormAnswers {
+  TestAnswers([Map<String, Object?>? values]) : values = {...?values};
+  final Map<String, Object?> values;
+  final Set<String> pending = {};
+  final Map<String, AnswerConflict> conflicts = {};
+  final List<(String, Object?)> changes = [];
+
+  @override
+  AnswerState at(String path) =>
+      AnswerState(value: values[path], pending: pending.contains(path), conflict: conflicts[path]);
+
+  @override
+  void change(String path, Object? value) {
+    changes.add((path, value));
+    values[path] = value;
+  }
 }
 
 /// Puts [child] on a screen of a 390 × 844 phone (320 × 640 when [run] is narrow), in [run]'s
