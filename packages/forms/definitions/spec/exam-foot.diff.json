@@ -19,8 +19,8 @@
     },
     {
       "line": 5,
-      "what": "Inspection is choose-many. Intact skin is the normal option and clears the others.",
-      "why": "focused-exam inventory default 13, 25, 26"
+      "what": "Inspection is choose-many. Intact skin is the normal option and is not exclusive: intact skin is charted with a callus, corn, deformity, nail abnormality, erythema or swelling beside it, and only the breaks in the skin, Ulcer, Fissure, Blister and Necrosis, are excluded.",
+      "why": "focused-exam inventory default 13, 17, 25, 26 (a reading of default 13, as for Moist: Intact skin says only that the skin is unbroken); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
     },
     {
       "line": 29,

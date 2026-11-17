@@ -36,7 +36,7 @@
           "many": true,
           "label": "Heart sounds",
           "options": [
-            { "code": "normal_s1_s2", "label": "Normal S1/S2", "exclusive": true, "normal": true },
+            { "code": "normal_s1_s2", "label": "Normal S1/S2", "normal": true },
             { "code": "murmur", "label": "Murmur" },
             { "code": "rub", "label": "Rub" },
             { "code": "gallop", "label": "Gallop" },

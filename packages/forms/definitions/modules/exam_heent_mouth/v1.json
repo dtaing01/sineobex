@@ -60,7 +60,7 @@
           "many": true,
           "label": "Airway",
           "options": [
-            { "code": "patent", "label": "Patent", "exclusive": true, "normal": true },
+            { "code": "patent", "label": "Patent", "normal": true },
             { "code": "swelling", "label": "Swelling" },
             { "code": "difficulty_managing_secretions", "label": "Difficulty managing secretions" }
           ]

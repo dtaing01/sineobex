@@ -15,8 +15,8 @@
     },
     {
       "line": 13,
-      "what": "Heart sounds is choose-many. Normal S1/S2 is the normal option and clears the others. Other asks for a short text.",
-      "why": "focused-exam inventory default 13, 26, 31"
+      "what": "Heart sounds is choose-many. Normal S1/S2 is the normal option and is not exclusive: normal first and second sounds are charted with a murmur, rub or gallop beside them. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 26, 31 (a reading of default 13, as for Moist: Normal S1/S2 describes the first and second heart sounds, not every sound); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
     },
     {
       "line": 25,

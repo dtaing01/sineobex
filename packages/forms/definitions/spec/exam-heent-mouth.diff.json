@@ -25,8 +25,8 @@
     },
     {
       "line": 49,
-      "what": "Airway is choose-many. Patent is the normal option and clears the others.",
-      "why": "focused-exam inventory default 13, 26"
+      "what": "Airway is choose-many. Patent is the normal option and is not exclusive: a patent airway is charted with Swelling or Difficulty managing secretions beside it, so the recap and the EMS handoff still say the airway is patent. No option says the airway is not patent.",
+      "why": "focused-exam inventory default 13, 26 (a reading of default 13, as for Moist: Patent describes whether air passes, not the whole airway); forms 10.1 #6; PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
     }
   ]
 }

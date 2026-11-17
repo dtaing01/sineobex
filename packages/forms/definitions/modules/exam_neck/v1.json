@@ -15,13 +15,14 @@
           "many": true,
           "label": "Neck",
           "options": [
-            { "code": "supple", "label": "Supple", "exclusive": true, "normal": true },
+            { "code": "supple", "label": "Supple", "normal": true },
             { "code": "stiff", "label": "Stiff" },
             { "code": "tender", "label": "Tender" },
             { "code": "mass", "label": "Mass" },
             { "code": "lymphadenopathy", "label": "Lymphadenopathy" },
             { "code": "jvd", "label": "JVD" }
-          ]
+          ],
+          "excludes": [["supple", "stiff"]]
         },
         {
           "id": "thyroid",

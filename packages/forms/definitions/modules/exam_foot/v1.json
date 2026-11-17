@@ -15,7 +15,7 @@
           "many": true,
           "label": "Inspection",
           "options": [
-            { "code": "intact_skin", "label": "Intact skin", "exclusive": true, "normal": true },
+            { "code": "intact_skin", "label": "Intact skin", "normal": true },
             { "code": "ulcer", "label": "Ulcer" },
             { "code": "callus", "label": "Callus" },
             { "code": "corn", "label": "Corn" },
@@ -26,6 +26,12 @@
             { "code": "erythema", "label": "Erythema" },
             { "code": "swelling", "label": "Swelling" },
             { "code": "necrosis", "label": "Necrosis" }
+          ],
+          "excludes": [
+            ["intact_skin", "ulcer"],
+            ["intact_skin", "fissure"],
+            ["intact_skin", "blister"],
+            ["intact_skin", "necrosis"]
           ]
         },
         {

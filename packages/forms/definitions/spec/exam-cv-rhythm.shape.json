@@ -32,7 +32,7 @@
       "many": true,
       "label": "Heart sounds",
       "options": ["normal_s1_s2", "murmur", "rub", "gallop", "other"],
-      "flags": { "exclusive": ["normal_s1_s2"], "normal": ["normal_s1_s2"], "other": ["other"] }
+      "flags": { "normal": ["normal_s1_s2"], "other": ["other"] }
     },
     {
       "path": "heart.murmur",

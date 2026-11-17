@@ -10,8 +10,8 @@
     },
     {
       "line": 3,
-      "what": "Neck is choose-many. Supple is the normal option and clears the others. It is not linked to Lymphatic or Cardiovascular.",
-      "why": "focused-exam inventory default 13, 26, 48"
+      "what": "Neck is choose-many. Supple is the normal option and is not exclusive: a supple neck is charted with tenderness, a mass, lymphadenopathy or JVD beside it, and only Stiff, its opposite, is excluded. It is not linked to Lymphatic or Cardiovascular.",
+      "why": "focused-exam inventory default 13, 17, 26, 48 (a reading of default 13, as for Moist: Supple describes the neck's movement, not every finding); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
     },
     {
       "line": 17,

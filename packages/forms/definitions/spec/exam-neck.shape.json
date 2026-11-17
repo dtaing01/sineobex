@@ -16,7 +16,8 @@
       "many": true,
       "label": "Neck",
       "options": ["supple", "stiff", "tender", "mass", "lymphadenopathy", "jvd"],
-      "flags": { "exclusive": ["supple"], "normal": ["supple"] }
+      "excludes": [["supple", "stiff"]],
+      "flags": { "normal": ["supple"] }
     },
     {
       "path": "neck_thyroid.thyroid",

@@ -52,8 +52,8 @@
     },
     {
       "line": 31,
-      "what": "Finding is choose-many. No mass is the normal option and clears the others. Other asks for a short text.",
-      "why": "focused-exam inventory default 13, 26, 31"
+      "what": "Finding is choose-many. No mass is the normal option and is not exclusive: tenderness with no mass is charted as both, and only Mass and Nodule, its opposites, are excluded. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 17, 26, 31 (a reading of default 13, as for Moist: No mass says only that no mass was felt); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
     },
     {
       "line": 43,

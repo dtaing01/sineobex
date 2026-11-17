@@ -62,11 +62,15 @@
           "many": true,
           "label": "Finding",
           "options": [
-            { "code": "no_mass", "label": "No mass", "exclusive": true, "normal": true },
+            { "code": "no_mass", "label": "No mass", "normal": true },
             { "code": "mass", "label": "Mass" },
             { "code": "tenderness", "label": "Tenderness" },
             { "code": "nodule", "label": "Nodule" },
             { "code": "other", "label": "Other", "other": true }
+          ],
+          "excludes": [
+            ["no_mass", "mass"],
+            ["no_mass", "nodule"]
           ],
           "showWhen": { "field": "breast.performed", "filled": true }
         },

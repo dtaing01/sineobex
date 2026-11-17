@@ -28,7 +28,13 @@
         "swelling",
         "necrosis"
       ],
-      "flags": { "exclusive": ["intact_skin"], "normal": ["intact_skin"] }
+      "excludes": [
+        ["intact_skin", "ulcer"],
+        ["intact_skin", "fissure"],
+        ["intact_skin", "blister"],
+        ["intact_skin", "necrosis"]
+      ],
+      "flags": { "normal": ["intact_skin"] }
     },
     {
       "path": "diabetic_foot.pulses",

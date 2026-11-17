@@ -65,7 +65,11 @@
       "label": "Finding",
       "options": ["no_mass", "mass", "tenderness", "nodule", "other"],
       "showWhen": { "field": "breast.performed", "filled": true },
-      "flags": { "exclusive": ["no_mass"], "normal": ["no_mass"], "other": ["other"] }
+      "excludes": [
+        ["no_mass", "mass"],
+        ["no_mass", "nodule"]
+      ],
+      "flags": { "normal": ["no_mass"], "other": ["other"] }
     },
     {
       "path": "breast.mass",

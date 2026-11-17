@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
@@ -65,5 +66,40 @@ describe('one-tap Normal on the real definitions', () => {
     );
     expect(strength.map(([, value]) => value)).toEqual(sides.map(() => 5));
     expect(strength.map(([path]) => (/right/.test(path) ? 'right' : 'left')).sort()).toEqual(sides);
+  });
+});
+
+describe('findings a clinician charts together on the real definitions', () => {
+  // GEN-2, GEN-3 and SEN-1: a normal option that describes one part of its list is held beside a
+  // finding of another part, as Moist and Flat are (a reading of focused-exam default 13): only its
+  // true opposite is refused.
+  const HELD: [string, string[]][] = [
+    ['heart.sounds', ['normal_s1_s2', 'murmur']],
+    ['heart.sounds', ['normal_s1_s2', 'gallop']],
+    ['mouth.airway', ['patent', 'swelling']],
+    ['mouth.airway', ['patent', 'difficulty_managing_secretions']],
+    ['neck_thyroid.neck', ['supple', 'lymphadenopathy']],
+    ['neck_thyroid.neck', ['supple', 'mass']],
+    ['neck_thyroid.neck', ['supple', 'tender']],
+    ['neck_thyroid.neck', ['supple', 'jvd']],
+    ['breast.finding', ['no_mass', 'tenderness']],
+    ['diabetic_foot.inspection', ['intact_skin', 'callus']],
+    ['diabetic_foot.inspection', ['intact_skin', 'deformity', 'nail_abnormality']],
+  ];
+  it.each(HELD)('%s takes %j', (path, value) => {
+    expect(checkAnswer(general, path, value)).toBeNull();
+  });
+
+  const REFUSED: [string, string[]][] = [
+    ['neck_thyroid.neck', ['supple', 'stiff']],
+    ['breast.finding', ['no_mass', 'mass']],
+    ['breast.finding', ['no_mass', 'nodule']],
+    ['diabetic_foot.inspection', ['intact_skin', 'ulcer']],
+    ['diabetic_foot.inspection', ['intact_skin', 'fissure']],
+    ['diabetic_foot.inspection', ['intact_skin', 'blister']],
+    ['diabetic_foot.inspection', ['intact_skin', 'necrosis']],
+  ];
+  it.each(REFUSED)('%s refuses %j', (path, value) => {
+    expect(checkAnswer(general, path, value)).not.toBeNull();
   });
 });

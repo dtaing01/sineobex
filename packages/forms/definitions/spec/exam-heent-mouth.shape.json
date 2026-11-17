@@ -56,7 +56,7 @@
       "many": true,
       "label": "Airway",
       "options": ["patent", "swelling", "difficulty_managing_secretions"],
-      "flags": { "exclusive": ["patent"], "normal": ["patent"] }
+      "flags": { "normal": ["patent"] }
     }
   ]
 }
