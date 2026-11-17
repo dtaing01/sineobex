@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/theme.dart';
 import 'package:sineobex_field/design/tokens.dart';
@@ -12,6 +13,8 @@ import 'package:sineobex_field/features/forms/flag_field.dart';
 import 'package:sineobex_field/features/forms/number_field.dart';
 import 'package:sineobex_field/features/forms/text_field.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/patients/patient_providers.dart' show problemCodesProvider;
+import 'package:sineobex_field/patients/problems.dart' show ProblemCodes;
 
 import '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, runs;
 import '../../helpers/app_harness.dart' show expectGuidelines;
@@ -122,9 +125,14 @@ Widget kindWidget(FieldDef field, String path, TestAnswers answers, {bool enable
   };
 }
 
+/// The phone's problem code list, read straight from its file: an asset bundle decodes a file this
+/// size on another isolate, which a widget test's fake clock never waits for (as the app harness).
+final bundledProblemCodes = ProblemCodes.parse(File('assets/problem_codes.json').readAsStringSync());
+
 /// Puts [child] on a screen of a 390 × 844 phone (320 × 640 when [run] is narrow), in [run]'s
 /// theme and text size, in a scrolling list as the note form lays fields out. [size] puts it on a
-/// screen of that many logical pixels instead (a tablet's, say).
+/// screen of that many logical pixels instead (a tablet's, say). The bundled problem code list is
+/// there, as on the phone.
 Future<void> pumpField(WidgetTester tester, Widget child, {Run? run, Size? size}) async {
   final r = run ?? runs.first;
   tester.view.devicePixelRatio = 3;
@@ -135,12 +143,15 @@ Future<void> pumpField(WidgetTester tester, Widget child, {Run? run, Size? size}
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
   await tester.pumpWidget(
-    MaterialApp(
-      theme: buildFieldTheme(r.theme),
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Demo form')),
-        body: ListView(padding: const EdgeInsets.all(FieldSpace.s4), children: [child]),
+    ProviderScope(
+      overrides: [problemCodesProvider.overrideWith((ref) async => bundledProblemCodes)],
+      child: MaterialApp(
+        theme: buildFieldTheme(r.theme),
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          appBar: AppBar(title: const Text('Demo form')),
+          body: ListView(padding: const EdgeInsets.all(FieldSpace.s4), children: [child]),
+        ),
       ),
     ),
   );
