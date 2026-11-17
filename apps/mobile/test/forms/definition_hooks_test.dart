@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'package:sineobex_field/forms/definition_store.dart';
 import 'package:sineobex_field/forms/forms_providers.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
+import 'package:sineobex_field/sync/device_identity.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -228,6 +230,67 @@ void main() {
     expect(await listed('team-0'), isNull);
     expect(filesFor('team-1'), isTrue);
     expect(await listed('team-1'), ['checks_demo', 'demo_wound']);
+  });
+
+  /// Two teams, each with a database and its definitions, team-0 open.
+  Future<void> twoTeamsOpened() async {
+    teams = 2;
+    sync.dispose();
+    launch();
+    await session.start();
+    await signIn();
+    await session.selectTeam('team-1');
+    await idle();
+    await session.selectTeam('team-0');
+    await idle();
+    expect(filesFor('team-0'), isTrue);
+    expect(filesFor('team-1'), isTrue);
+  }
+
+  String deviceOf(String teamId) => server.devices.entries.firstWhere((d) => d.value.teamId == teamId).key;
+
+  /// A wipe of team-1 written down, the app gone before it deleted anything.
+  Future<void> unfinishedWipe() => UnconfirmedWipes(store).put(
+    UnconfirmedWipe(
+      userId: userId,
+      teamId: 'team-1',
+      deviceId: deviceOf('team-1'),
+      wipedAt: DateTime.utc(2026, 10, 20),
+    ),
+  );
+
+  test('a wipe the app didn’t finish deletes the team’s definitions at the next check', () async {
+    await twoTeamsOpened();
+    await unfinishedWipe();
+    await sync.checkDevices();
+    expect(filesFor('team-1'), isFalse);
+    expect(filesFor('team-0'), isTrue);
+  });
+
+  test('a wipe the app didn’t finish deletes the team’s definitions when the team is opened', () async {
+    await twoTeamsOpened();
+    await unfinishedWipe();
+    // Offline, so the open's own fetch can't bring them back.
+    forms.offline = true;
+    await session.selectTeam('team-1');
+    await idle();
+    expect(sync.store, isNotNull);
+    expect(filesFor('team-1'), isFalse);
+  });
+
+  test('a wipe order for a team whose device ID is gone deletes its definitions too', () async {
+    await twoTeamsOpened();
+    final device = deviceOf('team-0');
+    server.onRequest = (path) {
+      if (path != '/v1/sync/push') return;
+      server.devices[device]!.status = 'wipe_requested';
+      unawaited(DeviceIdentity(store: store, userId: userId).forgetTeam('team-0'));
+    };
+    forms.offline = true;
+    sync.store!.createEncounter(kind: 'medical');
+    expect(await sync.syncNow(), isA<SyncWipeRequested>());
+    expect(filesFor('team-0'), isFalse);
+    expect(filesFor('team-1'), isTrue);
   });
 
   test('the screens get the open team’s note types, and null where it has no list', () async {
