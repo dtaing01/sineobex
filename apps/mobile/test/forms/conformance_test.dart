@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/forms/check_answer.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
 
 /// The interpreter's answers are data (phase 4 design, forms 7.2): they live in
@@ -16,7 +17,6 @@ typedef Case = Map<String, Object?>;
 /// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
 /// the last one empties it.
 const notWrittenYet = {
-  'effectiveAnswers',
   'finishCheck',
   'normalAnswers',
   'recapLines',
@@ -43,6 +43,11 @@ const inputs = {
   'handoffLines': ['notes'],
 };
 
+/// The functions that give a map whose key order is part of the answer: the content hash is taken
+/// over effectiveAnswers as written (lifecycle 4.5), and TypeScript writes it in UTF-16 code-unit
+/// order. A map's equality ignores its order, so it is checked apart.
+const ordered = {'effectiveAnswers'};
+
 /// What is wrong with a case's keys for its function: one it does not read, or one it needs.
 List<String> keyFaults(String function, Case c) {
   final reads = inputs[function] ?? const <String>[];
@@ -61,6 +66,8 @@ List<String> keyFaults(String function, Case c) {
       if (!c.containsKey(k)) 'needs $k',
   ];
 }
+
+Map<String, Object?> answersOf(Case c) => c['answers']! as Map<String, Object?>;
 
 void main() {
   final vectors = jsonDecode(
@@ -90,6 +97,7 @@ void main() {
       };
     },
     'checkAnswer': (definition, c) => checkAnswer(definition, c['path']! as String, c['value'])?.code,
+    'effectiveAnswers': (definition, c) => effectiveAnswers(definition, answersOf(c)),
   };
 
   group('the case reader', () {
@@ -130,7 +138,15 @@ void main() {
       if (run == null) return;
       for (final c in list) {
         test(c['name']! as String, () {
-          expect(run(definitions[c['definition']]!, c), c['expected']);
+          final result = run(definitions[c['definition']]!, c);
+          expect(result, c['expected']);
+          if (ordered.contains(function)) {
+            // Code-unit order is String.compareTo's, as it is JavaScript's < on strings.
+            expect(
+              (result! as Map<String, Object?>).keys,
+              (c['expected']! as Map<String, Object?>).keys.toList()..sort(),
+            );
+          }
         });
       }
     });
