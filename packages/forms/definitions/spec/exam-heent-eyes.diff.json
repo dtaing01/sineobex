@@ -20,7 +20,7 @@
     },
     {
       "line": 21,
-      "what": "If unequal: the two sizes are one number with sides, Pupil size, in mm from 1 to 9 with one decimal (half millimetres), and the reaction is asked for each pupil, Pupil reaction, choose-one with sides. Both show only while Unequal pupils is picked. The bullets Right pupil and Left pupil are the two sides, not options.",
+      "what": "If unequal: the two sizes are one number with sides, Pupil size, in mm from 1 to 9 with one decimal (so a half millimetre can be typed: the format has no step), and the reaction is asked for each pupil, Pupil reaction, choose-one with sides. Both show only while Unequal pupils is picked. The bullets Right pupil and Left pupil are the two sides, not options.",
       "why": "focused-exam inventory default 20, 43; forms 4.3 (sides)"
     },
     {
