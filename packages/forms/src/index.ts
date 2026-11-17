@@ -18,4 +18,5 @@ export * from './interp/effective.ts';
 export * from './interp/finish.ts';
 export * from './interp/normal.ts';
 export * from './interp/recap.ts';
+export * from './interp/read-model.ts';
 export * from './interp/visible.ts';
