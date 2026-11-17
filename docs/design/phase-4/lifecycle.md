@@ -1391,9 +1391,9 @@ As built (unit L1, with wave D's review):
 - **A merged patient.** A merge moves no rows (D27). An encounter keeps the patient ID it was
   made with, and every read takes the merged group, so an encounter never needs a redirect.
 - **Last seen.** When an encounter that names a patient is accepted, and when a `patientId` set
-  is applied, the server moves that patient's `last_seen_at` to the encounter's `started_at` if
-  that is later than the value held and not later than the server's clock. It never moves
-  backwards.
+  is applied, the server moves that patient's `last_seen_at` to the earlier of the encounter's
+  `started_at` and the server's clock, if that is later than the value held. It never moves
+  backwards, and never past the server's clock.
 
 As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `records.ts`):
 
@@ -1426,8 +1426,8 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
 - **Last seen** moves on an accepted create that names a patient (after its insert) and on an
   applied `patientId` set, on the patient row the visit names, merged or not: reads take the
   group's latest (D27), and the team index's version moves with it. A visit whose start is after
-  the server's clock moves nothing, as the text says. Open (review finding REC-4): move it to the
-  server's time instead, which would change the test that pins the skip.
+  the server's clock moves it to the server's clock (review finding REC-4): the visit happened, so
+  the patient was seen, and a phone's wrong clock never sets a time in the future.
 - **Open** (review finding REC-6): moving a visit to another patient leaves the referrals,
   problems and allergies made at it naming the first. Either such a move is kept in history when
   records made at the visit name another group, or the drift is accepted and written here and in
@@ -2070,8 +2070,9 @@ the API test that holds the same rule, in `services/api/test/sync-{encounters,si
 What else the fake does, as the API does: `signedUnder` is a copy of `signed-under.ts`
 (`FakeSyncServer.signedUnder`), and every case of `signed-under.json` runs through it;
 `_signedUnderFor` reads `credentialChanges` and `heldAt`, and a note's `storedAt` (when it was
-held, else when it was made) is `notBefore`. A visit moves its patient's last seen, later only and
-never past the server's clock (review finding FAK-5), so the team index's version moves too.
+held, else when it was made) is `notBefore`. A visit moves its patient's last seen to the earlier
+of its start and the server's clock, later only (review findings FAK-5, REC-4), so the team index's
+version moves too.
 
 **The fake's defaults:**
 

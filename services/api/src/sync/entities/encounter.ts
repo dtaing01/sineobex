@@ -173,17 +173,18 @@ async function finishedNoteAuthors(tx: Tx, teamId: string, encounterId: string):
 }
 
 /**
- * The patient was seen when the visit started (lifecycle 4.3): their last seen moves there if that
- * is later than what it holds, and not later than the server's clock, so a phone's wrong clock never
- * sets it in the future. It never moves back. The named record, merged or not: reads take the
- * group's latest (D27).
+ * The patient was seen when the visit started (lifecycle 4.3): their last seen moves to the earlier
+ * of that and the server's clock, if that is later than what it holds. A visit stamped ahead of the
+ * server still counts as seen, and a phone's wrong clock never sets a time in the future (review
+ * finding REC-4). It never moves back. The named record, merged or not: reads take the group's
+ * latest (D27).
  */
 async function seen(ctx: { tx: Tx; actor: ApplyActor }, patientId: string, startedAt: Date) {
-  if (startedAt > ctx.actor.now) return;
+  const at = startedAt > ctx.actor.now ? ctx.actor.now : startedAt;
   await ctx.tx`
-    update sineobex.patients set last_seen_at = ${startedAt}
+    update sineobex.patients set last_seen_at = ${at}
     where team_id = ${ctx.actor.teamId} and id = ${patientId}
-      and (last_seen_at is null or last_seen_at < ${startedAt})`;
+      and (last_seen_at is null or last_seen_at < ${at})`;
 }
 
 /**

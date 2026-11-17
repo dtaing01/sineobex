@@ -707,14 +707,13 @@ void main() {
 
           // Started later than it was last seen (clock-corrected time): moved to the start.
           final seen = visit(p, {'correctedTime': '2026-10-20T14:30:04.000Z'});
-          // Started earlier: not moved back. Stamped after the server's clock: not moved.
+          // Started earlier: not moved back.
           final older = visit(p, {'correctedTime': '2026-10-15T09:00:00.000Z'});
-          final ahead = visit(p, {'deviceTime': '2026-10-23T09:00:00.000Z'});
           expect(
             [
-              for (final r in await send(alex, [seen, older, ahead])) r['status'],
+              for (final r in await send(alex, [seen, older])) r['status'],
             ],
-            ['accepted', 'accepted', 'accepted'],
+            ['accepted', 'accepted'],
           );
           expect(server.records[p]!.seenAt, DateTime.utc(2026, 10, 20, 14, 30, 4));
           // The index the phone holds is no longer current.
@@ -724,6 +723,16 @@ void main() {
           }) as Map<String, Object?>;
           expect(moved['version'], isNot(held['version']));
           expect(lastSeenOn(moved), '2026-10-20');
+          // Stamped after the server's clock: moved to the server's clock, never past it (review
+          // finding REC-4). The visit happened, and a phone's wrong clock sets no future.
+          final ahead = visit(p, {'deviceTime': '2026-10-23T09:00:00.000Z'});
+          expect(
+            [
+              for (final r in await send(alex, [ahead])) r['status'],
+            ],
+            ['accepted'],
+          );
+          expect(server.records[p]!.seenAt, now);
 
           // A patient set that applies moves the new patient's last seen to the visit's start.
           final q = server.seedPatient(at: earlier);

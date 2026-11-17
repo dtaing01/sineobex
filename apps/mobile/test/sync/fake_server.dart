@@ -1242,12 +1242,13 @@ class FakeSyncServer {
     return _accepted(version);
   }
 
-  /// The patient was seen when the visit started (encounter.ts seen): later only, and never past the
-  /// server's clock. The named record, merged or not: reads take the group's latest.
+  /// The patient was seen when the visit started (encounter.ts seen): the earlier of that and the
+  /// server's clock, later only. The named record, merged or not: reads take the group's latest.
   void _seen(String patientId, DateTime startedAt) {
     final p = records[patientId];
-    if (p == null || startedAt.isAfter(now())) return;
-    if (startedAt.isAfter(p.seenAt)) p.lastSeenAt = startedAt.toUtc();
+    if (p == null) return;
+    final at = startedAt.isAfter(now()) ? now() : startedAt;
+    if (at.isAfter(p.seenAt)) p.lastSeenAt = at.toUtc();
   }
 
   /// One field write and what it decides about its record.

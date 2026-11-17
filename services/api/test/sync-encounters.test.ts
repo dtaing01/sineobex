@@ -1494,15 +1494,15 @@ describe('phase 4 sync: encounters and notes', () => {
 
       // Started later than it was last seen (clock-corrected time): moved to the start.
       const seen = await visit(p.id, { correctedTime: '2026-10-20T14:30:04.000Z' });
-      // Started earlier: not moved back. Stamped after the server's clock (15:00): not moved.
+      // Started earlier: not moved back.
       const older = await visit(p.id, { correctedTime: '2026-10-15T09:00:00.000Z' });
-      const ahead = await visit(p.id, { deviceTime: '2026-10-21T09:00:00.000Z' });
-      expect((await ash.send(seen, older, ahead)).map((r) => r.status)).toEqual([
-        'accepted',
-        'accepted',
-        'accepted',
-      ]);
+      expect((await ash.send(seen, older)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
       expect(await lastSeen(p.id)).toBe('2026-10-20T14:30:04.000Z');
+      // Stamped after the server's clock (15:00): moved to the server's clock, never past it
+      // (review finding REC-4). The visit happened, and a phone's wrong clock sets no future.
+      const ahead = await visit(p.id, { deviceTime: '2026-10-21T09:00:00.000Z' });
+      expect((await ash.send(ahead)).map((r) => r.status)).toEqual(['accepted']);
+      expect(await lastSeen(p.id)).toBe('2026-10-20T15:00:00.000Z');
 
       // A patient set that applies moves the new patient's last seen to the visit's start.
       const q = await createPatient(h, t.teamId, t.adminId, { at: earlier });
