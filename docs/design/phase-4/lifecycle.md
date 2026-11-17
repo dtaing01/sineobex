@@ -2999,6 +2999,12 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 20 | Who reads the substance use treatment part of a Harm reduction note? | The note's author, and people with `patients.view_sensitive` and a clinical credential (6.4) | Counsel (42 CFR Part 2) |
 | 21 | Do roles without `encounters.chart` or `billing.view_codes` read Medical notes? | No, as D37 decided for the problem list (6.4) | The project lead |
 | 22 | Which credential is a signature or a correction recorded under when its time cannot be trusted (the clock not verified, more than five minutes after the receipt, before the server received the note, or a time that cannot be read)? | The one held when the server receives it, with the phone's claim stored beside it; the claim can still make it wait for attestation (3.5) | Counsel and the billing partner |
+| 23 | What is a person shown when they complete a note without signing it, and which version is stored? | A `complete` carries a statement version as a `sign` does (`complete-2026-11` in the tests); its sentence is not written yet, and 3.5's table has none. The server stores the version the phone sends, any text of 1 to 40 characters from `a-z`, `0-9`, `_`, `.` and `-`, and checks it against no list (4.6) | Counsel |
+| 24 | Does a correction record the wording its corrector was shown? | No. A correction carries no statement version: its row's corrector, credential, time and reason stand as their signature on the change (3.6, 4.7) | Counsel |
+
+Rows 23 and 24 came from wave D's review of unit L1. Their `PLAN-OPEN:` comments are still owed
+in the code: on `NoteSignoffCreate`'s `statementVersion` (`services/api/src/sync/entities/values.ts`)
+and on the correction's value or its row (`note-correction.ts`).
 
 ### 12.2 Questions that need a person and have no default
 
