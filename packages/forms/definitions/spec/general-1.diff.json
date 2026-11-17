@@ -38,6 +38,11 @@
       "why": "PRD main 412 (V2)"
     },
     {
+      "line": 12,
+      "what": "Choose-many: several vaccines can be discussed in one visit.",
+      "why": "inventory A1 (section 3.1: many?)"
+    },
+    {
       "line": 13,
       "what": "Status is asked once for each vaccine picked: a grid whose rows are the vaccines picked, its cell choose-one.",
       "why": "inventory construct 24, A1"
@@ -46,6 +51,11 @@
       "line": 14,
       "what": "Given today records no lot number or expiry here: the supply confirmation screen captures them.",
       "why": "inventory A25; PRD main 426"
+    },
+    {
+      "line": 16,
+      "what": "Choose-many: several screenings can be done or offered in one visit.",
+      "why": "inventory A1 (section 3.1: many?)"
     },
     {
       "line": 17,
