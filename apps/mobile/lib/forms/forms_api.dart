@@ -81,6 +81,10 @@ class DefinitionSync {
         await store.keep(userId, teamId, v, answer.definition, generation: generation);
       } on DefinitionRefused catch (e) {
         // The rest are still fetched, so the next try has less to do; the list waits.
+        // PLAN-OPEN: what the phone does with a list that names a version this app can't read
+        // (one written for a newer app). Default built: the list is refused whole and the team
+        // keeps the list it had, until the app is updated; leaving the entry out instead would
+        // let Start drop a note type without a word.
         refused ??= e;
       }
     }
