@@ -88,6 +88,11 @@ const SYNC_ENTITY: Record<Schemas['ChangeEntity'], string> = {
   problem: 'problem',
   problem_note: 'problem note',
   id_link: 'ID card',
+  // Phase 4: a note's sign-offs, addenda, corrections and referrals.
+  note_signoff: 'sign-off',
+  note_addendum: 'addendum',
+  note_correction: 'correction',
+  referral: 'referral',
 };
 
 export function syncEntityNoun(entity: string): string {

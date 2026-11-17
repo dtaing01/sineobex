@@ -52,6 +52,11 @@ String entityLabel(String entity) => switch (entity) {
   'problem' => 'Problem',
   'problem_note' => 'Problem note',
   'id_link' => 'ID card',
+  // Phase 4: a note's sign-offs, addenda, corrections and referrals.
+  'note_signoff' => 'Sign-off',
+  'note_addendum' => 'Addendum',
+  'note_correction' => 'Correction',
+  'referral' => 'Referral',
   _ => 'A record',
 };
 
