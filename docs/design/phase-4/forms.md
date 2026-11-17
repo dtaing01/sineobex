@@ -87,7 +87,8 @@ packages/forms/
   src/                                 the path model, resolver, validator, lock, version rules, spec and shape
                                        checks, the installer (3.2) and the interpreter (TypeScript)
   scripts/                             export.ts, golden.ts and lock-grows.ts (4.1, 4.2, 7.3)
-  generated/presets.json               every note type version with includes and lists resolved, and its hash
+  generated/presets.json               every released note type version, with includes and lists resolved,
+                                       and its hash (D78: a draft is never a preset)
   generated/golden.json                what the interpreter says about each preset (7.3)
 apps/mobile/assets/forms/presets.json  the same bytes as generated/presets.json, written by the export
 ```
@@ -572,15 +573,16 @@ As built (unit F3):
   team and how many versions) and is not named: the log's allowlist has no key for it, and the
   team's rows name it. The list still answers, with the row the team holds for that key.
 
-**Open, to settle before the first release (wave D).** The export writes every note type
-version it resolves to `generated/presets.json`, drafts included (2.1), and the installer keeps
-what it is given for good. A draft installed in a team and then changed, as a draft may be
-(4.2), would be reported as "a released version was edited": the list route would skip every
-version of that key in each team holding the old draft, and a second seed would throw. Either
-the export writes to the presets only the versions whose `#resolved` line the lock holds, and
-notes the drafts, or each preset says whether it is released and the installer skips drafts.
-Either changes 2.1 and this section. Nothing is affected yet: `presets.json` is empty and there
-is no lock.
+**Decided Nov 17 (D78), built in wave D before the first release: a draft is never a preset.**
+As built in wave C, the export writes every version it resolves to `generated/presets.json`,
+drafts included, and the installer keeps what it is given for good. A draft installed in a team
+and then changed, as a draft may be (4.2), would be reported as "a released version was edited":
+the list route would skip every version of that key in each team holding the old draft, and a
+second seed would throw. So the export writes to the presets, and so to the phone's copy and the
+golden file, only the versions whose `#resolved` line the lock holds, and prints each draft as a
+note; a release run writes the lock first and the presets after it. A version a team holds then
+never changes, and `PresetDiffers` means what it says. A released flag on each preset was the
+other way out; it would put one rule in two places, the installer and the phone.
 
 ### 3.3 Routes
 
@@ -632,10 +634,14 @@ As built (unit F3):
   keeps teams apart. Today only the one-version route calls it; the sync rules (lifecycle 4.4)
   and the visit read (lifecycle 5.1) will.
 
-**Open, to settle when the sync rules call `definitionFor`.** Its map has no bound, and keeps one
-copy of the same preset for each team. Sharing one frozen copy per hash is safe only after
-checking that a row's definition is the one kept, since 0017 checks a hash's form and not what
-it hashes (3.1); a bound, such as dropping the least recently used, is a separate choice.
+**Decided Nov 17 (D79), built with its first caller, the sync rules (L1).** As built in wave C,
+its map has no bound and keeps one copy of the same preset for each team. 0017 checks a hash's
+form and not what it hashes (3.1), so `definitionFor` checks a row the first time it reads it:
+the hash of the row's canonical definition must be the row's hash, and a row that fails is an
+error, never answered. It then keeps one frozen definition per hash, at most 64, and maps team,
+key and version to a hash, at most 4,096 entries; each map drops its least recently used entry.
+Teams holding the same preset share one copy, and no definition is answered under a hash it does
+not have.
 
 ### 3.4 The phone
 
@@ -908,13 +914,13 @@ the place it was written (through the resolver's origins), once:
   offered for Non-Medical encounters too, `quick` with no `mapsTo`, an `itemTitle` without `{n}`,
   a problem field outside a repeating section. Neither interpreter nor the renderer depends on
   them.
-- **Open (wave C's review): a grid with sides whose cell is, or holds, a region or a problem.**
-  `sides_not_allowed` refuses `sides` on a region or a problem, and on a cell whose grid has
-  sides, but not on such a grid. It passes, and that cell stores no side: a region has a side of
-  its own, and the path model of both interpreters gives the cell none (2.3), so the two agree.
-  Either the validator refuses it, or such a cell gets its sides in both path models, with
-  `fieldAt` vectors to hold them together. No piece's plan holds such a grid: the seven grids with
-  sides have a choice or a number in their cell.
+- **A grid with sides whose cell is, or holds, a region or a problem is refused (D80, decided
+  Nov 17, built in wave D).** As built in wave C, `sides_not_allowed` refuses `sides` on a region
+  or a problem, and on a cell whose grid has sides, but not on such a grid. It passes, and that
+  cell stores no side: a region has a side of its own, and the path model of both interpreters
+  gives the cell none (2.3). Refusing it keeps one path model; giving such a cell sides would need
+  a second side part and new `fieldAt` vectors for a shape no piece's plan holds (the seven grids
+  with sides have a choice or a number in their cell).
 
 ### 4.3 How one piece of SPEC maps to data
 
@@ -1698,11 +1704,11 @@ their levels, files and order. This part's units, and what each owns:
 
 | Unit | Owns | Depends on |
 |---|---|---|
-| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/`, `scripts/` and the tests of the units that own those (`test/interp/`, `test/conformance.test.ts`, `test/definitions.test.ts`, `test/export.test.ts`): the schema, the types, the path model, the resolver, the validator, the lock, the version rules, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
+| **F0** The forms package | `packages/forms/` except `definitions/`, `src/interp/`, `scripts/` and the tests of the units that own those (`test/interp/`, `test/conformance.test.ts`, `test/definitions.test.ts`, `test/export.test.ts`, `test/golden.test.ts`): the schema, the types, the path model, the resolver, the validator, the lock, the version rules, the spec check, the shape check, and its own copy of the canonical JSON and hash functions | — |
 | **F1** The interpreter in TypeScript | `packages/forms/src/interp/`, `packages/contract/test-vectors/forms-conformance.json` and its TypeScript reader, `packages/forms/test/interp/`; in wave B's review, edits to F0's `src/validate.ts` and its test (2.2) | F0 |
-| **E** The export | `packages/forms/scripts/` and its test, `packages/forms/test/export.test.ts`; the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
-| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the Dart reader of the vectors, the golden test | F1 (the vectors), E (the golden file) |
-| **F3** Definitions on the server | `db/migrations/0017_note_type_versions.sql`, `packages/forms/src/install.ts`, `services/api/src/forms/`, `services/api/src/routes/forms.ts` | F0, E |
+| **E** The export | `packages/forms/scripts/` and its tests, `packages/forms/test/export.test.ts` and `test/golden.test.ts` (which writes the phone's golden sample); the generated files, the Forms drift step in CI, the PHI guard's fixture list | F0, F1 |
+| **F2** The interpreter in Dart | `apps/mobile/lib/forms/` (one file per function), the Dart reader of the vectors, the golden test and its sample, `apps/mobile/test/forms/golden_sample.json` | F1 (the vectors), E (the golden file) |
+| **F3** Definitions on the server | `db/migrations/0017_note_type_versions.sql`, `packages/forms/src/install.ts`, `services/api/src/forms/`, `services/api/src/routes/forms.ts`, and their tests (`db/test/install-presets.test.ts`, `services/api/test/forms-routes.test.ts`) | F0, E |
 | **F4** Definitions on the phone | `apps/mobile/lib/forms/definition_store.dart`, `forms_api.dart`, `forms_providers.dart`; one level X card adds the calls in `lib/auth` and `lib/sync` | F2, F3 |
 | **F5** The renderer | `apps/mobile/lib/features/forms/`, its tests | F2 |
 | **F6** The definitions | `packages/forms/definitions/`, `definitions.lock.json`, `packages/forms/test/definitions.test.ts`; in wave B's review, an edit to F0's `src/shape-check.ts` and its test (4.2) | F0, E |

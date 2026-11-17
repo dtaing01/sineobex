@@ -69,6 +69,7 @@ that look like bugs.
 | One API test file | `cd services/api && pnpm -s vitest run test/<file>.test.ts` |
 | Forms package tests | `pnpm -s --filter @sineobex/forms test` |
 | Contract (after any route or schema change) | `pnpm contract:generate`, then commit the regenerated files with the change |
+| Forms export (after any change under `packages/forms/definitions/` or to the interpreter) | `pnpm forms:export && pnpm -s --filter @sineobex/forms golden`, then commit `packages/forms/generated/` and `apps/mobile/assets/forms/` with the change; after an interpreter change, `pnpm --filter @sineobex/forms exec vitest run test/golden.test.ts -u` rewrites the phone's golden sample |
 | Phone | `cd apps/mobile && tool/format_check.sh && flutter analyze --fatal-infos && flutter test` |
 | Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
 | PHI guard | `node tools/phi-guard.mjs` |
