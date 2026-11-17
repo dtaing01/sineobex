@@ -1,3 +1,4 @@
+import { installPresets, type Preset } from '@sineobex/forms';
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
 import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
@@ -83,7 +84,12 @@ const FIELDS: Record<string, Record<string, string>> = {
 
 export async function seed(
   sql: Sql,
-  options: { log?: (line: string) => void; devIssuer?: string } = {},
+  options: {
+    log?: (line: string) => void;
+    devIssuer?: string;
+    /** The note type versions to install; generated/presets.json when left out (tests pass fixtures). */
+    presets?: readonly Preset[];
+  } = {},
 ): Promise<void> {
   const log = options.log ?? (() => {});
   const kind = await getEnvironment(sql);
@@ -149,5 +155,12 @@ export async function seed(
       returning id`;
     const { patients } = await seedDemoPatients(tx, DEMO_TEAM_ID, author!.id);
     log(`  ${patients} made-up patients`);
+
+    // Every note type version the platform ships, in both teams, as team creation does (forms
+    // 3.2). Platform scope is set above; a second run writes nothing.
+    for (const teamId of [DEMO_TEAM_ID, NEIGHBOUR_TEAM_ID]) {
+      const { installed } = await installPresets(tx, teamId, { presets: options.presets });
+      log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
+    }
   });
 }

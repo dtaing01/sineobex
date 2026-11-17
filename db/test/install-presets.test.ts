@@ -8,6 +8,8 @@ import {
 } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fixturePresets } from '../../packages/forms/test/fixtures/presets.ts';
+import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
+import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
 import { asApp, makeTeam, makeUser } from './helpers.ts';
 
@@ -182,5 +184,16 @@ describe('installing the presets', () => {
     expect(thrown).toBeInstanceOf(PresetDiffers);
     expect(keyVersions((thrown as PresetDiffers).differing)).toEqual(keyVersions([first!]));
     expect((await rowsOf(team)).map((r) => r.hash)).toEqual([theirs.hash]);
+  });
+
+  it('runs in the seed for each seeded team, and a second seed changes nothing', async () => {
+    await seed(db.owner, { presets });
+    const first = [await rowsOf(DEMO_TEAM_ID), await rowsOf(NEIGHBOUR_TEAM_ID)];
+    for (const rows of first) {
+      expect(keyVersions(rows)).toEqual(keyVersions(presets));
+      expect(rows.every((r) => r.origin === 'preset' && r.presetVersion === r.version)).toBe(true);
+    }
+    await seed(db.owner, { presets });
+    expect([await rowsOf(DEMO_TEAM_ID), await rowsOf(NEIGHBOUR_TEAM_ID)]).toEqual(first);
   });
 });
