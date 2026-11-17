@@ -1565,19 +1565,30 @@ the rest of the visit page.
 | A released version never changes | `packages/forms/test/lock.test.ts` |
 | A path or code is never reused for another meaning | `packages/forms/test/versions.test.ts` |
 | Every option in SPEC is in a definition, or declared | `packages/forms/test/spec-check.test.ts`, and the export itself in CI |
-| Both interpreters agree, on every function | `forms-conformance.json` through both test suites |
+| Both interpreters agree, on every function | `forms-conformance.json` through both readers, `packages/forms/test/conformance.test.ts` and `apps/mobile/test/forms/conformance_test.dart`; the Dart reader also holds the key order of the four functions where it is part of the answer (7.2) |
 | The validator and the interpreter mean one thing by what counts, and what a reader sees counts by itself | `packages/forms/test/interp/one-meaning.test.ts` (7.2) |
-| Both interpreters agree on every real note type | `golden.json` and `apps/mobile/test/forms/golden_test.dart` |
+| The phone's interpreter holds what the vectors cannot say: a whole number held as a double, values no JSON decoder made, key order and copies, odd data read without a throw or a loop, and a definition the validator would never pass refused by its place | `apps/mobile/test/forms/{check_answer,definition,effective,expand,handoff,read,visible}_test.dart` (7.2) |
+| Both interpreters agree on every real note type | `golden.json` and `apps/mobile/test/forms/golden_test.dart`; until the definitions are typed, the same test over `apps/mobile/test/forms/golden_sample.json`, which `packages/forms/test/golden.test.ts` writes as a snapshot (7.3) |
+| The golden file is what the interpreter says about each preset, for three answer sets made by rule, and is what is committed | `packages/forms/test/golden.test.ts` (7.3) |
+| The export writes only what passed every check: every version in a fixed order, its hash, the same bytes whatever a file's key order, the phone's copy byte for byte; it stops after schema problems and prints each problem once | `packages/forms/test/export.test.ts` (4.1) |
+| Nothing is released that nothing checks or uses, and only `--release` writes the lock | `packages/forms/test/export.test.ts`, "the release mode" (4.1) |
+| A released line never leaves the lock or changes: a lock deleted or emptied fails | `packages/forms/test/export.test.ts`, "the lock only grows"; `lock-grows` in the Forms drift step (4.2) |
+| The forms, their generated files and the shared vectors are scanned for real-looking identifiers | `tools/test/phi-guard.test.mjs`, "fixture locations" (4.1) |
 | An answer that breaks its definition is refused by the server | `services/api/test/sync-encounters.test.ts` (lifecycle), with the fake's parity case 14 |
 | A phone starts a note only on a listed version | `apps/mobile/test/forms/definition_store_test.dart` |
-| Installing presets is idempotent, and a changed released version throws | `services/api/test/forms-install.test.ts` |
+| The table: one row per team, key and version, never changed; a preset row names its platform version; a team reads and writes only its own rows | `db/test/note-type-versions.test.ts` (3.1) |
+| Installing presets writes only what a team lacks, each team its own, and is idempotent; a row with another hash is never overwritten and never passed over, even one another transaction wrote meanwhile; the seed installs in its teams | `db/test/install-presets.test.ts`; `packages/forms/test/install.test.ts` (the presets are the export's file; `PresetDiffers` names a key and a version and nothing else) (3.2) |
+| A new team gets every preset in the transaction that creates it, audited in its chain, or is not created | `services/api/test/forms-routes.test.ts`, "a new team's presets" (3.2) |
 | The list and definition routes: any member, nobody else | `services/api/test/forms-routes.test.ts`, `permissions.test.ts` |
+| The list installs what the team lacks and audits only that, lists each key's newest version, logs and skips a differing key and still answers, and names its own team in its query | `services/api/test/forms-routes.test.ts` (3.2, 3.3) |
+| A definition found is kept privately; every other response, a refusal or a 404 included, is `no-store`, whatever its handler set | `services/api/test/forms-routes.test.ts`, the one-version route and "the cache headers" (3.3) |
+| `definitionFor` reads a row once, keeps teams apart, and reads a missing row again | `services/api/test/forms-routes.test.ts`, "definitionFor" (3.3) |
 | Consent is needed to complete a sensitive exam; Normal never fills it | conformance cases; one case on the real GU section in the golden file |
 | A sensitive exam is absent for a reader without the key and from every recap | conformance cases for `visibleAnswers` and `recapLines` |
 | Disposition blocks its pairs | a conformance case; the choice widget test |
 | Each widget: three themes, 200%, 320 px, labels, the rules of 8.2 | one test file per kind |
 | Every note type renders | `presets_smoke_test.dart` |
-| Generated files are current | the Forms drift step in `tools/ci-local.sh` and CI |
+| Generated files are current | the Forms drift step in `tools/ci-local.sh` and CI (4.2) |
 
 ## 10. Defaults, risks and departures
 
