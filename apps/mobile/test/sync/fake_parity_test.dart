@@ -2809,6 +2809,72 @@ void main() {
         expect(server.records[note]!.fields['data.care.plan']!.value, 'Demo: rest');
       });
 
+      test('needs encounters.chart, names a note the team holds, and waits behind its sign-off', () async {
+        final note = server.seed(entityNote, noteValue(visitOf(patientId: patient), testNote, const {}), by: alex);
+        // A community health worker charts nothing, so corrects nothing: held for review.
+        server.permissions[dana] = FakeSyncServer.chw;
+        final fromDana = correction(dana, note, [answer('care.plan', 'Demo: x', 0)]);
+        expect(await send(dana, [fromDana]), [heldOnly(fromDana)]);
+        expect(server.records[fromDana['recordId']], isNull);
+        final missing = correction(alex, uuid(), [answer('care.plan', 'Demo: x', 0)]);
+        final unknownSignoff = change(entityCorrection, 'create', {
+          ...correction(alex, note, [answer('care.plan', 'Demo: x', 0)])['value']! as Map<String, Object?>,
+          'signoffId': uuid(),
+        });
+        Matcher stale(String problem) => allOf(
+          containsPair('status', 'rejected'),
+          containsPair('reason', 'stale_reference'),
+          containsPair('details', {'problem': problem}),
+        );
+        expect(await send(alex, [missing, unknownSignoff]), [
+          stale('encounter_note_missing'),
+          stale('note_signoff_missing'),
+        ]);
+
+        // A sign-off held by the gate holds the correction made behind it.
+        final flags = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient, by: blair), testRedFlags, const {'flags.any': 'no'}),
+          by: blair,
+        );
+        server.changeCredential(blair, 'chw');
+        final signs = change(entitySignoff, 'create', {
+          'noteId': flags,
+          'act': 'sign',
+          'contentHash': 'ab' * 32,
+          'claimedCredential': 'resident',
+          'statementVersion': 'sign-2026-11',
+        });
+        final behind = change(entityCorrection, 'create', {
+          ...correction(blair, flags, [answer('flags.note', 'Demo: none', 0)])['value']! as Map<String, Object?>,
+          'signoffId': signs['recordId'],
+        });
+        expect(await send(blair, [signs, behind]), [
+          heldOnly(signs),
+          {...heldOnly(behind), 'reason': 'awaiting_review', 'message': 'rejected: awaiting_review'},
+        ]);
+        expect(server.held[behind['changeId']]!.waitsOn, signs['changeId']);
+      });
+
+      test('adds no answer past the bound on a note’s answers; an answer it holds is corrected', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(by: dana), testNote, const {'care.plan': 'Demo: rest'}),
+          by: dana,
+        );
+        server.finishNote(note);
+        // As if the note held the most answers a note may: their versions are what the bound counts.
+        server.records[note]!.fields.addAll({
+          for (var i = 1; i <= maxNoteFields - 1; i++) 'data.extra.n$i': FakeField(null, 1, dana, null, null),
+        });
+        final adds = correction(dana, note, [answer('care.followup', 'Demo: clinic', 0)]);
+        final fixes = correction(dana, note, [answer('care.plan', 'Demo: fluids')]);
+        expect(await send(dana, [adds, fixes]), [
+          refused('too_many_fields'),
+          corrected(fixes, 'corrected', 'completed', 'not_needed'),
+        ]);
+      });
+
       test('a correction can hide an answer, which stays in the note and counts again once shown', () async {
         final note = server.seed(
           entityNote,
