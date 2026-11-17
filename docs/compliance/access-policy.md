@@ -48,7 +48,7 @@ Four actions answer with a chart's values, so each also requires `patients.view`
 | Part of a note | Program Admin | Logistics | Healthcare Staff | Billing/Data | CHW preset |
 |---|---|---|---|---|---|
 | A visit and its notes at all | Yes | Yes | Yes | No | No |
-| A Medical note, a Medical visit's summary and the addenda to it (`patients.view` with `encounters.chart` or `billing.view_codes`, as the problem list) | Yes | Yes | Yes | No | No |
+| A Medical note, a Medical visit's summary and the addenda to the visit itself (`patients.view` with `encounters.chart` or `billing.view_codes`, as the problem list) | Yes | Yes | Yes | No | No |
 | Behavioral health, harm reduction, and sexual and reproductive health notes (`patients.view_sensitive`) | Yes | Yes | Yes | No | No |
 | The substance use treatment part of a harm reduction note (`patients.view_sensitive` and a clinical credential) | With a clinical credential | With a clinical credential | With a clinical credential | No | No |
 | GU, breast and rectal exam findings (`patients.view_sensitive_exams`) | Yes | No | No | No | No |
@@ -89,7 +89,7 @@ A note reaches a phone through the same read rules as everywhere else (section 2
 
 Every search, duplicate check, chart view, history view, ID card read, queue view, merge, undo and correction is written to the audit log in the same database transaction as the action, with who, when and which patients were shown. A read that can't be logged is refused. Search text is never stored. Reads made offline are logged on the phone and join the audit log at the next sync. The audit log can be searched by patient, including records since merged into that patient.
 
-Phase 4 adds, so far: every signature, addendum, correction, declined amendment request, reopen, referral, and change kept in a finished note's history writes its event in the same transaction, naming the note or the patient and the fields, never an answer, a summary, an addendum's text, a reason's text or a referral's details. Each visit, note, signature, addendum, correction and referral a phone reads through sync is logged as a view of its note or patient. A phone logs the EMS handoff it shows and its Notes to finish list offline.
+Phase 4 adds, so far: every signature, addendum, correction, declined amendment request, reopen, referral, and change kept in a finished note's history writes its event in the same transaction, naming the note or the patient and the fields, never an answer, a summary, an addendum's text, a reason's text or a referral's details. Each visit, note, signature, addendum, correction and referral a phone reads through sync is logged as a view of its visit, note or patient. A phone logs the EMS handoff it shows and its Notes to finish list offline.
 
 ## 6. Emergency access
 
