@@ -243,7 +243,22 @@ F2) can then rely on:
   test an option code marked `sensitiveExam`; the same for `treatmentRecord`
   (`validate.condition_reads_restricted`, reported at the condition). What it shows would tell a
   reader without the key what was found. `needs` is not covered: lifecycle 6.4 hides no `needs`
-  section from any reader; `needs` decides who may change an answer (rule 5).
+  section from any reader; `needs` decides who may change an answer (rule 5). As built since
+  wave B's review, the rule covers everything `visibleAnswers` takes out (lifecycle 6.4), so
+  what a reader sees counts by itself:
+  - **What a sensitive exam leaves in an open field.** From outside a sensitive exam a condition
+    may not test `filled` (or not filled) on a code answer that has a marked option, since the
+    marked codes may be all that fills it; any test of the Other text of a marked Other option;
+    any test of a cell in a fixed row marked `sensitiveExam`, unless it is read from that same
+    row of the same grid; or the side or surface of a region one of whose regions is marked.
+    `is` on codes that are not marked stays allowed: it reads the same once the marked codes are
+    taken out. Picked rows may not be picked among options of which one is marked. A condition in
+    a grid's cell is checked in every row, so an absolute path into another row is caught.
+  - **A section that holds a diagnosis.** A condition or picked rows outside a section that does
+    not repeat and holds a `problem` field may not read any answer of that section, not only the
+    diagnosis's code. A sensitive diagnosis takes its whole section with it for a reader without
+    `patients.view_sensitive`, so a field elsewhere that one of its answers shows would say a
+    diagnosis is there. A repeating section is out of reach already (`path_into_repeat`).
 - No field's showing may depend on its own answer, through conditions, the sections, groups and
   grids around it, picked rows or a clearing flag (`validate.condition_cycle`). The interpreters
   can then work conditions out in dependency order.
@@ -282,6 +297,24 @@ from the keys, where a misspelt key would give a misleading kind.
   info (`validate.required_not_allowed`): the last three store nothing and would block Complete
   for ever, and for the first four "filled" has no one meaning.
 - **`renames`** (2.6) is a key of a note type file only.
+- **A date's `range` is the picker's bound only.** `past` is today or earlier and `future` is
+  today or later: both include today. `checkAnswer` has no clock and does not check it (7.1): an
+  answer made in range must still be taken when it syncs days later.
+
+Added in wave B's review, each so that the interpreter can rely on it (7.1):
+
+- **One Other option to a field** (`validate.other_twice`). A field's Other options would share
+  one text (2.3), which could not say which of them it is for.
+- **What one-tap Normal fills can be held as one answer** (`validate.normal_conflict`). A
+  choose-one has at most one normal option. In a choose-many no exclusive option is marked normal
+  beside another normal option, and no two normal options are a blocked pair. Normal puts every
+  normal option of a field in at once, and `checkAnswer` would refuse what it offered.
+- **No `handoff` inside a section marked `sensitiveExam` or `treatmentRecord`**
+  (`validate.handoff_restricted`): the handoff summary goes to EMS (lifecycle 5.7), who may not
+  read those.
+- **A flag with sides clears nothing** (`validate.clears_with_sides`). It is ticked for one side,
+  and the fields beside it have no side to match, so a tick on the right would stop a length
+  charted on the left from counting.
 
 ### 2.3 The fourteen kinds, what each stores, and where
 
@@ -295,7 +328,7 @@ from the keys, where a misspelt key would give a misleading kind.
 | `flag` | `true` | the field's path | "Unable to measure", "Approximate" |
 | `date` | `YYYY-MM-DD` | the field's path | dates |
 | `time` | `HH:MM` | the field's path | "Time EMS called" |
-| `duration` | a whole number of days | the field's path | weeks and days |
+| `duration` | a whole number of days, at most 36,525 (a hundred years) | the field's path | weeks and days |
 | `group` | nothing itself | its children add a path part | the vitals row, blood pressure as two numbers, a heading with several fields |
 | `grid` | one cell value per row | the field's path, then the row's code. The cell's own ID is not a path part, unless the cell is a `group`: then its children's IDs follow the row's code. With `rows: { pickedIn }`, a row whose option is no longer picked does not count. | pulses by site, reflexes, a status for each vaccine picked, findings for each node group picked |
 | `region` | codes | the field's path, then `region` (a code from its options), `side` (a code from the shared list it names: `side` has Bilateral, `side_rl` does not, Skin's has Midline), `surface` (a code from the shared list `surface`: Anterior or Posterior) | the body map |
@@ -337,6 +370,17 @@ As built:
   (`validate.path_collision`): an ID or a row code that equals another's `_other` path, or an
   answer whose path is also the start of another's. `entryAt` and `entryRemoved` are refused as
   the ID of any field at any depth, a grid's cell included (`validate.reserved_id`).
+
+As built by the interpreter (unit F1, 7.1):
+
+- **`null` clears an answer**, at any path that stores one. A flag and `entryRemoved` store only
+  `true`, so unticking a flag, or undoing a removal, writes `null`, never `false`.
+- **Characters are Unicode code points**, as Postgres counts them: a `maxLength`, the 200 of an
+  Other text and the 300 of a problem label count an emoji as one. The phone's text widgets count
+  the same way.
+- **`entryAt` is a UTC time**, `YYYY-MM-DDTHH:MM:SS`, then optionally a dot and one to nine
+  digits, then `Z`, as the phone writes it (`toUtc().toIso8601String()`). Entries are in the order
+  of that time as an instant, and two entries added in one instant in the order of their IDs.
 
 ### 2.4 Limits
 
@@ -666,15 +710,17 @@ the place it was written (through the resolver's origins), once:
 | Paths (2.3) | `path_too_long`, `bad_path_part`, `path_collision` |
 | Conditions (2.2) | `condition_unknown_field`, `condition_unknown_code`, `condition_not_a_choice`, `relative_outside_entry`, `path_into_repeat`, `condition_cycle`, `condition_reads_restricted`; picked rows: `picked_in_unknown_field`, `picked_in_not_choose_many` |
 | Other note types (6.4, 6.7) | `unknown_note_type` (a `mapsTo`, `suggests` or `open_note_type` that names none), `maps_to_unknown_field`, `maps_to_mismatch`, `maps_to_in_grid`, `maps_to_twice`, `maps_to_from_repeat`, `maps_to_not_quick`, `maps_to_needs` |
-| What a key means where it is written | `exclusive_in_choose_one`, `region_option_flag`, `row_option_flag` (an Other or exclusive option among a grid's fixed rows), `sides_not_allowed`, `required_not_allowed`, `grid_in_grid`, `grid_cell_stores_nothing`, `clears_unknown_field` (a flag clears a sibling, never itself), `number_range_empty` (min above max, or no value at the field's decimals between them), `number_normal` |
+| What a key means where it is written | `exclusive_in_choose_one`, `region_option_flag`, `row_option_flag` (an Other or exclusive option among a grid's fixed rows), `sides_not_allowed`, `required_not_allowed`, `grid_in_grid`, `grid_cell_stores_nothing`, `clears_unknown_field` (a flag clears a sibling, never itself), `number_range_empty` (min above max, or no value at the field's decimals between them), `number_normal`; added in wave B's review (2.2): `other_twice`, `normal_conflict`, `handoff_restricted`, `clears_with_sides` |
 | Visibility | `required_never_visible`, `visibility_too_complex` |
 | Limits (2.4) | `text_too_long`, `repeat_too_many`, `too_large` |
 
 - `required_never_visible` searches every answer a required field's showing depends on: the
   conditions of its section and of the groups and grid around it, picked rows, exclusive options,
   blocked pairs and clearing flags, reading only answers that count (a hidden or cleared answer
-  does not, 7.1). A choose-many is tried one asked code at a time, only when a condition needs
-  it. A search past 20,000 tries, or a chain of follow-ups more than 200 deep, is refused as
+  does not, 7.1). The flags that clear the field itself are among them, so a required field shown
+  only while the flag that clears it is set is never visible: the interpreter would never ask for
+  it. A choose-many is tried one asked code at a time, only when a condition needs it. A search
+  past 20,000 tries, or a chain of follow-ups more than 200 deep, is refused as
   `visibility_too_complex` and never passed; the message names the limit hit. When a module's
   field can show only without the condition of the include that brought it in, the fault, or a
   cycle that condition makes, is reported at the include's `showWhen` in the note type's file.
@@ -840,6 +886,24 @@ re-entering what they filled in" (PRD main 409).
   draft's own version, writes each answer only where the newest full version takes it
   (`checkAnswer`), and lists for the person the answers it left out.
 
+As built (`expandQuick`, unit F1, 7.1):
+
+- **It returns `{ answers, leftOut }`**: the answers to write, and for each quick answer it did
+  not write `{ path, target, problem }`, the quick path, the target path without its entry part
+  and `checkAnswer`'s problem, which the phone shows the person (10.1 #12). Only answers that
+  count are written or listed.
+- **The phone passes the new entries as `newEntryIds`**, `{ <section id>: { id, at } }`, one for
+  each repeating section of the full note: the entry's ID and the time it is added, its
+  `entryAt`. A pure function can make neither. An entry's `entryAt` is written only when some
+  answer goes into it, and `expandQuick` throws when an answer goes into a repeating section that
+  `newEntryIds` gives no usable entry for.
+- **It goes beyond `checkAnswer` in two ways.** A choose-many is first put in the full field's
+  order of options, the order a stored value must have (2.3), which `maps_to_mismatch` does not
+  compare. And a number whose quick and full fields have different units (or one has none) is
+  left out as `wrong_type` without asking `checkAnswer`, which cannot see a unit: a 2 stored in
+  inches would pass it as 2 cm. The validator holds the newest quick version to the unit
+  (`maps_to_mismatch`); an older one is not.
+
 ### 6.5 Sexual and reproductive branching
 
 "The Pregnancy, Contraception and Menstrual sections appear only when that reason is picked.
@@ -863,6 +927,22 @@ special to this note type.
 - A condition outside a sensitive exam section never reads an answer in one, nor tests a picker
   code marked `sensitiveExam` (2.2, `validate.condition_reads_restricted`): what it showed would
   tell a reader without the key what was found. The same holds for a `treatmentRecord` section.
+
+As built in wave B (unit F1):
+
+- **What a sensitive exam leaves out is more than its sections and picker codes.** For a reader
+  without the key `visibleAnswers` also takes out every answer in a grid row whose option is
+  marked `sensitiveExam`, a region whose region is marked (with its side and surface), the Other
+  text of a field whose picked Other option is marked, and an entry that held answers and has none
+  left once those are out, `entryAt` and all, so the entries after it are numbered as if it had
+  never been there (lifecycle 6.4). `recapLines` takes out the same for everyone.
+- **So a condition outside a sensitive exam reads none of it**: not whether the picker is filled
+  (its marked codes may be all that fills it), nor a marked Other text, a cell of a marked row
+  or the side of a marked region (2.2). Only `is` on codes that are not marked reads the same
+  either way.
+- **No field in a sensitive exam or a treatment record is marked `handoff`**
+  (`validate.handoff_restricted`): the handoff goes to EMS. The handoff's field lines are laid
+  out from the answers less what a sensitive exam put there, as its recap lines are.
 
 ### 6.7 Nothing charted twice
 
@@ -896,21 +976,25 @@ is a choice (Yes, No, Unknown) stored with the finding. Linking it to the earlie
 ### 7.1 The functions
 
 Each is pure: a definition and a note's answers in, plain data out. TypeScript in
-`packages/forms/src/`, Dart in `apps/mobile/lib/forms/`, one file per function on each side.
+`packages/forms/src/interp/`, Dart in `apps/mobile/lib/forms/`, one file per function on each
+side, with three files they share: the rules of what counts (`conditions.ts`), the layout the
+recap, the read model and the handoff write from (`layout.ts`), and what a sensitive exam leaves
+out (`sensitive-exams.ts`). Each function is exported from the package's index. The table is as
+built (unit F1); what each does in full follows it.
 
 | Function | Returns | Used by |
 |---|---|---|
-| `fieldAt(def, path)` | The field, option or cell a path points at, or null | everything below |
-| `checkAnswer(def, path, value)` | null, or one problem: `unknown_path`, `wrong_type`, `unknown_option`, `out_of_range`, `too_long`, `excluded_pair`, `exclusive_with_others` | The server on every answer (lifecycle 4.4); the phone before it saves |
-| `effectiveAnswers(def, answers)` | The answers that count: visible fields only, removed entries dropped | every function below, the recap, exports, and the hash a signer sends (lifecycle 4.5) |
-| `finishCheck(def, answers)` | A list of `{ section, path, problem }`: a visible required field that is empty | Complete (lifecycle 3.3, 4.6) |
-| `normalAnswers(def, sectionId, answers, entryId?)` | The answers one-tap Normal would add: visible fields with no answer, in that section or that entry | 6.3 |
-| `recapLines(def, answers)` | One line per section that has an answer | lifecycle 8.1 |
-| `readModel(def, answers, corrections)` | Sections, labels and display values, with corrected values marked | The visit read (3.5), the phone's read view |
-| `visibleAnswers(def, answers, reader)` | The answers a reader may see, or null when the reader may not see the note at all. `reader` is `{ actsAsAuthor, viewSensitive, viewSensitiveExams, readsMedical, chartsMedical, ordersMedications, sensitiveCodes }`: five facts about the person and the list of sensitive diagnosis codes | lifecycle 6.4 |
-| `handoffLines(defs, answersByNote)` | The EMS handoff summary: the fields marked `handoff` | lifecycle 5.7, 9.8 |
-| `suggestions(def, answers)` | Note type keys suggested by the options picked | lifecycle 9.6 |
-| `expandQuick(quickDef, answers, fullDef, newEntryIds)` | The answers to write into the full note | 6.4 |
+| `fieldAt(def, path)` | What a path points at, a `PathTarget`, or null when it names nothing: `{ points, at, section, field, option, entry, row, side, part, key, leaf, holds }`. `points` is `field`, `cell` (in a grid's row), `option` (the text of an Other option) or `entry` (an entry's `entryAt` or `entryRemoved`); `at` is its place in the resolved definition; `key` is the path without its entry part; `holds` is what may be stored there, or null where the path names a field that stores nothing | everything below |
+| `checkAnswer(def, path, value)` | null, or one problem, the first check that fails in this order: `unknown_path`; `wrong_type`; `unknown_option`; `wrong_type` again, for a choose-many out of the definition's order; `out_of_range`; `too_long`; `excluded_pair`; `exclusive_with_others` | The server on every answer (lifecycle 4.4); the phone before it saves |
+| `effectiveAnswers(def, answers)` | A new map of the answers that count, blanks and refused answers left out, keys in UTF-16 code-unit order | every function below, exports, and the hash a signer sends (lifecycle 4.5) |
+| `finishCheck(def, answers)` | `{ section, path, problem: 'required' }[]`: each answer a visible required field is missing, per side, per row and per entry | Complete (lifecycle 3.3, 4.6) |
+| `normalAnswers(def, sectionId, answers, entryId?)` | The answers one-tap Normal would add to that section or that entry, a map in code-unit key order | 6.3 |
+| `recapLines(def, answers)` | `{ section, text }[]`: one line per section that has an answer | lifecycle 8.1 |
+| `readModel(def, answers, corrections)` | `{ sections }`: each `{ id, title, items }`, or `{ id, title, entries }` with each entry `{ id, title, items }` for a repeating section; an item is `{ path, labels, value, corrections }`, `value` a string, or null for an answer a correction took away, and a correction `{ path, old, by, credential, at, reason }` | The visit read (3.5), the phone's read view |
+| `visibleAnswers(def, answers, reader)` | The answers that count that a reader may see, a subset of `effectiveAnswers` in its order, or null when the reader may not see the note at all. `reader` is `{ actsAsAuthor, viewSensitive, viewSensitiveExams, readsMedical, chartsMedical, ordersMedications, sensitiveCodes }`: six facts about the person, and phase 3's sensitive diagnosis codes as ranges `{ from, to }` | lifecycle 6.4 |
+| `handoffLines(defs, answersByNote)` | The EMS handoff summary of one visit's notes, `{ kind, note, section, label, value }[]`: first a `field` line for each answer of the fields marked `handoff`, then each note's `recap` lines (10.1 #6) | lifecycle 5.7, 9.8 |
+| `suggestions(def, answers)` | The note type keys the options picked suggest, each once, in the definition's order | lifecycle 9.6 |
+| `expandQuick(quickDef, answers, fullDef, newEntryIds)` | `{ answers, leftOut }`: the answers to write into the full note, and `{ path, target, problem }` for each one left out. `newEntryIds` is `{ <section id>: { id, at } }`, the new entry of each repeating section of the full note | 6.4 |
 
 `answerSchema` in the lifecycle part is `checkAnswer` under another name; the lifecycle's cards
 use `checkAnswer`.
@@ -930,6 +1014,132 @@ Rules the functions share, stated once:
   the sync rules call it once the note is loaded (lifecycle 4.4). The phone's sync registry holds
   no definitions and checks only that a path has the right shape.
 
+As built (unit F1, `conditions.ts`):
+
+- **An answer counts** while its section, every group and grid around it and its own condition
+  hold; no set flag clears it or a field it is in (a flag in a grid's cell clears only in its own
+  row); its row is picked, in a grid with picked rows; its entry is there, in a repeating section;
+  and, for the text of an Other option, an Other option is picked beside it, on the same side and
+  in the same row.
+- **A blank (`null`, `""`, `[]` or `{}`) is no answer, and so is an answer `checkAnswer`
+  refuses.** Neither counts, fills a required field or is read by a condition. The server and the
+  phone never store one; this gives both interpreters one meaning for odd data.
+- **A condition reads only answers that count**: `filled` holds on an answer that counts, `is` on
+  a code that counts, and `not` of either where there is none.
+- **An entry is there** while its `entryAt` holds a time `checkAnswer` takes and its
+  `entryRemoved` is not `true`. Entries are in the order they were added: by `entryAt` as an
+  instant (the fraction of a second padded to nine digits, so `10:00:00Z` comes before
+  `10:00:00.5Z`), then by entry ID.
+- Only a map's own keys are read, and a list in a result is a new copy, never the input's.
+
+Each function, as built:
+
+- **`fieldAt`** looks a path up in the path model of 2.3 (`src/paths.ts`) once the entry part of
+  a repeating section is taken out. A field's own path names the field even where nothing is
+  stored there (a group, a grid, a region or a problem as a whole, a field with sides without its
+  side, a photo, an action, an info), with `holds` null. The text of an Other option points at
+  the option; a field has one (2.2). A section alone, or an entry alone, is null.
+- **`checkAnswer`** takes `null` at any path that stores an answer, as its clear, and otherwise:
+  for a flag and for `entryRemoved`, only `true`; for a choose-one, one of its codes (`""` is
+  `unknown_option`); for a choose-many, a list of its codes with none twice, in the definition's
+  order (2.3; another order is `wrong_type`); for a number, a value inside its range whose
+  shortest decimal form has no more decimals than the field's (more is `out_of_range`, as
+  `validate.number_range_empty` reads a range); for a duration, whole days from 0 to 36,525; for
+  a date, a real `YYYY-MM-DD`, its range not checked, having no clock (2.2); for a time, `HH:MM`
+  from `00:00` to `23:59`; for a text, no more characters than its `maxLength`, 200 for an Other
+  text and 300 for a problem label (phase 3's limit for a code's text), counted as code points
+  (2.3); for a problem code, the shape of ICD-10-CM, phase 3's check, so an update of the code set
+  never refuses an answer; for an `entryAt`, a UTC time on a real date (2.3). The server's sync
+  schema counts no characters in note data (it bounds a value at 64 KiB), so it never refuses for
+  length an answer `checkAnswer` takes. It does refuse a text holding a NUL or half of a
+  surrogate pair (`jsonProblem`, `services/api/src/sync/records.ts`), which `checkAnswer` takes:
+  which side changes is open.
+- **`effectiveAnswers`** holds each answer that counts as stored. Leaving blanks and refused
+  answers out makes it exactly what the content hash takes (lifecycle 4.5), and a finished note
+  holds no `null`. An entry that is there keeps its `entryAt`. The keys are in UTF-16 code-unit
+  order, the order `canonicalJson` writes, so the same answers always give the same map. JSON and
+  Dart map equality ignore key order, so unit tests (`packages/forms/test/interp/`) pin it.
+- **`finishCheck`** asks for a field with sides once for each side, for a field in a grid's cell
+  once for each row that counts, and inside a repeating section in each entry that is there; a
+  repeating section with no entry asks for nothing, and a field that does not count is not asked
+  for. Empty is no answer `checkAnswer` takes, the same for every kind that may be required: so 0
+  fills a number, a lone exclusive None fills a choose-many, Other fills a choice without its
+  text, a text of spaces fills a text (the phone trims what it saves), and a flag is filled only
+  when ticked. Problems are in the definition's order: sections, entries in the order added,
+  fields as written, rows in order, right before left. A contradictory disposition is not looked
+  at again: `checkAnswer` refused it when it was entered.
+- **`normalAnswers`** gives nothing for a section that does not offer Normal, that is hidden,
+  that repeats when no entry that is there is named, or that does not repeat when one is. It fills
+  a field that shows, that no set flag clears, that holds no answer (a blank or a refused value is
+  none, as for `finishCheck`), and that neither is nor sits in a group or grid marked `noNormal`
+  or `collapsed` (6.3). A choose-one takes its normal option, a choose-many every normal option
+  (`normal_conflict` makes one answer take them), a number its `normal`; each side and each row
+  that counts is filled on its own. A field shows if it shows with Normal's answers in: a
+  follow-up a normal hides is not filled, one a normal shows is, and the order fields are written
+  in decides nothing. **Normal never makes an answer that counts stop counting.** When every
+  normal at once would hide one (a detail charted under `not` intact, say), the normals are taken
+  one at a time in the definition's order, each kept when, with those kept before it, it hides
+  nothing, and those passed over are tried again until a round keeps none. What is returned is
+  the kept answers that count with all of them in.
+- **`recapLines`** lays out the answers that count, less everything a sensitive exam put there
+  (for every reader, 6.6) and every field marked `recap: false` with everything in it, as the
+  read model lays them out. Each item is its labels joined by `, `, then `: ` and its value; items
+  are joined by `; `. In a repeating section each entry with an item is its title (its
+  `itemTitle`, `{n}` being its place among the entries that are there), `: ` and its items, and
+  entries are joined by `. `. The vector file's note gives the rest of the wording, which both
+  interpreters write word for word.
+- **`readModel`** gives the sections, and entries, that have an item, in the definition's order.
+  An item is one answer that counts, except that a region, a problem, and a choice with its Other
+  text are one item each, at the field's path. Its labels are those along its path (each group's
+  and grid's, the row's, not the cell's, the field's, then Right or Left), and its value is
+  written out: a code by its label, a choose-many's labels in the definition's order joined by
+  `, `, an Other as its label, `: ` and its text, a number at its decimals with "n of max" when
+  shown out of a maximum and its unit after a space, a flag as Yes, a duration in weeks and days
+  ("2 weeks 1 day", "0 days"), a region's labels joined by `, `, a problem as "label (code)", a
+  date and a time as stored. Only a correction whose outcome is `corrected` marks an item, in the
+  order given, `old` being the old value written as that answer alone would be (null for a
+  blank, or for a value `checkAnswer` refuses there), and the credential as its code, which the
+  renderer words. **A change whose answer no
+  longer counts**, because the correction cleared it or hid the field it changed, is an item all
+  the same, at its place, with value null, while its old value can be written out, so the old
+  value stays visible struck through; its section, or its entry while that entry is there, is
+  listed for it. A correction that removed an entry, and an answer a correction hid without
+  changing it, mark nothing: `readModel` sees only the answers that count now (10.1 #13). It
+  leaves nothing out for any reader: the caller passes the answers and the corrections the reader
+  may see (lifecycle 5.1). A field marked `recap: false` is in it.
+- **`visibleAnswers`** starts from `effectiveAnswers` of the whole note, so no reader sees an
+  answer that does not count. Whoever acts as the author gets all of that; the author's own sync
+  read of a draft does not go through it at all (lifecycle 4.4). It gives null for a note type
+  offered for Medical only to a reader who does not read Medical notes, and for a sensitive note
+  type to a reader without `viewSensitive`. Otherwise it takes out, and never blanks: without
+  `viewSensitiveExams`, what a sensitive exam put there (6.6); without both `viewSensitive` and
+  `chartsMedical`, every `treatmentRecord` section; without `viewSensitive`, a diagnosis whose
+  code is sensitive, with its entry, or outside a repeating section its whole section. A code is
+  sensitive by phase 3's rule (`isSensitiveCode`, exported): its first characters, as many as a
+  range's `from` has, sort between `from` and `to`, both included. Only the code decides, so a diagnosis with a label
+  and no code is not sensitive. `ordersMedications` changes nothing: `needs` hides nothing from a
+  reader (2.2).
+- **`handoffLines`** takes two lists side by side: `defs[i]` is the definition of note `i`'s own
+  version, and `answersByNote[i]` the answers its reader may see (`visibleAnswers`, applied by the
+  caller), or null for a note they may not see, which gives no line and keeps its place; lists of
+  different lengths throw. The field lines come first, note by note in the order given: the items,
+  laid out as the read model lays them out from the answers that count less what a sensitive exam
+  put there, of each field marked `handoff` with everything in it, and of a marked field inside a
+  group or grid that is not marked, alone. `label` is the item's labels joined by `, `, with an
+  entry's title first in a repeating section. Then come each note's recap lines, `label` being the
+  section's title. `note` is the note's place in the lists, and the screen and the PDF head each
+  note with `defs[note].title`.
+- **`suggestions`** reads only stored codes that count: a choice's, a region's parts, a choice in
+  a grid's cell. A grid's fixed row is never picked, so a `suggests` on one suggests nothing. The
+  order is the definition's (fields as written, a field's options as listed, a region's options,
+  then its side, then its surface), whichever entry picked an option and whenever, so two phones
+  show the same chips. It returns every key suggested, the note's own type and the visit's other
+  note types included: the summary screen leaves out those already in the visit (lifecycle 9.6).
+- **`expandQuick`** walks the quick definition's fields in order, at every depth, and maps each
+  answer that counts of a field whose `mapsTo` names this full note type to the target path, with
+  what follows the quick field's own path kept (a side, `_other`, a region's part, a group child's
+  id). The rest is in 6.4.
+
 ### 7.2 The vectors (written by the planner, level X)
 
 `packages/contract/test-vectors/forms-conformance.json`: about ten small made-up definitions that
@@ -937,6 +1147,46 @@ between them use every kind, every option flag, every condition form, a repeatin
 and a grid, each with cases for every function in 7.1: the inputs and the exact output. The
 TypeScript tests (`packages/forms/test/conformance.test.ts`) and the Dart tests
 (`apps/mobile/test/forms/conformance_test.dart`) both read it.
+
+As built (unit F1):
+
+- **The file is `{ note, definitions, cases }`.** `note` is one text that states what the cases
+  alone cannot show: the entry ID and `entryAt` formats, the order of `checkAnswer`'s checks, how
+  an item is laid out and its value written, the wording of the recap and the read model, the
+  rules of `visibleAnswers`, `suggestions`, `handoffLines` and `expandQuick`. `definitions` maps a
+  name to a resolved definition. There are thirteen, made up, with keys `demo_*` and labels
+  "Demo …": `visit`, `wound`, `exam`, `outreach`, `psych`, `quick` (`demo_quick` version 2),
+  `quickOld` (its version 1, which maps answers the newest full note types do not all take),
+  `problems`, `ems`, `social`, `checkup`, `intake` and `rehab`. `cases` maps each function of 7.1
+  to its cases, 569 in all, each `{ name, definition, why, expected }` with `why` optional, and
+  the inputs its function reads: `path`, with `value` for `checkAnswer`; for the rest `answers`,
+  with `section` and an optional `entry` for `normalAnswers`, `corrections` for `readModel`,
+  `reader` for `visibleAnswers`, and `full` (the full definition's name) and `newEntryIds` for
+  `expandQuick`. A `handoffLines` case gives `notes`, a list of `{ definition, answers }`, with
+  `answers` null for a note the reader may not see, and its own `definition` is the first note's.
+  `fieldAt`'s expected value is the plain projection `{ points, at, entry, row, side, part,
+  stores }`, `stores` saying whether `holds` is set.
+- **The TypeScript reader** (`packages/forms/test/conformance.test.ts`) runs `validate()` on
+  every definition, with the newest version of each key in the file as the note types it may
+  name, and holds each key and version to one definition. It checks that the definitions between
+  them still use every kind, option flag, condition form on a section and on a field, `./` in an
+  entry and in a cell, section mark, sides, `handoff`, `mapsTo`, a flag that clears, a number's
+  `normal` and second unit, both kinds of grid rows, a region's side and surface, and a sensitive
+  and a quick note type. It holds its list of functions to the table above, each exported from
+  the package's index with its number of arguments. It refuses a case with a key its function
+  does not read, or without one it needs, a name used twice in a function, or a definition the
+  file does not have. Then it runs every case and compares the result with `expected` as plain
+  data, in which key order plays no part.
+- **The Dart reader** (`apps/mobile/test/forms/conformance_test.dart`) is unit F2's, and reads
+  the file the same way.
+- **Beside the vectors**, `packages/forms/test/interp/one-meaning.test.ts` holds the validator's
+  meaning of what counts (`validate.ts`) to the interpreter's. On 300 small definitions made from
+  a fixed seed, each tried with every answer set where there are at most 256, and with a fixed
+  sample of 256 otherwise, it holds that a field the validator reports `required_never_visible`
+  shows under no answer set; that a required field it lets through shows under some set, wherever
+  every set was tried; that `effectiveAnswers` of `visibleAnswers` is `visibleAnswers` for every
+  reader, so what a reader sees counts by itself; and that one-tap Normal offers only answers
+  `checkAnswer` takes, each of which counts once written, and hides none that counted.
 
 ### 7.3 The golden file (generated)
 
@@ -1006,6 +1256,7 @@ the rest of the visit page.
 | A path or code is never reused for another meaning | `packages/forms/test/versions.test.ts` |
 | Every option in SPEC is in a definition, or declared | `packages/forms/test/spec-check.test.ts`, and the export itself in CI |
 | Both interpreters agree, on every function | `forms-conformance.json` through both test suites |
+| The validator and the interpreter mean one thing by what counts, and what a reader sees counts by itself | `packages/forms/test/interp/one-meaning.test.ts` (7.2) |
 | Both interpreters agree on every real note type | `golden.json` and `apps/mobile/test/forms/golden_test.dart` |
 | An answer that breaks its definition is refused by the server | `services/api/test/sync-encounters.test.ts` (lifecycle), with the fake's parity case 14 |
 | A phone starts a note only on a listed version | `apps/mobile/test/forms/definition_store_test.dart` |
@@ -1028,14 +1279,15 @@ the rest of the visit page.
 | 2 | Is Harm reduction Medical? (PRD main 447) | Yes | Brooke and Mercy |
 | 3 | The body map | A list of regions by front and back, with side and surface. The codes are those behind the quick form's region list (SPEC 299). | The team |
 | 4 | Where red flags and disposition are asked | Once per Medical encounter, in their own short note (6.2) | Brooke and Mercy |
-| 5 | What one-tap Normal does to a field that already has an answer | Leaves it | Brooke and Mercy |
-| 6 | The content of the EMS handoff summary | The fields marked `handoff`: chief concern, vitals, the red-flag answers, EMS time, and each note's recap. The patient's name, age and allergies come from the chart. | Brooke and Mercy |
+| 5 | What one-tap Normal does to a field that already has an answer | Leaves it, and fills no normal that would hide an answer already charted (7.1) | Brooke and Mercy |
+| 6 | The content of the EMS handoff summary | The fields marked `handoff`: chief concern, vitals, the red-flag answers, EMS time, and each note's recap. The patient's name, age and allergies come from the chart. As built: a line for each answer of the marked fields, note by note, then every note's recap lines, so a handoff field appears twice, once in its note's recap. Nothing a sensitive exam put there is in either part (7.1) | Brooke and Mercy |
 | 7 | The contents of the full safety assessment and the mental status exam (SPEC 164, 166, which are empty) | One text box each | Brooke and Mercy |
 | 8 | Chaperone and consent for Breast and Rectal (SPEC gives them for GU only) | All three sensitive exams get them (PRD main 415) | Brooke and Mercy |
 | 9 | The label of the psych note type (three names in the PRD) | "Behavioral health"; key `psychological` | Brooke and Mercy |
 | 10 | May the field specification's lines be copied into the repository, piece by piece? | Yes: the spec check needs them (4.1). Without them, every transcription card is read against SPEC by the auditor instead. The example that names a real organization (SPEC 263 to 265) is left out of the copy | The project lead |
 | 11 | Which timeline filter each note type belongs to | The mapping in section 5 | Brooke and Mercy |
 | 12 | What Expand does with a Quick encounter draft written on an older released version | It reads the draft's own version, writes each answer only where the newest full version takes it (`checkAnswer`), and lists for the person the answers it left out (6.4) | Brooke and Mercy |
+| 13 | What the visit read shows of an answer a correction took away | An answer the correction cleared, or hid while changing it, shows no value and its old one struck through (7.1). An entry a correction removed, and an answer it hid without changing, are not marked: the read model sees only the answers that count now | Brooke and Mercy |
 
 ### 10.2 Questions that need a person and have no default
 
