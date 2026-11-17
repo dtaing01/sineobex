@@ -3223,6 +3223,13 @@
               "null"
             ]
           },
+          "hidden": {
+            "description": "The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds",
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "type": "string"

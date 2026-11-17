@@ -1827,6 +1827,11 @@ export interface components {
             deviceTime: string;
             entity: string;
             field: string | null;
+            /**
+             * @description The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds
+             * @enum {boolean}
+             */
+            hidden?: true;
             /** Format: uuid */
             id: string;
             op: string;

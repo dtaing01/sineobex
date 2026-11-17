@@ -1,6 +1,7 @@
 import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
-import { PERMISSION_KEYS } from '../auth/permissions.ts';
+import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
+import type { Tx } from '../db/database.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
@@ -14,10 +15,12 @@ import {
 import { RULES, takesTeamLock } from './entities/index.ts';
 import { actingAuthor, answersOf, noteRules, noteTypeOf } from './entities/note.ts';
 import { lockTeamWrites } from './locks.ts';
+import { isSensitiveCode } from './entities/problem.ts';
 import {
   answerHidden,
   byDefinition,
   DefinitionError,
+  definitionOf,
   noteReader,
   snapshot,
   type StoredRecord,
@@ -111,8 +114,8 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
         details: { itemId: r.id },
       });
     }
-    const values = new Map<string, unknown>();
-    for (const r of page) values.set(r.id, await shownValue(r));
+    const shown = new Map<string, { field: string | null; value: unknown } | null>();
+    for (const r of page) shown.set(r.id, await shownChange(tx, scope, r));
     const items = page.map((r) => ({
       id: r.id,
       user: { userId: r.userId, displayName: r.userName },
@@ -121,8 +124,8 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       entity: r.entity,
       recordId: r.recordId,
       op: r.op,
-      field: r.field,
-      value: values.get(r.id),
+      // What the reviewer may not read is held all the same: no value, and no path that names it.
+      ...(shown.get(r.id) ?? { field: null, value: null, hidden: true as const }),
       deviceTime: r.deviceTime.toISOString(),
       reason: r.reason,
       status: r.status,
@@ -133,6 +136,131 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
     }));
     return { items, nextAfterId: rows.length > page.length ? page.at(-1)!.id : null, people };
   });
+}
+
+/**
+ * A held change as this reviewer may read it, by the sync read's rules (routes/sync.ts requireRead,
+ * fetchRecords; lifecycle 6.4 rule 2, review finding RD-3), or null when they may not: Phase 4
+ * sends the queue hidden answers and whole Medical notes on purpose. A visit's records need
+ * encounters.chart, and a note's change a note they may read, with every answer it sends or would
+ * replace one they may see; a sign-off goes without its hash to a reader who does not see every
+ * answer of any note. A problem and its notes need the problem list's keys, and a sensitive one,
+ * or one whose create is still held, patients.view_sensitive. Everything else needs patients.view. Values were never schema-checked,
+ * so anything that cannot be read as a change of its kind is hidden.
+ */
+async function shownChange(
+  tx: Tx,
+  scope: TeamScope,
+  r: Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value' | 'recordId'>,
+): Promise<{ field: string | null; value: unknown } | null> {
+  const shown = { field: r.field, value: await shownValue(r) };
+  const v = (typeof r.value === 'object' && r.value !== null ? r.value : {}) as Record<string, unknown>;
+  const uuid = (x: unknown) => (typeof x === 'string' && UUID.test(x) ? x : null);
+  switch (r.entity) {
+    case 'encounter':
+      return scope.can('encounters.chart') ? shown : null;
+    case 'encounter_note':
+    case 'note_signoff':
+    case 'note_addendum':
+    case 'note_correction':
+      if (!scope.can('encounters.chart')) return null;
+      return (await noteChangeShown(tx, scope, r, v, uuid)) ? withoutUnseenHash(scope, r, v, shown) : null;
+    case 'problem':
+    case 'problem_note': {
+      if (!mayViewProblems(scope.team.permissions)) return null;
+      if (scope.can('patients.view_sensitive')) return shown;
+      if (r.entity === 'problem' && r.op === 'create') return sensitiveProblem(v) ? null : shown;
+      // A set of a problem, or a note on one: the problem as it is, or its create held here.
+      const problemId = r.entity === 'problem' ? r.recordId : uuid(v.problemId);
+      const problem = problemId ? await RULES.problem.load(tx, problemId, false) : null;
+      return problem && problem.attributes.sensitive !== true ? shown : null;
+    }
+    default:
+      return scope.can('patients.view') ? shown : null;
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A problem's create, or a code set, that names a sensitive code (problem.ts applyCreate). */
+function sensitiveProblem(v: Record<string, unknown>): boolean {
+  if (v.sensitive === true) return true;
+  const code = (v.code as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' && isSensitiveCode(code);
+}
+
+/**
+ * Whether the reviewer may read a held change of a note, or of what hangs off one: the note's type
+ * and every answer the change sends, or would replace, as the sync read would show them.
+ */
+async function noteChangeShown(
+  tx: Tx,
+  scope: TeamScope,
+  r: Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value' | 'recordId'>,
+  v: Record<string, unknown>,
+  uuid: (x: unknown) => string | null,
+): Promise<boolean> {
+  const readerFor = (note: StoredRecord | null) =>
+    noteReader(
+      scope.team.permissions,
+      scope.team.credential,
+      note !== null && scope.principal.userId === actingAuthor(note),
+    );
+  try {
+    if (r.entity === 'encounter_note' && r.op === 'create') {
+      const version = typeof v.noteTypeVersion === 'number' ? v.noteTypeVersion : null;
+      if (typeof v.noteTypeKey !== 'string' || version === null) return false;
+      const type = await definitionOf(tx, scope.team.teamId, v.noteTypeKey, version);
+      const data = (typeof v.data === 'object' && v.data !== null ? v.data : {}) as Record<string, unknown>;
+      if (!type) return false;
+      const reader = readerFor(null);
+      return byDefinition(
+        () =>
+          visibleAnswers(type, data, reader) !== null &&
+          !Object.entries(data).some(([path, value]) => answerHidden(type, data, path, value, reader)),
+      );
+    }
+    if (r.entity === 'note_addendum' && v.noteId === null) return true;
+    const noteId = r.entity === 'encounter_note' ? r.recordId : uuid(v.noteId);
+    const note = noteId ? await noteRules.load(tx, noteId, false) : null;
+    if (!note) return false;
+    const type = await noteTypeOf(tx, note);
+    if (type === undefined) return true;
+    const reader = readerFor(note);
+    const answers = answersOf(note);
+    if (byDefinition(() => visibleAnswers(type, answers, reader)) === null) return false;
+    const hides = (field: unknown, value: unknown) => {
+      if (typeof field !== 'string' || !field.startsWith('data.')) return false;
+      const path = field.slice('data.'.length);
+      return byDefinition(
+        () =>
+          (Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader)) ||
+          answerHidden(type, answers, path, value, reader),
+      );
+    };
+    if (r.entity === 'encounter_note') return !hides(r.field, r.value);
+    if (r.entity === 'note_correction') {
+      const changes = Array.isArray(v.changes) ? (v.changes as Record<string, unknown>[]) : [];
+      return !changes.some((c) => typeof c !== 'object' || c === null || hides(c.field, c.newValue));
+    }
+    return true;
+  } catch (err) {
+    if (err instanceof DefinitionError) return false;
+    throw err;
+  }
+}
+
+/** A held sign-off without its hash for a reviewer who does not see every answer of any note. */
+function withoutUnseenHash(
+  scope: TeamScope,
+  r: Pick<QuarantineRow, 'entity'>,
+  v: Record<string, unknown>,
+  shown: { field: string | null; value: unknown },
+) {
+  const reader = noteReader(scope.team.permissions, scope.team.credential, false);
+  if (r.entity !== 'note_signoff' || readsWhole(reader)) return shown;
+  const { contentHash: _, ...rest } = v;
+  return { ...shown, value: rest };
 }
 
 /**

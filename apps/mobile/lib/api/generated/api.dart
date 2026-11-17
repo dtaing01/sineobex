@@ -3987,6 +3987,7 @@ class QuarantineItem {
     required this.deviceTime,
     required this.entity,
     required this.field,
+    this.hidden,
     required this.id,
     required this.op,
     required this.reason,
@@ -4005,6 +4006,8 @@ class QuarantineItem {
   final DateTime deviceTime;
   final String entity;
   final String? field;
+  /// The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds
+  final bool? hidden;
   final String id;
   final String op;
   /// awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first
@@ -4024,6 +4027,7 @@ class QuarantineItem {
         deviceTime: DateTime.parse(json['deviceTime'] as String),
         entity: json['entity'] as String,
         field: json['field'] == null ? null : json['field'] as String,
+        hidden: json['hidden'] == null ? null : json['hidden'] as bool,
         id: json['id'] as String,
         op: json['op'] as String,
         reason: QuarantineItemReason.fromJson(json['reason'] as String),
@@ -4043,6 +4047,7 @@ class QuarantineItem {
         'deviceTime': deviceTime.toUtc().toIso8601String(),
         'entity': entity,
         'field': field == null ? null : field!,
+        if (hidden != null) 'hidden': hidden!,
         'id': id,
         'op': op,
         'reason': reason.toJson(),

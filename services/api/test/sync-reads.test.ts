@@ -801,6 +801,150 @@ describe('phase 4 sync: who may read and change what in a note', () => {
     });
   });
 
+  describe('the review queue (lifecycle 6.4 rule 2)', () => {
+    it('shows a held change’s value only to a reviewer who may read it; to anyone else, that it is held and nothing more', async () => {
+      const role = async (name: string, permissions: string[]) => {
+        const r = await call(h, '/v1/team/roles', {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { name, permissions },
+        });
+        expect(r.status).toBe(201);
+        return r.body.key as string;
+      };
+      const charting = await role('Charting reviewer', [
+        'patients.view',
+        'encounters.chart',
+        'quarantine.review',
+      ]);
+      const viewing = await role('Viewing reviewer', ['patients.view', 'quarantine.review']);
+      const queueOnly = await role('Queue only', ['quarantine.review']);
+      const cora = await clinician(h, t, 'cora@example.com', 'Cora (demo)', 'attending', charting);
+      const rex = await clinician(h, t, 'rex@example.com', 'Rex (demo)', 'attending', viewing);
+      const quinn = await clinician(h, t, 'quinn@example.com', 'Quinn (demo)', 'attending', queueOnly);
+      const gus = await clinician(h, t, 'gus@example.com', 'Gus (demo)', 'none');
+      const cal = await clinician(h, t, 'cal@example.com', 'Cal (demo)', 'chw', 'community_health_worker');
+      const visit = await visitOf(ana, patientId);
+      const n = await noteOn(ana, visit, TEST_RESTRICTED_TYPE, ANSWERS);
+      const medical = await noteOn(ana, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: fluids' });
+      const change = (note: { noteId: string }, path: string, value: unknown) =>
+        gus.phone.change({
+          entity: 'encounter_note',
+          recordId: note.noteId,
+          op: 'set',
+          field: `data.${path}`,
+          value,
+          baseVersion: 1,
+        });
+      // Held by the sensitive set check, and by the Medical gate (Gus charts no Medical note).
+      const sent = [
+        await change(n, 'exam.findings', 'Demo: a small rash, GU'),
+        await change(medical, 'care.plan', 'Demo: rest'),
+      ];
+      expect((await gus.send(...sent)).map((r) => r.reason)).toEqual(['permission', 'permission']);
+
+      // Held for the role's key: a community health worker charts no note.
+      const plain = await cal.phone.change({
+        entity: 'encounter_note',
+        recordId: n.noteId,
+        op: 'set',
+        field: 'data.general.notes',
+        value: 'Demo: from Cal',
+        baseVersion: 1,
+      });
+      expect((await cal.send(plain)).map((r) => r.reason)).toEqual(['permission']);
+      const notes = { changeId: plain.changeId, entity: 'encounter_note' };
+      const shownNotes = { ...notes, field: 'data.general.notes', value: 'Demo: from Cal', hidden: false };
+      const queueOf = async (c: { token: string }, of: { id: string }) => {
+        const r = await call(h, `/v1/team/quarantine?userId=${of.id}`, { token: c.token, teamId: t.teamId });
+        expect(r.status).toBe(200);
+        return (r.body.items as Record<string, unknown>[]).map((i) => ({
+          changeId: i.changeId,
+          entity: i.entity,
+          field: i.field,
+          value: i.value,
+          hidden: i.hidden ?? false,
+        }));
+      };
+      const queue = async (c: { token: string }) => {
+        const r = await call(h, `/v1/team/quarantine?userId=${gus.id}`, { token: c.token, teamId: t.teamId });
+        expect(r.status).toBe(200);
+        return (r.body.items as Record<string, unknown>[]).map((i) => ({
+          changeId: i.changeId,
+          entity: i.entity,
+          field: i.field,
+          value: i.value,
+          hidden: i.hidden ?? false,
+        }));
+      };
+      const exam = { changeId: sent[0]!.changeId, entity: 'encounter_note' };
+      const plan = { changeId: sent[1]!.changeId, entity: 'encounter_note' };
+      const shownExam = {
+        ...exam,
+        field: 'data.exam.findings',
+        value: 'Demo: a small rash, GU',
+        hidden: false,
+      };
+      const shownPlan = { ...plan, field: 'data.care.plan', value: 'Demo: rest', hidden: false };
+      const held = (c: { changeId: string; entity: string }) => ({
+        ...c,
+        field: null,
+        value: null,
+        hidden: true,
+      });
+      expect(await queue(admin())).toEqual([shownExam, shownPlan]);
+      // An attending without patients.view_sensitive_exams reads the Medical note, not the exam.
+      expect(await queue(cora)).toEqual([held(exam), shownPlan]);
+      // A visit's records need encounters.chart, as the sync read does; the queue alone shows nothing.
+      expect(await queue(rex)).toEqual([held(exam), held(plan)]);
+      expect(await queue(quinn)).toEqual([held(exam), held(plan)]);
+      // A note Rex could read but for encounters.chart.
+      expect(await queueOf(admin(), cal)).toEqual([shownNotes]);
+      expect(await queueOf(cora, cal)).toEqual([shownNotes]);
+      expect(await queueOf(rex, cal)).toEqual([held(notes)]);
+
+      // A whole note's create, a sign-off, and a problem with a sensitive code and one without.
+      // Held for the role's key: a community health worker charts no note and no problem.
+      const kit = await clinician(h, t, 'kit@example.com', 'Kit (demo)', 'chw', 'community_health_worker');
+      const create = await kit.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: {
+          encounterId: visit.encounterId,
+          noteTypeKey: TEST_RESTRICTED_TYPE.key,
+          noteTypeVersion: TEST_RESTRICTED_TYPE.version,
+          data: { 'general.notes': 'Demo: walked over', 'systems.seen': ['heart', 'gu'] },
+        },
+      });
+      const signoff = await signoffOf(
+        kit,
+        { ...medical, answers: { 'care.plan': 'Demo: fluids' } },
+        'complete',
+      );
+      const problems = ['F11.20', 'J02.9'].map((code) =>
+        kit.phone.change({
+          entity: 'problem',
+          op: 'create',
+          value: { patientId, title: 'Demo problem', status: 'new', code: { system: 'icd10cm', code } },
+        }),
+      );
+      const kits = [await create, signoff, ...(await Promise.all(problems))];
+      expect((await kit.send(...kits)).map((r) => r.reason)).toEqual(kits.map(() => 'permission'));
+      const values = async (c: { token: string }) =>
+        (await queueOf(c, kit)).map((i) => (i.hidden ? null : i.value));
+      const [noteValue, signoffValue, sensitiveProblem, plainProblem] = kits.map((c) => c.value);
+      const { contentHash: _, ...unhashed } = signoffValue as Record<string, unknown>;
+      // The admin reads all of it, but no clinical credential: no sign-off's hash.
+      expect(await values(admin())).toEqual([noteValue, unhashed, sensitiveProblem, plainProblem]);
+      // Cora sees no GU exam and no sensitive diagnosis.
+      expect(await values(cora)).toEqual([null, unhashed, null, plainProblem]);
+      // Rex reads no note and no problem list.
+      expect(await values(rex)).toEqual([null, null, null, null]);
+      expect(JSON.stringify(await queue(quinn))).not.toMatch(/exam|rash|care|rest/);
+    });
+  });
+
   describe('the Medical gate (lifecycle 4.2; 4.9 rule 12)', () => {
     it('holds every kind of change to a Medical note from a credential lowered offline; an addendum changes no note and is taken', async () => {
       const kay = await clinician(h, t, 'kay@example.com', 'Kay (demo)', 'attending');
