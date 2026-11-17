@@ -46,13 +46,18 @@ class DefinitionSync {
 
   /// Throws what stopped it ([DefinitionRefused], an API or network error, or a [StateError] when
   /// the person was forgotten meanwhile); nothing it didn't finish is kept.
-  Future<void> refresh(String userId, String teamId, FormsApi api) {
+  Future<void> refresh(String userId, String teamId, FormsApi api) async {
     final id = '$userId\n$teamId';
-    // The block's braces matter: whenComplete waits for a future its callback returns, and
-    // remove() would return this very one.
-    return _running[id] ??= _refresh(userId, teamId, api).whenComplete(() {
-      _running.remove(id);
-    });
+    await (_running[id] ??= _once(id, userId, teamId, api));
+  }
+
+  Future<void> _once(String id, String userId, String teamId, FormsApi api) async {
+    try {
+      await _refresh(userId, teamId, api);
+    } finally {
+      // Not remove(), which hands back this run's own future for nothing to wait on.
+      _running.removeWhere((key, _) => key == id);
+    }
   }
 
   Future<void> _refresh(String userId, String teamId, FormsApi api) async {

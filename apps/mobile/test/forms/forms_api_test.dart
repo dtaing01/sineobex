@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/definition_store.dart';
 import 'package:sineobex_field/forms/forms_api.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -39,7 +40,7 @@ void main() {
   tearDown(() => dir.deleteSync(recursive: true));
 
   Future<List<String>> listed() async => [
-    for (final d in (await store.team(userId, teamId))?.listed ?? const []) '${d.key} v${d.version}',
+    for (final d in (await store.team(userId, teamId))?.listed ?? const <NoteTypeDef>[]) '${d.key} v${d.version}',
   ];
 
   test('asks for the list and one version at their routes', () async {
