@@ -1,5 +1,6 @@
 import type { z } from '@hono/zod-openapi';
 import { checkAnswer, fieldAt, isBlank, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
+import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
 import {
   bookkeeping,
@@ -17,12 +18,13 @@ import {
   type ChangeContext,
   type EntityRules,
   type FieldMeta,
+  type KeptInstead,
   type Outcome,
   type SetContext,
   type StoredRecord,
 } from '../records.ts';
 import { encounterRules, loadEncounter } from './encounter.ts';
-import { applyField, writeValue } from './fields.ts';
+import { applyField, keepInHistory, NOTHING_TO_RESOLVE, writeValue } from './fields.ts';
 import { valueParents } from './values.ts';
 
 /**
@@ -45,6 +47,12 @@ import { valueParents } from './values.ts';
  * know only phase 2's open path pattern. An answer put on the chart where it does not count says so
  * on its receipt. A note with no version is a phase 2 preview row: it keeps the open path rule and
  * is never read against a definition.
+ *
+ * A finished note never changes (3.6). A late answer is kept in history, never refused, since the
+ * worker has nothing to fix: its sender is told, and so is the note's acting author when the sender
+ * is someone else. It reaches no chart, so its answer is not checked: the check is the draft path's.
+ * The status takes one value from a phone, `draft`, the reopen, by the table of reopenEffect; a
+ * `completed` from an old build is kept in history, since a note is finished only by a sign-off.
  */
 
 type Value = z.infer<typeof NoteCreate>;
@@ -59,6 +67,8 @@ interface NoteRow {
   noteTypeKey: string;
   noteTypeVersion: number | null;
   medical: boolean;
+  assignedUserId: string | null;
+  firstSignedAt: Date | null;
   data: Record<string, unknown>;
   fieldVersions: Record<string, number>;
   fieldMeta: Record<string, FieldMeta>;
@@ -117,6 +127,8 @@ export const noteRules: EntityRules<Value> = {
   fieldClass: (field) => (fieldSchema('encounter_note', field) ? 'status' : null),
   fieldSchema: (field) => fieldSchema('encounter_note', field),
   applyStatus: noteSet,
+  keptInstead: lateChange,
+  writeAction: (field) => (field === 'status' ? 'note.reopened' : null),
 
   async load(tx, id, lock) {
     const rows = lock
@@ -146,16 +158,23 @@ export const noteRules: EntityRules<Value> = {
         noteTypeKey: r.noteTypeKey,
         noteTypeVersion: r.noteTypeVersion,
       },
-      internal: { medical: r.medical },
+      internal: {
+        medical: r.medical,
+        // Who acts as the author (3.8): the clinician an admin assigned after the author left.
+        actingAuthorId: r.assignedUserId ?? r.authorUserId,
+        everSigned: r.firstSignedAt !== null,
+      },
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };
   },
 
   async write(tx, rec, field, value, version, meta) {
+    // Only a reopen writes a status here, and a draft holds no time of finishing (0018); a sign-off
+    // writes a finished status with its time (note-signoff.ts).
     const set =
       field === 'status'
-        ? tx`status = ${value as string}`
+        ? tx`status = ${value as string}, completed_at = null, completed_by = null`
         : tx`data = data || jsonb_build_object(${field.slice(5)}::text, ${jsonb(tx, value)})`;
     const rows = await tx<{ version: number }[]>`
       update sineobex.encounter_notes set ${set}, ${bookkeeping(tx, field, version, meta)}
@@ -187,13 +206,18 @@ function answersProblem(type: ResolvedNoteType, data: Record<string, unknown>): 
   return null;
 }
 
-/** A set of a note's field: the gate, the answer's check against the note's type, the draft rule. */
+/**
+ * A set of a note's field: the gate; the status's own rule; a finished note's late change, kept by
+ * the draft rule (lateChange); then the answer's check against the note's type, and the draft rule.
+ */
 async function noteSet(s: SetContext): Promise<Outcome> {
   const gated = await medicalGate(s, s.rec.internal.medical === true);
   if (gated) return gated;
-  const path = s.field.startsWith('data.') ? s.field.slice('data.'.length) : null;
-  const type = path === null ? undefined : await typeOfNote(s);
-  if (path === null || type === undefined) return applyField('draft', s);
+  if (s.field === 'status') return statusSet(s);
+  if (s.rec.status !== 'draft') return applyField('draft', s);
+  const path = s.field.slice('data.'.length);
+  const type = await typeOfNote(s);
+  if (type === undefined) return applyField('draft', s);
   const problem = byDefinition(() => checkAnswer(type, path, s.value));
   if (problem) return invalid(problem);
   const outcome = await applyField('draft', s);
@@ -203,6 +227,52 @@ async function noteSet(s: SetContext): Promise<Outcome> {
     return outcome;
   const why = byDefinition(() => notCounted(type, answersWith(s.rec, path, s.value), path));
   return why ? { ...outcome, details: { ...outcome.details, notCounted: why } } : outcome;
+}
+
+/** Who acts as a loaded note's author (lifecycle 3.8). */
+export const actingAuthor = (note: StoredRecord) => note.internal.actingAuthorId as string;
+
+/**
+ * A finished note keeps a late change (lifecycle 3.6, 4.4), asked by the draft rule once the value
+ * differs from the one held. "The note was already finished. Your change was kept in its history":
+ * to its sender, and to the acting author when the sender is someone else (PRD main 100).
+ */
+async function lateChange(s: SetContext): Promise<KeptInstead | null> {
+  return s.rec.status === 'draft' ? null : lateKept(s);
+}
+
+function lateKept(s: SetContext): KeptInstead {
+  const author = actingAuthor(s.rec);
+  const to = s.actor.authorId === author ? [author] : [s.actor.authorId, author];
+  return { problem: 'note_finished', notice: { kind: 'late_change_kept', to } };
+}
+
+/**
+ * A note's status from a phone (lifecycle 4.4). `draft` is the reopen of 3.6: reopenEffect says
+ * whether it applies, and a reopen the note takes no more is a late change, or, from someone who
+ * does not act as its author, a change only the author could make ("Only the note's author can do
+ * that. Nothing was changed."). `completed` is an old build's Complete: a note is finished only by
+ * a sign-off. A status moves by these rules alone and never conflicts, so there is nothing to
+ * resolve, and the version the phone saw does not matter.
+ */
+async function statusSet(s: SetContext): Promise<Outcome> {
+  if (s.change.resolution) return invalid(NOTHING_TO_RESOLVE);
+  if (s.value === 'completed') return keepInHistory(s, { problem: 'use_signoff' });
+  const note = {
+    noteStatus: s.rec.status as NoteStatus,
+    everSigned: s.rec.internal.everSigned === true,
+    medicalNote: s.rec.internal.medical === true,
+  };
+  const effect = reopenEffect({ ...note, actsAsAuthor: s.actor.authorId === actingAuthor(s.rec) });
+  if (effect === 'nothing') return { status: 'accepted', serverVersion: s.cur.version };
+  if (effect === 'apply') return writeValue(s, 'set');
+  if (reopenEffect({ ...note, actsAsAuthor: true }) === 'apply') {
+    return keepInHistory(s, {
+      problem: 'not_author',
+      notice: { kind: 'change_not_applied', to: [s.actor.authorId] },
+    });
+  }
+  return keepInHistory(s, lateKept(s));
 }
 
 /**

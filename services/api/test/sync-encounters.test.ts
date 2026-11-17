@@ -1479,6 +1479,390 @@ describe('phase 4 sync: encounters and notes', () => {
     });
   });
 
+  describe('a finished note, and its reopen (lifecycle 4.4)', () => {
+    let gil: Awaited<ReturnType<typeof clinician>>;
+    let hal: Awaited<ReturnType<typeof clinician>>;
+    let ivy: Awaited<ReturnType<typeof clinician>>;
+    let patientId: string;
+
+    beforeAll(async () => {
+      gil = await clinician('gil@example.com', 'Gil (demo)', 'attending');
+      hal = await clinician('hal@example.com', 'Hal (demo)', 'resident');
+      ivy = await clinician('ivy@example.com', 'Ivy (demo)', 'student');
+      patientId = (await createPatient(h, t.teamId, t.adminId)).id;
+    });
+
+    type Who = Awaited<ReturnType<typeof clinician>>;
+
+    /** A visit of the patient with one draft note of [type], on the chart. */
+    async function noteBy(c: Who, type: object = TEST_NOTE, data: Record<string, unknown> = {}) {
+      const encounterId = await encounterOf(c, patientId);
+      const create = await c.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId, ...type, data: { 'care.plan': 'Demo: rest and fluids', ...data } },
+      });
+      expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      return { encounterId, noteId: create.recordId };
+    }
+
+    /** Completed and never signed, as a sign-off with effect `completed` or `saved_unsigned` leaves it. */
+    const complete = (noteId: string) => h.scratch.owner`
+      update sineobex.encounter_notes set status = 'completed', completed_at = now(), completed_by = author_user_id
+      where id = ${noteId}`;
+
+    /** Signed as the database requires (0018, 0019): the sign-off row first, then the note. */
+    async function signed(noteId: string) {
+      const signoffId = randomUUID();
+      await h.scratch.owner`
+        insert into sineobex.note_signoffs (id, team_id, note_id, act, effect, content_hash, signer_user_id,
+          signer_name, signer_credential, needs_attestation, statement_version, signed_at, clock_verified)
+        select ${signoffId}, team_id, id, 'sign', 'signed', ${'ef'.repeat(32)}, author_user_id, 'Demo Signer',
+          'attending', false, 'demo-1', now(), true
+        from sineobex.encounter_notes where id = ${noteId}`;
+      await h.scratch.owner`
+        update sineobex.encounter_notes
+        set status = 'signed', completed_at = now(), completed_by = author_user_id, first_signed_at = now(),
+            signoff_id = ${signoffId}
+        where id = ${noteId}`;
+    }
+
+    const setOn = (c: Who, noteId: string, field: string, value: unknown, baseVersion = 1, more = {}) =>
+      c.phone.change({
+        entity: 'encounter_note',
+        recordId: noteId,
+        op: 'set',
+        field,
+        value,
+        baseVersion,
+        ...more,
+      });
+
+    const noteState = async (id: string) =>
+      (
+        await h.scratch.owner<
+          {
+            status: string;
+            completedAt: Date | null;
+            completedBy: string | null;
+            version: number;
+            data: Record<string, unknown>;
+            fieldVersions: Record<string, number>;
+          }[]
+        >`
+          select status, completed_at as "completedAt", completed_by as "completedBy", version, data,
+                 field_versions as "fieldVersions"
+          from sineobex.encounter_notes where id = ${id}`
+      )[0]!;
+
+    const noticesOn = (recordId: string) =>
+      h.scratch.owner<{ userId: string; kind: string; entity: string }[]>`
+        select user_id as "userId", kind, entity from sineobex.user_notices where record_id = ${recordId}
+        order by created_at, id`;
+
+    /** Who was told what about a record, in no order: two notices of one change share a time. */
+    const told = async (recordId: string) =>
+      (await noticesOn(recordId)).map((n) => `${n.userId} ${n.kind}`).sort();
+
+    const historyOf = (id: string, field: string) =>
+      h.scratch.owner<{ version: number; value: unknown; previousValue: unknown; kind: string }[]>`
+        select version, value, previous_value as "previousValue", kind from sineobex.field_history
+        where record_id = ${id} and field = ${field} and kind <> 'created' order by id`;
+
+    /** Kept in history, not applied: the field as the note holds it, and why. */
+    const kept = (c: Change, value: unknown, version: number, problem: string) => ({
+      changeId: c.changeId,
+      status: 'accepted',
+      serverVersion: version,
+      hash: c.valueHash,
+      server: expect.objectContaining({ value, version }),
+      details: { outcome: 'history_only', problem },
+    });
+    const taken = (c: Change, serverVersion: number) => ({
+      changeId: c.changeId,
+      status: 'accepted',
+      serverVersion,
+      hash: c.valueHash,
+    });
+
+    it('a late change to a finished note is kept in history: the sender is told, and the author when it is someone else', async () => {
+      const { noteId } = await noteBy(gil, TEST_MEDICAL);
+      await complete(noteId);
+      const before = await noteState(noteId);
+
+      const mark = await auditMark(h);
+      const theirs = [
+        await setOn(hal, noteId, 'data.care.plan', 'Demo: written after it was done'),
+        await setOn(hal, noteId, 'data.vitals.pulse', 90, 0),
+      ];
+      const own = await setOn(gil, noteId, 'data.care.plan', 'Demo: the author, late');
+      const answered = [...(await hal.send(...theirs)), ...(await gil.send(own))];
+      expect(answered).toEqual([
+        kept(theirs[0]!, 'Demo: rest and fluids', 1, 'note_finished'),
+        kept(theirs[1]!, null, 0, 'note_finished'),
+        kept(own, 'Demo: rest and fluids', 1, 'note_finished'),
+      ]);
+      expect(await noteState(noteId)).toEqual(before);
+      expect(await historyOf(noteId, 'data.care.plan')).toEqual([
+        { version: 1, value: theirs[0]!.value, previousValue: 'Demo: rest and fluids', kind: 'kept_both' },
+        { version: 1, value: own.value, previousValue: 'Demo: rest and fluids', kind: 'kept_both' },
+      ]);
+      // Each person once a change: the sender, and the acting author when the sender is someone else.
+      expect(await told(noteId)).toEqual(
+        [hal.id, gil.id, hal.id, gil.id, gil.id].map((id) => `${id} late_change_kept`).sort(),
+      );
+      expect((await noticesOn(noteId)).every((n) => n.entity === 'encounter_note')).toBe(true);
+      const events = await expectAudit(h, 'note.kept_in_history', { after: mark, count: 3 });
+      expect(events.map((e) => e.details)).toEqual(
+        [...theirs, own].map((c) =>
+          expect.objectContaining({ changeId: c.changeId, field: c.field, problem: 'note_finished' }),
+        ),
+      );
+      expect(events.every((e) => e.patientId === patientId)).toBe(true);
+      await expectAudit(h, 'note.updated', { after: mark, count: 0 });
+
+      // Sent twice, it answers the same, and nothing more is kept or told.
+      expect([...(await hal.send(...theirs)), ...(await gil.send(own))]).toEqual(answered);
+      expect(await noticesOn(noteId)).toHaveLength(5);
+    });
+
+    it('a signed note keeps a late change as a completed one does: record_locked is gone', async () => {
+      const { noteId } = await noteBy(gil, TEST_MEDICAL);
+      await signed(noteId);
+      const late = await setOn(gil, noteId, 'data.care.plan', 'Demo: after signing');
+      expect(await gil.send(late)).toEqual([kept(late, 'Demo: rest and fluids', 1, 'note_finished')]);
+      expect(await noticesOn(noteId)).toEqual([
+        { userId: gil.id, kind: 'late_change_kept', entity: 'encounter_note' },
+      ]);
+    });
+
+    it('the person who acts as the author is the one told: the assignee, once a note is assigned', async () => {
+      const { noteId } = await noteBy(gil, TEST_MEDICAL);
+      await complete(noteId);
+      await h.scratch
+        .owner`update sineobex.encounter_notes set assigned_user_id = ${hal.id} where id = ${noteId}`;
+      const late = await setOn(ivy, noteId, 'data.care.plan', 'Demo: from Ivy');
+      const assignees = await setOn(hal, noteId, 'data.care.plan', 'Demo: from Hal');
+      expect((await ivy.send(late)).map((r) => r.details)).toEqual([
+        { outcome: 'history_only', problem: 'note_finished' },
+      ]);
+      expect((await hal.send(assignees)).map((r) => r.details)).toEqual([
+        { outcome: 'history_only', problem: 'note_finished' },
+      ]);
+      expect(await told(noteId)).toEqual(
+        [ivy.id, hal.id, hal.id].map((id) => `${id} late_change_kept`).sort(),
+      );
+    });
+
+    it('a late change is kept before its answer is checked, and says nothing of whether it would count', async () => {
+      const { noteId } = await noteBy(gil, TEST_NOTE, { 'more.none': true });
+      await complete(noteId);
+      const changes = [
+        // Refused on a draft: the type takes no such value, or has no such path.
+        await setOn(gil, noteId, 'data.vitals.pulse', 'fast', 0),
+        await setOn(gil, noteId, 'data.vitals.bp', 120, 0),
+        // Taken on a draft with notCounted: hidden while "Nothing more" is ticked.
+        await setOn(gil, noteId, 'data.more.detail', 'Demo: one more thing', 0),
+      ];
+      expect(await gil.send(...changes)).toEqual(changes.map((c) => kept(c, null, 0, 'note_finished')));
+      // Phase 2's open pattern still answers first, before the note is loaded.
+      const badPath = await setOn(gil, noteId, 'data.Vitals', 1, 0);
+      expect(await gil.send(badPath)).toEqual([
+        expect.objectContaining({ status: 'rejected', details: { problem: 'unknown_field' } }),
+      ]);
+    });
+
+    it('a late change goes through the draft rule’s first steps: the same value, and the answer to a conflict', async () => {
+      const { noteId } = await noteBy(gil, TEST_NOTE);
+      await complete(noteId);
+      // The value the note holds: nothing to keep and nobody to tell.
+      const same = await setOn(hal, noteId, 'data.care.plan', 'Demo: rest and fluids', 0);
+      // The person kept the note's value: phase 2's keep_server, which applies nothing.
+      const keep = await setOn(hal, noteId, 'data.care.plan', 'Demo: theirs', 1, {
+        resolution: 'keep_server',
+      });
+      // The person chose their own value: kept in history all the same.
+      const replace = await setOn(hal, noteId, 'data.care.plan', 'Demo: theirs', 1, {
+        resolution: 'replace',
+      });
+      expect(await hal.send(same, keep, replace)).toEqual([
+        taken(same, 1),
+        taken(keep, 1),
+        kept(replace, 'Demo: rest and fluids', 1, 'note_finished'),
+      ]);
+      expect((await noteState(noteId)).data).toEqual({ 'care.plan': 'Demo: rest and fluids' });
+      // The keep_server answer tells the author as phase 2's draft rule does; the kept value, both.
+      expect(await told(noteId)).toEqual(
+        [`${gil.id} conflict_resolved`, `${gil.id} late_change_kept`, `${hal.id} late_change_kept`].sort(),
+      );
+    });
+
+    it('a late change at a new path is kept however many answers the note holds', async () => {
+      // A finished note at the bound, written as a create of MAX_NOTE_FIELDS answers leaves it.
+      const encounterId = await encounterOf(gil, patientId);
+      const noteId = randomUUID();
+      const paths = Array.from(
+        { length: MAX_NOTE_FIELDS },
+        (_, i) => `rows.e${String(i).padStart(7, '0')}.n`,
+      );
+      await h.scratch.owner`
+        insert into sineobex.encounter_notes (id, team_id, encounter_id, note_type_key, note_type_version,
+          author_user_id, data, field_versions, status, completed_at, completed_by)
+        values (${noteId}, ${t.teamId}, ${encounterId}, 'test_note', 1, ${gil.id},
+          ${h.scratch.owner.json(Object.fromEntries(paths.map((p, i) => [p, i])))},
+          ${h.scratch.owner.json(Object.fromEntries([['status', 1], ...paths.map((p) => [`data.${p}`, 1])]))},
+          'completed', now(), ${gil.id})`;
+      const late = await setOn(gil, noteId, 'data.care.plan', 'Demo: one more', 0);
+      expect(await gil.send(late)).toEqual([kept(late, null, 0, 'note_finished')]);
+    });
+
+    describe('the reopen: a set of status to draft', () => {
+      const reopen = (c: Who, noteId: string, baseVersion = 1, more = {}) =>
+        setOn(c, noteId, 'status', 'draft', baseVersion, more);
+
+      it('applies for the author of a Medical note that waits for a co-signer and was never signed', async () => {
+        const { encounterId, noteId } = await noteBy(gil, TEST_MEDICAL);
+        await complete(noteId);
+        const encounterStatus = async () =>
+          (
+            await h.scratch.owner<{ status: string }[]>`
+              select status from sineobex.encounters where id = ${encounterId}`
+          )[0]!.status;
+        expect(await encounterStatus()).toBe('completed');
+
+        const mark = await auditMark(h);
+        // The phone holds the status at its own version: a reopen never conflicts.
+        const back = await reopen(gil, noteId, 0);
+        expect(await gil.send(back)).toEqual([taken(back, 2)]);
+        expect(await noteState(noteId)).toMatchObject({
+          status: 'draft',
+          completedAt: null,
+          completedBy: null,
+          fieldVersions: { status: 2 },
+        });
+        expect(await encounterStatus()).toBe('draft');
+        expect(await historyOf(noteId, 'status')).toEqual([
+          { version: 2, value: 'draft', previousValue: 'completed', kind: 'set' },
+        ]);
+        const [event] = await expectAudit(h, 'note.reopened', { after: mark, count: 1 });
+        expect(event).toMatchObject({ patientId, details: { changeId: back.changeId } });
+        await expectAudit(h, 'note.updated', { after: mark, count: 0 });
+        expect(await noticesOn(noteId)).toEqual([]);
+
+        // Now a draft: a reopen from anyone changes nothing, and the draft rule is back.
+        const again = await reopen(hal, noteId, 0);
+        const edit = await setOn(gil, noteId, 'data.care.plan', 'Demo: one more look');
+        expect(await hal.send(again)).toEqual([taken(again, 2)]);
+        expect(await gil.send(edit)).toEqual([taken(edit, 2)]);
+        expect(await historyOf(noteId, 'status')).toHaveLength(1);
+        // Sent twice, it answers the same.
+        expect(await gil.send(back)).toEqual([taken(back, 2)]);
+      });
+
+      it('keeps the rest in history: a note ever signed, a completed Non-Medical note, and someone else’s reopen', async () => {
+        const signedNote = (await noteBy(gil, TEST_MEDICAL)).noteId;
+        await signed(signedNote);
+        // A student's correction leaves a co-signed note completed: it was signed once.
+        const onceSigned = (await noteBy(gil, TEST_MEDICAL)).noteId;
+        await h.scratch.owner`
+          update sineobex.encounter_notes
+          set status = 'completed', completed_at = now(), completed_by = author_user_id, first_signed_at = now()
+          where id = ${onceSigned}`;
+        const nonMedical = (await noteBy(gil, TEST_NOTE)).noteId;
+        await complete(nonMedical);
+        const waiting = (await noteBy(gil, TEST_MEDICAL)).noteId;
+        await complete(waiting);
+
+        const mark = await auditMark(h);
+        const own = [
+          await reopen(gil, signedNote),
+          await reopen(gil, onceSigned),
+          await reopen(gil, nonMedical),
+        ];
+        const theirs = [
+          await reopen(hal, signedNote),
+          await reopen(hal, nonMedical),
+          await reopen(hal, waiting),
+        ];
+        const answered = [...(await gil.send(...own)), ...(await hal.send(...theirs))];
+        expect(answered).toEqual([
+          kept(own[0]!, 'signed', 1, 'note_finished'),
+          kept(own[1]!, 'completed', 1, 'note_finished'),
+          kept(own[2]!, 'completed', 1, 'note_finished'),
+          kept(theirs[0]!, 'signed', 1, 'note_finished'),
+          kept(theirs[1]!, 'completed', 1, 'note_finished'),
+          kept(theirs[2]!, 'completed', 1, 'not_author'),
+        ]);
+        for (const id of [signedNote, onceSigned, nonMedical, waiting]) {
+          expect((await noteState(id)).status).not.toBe('draft');
+          expect(await historyOf(id, 'status')).toEqual(
+            expect.arrayContaining([expect.objectContaining({ value: 'draft', kind: 'kept_both' })]),
+          );
+        }
+        const late = (...ids: string[]) => ids.map((id) => `${id} late_change_kept`).sort();
+        expect(await told(signedNote)).toEqual(late(gil.id, hal.id, gil.id));
+        expect(await told(onceSigned)).toEqual(late(gil.id));
+        expect(await told(nonMedical)).toEqual(late(gil.id, hal.id, gil.id));
+        // "Only the note’s author can do that. Nothing was changed.": to the sender alone.
+        expect(await noticesOn(waiting)).toEqual([
+          { userId: hal.id, kind: 'change_not_applied', entity: 'encounter_note' },
+        ]);
+        await expectAudit(h, 'note.kept_in_history', { after: mark, count: 6 });
+        await expectAudit(h, 'note.reopened', { after: mark, count: 0 });
+        expect([...(await gil.send(...own)), ...(await hal.send(...theirs))]).toEqual(answered);
+      });
+
+      it('the acting author reopens: the assignee once a note is assigned, and no longer its writer', async () => {
+        const { noteId } = await noteBy(gil, TEST_MEDICAL);
+        await complete(noteId);
+        await h.scratch
+          .owner`update sineobex.encounter_notes set assigned_user_id = ${hal.id} where id = ${noteId}`;
+        const writers = await reopen(gil, noteId);
+        const assignees = await reopen(hal, noteId);
+        expect(await gil.send(writers)).toEqual([kept(writers, 'completed', 1, 'not_author')]);
+        expect(await hal.send(assignees)).toEqual([taken(assignees, 2)]);
+        expect((await noteState(noteId)).status).toBe('draft');
+      });
+
+      it('a status of completed is kept in history: Complete is a sign-off, and nothing else finishes a note', async () => {
+        const draft = (await noteBy(gil, TEST_MEDICAL)).noteId;
+        const done = (await noteBy(gil, TEST_NOTE)).noteId;
+        await complete(done);
+        const changes = [
+          await setOn(gil, draft, 'status', 'completed'),
+          await setOn(gil, done, 'status', 'completed'),
+        ];
+        expect(await gil.send(...changes)).toEqual([
+          kept(changes[0]!, 'draft', 1, 'use_signoff'),
+          kept(changes[1]!, 'completed', 1, 'use_signoff'),
+        ]);
+        expect((await noteState(draft)).status).toBe('draft');
+        expect(await noticesOn(draft)).toEqual([]);
+        expect(await noticesOn(done)).toEqual([]);
+      });
+
+      it('a status set never conflicts, so there is nothing to resolve', async () => {
+        const { noteId } = await noteBy(gil, TEST_MEDICAL);
+        await complete(noteId);
+        const answers = [
+          await reopen(gil, noteId, 1, { resolution: 'replace' }),
+          await reopen(gil, noteId, 1, { resolution: 'keep_server' }),
+        ];
+        expect(await gil.send(...answers)).toEqual(
+          answers.map((c) =>
+            expect.objectContaining({
+              changeId: c.changeId,
+              status: 'rejected',
+              reason: 'validation',
+              details: { problem: 'nothing_to_resolve' },
+            }),
+          ),
+        );
+        expect((await noteState(noteId)).status).toBe('completed');
+      });
+    });
+  });
+
   describe('the team lock (lifecycle 4.2)', () => {
     it('every encounter and note change takes it first, a create naming no patient included', () => {
       const change = (c: Partial<Change> & Pick<Change, 'entity' | 'op' | 'value'>) =>

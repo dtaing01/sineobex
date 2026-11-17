@@ -683,7 +683,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       ]);
     });
 
-    it('a signed note refuses changes', async () => {
+    it('a signed note keeps a change in history, never applied', async () => {
       // A Medical note, by someone whose credential charts Medical (lifecycle 4.2).
       const doc = await addMember(
         h,
@@ -732,7 +732,11 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         baseVersion: 1,
       });
       const r = await push(h, phone, doc.token, t.teamId, [change]);
-      expect(results(r.body)[0]).toMatchObject({ status: 'rejected', reason: 'record_locked' });
+      // Phase 4 keeps a late change in history instead of refusing it (lifecycle 3.6, 4.4).
+      expect(results(r.body)[0]).toMatchObject({
+        status: 'accepted',
+        details: { outcome: 'history_only', problem: 'note_finished' },
+      });
     });
 
     it('a field outside the record’s fields, or a status of signed, is a validation error', async () => {

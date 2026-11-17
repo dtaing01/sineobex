@@ -6,9 +6,7 @@ import {
   historyOf,
   invalid,
   isBlank,
-  isLocked,
   MAX_NOTE_FIELDS,
-  rejected,
   sameValue,
   when,
   type FieldClass,
@@ -25,16 +23,16 @@ import {
  * person saw that version.
  *
  * - draft (encounters and notes, D9): a different non-blank value is a conflict, shown side by side;
- *   a value the record takes no more of (the envelope of a visit with a finished note) is kept in
- *   history instead.
+ *   a value the record takes no more of (the envelope of a visit with a finished note, an answer to a
+ *   finished note) is kept in history instead.
  * - keep-both (patient demographics, module 9): the chart keeps its value, the other is kept in
  *   history, and a field review opens. Accepted either way, so it never waits in Needs attention.
  * - identity (legal name, birth): a fill only from someone who saw the current value, or into a
  *   blank; anything else is an admin's correction, or a kept alternate for one.
  * - set-once (retractions): the first wins, later ones are history.
  * - status: the entity's own rule (a problem's status, problem.ts, design 9.2; an encounter's kind,
- *   encounter.ts; a note's fields, note.ts: the Medical gate and the answer's check against the
- *   note's type, then the draft rule here).
+ *   encounter.ts; a note's fields, note.ts: the Medical gate, the reopen for its status, and for an
+ *   answer the check against the note's type, then the draft rule here).
  */
 
 export async function applyField(cls: FieldClass, s: SetContext): Promise<Outcome> {
@@ -209,20 +207,21 @@ export async function keepServer(s: SetContext, notifyAuthor: boolean): Promise<
 /** The draft reconciliation rule (Oct 19 decisions; plan D9). */
 async function draftSet(s: SetContext): Promise<Outcome> {
   const { actor, change: c, rec, field, cur } = s;
-  if (isLocked(rec)) return rejected('record_locked');
-  const dataFields = Object.keys(rec.fieldVersions).filter((f) => f.startsWith('data.'));
-  if (field.startsWith('data.') && !(field in rec.fieldVersions) && dataFields.length >= MAX_NOTE_FIELDS) {
-    return invalid('too_many_fields');
-  }
   if (c.resolution === 'keep_server') return keepServer(s, true);
 
   // Already the server's value: nothing to write, and the phone now holds the current version.
   if (sameValue(cur.value, s.value)) return { status: 'accepted', serverVersion: cur.version };
   // A field that takes no more values keeps this one, the answer to a conflict included: a refusal
   // would wait for a fix the worker cannot make, and a conflict would ask them to choose for nothing.
+  // This replaces phase 2's record_locked for a signed note (lifecycle 3.6).
   const kept = await s.rules.keptInstead?.(s);
   if (kept) return keepInHistory(s, kept);
 
+  // The bound is on what reaches the chart: a value kept in history adds no field.
+  const dataFields = Object.keys(rec.fieldVersions).filter((f) => f.startsWith('data.'));
+  if (field.startsWith('data.') && !(field in rec.fieldVersions) && dataFields.length >= MAX_NOTE_FIELDS) {
+    return invalid('too_many_fields');
+  }
   if (c.resolution === 'replace') {
     if (!s.saw) return { status: 'conflict', server: cur };
     return writeValue(s, 'replaced_after_review', actor.approvedBy ?? actor.authorId);
