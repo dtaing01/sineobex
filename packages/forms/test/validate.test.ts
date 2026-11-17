@@ -1033,6 +1033,159 @@ describe('a condition that reads restricted content', () => {
     status(f, 'each').rows = [{ code: 'one', label: 'One' }];
   });
 
+  // A reader without the key gets the picker less its marked options (visibleAnswers), so only a
+  // test that reads the same with them taken out may be made from outside a sensitive exam: `is`
+  // on codes that are not marked. Anything else would show a follow-up that tells the reader what
+  // the exam found, or that it was done.
+  describe('what a sensitive exam leaves in an open field', () => {
+    const markEars = (f: LooseFiles) => {
+      visit(f, 'systems').options.find((o: Loose) => o.code === 'ears').sensitiveExam = true;
+      status(f, 'each').rows = [{ code: 'one', label: 'One' }];
+    };
+    broken(
+      'filled, on a picker with an option that is a sensitive exam',
+      (f) => {
+        markEars(f);
+        visit(f, 'onset').showWhen = { field: 'visit.systems', filled: true };
+      },
+      [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+    );
+    broken(
+      'not filled, in the same open section',
+      (f) => {
+        markEars(f);
+        visit(f, 'onset').showWhen = { not: { field: 'visit.systems', filled: true } };
+      },
+      [CHECKS, `${V('onset')}.showWhen.not.field`, RESTRICTED],
+    );
+    broken(
+      'the Other text, where the Other option is a sensitive exam',
+      (f) => {
+        visit(f, 'systems').options.find((o: Loose) => o.code === 'other').sensitiveExam = true;
+        status(f, 'each').rows = [{ code: 'one', label: 'One' }];
+        visit(f, 'onset').showWhen = { field: 'visit.systems_other', filled: true };
+      },
+      [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+    );
+    fits('filled, on a picker with no option that is a sensitive exam', (f) => {
+      visit(f, 'onset').showWhen = { field: 'visit.systems', filled: true };
+    });
+    broken(
+      'a cell in a fixed row that is a sensitive exam',
+      (f) => {
+        status(f, 'reflexes').rows[0].sensitiveExam = true;
+        visit(f, 'onset').showWhen = { field: 'status.reflexes.knee.right', filled: true };
+      },
+      [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+    );
+    fits('a cell in a fixed row that is not, beside one that is', (f) => {
+      status(f, 'reflexes').rows[0].sensitiveExam = true;
+      visit(f, 'onset').showWhen = { field: 'status.reflexes.ankle.right', is: 'zero' };
+    });
+    // The row is taken out whole, the field that reads it with it.
+    fits('a cell in a marked fixed row, read from the same row', (f) => {
+      status(f, 'each').rows = [
+        { code: 'one', label: 'One', sensitiveExam: true },
+        { code: 'two', label: 'Two' },
+      ];
+    });
+    broken(
+      'a cell in a marked fixed row, read from another row of the same grid',
+      (f) => {
+        status(f, 'each').rows = [
+          { code: 'one', label: 'One', sensitiveExam: true },
+          { code: 'two', label: 'Two' },
+        ];
+        status(f, 'each').cell.fields[1].showWhen = { field: 'status.each.one.seen', is: 'yes' };
+      },
+      [CHECKS, `${S('each')}.cell.fields[1].showWhen.field`, RESTRICTED],
+    );
+    broken(
+      'the side, or whether the region is filled, of a region with a sensitive exam among its regions',
+      (f) => {
+        injury(f, 'where').options[0].sensitiveExam = true;
+        visit(f, 'onset').showWhen = { field: 'injury.where.side', is: 'right' };
+        visit(f, 'called').showWhen = { field: 'injury.where.region', filled: true };
+      },
+      [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+      [CHECKS, `${V('called')}.showWhen.field`, RESTRICTED],
+    );
+    fits('a region that is not a sensitive exam, beside one that is', (f) => {
+      injury(f, 'where').options[0].sensitiveExam = true;
+      visit(f, 'onset').showWhen = { field: 'injury.where.region', is: 'leg' };
+    });
+  });
+
+  // Without view_sensitive a reader gets nothing of a section that holds a sensitive diagnosis,
+  // outside a repeating section (lifecycle 6.4): a field elsewhere that one of its answers shows
+  // would tell them it is there. A repeating section is out of reach already (path_into_repeat).
+  describe('a section that holds a diagnosis', () => {
+    const DX = { id: 'dx', kind: 'problem', label: 'Diagnosis' };
+    broken(
+      'read from another section, by any of its answers',
+      (f) => {
+        injury(f, 'type').mapsTo = undefined;
+        checks(f).sections[4].fields.push(DX);
+        visit(f, 'onset').showWhen = { field: 'injury.type', is: 'burn' };
+        visit(f, 'called').showWhen = { field: 'injury.dx.code', filled: true };
+        checks(f).sections[3].showWhen = { field: 'injury.where.region', is: 'arm' };
+      },
+      [CHECKS, `${V('onset')}.showWhen.field`, RESTRICTED],
+      [CHECKS, `${V('called')}.showWhen.field`, RESTRICTED],
+      [CHECKS, `${STATUS}.showWhen.field`, RESTRICTED],
+    );
+    it('by rows picked in it from another section', () => {
+      const file = 'note-types/dx_demo/v1.json';
+      const picker = {
+        id: 'sites',
+        kind: 'choice',
+        many: true,
+        label: 'Sites',
+        options: [{ code: 'one', label: 'One' }],
+      };
+      const grid = {
+        id: 'each',
+        kind: 'grid',
+        label: 'Each',
+        rows: { pickedIn: 'assess.sites' },
+        cell: TEXT('note'),
+      };
+      const files: LooseFiles = {
+        noteTypes: {
+          [file]: {
+            key: 'dx_demo',
+            version: 1,
+            title: 'Diagnosis (test)',
+            kinds: ['medical'],
+            group: 'clinical',
+            sensitivity: 'none',
+            sections: [
+              { id: 'assess', title: 'Assess', fields: [DX, picker] },
+              { id: 'plan', title: 'Plan', fields: [grid] },
+            ],
+          },
+        },
+        modules: {},
+        lists: {},
+      };
+      expect(found(files, file)).toEqual([
+        [file, '$.sections[1].fields[0].rows.pickedIn', RESTRICTED].join('  '),
+      ]);
+      files.noteTypes[file].sections[0].fields.push(grid);
+      files.noteTypes[file].sections.pop();
+      expect(found(files, file)).toEqual([]);
+    });
+    fits('read from inside the section itself', (f) => {
+      checks(f).sections[4].fields.push(DX, {
+        ...TEXT('more'),
+        showWhen: { field: 'injury.dx.code', filled: true },
+      });
+    });
+    fits('in a repeating section, whose entries are read only from inside', (f) => {
+      expect(checks(f).sections[2].repeat).toBeDefined();
+    });
+  });
+
   // Rows picked in a restricted section, alone: a small note type with nothing else that reads it.
   describe('rows picked in a choose-many inside a restricted section', () => {
     const PICKED_FILE = 'note-types/picked_demo/v1.json';

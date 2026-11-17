@@ -96,6 +96,19 @@ function checkConditions(model: PathModel, report: Report) {
           'condition_reads_restricted',
           `"${test.field}" is in a section marked ${key}, and this condition is not: a reader who may not see that answer would learn it from what this shows`,
         );
+      else if (holdsDiagnosis(named.leaf.node.section, from))
+        report(
+          `${at}.field`,
+          'condition_reads_restricted',
+          `"${test.field}" is in a section that holds a diagnosis, which a reader without view_sensitive does not see whole when the diagnosis is sensitive: what this shows would tell them it is there`,
+        );
+      const left = examLeaves(named.leaf, 'is' in test, carrier, row, from);
+      if (left)
+        report(
+          `${at}.field`,
+          'condition_reads_restricted',
+          `"${test.field}" ${left}, and this condition is not in a sensitive exam: a reader without the key would learn what the exam found from what this shows`,
+        );
       if (!('is' in test)) return;
       const { holds } = named.leaf;
       if (holds.type !== 'codes')
@@ -138,6 +151,12 @@ function checkConditions(model: PathModel, report: Report) {
         'condition_reads_restricted',
         `the rows are picked in a section marked ${key}, and this grid's section is not: its rows would show those answers`,
       );
+    else if (holdsDiagnosis(node.picked.node.section, from))
+      report(
+        at,
+        'condition_reads_restricted',
+        "the rows are picked in a section that holds a diagnosis, and this grid is not in it: its rows would show that section's answers to a reader who may not see them",
+      );
     else if (node.rows.length > 0 && !from.sensitiveExam && node.picked.holds.type === 'codes')
       if (node.picked.holds.options.some((o) => o.sensitiveExam))
         report(
@@ -148,10 +167,62 @@ function checkConditions(model: PathModel, report: Report) {
   }
   for (const node of model.nodes) {
     if (!node.field.showWhen) continue;
-    // Every row of a grid has the same cell, so what holds for one row's paths holds for all.
+    // In a grid's cell the condition is read in each row. A fault found in every row is reported
+    // once (validate keeps one problem per place and rule); one row may read what another may not.
     if (!node.grid) check(node.field.showWhen, node, null);
-    else if (node.grid.rows.length > 0) check(node.field.showWhen, node, node.grid.rows[0]!);
+    else for (const row of new Set(node.grid.rows)) check(node.field.showWhen, node, row);
   }
+}
+
+/**
+ * Whether `target` is a section, other than `from`, that holds a diagnosis outside a repeating
+ * section. A reader without view_sensitive gets none of its answers when the diagnosis is sensitive
+ * (visibleAnswers), so a field elsewhere that any of them shows would say that one is there.
+ */
+function holdsDiagnosis(target: SectionNode, from: ResolvedSection): boolean {
+  if (target.section === from || target.section.repeat) return false;
+  return target.nodes.some((node) => node.field.kind === 'problem');
+}
+
+/**
+ * What a test of `leaf` cannot see the same way once a sensitive exam is taken out of the note
+ * (sensitive-exams.ts, for a reader without patients.view_sensitive_exams), said as the rest of a
+ * sentence; null when it reads the same. Only `is` on codes that are not marked reads the same: a
+ * marked code taken out of an answer neither adds one of them nor takes one away. Everything is
+ * taken out of a sensitive exam section, so a test written inside one reads nothing it would lose.
+ */
+function examLeaves(
+  leaf: Leaf,
+  is: boolean,
+  carrier: FieldNode | SectionNode,
+  row: string | null,
+  from: ResolvedSection,
+): string | null {
+  if (from.sensitiveExam) return null;
+  const { node, holds } = leaf;
+  // The whole row goes, and a field read from that same row goes with it.
+  const grid = node.grid;
+  if (grid && leaf.row !== null && grid.field.kind === 'grid' && Array.isArray(grid.field.rows)) {
+    const sameRow = 'field' in carrier && carrier.grid === grid && row === leaf.row;
+    if (!sameRow && grid.field.rows.some((r) => r.code === leaf.row && r.sensitiveExam))
+      return `is in the row "${leaf.row}", which is a sensitive exam`;
+  }
+  const field = node.field;
+  // A region's side and surface go with a marked region.
+  if (field.kind === 'region' && leaf.parts.at(-1) !== 'region' && field.options.some((o) => o.sensitiveExam))
+    return 'is part of a region whose regions include a sensitive exam';
+  // The Other text goes when the Other option picked beside it is marked.
+  if (
+    leaf.fieldPath === null &&
+    field.kind === 'choice' &&
+    field.options.some((o) => o.other && o.sensitiveExam)
+  )
+    return 'is the text of an Other option that is a sensitive exam';
+  // Filled, or not, changes when the marked codes are all that is picked. (`is` on a marked code
+  // is refused where the code is checked.)
+  if (!is && holds.type === 'codes' && holds.options.some((o) => o.sensitiveExam))
+    return 'holds options that are a sensitive exam, and whether it is filled changes when they are taken out';
+  return null;
 }
 
 /**
