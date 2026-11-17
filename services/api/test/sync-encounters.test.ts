@@ -1863,6 +1863,47 @@ describe('phase 4 sync: encounters and notes', () => {
     });
   });
 
+  describe('offline reads of a visit (lifecycle 4.8, 10.1)', () => {
+    it('the EMS handoff shown and the notes to finish are reads a phone logs offline, each naming its patients', async () => {
+      const ash = await clinician('offline-reads@example.com', 'Ash (demo)', 'resident');
+      const p = await createPatient(h, t.teamId, ash.id);
+      const encounterId = await encounterOf(ash, p.id);
+      const mark = await auditMark(h);
+      const shown = await ash.phone.change({
+        entity: 'audit',
+        op: 'append',
+        value: { action: 'ems_handoff.shown', entity: 'encounter', entityId: encounterId, patientId: p.id },
+      });
+      const others = [randomUUID(), randomUUID()];
+      const listed = await ash.phone.change({
+        entity: 'audit',
+        op: 'append',
+        value: { action: 'notes_to_finish.viewed', patientIds: [p.id, ...others], resultCount: 3 },
+      });
+      // The export is the online route's (5.7): a phone never logs it.
+      const exported = await ash.phone.change({
+        entity: 'audit',
+        op: 'append',
+        value: {
+          action: 'ems_handoff.exported',
+          entity: 'encounter',
+          entityId: encounterId,
+          patientId: p.id,
+        },
+      });
+      const [a, b, c] = await ash.send(shown, listed, exported);
+      expect([a!.status, b!.status]).toEqual(['accepted', 'accepted']);
+      expect(c).toMatchObject({ status: 'rejected', reason: 'validation' });
+
+      const [handoff] = await expectAudit(h, 'ems_handoff.shown', { after: mark, patientId: p.id, count: 1 });
+      expect(handoff).toMatchObject({ actorUserId: ash.id, entity: 'encounter', entityId: encounterId });
+      expect(handoff!.details).toMatchObject({ offline: true, changeId: shown.changeId });
+      const [list] = await expectAudit(h, 'notes_to_finish.viewed', { after: mark, count: 1 });
+      expect(list!.details).toMatchObject({ offline: true, patientIds: [p.id, ...others], resultCount: 3 });
+      await expectAudit(h, 'ems_handoff.exported', { after: mark, count: 0 });
+    });
+  });
+
   describe('the team lock (lifecycle 4.2)', () => {
     it('every encounter, note and sign-off change takes it first, a create naming no patient included', () => {
       const change = (c: Partial<Change> & Pick<Change, 'entity' | 'op' | 'value'>) =>

@@ -356,7 +356,11 @@ export const AUDIT_MAX_PATIENTS = 50;
 
 /**
  * Offline reads, logged on the phone and appended to the audit chain at sync (design 2.8). Search
- * text never enters an entry, online or offline (D41): only the criteria used.
+ * text never enters an entry, online or offline (D41): only the criteria used. The list is closed:
+ * the phone's appendAudit refuses an action not on it, so a screen that shows patients offline
+ * logs through one of these or does not show them. Phase 4 adds two (lifecycle 4.8, 10.1): the EMS
+ * handoff shown on the phone, naming its visit and patient, and Notes to finish, naming its
+ * patients and how many notes it listed. The handoff's export is an online route's own event.
  */
 // PLAN-OPEN: search terms in the audit log (design 14.1, #9, for counsel). Never stored; if counsel
 // wants them, a separate restricted column with its own retention, never `details`.
@@ -369,6 +373,8 @@ export const AuditAppend = z
       'id_link.copied',
       'encounter.viewed',
       'note.viewed',
+      'ems_handoff.shown',
+      'notes_to_finish.viewed',
     ]),
     entity: z
       .string()
