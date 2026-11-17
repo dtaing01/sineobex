@@ -615,7 +615,10 @@ As built (unit F3):
   team does not hold is 404 `not_found`, `no-store`, since it may be installed later. A definition
   found is sent with `Cache-Control: private, max-age=31536000, immutable` and
   `Vary: Authorization, X-Team-Id`: private, because from phase 5 two teams may hold different
-  definitions at one URL. It is not audited.
+  definitions at one URL. It is not audited. Its key and version are the only path parameters in
+  the contract that are not IDs: they name a form, never a patient, and the contract's test that
+  keeps patient details out of URLs (`packages/contract/test/spec.test.ts`) lets exactly these
+  two through on exactly this path, with exactly 0017's patterns.
 - **The one exception to `no-store`.** The app sets `Cache-Control: no-store` and
   `Pragma: no-cache` on every response (`services/api/src/app.ts`), and leaves one alone only when
   its `Cache-Control` is exactly the definition's value. A handler that sets any other lifetime
@@ -1582,6 +1585,7 @@ the rest of the visit page.
 | The list and definition routes: any member, nobody else | `services/api/test/forms-routes.test.ts`, `permissions.test.ts` |
 | The list installs what the team lacks and audits only that, lists each key's newest version, logs and skips a differing key and still answers, and names its own team in its query | `services/api/test/forms-routes.test.ts` (3.2, 3.3) |
 | A definition found is kept privately; every other response, a refusal or a 404 included, is `no-store`, whatever its handler set | `services/api/test/forms-routes.test.ts`, the one-version route and "the cache headers" (3.3) |
+| No URL carries patient details: a note type's key and version are the only path parameters that are not IDs, with exactly 0017's patterns | `packages/contract/test/spec.test.ts` (3.3) |
 | `definitionFor` reads a row once, keeps teams apart, and reads a missing row again | `services/api/test/forms-routes.test.ts`, "definitionFor" (3.3) |
 | Consent is needed to complete a sensitive exam; Normal never fills it | conformance cases; one case on the real GU section in the golden file |
 | A sensitive exam is absent for a reader without the key and from every recap | conformance cases for `visibleAnswers` and `recapLines` |
