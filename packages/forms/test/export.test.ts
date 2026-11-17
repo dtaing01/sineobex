@@ -120,6 +120,26 @@ describe('a tree that passes', () => {
     expect(readFileSync(t.presets, 'utf8')).toBe(first);
   });
 
+  it('writes the same bytes for a file with its keys in another order, as the lock and the hash do', async () => {
+    const t = tree(...GOOD);
+    await t.run();
+    const first = readFileSync(t.presets, 'utf8');
+    const reversed = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(reversed)
+        : value !== null && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .reverse()
+                .map(([k, v]) => [k, reversed(v)]),
+            )
+          : value;
+    for (const file of [CHECKS, EXAM, 'lists/demo_scale.json']) t.write(file, reversed(t.read(file)));
+    expect((await t.run()).problems).toEqual([]);
+    expect(readFileSync(t.presets, 'utf8')).toBe(first);
+    expect(readFileSync(t.phoneAsset, 'utf8')).toBe(first);
+  });
+
   it('orders versions by number, not by their text', async () => {
     const t = tree('definitions');
     for (const version of [2, 10]) copyAs(t, FULL, 'full_demo', version);

@@ -135,13 +135,17 @@ export async function exportDefinitions(options: ExportOptions): Promise<ExportR
   if (problems.size > 0) return failed();
 
   const presets: Preset[] = [];
-  for (const { definition } of resolutions.values())
+  for (const { definition } of resolutions.values()) {
+    const canonical = canonicalJson(definition);
     presets.push({
       key: definition.key,
       version: definition.version,
-      hash: await sha256Hex(canonicalJson(definition)),
-      definition,
+      hash: await sha256Hex(canonical),
+      // In canonical key order, as the hash and the lock read it: a file with its keys in another
+      // order is the same file (4.2), so it writes the same bytes here and in the phone's copy.
+      definition: JSON.parse(canonical) as ResolvedNoteType,
     });
+  }
   presets.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.version - b.version));
   const text = `${JSON.stringify(presets, null, 2)}\n`;
   for (const path of [join(options.root, PRESETS_FILE), options.phoneAsset]) writeText(path, text);
