@@ -3,14 +3,19 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/encounters/content_hash.dart';
+import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/entities.dart';
 
 import 'fake_server.dart';
+import 'test_note_types.dart';
 
 /// The fake's patient read routes (design 3.1, 6, 7: services/api/src/patients/{team-index,
-/// charts,search,match}.ts), decoded by the generated client as the phone will read them.
+/// charts,search,match}.ts), decoded by the generated client as the phone will read them; and the
+/// sync read of a note and what hangs off it (phase 4 lifecycle 4.9 rule 16), each case named after
+/// the test in services/api/test/sync-reads.test.ts that holds the same rule.
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
@@ -220,6 +225,386 @@ void main() {
     expect(mine.single.kind, 'id_link_kept');
     await api.markNoticeRead(noticeId: mine.single.id);
     expect((await api.listNotices()).single.readAt, isNotNull);
+  });
+
+  // Rule 16: services/api/test/sync-reads.test.ts. Alex (Ana there) is an attending and the author;
+  // Ben holds no credential; Sky is a student; Dee has a custom role with patients.view and
+  // encounters.chart only; Eli encounters.chart alone; the admin holds every key and no credential.
+  group('phase 4: who may read what in a note (lifecycle 4.4, 6.4)', () {
+    const ben = 'b0000000-0000-4000-8000-0000000000be';
+    const sky = 'c0000000-0000-4000-8000-0000000000c5';
+    const dee = 'd0000000-0000-4000-8000-0000000000de';
+    const eli = 'e0000000-0000-4000-8000-0000000000e1';
+    const admin = 'ad000000-0000-4000-8000-0000000000ad';
+    const chw = 'c0000000-0000-4000-8000-0000000000c0';
+    const e1 = 'e0000001';
+    const e2 = 'e0000002';
+    const at = '2026-10-20T14:50:00Z';
+    const answers = <String, Object?>{
+      'general.notes': 'Demo: walked over from the shelter',
+      'exam.findings': 'Demo: no lesions seen',
+      'moud.dose': 'Demo: 8 mg',
+      'meds.given': 'Demo: none today',
+      'systems.seen': ['heart', 'gu'],
+      // A diagnosis whose code is on the sensitive list, and one whose code is not.
+      'dx.$e1.entryAt': at,
+      'dx.$e1.diagnosis.code': 'F11.20',
+      'dx.$e1.diagnosis.label': 'Demo: opioid use',
+      'dx.$e1.note': 'Demo: talk again next week',
+      'dx.$e2.entryAt': at,
+      'dx.$e2.diagnosis.code': 'J02.9',
+      'dx.$e2.diagnosis.label': 'Demo: sore throat',
+    };
+    final all = [for (final path in answers.keys) 'data.$path']..sort();
+    List<String> without(List<String> gone) => [
+      for (final field in all)
+        if (!gone.any((g) => field == 'data.$g' || field.startsWith('data.$g.'))) field,
+    ];
+    late String patient;
+
+    setUp(() {
+      for (final d in [...restrictedNoteTypes, redFlagsNoteType]) {
+        server.noteTypes[(d['key']! as String, d['version']! as int)] = d;
+      }
+      patient = server.seedPatient();
+      server.credentials
+        ..[ben] = 'none'
+        ..[sky] = 'student'
+        ..[dee] = 'none'
+        ..[eli] = 'none'
+        ..[admin] = 'none'
+        ..[chw] = 'chw';
+      server.permissions
+        ..[dee] = {'patients.view', 'encounters.chart'}
+        ..[eli] = {'encounters.chart'}
+        ..[admin] = {
+          ...FakeSyncServer.healthcareStaff,
+          'patients.view_sensitive_exams',
+          'patients.correct_identity',
+          'billing.view_codes',
+        }
+        ..[chw] = FakeSyncServer.chw;
+    });
+
+    String visit({String by = alex}) => server.seed(entityEncounter, {'kind': 'medical', 'patientId': patient}, by: by);
+    String noteOn(String encounterId, TestNoteType type, Map<String, Object?> data, {String by = alex}) => server.seed(
+      entityNote,
+      {'encounterId': encounterId, 'noteTypeKey': type.key, 'noteTypeVersion': type.version, 'data': data},
+      by: by,
+    );
+    Future<FetchRecordsResult> read(String user, List<(String, String)> refs) =>
+        SineobexApi(server.transportFor(user, team)).fetchRecords(
+          body: FetchRecords(
+            records: [for (final (entity, id) in refs) RecordRef(entity: RecordEntity.fromJson(entity), id: id)],
+          ),
+        );
+    Future<RecordSnapshot> noteAs(String user, String note) async =>
+        (await read(user, [(entityNote, note)])).records.single;
+    List<String> answerFields(RecordSnapshot s) => [
+      for (final f in s.fields.keys)
+        if (f.startsWith('data.')) f,
+    ]..sort();
+
+    /// A sign-off made by [by] on the note as they hold it, seeded as their phone would send it.
+    String finish(String note, String act, {String by = alex, Map<String, Object?>? held}) {
+      final n = server.records[note]!;
+      final visit = server.records[n.attributes['encounterId']]!;
+      return server.seed(entitySignoff, {
+        'noteId': note,
+        'act': act,
+        'contentHash': noteContentHash(
+          noteId: note,
+          encounterId: visit.id,
+          patientId: visit.fields['patientId']?.value as String?,
+          summary: visit.fields['summary']?.value as String?,
+          definition: NoteTypeDef.fromJson(
+            server.noteTypes[(n.attributes['noteTypeKey'], n.attributes['noteTypeVersion'])]!,
+          ),
+          answers:
+              held ??
+              {
+                for (final MapEntry(:key, :value) in n.fields.entries)
+                  if (key.startsWith('data.')) key.substring(5): value.value,
+              },
+        ),
+        'claimedCredential': act == 'sign' ? server.credentialOf(by) : null,
+        'statementVersion': act == 'sign' ? 'sign-2026-11' : 'complete-2026-11',
+      }, by: by);
+    }
+
+    test(
+      'a teammate’s copy lists only the answers they may see: one they may not leaves no value, version or mark',
+      () async {
+        final n = noteOn(visit(), testRestricted, answers);
+        // Whoever acts as the author reads all of it.
+        expect(answerFields(await noteAs(alex, n)), all);
+        // No key for sensitive exams, and no treatment record without a credential that charts
+        // Medical. The picker keeps what it may show, at the answer's version.
+        final bens = await noteAs(ben, n);
+        expect(answerFields(bens), without(['exam', 'moud']));
+        final seen = bens.fields['data.systems.seen']!;
+        expect(
+          [seen.value, seen.version, seen.changedBy, seen.changedAt],
+          [
+            ['heart'],
+            1,
+            alex,
+            isNotNull,
+          ],
+        );
+        // A section an ordering credential changes is read by everyone (6.4, rule 5).
+        expect(bens.fields['data.meds.given']!.value, answers['meds.given']);
+        expect(bens.status, 'draft');
+        // A student charts Medical: the treatment record, not the exam.
+        expect(answerFields(await noteAs(sky, n)), without(['exam']));
+        // The Program Admin holds every key and no clinical credential: the exam, not the treatment record.
+        final admins = await noteAs(admin, n);
+        expect(answerFields(admins), without(['moud']));
+        expect(admins.fields['data.systems.seen']!.value, ['heart', 'gu']);
+        // Without patients.view_sensitive a sensitive diagnosis takes its whole entry with it.
+        expect(answerFields(await noteAs(dee, n)), without(['exam', 'moud', 'dx.$e1']));
+      },
+    );
+
+    test('the author’s own draft is sent whole, hidden answers included; everyone else, and a finished note, gets what counts', () async {
+      final held = <String, Object?>{
+        'care.plan': 'Demo: rest and fluids',
+        'care.followup': '',
+        'more.none': true,
+        // Hidden while more.none is ticked: kept, and shown again once it is not.
+        'more.detail': 'Demo: kept for later',
+      };
+      final n = noteOn(visit(), testNote, held);
+      final own = await noteAs(alex, n);
+      expect(answerFields(own), ['data.care.followup', 'data.care.plan', 'data.more.detail', 'data.more.none']);
+      expect(
+        [own.fields['data.more.detail']!.value, own.fields['data.more.detail']!.version],
+        ['Demo: kept for later', 1],
+      );
+      // A blank is no answer, and a hidden one does not count.
+      expect(answerFields(await noteAs(ben, n)), ['data.care.plan', 'data.more.none']);
+      finish(n, 'complete', held: held);
+      expect(answerFields(await noteAs(alex, n)), ['data.care.plan', 'data.more.none']);
+    });
+
+    test('a note the reader may not read is missing, like one the team does not have', () async {
+      final v = visit();
+      final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'});
+      final medical = noteOn(v, testMedical, const {'care.plan': 'Demo: fluids'});
+      final both = [(entityNote, talk), (entityNote, medical)];
+      expect((await read(ben, both)).records.map((r) => r.id), [talk, medical]);
+      // A sensitive note type needs patients.view_sensitive.
+      final dees = await read(dee, both);
+      expect(
+        [dees.records.map((r) => r.id), dees.missing.map((r) => r.id)],
+        [
+          [medical],
+          [talk],
+        ],
+      );
+      // A Medical note needs patients.view, as the problem list does (D37).
+      final elis = await read(eli, both);
+      expect(
+        [elis.records, elis.missing.map((r) => r.id)],
+        [
+          isEmpty,
+          [talk, medical],
+        ],
+      );
+      // The community health worker preset charts nothing, so reads no note at all.
+      await expectLater(read(chw, both), throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)));
+    });
+
+    test('a note whose definition the server cannot read is missing: what it would hide cannot be told', () async {
+      final v = visit();
+      // A note naming a version the team does not hold, from before any check: none can be made now.
+      final stray = noteOn(v, testNote, const {});
+      server.records[stray]!.attributes['noteTypeVersion'] = 9;
+      // A definition the interpreter throws on: two fields that each show only while the other is filled.
+      server.noteTypes[('test_looped_read', 1)] = {
+        ...testNoteTypes.first,
+        'key': 'test_looped_read',
+        'sections': [
+          {
+            'id': 'loop',
+            'title': 'Loop',
+            'fields': [
+              for (final (field, other) in [('a', 'b'), ('b', 'a')])
+                {
+                  'id': field,
+                  'kind': 'text',
+                  'label': field.toUpperCase(),
+                  'lines': 'one',
+                  'maxLength': 200,
+                  'showWhen': {'field': 'loop.$other', 'filled': true},
+                },
+            ],
+          },
+        ],
+      };
+      final loop = server.seed(entityNote, {
+        'encounterId': v,
+        'noteTypeKey': 'test_looped_read',
+        'noteTypeVersion': 1,
+      }, by: alex);
+      server.serverEdit(loop, 'data.loop.a', 'Demo: round and round', by: alex);
+      final refs = [(entityNote, stray), (entityNote, loop)];
+      final bens = await read(ben, refs);
+      expect(
+        [bens.records, bens.missing.map((r) => r.id)],
+        [
+          isEmpty,
+          [stray, loop],
+        ],
+      );
+      // Its author's draft is sent as stored, which reads no definition; one the team lacks is missing.
+      final alexs = await read(alex, refs);
+      expect(
+        [alexs.records.map((r) => r.id), alexs.missing.map((r) => r.id)],
+        [
+          [loop],
+          [stray],
+        ],
+      );
+    });
+
+    test('a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names', () async {
+      const res = 'f0000000-0000-4000-8000-0000000000f5';
+      server.credentials[res] = 'resident';
+      final v = visit(by: res);
+      final flags = noteOn(v, testRedFlags, const {'flags.any': 'no'}, by: res);
+      expect((await noteAs(res, flags)).attributes, {
+        'encounterId': v,
+        'noteTypeKey': 'test_red_flags',
+        'noteTypeVersion': 1,
+        'attestation': 'not_needed',
+        'actingAuthorId': res,
+        'completedAt': null,
+        'signoffId': null,
+      });
+      final signoff = finish(flags, 'sign', by: res);
+      final signed = await noteAs(res, flags);
+      expect(signed.status, 'signed');
+      expect(signed.attributes, {
+        'encounterId': v,
+        'noteTypeKey': 'test_red_flags',
+        'noteTypeVersion': 1,
+        'attestation': 'waiting',
+        'actingAuthorId': res,
+        'completedAt': server.records[flags]!.completedAt,
+        'signoffId': signoff,
+      });
+      expect(server.records[flags]!.completedAt, isNotNull);
+      // Assigned by an admin once the author has left (3.8): the assignee acts as the author.
+      server.records[flags]!.assignedTo = alex;
+      expect((await noteAs(alex, flags)).attributes['actingAuthorId'], alex);
+    });
+
+    group('what hangs off a note, and referrals (6.4 rule 7)', () {
+      String correctionOf(String note, String path, Object? newValue, [int baseVersion = 1]) =>
+          server.seed(entityCorrection, {
+            'noteId': note,
+            'changes': [
+              {'field': 'data.$path', 'newValue': newValue, 'baseVersion': baseVersion},
+            ],
+            'reason': 'Demo: the wrong field was picked',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': null,
+          }, by: alex);
+
+      test('a sign-off, an addendum and a correction are read by whoever may read their note; a referral with patients.view', () async {
+        final v = visit();
+        final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'});
+        final signoff = finish(talk, 'complete');
+        final addendum = server.seed(entityAddendum, {
+          'encounterId': v,
+          'noteId': talk,
+          'text': 'Demo: called back',
+          'signoffId': null,
+        }, by: alex);
+        final onVisit = server.seed(entityAddendum, {
+          'encounterId': v,
+          'noteId': null,
+          'text': 'Demo: the van ran late',
+          'signoffId': null,
+        }, by: alex);
+        final correction = correctionOf(talk, 'talk.notes', 'Demo: talked about sleep and food');
+        expect(server.records[correction]!.status, 'corrected');
+        final referral = server.seed(entityReferral, {
+          'patientId': patient,
+          'referredOn': '2026-10-20',
+          'details': 'Demo: dental clinic on Main St',
+          'encounterId': v,
+        }, by: alex);
+        final offNote = [(entitySignoff, signoff), (entityAddendum, addendum), (entityCorrection, correction)];
+        final refs = [...offNote, (entityAddendum, onVisit)];
+        server.serverAudit.clear();
+        expect((await read(ben, refs)).records.map((r) => r.id), [for (final (_, id) in refs) id]);
+        expect(
+          [
+            for (final a in server.serverAudit) [a['action'], a['patientId']],
+          ],
+          [
+            for (final _ in refs) ['note.viewed', patient],
+          ],
+        );
+        // Without patients.view_sensitive the note is not read, and nothing that hangs off it; an
+        // addendum to the visit itself is read with the visit.
+        final dees = await read(dee, refs);
+        expect(
+          [dees.records.map((r) => r.id), dees.missing.map((r) => r.id)],
+          [
+            [onVisit],
+            [for (final (_, id) in offNote) id],
+          ],
+        );
+        // A sign-off, an addendum and a correction need encounters.chart, as their note does.
+        for (final ref in refs) {
+          await expectLater(read(chw, [ref]), throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)));
+        }
+        // A referral is a patient's record: read with patients.view, logged as a view of the patient.
+        server.serverAudit.clear();
+        expect((await read(chw, [(entityReferral, referral)])).records.map((r) => r.id), [referral]);
+        expect(
+          [
+            for (final a in server.serverAudit) [a['action'], a['patientId']],
+          ],
+          [
+            ['patient.viewed', patient],
+          ],
+        );
+        await expectLater(
+          read(eli, [(entityReferral, referral)]),
+          throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)),
+        );
+      });
+
+      test(
+        'a correction is missing for a reader who may not see an answer it changes, in its old value or its new',
+        () async {
+          final n = noteOn(visit(), testRestricted, answers);
+          finish(n, 'complete');
+          final plain = correctionOf(n, 'general.notes', 'Demo: walked over from the park');
+          final exam = correctionOf(n, 'exam.findings', 'Demo: a small rash');
+          // Takes GU away: the new value shows nothing sensitive, the old one does.
+          final picker = correctionOf(n, 'systems.seen', ['heart']);
+          final dx = correctionOf(n, 'dx.$e1.note', 'Demo: talk again in two weeks');
+          // Puts it back: now the old value shows nothing sensitive, the new one does.
+          final back = correctionOf(n, 'systems.seen', ['heart', 'gu'], 2);
+          final made = [plain, exam, picker, dx, back];
+          expect([for (final c in made) server.records[c]!.status], List.filled(5, 'corrected'));
+          Future<List<String>> seen(String user) async => [
+            for (final r in (await read(user, [for (final c in made) (entityCorrection, c)])).records) r.id,
+          ];
+          expect(await seen(alex), made);
+          expect(await seen(admin), made);
+          expect(await seen(ben), [plain, dx]);
+          expect(await seen(dee), [plain]);
+        },
+      );
+    });
   });
 
   group('field reviews and history (review finding P10: the routes the phone calls)', () {

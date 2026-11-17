@@ -2965,58 +2965,182 @@ class FakeSyncServer {
 
   /// POST /v1/sync/records (routes/sync.ts requireRead, review.ts fetchRecords): each kind of record
   /// needs its read permission, refused for the whole request; a sensitive problem, or its note,
-  /// is missing to a role without patients.view_sensitive; each read is logged, a patient-side one
-  /// as a view of the patient (review finding P8).
+  /// is missing to a role without patients.view_sensitive; a note leaves out what the reader may
+  /// not see, and what hangs off a note goes with it (lifecycle 6.4). Each read is logged: a visit's
+  /// as encounter.viewed, a note's and what hangs off it as note.viewed, anything else as a view of
+  /// the patient (review finding P8).
   Map<String, Object?> _fetch(String userId, Map<String, Object?> b) {
     final refs = (b['records']! as List<Object?>).cast<Map<String, Object?>>();
     final perms = permissionsOf(userId);
     for (final entity in {for (final ref in refs) ref['entity']}) {
       final may = switch (entity) {
-        entityEncounter || entityNote => perms.contains('encounters.chart'),
+        entityEncounter ||
+        entityNote ||
+        entitySignoff ||
+        entityAddendum ||
+        entityCorrection => perms.contains('encounters.chart'),
         entityProblem || entityProblemNote => mayViewProblems(perms),
         _ => perms.contains('patients.view'),
       };
       if (!may) throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
     }
-    bool sensitive(FakeRecord r) => switch (r.entity) {
-      entityProblem => r.attributes['sensitive'] == true,
-      entityProblemNote => records[r.attributes['problemId']]?.attributes['sensitive'] == true,
-      _ => false,
-    };
     final out = <Object?>[];
     final missing = <Object?>[];
     for (final ref in refs) {
       final r = records[ref['id']];
-      if (r == null || r.entity != ref['entity'] || (sensitive(r) && !perms.contains('patients.view_sensitive'))) {
+      final shown = r == null || r.entity != ref['entity'] ? null : _asRead(userId, perms, r);
+      if (shown == null) {
         missing.add(ref);
         continue;
       }
-      final encounterSide = r.entity == entityEncounter || r.entity == entityNote;
       serverAudit.add({
-        'action': encounterSide ? (r.entity == entityNote ? 'note.viewed' : 'encounter.viewed') : 'patient.viewed',
+        'action': switch (r!.entity) {
+          entityEncounter => 'encounter.viewed',
+          entityNote || entitySignoff || entityAddendum || entityCorrection => 'note.viewed',
+          _ => 'patient.viewed',
+        },
         'userId': userId,
-        'patientId': r.patientId,
+        'patientId': _patientOf(r),
         'entityId': r.id,
         'details': {'source': 'sync'},
       });
-      final at = now().toUtc().toIso8601String();
-      out.add({
-        'entity': r.entity,
-        'id': ref['id'],
-        'version': 1,
-        'status': r.entity == entityNote ? _noteStatusOf(r) : r.status,
-        'authorUserId': r.author,
-        'createdAt': at,
-        'updatedAt': at,
-        'attributes': r.attributes,
-        // A visit shows each of its fields, at version 0 until one is written (encounter.ts load).
-        'fields': {
-          for (final name in r.entity == entityEncounter ? _encounterFields : r.fields.keys) name: r.state(name),
-        },
-      });
+      out.add(shown);
     }
     return {'records': out, 'missing': missing};
   }
+
+  /// The record as [userId] may see it (review.ts asRead), or null when they may not see it at all.
+  Map<String, Object?>? _asRead(String userId, Set<String> perms, FakeRecord r) {
+    final sensitive = perms.contains('patients.view_sensitive');
+    switch (r.entity) {
+      case entityProblem:
+        return sensitive || r.attributes['sensitive'] != true ? _readSnapshot(r) : null;
+      case entityProblemNote:
+        return sensitive || records[r.attributes['problemId']]?.attributes['sensitive'] != true
+            ? _readSnapshot(r)
+            : null;
+      case entityNote:
+        return _noteAsRead(userId, perms, r)?.snapshot;
+      case entitySignoff:
+        return _noteAsRead(userId, perms, records[r.attributes['noteId']]) == null ? null : _readSnapshot(r);
+      // An addendum to the visit itself is read with the visit.
+      case entityAddendum:
+        final noteId = r.attributes['noteId'];
+        return noteId == null || _noteAsRead(userId, perms, records[noteId]) != null ? _readSnapshot(r) : null;
+      // Missing too when an answer it changes is hidden from the reader: its old or new value would
+      // give it away.
+      case entityCorrection:
+        final read = _noteAsRead(userId, perms, records[r.attributes['noteId']]);
+        if (read == null) return null;
+        final type = read.type;
+        final changes = (r.attributes['changes']! as List<Object?>).cast<Map<String, Object?>>();
+        bool hidden(Map<String, Object?> change) {
+          final path = (change['field']! as String).substring('data.'.length);
+          try {
+            return _byDefinition(
+              () =>
+                  answerHidden(type!, read.answers, path, change['oldValue'], read.reader) ||
+                  answerHidden(type, read.answers, path, change['newValue'], read.reader),
+            );
+          } on _DefinitionError {
+            return true;
+          }
+        }
+
+        return type == null || !changes.any(hidden) ? _readSnapshot(r) : null;
+      default:
+        return _readSnapshot(r);
+    }
+  }
+
+  /// A note as [userId] may read it (review.ts noteAsRead), or null when they may not: whoever acts
+  /// as the author of a draft gets every answer it holds, hidden ones included; everyone else, and
+  /// every finished note, the answers that count that the reader may see. A hidden answer leaves no
+  /// key: no value, no version, no mark. A phase 2 note is read whole; one whose definition cannot be
+  /// read is missing.
+  ({Map<String, Object?> snapshot, NoteTypeDef? type, Answers answers, NoteReader reader})? _noteAsRead(
+    String userId,
+    Set<String> perms,
+    FakeRecord? note,
+  ) {
+    if (note == null) return null;
+    final NoteTypeDef? read;
+    try {
+      read = _noteTypeOf(note);
+    } on _DefinitionError {
+      return null;
+    }
+    final reader = noteReader(perms, credentialOf(userId), actsAsAuthor: userId == _actingAuthor(note));
+    final answers = _answersOf(note);
+    final type = read;
+    if (type == null || (reader.actsAsAuthor && _noteStatusOf(note) == 'draft')) {
+      return (snapshot: _noteSnapshot(note, null), type: type, answers: answers, reader: reader);
+    }
+    final Map<String, Object>? seen;
+    try {
+      seen = _byDefinition(() => visibleAnswers(type, answers, reader));
+    } on _DefinitionError {
+      return null;
+    }
+    return seen == null ? null : (snapshot: _noteSnapshot(note, seen), type: type, answers: answers, reader: reader);
+  }
+
+  /// A note's snapshot (note.ts load): its state in its attributes, and its answers, or only [seen].
+  Map<String, Object?> _noteSnapshot(FakeRecord note, Map<String, Object>? seen) => {
+    ..._readSnapshot(note, fields: const []),
+    'status': _noteStatusOf(note),
+    // Its state too, so the author's phone can show the state of a note it still holds (4.4, 4.10).
+    'attributes': {
+      'encounterId': note.attributes['encounterId'],
+      'noteTypeKey': note.attributes['noteTypeKey'],
+      'noteTypeVersion': note.attributes['noteTypeVersion'],
+      'attestation': note.attestation,
+      'actingAuthorId': _actingAuthor(note),
+      'completedAt': note.completedAt,
+      'signoffId': note.signoffId,
+    },
+    'fields': {
+      for (final name in note.fields.keys)
+        if (seen == null || !name.startsWith('data.'))
+          name: note.state(name)
+        else if (seen.containsKey(name.substring('data.'.length)))
+          name: {...note.state(name), 'value': seen[name.substring('data.'.length)]},
+    },
+  };
+
+  /// A record as the sync read sends it: a visit shows each of its fields, at version 0 until one is
+  /// written (encounter.ts load), and a referral its mark.
+  Map<String, Object?> _readSnapshot(FakeRecord r, {List<String>? fields}) {
+    final at = now().toUtc().toIso8601String();
+    return {
+      'entity': r.entity,
+      'id': r.id,
+      'version': 1,
+      'status': r.status,
+      'authorUserId': r.author,
+      'createdAt': at,
+      'updatedAt': at,
+      'attributes': r.attributes,
+      'fields': {
+        for (final name
+            in fields ??
+                switch (r.entity) {
+                  entityEncounter => _encounterFields,
+                  entityReferral => const ['enteredInError'],
+                  _ => r.fields.keys,
+                })
+          name: r.state(name),
+      },
+    };
+  }
+
+  /// The patient a record is about now: a visit's, and through it its notes' and what hangs off them.
+  String? _patientOf(FakeRecord? r) => switch (r?.entity) {
+    entityEncounter => r!.fields['patientId']?.value as String?,
+    entityNote || entityAddendum => _patientOf(records[r!.attributes['encounterId']]),
+    entitySignoff || entityCorrection => _patientOf(records[r!.attributes['noteId']]),
+    _ => r?.patientId,
+  };
 
   Future<Map<String, Object?>> _signed(String deviceId, String purpose, Map<String, Object?> b) async {
     final payload = b['payload']! as Map<String, Object?>;

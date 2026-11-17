@@ -3198,6 +3198,109 @@ void main() {
       );
     });
 
+    // Rule 17: the second table of lifecycle 4.1, row by row, on one visit. Each row's API test has its
+    // own case above: 'a status of completed is kept in history...', 'kind goes to Medical from any
+    // version...', 'a patient is never taken off a visit', 'a sign-off from someone who does not act as
+    // the author...', 'keeps the rest in history: ... someone else’s reopen', '1. whoever does not act
+    // as the author is told...', 'a Non-Medical note is completed: ...' and '2. a note reopened since
+    // is edited as a draft...'.
+    test('what is accepted with no effect, in place of a refusal: each row of the second table of 4.1', () async {
+      server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+      final p = server.seedPatient();
+      final visit = visitOf(patientId: p);
+      final medical = noteOn(visit, type: testMedical);
+      final social = noteOn(visit);
+      final waiting = noteOn(visit, type: testMedical);
+      server.finishNote(waiting);
+      final finished = noteOn(visit, type: testMedical);
+      server.finishNote(finished, status: 'signed');
+      String hashOf(String note) => noteContentHash(
+        noteId: note,
+        encounterId: visit,
+        patientId: p,
+        summary: null,
+        definition: NoteTypeDef.fromJson(server.noteTypes[(testMedical.key, 1)]!),
+        answers: const {'care.plan': 'Demo: rest and fluids'},
+      );
+      Map<String, Object?> signoff(String note, String act, {String type = 'test_medical'}) =>
+          change(entitySignoff, 'create', {
+            'noteId': note,
+            'act': act,
+            'contentHash': type == 'test_medical'
+                ? hashOf(note)
+                : noteContentHash(
+                    noteId: note,
+                    encounterId: visit,
+                    patientId: p,
+                    summary: null,
+                    definition: NoteTypeDef.fromJson(testNoteTypes.first),
+                    answers: const {'care.plan': 'Demo: rest and fluids'},
+                  ),
+            'claimedCredential': null,
+            'statementVersion': '$act-2026-11',
+          });
+      Map<String, Object?> correction(String note, {bool declined = false}) => change(entityCorrection, 'create', {
+        'noteId': note,
+        'changes': [
+          {'field': 'data.care.plan', 'newValue': 'Demo: fluids', 'baseVersion': 1},
+        ],
+        'reason': 'Demo: the wrong field was picked',
+        'requestedByPatient': declined,
+        'declined': declined,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+
+      final rows = <(String, Map<String, Object?>, Object)>[
+        // A set of a note's status to completed (an old build): kept in history.
+        (
+          'alex',
+          setOn(entityNote, medical, 'status', 'completed', 1),
+          containsPair('details', {'outcome': 'history_only', 'problem': 'use_signoff'}),
+        ),
+        // The kind back to Non-Medical, a patient taken off: kept in history.
+        (
+          'alex',
+          setOn(entityEncounter, visit, 'kind', 'non_medical', 1),
+          containsPair('details', {'outcome': 'history_only', 'problem': 'kind_cannot_go_back'}),
+        ),
+        (
+          'alex',
+          setOn(entityEncounter, visit, 'patientId', null, 1),
+          containsPair('details', {'outcome': 'history_only', 'problem': 'patient_cannot_be_removed'}),
+        ),
+        // A sign-off, a reopen or a correction from someone who does not act as the author: stored
+        // with no effect, and the sender told.
+        ('blair', signoff(medical, 'sign'), containsPair('details', containsPair('reason', 'not_author'))),
+        (
+          'blair',
+          setOn(entityNote, waiting, 'status', 'draft', 1),
+          containsPair('details', {'outcome': 'history_only', 'problem': 'not_author'}),
+        ),
+        ('blair', correction(finished), containsPair('details', containsPair('outcome', 'not_author'))),
+        // `sign` on a Non-Medical note is a `complete`.
+        (
+          'alex',
+          signoff(social, 'sign', type: 'test_note'),
+          containsPair('details', containsPair('effect', 'completed')),
+        ),
+        // A correction to a note that is a draft is an edit to the draft.
+        ('alex', correction(medical), containsPair('details', containsPair('outcome', 'draft_edit'))),
+      ];
+      for (final (who, c, expected) in rows) {
+        final answered = await send(who == 'alex' ? alex : blair, [c]);
+        expect(answered, [
+          allOf(containsPair('status', 'accepted'), expected),
+        ], reason: '${c['entity']} ${c['field'] ?? c['op']}');
+      }
+      expect(
+        [for (final n in server.notices) '${n.userId == blair ? 'blair' : 'alex'} ${n.kind}'],
+        ['blair change_not_applied', 'blair change_not_applied', 'blair change_not_applied'],
+      );
+      expect(server.records[medical]!.fields['data.care.plan']!.value, 'Demo: fluids');
+      expect(server.records[social]!.fields['status']!.value, 'completed');
+    });
+
     test('the encounter’s status follows its notes', () async {
       final vectors = jsonDecode(
         File('../../packages/contract/test-vectors/note-lifecycle.json').readAsStringSync(),
