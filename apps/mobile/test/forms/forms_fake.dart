@@ -34,7 +34,8 @@ class FakeFormsServer {
   /// No answer from the forms routes (the rest of the API still answers).
   bool offline = false;
 
-  /// What the one-version route answers in place of the version itself, by 'key/version'.
+  /// What the one-version route answers in place of the version itself, by 'key/version'. An
+  /// exception is thrown.
   final answers = <String, Object?>{};
 
   /// Requests to a path wait until its completer completes.
@@ -83,7 +84,11 @@ class FakeFormsServer {
       };
     }
     final name = path.substring(listPath.length + 1);
-    if (answers.containsKey(name)) return answers[name];
+    if (answers.containsKey(name)) {
+      final answer = answers[name];
+      if (answer is Exception) throw answer;
+      return answer;
+    }
     final parts = name.split('/');
     final found = versions.where((v) => v['key'] == parts[0] && '${v['version']}' == parts[1]).firstOrNull;
     if (found == null) throw const ApiException(404, 'not_found', 'Not found.');
