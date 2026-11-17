@@ -2183,6 +2183,33 @@ portal and the phone draw), `signoffs`, `addenda`, `corrections`, `attestations`
 - Refusals: `404` for an encounter the team does not have. Audit: `encounter.viewed`, with the
   patient ID and the note IDs shown.
 
+As built in the sync read (unit L1, `services/api/src/sync/review.ts` `fetchRecords`), which
+this route (unit L2, not built yet) is to match:
+
+- **A note** is missing when the reader may not read it, and when the server cannot read its
+  definition: what it would hide cannot be told. Otherwise it holds only the answers the reader
+  may see, each with its version; whoever acts as the author of a draft gets every answer it
+  holds. A correction is missing whole, not stripped, when its old or its new value at any field
+  it changes is hidden from the reader (`answerHidden`), as this section says.
+- **`contentHash`** of a sign-off goes only to whoever acts as the note's author, its signer, and
+  a reader who sees every answer of any note: `patients.view` with `encounters.chart` or
+  `billing.view_codes`, `patients.view_sensitive`, `patients.view_sensitive_exams`, and a
+  credential that charts Medical (`readsWhole`; review findings NOT-5, RD-1). The rule asks this
+  of the reader, never of what the note holds: given whenever the reader sees every answer that
+  counts in this note, its absence would tell that something is hidden. It is stricter than the
+  bullet above: a Program Admin without a clinical credential gets no hash. Open: whether this
+  route's `contentHash` follows it; co-sign and attest (5.3, 5.4) need the hash.
+- **A Medical visit's summary**, and an addendum to a Medical visit that names no note, are
+  Medical content (6.4, row 1): read with what reads its notes, `patients.view` with
+  `encounters.chart` or `billing.view_codes` (review finding RD-7). Anyone else gets the visit
+  without its summary, its version or its mark, and the addendum is missing. Open: whether a
+  Medical visit's `locationText` is Medical content too; it is still read.
+- **A note's version and time**: in every copy but the acting author's copy of a draft, the
+  highest version among the fields it shows, and the latest of their times, never before the
+  note was made (review finding RD-6), so a change to a hidden answer moves neither.
+- **The audit**: one event for each record the read returns, not one per visit with `noteIds`
+  (10.1).
+
 ### 5.2 The timeline, and recent visits
 
 The chart answer (`services/api/src/patients/charts.ts`, `projection.ts`, `schemas.ts`) gains:
@@ -2427,6 +2454,46 @@ Rules:
   handoff's field lines leave out the same for every reader (rules 3 and 8; 5.7).
 - **`ordersMedications` changes nothing here**: a `needs` section is shown to every reader, and
   rule 5 decides who may change it.
+
+**The sync rules, as built** (unit L1, with wave D's review):
+
+- **Rule 7, the new records in the sync read.** `/v1/sync/records` needs `encounters.chart` for a
+  sign-off, an addendum and a correction, as for a visit and a note, and `patients.view` for a
+  referral (`services/api/src/routes/sync.ts`). Then `fetchRecords` reads record by record: a
+  sign-off is there when its note is, its `contentHash` as 5.1 says; an addendum is there when its
+  note is, or, naming no note, with its visit (a Medical one's needs what reads its notes, 5.1); a
+  correction is there when its note is and no change it holds is hidden from the reader in its old
+  value or its new, so its values go only to whoever may read every answer it changes, and a
+  correction is missing rather than stripped, since its field alone names the hidden answer; a
+  referral is read whole. Each record returned is logged: `encounter.viewed` for a visit,
+  `note.viewed` for a note and for a sign-off, an addendum or a correction, `patient.viewed` for a
+  referral (10.1).
+- **Rule 2 in the sync read** is 5.1's note: a note the reader may not read, or whose definition
+  cannot be read, is missing; a hidden answer leaves no value, version or mark; a note's version
+  and time follow what it shows.
+- **Rule 2 for a retry**: a change answered again from its receipt sends the field as the sender
+  may see it now (4.4).
+- **Rule 2 in the review queue.** A held change's value goes only to a reviewer who may read it,
+  by the sync read's rules (`shownChange`, `review.ts`; review finding RD-3, as the coordinator
+  decided): a visit's records need `encounters.chart`; a note's change, a note the reviewer may
+  read, and every answer it sends or would replace one they may see; a held note create, a type
+  they may read with none of its answers hidden; a held sign-off goes without its hash to a
+  reviewer who does not see every answer of any note; a problem and its notes need the problem
+  list's keys, and a sensitive one, or one whose create is still held, `patients.view_sensitive`;
+  everything else `patients.view`. An item the reviewer may not read is listed with `field` and
+  `value` null and `hidden: true` (`QuarantineItem` in the contract), and opening the queue still
+  logs it with its patient. Open: a reviewer who cannot read a held value can still accept it, as
+  before; the portal's queue page does not yet show such an item as held with nothing of it; and
+  a held addendum that names no note is shown to any reviewer with `encounters.chart`, though the
+  sync read keeps a Medical visit's from a reader without what reads its notes (5.1).
+- **Rule 4** is the sign-off hash rule of 5.1.
+- **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set whose stored or sent
+  value is hidden from the sender, an answer that does not count by where it is (4.4); any change
+  of a note the sender may not read at all, a set, a sign-off, a correction or an addendum, so
+  that no answer tells its state, who finished it, or whether a guess of it matches (review
+  finding RD-11); an answer of a `needs` section from a credential that does not order
+  medications, whoever acts as the author (4.2). The reader for each is the sender's role and
+  their credential now.
 
 ## 7. Referrals in this phase
 
@@ -2785,6 +2852,31 @@ referral's details or a name.
 
 Every event names its patient in the audit row's patient column, so the audit search by patient
 finds it (D53). A refused online request is logged with the reason's name.
+
+As built for the sync half (unit L1, with wave D's review). Every event below names its patient
+in the row's patient column; its own keys follow `changeId` and, on a create, `clockVerified`.
+None holds a value, a reason's text or an addendum's.
+
+| Action | As built |
+|---|---|
+| `encounter.updated` | A switch of `kind` is a write of the field `kind`: `field`, `kind` (the history kind, `set`), `version`. No key names the new kind, which can only be `medical`. A Medical note's create writes its visit's switch this way, with the note's `changeId` |
+| `encounter.kept_in_history`, `note.kept_in_history` | `field`, `version`, `problem` |
+| `note.reopened` | A reopen that applied, written as any set is: `field`, `kind`, `version` |
+| `note.completed` | `signoffId`, `act`, `effect`, `clockVerified`, on the note |
+| `note.signed`, `note.saved_unsigned` | The same, plus `credential`, `needsAttestation`, and `claimedCredential` when it differs |
+| `note.signoff_repeated` | `signoffId`, `reason`, `hashMatches`. The event keeps `hashMatches` for every sender, though the receipt gives it only to the acting author (4.6) |
+| `note.corrected`, `note.amendment_declined` | One per correction, whatever its outcome: `note.amendment_declined` for `declined`, `note.corrected` for the rest, `not_author`, `no_change` and `draft_edit` included. `correctionId`, `fields` (every field the correction names, a list, since it holds up to ten), `outcome`, `requestedByPatient`, `credential`, `claimedCredential` when it differs, `statusAfter`, `attestationAfter`, `clockVerified`, on the note. A draft edit writes no `note.updated` for each answer |
+| `addendum.added` | `encounterId`, `noteId`, on the addendum |
+| `referral.created` | `encounterId`, on the referral |
+| `referral.entered_in_error` | `field`, `kind`, `version`, and `encounterId` (review finding REC-5) |
+| `encounter.viewed`, `note.viewed`, `patient.viewed` (the sync read) | One per record returned, with its entity and ID, and `{ source: 'sync' }`: a visit is `encounter.viewed`; a note, a sign-off, an addendum and a correction are `note.viewed`; a referral is `patient.viewed`. Not one per visit with `noteIds` |
+| `ems_handoff.shown`, `notes_to_finish.viewed` (offline) | The closed list's keys (`AuditAppend`): the handoff names its visit by `entity` `encounter` and `entityId`, and its patient; Notes to finish names `patientIds` and `resultCount`, not `count`. `ems_handoff.exported` stays refused offline |
+
+A sign-off's and a correction's events are on entity `encounter_note` and the note, with their
+own ID in the details, so the audit search by note finds them. A change held for review writes
+`sync.quarantined` with the reason `permission` and nothing that names the rule. Open: the online
+events of L2 take the same keys (`resultCount`; `entity` and `entityId`), so that one search finds
+both.
 
 ### 10.2 PHI rules, applied to this phase
 
