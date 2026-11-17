@@ -128,8 +128,8 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| E-presets | T | `forms/scripts/export.ts`, `forms/test/export.test.ts`, `forms/package.json` (the `export` script), `apps/mobile/pubspec.yaml`, and what it writes, `forms/generated/presets.json` and `apps/mobile/assets/forms/presets.json` (runs every check of forms 4.2, stopping after schema problems, since every later check reads files that passed `checkFile`; hands the parsed pieces to `lockOf` and `checkLock`; prints the largest number of answers each note type can hold, and refuses nothing for it, forms 2.4; writes each definition in canonical key order; `--release` refuses a piece, module or list nothing uses, `export.unused_file`, and is all that writes the lock, forms 4.1) | F0, F1 |
-| E-golden | T | `forms/scripts/golden.ts`, `forms/test/golden.test.ts`, `forms/package.json` (the `golden` script), and what it writes, `forms/generated/golden.json` (three answer sets made by rule for each preset, after the export, from the presets it wrote: forms 7.3) | E-presets |
+| E-presets | T | `forms/scripts/export.ts`, `forms/test/export.test.ts`, `forms/package.json` (the `export` script), `apps/mobile/pubspec.yaml`, and what it writes, `forms/generated/presets.json` and `apps/mobile/assets/forms/presets.json` (runs every check of forms 4.2, stopping after schema problems, since every later check reads files that passed `checkFile`; hands the parsed pieces to `lockOf` and `checkLock`; prints the largest number of answers each note type can hold, and refuses nothing for it, forms 2.4; writes each definition in canonical key order; `--release` refuses a piece, module or list nothing uses, `export.unused_file`, and is all that writes the lock, forms 4.1; since wave D it writes to the presets only the versions the lock releases, noting each draft, and a release writes the lock before the presets, D78, forms 3.2) | F0, F1 |
+| E-golden | T | `forms/scripts/golden.ts`, `forms/test/golden.test.ts`, `forms/package.json` (the `golden` script), and what it writes, `forms/generated/golden.json` (answer sets made by rule for each preset, after the export, from the presets it wrote: forms 7.3). After wave D's review, five sets, each case also recording the handoff, the order of the answers that count, three readers' visible answers, the content hash and Expand, with tests of what the sets reach on the real note types; in the same change F2-golden's `phone-test/forms/golden_test.dart` and `golden_sample.json`, and a test in `api-test/note-content-hash.test.ts` that holds the API's content hash to the golden file's | E-presets |
 | E-drift | X | `tools/ci-local.sh`, `.github/workflows/ci.yml`, `tools/phi-guard-rules.mjs` (the Forms drift step; `packages/forms/` and the vectors folder join the PHI guard's fixture list); after the review also `forms/scripts/lock-grows.ts`, its cases in `forms/test/export.test.ts` and its script in `forms/package.json` (a line the base commit's lock holds never leaves it or changes, forms 4.2), and `tools/test/phi-guard.test.mjs` (the fixture list's test) | E-golden |
 
 ### F2 The interpreter in Dart (forms 7)
@@ -166,10 +166,10 @@ vectors cannot say wrote a test of its own beside them:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F4-tests | X | `phone-test/forms/definition_store_test.dart`, `phone-test/forms/forms_api_test.dart` | F2 |
+| F4-tests | X | `phone-test/forms/definition_store_test.dart`, `phone-test/forms/forms_api_test.dart`; as built also `phone-test/forms/definition_hooks_test.dart` (where the phone fetches and deletes, with the real session and sync controllers) and `phone-test/forms/forms_fake.dart` (the forms routes, faked in front of the fake sync server), and after wave D's review `phone-test/forms/app_wiring_test.dart` | F2 |
 | F4-store | T | `phone/forms/definition_store.dart` | F4-tests |
 | F4-fetch | T | `phone/forms/forms_api.dart`, `phone/forms/forms_providers.dart` | F4-store, F3-contract |
-| F4-hooks | X | `phone/auth/session_controller.dart`, `phone/sync/sync_controller.dart` (fetch after `/v1/me` and at each sync; delete the cache at sign-out and wipe) | F4-fetch |
+| F4-hooks | X | `phone/auth/session_controller.dart`, `phone/sync/sync_controller.dart` (as built: every team's list once the sign-in that read `/v1/me` is unlocked, bound to that sign-in; at each sync the open team's list and the versions its notes name, which L4 supplies as `heldNoteTypes`; the files deleted at every sign-out and with a wiped team: forms 3.4), `phone-test/sync/sync_controller_test.dart` (its fake forwards `afterSignIn`); after wave D's review also `phone/app_providers.dart` (the app's store, in the databases' folder, with the bundled presets) and `phone-test/helpers/app_harness.dart` (the same store, and the fake forms routes) | F4-fetch |
 
 ### F5 The renderer (forms 8). Folder: `phone/features/forms/`, tests under `phone-test/features/forms/`
 
@@ -237,7 +237,13 @@ care; General is checked with them once F6-general-assemble includes them, after
 | Card | Level | Files | Needs |
 |---|---|---|---|
 | F6-general-assemble | R | `note-types/general_primary_care/v1.json`: the 21 includes, typed as `GENERAL_PLAN` in `forms/test/definitions.test.ts` says (version 1 of each exam module, after the `exam` section and before `problems`, in the order of `forms-inventory-focused-exam.md` section 7, and no `showWhen` on an include, the condition being on each module section; the test holds the file to it once the file exists). `mapsTo` on `note-types/quick_encounter/v1.json`, as the differences of `spec/quick-1.diff.json` and `spec/quick-2.diff.json` name them field by field, and each `mapsTo` in those two pieces' shape files, in the same change (the shape check compares every key); then quick-1's difference "No field carries mapsTo yet" goes | every F6 transcription card |
-| F6-release | X | `definitions.lock.json` (every released file, the three files of each piece a released definition names, and each released version's `#resolved` hash: `lockOf` with the pieces), the generated files | F6-general-assemble |
+| F6-release | X | `definitions.lock.json` (every released file, the three files of each piece a released definition names, and each released version's `#resolved` hash: `lockOf` with the pieces), the generated files, which hold only what the lock releases (D78) | F6-general-assemble |
+
+Wave D's review changed the plans of many pieces, and `lists/body_region.json` (Feet, Face and
+Groin: forms 10.1 #27), before any release, and added `forms/test/real-definitions.test.ts`, which
+holds what a clinician meets on the real definitions: what one-tap Normal fills beside answers
+already charted, which findings can be held together, and what counts once a finding hands off
+(forms 9).
 
 ### F7 Flows (forms 6)
 
