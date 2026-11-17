@@ -69,6 +69,29 @@ void main() {
     }
   });
 
+  // A widget test signs in on its fake clock, then syncs in real time (runAsync): the presets the
+  // sign-in read must not be reached through a future of the zone that read them, whose callbacks
+  // run only when that zone is pumped. Once the nine were released this hung every patient screen
+  // test.
+  test('presets read in one zone are held for another that never runs the first one’s callbacks', () async {
+    final parked = <void Function()>[];
+    final reader = Zone.current.fork(
+      specification: ZoneSpecification(scheduleMicrotask: (self, parent, zone, f) => parked.add(() => zone.run(f))),
+    );
+    var read = false;
+    unawaited(reader.run(() => store.holds(userId, teamId, listed(checks)).then((_) => read = true)));
+    while (!read) {
+      final now = [...parked];
+      parked.clear();
+      for (final run in now) {
+        run();
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+    // The reading zone's callbacks are never run again.
+    expect(await store.holds(userId, teamId, listed(full)).timeout(const Duration(seconds: 5)), isTrue);
+  });
+
   test('a bundled preset whose hash is not its definition’s is not used', () async {
     bundled = [edited(checks, 'Demo: changed')..['hash'] = checks['hash']];
     store = open();

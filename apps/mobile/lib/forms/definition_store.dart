@@ -82,6 +82,11 @@ class DefinitionStore extends ChangeNotifier {
 
   Future<Map<String, Map<String, Object?>>>? _presets;
 
+  /// [_presets] once read. Handed back as it is, not through the future: a future's callbacks run
+  /// in the zone that made it, and a widget test signs in on its fake clock (whose callbacks run
+  /// only when it pumps) and syncs in real time.
+  Map<String, Map<String, Object?>>? _presetsRead;
+
   /// Definitions read and checked, by hash.
   final _read = <String, NoteTypeDef>{};
 
@@ -362,7 +367,7 @@ class DefinitionStore extends ChangeNotifier {
 
   /// The bundled presets by hash, each checked once: a preset whose hash is not its definition's is
   /// left out, and the phone downloads that version as it would any other.
-  Future<Map<String, Map<String, Object?>>> _bundled() => _presets ??= () async {
+  Future<Map<String, Map<String, Object?>>> _bundled() async => _presetsRead ??= await (_presets ??= () async {
     final byHash = <String, Map<String, Object?>>{};
     for (final entry in (await presets()).cast<Map<String, Object?>>()) {
       final definition = entry['definition'] as Map<String, Object?>?;
@@ -372,5 +377,5 @@ class DefinitionStore extends ChangeNotifier {
       byHash[hash] = definition;
     }
     return byHash;
-  }();
+  }());
 }
