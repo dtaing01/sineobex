@@ -1,7 +1,7 @@
 # Every pull request and every push to main (Build plan, phase 0): secret scan, PHI guard, task
 # card check,
 # TypeScript checks and tests, migrations and API tests on a scratch Postgres, Flutter analyze and
-# tests, portal accessibility, contract drift, and workflow lint.
+# tests, portal accessibility, contract and forms drift, and workflow lint.
 name: CI
 
 on:
@@ -160,6 +160,30 @@ jobs:
         run: |
           if ! git diff --exit-code -- packages/contract/openapi.json packages/contract/src/generated apps/mobile/lib/api/generated; then
             echo "::error::The API contract changed. Run 'pnpm contract:generate' and commit the result."
+            exit 1
+          fi
+
+  forms:
+    name: Forms drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm forms:export
+      - run: pnpm --filter @sineobex/forms golden
+      - name: Generated forms files must be committed
+        run: |
+          if ! git diff --exit-code -- packages/forms/generated apps/mobile/assets/forms ||
+            [ -n "$(git status --porcelain -- packages/forms/generated apps/mobile/assets/forms)" ]; then
+            echo "::error::The forms' generated files changed. Run 'pnpm forms:export' and 'pnpm --filter @sineobex/forms golden', and commit the result."
             exit 1
           fi
 

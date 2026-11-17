@@ -24,6 +24,15 @@ step "Edge bundle under Deno";   pnpm -s --filter @sineobex/api build >/dev/null
 step "Contract drift"
 pnpm -s contract:generate >/dev/null
 git diff --exit-code -- packages/contract/openapi.json packages/contract/src/generated apps/mobile/lib/api/generated
+step "Forms drift"
+# The export's notes (pieces and lists nothing uses yet) are left out; its problems are not.
+pnpm -s forms:export | grep -v '^note '
+pnpm -s --filter @sineobex/forms golden >/dev/null
+FORMS_GENERATED=(packages/forms/generated apps/mobile/assets/forms)
+git diff --exit-code -- "${FORMS_GENERATED[@]}"
+# A generated file that was never committed is drift too, and git diff does not see it.
+git status --short -- "${FORMS_GENERATED[@]}"
+test -z "$(git status --porcelain -- "${FORMS_GENERATED[@]}")"
 step "Flutter";                  (cd apps/mobile && flutter pub get --enforce-lockfile >/dev/null && tool/format_check.sh && flutter analyze --fatal-infos && flutter test)
 step "Portal end-to-end";        ADMIN_URL="$ADMIN_URL" tools/e2e-db.sh >/dev/null && pnpm -s --filter @sineobex/portal build >/dev/null && (cd apps/portal && CI=1 pnpm -s test:a11y)
 step "Phone sync, real API";     ADMIN_URL="$ADMIN_URL" tools/live-sync.sh

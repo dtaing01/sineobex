@@ -7,6 +7,11 @@ export const FIXTURE_GLOBS = [
   /\/e2e\//,
   /^apps\/mobile\/test\//,
   /^tools\/test\//,
+  // The note type definitions, the specification lines they are typed from, what the export makes
+  // of them and the vectors both interpreters read: they ship in the app and the server's install,
+  // so nothing in them may look like a real identifier.
+  /^packages\/forms\//,
+  /^packages\/contract\/test-vectors\//,
 ];
 
 const SSN = /\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/g;
