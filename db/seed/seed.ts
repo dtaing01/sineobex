@@ -1,4 +1,10 @@
-import { installPresets, type Preset } from '@sineobex/forms';
+import {
+  canonicalJson,
+  installPresets,
+  sha256Hex,
+  type Preset,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
 import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
@@ -162,5 +168,38 @@ export async function seed(
       const { installed } = await installPresets(tx, teamId, { presets: options.presets });
       log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
     }
+  });
+}
+
+/**
+ * Installs made-up note type definitions in the demo team, as the presets are installed, each under
+ * its own hash: the test-only types (packages/contract/test-vectors/sync-note-types.json) the
+ * phone's live sync scenarios chart on, as the API's tests install them in every test team
+ * (lifecycle 4.4). Never part of the seed itself, and only in a database marked "test": no person
+ * charts on these.
+ */
+export async function installTestNoteTypes(
+  sql: Sql,
+  definitions: readonly ResolvedNoteType[],
+  options: { log?: (line: string) => void } = {},
+): Promise<void> {
+  const kind = await getEnvironment(sql);
+  if (kind !== 'test') {
+    throw new Error(
+      `Refusing to install test-only note types: this database is marked "${kind ?? 'unset'}", not "test".`,
+    );
+  }
+  const presets: Preset[] = await Promise.all(
+    definitions.map(async (definition) => ({
+      key: definition.key,
+      version: definition.version,
+      hash: await sha256Hex(canonicalJson(definition)),
+      definition,
+    })),
+  );
+  await sql.begin(async (tx) => {
+    await tx`select set_config('app.scope', 'platform', true)`;
+    const { installed } = await installPresets(tx, DEMO_TEAM_ID, { presets });
+    options.log?.(`  ${installed.length} test-only note type version(s) installed in team ${DEMO_TEAM_ID}`);
   });
 }

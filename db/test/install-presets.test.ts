@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   canonicalJson,
   installPresets,
@@ -5,11 +6,12 @@ import {
   sha256Hex,
   type InstallSql,
   type Preset,
+  type ResolvedNoteType,
 } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fixturePresets } from '../../packages/forms/test/fixtures/presets.ts';
 import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
-import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
+import { DEMO_TEAM_ID, installTestNoteTypes, seed } from '../seed/seed.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
 import { asApp, makeTeam, makeUser } from './helpers.ts';
 
@@ -214,5 +216,46 @@ describe('installing the presets', () => {
     ]);
     for (const row of await rowsOf(team))
       expect(await sha256Hex(canonicalJson(row.definition))).toBe(row.hash);
+  });
+});
+
+describe('installing the test-only note types', () => {
+  let db: ScratchDatabase;
+  const testTypes = (
+    JSON.parse(
+      readFileSync(
+        new URL('../../packages/contract/test-vectors/sync-note-types.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { noteTypes: ResolvedNoteType[] }
+  ).noteTypes;
+  const keysOf = async (teamId: string) =>
+    (
+      await db.owner<{ key: string; version: number; hash: string }[]>`
+        select key, version, hash from sineobex.note_type_versions where team_id = ${teamId}`
+    ).map((r) => `${r.key} v${r.version}`);
+
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+  });
+  afterAll(() => db.drop());
+
+  it('puts them in the demo team only, each under its own hash, and never in the seed itself', async () => {
+    await seed(db.owner, { presets: [] });
+    expect(await keysOf(DEMO_TEAM_ID)).toEqual([]);
+    await installTestNoteTypes(db.owner, testTypes);
+    await installTestNoteTypes(db.owner, testTypes);
+    const rows = await db.owner<{ key: string; hash: string; definition: ResolvedNoteType }[]>`
+      select key, hash, definition from sineobex.note_type_versions
+      where team_id = ${DEMO_TEAM_ID} order by key`;
+    expect(rows.map((r) => r.key)).toEqual(['test_medical', 'test_note']);
+    for (const r of rows) expect(r.hash).toBe(await sha256Hex(canonicalJson(r.definition)));
+    expect(await keysOf(NEIGHBOUR_TEAM_ID)).toEqual([]);
+  });
+
+  it('refuses a database not marked "test"', async () => {
+    await db.owner`alter table sineobex.environment disable trigger environment_write_once`;
+    await db.owner`update sineobex.environment set kind = 'preview'`;
+    await expect(installTestNoteTypes(db.owner, testTypes)).rejects.toThrow(/marked "preview"/);
   });
 });

@@ -1,6 +1,7 @@
 // Usage:
 //   DATABASE_URL=... tsx src/cli.ts migrate [--environment local|preview|pilot|production]
 //   DATABASE_URL=... tsx src/cli.ts seed
+//   DATABASE_URL=... tsx src/cli.ts install-test-note-types <sync-note-types.json>
 //   DATABASE_URL=... tsx src/cli.ts grant-api <login-role>
 //   DATABASE_URL=... tsx src/cli.ts add-owner --email <e> --name <n> --issuer <oidc issuer> --subject <sub>
 //
@@ -11,6 +12,8 @@
 //
 // DATABASE_URL must be the schema owner's connection (migrations create objects). The API itself
 // connects with a different, non-owner login that is a member of sineobex_app.
+import { readFileSync } from 'node:fs';
+import type { ResolvedNoteType } from '@sineobex/forms';
 import postgres from 'postgres';
 import {
   ENVIRONMENT_KINDS,
@@ -19,7 +22,7 @@ import {
   setEnvironment,
   type EnvironmentKind,
 } from './migrate.ts';
-import { seed } from '../seed/seed.ts';
+import { installTestNoteTypes, seed } from '../seed/seed.ts';
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -44,6 +47,14 @@ async function main(): Promise<void> {
       }
       case 'seed': {
         await seed(sql, { log: (l) => console.log(l) });
+        break;
+      }
+      case 'install-test-note-types': {
+        // Test databases only (tools/e2e-db.sh, for the phone's live sync scenarios).
+        const file = args[0];
+        if (!file) throw new Error('install-test-note-types needs the note types file');
+        const { noteTypes } = JSON.parse(readFileSync(file, 'utf8')) as { noteTypes: ResolvedNoteType[] };
+        await installTestNoteTypes(sql, noteTypes, { log: (l) => console.log(l) });
         break;
       }
       case 'grant-api': {
@@ -73,7 +84,7 @@ async function main(): Promise<void> {
       }
       default:
         throw new Error(
-          `Unknown command: ${command ?? '(none)'}. Use migrate, seed, grant-api or add-owner.`,
+          `Unknown command: ${command ?? '(none)'}. Use migrate, seed, install-test-note-types, grant-api or add-owner.`,
         );
     }
   } finally {

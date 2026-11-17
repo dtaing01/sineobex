@@ -27,7 +27,8 @@ for port in "$API_PORT" "$IDP_PORT"; do
   fi
 done
 
-ADMIN_URL="$ADMIN_URL" tools/e2e-db.sh
+# The sync scenarios chart on the test-only note types, as the API's sync tests do.
+ADMIN_URL="$ADMIN_URL" E2E_TEST_NOTE_TYPES=1 tools/e2e-db.sh
 
 # Each server runs in its own session, so stopping it stops the processes pnpm and tsx start.
 idp_group=""

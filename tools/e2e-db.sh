@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Prepares a database for the portal's end-to-end tests: migrated, marked "test", seeded with the
-# made-up demo team, and a non-owner login for the API (so row-level security applies).
+# made-up demo team, and a non-owner login for the API (so row-level security applies). With
+# E2E_TEST_NOTE_TYPES=1 (tools/live-sync.sh), the demo team also holds the test-only note types
+# the phone's live sync scenarios chart on (packages/contract/test-vectors/sync-note-types.json).
 # Usage: ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/e2e-db.sh
 set -euo pipefail
 ADMIN_URL="${ADMIN_URL:-postgres://postgres@localhost:5432/postgres}"
@@ -23,4 +25,8 @@ OWNER_URL="${ADMIN_URL%/*}/${DB}"
 DATABASE_URL="$OWNER_URL" pnpm -s db:migrate --environment test
 DATABASE_URL="$OWNER_URL" pnpm -s --filter @sineobex/db exec tsx src/cli.ts grant-api "$API_ROLE"
 DATABASE_URL="$OWNER_URL" pnpm -s db:seed
+if [[ "${E2E_TEST_NOTE_TYPES:-}" == 1 ]]; then
+  DATABASE_URL="$OWNER_URL" pnpm -s --filter @sineobex/db exec tsx src/cli.ts install-test-note-types \
+    "$PWD/packages/contract/test-vectors/sync-note-types.json"
+fi
 echo "e2e database ready: ${DB}"
