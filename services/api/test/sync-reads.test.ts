@@ -430,6 +430,61 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await read(eli.token, [referralRef])).status).toBe(403);
     });
 
+    it('a Medical visit’s summary and its own addenda are Medical content: read with patients.view, as its notes are', async () => {
+      // Eli charts but has no patients.view, so every Medical note is missing for him (D37). The
+      // summary of a Medical visit, and an addendum to the visit itself, say as much (RD-7).
+      const visitWith = async (kind: 'medical' | 'non_medical') => {
+        const create = await ana.phone.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind, patientId },
+        });
+        const summary = await ana.phone.change({
+          entity: 'encounter',
+          recordId: create.recordId,
+          op: 'set',
+          field: 'summary',
+          value:
+            kind === 'medical' ? 'Demo: likely pneumonia; started antibiotics' : 'Demo: dropped off socks',
+          baseVersion: 0,
+        });
+        const addendum = await ana.phone.change({
+          entity: 'note_addendum',
+          op: 'create',
+          value: { encounterId: create.recordId, noteId: null, text: 'Demo: called back', signoffId: null },
+        });
+        expect((await ana.send(create, summary, addendum)).map((r) => r.status)).toEqual([
+          'accepted',
+          'accepted',
+          'accepted',
+        ]);
+        return {
+          visit: { entity: 'encounter', id: create.recordId },
+          addendum: { entity: 'note_addendum', id: addendum.recordId },
+        };
+      };
+      const medical = await visitWith('medical');
+      const outreach = await visitWith('non_medical');
+      const fieldsOf = (r: { records: Snapshot[] }) => Object.keys(r.records[0]!.fields).sort();
+
+      // Eli: the visit without its summary, and no addendum to it.
+      const elis = await read(eli.token, [medical.visit, medical.addendum]);
+      expect(elis.records.map((r) => r.id)).toEqual([medical.visit.id]);
+      expect(elis.missing).toEqual([medical.addendum]);
+      expect(Object.keys(elis.records[0]!.fields)).not.toContain('summary');
+      expect(fieldsOf(elis)).toEqual(['kind', 'location', 'locationText', 'patientId']);
+      // A Non-Medical visit is his to read whole.
+      const plain = await read(eli.token, [outreach.visit, outreach.addendum]);
+      expect(plain.records.map((r) => r.id)).toEqual([outreach.visit.id, outreach.addendum.id]);
+      expect(plain.records[0]!.fields.summary).toMatchObject({ value: 'Demo: dropped off socks' });
+      // Ben reads Medical notes, and so the Medical visit whole.
+      const bens = await read(ben.token, [medical.visit, medical.addendum]);
+      expect(bens.records.map((r) => r.id)).toEqual([medical.visit.id, medical.addendum.id]);
+      expect(bens.records[0]!.fields.summary).toMatchObject({
+        value: 'Demo: likely pneumonia; started antibiotics',
+      });
+    });
+
     it('a sign-off’s content hash goes only to whoever acts as the author, its signer, and a reader who sees every answer of any note', async () => {
       const role = await call(h, '/v1/team/roles', {
         method: 'POST',

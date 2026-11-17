@@ -550,6 +550,40 @@ void main() {
             'signoffId': null,
           }, by: alex);
 
+      test(
+        'a Medical visit’s summary and its own addenda are Medical content: read with patients.view, as its notes are',
+        () async {
+          // Eli charts but has no patients.view, so every Medical note is missing for him (RD-7).
+          ({String visit, String addendum}) visitWith(String kind, String summary) {
+            final v = server.seed(entityEncounter, {'kind': kind, 'patientId': patient}, by: alex);
+            server.records[v]!.fields['summary'] = FakeField(summary, 1, alex, at, 'c-summary-$kind');
+            final addendum = server.seed(entityAddendum, {
+              'encounterId': v,
+              'noteId': null,
+              'text': 'Demo: called back',
+              'signoffId': null,
+            }, by: alex);
+            return (visit: v, addendum: addendum);
+          }
+
+          final medical = visitWith('medical', 'Demo: likely pneumonia; started antibiotics');
+          final outreach = visitWith('non_medical', 'Demo: dropped off socks');
+          // Eli: the visit without its summary, and no addendum to it.
+          final elis = await read(eli, [(entityEncounter, medical.visit), (entityAddendum, medical.addendum)]);
+          expect([for (final r in elis.records) r.id], [medical.visit]);
+          expect([for (final m in elis.missing) m.id], [medical.addendum]);
+          expect(elis.records.single.fields.keys.toList()..sort(), ['kind', 'location', 'locationText', 'patientId']);
+          // A Non-Medical visit is his to read whole.
+          final plain = await read(eli, [(entityEncounter, outreach.visit), (entityAddendum, outreach.addendum)]);
+          expect([for (final r in plain.records) r.id], [outreach.visit, outreach.addendum]);
+          expect(plain.records.first.fields['summary']!.value, 'Demo: dropped off socks');
+          // Ben reads Medical notes, and so the Medical visit whole.
+          final bens = await read(ben, [(entityEncounter, medical.visit), (entityAddendum, medical.addendum)]);
+          expect([for (final r in bens.records) r.id], [medical.visit, medical.addendum]);
+          expect(bens.records.first.fields['summary']!.value, 'Demo: likely pneumonia; started antibiotics');
+        },
+      );
+
       test('a sign-off, an addendum and a correction are read by whoever may read their note; a referral with patients.view', () async {
         final v = visit();
         final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'});

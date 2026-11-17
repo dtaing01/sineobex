@@ -462,11 +462,14 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
             ? record
             : withoutHash(record);
         }
-        case 'note_addendum':
-          // An addendum to the visit itself is read with the visit.
-          return record.attributes.noteId === null || (await noteAsRead(await noteOf(record)))
-            ? record
-            : null;
+        case 'encounter':
+          return medicalHidden(record) ? withoutSummary(record) : record;
+        case 'note_addendum': {
+          // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
+          if (record.attributes.noteId !== null) return (await noteAsRead(await noteOf(record))) && record;
+          const visit = await RULES.encounter.load(tx, record.attributes.encounterId as string, false);
+          return visit && !medicalHidden(visit) ? record : null;
+        }
         case 'note_correction': {
           const read = await noteAsRead(await noteOf(record));
           if (!read) return null;
@@ -483,6 +486,14 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         default:
           return record;
       }
+    }
+
+    /**
+     * A Medical visit's summary is Medical content (lifecycle 6.4 row 1, D37): read, as its notes
+     * are, with patients.view and encounters.chart or billing.view_codes (review finding RD-7).
+     */
+    function medicalHidden(visit: StoredRecord): boolean {
+      return visit.values.kind === 'medical' && !mayViewProblems(scope.team.permissions);
     }
 
     function noteOf(record: StoredRecord) {
@@ -571,6 +582,14 @@ const readsWhole = (reader: NoteReader) =>
 function withoutHash(signoff: StoredRecord): StoredRecord {
   const { contentHash: _, ...attributes } = signoff.attributes;
   return { ...signoff, attributes };
+}
+
+/** A visit without its summary: no value, no version, no mark of who wrote it. */
+function withoutSummary(visit: StoredRecord): StoredRecord {
+  const { summary: _v, ...values } = visit.values;
+  const { summary: _n, ...fieldVersions } = visit.fieldVersions;
+  const { summary: _m, ...fieldMeta } = visit.fieldMeta;
+  return { ...visit, values, fieldVersions, fieldMeta };
 }
 
 /**

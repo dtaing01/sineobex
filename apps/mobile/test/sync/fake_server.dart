@@ -3191,10 +3191,20 @@ class FakeSyncServer {
           ...shown,
           'attributes': {...r.attributes}..remove('contentHash'),
         };
-      // An addendum to the visit itself is read with the visit.
+      // A Medical visit's summary is Medical content, read as its notes are (review.ts medicalHidden).
+      case entityEncounter:
+        final shown = _readSnapshot(r);
+        if (!_medicalHidden(perms, r)) return shown;
+        return {
+          ...shown,
+          'fields': {...(shown['fields']! as Map<String, Object?>)}..remove('summary'),
+        };
+      // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
       case entityAddendum:
         final noteId = r.attributes['noteId'];
-        return noteId == null || _noteAsRead(userId, perms, records[noteId]) != null ? _readSnapshot(r) : null;
+        if (noteId != null) return _noteAsRead(userId, perms, records[noteId]) != null ? _readSnapshot(r) : null;
+        final visit = records[r.attributes['encounterId']];
+        return visit != null && !_medicalHidden(perms, visit) ? _readSnapshot(r) : null;
       // Missing too when an answer it changes is hidden from the reader: its old or new value would
       // give it away.
       case entityCorrection:
@@ -3220,6 +3230,10 @@ class FakeSyncServer {
         return _readSnapshot(r);
     }
   }
+
+  /// A Medical visit whose summary [perms] may not read (review.ts medicalHidden, RD-7).
+  static bool _medicalHidden(Set<String> perms, FakeRecord visit) =>
+      visit.fields['kind']?.value == 'medical' && !mayViewProblems(perms);
 
   /// A note as [userId] may read it (review.ts noteAsRead), or null when they may not: whoever acts
   /// as the author of a draft gets every answer it holds, hidden ones included; everyone else, and
