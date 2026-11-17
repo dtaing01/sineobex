@@ -9,6 +9,7 @@ import {
   register,
   results,
   setupTeam,
+  TEST_NOTE,
   type Team,
 } from './sync-fixtures.ts';
 
@@ -192,7 +193,7 @@ describe('phase 3 sync: lock order', () => {
     const open = await phoneA.change({
       entity: 'encounter_note',
       op: 'create',
-      value: { encounterId, noteTypeKey: 'wound_care', data: { plan: 'Demo: soak first' } },
+      value: { encounterId, ...TEST_NOTE, data: { 'care.plan': 'Demo: soak first' } },
     });
     expect((await asA(open)).map((r) => r.status)).toEqual(['accepted']);
     const statusOf = async () => {
@@ -216,7 +217,7 @@ describe('phase 3 sync: lock order', () => {
         entity: 'encounter_note',
         recordId: open.recordId,
         op: 'set',
-        field: 'data.plan',
+        field: 'data.care.plan',
         value: '',
         baseVersion: 1,
       });

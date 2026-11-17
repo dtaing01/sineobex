@@ -101,10 +101,10 @@ export const TEST_NOTE = { noteTypeKey: 'test_note', noteTypeVersion: 1 } as con
 /** A Medical note type with the same sections. */
 export const TEST_MEDICAL = { noteTypeKey: 'test_medical', noteTypeVersion: 1 } as const;
 
-/** Installs the test-only note types in a team, as the presets are installed. */
-export async function installTestNoteTypes(h: Harness, teamId: string) {
+/** Installs these definitions in a team, as the presets are installed, each under its own hash. */
+export async function installNoteTypes(h: Harness, teamId: string, definitions: readonly ResolvedNoteType[]) {
   const presets = await Promise.all(
-    TEST_NOTE_TYPES.map(async (definition) => ({
+    definitions.map(async (definition) => ({
       key: definition.key,
       version: definition.version,
       hash: await sha256Hex(definitionJson(definition)),
@@ -113,6 +113,10 @@ export async function installTestNoteTypes(h: Harness, teamId: string) {
   );
   await installPresets(h.scratch.owner as unknown as InstallSql, teamId, { presets });
 }
+
+/** Installs the test-only note types in a team, as the presets are installed. */
+export const installTestNoteTypes = (h: Harness, teamId: string) =>
+  installNoteTypes(h, teamId, TEST_NOTE_TYPES);
 
 export interface Team {
   teamId: string;

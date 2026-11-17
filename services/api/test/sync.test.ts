@@ -692,7 +692,13 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       );
       const phone = await FakePhone.create();
       await register(h, phone, doc.token, t.teamId);
-      const encounter = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      // A Medical note needs a visit that names a patient (4.4).
+      const { id: patientId } = await createPatient(h, t.teamId, t.adminId);
+      const encounter = await phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'medical', patientId },
+      });
       const note = await phone.change({
         entity: 'encounter_note',
         op: 'create',

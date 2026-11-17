@@ -5,8 +5,9 @@ import { definitionFor } from '../../forms/definitions.ts';
 import {
   bookkeeping,
   fieldSchema,
+  fieldState,
   initialFieldState,
-  isLocked,
+  invalid,
   jsonb,
   NoteCreate,
   rejected,
@@ -15,9 +16,10 @@ import {
   type EntityRules,
   type FieldMeta,
   type Outcome,
+  type StoredRecord,
 } from '../records.ts';
-import { loadEncounter } from './encounter.ts';
-import { applyField } from './fields.ts';
+import { encounterRules, loadEncounter } from './encounter.ts';
+import { applyField, writeValue } from './fields.ts';
 import { valueParents } from './values.ts';
 
 /**
@@ -28,6 +30,10 @@ import { valueParents } from './values.ts';
  * such changes of one visit must not each work out the status without the other's note, and a note
  * change must not lock that row before it waits for the team lock at its audit event, while an
  * encounter set holds the team lock and waits for the row.
+ *
+ * A create names a note type version the team holds, and a Medical one needs a visit that names a
+ * patient and makes that visit Medical (4.4). It is taken whatever state the visit's other notes are
+ * in: the note is the unit, so a teammate's note added after the clinician signed is never lost.
  *
  * Every change to a Medical note passes the Medical gate (4.2). A set reaches it through the note's
  * own rule (the `status` class, the hook a problem's status uses): the gate needs the loaded note and
@@ -66,11 +72,16 @@ export const noteRules: EntityRules<Value> = {
 
   async applyCreate(ctx, value) {
     const encounter = await loadEncounter(ctx.tx, value.encounterId, false);
-    const medical = await medicalNote(ctx, value);
+    if (!encounter) return rejected('stale_reference', { problem: 'encounter_missing' });
+    const type = await noteType(ctx, value);
+    const medical = type !== undefined && isMedicalType(type.definition);
     return storeCreate(ctx, 'encounter_note', {
-      check: async () =>
-        (encounter && isLocked(encounter) ? rejected('record_locked') : null) ??
-        (await medicalGate(ctx, medical)),
+      // In this order (4.4): what the worker can fix is refused; the gate holds for review.
+      check: async () => {
+        if (!type) return invalid('unknown_note_type');
+        if (medical && encounter.patientId === null) return invalid('medical_note_needs_patient');
+        return medicalGate(ctx, medical);
+      },
       insert: async (input) => {
         const data = value.data ?? {};
         const initial: Record<string, unknown> = { status: 'draft' };
@@ -87,8 +98,12 @@ export const noteRules: EntityRules<Value> = {
           returning id`;
         return rows.length === 0 ? null : initial;
       },
-      patientId: encounter?.patientId ?? null,
+      patientId: encounter.patientId,
       action: 'note.created',
+      after: async () => {
+        if (medical) await makeMedical(ctx, encounter);
+        return undefined;
+      },
     });
   },
 
@@ -147,15 +162,25 @@ export const isMedicalType = (definition: ResolvedNoteType): boolean =>
   !definition.kinds.includes('non_medical');
 
 /**
- * Whether a new note is a Medical note, from its type: set at the create and never changed (lifecycle
- * 2.2). A note with no version is a phase 2 preview row and counts as Non-Medical (4.4). A key or
- * version the team does not have makes no Medical note either; the create checks of 4.4 refuse it
- * before this is asked.
+ * The type a new note names, as the team holds it, or undefined: a key or version the team does not
+ * have. A note with no version is a phase 2 preview row, and no new one is made (4.4). Whether the
+ * note is Medical is read from it once, at the create, and never changed (2.2).
  */
-async function medicalNote(ctx: ChangeContext, value: Value): Promise<boolean> {
-  if (value.noteTypeVersion === null || value.noteTypeVersion === undefined) return false;
-  const stored = await definitionFor(ctx.tx, ctx.actor.teamId, value.noteTypeKey, value.noteTypeVersion);
-  return stored !== undefined && isMedicalType(stored.definition);
+async function noteType(ctx: ChangeContext, value: Value) {
+  if (value.noteTypeVersion === null || value.noteTypeVersion === undefined) return undefined;
+  return definitionFor(ctx.tx, ctx.actor.teamId, value.noteTypeKey, value.noteTypeVersion);
+}
+
+/**
+ * A Medical note makes its visit Medical if it was not (4.3, 4.4), so a note is never refused for the
+ * kind of its visit. It is written as this change's switch of the visit's kind, as a phone's would
+ * be: the field's next version, its history row and its audit event. The visit was read under the
+ * team lock, which every encounter change takes first, so what it holds is still current.
+ */
+async function makeMedical(ctx: ChangeContext, visit: StoredRecord): Promise<void> {
+  if (visit.values.kind === 'medical') return;
+  const kind = { field: 'kind', value: 'medical', cur: fieldState(visit, 'kind'), saw: true, redirect: null };
+  await writeValue({ ...ctx, rules: encounterRules, rec: visit, ...kind }, 'set');
 }
 
 /**

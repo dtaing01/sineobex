@@ -6,12 +6,13 @@ import type { Tx } from '../src/db/database.ts';
 import { chartsMedical, credentialChangesAfter, loadSigner } from '../src/encounters/signer.ts';
 import { takesTeamLock } from '../src/sync/entities/index.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createPatient, expectAudit } from './patient-fixtures.ts';
+import { auditMark, createPatient, createTeam, expectAudit } from './patient-fixtures.ts';
 import {
   addMember,
   call,
   CREDENTIAL_FIELDS,
   FakePhone,
+  installNoteTypes,
   push,
   register,
   results,
@@ -336,12 +337,16 @@ describe('phase 4 sync: encounters and notes', () => {
     let outreach: Awaited<ReturnType<typeof clinician>>;
     let plain: Awaited<ReturnType<typeof clinician>>;
 
+    // A Medical note needs a visit that names a patient (4.4).
+    let patientId: string;
+
     beforeAll(async () => {
       doc = await clinician('doc@example.com', 'Dana (demo)', 'attending');
       student = await clinician('stu@example.com', 'Sol (demo)', 'student');
       // Both chart (healthcare_staff holds encounters.chart); neither credential charts Medical.
       outreach = await clinician('kim@example.com', 'Kim (demo)', 'chw');
       plain = await clinician('lee@example.com', 'Lee (demo)', 'none');
+      patientId = (await createPatient(h, t.teamId, t.adminId)).id;
     });
 
     const noteCreate = (
@@ -359,7 +364,7 @@ describe('phase 4 sync: encounters and notes', () => {
       c.phone.change({ entity: 'encounter_note', recordId: noteId, op: 'set', field, value, baseVersion: 1 });
 
     it('a Medical note’s create needs a credential that charts Medical: held for review, never refused', async () => {
-      const encounterId = await encounterOf(doc);
+      const encounterId = await encounterOf(doc, patientId);
       for (const who of [outreach, plain]) {
         const create = await noteCreate(who, encounterId, TEST_MEDICAL, { 'vitals.pulse': 88 });
         expect(await who.send(create)).toEqual([expect.objectContaining(held)]);
@@ -375,23 +380,17 @@ describe('phase 4 sync: encounters and notes', () => {
       }
     });
 
-    it('a Non-Medical note, and a note with no version, are not gated and are not Medical', async () => {
-      const encounterId = await encounterOf(doc);
+    it('a Non-Medical note is not gated and is not Medical', async () => {
+      const encounterId = await encounterOf(doc, patientId);
       const typed = await noteCreate(plain, encounterId, TEST_NOTE, { 'care.plan': 'Demo: rest' });
-      const unversioned = await plain.phone.change({
-        entity: 'encounter_note',
-        op: 'create',
-        value: { encounterId, noteTypeKey: 'test_medical' },
-      });
-      expect((await plain.send(typed, unversioned)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+      expect((await plain.send(typed)).map((r) => r.status)).toEqual(['accepted']);
       expect(await noteRow(typed.recordId)).toMatchObject({ medical: false });
-      expect(await noteRow(unversioned.recordId)).toMatchObject({ medical: false });
       const edit = await answer(plain, typed.recordId, 'data.care.plan', 'Demo: fluids');
       expect((await plain.send(edit)).map((r) => r.status)).toEqual(['accepted']);
     });
 
     it('a set of an answer or of the status of a Medical note is held for someone who cannot chart Medical', async () => {
-      const encounterId = await encounterOf(doc);
+      const encounterId = await encounterOf(doc, patientId);
       const create = await noteCreate(doc, encounterId, TEST_MEDICAL, { 'vitals.pulse': 88 });
       expect((await doc.send(create)).map((r) => r.status)).toEqual(['accepted']);
       for (const who of [outreach, plain]) {
@@ -418,7 +417,7 @@ describe('phase 4 sync: encounters and notes', () => {
 
     it('a credential lowered while the phone was offline holds its change; an admin’s accept lets it through', async () => {
       const pat = await clinician('pat@example.com', 'Pat (demo)', 'np');
-      const encounterId = await encounterOf(pat);
+      const encounterId = await encounterOf(pat, patientId);
       const create = await noteCreate(pat, encounterId, TEST_MEDICAL, { 'vitals.temp_c': 38.2 });
       expect((await pat.send(create)).map((r) => r.status)).toEqual(['accepted']);
       // Made offline, before the credential went down; sent after.
@@ -445,6 +444,172 @@ describe('phase 4 sync: encounters and notes', () => {
       // The event is the admin's, on the person's behalf.
       const [updated] = await expectAudit(h, 'note.updated', { after: mark, count: 1 });
       expect(updated).toMatchObject({ actorUserId: t.adminId, details: { onBehalfOf: pat.id } });
+    });
+  });
+
+  describe('the note’s create (lifecycle 4.4)', () => {
+    let drew: Awaited<ReturnType<typeof clinician>>;
+    let kai: Awaited<ReturnType<typeof clinician>>;
+    let patientId: string;
+
+    beforeAll(async () => {
+      drew = await clinician('drew@example.com', 'Drew (demo)', 'attending');
+      // Charts, and cannot chart Medical.
+      kai = await clinician('kai@example.com', 'Kai (demo)', 'chw');
+      patientId = (await createPatient(h, t.teamId, t.adminId)).id;
+    });
+
+    const noteCreate = (c: Awaited<ReturnType<typeof clinician>>, encounterId: string, value: object) =>
+      c.phone.change({ entity: 'encounter_note', op: 'create', value: { encounterId, ...value } });
+    const refused = (c: Change, problem: string) => ({
+      changeId: c.changeId,
+      status: 'rejected',
+      reason: 'validation',
+      message: expect.any(String),
+      details: { problem },
+    });
+    const accepted = (c: Change, serverVersion = 1) => ({
+      changeId: c.changeId,
+      status: 'accepted',
+      serverVersion,
+      hash: c.valueHash,
+    });
+    const visitKind = async (id: string) =>
+      (
+        await h.scratch.owner<{ kind: string; version: number }[]>`
+          select kind, (field_versions->>'kind')::int as version from sineobex.encounters where id = ${id}`
+      )[0]!;
+
+    it('names a key and version the team holds, or is refused unknown_note_type, and the queue goes on', async () => {
+      // A version only another team holds is not this team's.
+      const elsewhere = await createTeam(h, 'Demo Note Types Elsewhere');
+      await installNoteTypes(h, elsewhere, [{ ...TEST_NOTE_TYPES[0]!, key: 'test_elsewhere' }]);
+      const encounterId = await encounterOf(drew, patientId);
+      const unknown = [
+        await noteCreate(drew, encounterId, { noteTypeKey: 'demo_unknown', noteTypeVersion: 1 }),
+        await noteCreate(drew, encounterId, { ...TEST_NOTE, noteTypeVersion: 2 }),
+        await noteCreate(drew, encounterId, { noteTypeKey: 'test_elsewhere', noteTypeVersion: 1 }),
+        // A note with no version is a phase 2 preview row: no new one is made.
+        await noteCreate(drew, encounterId, { noteTypeKey: TEST_NOTE.noteTypeKey }),
+      ];
+      const known = await noteCreate(drew, encounterId, TEST_NOTE);
+      const mark = await auditMark(h);
+      expect(await drew.send(...unknown, known)).toEqual([
+        ...unknown.map((c) => refused(c, 'unknown_note_type')),
+        accepted(known),
+      ]);
+      for (const c of unknown) expect(await noteRow(c.recordId)).toBeUndefined();
+      expect(await noteRow(known.recordId)).toMatchObject({ medical: false });
+      const events = await expectAudit(h, 'sync.rejected', { after: mark, count: unknown.length });
+      expect(events.map((e) => e.details.problem)).toEqual(unknown.map(() => 'unknown_note_type'));
+    });
+
+    it('a Medical note needs a visit that names a patient, ahead of the Medical gate; named, the same create is taken', async () => {
+      const encounterId = await encounterOf(drew);
+      const medical = await noteCreate(drew, encounterId, { ...TEST_MEDICAL, data: { 'vitals.pulse': 88 } });
+      const social = await noteCreate(drew, encounterId, TEST_NOTE);
+      expect(await drew.send(medical, social)).toEqual([
+        refused(medical, 'medical_note_needs_patient'),
+        accepted(social),
+      ]);
+      // Refused, not held: naming the patient is the fix, whoever sends it.
+      const gated = await noteCreate(kai, encounterId, TEST_MEDICAL);
+      expect(await kai.send(gated)).toEqual([refused(gated, 'medical_note_needs_patient')]);
+      expect(await noteRow(medical.recordId)).toBeUndefined();
+
+      // The worker names the patient; the store sends the note's create again as the fix of the refused one.
+      const named = await drew.phone.change({
+        entity: 'encounter',
+        recordId: encounterId,
+        op: 'set',
+        field: 'patientId',
+        value: patientId,
+        baseVersion: 1,
+      });
+      const again = await drew.phone.change({
+        entity: 'encounter_note',
+        recordId: medical.recordId,
+        op: 'create',
+        value: medical.value,
+        supersedes: medical.changeId,
+      });
+      expect(await drew.send(named, again)).toEqual([accepted(named, 2), accepted(again)]);
+      expect(await noteRow(medical.recordId)).toMatchObject({ medical: true, data: { 'vitals.pulse': 88 } });
+      const [settled] = await h.scratch.owner<{ resolvedBy: string }[]>`
+        select resolved_by_change as "resolvedBy" from sineobex.sync_changes where change_id = ${medical.changeId}`;
+      expect(settled!.resolvedBy).toBe(again.changeId);
+    });
+
+    it('a Medical note makes its visit Medical, as a change of the visit’s kind', async () => {
+      const visit = await drew.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical', patientId },
+      });
+      const social = await noteCreate(drew, visit.recordId, TEST_NOTE);
+      expect(await drew.send(visit, social)).toEqual([accepted(visit), accepted(social)]);
+      expect(await visitKind(visit.recordId)).toEqual({ kind: 'non_medical', version: 1 });
+
+      const mark = await auditMark(h);
+      const medical = await noteCreate(drew, visit.recordId, TEST_MEDICAL);
+      expect(await drew.send(medical)).toEqual([accepted(medical)]);
+      expect(await visitKind(visit.recordId)).toEqual({ kind: 'medical', version: 2 });
+      expect(
+        await h.scratch.owner`
+          select version, value, previous_value as "previousValue", kind, changed_by as "changedBy",
+                 change_id as "changeId"
+          from sineobex.field_history where record_id = ${visit.recordId} and field = 'kind' order by id`,
+      ).toEqual([
+        expect.objectContaining({ version: 1, value: 'non_medical', kind: 'created' }),
+        {
+          version: 2,
+          value: 'medical',
+          previousValue: 'non_medical',
+          kind: 'set',
+          changedBy: drew.id,
+          changeId: medical.changeId,
+        },
+      ]);
+      const [switched] = await expectAudit(h, 'encounter.updated', { after: mark, patientId, count: 1 });
+      expect(switched).toMatchObject({
+        entityId: visit.recordId,
+        details: { changeId: medical.changeId, field: 'kind', kind: 'set', version: 2 },
+      });
+      await expectAudit(h, 'note.created', { after: mark, patientId, count: 1 });
+
+      // Medical already: another Medical note leaves the visit as it is.
+      const more = await noteCreate(drew, visit.recordId, TEST_MEDICAL);
+      expect(await drew.send(more)).toEqual([accepted(more)]);
+      expect(await visitKind(visit.recordId)).toEqual({ kind: 'medical', version: 2 });
+      await expectAudit(h, 'encounter.updated', { after: mark, count: 1 });
+
+      // A Medical note held by the gate makes nothing Medical.
+      const other = await drew.phone.change({
+        entity: 'encounter',
+        op: 'create',
+        value: { kind: 'non_medical', patientId },
+      });
+      expect(await drew.send(other)).toEqual([accepted(other)]);
+      const held_ = await noteCreate(kai, other.recordId, TEST_MEDICAL);
+      expect(await kai.send(held_)).toEqual([expect.objectContaining(held)]);
+      expect(await visitKind(other.recordId)).toEqual({ kind: 'non_medical', version: 1 });
+    });
+
+    it('is taken whatever state the visit’s other notes are in', async () => {
+      const encounterId = await encounterOf(drew, patientId);
+      const first = await noteCreate(drew, encounterId, {
+        ...TEST_MEDICAL,
+        data: { 'care.plan': 'Demo: rest' },
+      });
+      expect(await drew.send(first)).toEqual([accepted(first)]);
+      await h.scratch.owner`
+        update sineobex.encounter_notes set status = 'completed', completed_at = now(), completed_by = author_user_id
+        where id = ${first.recordId}`;
+      const later = await noteCreate(kai, encounterId, {
+        ...TEST_NOTE,
+        data: { 'care.followup': 'Demo: Friday' },
+      });
+      expect(await kai.send(later)).toEqual([accepted(later)]);
     });
   });
 
