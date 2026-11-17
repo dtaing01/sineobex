@@ -3355,6 +3355,144 @@
           }
         ]
       }
+    },
+    {
+      "key": "demo_rules",
+      "version": 1,
+      "hash": "60f72ea03a05800f26eab921297d18b1b93152afea071fd738875ca6424afd86",
+      "definition": {
+        "key": "demo_rules",
+        "version": 1,
+        "title": "Demo rules",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "look",
+            "title": "Demo look",
+            "normal": true,
+            "fields": [
+              {
+                "id": "a",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo a",
+                "options": [
+                  {
+                    "code": "ok",
+                    "label": "Demo ok",
+                    "normal": true
+                  },
+                  {
+                    "code": "bad",
+                    "label": "Demo bad"
+                  }
+                ]
+              },
+              {
+                "id": "b",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo b",
+                "options": [
+                  {
+                    "code": "ok",
+                    "label": "Demo ok",
+                    "normal": true
+                  },
+                  {
+                    "code": "bad",
+                    "label": "Demo bad"
+                  }
+                ]
+              },
+              {
+                "id": "c",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo c",
+                "options": [
+                  {
+                    "code": "ok",
+                    "label": "Demo ok",
+                    "normal": true
+                  },
+                  {
+                    "code": "bad",
+                    "label": "Demo bad"
+                  }
+                ]
+              },
+              {
+                "id": "d",
+                "kind": "text",
+                "lines": "one",
+                "maxLength": 40,
+                "label": "Demo d",
+                "showWhen": {
+                  "any": [
+                    {
+                      "not": {
+                        "field": "look.a",
+                        "is": "ok"
+                      }
+                    },
+                    {
+                      "field": "look.b",
+                      "is": "ok"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "e",
+                "kind": "text",
+                "lines": "one",
+                "maxLength": 40,
+                "label": "Demo e",
+                "showWhen": {
+                  "not": {
+                    "field": "look.c",
+                    "is": "ok"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "dx",
+            "title": "Demo diagnosis",
+            "fields": [
+              {
+                "id": "none",
+                "kind": "flag",
+                "label": "Demo nothing found"
+              },
+              {
+                "id": "problem",
+                "kind": "problem",
+                "label": "Demo diagnosis",
+                "showWhen": {
+                  "not": {
+                    "field": "dx.none",
+                    "filled": true
+                  }
+                }
+              },
+              {
+                "id": "notes",
+                "kind": "text",
+                "lines": "one",
+                "maxLength": 100,
+                "label": "Demo notes"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "golden": [
@@ -4334,6 +4472,52 @@
           ],
           "recapLines": [],
           "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        }
+      ]
+    },
+    {
+      "key": "demo_rules",
+      "version": 1,
+      "hash": "60f72ea03a05800f26eab921297d18b1b93152afea071fd738875ca6424afd86",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "look.a": "ok",
+            "look.b": "ok",
+            "look.c": "ok"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "look",
+              "text": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            }
+          ],
+          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "look.a": "ok",
+            "look.b": "ok",
+            "look.c": "ok"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "look",
+              "text": "Demo a: Demo ok; Demo b: Demo ok; Demo c: Demo ok"
+            }
+          ],
+          "readModelHash": "06d829d5033d9edd9269a92b192cf26eb5f339d5a9ae67a8c24d400e320fc3b5"
         }
       ]
     }

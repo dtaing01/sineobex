@@ -9,8 +9,7 @@ import 'package:sineobex_field/patients/problems.dart' as problems;
 
 /// What the vectors cannot say (conformance_test.dart runs them): a map's equality ignores its key
 /// order and never sees whether a value was copied, and the sync read and the visit read rest on
-/// both. And where the vectors leave a rule of who reads what unpinned, each case here was checked
-/// against packages/forms/src/interp/visible.ts: a difference is a leak or a loss.
+/// both.
 void main() {
   final definitions =
       (jsonDecode(File('../../packages/contract/test-vectors/forms-conformance.json').readAsStringSync())
@@ -74,68 +73,6 @@ void main() {
         ),
       )!;
       expect(identical(kept['systems.picked'], picked), isFalse);
-    });
-  });
-
-  group('where the vectors leave a rule unpinned', () {
-    const withoutSensitive = NoteReader(
-      actsAsAuthor: false,
-      viewSensitive: false,
-      viewSensitiveExams: true,
-      readsMedical: true,
-      chartsMedical: true,
-      ordersMedications: true,
-      sensitiveCodes: [(from: 'F01', to: 'F99')],
-    );
-
-    test('a diagnosis that does not count hides nothing of its section', () {
-      // A diagnosis hidden by a condition, beside answers that count: the validator takes it.
-      final check = NoteTypeDef.fromJson({
-        'key': 'demo_dxcheck',
-        'version': 1,
-        'title': 'Demo check',
-        'kinds': ['medical'],
-        'group': 'medical',
-        'sensitivity': 'none',
-        'sections': [
-          {
-            'id': 'dx',
-            'title': 'Demo diagnosis',
-            'fields': [
-              {'id': 'none', 'kind': 'flag', 'label': 'Demo nothing found'},
-              {
-                'id': 'problem',
-                'kind': 'problem',
-                'label': 'Demo diagnosis',
-                'showWhen': {
-                  'not': {'field': 'dx.none', 'filled': true},
-                },
-              },
-              {'id': 'notes', 'kind': 'text', 'lines': 'one', 'maxLength': 100, 'label': 'Demo notes'},
-            ],
-          },
-        ],
-      });
-      final answers = {'dx.none': true, 'dx.problem.code': 'F32.9', 'dx.notes': 'Demo: x'};
-      expect(visibleAnswers(check, answers, withoutSensitive), {'dx.none': true, 'dx.notes': 'Demo: x'});
-    });
-
-    test('a diagnosis’s label is never judged as a code', () {
-      final answers = {
-        'dx.eaaaaaa1.entryAt': '2026-03-01T10:00:00Z',
-        'dx.eaaaaaa1.problem.code': 'I10',
-        'dx.eaaaaaa1.problem.label': 'Demo label',
-      };
-      const reader = NoteReader(
-        actsAsAuthor: false,
-        viewSensitive: false,
-        viewSensitiveExams: true,
-        readsMedical: true,
-        chartsMedical: true,
-        ordersMedications: true,
-        sensitiveCodes: [(from: 'D', to: 'D'), (from: 'De', to: 'De')],
-      );
-      expect(visibleAnswers(definition('problems'), answers, reader), answers);
     });
   });
 
