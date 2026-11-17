@@ -6,6 +6,7 @@ import '../../design/tokens.dart';
 import '../../forms/conditions.dart';
 import '../../forms/definition.dart';
 import '../../forms/paths.dart';
+import '../../forms/recap.dart';
 import 'action_field.dart';
 import 'field_host.dart';
 import 'grid_field.dart';
@@ -136,6 +137,9 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
     ];
     final open = _chose ? _open : shown.firstOrNull?.section.id;
     final draw = _Drawing(this, reading);
+    // Worked out each time it is shown and never stored (lifecycle 8.1); nothing from a sensitive
+    // exam is in it, for anyone.
+    final recaps = {for (final line in recapLines(widget.definition, widget.answers)) line.section: line.text};
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -145,6 +149,7 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
             key: _keyOf(s.section.id),
             section: s.section,
             open: open == s.section.id,
+            recap: recaps[s.section.id],
             onToggle: () => _toggle(s.section.id),
             child: open == s.section.id ? draw.section(s) : null,
           ),
@@ -295,10 +300,22 @@ class _Drawing {
 }
 
 /// One section of the accordion: a header that opens and closes it, and its fields while open.
+/// Closed, the header shows the section's recap line (PRD main 381, 392), which a screen reader
+/// hears after the title.
 class _Section extends StatelessWidget {
-  const _Section({super.key, required this.section, required this.open, required this.onToggle, this.child});
+  const _Section({
+    super.key,
+    required this.section,
+    required this.open,
+    required this.onToggle,
+    this.recap,
+    this.child,
+  });
   final SectionDef section;
   final bool open;
+
+  /// The section's recap line, when it has an answer that counts.
+  final String? recap;
   final VoidCallback onToggle;
   final Widget? child;
 
@@ -306,6 +323,8 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.field;
     final text = Theme.of(context).textTheme;
+    // Open, the fields show what the section holds.
+    final line = open ? null : recap;
     // A Material, not a decorated box: a tick's tile and every ink splash paint on it.
     return Material(
       color: c.surface,
@@ -322,6 +341,7 @@ class _Section extends StatelessWidget {
             button: true,
             expanded: open,
             label: section.title,
+            value: line,
             onTap: onToggle,
             excludeSemantics: true,
             child: InkWell(
@@ -332,7 +352,25 @@ class _Section extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: FieldSpace.s4, vertical: FieldSpace.s3),
                   child: Row(
                     children: [
-                      Expanded(child: Text(section.title, style: text.titleLarge)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(section.title, style: text.titleLarge),
+                            if (line != null) ...[
+                              const SizedBox(height: FieldSpace.s1),
+                              // PLAN-OPEN: how much of a long recap a closed header shows. Three
+                              // lines, then an ellipsis; a screen reader hears all of it.
+                              Text(
+                                line,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodyMedium?.copyWith(color: c.inkMuted),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                       const SizedBox(width: FieldSpace.s2),
                       Icon(open ? LucideIcons.chevronUp : LucideIcons.chevronDown),
                     ],

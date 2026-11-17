@@ -4,6 +4,7 @@ import 'package:sineobex_field/features/forms/action_field.dart';
 import 'package:sineobex_field/features/forms/field_host.dart';
 import 'package:sineobex_field/features/forms/note_form.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/recap.dart';
 
 import 'forms_test_helpers.dart';
 
@@ -163,6 +164,57 @@ void main() {
     await openForm(tester, demo, values: {'visit.seen': true}, openSection: 'later');
     expect(host('later.when'), findsOneWidget);
     expect(host('visit.seen'), findsNothing);
+  });
+
+  testWidgets('a closed section’s header shows its recap line, and an open one its fields', (tester) async {
+    final handle = tester.ensureSemantics();
+    final answers = await openForm(
+      tester,
+      demo,
+      values: {'visit.seen': true, 'visit.length': '4', 'later.when': 'Demo: Friday'},
+    );
+    // Visit is open: its fields show what it holds, so its line is not repeated.
+    expect(find.text('Seen today: Yes; Length: 4'), findsNothing);
+    expect(find.text('When next: Demo: Friday'), findsOneWidget);
+    expect(
+      tester.getSemantics(header('later')),
+      isSemantics(label: 'Demo: later', value: 'When next: Demo: Friday', isButton: true),
+    );
+    await toggle(tester, 'later');
+    expect(find.text('When next: Demo: Friday'), findsNothing);
+    expect(find.text('Seen today: Yes; Length: 4'), findsOneWidget);
+    expect(tester.getSemantics(header('visit')), isSemantics(value: 'Seen today: Yes; Length: 4'));
+    // The line follows the answers: an answer that stops counting leaves it.
+    answers.change('visit.unable', true);
+    await tester.pumpAndSettle();
+    expect(find.text('Seen today: Yes; Unable to measure: Yes'), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('a section with no answer that counts has no recap line', (tester) async {
+    final handle = tester.ensureSemantics();
+    // Visit notes are hidden until Seen today is ticked, so what they hold is not in the line.
+    await openForm(tester, demo, values: {'visit.notes': 'Demo: by the bridge'}, capabilities: {'orderMedications'});
+    await toggle(tester, 'visit');
+    expect(find.textContaining('Demo: by the bridge'), findsNothing);
+    expect(tester.getSemantics(header('visit')), isSemantics(label: 'Demo: visit', value: ''));
+    handle.dispose();
+  });
+
+  testWidgets('a sensitive exam’s findings are never in a header', (tester) async {
+    final handle = tester.ensureSemantics();
+    final general = presetDefinition('general_primary_care');
+    final values = <String, Object?>{
+      'exam.systems': ['skin', 'gu'],
+      'gu.general': ['dysuria'],
+      'skin.overall': ['warm', 'dry'],
+    };
+    await openForm(tester, general, values: values, openSection: 'reason');
+    final lines = {for (final l in recapLines(general, values)) l.section: l.text};
+    expect(lines.keys, isNot(contains('gu')));
+    expect(find.text(lines['skin']!), findsOneWidget);
+    expect(tester.getSemantics(header('gu')), isSemantics(label: 'Genitourinary (GU)', value: ''));
+    handle.dispose();
   });
 
   testWidgets('a section whose condition does not hold is not drawn, and its answers are left alone', (tester) async {
