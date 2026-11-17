@@ -573,7 +573,12 @@ function withoutHash(signoff: StoredRecord): StoredRecord {
   return { ...signoff, attributes };
 }
 
-/** A note with only [shown] for answers, each at the value shown: a hidden one leaves no key. */
+/**
+ * A note with only [shown] for answers, each at the value shown: a hidden one leaves no key. Its
+ * version and time are those of the latest field it shows, so a change to a hidden answer leaves
+ * no mark that something changed, or when (lifecycle 6.4 rule 2, review finding RD-6). The phone
+ * reads only the fields' versions.
+ */
 function onlyAnswers(note: StoredRecord, shown: Record<string, unknown>): StoredRecord {
   const kept = <T>(byField: Record<string, T>) =>
     Object.fromEntries(
@@ -583,7 +588,20 @@ function onlyAnswers(note: StoredRecord, shown: Record<string, unknown>): Stored
     );
   const values = kept(note.values);
   for (const [path, value] of Object.entries(shown)) values[`data.${path}`] = value;
-  return { ...note, values, fieldVersions: kept(note.fieldVersions), fieldMeta: kept(note.fieldMeta) };
+  const fieldVersions = kept(note.fieldVersions);
+  const fieldMeta = kept(note.fieldMeta);
+  const updated = Math.max(
+    note.createdAt.getTime(),
+    ...Object.values(fieldMeta).map((m) => Date.parse(m.at)),
+  );
+  return {
+    ...note,
+    values,
+    fieldVersions,
+    fieldMeta,
+    version: Math.max(1, ...Object.values(fieldVersions)),
+    updatedAt: new Date(updated),
+  };
 }
 
 export async function listNotices(scope: TeamScope) {

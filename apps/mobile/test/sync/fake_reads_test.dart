@@ -366,6 +366,30 @@ void main() {
       },
     );
 
+    test(
+      'a teammate’s copy is versioned and dated by what it shows: a change only to a hidden answer moves neither',
+      () async {
+        final n = noteOn(visit(), testRestricted, answers);
+        Future<(int, String)> stamp(String user) async {
+          final s = await noteAs(user, n);
+          return (s.version, s.updatedAt.toUtc().toIso8601String());
+        }
+
+        // As a set by the author writes them: the answer at its next version, by Alex, at its time.
+        void write(String path, Object? value, String at) =>
+            server.records[n]!.fields['data.$path'] = FakeField(value, 2, alex, at, 'c-$path');
+        final before = await stamp(ben);
+        // Alex edits only the exam, which Ben may not see (RD-6): his copy has no mark that it changed.
+        final later = now.add(const Duration(minutes: 5));
+        write('exam.findings', 'Demo: a small rash', later.toIso8601String());
+        expect(await stamp(ben), before);
+        // A change Ben is shown moves both: to that field's version and time, which his copy shows.
+        final shown = now.add(const Duration(minutes: 10)).toIso8601String();
+        write('general.notes', 'Demo: came by bus', shown);
+        expect(await stamp(ben), (2, shown));
+      },
+    );
+
     test('the author’s own draft is sent whole, hidden answers included; everyone else, and a finished note, gets what counts', () async {
       final held = <String, Object?>{
         'care.plan': 'Demo: rest and fluids',

@@ -198,6 +198,41 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(answerFields(await noteAs(dee, n))).toEqual(without('exam', 'moud', `dx.${E1}`));
     });
 
+    it('a teammate’s copy is versioned and dated by what it shows: a change only to a hidden answer moves neither', async () => {
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
+      const stamp = async (c: { token: string }) => {
+        const s = (await noteAs(c, n)) as Snapshot & { version: number; updatedAt: string };
+        return { version: s.version, updatedAt: s.updatedAt };
+      };
+      const set = (field: string, value: unknown, at = new Date(Date.now() + 5).toISOString()) =>
+        ana.phone.change({
+          entity: 'encounter_note',
+          recordId: n.noteId,
+          op: 'set',
+          field,
+          value,
+          baseVersion: 1,
+          deviceTime: at,
+          correctedTime: at,
+        });
+      const before = await stamp(ben);
+      const anas = await stamp(ana);
+
+      // Ana edits only the exam, which Ben may not see (RD-6): his copy has no mark that it changed.
+      expect(
+        (await ana.send(await set('data.exam.findings', 'Demo: a small rash'))).map((r) => r.status),
+      ).toEqual(['accepted']);
+      expect(await stamp(ben)).toEqual(before);
+      // The author's own copy moves, as it always has.
+      expect((await stamp(ana)).version).toBe(anas.version + 1);
+
+      // A change Ben is shown moves both: to that field's version and time, which his copy shows.
+      const at = new Date(Date.now() + 10).toISOString();
+      const shown = await set('data.general.notes', 'Demo: came by bus', at);
+      expect((await ana.send(shown)).map((r) => r.status)).toEqual(['accepted']);
+      expect(await stamp(ben)).toEqual({ version: 2, updatedAt: at });
+    });
+
     it('the author’s own draft is sent whole, hidden answers included; everyone else, and a finished note, gets what counts', async () => {
       const answers = {
         'care.plan': 'Demo: rest and fluids',

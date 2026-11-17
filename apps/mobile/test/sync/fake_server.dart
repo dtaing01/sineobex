@@ -3254,7 +3254,24 @@ class FakeSyncServer {
   }
 
   /// A note's snapshot (note.ts load): its state in its attributes, and its answers, or only [seen].
-  Map<String, Object?> _noteSnapshot(FakeRecord note, Map<String, Object>? seen) => {
+  /// Only [seen]: versioned and dated by the latest field it shows (review.ts onlyAnswers, RD-6).
+  Map<String, Object?> _noteSnapshot(FakeRecord note, Map<String, Object>? seen) {
+    final snapshot = _noteSnapshotWhole(note, seen);
+    if (seen == null) return snapshot;
+    final shown = (snapshot['fields']! as Map<String, Object?>).values.cast<Map<String, Object?>>();
+    final times = [
+      note.createdAt.toUtc(),
+      for (final f in shown)
+        if (f['changedAt'] case final String at) DateTime.parse(at).toUtc(),
+    ];
+    return {
+      ...snapshot,
+      'version': shown.map((f) => f['version']! as int).fold<int>(1, max),
+      'updatedAt': _iso(times.reduce((a, b) => a.isAfter(b) ? a : b)),
+    };
+  }
+
+  Map<String, Object?> _noteSnapshotWhole(FakeRecord note, Map<String, Object>? seen) => {
     ..._readSnapshot(note, fields: const []),
     'status': _noteStatusOf(note),
     // Its state too, so the author's phone can show the state of a note it still holds (4.4, 4.10).
