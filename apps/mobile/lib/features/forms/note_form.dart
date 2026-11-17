@@ -448,6 +448,8 @@ class _Drawing {
           path: '$path$sided',
           answers: form,
           enabled: enabled,
+          // A grid's cell itself, not a field of a group in it.
+          cell: node.parent?.cell == node ? path : null,
         );
     }
   }

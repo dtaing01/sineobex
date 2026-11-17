@@ -1,12 +1,21 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/forms/action_field.dart';
+import 'package:sineobex_field/features/forms/choice_field.dart';
 import 'package:sineobex_field/features/forms/date_field.dart';
 import 'package:sineobex_field/features/forms/duration_field.dart';
 import 'package:sineobex_field/features/forms/field_host.dart';
 import 'package:sineobex_field/features/forms/flag_field.dart';
+import 'package:sineobex_field/features/forms/grid_field.dart';
+import 'package:sineobex_field/features/forms/group_field.dart';
 import 'package:sineobex_field/features/forms/info_field.dart';
+import 'package:sineobex_field/features/forms/number_field.dart';
 import 'package:sineobex_field/features/forms/photo_field.dart';
+import 'package:sineobex_field/features/forms/problem_field.dart';
+import 'package:sineobex_field/features/forms/region_field.dart';
 import 'package:sineobex_field/features/forms/text_field.dart';
 import 'package:sineobex_field/features/forms/time_field.dart';
+import 'package:sineobex_field/forms/definition.dart';
 
 import 'forms_test_helpers.dart';
 
@@ -56,9 +65,50 @@ void main() {
       {'id': 'e', 'kind': 'duration', 'label': 'Demo: e'}: DurationField,
       {'id': 'f', 'kind': 'photo', 'max': 5, 'label': 'Demo: f'}: PhotoField,
       {'id': 'g', 'kind': 'info', 'label': 'Demo: g'}: InfoField,
+      {
+        'id': 'h',
+        'kind': 'choice',
+        'many': false,
+        'label': 'Demo: h',
+        'options': [
+          {'code': 'yes', 'label': 'Yes'},
+        ],
+      }: ChoiceField,
+      {'id': 'i', 'kind': 'number', 'min': 0, 'max': 10, 'decimals': 0, 'label': 'Demo: i'}: NumberField,
+      {
+        'id': 'j',
+        'kind': 'group',
+        'layout': 'stack',
+        'label': 'Demo: j',
+        'fields': [
+          {'id': 'k', 'kind': 'flag', 'label': 'Demo: k'},
+        ],
+      }: GroupField,
+      {
+        'id': 'l',
+        'kind': 'grid',
+        'label': 'Demo: l',
+        'rows': [
+          {'code': 'one', 'label': 'Demo: one'},
+        ],
+        'cell': {'id': 'm', 'kind': 'flag', 'label': 'Demo: m'},
+      }: GridField,
+      {
+        'id': 'n',
+        'kind': 'region',
+        'label': 'Demo: n',
+        'options': [
+          {'code': 'head', 'label': 'Head'},
+        ],
+      }: RegionField,
+      {'id': 'o', 'kind': 'problem', 'label': 'Demo: o'}: ProblemField,
+      {'id': 'p', 'kind': 'action', 'action': 'add_referral', 'label': 'Demo: p'}: ActionField,
     };
     for (final MapEntry(key: json, value: type) in kinds.entries) {
-      await pumpField(tester, FieldHost(field: fieldOf(json), path: 'demo.x', answers: TestAnswers()));
+      await pumpField(
+        tester,
+        FieldHost(field: fieldOf(json), path: 'demo.x', answers: TestAnswers(), actions: (_, _) => () {}),
+      );
       expect(find.byType(type), findsOneWidget, reason: '${json['kind']}');
     }
   });
@@ -181,5 +231,281 @@ void main() {
     expect(answerText(fieldOf({'id': 't', 'kind': 'time', 'label': 'Demo: t'}), '14:05'), '14:05');
     // A value of the wrong type is shown as it is stored, never thrown on.
     expect(answerText(fieldOf({'id': 'g', 'kind': 'duration', 'label': 'Demo: g'}), 'Demo: x'), 'Demo: x');
+  });
+
+  testWidgets('a choice’s Other text goes beside it, before the side', (tester) async {
+    final heard = fieldOf({
+      'id': 'heard',
+      'kind': 'choice',
+      'many': false,
+      'sides': true,
+      'label': 'Demo: heard',
+      'options': [
+        {'code': 'clear', 'label': 'Clear'},
+        {'code': 'other', 'label': 'Other', 'other': true},
+      ],
+    });
+    final answers = TestAnswers({'lungs.heard.right': 'other', 'lungs.heard_other.right': 'Demo: a whistle'});
+    await pumpField(tester, FieldHost(field: heard, path: 'lungs.heard', answers: answers));
+    final box = find.byKey(const ValueKey('phi.form.heard_other'));
+    expect(tester.widget<TextField>(box).controller!.text, 'Demo: a whistle');
+    await tester.enterText(box, 'Demo: a squeak');
+    await tester.pump(typingPause);
+    expect(answers.changes.single, ('lungs.heard_other.right', 'Demo: a squeak'));
+    expect(otherTextPath('lungs.heard', 'lungs.heard'), 'lungs.heard_other');
+  });
+
+  testWidgets('a number labels itself, so its label is shown once', (tester) async {
+    final temp = fieldOf({
+      'id': 'temp',
+      'kind': 'number',
+      'min': 50,
+      'max': 115,
+      'decimals': 1,
+      'unit': '°F',
+      'label': 'Temperature',
+    });
+    await pumpField(tester, FieldHost(field: temp, path: 'vitals.temp', answers: TestAnswers({'vitals.temp': 98.6})));
+    expect(find.text('Temperature'), findsOneWidget);
+  });
+
+  testWidgets('a group’s fields are hosted at their own paths, with their labels, cleared by its flag', (tester) async {
+    final handle = tester.ensureSemantics();
+    final measurements = presetField('wound_care', 'wound.measurements');
+    const at = 'wound.e0000001.measurements';
+    final answers = TestAnswers({'$at.length': 4.5, '$at.unable': true})..pending.add('$at.unable');
+    await pumpField(tester, FieldHost(field: measurements, path: at, answers: answers));
+    expect(find.text('Measurements'), findsOneWidget);
+    expect(find.text('Waiting to send'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Length')),
+      isSemantics(isReadOnly: true, hasEnabledState: true, isEnabled: false),
+    );
+    await tester.tap(find.text('Unable to measure'));
+    await tester.pumpAndSettle();
+    expect(answers.changes, [('$at.unable', null)]);
+    handle.dispose();
+  });
+
+  testWidgets('a collapsed group shows its label once, as its header, and opens when it holds an answer', (
+    tester,
+  ) async {
+    final infection = presetField('wound_care', 'wound.infection');
+    await pumpField(tester, FieldHost(field: infection, path: 'wound.e0000001.infection', answers: TestAnswers()));
+    expect(find.text('Infection details'), findsOneWidget);
+    expect(find.bySemanticsLabel('Infection findings'), findsNothing);
+    await pumpField(
+      tester,
+      FieldHost(
+        field: infection,
+        path: 'wound.e0000002.infection',
+        answers: TestAnswers({
+          'wound.e0000002.infection.systemic_other': 'Demo: shivers',
+          'wound.e0000002.infection.systemic': ['other'],
+        }),
+      ),
+    );
+    expect(find.bySemanticsLabel('Infection findings'), findsOneWidget);
+  });
+
+  testWidgets('a grid’s cell goes to the row and side, with its own Waiting to send and conflict', (tester) async {
+    final pulses = presetDefinition('general_primary_care').sections
+        .firstWhere((s) => s.id == 'cv_perfusion')
+        .fields
+        .firstWhere((f) => f.id == 'pulses');
+    const left = 'cv_perfusion.pulses.radial.left';
+    final answers = TestAnswers({left: 'two_plus'})
+      ..pending.add(left)
+      ..conflicts[left] = const AnswerConflict(theirs: 'one_plus', by: ConflictBy.server);
+    await pumpField(tester, FieldHost(field: pulses, path: 'cv_perfusion.pulses', answers: answers));
+    expect(find.text('Waiting to send'), findsOneWidget);
+    expect(find.text('This field already had a different value. Choose which one to keep.'), findsOneWidget);
+    final chip = find
+        .descendant(
+          of: find
+              .descendant(
+                of: find.bySemanticsLabel('Posterior tibial (PT)').first,
+                matching: find.bySemanticsLabel('Right'),
+              )
+              .first,
+          matching: find.bySemanticsLabel('0'),
+        )
+        .last;
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(answers.changes, [('cv_perfusion.pulses.posterior_tibial_pt.right', 'zero')]);
+  });
+
+  testWidgets('a grid of picked rows draws the rows the form gives it; a group cell’s fields follow the row', (
+    tester,
+  ) async {
+    final general = presetDefinition('general_primary_care');
+    final lymphatic = general.sections.firstWhere((s) => s.id == 'lymphatic');
+    final grid = lymphatic.fields.firstWhere((f) => f.id == 'node_findings') as GridDef;
+    final nodes = lymphatic.fields.firstWhere((f) => f.id == 'nodes') as ChoiceDef;
+    final answers = TestAnswers();
+    await pumpField(
+      tester,
+      FieldHost(
+        field: grid,
+        path: 'lymphatic.node_findings',
+        answers: answers,
+        rows: gridRows(grid, options: nodes.options, picked: ['inguinal']),
+      ),
+    );
+    expect(find.bySemanticsLabel('Cervical'), findsNothing);
+    final chip = find
+        .descendant(of: find.bySemanticsLabel('Inguinal').first, matching: find.bySemanticsLabel('Fixed'))
+        .last;
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(answers.changes.single.$1, 'lymphatic.node_findings.inguinal.findings');
+  });
+
+  testWidgets('a region’s parts go to their own paths, and a conflict on one is written in labels', (tester) async {
+    final location = presetField('wound_care', 'wound.location');
+    const at = 'wound.e0000001.location';
+    final answers = TestAnswers({'$at.side': 'left'})
+      ..conflicts['$at.side'] = const AnswerConflict(theirs: 'bilateral', by: ConflictBy.teammate);
+    await pumpField(tester, FieldHost(field: location, path: at, answers: answers));
+    // The chip, and their value beside the conflict's choice.
+    expect(find.text('Bilateral'), findsNWidgets(2));
+    expect(find.text('Left'), findsNWidgets(2));
+    expect(answerText(location, 'bilateral'), 'Bilateral');
+    final chip = find
+        .descendant(of: find.bySemanticsLabel('Location').first, matching: find.bySemanticsLabel('Face'))
+        .last;
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(answers.changes, [('$at.region', 'face')]);
+  });
+
+  group('a diagnosis', () {
+    final diagnosis = presetField('general_primary_care', 'problems.diagnosis');
+    const at = 'problems.e0000001.diagnosis';
+
+    testWidgets('labels itself, and is written as its code and its label together', (tester) async {
+      final answers = TestAnswers();
+      await pumpField(tester, FieldHost(field: diagnosis, path: at, answers: answers));
+      expect(find.text('Diagnosis or problem'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('phi.form.diagnosis')), 'scalp laceration');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Laceration without foreign body of scalp, initial encounter (S01.01XA)'));
+      await tester.pumpAndSettle();
+      expect(answers.changes, [
+        ('$at.code', 'S01.01XA'),
+        ('$at.label', 'Laceration without foreign body of scalp, initial encounter'),
+      ]);
+    });
+
+    testWidgets('shows Waiting to send for either part', (tester) async {
+      final answers = TestAnswers({'$at.code': 'S01.01XA', '$at.label': 'Demo scalp'})..pending.add('$at.label');
+      await pumpField(tester, FieldHost(field: diagnosis, path: at, answers: answers));
+      expect(find.text('Waiting to send'), findsOneWidget);
+    });
+
+    testWidgets('a conflict on its code and its label is one choice, which keeps both of one side', (tester) async {
+      final chosen = <(String, bool)>[];
+      final answers = TestAnswers({'$at.code': 'S01.01XA', '$at.label': 'Demo scalp'})
+        ..conflicts['$at.code'] = AnswerConflict(
+          theirs: 'S00.03XA',
+          by: ConflictBy.teammate,
+          onChoose: (keepMine) async => chosen.add(('code', keepMine)),
+        )
+        ..conflicts['$at.label'] = AnswerConflict(
+          theirs: 'Demo nose',
+          by: ConflictBy.teammate,
+          onChoose: (keepMine) async => chosen.add(('label', keepMine)),
+        );
+      await pumpField(tester, FieldHost(field: diagnosis, path: at, answers: answers));
+      expect(find.text('This field already had a different value. Choose which one to keep.'), findsOneWidget);
+      expect(find.text('Demo scalp (S01.01XA)'), findsNWidgets(2));
+      expect(find.text('Demo nose (S00.03XA)'), findsOneWidget);
+      await tester.ensureVisible(find.text('Keep theirs'));
+      await tester.tap(find.text('Keep theirs'));
+      await tester.pumpAndSettle();
+      expect(chosen, [('code', false), ('label', false)]);
+    });
+
+    testWidgets('one choice can’t be chosen while either part can’t', (tester) async {
+      final answers = TestAnswers({'$at.code': 'S01.01XA', '$at.label': 'Demo scalp'})
+        ..conflicts['$at.code'] = AnswerConflict(theirs: 'S00.03XA', by: ConflictBy.teammate, onChoose: (_) async {})
+        ..conflicts['$at.label'] = const AnswerConflict(theirs: 'Demo nose', by: ConflictBy.teammate);
+      await pumpField(tester, FieldHost(field: diagnosis, path: at, answers: answers));
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Use my value')).onPressed, isNull);
+      expect(find.text('You can choose once the phone’s clock is right.'), findsOneWidget);
+    });
+  });
+
+  group('an action', () {
+    final woundCare = presetField('general_primary_care', 'diabetic_foot.wound_care') as ActionDef;
+
+    testWidgets('is offered with what the screen gives it for the field and its path', (tester) async {
+      final asked = <(String, String)>[];
+      var taps = 0;
+      await pumpField(
+        tester,
+        FieldHost(
+          field: woundCare,
+          path: 'diabetic_foot.wound_care',
+          answers: TestAnswers(),
+          actions: (field, path) {
+            asked.add((field.noteType!, path));
+            return () {
+              taps++;
+            };
+          },
+        ),
+      );
+      expect(asked.last, ('wound_care', 'diabetic_foot.wound_care'));
+      // The button carries the label: it is shown once.
+      expect(find.text('Chart in Wound care'), findsOneWidget);
+      await tester.tap(find.text('Chart in Wound care'));
+      await tester.pumpAndSettle();
+      expect(taps, 1);
+    });
+
+    testWidgets('is not offered where the screen gives it nothing to do, or gives no handler', (tester) async {
+      for (final actions in <ActionHandler?>[(_, _) => null, null]) {
+        await pumpField(
+          tester,
+          FieldHost(field: woundCare, path: 'diabetic_foot.wound_care', answers: TestAnswers(), actions: actions),
+        );
+        expect(find.text('Chart in Wound care'), findsNothing);
+      }
+    });
+
+    testWidgets('inside a group gets the screen’s handler too', (tester) async {
+      final group = fieldOf({
+        'id': 'next',
+        'kind': 'group',
+        'layout': 'stack',
+        'label': 'Demo: next',
+        'fields': [
+          {'id': 'go', 'kind': 'action', 'action': 'show_handoff', 'label': 'Demo: show it'},
+        ],
+      });
+      final asked = <String>[];
+      await pumpField(
+        tester,
+        FieldHost(
+          field: group,
+          path: 'demo.next',
+          answers: TestAnswers(),
+          actions: (field, path) {
+            asked.add(path);
+            return () {};
+          },
+        ),
+      );
+      expect(asked.last, 'demo.next.go');
+      expect(find.text('Demo: show it'), findsOneWidget);
+    });
   });
 }

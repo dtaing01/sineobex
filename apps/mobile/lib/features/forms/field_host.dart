@@ -6,16 +6,24 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/status_chip.dart';
+import '../../forms/conditions.dart' show isBlank;
 import '../../forms/definition.dart';
 import '../../forms/layout.dart' show displayValue, sideLabels;
 import '../../forms/paths.dart';
 import '../patients/patient_labels.dart' show isoDay, longDate;
 import '../sync/sync_labels.dart' show timeOfDay, valueText;
+import 'action_field.dart';
+import 'choice_field.dart';
 import 'date_field.dart';
 import 'duration_field.dart';
 import 'flag_field.dart';
+import 'grid_field.dart';
+import 'group_field.dart';
 import 'info_field.dart';
+import 'number_field.dart';
 import 'photo_field.dart';
+import 'problem_field.dart';
+import 'region_field.dart';
 import 'text_field.dart';
 import 'time_field.dart';
 
@@ -71,7 +79,16 @@ List<String> answerPaths(FieldDef field, String path) =>
     field.sides && field is! GridDef ? [for (final side in sideNames) '$path.$side'] : [path];
 
 class FieldHost extends StatelessWidget {
-  const FieldHost({super.key, required this.field, required this.path, required this.answers, this.enabled = true});
+  const FieldHost({
+    super.key,
+    required this.field,
+    required this.path,
+    required this.answers,
+    this.enabled = true,
+    this.rows,
+    this.actions,
+    this.cell,
+  });
 
   final FieldDef field;
 
@@ -82,13 +99,32 @@ class FieldHost extends StatelessWidget {
   /// False for a finished note, a frozen store, or a field a set flag clears: read-only.
   final bool enabled;
 
-  /// The kinds that show their own label (a text box's, a tick's, a button's) and their own help.
-  bool get _ownLabel => field is TextDef || field is FlagDef || field is ActionDef;
+  /// The rows of a grid whose rows are picked in a choose-many ([gridRows]), which the form works
+  /// out from the definition. Null for any other field: a grid's own rows are its definition's.
+  final List<OptionDef>? rows;
+
+  /// What the screen does for an action field; an action it gives nothing to do is not offered.
+  /// Passed on to the fields of a group.
+  final ActionHandler? actions;
+
+  /// In a grid's cell: the row's path, without a side. The cell is drawn bare, its row's label
+  /// standing for its own (forms 7.1), and a choice's Other text is kept beside the row's path,
+  /// before the side (2.3: `<grid>.<row>_other.right`).
+  final String? cell;
+
+  /// The kinds that show their own label (a text box's, a number's, a tick's, a button's, a
+  /// diagnosis's search box, the header of a collapsed group or grid) and their own help.
+  bool get _ownLabel => switch (field) {
+    TextDef() || NumberDef() || FlagDef() || ActionDef() || ProblemDef() => true,
+    GroupDef(:final collapsed) || GridDef(:final collapsed) => collapsed,
+    _ => false,
+  };
 
   @override
   Widget build(BuildContext context) {
     final f = field;
     // Guidance: its label is the text, and it stores nothing.
+    if (cell != null) return _answer(context, f, cell!, path);
     if (f is InfoDef) return InfoField(field: f);
     final text = Theme.of(context).textTheme;
     final paths = answerPaths(f, path);
@@ -106,7 +142,10 @@ class FieldHost extends StatelessWidget {
         ],
         for (final (i, p) in paths.indexed) ...[
           if (i > 0) const SizedBox(height: FieldSpace.s3),
-          if (paths.length == 1) _answer(context, p) else _side(context, sideLabels[p.split('.').last]!, p),
+          if (paths.length == 1)
+            _answer(context, field, path, p)
+          else
+            _side(context, sideLabels[p.split('.').last]!, p),
         ],
       ],
     );
@@ -120,14 +159,38 @@ class FieldHost extends StatelessWidget {
       children: [
         ExcludeSemantics(child: Text(side, style: Theme.of(context).textTheme.labelLarge)),
         const SizedBox(height: FieldSpace.s1),
-        _answer(context, p),
+        _answer(context, field, path, p),
       ],
     ),
   );
 
-  Widget _answer(BuildContext context, String p) {
+  /// Whether [field] at [p] holds an answer: a collapsed group or grid that does opens with it
+  /// showing.
+  bool _holdsAny(FieldDef field, String p) => switch (field) {
+    GroupDef(:final fields) => fields.any((c) => _holdsAny(c, '$p.${c.id}')),
+    GridDef(:final cell) => [
+      for (final row in (identical(field, this.field) ? rows : null) ?? gridRows(field))
+        for (final side in gridSides(field)) cellPath(p, row.code, side),
+    ].any((at) => _holdsAny(cell, at)),
+    RegionDef() => regionParts.any((part) => !isBlank(answers.at('$p.$part').value)),
+    ProblemDef() => problemParts.any((part) => !isBlank(answers.at('$p.$part').value)),
+    _ => answerPaths(field, p).any((at) => !isBlank(answers.at(at).value)),
+  };
+
+  /// The widget of [field] for its answer at [p], with "Waiting to send" and the conflict choice of
+  /// each answer it shows. [fieldPath] is the field's path without a side: a grid's cell's is its
+  /// row's.
+  Widget _answer(BuildContext context, FieldDef field, String fieldPath, String p) {
     final state = answers.at(p);
     final value = state.value;
+    // A region's and a diagnosis's answers are their parts; a group or a grid shows its fields' in
+    // each field.
+    final shown = switch (field) {
+      RegionDef() => [for (final part in regionParts) '$p.$part'],
+      ProblemDef() => [for (final part in problemParts) '$p.$part'],
+      _ => [p],
+    };
+    final states = [for (final at in shown) answers.at(at)];
     void change(Object? v) => answers.change(p, v);
     // Keyed by its path: a widget's typing never moves to another answer.
     final key = ValueKey('form.$p');
@@ -161,49 +224,131 @@ class FieldHost extends StatelessWidget {
         onChanged: change,
         enabled: enabled,
       ),
+      final ChoiceDef f => ChoiceField(
+        key: key,
+        field: f,
+        value: value,
+        onChanged: change,
+        other: switch (answers.at(otherTextPath(fieldPath, p)).value) {
+          final String text => text,
+          _ => null,
+        },
+        onOtherChanged: (v) => answers.change(otherTextPath(fieldPath, p), v),
+        enabled: enabled,
+      ),
+      final NumberDef f => NumberField(
+        key: key,
+        field: f,
+        value: value is num ? value : null,
+        onChanged: change,
+        enabled: enabled,
+      ),
+      final GroupDef f => GroupField(
+        key: key,
+        field: f,
+        enabled: enabled,
+        filled: _holdsAny(f, p),
+        ticked: (flag) => answers.at('$p.${flag.id}').value == true,
+        child: (c, {required enabled}) =>
+            FieldHost(field: c, path: '$p.${c.id}', answers: answers, enabled: enabled, actions: actions),
+      ),
+      final GridDef f => GridField(
+        key: key,
+        field: f,
+        rows: rows ?? gridRows(f),
+        filled: _holdsAny(f, p),
+        // The row's label stands for the cell's, so the cell is drawn bare.
+        cell: (row, side) => _answer(context, f.cell, cellPath(p, row.code), cellPath(p, row.code, side)),
+      ),
+      final RegionDef f => RegionField(
+        key: key,
+        field: f,
+        value: regionAnswer((part) => answers.at('$p.$part').value),
+        onChanged: (part, code) => answers.change('$p.$part', code),
+        enabled: enabled,
+      ),
+      final ProblemDef f => ProblemField(
+        key: key,
+        field: f,
+        value: problemAnswer((part) => answers.at('$p.$part').value),
+        // A code and its label are one diagnosis: both are written together.
+        onChanged: (v) {
+          answers.change('$p.code', v.code);
+          answers.change('$p.label', v.label);
+        },
+        enabled: enabled,
+      ),
       final PhotoDef f => PhotoField(key: key, field: f),
-      // Each of these is its own card of unit F5, which puts its widget here.
-      InfoDef() ||
-      ChoiceDef() ||
-      NumberDef() ||
-      GroupDef() ||
-      GridDef() ||
-      RegionDef() ||
-      ProblemDef() ||
-      ActionDef() => _NotYet(field: field),
+      final ActionDef f => ActionField(key: key, field: f, onPressed: actions?.call(f, p), enabled: enabled),
+      // A guidance line inside a group is hosted on its own; one in a grid's cell is drawn here.
+      final InfoDef f => InfoField(key: key, field: f),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         widget,
-        if (state.pending) ...[
+        if (states.any((s) => s.pending)) ...[
           const SizedBox(height: FieldSpace.s1),
           const Align(
             alignment: AlignmentDirectional.centerStart,
             child: StatusChip(label: 'Waiting to send', icon: LucideIcons.smartphone, tone: ChipTone.info),
           ),
         ],
-        if (state.conflict case final conflict?) ...[
+        if (field is ProblemDef && states.where((s) => s.conflict != null).length > 1)
+        // A code and its label are one diagnosis: one choice keeps both of one side, so a code is
+        // never kept with the other's label.
+        ...[
           const SizedBox(height: FieldSpace.s2),
-          _ConflictChoice(field: field, mine: value, conflict: conflict, enabled: enabled),
-        ],
+          _ConflictChoice(
+            field: field,
+            mine: _problemOf(states, theirs: false),
+            conflict: _oneConflict(states),
+            enabled: enabled,
+          ),
+        ] else
+          for (final s in states)
+            if (s.conflict case final conflict?) ...[
+              const SizedBox(height: FieldSpace.s2),
+              _ConflictChoice(field: field, mine: s.value, conflict: conflict, enabled: enabled),
+            ],
       ],
     );
   }
 }
 
-/// A kind whose widget isn't built yet.
-class _NotYet extends StatelessWidget {
-  const _NotYet({required this.field});
-  final FieldDef field;
+/// A diagnosis written out from its parts' states ([problemParts]), as this phone holds it or, with
+/// [theirs], as the other side of each conflict holds it.
+String? _problemOf(List<AnswerState> parts, {required bool theirs}) {
+  String? at(int i) => switch (theirs ? (parts[i].conflict?.theirs ?? parts[i].value) : parts[i].value) {
+    final String t when t.isNotEmpty => t,
+    _ => null,
+  };
+  return problemText((code: at(0), label: at(1)));
+}
 
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: field.label,
-    child: Text('This can’t be answered on this phone yet.', style: Theme.of(context).textTheme.bodyMedium),
+/// The conflicts on a diagnosis's code and label as one: choosing keeps both parts of one side.
+/// It can be chosen only when each part's can.
+AnswerConflict _oneConflict(List<AnswerState> parts) {
+  final conflicts = [for (final s in parts) ?s.conflict];
+  final choosers = [for (final c in conflicts) c.onChoose];
+  return AnswerConflict(
+    theirs: _problemOf(parts, theirs: true),
+    by: conflicts.first.by,
+    at: conflicts.first.at,
+    onChoose: choosers.contains(null)
+        ? null
+        : (keepMine) async {
+            for (final choose in choosers) {
+              await choose!(keepMine);
+            }
+          },
   );
 }
+
+/// Where the Other text of the choice at [answerPath] is kept (forms 2.3): `_other` on the field's
+/// own part, before its side. [fieldPath] is the field's path without a side.
+String otherTextPath(String fieldPath, String answerPath) =>
+    '${fieldPath}_other${answerPath.substring(fieldPath.length)}';
 
 /// One answer written out for a person, as the read view writes it ("(blank)" for none, as phase
 /// 2's choice does). A value of the wrong type for its field is shown as stored.
@@ -225,6 +370,11 @@ String answerText(FieldDef field, Object? value) {
       CodesHolds(many: many, options: options),
     _ => null,
   };
+  // One part of a region: its label in whichever of the region's lists holds it.
+  if (field is RegionDef && value is String) {
+    final options = [...field.options, ...?field.side, ...?field.surface];
+    return options.where((o) => o.code == value).firstOrNull?.label ?? value;
+  }
   if (field is DateDef && value is String) {
     final day = isoDay(value);
     return day == null ? value : longDate(day);

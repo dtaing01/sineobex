@@ -286,6 +286,55 @@ void main() {
     expect(fieldHost('cv_perfusion.more_pulses.brachial.right'), findsNothing);
   });
 
+  testWidgets('a grid’s cell is drawn bare, its row’s label standing for its own', (tester) async {
+    final general = presetDefinition('general_primary_care');
+    await pumpForm(
+      tester,
+      general,
+      values: {
+        'exam.systems': ['cardiovascular'],
+      },
+      openSection: 'cv_perfusion',
+    );
+    // Pulses is the grid's own label; Pulse, its cell's, is not shown.
+    expect(find.text('Pulse'), findsNothing);
+    expect(find.text('Radial'), findsOneWidget);
+  });
+
+  testWidgets('a choice’s Other text in a grid row with sides is kept before the side', (tester) async {
+    final demo = definitionOf([
+      {
+        'id': 'feet',
+        'title': 'Demo: feet',
+        'fields': [
+          {
+            'id': 'check',
+            'kind': 'grid',
+            'label': 'Demo: checks',
+            'sides': true,
+            'rows': [
+              {'code': 'toes', 'label': 'Demo toes'},
+            ],
+            'cell': {
+              'id': 'result',
+              'kind': 'choice',
+              'label': 'Demo: result',
+              'many': false,
+              'options': [
+                {'code': 'fine', 'label': 'Demo fine'},
+                {'code': 'other', 'label': 'Demo other', 'other': true},
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    final answers = await pumpForm(tester, demo, values: {'feet.check.toes.right': 'other'});
+    await tester.enterText(find.byKey(const ValueKey('phi.form.result_other')), 'Demo: bruised');
+    await tester.pump(const Duration(seconds: 2));
+    expect(answers.changes.last, ('feet.check.toes_other.right', 'Demo: bruised'));
+  });
+
   testWidgets('a grid of picked rows has a row for each option picked, and a cell shows by its row', (tester) async {
     final general = presetDefinition('general_primary_care');
     final values = <String, Object?>{
