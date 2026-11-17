@@ -25,7 +25,7 @@
     },
     {
       "line": 10,
-      "what": "Blood pressure (two numbers), heart rate and temperature, with the units and ranges of the General note's vitals, each in the EMS handoff summary. Expand maps them to general_primary_care:vitals.bp.systolic, vitals.bp.diastolic, vitals.hr and vitals.temp. They, and the chief concern, stay in the handoff after Expand: a quick note is often the only note, and its vitals belong at the top of the summary. Once expanded, the summary shows each again beside its General twin, until the handoff leaves out a quick field whose twin holds an answer.",
+      "what": "Blood pressure (two numbers), heart rate and temperature, with the units and ranges of the General note's vitals, each in the EMS handoff summary. Expand maps them to general_primary_care:vitals.bp.systolic, vitals.bp.diastolic, vitals.hr and vitals.temp. They, and the chief concern, head the handoff: a quick note is often the only note. Once Expand has carried one into a General note of the visit that holds an answer there, the General note's line stands for it and the quick note's is left out, so each is listed once; the quick note's recap still shows it.",
       "why": "inventory A10; forms 6.4, 7.1 (handoffLines), 10.1 #6"
     },
     {

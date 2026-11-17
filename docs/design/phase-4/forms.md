@@ -1187,7 +1187,11 @@ As planned in wave B (unit F6; the plans are the shape files under `definitions/
   overall skin, and Skin finding, which repeats, at most 20) and MSK (below). Every section shows
   only while its system is picked, and offers Normal exactly where something in it has a normal
   to fill: Skin finding does not, since no option of a finding is normal. Normal stays per
-  section, so HEENT has four (default 11).
+  section, as the pieces split a system: HEENT has four (default 11), Cardiovascular two (heart
+  and perfusion), Neurologic two, and MSK one in each region's entry and one for Gait. The PRD
+  gives each system one Normal (PRD main 414): the renderer (F5) offers one per system, which runs
+  `normalAnswers` on every section of that system, each entry of a repeating one included
+  (10.3).
 - **The picker** has the 16 systems' codes (the focused-exam inventory's section 2 ids), in
   SPEC's picker order, and Other, which opens `exam.other_findings`, a text of up to 2,000
   characters. GU, breast and rectal carry `sensitiveExam`.
@@ -1930,6 +1934,11 @@ the rest of the visit page.
    (Build plan 81). They are transcribed by hand, one piece per card, and checked against the
    tab's own lines by machine (4.2). The tab is not regular enough to generate from: it never
    says whether a row of buttons is choose-one or choose-many (inventory A1).
+7. **One-tap Normal is per section in the definitions**, where PRD main 414 gives each system
+   one. The sections follow the transcription pieces, so Cardiovascular has two (heart and
+   perfusion), HEENT four, Neurologic two, and MSK one per region examined and one for Gait
+   (6.3). For F5: the renderer offers one Normal per system, which runs `normalAnswers` on every
+   section of that system (each entry of a repeating one), so the person sees the PRD's one tap.
 
 ### 10.4 Risks
 

@@ -100,7 +100,7 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 | F0-validate-ids | T | `forms/src/validate.ts` (duplicate and reserved IDs, option codes) | F0-resolve |
 | F0-validate-paths | T | `forms/src/paths.ts` (every path a definition can produce: the one copy the validator, the version rules and the interpreter use), `forms/src/validate.ts` (conditions and `mapsTo` name real fields) | F0-validate-ids |
 | F0-validate-flags | T | `forms/src/validate.ts` (exclusive in a choose-one, a required field never visible, grid and region rules, limits of 2.4) | F0-validate-paths |
-| F0-lock | T | `forms/src/lock.ts`, `forms/src/versions.ts` | F0-resolve |
+| F0-lock | T | `forms/src/lock.ts`, `forms/src/versions.ts`. After wave D's review a version's resolved line held without its file's line is refused (`lock.resolved_alone`, forms 4.2), so a version is released whole or not at all | F0-resolve |
 | F0-spec-check | T | `forms/src/spec-check.ts` | F0-resolve |
 | F0-shape-check | T | `forms/src/shape-check.ts` | F0-resolve |
 
@@ -108,7 +108,7 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F1-vectors | X | `vectors/forms-conformance.json`, `forms/test/conformance.test.ts` (the Dart reader of the vectors is F2's) | F0-schema |
+| F1-vectors | X | `vectors/forms-conformance.json`, `forms/test/conformance.test.ts` (the Dart reader of the vectors is F2's). After wave D's review the cases hold the handoff's three new rules (no treatment record's recap, no field line of a quick answer Expand carried into a full note, no sensitive diagnosis, given the sensitive list) and a duration's own `max` (forms 2.3, 7.1) | F0-schema |
 | F1-field-at | T | `forms/src/interp/field-at.ts` | F1-vectors |
 | F1-check-values | T | `forms/src/interp/check-answer.ts` (choice, text, number, flag, date, time, duration) | F1-field-at |
 | F1-check-structure | T | `forms/src/interp/check-answer.ts` (unknown paths, grid rows, region, problem, the text of an Other option, entries) | F1-check-values |
@@ -120,7 +120,7 @@ is plain: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `p
 | F1-read-sections | T | `forms/src/interp/read-model.ts` (sections, labels, display values, from `layout.ts`) | F1-recap |
 | F1-read-corrections | T | `forms/src/interp/read-model.ts` (corrected values with the old one) | F1-read-sections |
 | F1-visible | T | `forms/src/interp/visible.ts`, `forms/src/interp/sensitive-exams.ts` (what a sensitive exam leaves out, which the recap and the handoff read too), `forms/test/interp/visible.test.ts` | F1-effective |
-| F1-handoff | T | `forms/src/interp/handoff.ts`, `forms/test/interp/handoff.test.ts` | F1-visible, F1-recap |
+| F1-handoff | T | `forms/src/interp/handoff.ts`, `forms/test/interp/handoff.test.ts`. As built after wave D's review, for every reader: no recap line of a `treatmentRecord` section; no field line of a quick answer Expand carried into a full note of the visit, whose line stands for it; and, taking phase 3's sensitive list as a third argument, nothing of a sensitive diagnosis, its entry or section left out as `visibleAnswers` leaves it (forms 7.1, 10.1 #6). The duration's `max` went into `check-answer.ts`, `paths.ts`, the schema and `types.ts` in the same review (forms 2.3) | F1-visible, F1-recap |
 | F1-suggestions | T | `forms/src/interp/suggestions.ts` | F1-effective |
 | F1-expand | T | `forms/src/interp/expand.ts`, `forms/test/interp/expand.test.ts` | F1-effective |
 
@@ -146,7 +146,10 @@ would never pass refused by its place) and `phone/forms/paths.dart` (the path mo
 `sensitive_exams.dart`, the files F1 shares between functions. A card that met something the
 vectors cannot say wrote a test of its own beside them:
 `phone-test/forms/{definition,check_answer,effective,read,visible,handoff,expand}_test.dart`
-(forms 7.2). Then:
+(forms 7.2). After wave D's review `handoff.dart` holds the same three rules as F1-handoff (it
+takes the sensitive list, and shares `sensitiveDiagnoses` with `visible.dart`), and
+`check_answer.dart`, `paths.dart` and `definition.dart` a duration's own `max` (a
+`DurationHolds`), each run by the shared cases. Then:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
