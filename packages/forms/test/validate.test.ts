@@ -1455,6 +1455,68 @@ describe('sides', () => {
     `${S('reflexes')}.cell.sides`,
     SIDES,
   ]);
+  // A region has a side of its own, and the path model gives a cell of a grid with sides none
+  // (2.3): such a cell would store no side at all (D80).
+  const SITE = {
+    id: 'site',
+    kind: 'region',
+    label: 'Site',
+    options: [{ code: 'arm', label: 'Arm' }],
+    side: 'side_rl',
+  };
+  const SEEN = { id: 'seen', kind: 'problem', label: 'Seen for' };
+  const GRADE = { id: 'grade', kind: 'choice', many: false, label: 'Grade', options: { list: 'demo_scale' } };
+  const inGroup = (...fields: Record<string, unknown>[]) => ({
+    id: 'detail',
+    kind: 'group',
+    label: 'Detail',
+    layout: 'stack',
+    fields,
+  });
+  broken('on a grid whose cell is a region', (f) => (status(f, 'reflexes').cell = SITE), [
+    CHECKS,
+    `${S('reflexes')}.sides`,
+    SIDES,
+  ]);
+  broken('on a grid whose cell is a problem', (f) => (status(f, 'reflexes').cell = SEEN), [
+    CHECKS,
+    `${S('reflexes')}.sides`,
+    SIDES,
+  ]);
+  // Every field in a group in the cell of a grid with sides has a path of five parts already, so
+  // these are refused twice; the rule still says what is wrong with the grid.
+  const TOO_LONG = (field: number): Expected => [
+    CHECKS,
+    `${S('reflexes')}.cell.fields[${field}]`,
+    rule('path_too_long'),
+  ];
+  broken(
+    'on a grid whose cell is a group holding a region',
+    (f) => (status(f, 'reflexes').cell = inGroup(GRADE, SITE)),
+    [CHECKS, `${S('reflexes')}.sides`, SIDES],
+    TOO_LONG(0),
+    TOO_LONG(1),
+  );
+  broken(
+    'on a grid whose cell is a group holding a problem',
+    (f) => (status(f, 'reflexes').cell = inGroup(SEEN, GRADE)),
+    [CHECKS, `${S('reflexes')}.sides`, SIDES],
+    TOO_LONG(0),
+    TOO_LONG(1),
+  );
+  broken(
+    'not on a grid whose cell is a group of choices, which only the path refuses',
+    (f) => (status(f, 'reflexes').cell = inGroup(GRADE)),
+    TOO_LONG(0),
+  );
+  fits('not on a grid without sides whose cell is a region', (f) => {
+    delete status(f, 'reflexes').sides;
+    status(f, 'reflexes').cell = SITE;
+  });
+  fits('not on a grid without sides whose cell is a problem', (f) => {
+    delete status(f, 'reflexes').sides;
+    status(f, 'reflexes').cell = SEEN;
+  });
   for (const kind of ['flag', 'time', 'duration'])
     fits(`on a ${kind}`, push({ id: 'extra', kind, label: 'Extra', sides: true }));
   fits('on a date', push({ id: 'extra', kind: 'date', label: 'Extra', range: 'any', sides: true }));

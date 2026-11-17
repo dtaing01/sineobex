@@ -502,6 +502,17 @@ function checkFlags(model: PathModel, report: Report) {
     // Right and left are one path part, the last (2.3). A grid's sides are already its cells'.
     else if (field.sides && node.grid?.field.sides)
       report(`${at}.sides`, 'sides_not_allowed', 'the grid has sides, so each of its cells already has');
+    // A region has a side of its own and a problem none, so the path model gives such a cell no
+    // side part (2.3): the grid's right and left would be stored nowhere (D80).
+    if (field.kind === 'grid' && field.sides) {
+      const unsided = unsidedIn(field.cell);
+      if (unsided)
+        report(
+          `${at}.sides`,
+          'sides_not_allowed',
+          `the grid's cell ${unsided === field.cell ? 'is' : 'holds'} a ${unsided.kind}, which takes no side from the grid`,
+        );
+    }
 
     // Complete waits for a required field to be filled (7.1). These kinds store nothing, so it
     // would wait for ever; a group and a grid store only through their fields, a region up to three
@@ -539,6 +550,17 @@ function checkFlags(model: PathModel, report: Report) {
         'a flag with sides is set for one side, and would clear the fields beside it on both',
       );
   }
+}
+
+/** The first region or problem a grid's cell is or holds in a group, which a side cannot be added to. */
+function unsidedIn(field: ResolvedField): ResolvedField | undefined {
+  if (field.kind === 'region' || field.kind === 'problem') return field;
+  if (field.kind === 'group')
+    for (const child of field.fields) {
+      const found = unsidedIn(child);
+      if (found) return found;
+    }
+  return undefined;
 }
 
 /**
