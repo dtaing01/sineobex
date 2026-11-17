@@ -1,0 +1,77 @@
+{
+  "piece": "harm-reduction",
+  "notOptions": ["−", "+", "CONNECT TO RESOURCE"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A Medical note type, sensitive.",
+      "why": "inventory A7 (PRD main 447 leaves open whether naloxone and safer-use supplies are Non-Medical); PRD main 435; lifecycle 6.4"
+    },
+    {
+      "line": 2,
+      "what": "Subsection 1 is the section Substance use.",
+      "why": "a section needs a title"
+    },
+    {
+      "line": 4,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory section 3.3, A2"
+    },
+    {
+      "line": 6,
+      "what": "Choose-one, for use overall.",
+      "why": "inventory A1, A35"
+    },
+    {
+      "line": 8,
+      "what": "Choose-one.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 10,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory A1, A2"
+    },
+    {
+      "line": 14,
+      "what": "Choose-one.",
+      "why": "inventory A36"
+    },
+    {
+      "line": 15,
+      "what": "The dose stepper shows only when Naloxone is Accepted, and starts at 1: 1 to 20 doses.",
+      "why": "inventory A36; PLAN-OPEN (forms 10.1 #1): the most doses"
+    },
+    {
+      "line": 17,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory A1, A2"
+    },
+    {
+      "line": 19,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory A1, A2"
+    },
+    {
+      "line": 20,
+      "what": "The MOUD / SUD treatment section is a treatment record: read only with a clinical credential.",
+      "why": "PRD main 145; forms 5; lifecycle 6.4"
+    },
+    {
+      "line": 27,
+      "what": "Shown for Yes and for Maybe.",
+      "why": "inventory A37a"
+    },
+    {
+      "line": 28,
+      "what": "The row has no label. Label added: Which treatment? Choose-many. Other asks for a short text.",
+      "why": "a field needs a label; inventory A1, A2"
+    },
+    {
+      "line": 29,
+      "what": "Always shown; opens Add referral.",
+      "why": "inventory A38; PRD main 113"
+    }
+  ]
+}

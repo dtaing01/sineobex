@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { listFile } from '../src/resolve.ts';
+import { listFile, noteTypeFile, SURFACE_LIST } from '../src/resolve.ts';
 import { checkFile } from '../src/schema.ts';
-import { codeOf, readShape } from '../src/shape-check.ts';
-import { LEFT_OUT, readDiff, readPieces, specWords } from '../src/spec-check.ts';
-import { OPTION_CODE, type OptionList } from '../src/types.ts';
+import { codeOf, readShape, type Shape, type ShapeField, type ShapeOption } from '../src/shape-check.ts';
+import { LEFT_OUT, readDiff, readPieces, specWords, type Diff } from '../src/spec-check.ts';
+import { OPTION_CODE, type Condition, type OptionList } from '../src/types.ts';
 
 // The files of packages/forms/definitions are well formed before any definition names them: each
 // piece of the field specification is read without a problem and is the inventories' range, and
@@ -104,6 +104,122 @@ describe('the shape and diff files', () => {
     if (shape !== undefined) expect(faults(readShape(name, shape))).toEqual([]);
   });
 });
+
+/**
+ * The note type pieces (forms-inventory.md section 8) and the definition file each is typed into.
+ * Their shape and diff files are written before any definition (forms 4.1, step 3), so what the
+ * export can only find once a definition names a piece is held here first: a slip in a plan would
+ * otherwise reach a transcription card as an instruction.
+ */
+const NOTE_PIECES: Record<string, string> = {
+  'general-1': 'note-types/general_primary_care/v1.json',
+  'general-2': 'note-types/general_primary_care/v1.json',
+  'red-flags': 'note-types/red_flags_disposition/v1.json',
+  'wound-1': 'note-types/wound_care/v1.json',
+  'wound-2': 'note-types/wound_care/v1.json',
+  'harm-reduction': 'note-types/harm_reduction/v1.json',
+  psychological: 'note-types/psychological/v1.json',
+  'sexrepro-1': 'note-types/sexual_reproductive/v1.json',
+  'sexrepro-2': 'note-types/sexual_reproductive/v1.json',
+  'sexrepro-3': 'note-types/sexual_reproductive/v1.json',
+  'social-needs': 'note-types/social_needs/v1.json',
+  outreach: 'note-types/outreach/v1.json',
+  'quick-1': 'note-types/quick_encounter/v1.json',
+  'quick-2': 'note-types/quick_encounter/v1.json',
+};
+
+describe('the plans of the note type pieces', () => {
+  const { pieces } = readPieces(specTexts());
+  const shapeOf = (name: string) => pieces[name]?.shape as Shape;
+  const diffOf = (name: string) => pieces[name]?.diff as Diff;
+  const listCodes = (name: string): string[] =>
+    (JSON.parse(read(listFile(name))) as OptionList).options.map((option) => option.code);
+
+  it.each(Object.entries(NOTE_PIECES))('%s has its shape and diff files, for %s', (name, file) => {
+    expect(pieces[name]?.shape, `${name}.shape.json`).toBeDefined();
+    expect(pieces[name]?.diff, `${name}.diff.json`).toBeDefined();
+    expect(shapeOf(name).file).toBe(file);
+  });
+
+  it.each([...new Set(Object.values(NOTE_PIECES))])(
+    'exactly one shape file gives the header of %s, a note type’s own keys',
+    (file) => {
+      const carriers = Object.keys(NOTE_PIECES).filter(
+        (name) => NOTE_PIECES[name] === file && shapeOf(name).header !== undefined,
+      );
+      expect(carriers).toHaveLength(1);
+      const header = shapeOf(carriers[0]!).header!;
+      expect(noteTypeFile(String(header.key), Number(header.version))).toBe(file);
+      // The schema reads a header only as part of a note type, so it is given one section.
+      const stub = { id: 'stub', title: 'Stub', fields: [{ id: 'stub', kind: 'info', label: 'Stub' }] };
+      expect(checkFile('noteType', { ...header, sections: [stub] })).toEqual([]);
+    },
+  );
+
+  // What the spec check finds of a diff file without a definition: a declaration that nothing in
+  // the lines needs (spec.not_option_unused, spec.added_in_piece).
+  it.each(Object.keys(NOTE_PIECES))(
+    '%s declares only words its lines hold, and adds only words they lack',
+    (name) => {
+      const words = new Set(specWords(pieces[name]?.text ?? '').words.map((word) => word.text));
+      const { notOptions, added } = diffOf(name);
+      expect(notOptions.filter((word) => !words.has(word))).toEqual([]);
+      expect(added.filter((label) => words.has(label))).toEqual([]);
+    },
+  );
+
+  it.each(Object.keys(NOTE_PIECES))('%s names only shared lists that are files of lists/', (name) => {
+    const lists = filesIn('lists');
+    for (const field of shapeOf(name).fields) {
+      for (const key of ['options', 'rows'])
+        if (isListRef(field[key])) expect(lists, field.path).toContain(`${field[key].list}.json`);
+      if (typeof field.side === 'string') expect(lists, field.path).toContain(`${field.side}.json`);
+      if (field.surface === true) expect(lists, field.path).toContain(`${SURFACE_LIST}.json`);
+    }
+  });
+
+  // The validator finds a condition that names no answer or no code once a definition is typed;
+  // in a plan the same slip would be copied into the definition first.
+  it.each([...new Set(Object.values(NOTE_PIECES))])(
+    'every condition and picked row in the plans of %s names a field of that file and its codes',
+    (file) => {
+      const names = Object.keys(NOTE_PIECES).filter((name) => NOTE_PIECES[name] === file);
+      const fields = new Map(names.flatMap((name) => shapeOf(name).fields.map((f) => [f.path, f] as const)));
+      const codesOf = (field: ShapeField | undefined): string[] | undefined => {
+        const options = field?.options;
+        if (isListRef(options)) return listCodes(options.list);
+        if (Array.isArray(options))
+          return options.map((o: ShapeOption) => (typeof o === 'string' ? o : o.code));
+        return undefined;
+      };
+      /** A condition's field from where it is written: `./x` is a field of the same section. */
+      const target = (path: string, from: string) =>
+        path.startsWith('./') ? `${from.split('.')[0]}.${path.slice(2)}` : path;
+      const check = (condition: Condition, from: string) => {
+        if ('all' in condition) return condition.all.forEach((c) => check(c, from));
+        if ('any' in condition) return condition.any.forEach((c) => check(c, from));
+        if ('not' in condition) return check(condition.not, from);
+        const field = fields.get(target(condition.field, from));
+        expect(field, `${from}: ${condition.field}`).toBeDefined();
+        if ('is' in condition)
+          for (const code of [condition.is].flat())
+            expect(codesOf(field), `${from}: ${condition.field} is ${code}`).toContain(code);
+      };
+      for (const name of names) {
+        for (const section of shapeOf(name).sections)
+          if (section.showWhen) check(section.showWhen as Condition, `${section.id}.`);
+        for (const field of shapeOf(name).fields) {
+          if (field.showWhen) check(field.showWhen as Condition, field.path);
+          const rows = field.rows as { pickedIn?: string } | undefined;
+          if (rows?.pickedIn) expect(fields.get(rows.pickedIn)?.many, `${field.path}: rows`).toBe(true);
+        }
+      }
+    },
+  );
+});
+
+const isListRef = (value: unknown): value is { list: string } =>
+  value !== null && typeof value === 'object' && 'list' in value;
 
 /**
  * The shared lists (forms 4.4): those it names, Skin's side list, and the lists the inventories'

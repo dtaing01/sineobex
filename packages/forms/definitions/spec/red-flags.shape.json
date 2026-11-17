@@ -1,0 +1,110 @@
+{
+  "piece": "red-flags",
+  "file": "note-types/red_flags_disposition/v1.json",
+  "header": {
+    "key": "red_flags_disposition",
+    "version": 1,
+    "title": "Red flags and disposition",
+    "kinds": ["medical"],
+    "group": "clinical",
+    "sensitivity": "none",
+    "auto": "medical"
+  },
+  "sections": [
+    { "id": "red_flags", "title": "Red flags" },
+    { "id": "disposition", "title": "Disposition" },
+    { "id": "follow_up", "title": "Follow up" }
+  ],
+  "fields": [
+    {
+      "path": "red_flags.emergency",
+      "kind": "choice",
+      "many": false,
+      "label": "Does the patient require emergency evaluation?",
+      "options": ["no", "uncertain", "yes"],
+      "required": true,
+      "handoff": true
+    },
+    {
+      "path": "red_flags.ems_activated",
+      "kind": "choice",
+      "many": false,
+      "label": "EMS activated?",
+      "options": ["yes", "no"],
+      "showWhen": { "field": "red_flags.emergency", "is": "yes" },
+      "handoff": true
+    },
+    {
+      "path": "red_flags.transport",
+      "kind": "choice",
+      "many": false,
+      "label": "Patient agrees to transport?",
+      "options": ["yes", "no"],
+      "showWhen": { "field": "red_flags.emergency", "is": "yes" },
+      "handoff": true
+    },
+    {
+      "path": "red_flags.no_transport_reason",
+      "kind": "choice",
+      "many": false,
+      "label": "Reason not transported",
+      "options": ["patient_declined", "capacity_concern", "other"],
+      "flags": { "other": ["other"] },
+      "showWhen": { "field": "red_flags.transport", "is": "no" },
+      "handoff": true
+    },
+    {
+      "path": "red_flags.ems_time",
+      "kind": "time",
+      "label": "Time EMS called",
+      "showWhen": { "field": "red_flags.ems_activated", "is": "yes" },
+      "required": true,
+      "handoff": true
+    },
+    {
+      "path": "red_flags.show_handoff",
+      "kind": "action",
+      "label": "Show handoff",
+      "action": "show_handoff",
+      "showWhen": { "field": "red_flags.ems_activated", "is": "yes" }
+    },
+    {
+      "path": "disposition.disposition",
+      "kind": "choice",
+      "many": true,
+      "label": "Disposition",
+      "options": [
+        "follow_up",
+        "pcp",
+        "specialty",
+        "ed",
+        "none",
+        "ems",
+        "ed_referral",
+        "transport_arranged",
+        "declined"
+      ],
+      "flags": { "exclusive": ["none"] },
+      "excludes": [
+        ["declined", "ed"],
+        ["declined", "ems"],
+        ["declined", "ed_referral"],
+        ["declined", "transport_arranged"]
+      ]
+    },
+    {
+      "path": "follow_up.when",
+      "kind": "choice",
+      "many": false,
+      "label": "Follow up",
+      "options": ["next_street_clinic", "specific_date", "prn"]
+    },
+    {
+      "path": "follow_up.date",
+      "kind": "date",
+      "label": "Follow-up date",
+      "range": "future",
+      "showWhen": { "field": "follow_up.when", "is": "specific_date" }
+    }
+  ]
+}

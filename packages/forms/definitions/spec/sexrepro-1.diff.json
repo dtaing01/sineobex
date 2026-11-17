@@ -1,0 +1,66 @@
+{
+  "piece": "sexrepro-1",
+  "notOptions": [
+    "09 / 12 / 2026",
+    "Approximate",
+    "Not done",
+    "Menstrual Health",
+    "Date of LMP",
+    "Typical Cycle: 28 days",
+    "Typical Duration: 5 days",
+    "4 / 10"
+  ],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Titled Sexual and reproductive health. A Medical note type, sensitive, in the clinical timeline group.",
+      "why": "inventory A7; PRD main 121, 435; forms 5"
+    },
+    {
+      "line": 4,
+      "what": "Choose-many. Other asks for a short text. Pregnancy, Contraception and Menstrual each show a section.",
+      "why": "inventory A1, A2; PRD main 417"
+    },
+    {
+      "line": 7,
+      "what": "The pregnancy test is first in the section, Positive or Negative: Not done is left out.",
+      "why": "PRD main 103, 417 (Oct 19); inventory A45"
+    },
+    {
+      "line": 8,
+      "what": "Choose-one, in the order written.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 11,
+      "what": "LMP is one answer, in a section of its own shown when Pregnancy or Menstrual is picked, with the flag Approximate. The date is in the past; 09 / 12 / 2026 is an example.",
+      "why": "inventory A46"
+    },
+    {
+      "line": 18,
+      "what": "Choose-one. Other asks for a short text.",
+      "why": "inventory A1, A2"
+    },
+    {
+      "line": 21,
+      "what": "If [ Menstrual Health ] is the reason Menstrual.",
+      "why": "inventory A43"
+    },
+    {
+      "line": 25,
+      "what": "The menstrual block's LMP is the one LMP answer, in the section Last menstrual period.",
+      "why": "inventory A46"
+    },
+    {
+      "line": 26,
+      "what": "Typical cycle and typical duration are empty whole numbers of days: cycle 1 to 90, duration 1 to 30. 28 and 5 are examples.",
+      "why": "PRD main 420; inventory A49; PLAN-OPEN (forms 10.1 #1): the ranges"
+    },
+    {
+      "line": 31,
+      "what": "Pain is an empty whole number out of 10; 4 / 10 is an example.",
+      "why": "PRD main 420; inventory A49"
+    }
+  ]
+}

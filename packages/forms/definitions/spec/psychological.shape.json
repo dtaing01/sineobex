@@ -1,0 +1,127 @@
+{
+  "piece": "psychological",
+  "file": "note-types/psychological/v1.json",
+  "header": {
+    "key": "psychological",
+    "version": 1,
+    "title": "Behavioral health",
+    "kinds": ["medical"],
+    "group": "psych",
+    "sensitivity": "sensitive"
+  },
+  "sections": [
+    { "id": "reason", "title": "Reason for visit" },
+    { "id": "safety", "title": "Safety" },
+    { "id": "mse", "title": "Mental status exam" },
+    { "id": "plan", "title": "Intervention and outcome" }
+  ],
+  "fields": [
+    {
+      "path": "reason.reasons",
+      "kind": "choice",
+      "many": true,
+      "label": "Reason for visit",
+      "options": [
+        "check_in",
+        "anxiety",
+        "depression",
+        "psychosis",
+        "sleep",
+        "trauma",
+        "substance_use",
+        "crisis",
+        "medication",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "reason.concern",
+      "kind": "text",
+      "label": "Current concern",
+      "lines": "many",
+      "maxLength": 2000
+    },
+    {
+      "path": "safety.suicidal",
+      "kind": "choice",
+      "many": false,
+      "label": "Suicidal thoughts",
+      "options": ["denies", "passive", "active", "unable_to_assess"],
+      "flags": { "unable": ["unable_to_assess"] }
+    },
+    {
+      "path": "safety.homicidal",
+      "kind": "choice",
+      "many": false,
+      "label": "Homicidal thoughts",
+      "options": ["denies", "active", "unable_to_assess"],
+      "flags": { "unable": ["unable_to_assess"] }
+    },
+    {
+      "path": "safety.immediate",
+      "kind": "choice",
+      "many": false,
+      "label": "Immediate safety concern",
+      "options": ["no", "yes"]
+    },
+    {
+      "path": "safety.red_flags",
+      "kind": "action",
+      "label": "Go to Red flags and disposition",
+      "action": "open_note_type",
+      "noteType": "red_flags_disposition",
+      "showWhen": {
+        "any": [
+          { "field": "safety.suicidal", "is": "active" },
+          { "field": "safety.homicidal", "is": "active" },
+          { "field": "safety.immediate", "is": "yes" }
+        ]
+      }
+    },
+    {
+      "path": "safety.assessment",
+      "kind": "text",
+      "label": "Safety assessment",
+      "lines": "many",
+      "maxLength": 2000
+    },
+    {
+      "path": "mse.notes",
+      "kind": "text",
+      "label": "Mental status exam",
+      "lines": "many",
+      "maxLength": 2000
+    },
+    {
+      "path": "plan.intervention",
+      "kind": "choice",
+      "many": true,
+      "label": "Intervention",
+      "options": [
+        "supportive_counseling",
+        "motivational_interviewing",
+        "grounding",
+        "crisis_intervention",
+        "safety_planning",
+        "psychoeducation",
+        "medication_discussion",
+        "warm_handoff",
+        "referral"
+      ]
+    },
+    {
+      "path": "plan.outcome",
+      "kind": "choice",
+      "many": true,
+      "label": "Outcome",
+      "options": [
+        "patient_engaged",
+        "follow_up_scheduled",
+        "referral_accepted",
+        "declined",
+        "crisis_response"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "piece": "wound-1",
+  "file": "note-types/wound_care/v1.json",
+  "header": {
+    "key": "wound_care",
+    "version": 1,
+    "title": "Wound care",
+    "kinds": ["medical"],
+    "group": "wound",
+    "sensitivity": "none"
+  },
+  "sections": [{ "id": "wound", "title": "Wound", "repeat": { "max": 10, "itemTitle": "Wound {n}" } }],
+  "fields": [
+    {
+      "path": "wound.location",
+      "kind": "region",
+      "label": "Location",
+      "options": { "list": "body_region" },
+      "side": "side",
+      "surface": true
+    },
+    {
+      "path": "wound.type",
+      "kind": "choice",
+      "many": false,
+      "label": "Wound type",
+      "options": { "list": "wound_type" }
+    },
+    {
+      "path": "wound.duration",
+      "kind": "choice",
+      "many": false,
+      "label": "Duration",
+      "options": [
+        { "code": "under_1_wk", "label": "<1 wk" },
+        { "code": "wk_1_to_4", "label": "1–4 wk" },
+        { "code": "mo_1_to_3", "label": "1–3 mo" },
+        { "code": "over_3_mo", "label": ">3 mo" },
+        "unknown"
+      ]
+    },
+    { "path": "wound.measurements", "kind": "group", "label": "Measurements", "layout": "row" },
+    {
+      "path": "wound.measurements.length",
+      "kind": "number",
+      "label": "Length",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.measurements.width",
+      "kind": "number",
+      "label": "Width",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.measurements.depth",
+      "kind": "number",
+      "label": "Depth",
+      "min": 0,
+      "max": 30,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.measurements.unable",
+      "kind": "flag",
+      "label": "Unable to measure",
+      "clears": ["length", "width", "depth"]
+    },
+    {
+      "path": "wound.bed",
+      "kind": "choice",
+      "many": true,
+      "label": "Wound bed",
+      "options": ["granulation", "slough", "eschar", "necrotic", "exposed_tissue", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "wound.drainage_amount",
+      "kind": "choice",
+      "many": false,
+      "label": "Drainage amount",
+      "options": { "list": "drainage_amount" }
+    },
+    {
+      "path": "wound.drainage_type",
+      "kind": "choice",
+      "many": false,
+      "label": "Drainage type",
+      "options": ["none", "serous", "serosang", "purulent"],
+      "showWhen": { "field": "./drainage_amount", "is": ["scant", "small", "moderate", "large"] }
+    },
+    {
+      "path": "wound.periwound",
+      "kind": "choice",
+      "many": true,
+      "label": "Periwound",
+      "options": ["intact", "erythema", "warmth", "edema", "maceration", "induration", "excoriation"]
+    },
+    {
+      "path": "wound.infection_concern",
+      "kind": "choice",
+      "many": false,
+      "label": "Infection concern",
+      "options": ["no", "possible", "yes", "urgent"]
+    },
+    {
+      "path": "wound.red_flags",
+      "kind": "action",
+      "label": "Go to Red flags and disposition",
+      "action": "open_note_type",
+      "noteType": "red_flags_disposition",
+      "showWhen": { "field": "./infection_concern", "is": "urgent" }
+    },
+    {
+      "path": "wound.infection",
+      "kind": "group",
+      "label": "Infection details",
+      "layout": "stack",
+      "collapsed": true
+    },
+    {
+      "path": "wound.infection.findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Infection findings",
+      "options": [
+        "increasing_redness",
+        "increasing_warmth",
+        "increasing_swelling",
+        "purulent_drainage",
+        "foul_odor",
+        "increasing_pain",
+        "fever",
+        "chills",
+        "lymphangitic_streaking"
+      ]
+    },
+    {
+      "path": "wound.infection.systemic",
+      "kind": "choice",
+      "many": true,
+      "label": "Systemic symptoms",
+      "options": ["none", "fever", "chills", "malaise", "other"],
+      "flags": { "exclusive": ["none"], "other": ["other"] }
+    }
+  ]
+}

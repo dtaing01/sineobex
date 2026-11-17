@@ -1,0 +1,57 @@
+{
+  "piece": "quick-2",
+  "notOptions": ["SOCIAL NEEDS", "Text box", "MEDICATION", "Date"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "The section shows when the visit covers SOCIAL NEEDS.",
+      "why": "inventory section 3.7"
+    },
+    {
+      "line": 3,
+      "what": "Choose-many.",
+      "why": "inventory section 3.7"
+    },
+    {
+      "line": 5,
+      "what": "Choose-many, with the codes of the shared list needs: ID Documents is the code id. Expand maps it to social_needs:needs.needs.",
+      "why": "inventory A63; PRD main 410; forms 6.4"
+    },
+    {
+      "line": 7,
+      "what": "Choose-one. Yes shows a text box: the V1 referral's details.",
+      "why": "inventory A62; PRD main 113"
+    },
+    {
+      "line": 10,
+      "what": "The Medication section shows when the visit covers MEDICATION, and needs an ordering credential.",
+      "why": "PRD main 409; forms 6.4; lifecycle 6.4"
+    },
+    {
+      "line": 12,
+      "what": "Choose-many. Records the order's category; no order is placed.",
+      "why": "inventory A60; forms 6.8"
+    },
+    {
+      "line": 14,
+      "what": "Choose-one. Yes is recorded now; phase 7 creates the delivery task.",
+      "why": "PRD main 418; forms 6.4"
+    },
+    {
+      "line": 15,
+      "what": "Shown only when Delivery is YES.",
+      "why": "inventory A61"
+    },
+    {
+      "line": 18,
+      "what": "The Assessment / Encounter Summary text box is the visit's assessment on the summary screen, not a field.",
+      "why": "inventory A56; lifecycle 9.6; forms 6.2"
+    },
+    {
+      "line": 21,
+      "what": "One Follow up section: a text box and a date in the future.",
+      "why": "inventory A57"
+    }
+  ]
+}

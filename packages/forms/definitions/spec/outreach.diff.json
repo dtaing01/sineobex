@@ -1,0 +1,42 @@
+{
+  "piece": "outreach",
+  "notOptions": ["Dictation (option in V2, not in MVP/V1)"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Outreach is a note type of its own, offered in Medical and Non-Medical encounters.",
+      "why": "inventory A8; forms 5"
+    },
+    {
+      "line": 4,
+      "what": "Choose-one.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 6,
+      "what": "Choose-one. Unable to locate changes no other field.",
+      "why": "inventory A1, A53"
+    },
+    {
+      "line": 8,
+      "what": "Choose-many.",
+      "why": "inventory section 3.6"
+    },
+    {
+      "line": 10,
+      "what": "Choose-many. No is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 13,
+      "what": "Dictation is left out.",
+      "why": "PRD main 412 (V2)"
+    },
+    {
+      "line": 15,
+      "what": "Choose-one.",
+      "why": "inventory section 3.6"
+    }
+  ]
+}

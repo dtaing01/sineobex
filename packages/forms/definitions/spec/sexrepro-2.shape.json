@@ -1,0 +1,61 @@
+{
+  "piece": "sexrepro-2",
+  "file": "note-types/sexual_reproductive/v1.json",
+  "sections": [
+    {
+      "id": "pregnant",
+      "title": "Current pregnancy",
+      "showWhen": { "field": "pregnancy.test", "is": "positive" }
+    }
+  ],
+  "fields": [
+    { "path": "pregnant.gestational_age", "kind": "duration", "label": "Gestational age" },
+    { "path": "pregnant.due_date", "kind": "date", "label": "Estimated due date", "range": "future" },
+    { "path": "pregnant.gravida", "kind": "number", "label": "Gravida", "min": 1, "max": 30, "decimals": 0 },
+    { "path": "pregnant.para", "kind": "number", "label": "Para", "min": 0, "max": 30, "decimals": 0 },
+    {
+      "path": "pregnant.history",
+      "kind": "choice",
+      "many": true,
+      "label": "Pregnancy history / current complications",
+      "options": [
+        "gestational_diabetes",
+        "gestational_hypertension",
+        "preeclampsia",
+        "eclampsia",
+        "preterm_birth",
+        "preterm_labor",
+        "placental_problems",
+        "ectopic_pregnancy",
+        "miscarriage",
+        "stillbirth",
+        "cesarean_delivery",
+        "postpartum_hemorrhage",
+        "other",
+        "none_known"
+      ],
+      "flags": { "other": ["other"], "exclusive": ["none_known"] }
+    },
+    {
+      "path": "pregnant.symptoms",
+      "kind": "choice",
+      "many": true,
+      "label": "Current symptoms",
+      "options": [
+        "vaginal_bleeding",
+        "pelvic_abdominal_pain",
+        "severe_nausea_vomiting",
+        "fever",
+        "dizziness_syncope",
+        "headache",
+        "vision_changes",
+        "swelling",
+        "leakage_of_fluid",
+        "decreased_fetal_movement",
+        "contractions",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    }
+  ]
+}

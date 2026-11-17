@@ -1,0 +1,111 @@
+{
+  "piece": "wound-1",
+  "notOptions": [
+    "WOUND 1",
+    "WOUND 2",
+    "+ ADD WOUND",
+    "Body Map",
+    "FRONT BACK",
+    "Ulcer",
+    "___ cm",
+    "Unable to Measure",
+    "Mod",
+    "+ SHOW INFECTION DETAILS"
+  ],
+  "added": [
+    "Head",
+    "Upper Body",
+    "Abdomen",
+    "Back",
+    "Arms",
+    "Legs",
+    "Lower Body",
+    "Hands",
+    "Right",
+    "Left",
+    "Bilateral",
+    "Anterior",
+    "Posterior",
+    "Venous",
+    "Arterial",
+    "Cellulitis",
+    "Moderate"
+  ],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Wound care is a Medical note type.",
+      "why": "inventory A7; forms 5"
+    },
+    {
+      "line": 4,
+      "what": "WOUND 1, WOUND 2 and + ADD WOUND are the entries of the Wound section, which repeats, up to 10, each titled Wound {n}.",
+      "why": "inventory construct 22; PLAN-OPEN (forms 10.1 #1): the most wounds in one note"
+    },
+    {
+      "line": 8,
+      "what": "Location is a body region: a region of the shared list body_region (the eight of the quick form: Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added), a side of the shared list side (Right, Left, Bilateral, added) and a surface (Anterior, Posterior, added).",
+      "why": "inventory A27; PRD main 103, 410; forms 4.4"
+    },
+    {
+      "line": 10,
+      "what": "FRONT BACK is the region's surface: Anterior or Posterior.",
+      "why": "inventory A27; forms 4.4"
+    },
+    {
+      "line": 12,
+      "what": "Wound type is choose-one from the shared list wound_type: Ulcer is replaced by Venous and Arterial (added), and Cellulitis is added (Oct 19). Other asks for a short text.",
+      "why": "inventory A1, A2, A28; PRD main 103, 410"
+    },
+    {
+      "line": 16,
+      "what": "Choose-one. The codes under_1_wk, wk_1_to_4, mo_1_to_3 and over_3_mo are given: the rule makes no code that starts with a letter from these labels.",
+      "why": "recipe step 5"
+    },
+    {
+      "line": 18,
+      "what": "Length, width and depth in cm with one decimal, typed in cm or inches and stored in cm, in one row: length and width 0.1 to 100, depth 0 to 30. Unable to Measure is a flag that clears the three.",
+      "why": "PRD main 411; inventory A29, construct 15; PLAN-OPEN (forms 10.1 #1): the ranges"
+    },
+    {
+      "line": 22,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory A1, A2"
+    },
+    {
+      "line": 27,
+      "what": "Amount is choose-one from the shared list drainage_amount, whose label is Moderate (added): Mod is the same answer.",
+      "why": "inventory section 5 (drainage amount), A63; PRD main 410"
+    },
+    {
+      "line": 29,
+      "what": "Type is choose-one, and shows only when Amount is Scant, Small, Moderate or Large.",
+      "why": "inventory A30"
+    },
+    {
+      "line": 31,
+      "what": "Choose-many. No option is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 35,
+      "what": "Choose-one. Urgent shows Go to Red flags and disposition, which opens the visit's Red flags note.",
+      "why": "inventory A31; forms 6.2, 6.7"
+    },
+    {
+      "line": 36,
+      "what": "+ SHOW INFECTION DETAILS is a group that stays closed until tapped, always there. It does not open by itself for Possible, Yes and Urgent: the format has no condition for a group's opening.",
+      "why": "inventory A31 (a departure: forms 2.2 has collapsed and no condition for it)"
+    },
+    {
+      "line": 38,
+      "what": "Choose-many. Fever and Chills stay in both rows.",
+      "why": "inventory A1, A32"
+    },
+    {
+      "line": 41,
+      "what": "Choose-many. None is exclusive. Other asks for a short text.",
+      "why": "inventory A1, A2, A4"
+    }
+  ]
+}

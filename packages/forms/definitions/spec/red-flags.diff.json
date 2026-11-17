@@ -1,0 +1,62 @@
+{
+  "piece": "red-flags",
+  "notOptions": ["10:52 AM", "Auto-generated from encounter/Export of Encounter", "COPY / SHARE HANDOFF"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Red flags, disposition and follow up are a note type of their own, added by itself with the first Medical note of a visit and completed first.",
+      "why": "forms 6.2; inventory A5, A55; PRD main 409"
+    },
+    {
+      "line": 2,
+      "what": "Required: Complete waits for an answer. It goes into the EMS handoff summary, as does every answer of the EMS branch.",
+      "why": "forms 6.2, 10.1 #6"
+    },
+    {
+      "line": 3,
+      "what": "Choose-one, with the labels as the lines write them. UNCERTAIN opens no branch; it shows in the recap.",
+      "why": "inventory A1, A18"
+    },
+    {
+      "line": 4,
+      "what": "EMS activated? and Patient agrees to transport? show when the answer is YES.",
+      "why": "forms 6.2; PRD main 413"
+    },
+    {
+      "line": 11,
+      "what": "If NO: belongs to Patient agrees to transport?: the reason shows when it is NO, labelled Reason not transported.",
+      "why": "inventory A19; PRD main 413 (reason if not)"
+    },
+    {
+      "line": 14,
+      "what": "Other asks for a short text.",
+      "why": "inventory A2"
+    },
+    {
+      "line": 16,
+      "what": "Time EMS called shows when EMS activated? is YES, and is required then. 10:52 AM is an example, not a default.",
+      "why": "forms 6.2; inventory A19; recipe (no default values)"
+    },
+    {
+      "line": 18,
+      "what": "The handoff summary is not typed: it is built from the fields marked handoff.",
+      "why": "PRD main 413; forms 7.1 (handoffLines), 10.1 #6"
+    },
+    {
+      "line": 21,
+      "what": "COPY / SHARE HANDOFF becomes Show handoff: a full-screen page with no copy and no share, offered when EMS activated? is YES.",
+      "why": "inventory A20; PRD main 413; lifecycle 9.8"
+    },
+    {
+      "line": 23,
+      "what": "Choose-many. None is exclusive. Declined cannot be held with ED, EMS, ED referral or Transport arranged. The row has no Buttons: label.",
+      "why": "PRD main 102; inventory A4, A21 (the full list of pairs is for the clinical team)"
+    },
+    {
+      "line": 25,
+      "what": "Choose-one. Specific date shows a date in the future.",
+      "why": "inventory A1, A22"
+    }
+  ]
+}

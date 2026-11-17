@@ -1,0 +1,68 @@
+{
+  "piece": "outreach",
+  "file": "note-types/outreach/v1.json",
+  "header": {
+    "key": "outreach",
+    "version": 1,
+    "title": "Outreach",
+    "kinds": ["medical", "non_medical"],
+    "group": "outreach",
+    "sensitivity": "none"
+  },
+  "sections": [{ "id": "outreach", "title": "Outreach / community encounter" }],
+  "fields": [
+    {
+      "path": "outreach.type",
+      "kind": "choice",
+      "many": false,
+      "label": "Type",
+      "options": [
+        "outreach",
+        "wellness_check",
+        "resource_distribution",
+        "navigation",
+        "follow_up_attempt",
+        "relationship"
+      ]
+    },
+    {
+      "path": "outreach.interaction",
+      "kind": "choice",
+      "many": false,
+      "label": "Interaction",
+      "options": ["spoke_with_patient", "unable_to_locate", "left_message", "spoke_with_collateral"]
+    },
+    {
+      "path": "outreach.support",
+      "kind": "choice",
+      "many": true,
+      "label": "Support provided",
+      "options": [
+        "food",
+        "clothing",
+        "hygiene",
+        "phone",
+        "charging",
+        "transportation",
+        "supplies",
+        "information"
+      ]
+    },
+    {
+      "path": "outreach.new_need",
+      "kind": "choice",
+      "many": true,
+      "label": "New need identified",
+      "options": ["no", "medical", "behavioral", "social", "emergency"],
+      "flags": { "exclusive": ["no"] }
+    },
+    { "path": "outreach.notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 },
+    {
+      "path": "outreach.follow_up",
+      "kind": "choice",
+      "many": false,
+      "label": "Follow-up",
+      "options": ["none", "patient_follow_up", "team_follow_up"]
+    }
+  ]
+}

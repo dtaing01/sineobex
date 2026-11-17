@@ -1,0 +1,131 @@
+{
+  "piece": "sexrepro-1",
+  "file": "note-types/sexual_reproductive/v1.json",
+  "header": {
+    "key": "sexual_reproductive",
+    "version": 1,
+    "title": "Sexual and reproductive health",
+    "kinds": ["medical"],
+    "group": "clinical",
+    "sensitivity": "sensitive"
+  },
+  "sections": [
+    { "id": "reason", "title": "Reason" },
+    { "id": "pregnancy", "title": "Pregnancy", "showWhen": { "field": "reason.reasons", "is": "pregnancy" } },
+    {
+      "id": "lmp",
+      "title": "Last menstrual period",
+      "showWhen": { "field": "reason.reasons", "is": ["pregnancy", "menstrual"] }
+    },
+    {
+      "id": "contraception",
+      "title": "Contraception",
+      "showWhen": { "field": "reason.reasons", "is": "contraception" }
+    },
+    {
+      "id": "menstrual",
+      "title": "Menstrual health",
+      "showWhen": { "field": "reason.reasons", "is": "menstrual" }
+    }
+  ],
+  "fields": [
+    {
+      "path": "reason.reasons",
+      "kind": "choice",
+      "many": true,
+      "label": "Reason",
+      "options": [
+        "sti_concern",
+        "sti_exposure",
+        "testing",
+        "pregnancy",
+        "contraception",
+        "prep",
+        "pep",
+        "menstrual",
+        "symptoms",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "pregnancy.test",
+      "kind": "choice",
+      "many": false,
+      "label": "Pregnancy test",
+      "options": ["positive", "negative"]
+    },
+    {
+      "path": "pregnancy.possible",
+      "kind": "choice",
+      "many": false,
+      "label": "Pregnancy possible?",
+      "options": ["no", "yes", "unsure"]
+    },
+    {
+      "path": "pregnancy.desired",
+      "kind": "choice",
+      "many": false,
+      "label": "Pregnancy desired?",
+      "options": ["yes", "unsure", "no"]
+    },
+    { "path": "lmp.date", "kind": "date", "label": "Date of last menstrual period", "range": "past" },
+    { "path": "lmp.approximate", "kind": "flag", "label": "Approximate" },
+    {
+      "path": "contraception.method",
+      "kind": "choice",
+      "many": false,
+      "label": "Current method",
+      "options": ["none", "pill", "iud", "implant", "injection", "condom", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "contraception.change",
+      "kind": "choice",
+      "many": false,
+      "label": "Interested in changing method?",
+      "options": ["yes", "no", "unsure"]
+    },
+    {
+      "path": "menstrual.status",
+      "kind": "choice",
+      "many": false,
+      "label": "Status",
+      "options": ["regular", "irregular", "amenorrhea", "postmenopausal"]
+    },
+    {
+      "path": "menstrual.cycle",
+      "kind": "number",
+      "label": "Typical cycle",
+      "min": 1,
+      "max": 90,
+      "decimals": 0,
+      "unit": "days"
+    },
+    {
+      "path": "menstrual.duration",
+      "kind": "number",
+      "label": "Typical duration",
+      "min": 1,
+      "max": 30,
+      "decimals": 0,
+      "unit": "days"
+    },
+    {
+      "path": "menstrual.heavy",
+      "kind": "choice",
+      "many": false,
+      "label": "Heavy bleeding?",
+      "options": ["no", "yes"]
+    },
+    {
+      "path": "menstrual.pain",
+      "kind": "number",
+      "label": "Pain",
+      "min": 0,
+      "max": 10,
+      "decimals": 0,
+      "display": "outOf"
+    }
+  ]
+}

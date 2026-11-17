@@ -1,0 +1,69 @@
+{
+  "piece": "quick-2",
+  "file": "note-types/quick_encounter/v1.json",
+  "sections": [
+    { "id": "social", "title": "Social needs", "showWhen": { "field": "visit.parts", "is": "social_needs" } },
+    {
+      "id": "medication",
+      "title": "Medication",
+      "showWhen": { "field": "visit.parts", "is": "medication" },
+      "needs": "orderMedications"
+    },
+    { "id": "follow_up", "title": "Follow up" }
+  ],
+  "fields": [
+    {
+      "path": "social.support",
+      "kind": "choice",
+      "many": true,
+      "label": "Support",
+      "options": ["water", "food", "hygiene_kit", "socks", "handwarmers", "ride_arranged"]
+    },
+    {
+      "path": "social.needs",
+      "kind": "choice",
+      "many": true,
+      "label": "Needs",
+      "options": ["housing", "transportation", { "code": "id", "label": "ID Documents" }, "phone", "benefits"]
+    },
+    {
+      "path": "social.referral",
+      "kind": "choice",
+      "many": false,
+      "label": "Referral",
+      "options": ["yes", "no"]
+    },
+    {
+      "path": "social.referral_details",
+      "kind": "text",
+      "label": "Referral details",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "social.referral", "is": "yes" }
+    },
+    {
+      "path": "medication.order",
+      "kind": "choice",
+      "many": true,
+      "label": "Order",
+      "options": ["otc", "prescription"]
+    },
+    {
+      "path": "medication.delivery",
+      "kind": "choice",
+      "many": false,
+      "label": "Delivery",
+      "options": ["yes", "no"]
+    },
+    {
+      "path": "medication.instructions",
+      "kind": "text",
+      "label": "Instructions for delivery",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "medication.delivery", "is": "yes" }
+    },
+    { "path": "follow_up.notes", "kind": "text", "label": "Follow up", "lines": "many", "maxLength": 2000 },
+    { "path": "follow_up.date", "kind": "date", "label": "Date of follow up", "range": "future" }
+  ]
+}

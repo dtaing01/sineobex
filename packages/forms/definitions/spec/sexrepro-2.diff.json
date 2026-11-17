@@ -1,0 +1,52 @@
+{
+  "piece": "sexrepro-2",
+  "notOptions": ["Pregnant", "weeks", "days", "date", "number", "Text box"],
+  "added": ["Other"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "The section shows when the pregnancy test is Positive.",
+      "why": "inventory A44; PRD main 417"
+    },
+    {
+      "line": 4,
+      "what": "Gestational age is a duration: weeks and days, stored as days.",
+      "why": "forms 2.3"
+    },
+    {
+      "line": 6,
+      "what": "A date in the future.",
+      "why": "inventory construct 16"
+    },
+    {
+      "line": 8,
+      "what": "Gravida is a whole number, 1 to 30.",
+      "why": "PRD main 420; inventory A47; PLAN-OPEN (forms 10.1 #1): the range"
+    },
+    {
+      "line": 10,
+      "what": "Para is a whole number of its own, 0 to 30.",
+      "why": "PRD main 420; inventory A47; PLAN-OPEN (forms 10.1 #1): the range"
+    },
+    {
+      "line": 11,
+      "what": "Choose-many. None known is exclusive.",
+      "why": "inventory A48"
+    },
+    {
+      "line": 24,
+      "what": "Other is written as a heading over its text box (added): it asks for a short text.",
+      "why": "inventory A2, A48"
+    },
+    {
+      "line": 27,
+      "what": "Choose-many. No None is added.",
+      "why": "inventory A48"
+    },
+    {
+      "line": 39,
+      "what": "Other is written as a heading over its text box (added): it asks for a short text.",
+      "why": "inventory A2, A48"
+    }
+  ]
+}

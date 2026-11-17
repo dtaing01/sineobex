@@ -1,0 +1,72 @@
+{
+  "piece": "quick-1",
+  "notOptions": ["Text box", "BP | HR | Temperature", "numbers", "in. / cm.", "Up to 5"],
+  "added": ["Cellulitis", "Other", "Right", "Left", "Bilateral"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A Medical note type with quick. Its red flags and disposition are the visit's Red flags note, added by itself.",
+      "why": "PRD main 409; forms 6.2, 6.4; inventory A55"
+    },
+    {
+      "line": 1,
+      "what": "No field carries mapsTo yet. F6-general-assemble adds each mapsTo named below, to the definition and to this piece's shape file, once every target note type exists.",
+      "why": "the card index, F6-general-assemble"
+    },
+    {
+      "line": 3,
+      "what": "Choose-many: each part picked shows its section.",
+      "why": "inventory section 3.7, A1"
+    },
+    {
+      "line": 5,
+      "what": "Chief concern goes into the EMS handoff summary. Expand maps it to general_primary_care:reason.concern.",
+      "why": "forms 6.4, 10.1 #6"
+    },
+    {
+      "line": 8,
+      "what": "Choose-one. Yes shows a text box, which Expand maps to general_primary_care:hpi.narrative.",
+      "why": "PRD main 409, 422; inventory A54; forms 6.4"
+    },
+    {
+      "line": 10,
+      "what": "Blood pressure (two numbers), heart rate and temperature, with the units and ranges of the General note's vitals, each in the EMS handoff summary. Expand maps them to general_primary_care:vitals.bp.systolic, vitals.bp.diastolic, vitals.hr and vitals.temp.",
+      "why": "inventory A10; forms 6.4, 10.1 #6"
+    },
+    {
+      "line": 12,
+      "what": "Assessment stays a field of the quick form.",
+      "why": "inventory A56"
+    },
+    {
+      "line": 15,
+      "what": "Choose-one from the shared list wound_type: Cellulitis and Other are added. Expand maps it to wound_care:wound.type.",
+      "why": "PRD main 103, 410; inventory A2, A63; forms 6.4"
+    },
+    {
+      "line": 17,
+      "what": "A body region from the shared list body_region, with a side of the shared list side (Right, Left, Bilateral, added). Expand maps it to wound_care:wound.location.",
+      "why": "PRD main 103, 410; inventory A58; forms 6.4"
+    },
+    {
+      "line": 19,
+      "what": "Length, width and depth in one row, typed in cm or inches and stored in cm, with the ranges of the Wound care note. Expand maps them to wound_care:wound.measurements.length, .width and .depth.",
+      "why": "PRD main 404, 411; inventory A29, A59; forms 6.4"
+    },
+    {
+      "line": 21,
+      "what": "Choose-one from the shared list drainage_amount. Expand maps it to wound_care:wound.drainage_amount.",
+      "why": "PRD main 410; forms 6.4"
+    },
+    {
+      "line": 23,
+      "what": "Choose-many. The four chips have the shared list dressing's codes, and Other (added) asks for a short text. Expand maps it to wound_care:treatment.dressing.",
+      "why": "PRD main 103 (Oct 19), 410; inventory A63; forms 6.4"
+    },
+    {
+      "line": 25,
+      "what": "A photo field, up to 5, a placeholder until phase 8.",
+      "why": "forms 6.8"
+    }
+  ]
+}

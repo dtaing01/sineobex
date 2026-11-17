@@ -1,0 +1,81 @@
+{
+  "piece": "general-1",
+  "notOptions": [
+    "Text box titled Chief Concern",
+    "Dictation (option in V2, not in MVP/V1)",
+    "+ ADD VITAL",
+    "General",
+    "HEENT",
+    "CV",
+    "Resp",
+    "Abdomen",
+    "Neuro",
+    "MSK",
+    "Skin",
+    "GU",
+    "+ ADD ANOTHER MODALITY"
+  ],
+  "added": [],
+  "differences": [
+    {
+      "line": 4,
+      "what": "Choose-many. Other asks for a short text.",
+      "why": "inventory A1 (section 3.1: many?), A2"
+    },
+    {
+      "line": 5,
+      "what": "The text box is the field Chief concern. It goes into the EMS handoff summary.",
+      "why": "forms 10.1 #6"
+    },
+    {
+      "line": 8,
+      "what": "Titled Chief Concern in the lines; it is its own text box, labelled History of present illness.",
+      "why": "inventory A11; PRD main 98, 420"
+    },
+    {
+      "line": 9,
+      "what": "Dictation is left out: the text box takes the phone keyboard's own microphone.",
+      "why": "PRD main 412 (V2)"
+    },
+    {
+      "line": 13,
+      "what": "Status is asked once for each vaccine picked: a grid whose rows are the vaccines picked, its cell choose-one.",
+      "why": "inventory construct 24, A1"
+    },
+    {
+      "line": 14,
+      "what": "Given today records no lot number or expiry here: the supply confirmation screen captures them.",
+      "why": "inventory A25; PRD main 426"
+    },
+    {
+      "line": 17,
+      "what": "Action is asked once for each screening picked: a grid whose rows are the screenings picked, its cell choose-many. The row has no Buttons: label.",
+      "why": "inventory A12, A24; PRD main 431 (the supply mapping fires on the action)"
+    },
+    {
+      "line": 20,
+      "what": "Six numbers, each in the EMS handoff summary. Blood pressure is two whole numbers in mmHg (systolic 40 to 300, diastolic 20 to 200); heart rate 20 to 300 bpm; SpO₂ 50 to 100 %; respiratory rate 4 to 80 breaths/min; temperature 70 to 115 °F with one decimal; pain a whole number out of 10.",
+      "why": "PLAN-OPEN (forms 10.1 #1): units and ranges of the vitals, inventory A10, to confirm with the clinical team; forms 10.1 #6 for the handoff"
+    },
+    {
+      "line": 20,
+      "what": "Temperature is in °F only. A10 asks for a °C switch, and a number's second unit is a factor (altUnit perUnit), which °C to °F is not.",
+      "why": "inventory A10; forms 2.2 (a departure, for the format's owner)"
+    },
+    {
+      "line": 21,
+      "what": "ADD VITAL: the Vitals section repeats, up to 10 sets, each an entry of its own; an entry's time is when it was added.",
+      "why": "inventory A13; forms 2.3; PLAN-OPEN (forms 10.1 #1): the most sets of vitals in one note"
+    },
+    {
+      "line": 22,
+      "what": "The ten-button Focused Exam row is not typed here. The exam picker is the section exam of the piece exam-picker, after Vitals, with every system of the Focused Exam.",
+      "why": "inventory A14; PRD main 414; forms 6.3"
+    },
+    {
+      "line": 24,
+      "what": "ADD ANOTHER MODALITY is the picker's [+ Add exam], in the piece exam-picker.",
+      "why": "inventory A15; PRD main 414"
+    }
+  ]
+}

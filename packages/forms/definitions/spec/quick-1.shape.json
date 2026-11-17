@@ -1,0 +1,159 @@
+{
+  "piece": "quick-1",
+  "file": "note-types/quick_encounter/v1.json",
+  "header": {
+    "key": "quick_encounter",
+    "version": 1,
+    "title": "Quick encounter",
+    "kinds": ["medical"],
+    "group": "clinical",
+    "sensitivity": "none",
+    "quick": true
+  },
+  "sections": [
+    { "id": "visit", "title": "Visit" },
+    { "id": "general", "title": "General", "showWhen": { "field": "visit.parts", "is": "general" } },
+    { "id": "wound", "title": "Wound", "showWhen": { "field": "visit.parts", "is": "wound" } }
+  ],
+  "fields": [
+    {
+      "path": "visit.parts",
+      "kind": "choice",
+      "many": true,
+      "label": "What does this visit cover?",
+      "options": ["general", "wound", "social_needs", "medication"]
+    },
+    {
+      "path": "general.concern",
+      "kind": "text",
+      "label": "Chief concern",
+      "lines": "many",
+      "maxLength": 2000,
+      "handoff": true
+    },
+    {
+      "path": "general.hpi",
+      "kind": "choice",
+      "many": false,
+      "label": "History of present illness",
+      "options": ["yes", "no", "unknown"]
+    },
+    {
+      "path": "general.hpi_details",
+      "kind": "text",
+      "label": "Describe the history of present illness",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "general.hpi", "is": "yes" }
+    },
+    { "path": "general.bp", "kind": "group", "label": "Blood pressure", "layout": "row" },
+    {
+      "path": "general.bp.systolic",
+      "kind": "number",
+      "label": "Systolic",
+      "min": 40,
+      "max": 300,
+      "decimals": 0,
+      "unit": "mmHg",
+      "handoff": true
+    },
+    {
+      "path": "general.bp.diastolic",
+      "kind": "number",
+      "label": "Diastolic",
+      "min": 20,
+      "max": 200,
+      "decimals": 0,
+      "unit": "mmHg",
+      "handoff": true
+    },
+    {
+      "path": "general.hr",
+      "kind": "number",
+      "label": "Heart rate",
+      "min": 20,
+      "max": 300,
+      "decimals": 0,
+      "unit": "bpm",
+      "handoff": true
+    },
+    {
+      "path": "general.temp",
+      "kind": "number",
+      "label": "Temperature",
+      "min": 70,
+      "max": 115,
+      "decimals": 1,
+      "unit": "°F",
+      "handoff": true
+    },
+    {
+      "path": "general.assessment",
+      "kind": "text",
+      "label": "Assessment",
+      "lines": "many",
+      "maxLength": 2000
+    },
+    {
+      "path": "wound.type",
+      "kind": "choice",
+      "many": false,
+      "label": "Wound type",
+      "options": { "list": "wound_type" }
+    },
+    {
+      "path": "wound.location",
+      "kind": "region",
+      "label": "Location",
+      "options": { "list": "body_region" },
+      "side": "side"
+    },
+    { "path": "wound.dimensions", "kind": "group", "label": "Dimensions (L × W × D)", "layout": "row" },
+    {
+      "path": "wound.dimensions.length",
+      "kind": "number",
+      "label": "Length",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.dimensions.width",
+      "kind": "number",
+      "label": "Width",
+      "min": 0.1,
+      "max": 100,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.dimensions.depth",
+      "kind": "number",
+      "label": "Depth",
+      "min": 0,
+      "max": 30,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "wound.drainage",
+      "kind": "choice",
+      "many": false,
+      "label": "Drainage",
+      "options": { "list": "drainage_amount" }
+    },
+    {
+      "path": "wound.dressing",
+      "kind": "choice",
+      "many": true,
+      "label": "Dressing applied",
+      "options": ["gauze", "abd", "xeroform", "compression", "other"],
+      "flags": { "other": ["other"] }
+    },
+    { "path": "wound.photos", "kind": "photo", "label": "Photos", "max": 5 }
+  ]
+}

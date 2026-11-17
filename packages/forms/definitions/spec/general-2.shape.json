@@ -1,0 +1,25 @@
+{
+  "piece": "general-2",
+  "file": "note-types/general_primary_care/v1.json",
+  "sections": [
+    { "id": "problems", "title": "Assessment", "repeat": { "max": 10, "itemTitle": "Problem {n}" } }
+  ],
+  "fields": [
+    { "path": "problems.diagnosis", "kind": "problem", "label": "Diagnosis or problem" },
+    {
+      "path": "problems.status",
+      "kind": "choice",
+      "many": false,
+      "label": "Status",
+      "options": ["new", "chronic", "improving", "worse"]
+    },
+    {
+      "path": "problems.interventions",
+      "kind": "choice",
+      "many": true,
+      "label": "Intervention",
+      "options": ["education", "medication", "testing", "referral", "supplies", "procedure", "other"],
+      "flags": { "other": ["other"] }
+    }
+  ]
+}

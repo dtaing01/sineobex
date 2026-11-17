@@ -1,0 +1,42 @@
+{
+  "piece": "wound-2",
+  "notOptions": ["Retake photo", "Add another photo", "Submit photo"],
+  "added": [],
+  "differences": [
+    {
+      "line": 2,
+      "what": "WOUND TREATMENT is one section for the note, not one for each wound: a section names one piece, and wound-1 and wound-2 are two pieces, so the treatment cannot sit inside the repeating Wound section.",
+      "why": "inventory A26 asks for each wound; a departure, for the clinical team"
+    },
+    {
+      "line": 4,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 6,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 8,
+      "what": "Choose-many from the shared list dressing. Other asks for a short text.",
+      "why": "PRD main 103, 410; inventory A2"
+    },
+    {
+      "line": 12,
+      "what": "Choose-many. None is exclusive. The answer is recorded; the order is placed in Orders.",
+      "why": "inventory A1, A4, A34a"
+    },
+    {
+      "line": 13,
+      "what": "TAKE WOUND PHOTO is a photo field, up to 5, a placeholder until phase 8. Its three buttons are the capture flow, not options.",
+      "why": "inventory A33; forms 6.8"
+    },
+    {
+      "line": 16,
+      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels.",
+      "why": "inventory A1; recipe step 5"
+    }
+  ]
+}

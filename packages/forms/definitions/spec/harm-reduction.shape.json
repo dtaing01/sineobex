@@ -1,0 +1,135 @@
+{
+  "piece": "harm-reduction",
+  "file": "note-types/harm_reduction/v1.json",
+  "header": {
+    "key": "harm_reduction",
+    "version": 1,
+    "title": "Harm reduction",
+    "kinds": ["medical"],
+    "group": "harm_reduction",
+    "sensitivity": "sensitive"
+  },
+  "sections": [
+    { "id": "use", "title": "Substance use" },
+    { "id": "provided", "title": "Harm reduction provided" },
+    { "id": "treatment", "title": "MOUD / SUD treatment", "treatmentRecord": true }
+  ],
+  "fields": [
+    {
+      "path": "use.substances",
+      "kind": "choice",
+      "many": true,
+      "label": "Substances",
+      "options": [
+        "opioids",
+        "fentanyl",
+        "stimulants",
+        "alcohol",
+        "benzodiazepines",
+        "cannabis",
+        "tobacco",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "use.last_use",
+      "kind": "choice",
+      "many": false,
+      "label": "Last use",
+      "options": ["today", "past_week", "past_month", "not_currently", "unknown"]
+    },
+    {
+      "path": "use.overdose_history",
+      "kind": "choice",
+      "many": false,
+      "label": "Overdose history",
+      "options": ["never", "previous_overdose", "recent_overdose", "unknown"]
+    },
+    {
+      "path": "use.risk_factors",
+      "kind": "choice",
+      "many": true,
+      "label": "Risk factors",
+      "options": ["using_alone", "mixing_substances", "reduced_tolerance", "fentanyl_exposure", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "provided.naloxone",
+      "kind": "choice",
+      "many": false,
+      "label": "Naloxone",
+      "options": ["offered", "accepted", "declined", "already_has"]
+    },
+    {
+      "path": "provided.naloxone_doses",
+      "kind": "number",
+      "label": "Doses",
+      "min": 1,
+      "max": 20,
+      "decimals": 0,
+      "unit": "doses",
+      "display": "stepper",
+      "showWhen": { "field": "provided.naloxone", "is": "accepted" }
+    },
+    {
+      "path": "provided.supplies",
+      "kind": "choice",
+      "many": true,
+      "label": "Supplies",
+      "options": [
+        "fentanyl_strips",
+        "safer_use_supplies",
+        "sharps",
+        "safer_smoking_supplies",
+        "condoms",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "provided.education",
+      "kind": "choice",
+      "many": true,
+      "label": "Education",
+      "options": ["overdose_response", "safer_use", "never_use_alone", "moud", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "treatment.receiving",
+      "kind": "choice",
+      "many": false,
+      "label": "Currently receiving treatment?",
+      "options": ["yes", "no", "unknown"]
+    },
+    {
+      "path": "treatment.discussed",
+      "kind": "choice",
+      "many": false,
+      "label": "Treatment discussed?",
+      "options": ["yes", "no"]
+    },
+    {
+      "path": "treatment.interested",
+      "kind": "choice",
+      "many": false,
+      "label": "Interested in treatment?",
+      "options": ["yes", "maybe", "no"]
+    },
+    {
+      "path": "treatment.interested_in",
+      "kind": "choice",
+      "many": true,
+      "label": "Which treatment?",
+      "showWhen": { "field": "treatment.interested", "is": ["yes", "maybe"] },
+      "options": ["buprenorphine", "methadone", "naltrexone", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "treatment.connect",
+      "kind": "action",
+      "label": "Connect to resource",
+      "action": "add_referral"
+    }
+  ]
+}

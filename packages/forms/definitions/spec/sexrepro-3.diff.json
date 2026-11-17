@@ -1,0 +1,27 @@
+{
+  "piece": "sexrepro-3",
+  "notOptions": [],
+  "added": ["Positive", "Negative", "Pending", "Unknown"],
+  "differences": [
+    {
+      "line": 2,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 3,
+      "what": "Testing becomes Testing history: a repeating section, up to 10, each titled Test {n}, with the test (choose-one), its date and its result, Positive, Negative, Pending or Unknown (added).",
+      "why": "PRD main 103 (Oct 19); inventory A34; PLAN-OPEN (forms 10.1 #1): the result options and the most tests"
+    },
+    {
+      "line": 6,
+      "what": "Choose-many.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 8,
+      "what": "Choose-many. None is exclusive. The row has no Buttons: label.",
+      "why": "inventory A1, A4"
+    }
+  ]
+}
