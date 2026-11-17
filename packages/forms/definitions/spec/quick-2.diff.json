@@ -20,7 +20,7 @@
     },
     {
       "line": 7,
-      "what": "Choose-one. Yes shows a text box: the V1 referral's details.",
+      "what": "Choose-one, labelled as the line writes them: Yes and No (codes yes, no). Yes shows a text box: the V1 referral's details.",
       "why": "inventory A62; PRD main 113"
     },
     {
@@ -35,7 +35,7 @@
     },
     {
       "line": 14,
-      "what": "Choose-one. Yes is recorded now; phase 7 creates the delivery task.",
+      "what": "Choose-one, labelled as the line writes them: YES and NO (codes yes, no), unlike Referral at line 7. Yes is recorded now; phase 7 creates the delivery task.",
       "why": "PRD main 418; forms 6.4"
     },
     {
