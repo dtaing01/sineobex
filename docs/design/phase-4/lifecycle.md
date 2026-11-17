@@ -1423,6 +1423,50 @@ noteContentHash = sha256Hex(canonicalJson({
 - A co-signer or attester hashes the same thing, so they must be able to see every answer that
   counts (3.7, 6.4).
 
+As built (unit L0, on the forms interpreter of units F1 and F2):
+
+- **What is hashed** is the canonical JSON of the map above, as `noteContent` builds it in
+  `services/api/src/encounters/content-hash.ts` and `apps/mobile/lib/encounters/content_hash.dart`.
+  Each takes the note's ID, its encounter's ID, the encounter's patient and summary, the
+  definition of the note's own version, and the note's data as stored. `noteTypeKey` and
+  `noteTypeVersion` are read from that definition, never passed apart from it. `answers` is
+  `effectiveAnswers(definition, data)` (forms 7.1): blanks, answers `checkAnswer` refuses, and
+  answers in a hidden field, a hidden section or a removed entry are left out; an entry that is
+  there keeps its `entryAt`. No reader's filter is applied: the hash is taken before
+  `visibleAnswers`.
+- **The canonical form** is the change hashes' own, pinned by `canonical-json.json`: keys in
+  UTF-16 code-unit order at every depth, so the eight come as `answers`, `encounterId`, `noteId`,
+  `noteTypeKey`, `noteTypeVersion`, `patientId`, `summary`, `v`; no whitespace; a whole number
+  with no decimal point (37.0 is `37`) and any other number in its shortest round-trip form, -0
+  as 0; only the quote, the backslash and the characters below U+0020 escaped, every other
+  character as it is. The hash is the lowercase hex SHA-256 of the text's UTF-8 bytes,
+  `noteContentHash`: async in TypeScript, as WebCrypto's digest is, and not in Dart.
+- **A missing patient or summary is `null`, never left out.** Canonical JSON drops a key whose
+  value is undefined, so the TypeScript `noteContent` writes `patientId ?? null` and
+  `summary ?? null`. An encounter read from the database with no summary would otherwise hash
+  without the key the phone always writes, and every Complete on it would be refused with
+  `content_changed`. In Dart both are required parameters, and may be null.
+- **The vectors**: `packages/contract/test-vectors/note-content-hash.json` is `{ note, cases }`,
+  21 cases. A case has `name`, an optional `why`, `definition` (the name of one of
+  `forms-conformance.json`'s definitions, which both interpreters already read), `noteId`,
+  `encounterId`, `patientId`, `summary` and `answers`, and expects `effective` (what
+  `effectiveAnswers` gives, key for key and in order), `content` (the canonical text) and `hash`.
+  `sameHashAs` names a case whose hash must be the same, and every other two cases must differ.
+  The text and the hash were worked out apart from both implementations. Between them the cases
+  change the patient, the summary, the note and the version one at a time, store the same answers
+  in another order, and give no patient, no summary, no answers, a hidden field, a hidden section,
+  a removed entry, blanks, zero, an answer `checkAnswer` refuses, text with quotes, a tab, a line
+  break, accents and an emoji, and numbers written three ways.
+- **The readers** are `services/api/test/note-content-hash.test.ts` and
+  `apps/mobile/test/encounters/content_hash_test.dart`. Neither holds an answer of its own. Each
+  refuses a case with a key it does not read or without one it needs, holds the `sameHashAs`
+  pairs together and every other case apart, and for each case checks `effective` against its
+  own interpreter's `effectiveAnswers`, key order included, then `content` and `hash`. The
+  TypeScript reader also holds that a missing patient or summary hashes as `null`, which a vector
+  cannot say: JSON has no undefined.
+- **Nothing calls them yet.** The sign-off (4.6) will call the TypeScript one, in unit L1, and
+  `finishNotes` (4.8) the Dart one, in unit L3.
+
 ### 4.6 The sign-off
 
 `note_signoff` is a create-only entity. Its value:
@@ -2383,7 +2427,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | Overdue after 24 hours, worked out when read | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` |
 | No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts`; parity case 3 |
 | The clock pause covers sign-offs, addenda and corrections, not referrals | 3.11 | `apps/mobile/test/sync/store_encounters_test.dart` |
-| The content hash | 4.5 | `note-content-hash.json` on both sides; parity case 8 |
+| The content hash | 4.5 | `note-content-hash.json` through `services/api/test/note-content-hash.test.ts` and `apps/mobile/test/encounters/content_hash_test.dart`; a missing patient or summary hashed as `null`, in the TypeScript test alone (a vector cannot hold undefined); parity case 8 |
 | The Medical gate holds a change for review | 4.2 | `sync-encounters.test.ts`; parity case 12 |
 | Every encounter-side change takes the team lock | 4.2 | `services/api/test/sync-concurrency.test.ts` (two sign-offs and a kind change at once) |
 | Each route's permission, and its refusal logged | 5, 6.1 | `services/api/test/permissions.test.ts` |
