@@ -706,6 +706,17 @@ void main() {
     });
 
     group('the note’s create (lifecycle 4.4)', () {
+      test('a version past the largest a change may name is refused by the schema, and the queue goes on', () async {
+        final visit = visitOf();
+        final past = change(entityNote, 'create', {...noteValue(visit, testNote), 'noteTypeVersion': 3000000000});
+        final known = change(entityNote, 'create', noteValue(visit, testNote));
+        final answers = await send(alex, [past, known]);
+        expect(answers.first, refusedAt('noteTypeVersion'));
+        expect(answers.last, taken(known, 1));
+        // Sent again, it answers the same from its receipt, and the queue still moves.
+        expect((await send(alex, [past])).single['status'], 'rejected');
+      });
+
       test('names a key and version the team holds, or is refused unknown_note_type, and the queue goes on', () async {
         final id = visitOf(patientId: server.seedPatient());
         final unknown = [

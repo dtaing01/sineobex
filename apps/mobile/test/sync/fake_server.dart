@@ -800,6 +800,11 @@ class FakeSyncServer {
     final issues = rules.createIssues(value);
     if (issues.isNotEmpty) return _rejected('validation', _problems(issues));
     final v = value! as Map<String, Object?>;
+    // records.ts NoteCreate bounds the version as every version a change names is (review finding
+    // FAK-1). The phone's registry does not yet; once it does, createIssues answers this first.
+    if (rules.entity == entityNote && v['noteTypeVersion'] is int && (v['noteTypeVersion']! as int) > maxVersion) {
+      return _rejected('validation', _problems({'noteTypeVersion'}));
+    }
     final problem = rules.valueProblem('create', null, v, _today);
     if (problem != null) return _invalid(problem);
     for (final p in rules.parentsOfCreate(v)) {

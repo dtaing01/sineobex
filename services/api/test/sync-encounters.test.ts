@@ -513,6 +513,21 @@ describe('phase 4 sync: encounters and notes', () => {
       expect(events.map((e) => e.details.problem)).toEqual(unknown.map(() => 'unknown_note_type'));
     });
 
+    it('a version past the largest a change may name is refused by the schema, and the queue goes on', async () => {
+      const encounterId = await encounterOf(drew, patientId);
+      const past = await noteCreate(drew, encounterId, { ...TEST_NOTE, noteTypeVersion: 3_000_000_000 });
+      const known = await noteCreate(drew, encounterId, TEST_NOTE);
+      const [refusedPast, taken] = await drew.send(past, known);
+      expect(refusedPast).toMatchObject({
+        status: 'rejected',
+        reason: 'validation',
+        details: { problems: [{ path: 'noteTypeVersion' }] },
+      });
+      expect(taken).toEqual(accepted(known));
+      // Sent again, it answers the same from its receipt, and the queue still moves.
+      expect((await drew.send(past)).map((r) => r.status)).toEqual(['rejected']);
+    });
+
     it('a Medical note needs a visit that names a patient, ahead of the Medical gate; named, the same create is taken', async () => {
       const encounterId = await encounterOf(drew);
       const medical = await noteCreate(drew, encounterId, { ...TEST_MEDICAL, data: { 'vitals.pulse': 88 } });

@@ -15,6 +15,7 @@ import { SENSITIVE_CODE_RANGES } from '../patients/generated/sensitive-codes.ts'
 import { Uuid } from '../routes/schemas.ts';
 import { canonicalJson } from './canonical.ts';
 import type { ParentRef } from './entities/values.ts';
+import { MAX_VERSION } from './schemas.ts';
 import type {
   AnyRecordEntityName,
   FieldStateValue,
@@ -138,7 +139,9 @@ export const NoteCreate = z
   .object({
     encounterId: Uuid,
     noteTypeKey: NoteTypeKey,
-    noteTypeVersion: z.number().int().min(1).nullable().optional(),
+    // A version past Postgres's integer would fail its read with a database error, which stops a
+    // push (review finding FAK-1): refused here, as every version a change names is.
+    noteTypeVersion: z.number().int().min(1).max(MAX_VERSION).nullable().optional(),
     data: z
       .record(DataPath, JsonValue)
       .refine((d) => Object.keys(d).length <= MAX_NOTE_FIELDS, { message: 'too_many_fields' })
