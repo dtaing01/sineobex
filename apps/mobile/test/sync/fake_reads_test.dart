@@ -581,6 +581,54 @@ void main() {
         );
       });
 
+      test('a sign-off’s content hash goes only to whoever acts as the author, its signer, and a reader who sees every answer of any note', () async {
+        const wes = 'f0000000-0000-4000-8000-0000000000e5';
+        server.credentials[wes] = 'attending';
+        server.permissions[wes] = {
+          'patients.view',
+          'encounters.chart',
+          'patients.view_sensitive',
+          'patients.view_sensitive_exams',
+        };
+        final v = visit();
+        // One note with a GU exam, one with none: whether a reader gets the hash says nothing of which.
+        final gu = noteOn(v, testRestricted, const {
+          'general.notes': 'Demo: walked over',
+          'systems.seen': ['heart', 'gu'],
+        });
+        final plain = noteOn(v, testRestricted, const {
+          'general.notes': 'Demo: walked over',
+          'systems.seen': ['heart'],
+        });
+        final signoffs = [finish(gu, 'complete'), finish(plain, 'complete')];
+        final refs = [for (final s in signoffs) (entitySignoff, s)];
+        Future<List<Object?>> hashes(String user) async => [
+          for (final r in (await read(user, refs)).records) r.attributes['contentHash'],
+        ];
+        final signed = [for (final s in signoffs) server.records[s]!.attributes['contentHash']];
+        expect(signed, everyElement(isNotNull));
+        expect(await hashes(alex), signed);
+        expect(await hashes(wes), signed);
+        // Shown [heart] on both, Ben could hash each guess of what is hidden against it.
+        expect(await hashes(ben), [null, null]);
+        expect(await hashes(dee), [null, null]);
+        // The admin holds every key and no credential that charts Medical: a treatment record is hidden.
+        expect(await hashes(admin), [null, null]);
+        // The rest of the sign-off is read as it was.
+        expect(
+          [
+            for (final r in (await read(ben, refs)).records) [r.id, r.attributes['effect'], r.attributes['act']],
+          ],
+          [
+            for (final s in signoffs) [s, 'completed', 'complete'],
+          ],
+        );
+        // Its signer reads it whole, whoever acts as the author now (3.8).
+        server.records[gu]!.assignedTo = sky;
+        expect((await hashes(alex)).first, signed.first);
+        expect((await hashes(sky)).first, signed.first);
+      });
+
       test(
         'a correction is missing for a reader who may not see an answer it changes, in its old value or its new',
         () async {

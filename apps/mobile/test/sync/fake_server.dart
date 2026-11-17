@@ -3046,8 +3046,19 @@ class FakeSyncServer {
             : null;
       case entityNote:
         return _noteAsRead(userId, perms, r)?.snapshot;
+      // Its hash only to whoever acts as the author, its signer, and a reader who sees every answer of
+      // any note (review.ts readsWhole): hashed again over what is shown, it would say what is hidden.
       case entitySignoff:
-        return _noteAsRead(userId, perms, records[r.attributes['noteId']]) == null ? null : _readSnapshot(r);
+        final read = _noteAsRead(userId, perms, records[r.attributes['noteId']]);
+        if (read == null) return null;
+        final shown = _readSnapshot(r);
+        final reader = read.reader;
+        final whole = reader.readsMedical && reader.viewSensitive && reader.viewSensitiveExams && reader.chartsMedical;
+        if (reader.actsAsAuthor || r.author == userId || whole) return shown;
+        return {
+          ...shown,
+          'attributes': {...r.attributes}..remove('contentHash'),
+        };
       // An addendum to the visit itself is read with the visit.
       case entityAddendum:
         final noteId = r.attributes['noteId'];

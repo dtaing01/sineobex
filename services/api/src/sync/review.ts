@@ -311,6 +311,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      * leaves out the answers the reader may not see (lifecycle 6.4), and what hangs off a note goes
      * with it: its sign-offs, its addenda, and a correction, which is also missing when one of the
      * answers it changes is hidden from the reader, since its old or new value would give it away.
+     * A sign-off's content hash goes only to whoever acts as the author, its signer, and a reader
+     * who sees every answer of any note (readsWhole).
      */
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
@@ -323,8 +325,15 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         }
         case 'encounter_note':
           return (await noteAsRead(record))?.note ?? null;
-        case 'note_signoff':
-          return (await noteAsRead(await noteOf(record))) ? record : null;
+        case 'note_signoff': {
+          const read = await noteAsRead(await noteOf(record));
+          if (!read) return null;
+          return read.reader.actsAsAuthor ||
+            record.authorUserId === scope.principal.userId ||
+            readsWhole(read.reader)
+            ? record
+            : withoutHash(record);
+        }
         case 'note_addendum':
           // An addendum to the visit itself is read with the visit.
           return record.attributes.noteId === null || (await noteAsRead(await noteOf(record)))
@@ -417,6 +426,24 @@ const NOTE_SIDE: ReadonlySet<AnyRecordEntityName> = new Set([
   'note_addendum',
   'note_correction',
 ]);
+
+/**
+ * A reader who sees every answer that counts in any note (lifecycle 6.4 rule 4): every key that
+ * hides an answer and a credential that charts Medical. Asked of the reader, never of what the
+ * note holds, so whether a sign-off's hash is sent tells nothing of the note.
+ */
+const readsWhole = (reader: NoteReader) =>
+  reader.readsMedical && reader.viewSensitive && reader.viewSensitiveExams && reader.chartsMedical;
+
+/**
+ * A sign-off without the hash of what was signed (lifecycle 6.4 rule 4, review findings NOT-5 and
+ * RD-1): hashed again over what the reader is shown, with each guess of what is hidden, it would
+ * say which guess was charted.
+ */
+function withoutHash(signoff: StoredRecord): StoredRecord {
+  const { contentHash: _, ...attributes } = signoff.attributes;
+  return { ...signoff, attributes };
+}
 
 /** A note with only [shown] for answers, each at the value shown: a hidden one leaves no key. */
 function onlyAnswers(note: StoredRecord, shown: Record<string, unknown>): StoredRecord {

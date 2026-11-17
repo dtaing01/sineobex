@@ -394,6 +394,67 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await read(eli.token, [referralRef])).status).toBe(403);
     });
 
+    it('a sign-off’s content hash goes only to whoever acts as the author, its signer, and a reader who sees every answer of any note', async () => {
+      const role = await call(h, '/v1/team/roles', {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: {
+          name: 'Reads every note',
+          permissions: [
+            'patients.view',
+            'encounters.chart',
+            'patients.view_sensitive',
+            'patients.view_sensitive_exams',
+          ],
+        },
+      });
+      expect(role.status).toBe(201);
+      const wes = await clinician(
+        h,
+        t,
+        'wes@example.com',
+        'Wes (demo)',
+        'attending',
+        role.body.key as string,
+      );
+      const visit = await visitOf(ana, patientId);
+      // One note with a GU exam, one with none: whether a reader gets the hash says nothing of which.
+      const gu = await noteOn(ana, visit, TEST_RESTRICTED_TYPE, {
+        'general.notes': 'Demo: walked over',
+        'systems.seen': ['heart', 'gu'],
+      });
+      const plain = await noteOn(ana, visit, TEST_RESTRICTED_TYPE, {
+        'general.notes': 'Demo: walked over',
+        'systems.seen': ['heart'],
+      });
+      const signoffs = [
+        await finishNote(ana, gu, 'complete', 'completed'),
+        await finishNote(ana, plain, 'complete', 'completed'),
+      ];
+      const refs = signoffs.map((c) => ({ entity: 'note_signoff', id: c.recordId }));
+      const hashes = async (c: { token: string }) =>
+        (await read(c.token, refs)).records.map((r) => r.attributes.contentHash ?? null);
+      const signed = signoffs.map((c) => (c.value as { contentHash: string }).contentHash);
+      expect(await hashes(ana)).toEqual(signed);
+      expect(await hashes(wes)).toEqual(signed);
+      // Shown [heart] on both, Ben could hash each guess of what is hidden against it.
+      expect(await hashes(ben)).toEqual([null, null]);
+      expect(await hashes(dee)).toEqual([null, null]);
+      // The admin holds every key and no credential that charts Medical: a treatment record is hidden.
+      expect(await hashes(admin())).toEqual([null, null]);
+      // The rest of the sign-off is read as it was.
+      const bens = (await read(ben.token, refs)).records;
+      expect(bens.map((r) => [r.id, r.attributes.effect, r.attributes.act])).toEqual(
+        signoffs.map((c) => [c.recordId, 'completed', 'complete']),
+      );
+      // Its signer reads it whole, whoever acts as the author now (3.8).
+      await h.scratch
+        .owner`update sineobex.encounter_notes set assigned_user_id = ${sky.id} where id = ${gu.noteId}`;
+      expect((await hashes(ana))[0]).toBe(signed[0]);
+      expect((await hashes(sky))[0]).toBe(signed[0]);
+    });
+
     it('a correction is missing for a reader who may not see an answer it changes, in its old value or its new', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
       await finishNote(ana, n, 'complete', 'completed');
