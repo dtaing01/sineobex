@@ -20,8 +20,8 @@
     },
     {
       "line": 7,
-      "what": "Choose-one, labelled as the line writes them: Yes and No (codes yes, no), pinned in the shape file beside their codes. Yes shows a text box: the V1 referral's details.",
-      "why": "inventory A62; PRD main 113"
+      "what": "Choose-one, labelled as the line writes them: Yes and No (codes yes, no), pinned in the shape file beside their codes. Yes shows a text box, the V1 referral's details, which is required while it shows: a referral records a date and its details.",
+      "why": "inventory A3, A62; PRD main 113"
     },
     {
       "line": 10,
@@ -35,8 +35,8 @@
     },
     {
       "line": 14,
-      "what": "Choose-one, labelled as the line writes them: YES and NO (codes yes, no), unlike Referral at line 7, pinned in the shape file beside their codes. Yes is recorded now; phase 7 creates the delivery task.",
-      "why": "PRD main 418; forms 6.4"
+      "what": "Choose-one, labelled as the line writes them: YES and NO (codes yes, no), unlike Referral at line 7, pinned in the shape file beside their codes. Yes is recorded now; phase 7 creates the delivery task. Instructions for delivery shows while it is YES and is required then: the task is created with the instructions.",
+      "why": "inventory A3; PRD main 418; forms 6.4"
     },
     {
       "line": 15,

@@ -176,7 +176,20 @@ const SUGGESTS: Record<string, Record<string, Record<string, string>>> = {
 
 const TREATMENT_RECORD = ['harm-reduction', 'treatment'];
 const NEEDS_ORDER = ['quick-2', 'medication'];
-const REQUIRED_NOTE_FIELDS = ['red_flags.emergency', 'red_flags.ems_time'];
+/**
+ * Required, each while it shows (inventory A3: nothing beyond what a PRD rule needs): the red-flag
+ * question and the EMS time (forms 6.2), and what a later phase acts on once the choice that asks
+ * for it is made: a referral's details (PRD main 113), the delivery's instructions (418), the
+ * naloxone doses deducted (428) and the date of a Specific date follow-up.
+ */
+const REQUIRED_NOTE_FIELDS = [
+  'red_flags.emergency',
+  'red_flags.ems_time',
+  'social.referral_details',
+  'medication.instructions',
+  'provided.naloxone_doses',
+  'follow_up.date',
+];
 
 /**
  * The exam pieces that are modules (forms-inventory-focused-exam.md section 7, in its order). Each

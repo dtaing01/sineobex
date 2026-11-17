@@ -70,6 +70,7 @@
       "decimals": 0,
       "unit": "doses",
       "display": "stepper",
+      "required": true,
       "showWhen": { "field": "provided.naloxone", "is": "accepted" }
     },
     {

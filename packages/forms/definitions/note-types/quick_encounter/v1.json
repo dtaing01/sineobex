@@ -368,6 +368,7 @@
           "label": "Referral details",
           "lines": "many",
           "maxLength": 2000,
+          "required": true,
           "showWhen": {
             "field": "social.referral",
             "is": "yes"
@@ -423,6 +424,7 @@
           "label": "Instructions for delivery",
           "lines": "many",
           "maxLength": 2000,
+          "required": true,
           "showWhen": {
             "field": "medication.delivery",
             "is": "yes"

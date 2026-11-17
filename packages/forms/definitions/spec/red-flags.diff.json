@@ -55,8 +55,8 @@
     },
     {
       "line": 25,
-      "what": "Choose-one. Specific date shows a date in the future.",
-      "why": "inventory A1, A22"
+      "what": "Choose-one. Specific date shows a date in the future, which is required then: a specific date with no date gives the phase 7 follow-up task no day.",
+      "why": "inventory A1, A3, A22"
     },
     {
       "line": 25,

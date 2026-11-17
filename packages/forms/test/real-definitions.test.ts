@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { checkAnswer } from '../src/interp/check-answer.ts';
 import type { Answers } from '../src/interp/conditions.ts';
 import { effectiveAnswers } from '../src/interp/effective.ts';
+import { finishCheck } from '../src/interp/finish.ts';
 import { normalAnswers } from '../src/interp/normal.ts';
 import { noteTypeFile, resolve, type DefinitionFiles, type ResolvedNoteType } from '../src/resolve.ts';
 
@@ -200,5 +201,25 @@ describe('what a later phase reads on the real definitions', () => {
       'follow_up.details': note,
     });
     expect(after['follow_up.details']).toBe(note);
+  });
+
+  // TYP-5: what phase 5 and phase 7 act on cannot be left empty once the choice that asks for it
+  // is made (PRD main 113, 418, 428).
+  it.each([
+    [
+      'quick_encounter',
+      { 'visit.parts': ['social_needs'], 'social.referral': 'yes' },
+      'social.referral_details',
+    ],
+    [
+      'quick_encounter',
+      { 'visit.parts': ['medication'], 'medication.delivery': 'yes' },
+      'medication.instructions',
+    ],
+    ['harm_reduction', { 'provided.naloxone': 'accepted' }, 'provided.naloxone_doses'],
+    ['red_flags_disposition', { 'follow_up.when': 'specific_date' }, 'follow_up.date'],
+  ])('%s does not complete with %j and no answer at %s', (key, answers, path) => {
+    const d = definition(key);
+    expect(finishCheck(d, answers).map((problem) => problem.path)).toContain(path);
   });
 });

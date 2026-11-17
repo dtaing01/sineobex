@@ -104,6 +104,7 @@
       "kind": "date",
       "label": "Follow-up date",
       "range": "future",
+      "required": true,
       "showWhen": { "field": "follow_up.when", "is": "specific_date" }
     },
     {

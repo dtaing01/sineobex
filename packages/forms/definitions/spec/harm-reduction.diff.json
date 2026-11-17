@@ -40,8 +40,8 @@
     },
     {
       "line": 15,
-      "what": "The dose stepper shows only when Naloxone is Accepted, and starts at 1: 1 to 20 doses.",
-      "why": "inventory A36; PLAN-OPEN (forms 10.1 #1): the most doses"
+      "what": "The dose stepper shows only when Naloxone is Accepted, and starts at 1: 1 to 20 doses. It is required while it shows: the kits are deducted at the doses entered.",
+      "why": "inventory A3, A36; PRD main 428; PLAN-OPEN (forms 10.1 #1): the most doses"
     },
     {
       "line": 17,
