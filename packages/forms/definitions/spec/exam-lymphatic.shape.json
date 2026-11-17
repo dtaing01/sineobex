@@ -47,7 +47,7 @@
       "decimals": 1,
       "unit": "cm",
       "altUnit": { "unit": "in", "perUnit": 2.54 },
-      "showWhen": { "field": "./findings", "is": "enlarged" }
+      "showWhen": { "field": "./findings", "filled": true }
     }
   ]
 }

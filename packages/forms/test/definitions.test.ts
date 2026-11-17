@@ -652,6 +652,25 @@ describe('the plans of the exam pieces', () => {
     expect(paths.filter((path) => path === 'breast.location' || path === 'breast.side')).toEqual([]);
   });
 
+  // SPEC 1434's own example, "Inguinal: 2 cm, tender, mobile", charts a node's size with no
+  // Enlarged: Size shows once the row has a finding, whatever it is.
+  it('exam-lymphatic asks a node’s size as the lines’ example charts it', () => {
+    const size = shapeOf('exam-lymphatic').fields.find((field) => field.path.endsWith('.size'));
+    const shows = (c: Condition, findings: string[]): boolean =>
+      'all' in c
+        ? c.all.every((x) => shows(x, findings))
+        : 'any' in c
+          ? c.any.some((x) => shows(x, findings))
+          : 'not' in c
+            ? !shows(c.not, findings)
+            : 'filled' in c
+              ? findings.length > 0
+              : [c.is].flat().some((code) => findings.includes(code));
+    expect(size?.showWhen).toMatchObject({ field: './findings' });
+    expect(shows(size?.showWhen as Condition, ['tender', 'mobile'])).toBe(true);
+    expect(shows(size?.showWhen as Condition, [])).toBe(false);
+  });
+
   it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
     const shape = shapeOf(PICKER_PIECE);
     expect(shape.header).toBeUndefined();
