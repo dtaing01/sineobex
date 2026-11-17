@@ -643,22 +643,42 @@ As built (unit F3):
   `Pragma: no-cache` on every response (`services/api/src/app.ts`), and leaves one alone only when
   its `Cache-Control` is exactly the definition's value. A handler that sets any other lifetime
   still gets `no-store`.
-- **`definitionFor`** answers `{ key, version, hash, definition }`, or undefined. It keeps each
-  row it reads in a map for the life of the process, keyed by team, key and version, and frozen
-  through and through, so no caller can change the copy another holds. A missing row is not
-  kept: it may be installed later. The caller's transaction must be in that team's scope, as
-  every team-scope transaction is: a kept row is answered without a read, so the team ID is what
-  keeps teams apart. Today only the one-version route calls it; the sync rules (lifecycle 4.4)
-  and the visit read (lifecycle 5.1) will.
+- **`definitionFor`** answers `{ key, version, hash, definition }`, or undefined, frozen through
+  and through, so no caller can change the copy another holds. As built in wave C it kept each
+  row it read in a map with no bound, keyed by team, key and version, one copy of the same preset
+  for each team; D79 replaced that map (below). A missing row is not kept: it may be installed
+  later. The caller's transaction must be in that team's scope, as every team-scope transaction
+  is: a kept definition is answered without a read, so the team ID is what keeps teams apart. The
+  one-version route and the sync rules (lifecycle 4.4) call it; the visit read (lifecycle 5.1)
+  will.
 
-**Decided Nov 17 (D79), built with its first caller, the sync rules (L1).** As built in wave C,
-its map has no bound and keeps one copy of the same preset for each team. 0017 checks a hash's
-form and not what it hashes (3.1), so `definitionFor` checks a row the first time it reads it:
-the hash of the row's canonical definition must be the row's hash, and a row that fails is an
-error, never answered. It then keeps one frozen definition per hash, at most 64, and maps team,
-key and version to a hash, at most 4,096 entries; each map drops its least recently used entry.
-Teams holding the same preset share one copy, and no definition is answered under a hash it does
-not have.
+**D79, decided Nov 17, built with its first sync caller (unit L1, wave D).** 0017 checks a hash's
+form and not what it hashes (3.1), so `definitionFor` checks each row it reads
+(`services/api/src/forms/definitions.ts`):
+
+- **The check, on every read of a row.** The SHA-256 of the row's canonical definition must be
+  the row's hash, and the definition's own `key` and `version` must be the row's. The second half
+  came from wave D's review (finding NOT-8): one hash is then one key and version, and a row filed
+  under another key or version, written by hand or a team's own type from phase 5, cannot answer
+  another row's definition. A row that fails throws `DefinitionMismatch`, which names no key, and
+  nothing is kept, so it fails the same way every time. A row is checked even when another team's
+  row with the same hash is kept already: no definition is answered under a hash it does not have,
+  or for a row that does not hold it.
+- **Two bounded maps**, each dropping the entry used least recently: one frozen definition per
+  hash, at most 64 (`MAX_DEFINITIONS`), so every team holding a preset shares one copy; and team,
+  key and version to a hash, at most 4,096 (`MAX_DEFINITION_NAMES`). Rows are append-only (0017),
+  so neither map goes stale. A row read again once either map has dropped it is read and checked
+  again.
+- **What a failing row answers.** The one-version route answers 500 with the app's generic error,
+  `no-store`, and never the definition; the log names `DefinitionMismatch` and no key. A sync rule
+  turns it into a `DefinitionError` (`definitionOf`, `services/api/src/sync/records.ts`), stored
+  as the change's rejection, `definition_error`, so the phone's queue moves on (lifecycle 4.1).
+  The phone's test server keeps definitions by key and version and reads no rows; its `forged`
+  set stands for a row that fails (lifecycle 4.9).
+- **The tests** are in `services/api/test/forms-routes.test.ts`: the route's 500 for a row under
+  another's hash, sent twice; a row checked on its first read and never kept; a row filed under a
+  key or version its definition does not hold, before and after its hash is kept; one frozen copy
+  per hash, shared between teams; and each bound, with the entry it drops.
 
 ### 3.4 The phone
 
