@@ -142,9 +142,9 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
  * A held change as this reviewer may read it, by the sync read's rules (routes/sync.ts requireRead,
  * fetchRecords; lifecycle 6.4 rule 2, review finding RD-3), or null when they may not: Phase 4
  * sends the queue hidden answers and whole Medical notes on purpose. A visit's records need
- * encounters.chart, and a note's change a note they may read, with every answer it sends or would
- * replace one they may see; a sign-off goes without its hash to a reader who does not see every
- * answer of any note. A problem and its notes need the problem list's keys, and a sensitive one,
+ * encounters.chart, and a Medical visit's summary and its own addenda what reads its notes (RD-7);
+ * a note's change needs a note they may read, with every answer it sends or would replace one they
+ * may see; a sign-off goes without its hash to a reader who does not see every answer of any note. A problem and its notes need the problem list's keys, and a sensitive one,
  * or one whose create is still held, patients.view_sensitive. Everything else needs patients.view. Values were never schema-checked,
  * so anything that cannot be read as a change of its kind is hidden.
  */
@@ -158,7 +158,10 @@ async function shownChange(
   const uuid = (x: unknown) => (typeof x === 'string' && UUID.test(x) ? x : null);
   switch (r.entity) {
     case 'encounter':
-      return scope.can('encounters.chart') ? shown : null;
+      if (!scope.can('encounters.chart')) return null;
+      return r.field === 'summary' && !readsMedical(scope) && (await medicalVisit(tx, r.recordId))
+        ? null
+        : shown;
     case 'encounter_note':
     case 'note_signoff':
     case 'note_addendum':
@@ -181,6 +184,19 @@ async function shownChange(
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether the reviewer reads Medical notes, and so a Medical visit's summary (5.1, D37). */
+const readsMedical = (scope: TeamScope) => mayViewProblems(scope.team.permissions);
+
+/**
+ * Whether a held change's visit is Medical (lifecycle 5.1; review finding RD-7), as the sync read
+ * asks of it. A visit not on the chart, its create still held, or one the value does not name, is
+ * read as Medical: its kind cannot be told from the chart.
+ */
+async function medicalVisit(tx: Tx, encounterId: string | null): Promise<boolean> {
+  const visit = encounterId ? await RULES.encounter.load(tx, encounterId, false) : null;
+  return visit === null || visit.values.kind === 'medical';
+}
 
 /** A problem's create, or a code set, that names a sensitive code (problem.ts applyCreate). */
 function sensitiveProblem(v: Record<string, unknown>): boolean {
@@ -220,7 +236,9 @@ async function noteChangeShown(
           !Object.entries(data).some(([path, value]) => answerHidden(type, data, path, value, reader)),
       );
     }
-    if (r.entity === 'note_addendum' && v.noteId === null) return true;
+    // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
+    if (r.entity === 'note_addendum' && v.noteId === null)
+      return readsMedical(scope) || !(await medicalVisit(tx, uuid(v.encounterId)));
     const noteId = r.entity === 'encounter_note' ? r.recordId : uuid(v.noteId);
     const note = noteId ? await noteRules.load(tx, noteId, false) : null;
     if (!note) return false;

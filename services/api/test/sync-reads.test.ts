@@ -1278,6 +1278,76 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(await values(rex)).toEqual([null, null, null, null]);
       expect(JSON.stringify(await queue(quinn))).not.toMatch(/exam|rash|care|rest/);
     });
+
+    it('a Medical visit’s own addendum and its summary go only to a reviewer who reads its Medical notes, as in the sync read', async () => {
+      const role = async (name: string, permissions: string[]) => {
+        const r = await call(h, '/v1/team/roles', {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { name, permissions },
+        });
+        expect(r.status).toBe(201);
+        return r.body.key as string;
+      };
+      const chart = await clinician(
+        h,
+        t,
+        'chart-reviewer@example.com',
+        'Cass (demo)',
+        'none',
+        await role('Chart reviewer', ['patients.view', 'encounters.chart', 'quarantine.review']),
+      );
+      const visits = await clinician(
+        h,
+        t,
+        'visit-reviewer@example.com',
+        'Vic (demo)',
+        'none',
+        await role('Visit reviewer', ['encounters.chart', 'quarantine.review']),
+      );
+      // A community health worker charts nothing on a visit: each change is held for the role's key.
+      const fay = await clinician(h, t, 'fay@example.com', 'Fay (demo)', 'chw', 'community_health_worker');
+      const visitOfKind = async (kind: 'medical' | 'non_medical') => {
+        const create = await ana.phone.change({
+          entity: 'encounter',
+          op: 'create',
+          value: { kind, patientId },
+        });
+        expect((await ana.send(create)).map((r) => r.status)).toEqual(['accepted']);
+        return create.recordId;
+      };
+      const held = [];
+      for (const kind of ['medical', 'non_medical'] as const) {
+        const encounterId = await visitOfKind(kind);
+        held.push(
+          await fay.phone.change({
+            entity: 'note_addendum',
+            op: 'create',
+            value: { encounterId, noteId: null, text: 'Demo: came back for socks', signoffId: null },
+          }),
+          await fay.phone.change({
+            entity: 'encounter',
+            recordId: encounterId,
+            op: 'set',
+            field: 'summary',
+            value: 'Demo: seen under the bridge',
+            baseVersion: 0,
+          }),
+        );
+      }
+      expect((await fay.send(...held)).map((r) => r.reason)).toEqual(held.map(() => 'permission'));
+      const shown = async (c: { token: string }) => {
+        const r = await call(h, `/v1/team/quarantine?userId=${fay.id}`, { token: c.token, teamId: t.teamId });
+        expect(r.status).toBe(200);
+        return (r.body.items as Record<string, unknown>[]).map((i) => (i.hidden ? null : i.value));
+      };
+      const values = held.map((c) => c.value);
+      expect(await shown(admin())).toEqual(values);
+      expect(await shown(chart)).toEqual(values);
+      // Without patients.view, the Medical visit's are held with nothing of them; the other visit's are shown.
+      expect(await shown(visits)).toEqual([null, null, values[2], values[3]]);
+    });
   });
 
   describe('the Medical gate (lifecycle 4.2; 4.9 rule 12)', () => {

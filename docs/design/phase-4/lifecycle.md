@@ -2488,17 +2488,17 @@ Rules:
   may see it now (4.4).
 - **Rule 2 in the review queue.** A held change's value goes only to a reviewer who may read it,
   by the sync read's rules (`shownChange`, `review.ts`; review finding RD-3, as the coordinator
-  decided): a visit's records need `encounters.chart`; a note's change, a note the reviewer may
-  read, and every answer it sends or would replace one they may see; a held note create, a type
+  decided): a visit's records need `encounters.chart`, and a Medical visit's `summary` and its own
+  addenda (naming no note) what reads its notes, as in the sync read (5.1; review finding RD-7): a
+  visit not on the chart, its create still held, counts as Medical; a note's change, a note the
+  reviewer may read, and every answer it sends or would replace one they may see; a held note create, a type
   they may read with none of its answers hidden; a held sign-off goes without its hash to a
   reviewer who does not see every answer of any note; a problem and its notes need the problem
   list's keys, and a sensitive one, or one whose create is still held, `patients.view_sensitive`;
   everything else `patients.view`. An item the reviewer may not read is listed with `field` and
   `value` null and `hidden: true` (`QuarantineItem` in the contract), and opening the queue still
   logs it with its patient. Open: a reviewer who cannot read a held value can still accept it, as
-  before; the portal's queue page does not yet show such an item as held with nothing of it; and
-  a held addendum that names no note is shown to any reviewer with `encounters.chart`, though the
-  sync read keeps a Medical visit's from a reader without what reads its notes (5.1).
+  before; the portal's queue page does not yet show such an item as held with nothing of it.
 - **Rule 4** is the sign-off hash rule of 5.1.
 - **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set of an answer that
   could hold something the sender may not see, read from the definition and their keys alone, never
