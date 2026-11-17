@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/forms/check_answer.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
+import 'package:sineobex_field/forms/expand.dart';
 import 'package:sineobex_field/forms/field_at.dart';
 import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/handoff.dart';
@@ -20,10 +21,6 @@ import 'package:sineobex_field/forms/visible.dart';
 /// show a note otherwise than the portal. This reader holds no answer of its own: it calls each
 /// function with a case's inputs and writes the result back as plain data.
 typedef Case = Map<String, Object?>;
-
-/// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
-/// the last one empties it.
-const notWrittenYet = {'expandQuick'};
 
 /// The inputs each function reads from a case, beside name, definition, why and expected; the
 /// optional ones end in '?'. A case with any other key would be run without what it meant to give.
@@ -41,11 +38,17 @@ const inputs = {
   'handoffLines': ['notes'],
 };
 
-/// The functions that give a map whose key order is part of the answer: the content hash is taken
-/// over effectiveAnswers as written (lifecycle 4.5), visibleAnswers keeps its order, and TypeScript
-/// writes all three in UTF-16 code-unit order. A map's equality ignores its order, so it is checked
-/// apart.
-const ordered = {'effectiveAnswers', 'normalAnswers', 'visibleAnswers'};
+/// The functions that give a map whose key order is part of the answer, and where in the result it
+/// is: the content hash is taken over effectiveAnswers as written (lifecycle 4.5), visibleAnswers
+/// keeps its order, the phone writes Normal's and Expand's answers as changes in that order, and
+/// TypeScript writes all four in UTF-16 code-unit order. A map's equality ignores its order, so it
+/// is checked apart.
+final ordered = <String, Object? Function(Object? result)>{
+  'effectiveAnswers': (result) => result,
+  'normalAnswers': (result) => result,
+  'visibleAnswers': (result) => result,
+  'expandQuick': (result) => (result! as Map<String, Object?>)['answers'],
+};
 
 /// What is wrong with a case's keys for its function: one it does not read, or one it needs.
 List<String> keyFaults(String function, Case c) {
@@ -121,6 +124,12 @@ void main() {
     'visibleAnswers': (definition, c) =>
         visibleAnswers(definition, answersOf(c), readerOf(c['reader']! as Map<String, Object?>)),
     'suggestions': (definition, c) => suggestions(definition, answersOf(c)),
+    // `full` names the full note type's definition: the newest version, as Expand writes into.
+    'expandQuick': (definition, c) => expandQuick(definition, answersOf(c), definitions[c['full']! as String]!, {
+      for (final MapEntry(key: section, value: entry)
+          in (c['newEntryIds']! as Map<String, Object?>).cast<String, Map<String, Object?>>().entries)
+        section: (id: entry['id']! as String, at: entry['at']! as String),
+    }).toJson(),
     // A handoff reads every note of a visit: `notes` names each one's definition, and the case's own
     // `definition` is the first's.
     'handoffLines': (_, c) {
@@ -136,9 +145,8 @@ void main() {
   };
 
   group('the case reader', () {
-    test('runs every function of the file, or lists it as not written yet', () {
-      expect(cases.keys.toSet(), {...functions.keys, ...notWrittenYet});
-      expect(functions.keys.where(notWrittenYet.contains), isEmpty);
+    test('runs every function of the file', () {
+      expect(cases.keys.toSet(), functions.keys.toSet());
     });
     test('names the inputs of every function', () {
       expect(inputs.keys.toSet(), cases.keys.toSet());
@@ -175,11 +183,12 @@ void main() {
         test(c['name']! as String, () {
           final result = run(definitions[c['definition']]!, c);
           expect(result, c['expected']);
-          if (ordered.contains(function) && result != null) {
+          final map = ordered[function]?.call(result);
+          if (map != null) {
             // Code-unit order is String.compareTo's, as it is JavaScript's < on strings.
             expect(
-              (result as Map<String, Object?>).keys,
-              (c['expected']! as Map<String, Object?>).keys.toList()..sort(),
+              (map as Map<String, Object?>).keys,
+              (ordered[function]!(c['expected'])! as Map<String, Object?>).keys.toList()..sort(),
             );
           }
         });
