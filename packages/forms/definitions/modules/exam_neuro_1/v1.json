@@ -1,0 +1,147 @@
+{
+  "name": "exam_neuro_1",
+  "version": 1,
+  "sections": [
+    {
+      "id": "neuro",
+      "title": "Neurologic: mental status and cranial nerves",
+      "spec": "exam-neuro-1",
+      "showWhen": { "field": "exam.systems", "is": "neurologic" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "mental_status",
+          "kind": "choice",
+          "many": true,
+          "label": "Mental status",
+          "options": [
+            { "code": "alert", "label": "Alert", "normal": true },
+            { "code": "oriented_4", "label": "Oriented ×4", "normal": true },
+            { "code": "oriented_3", "label": "Oriented ×3" },
+            { "code": "confused", "label": "Confused" },
+            { "code": "somnolent", "label": "Somnolent" },
+            { "code": "obtunded", "label": "Obtunded" }
+          ],
+          "excludes": [
+            ["oriented_4", "oriented_3"],
+            ["alert", "somnolent"],
+            ["alert", "obtunded"],
+            ["somnolent", "obtunded"]
+          ]
+        },
+        {
+          "id": "cn_screen",
+          "kind": "choice",
+          "many": false,
+          "label": "Cranial nerve screen",
+          "options": [
+            { "code": "grossly_intact", "label": "Grossly intact", "normal": true },
+            { "code": "abnormal", "label": "Abnormal" }
+          ]
+        },
+        {
+          "id": "cranial_nerves",
+          "kind": "group",
+          "label": "Cranial nerves",
+          "layout": "stack",
+          "showWhen": { "field": "neuro.cn_screen", "is": "abnormal" },
+          "fields": [
+            {
+              "id": "cn_ii",
+              "kind": "choice",
+              "many": false,
+              "label": "CN II",
+              "options": [
+                { "code": "visual_fields_intact", "label": "Visual fields intact", "normal": true },
+                { "code": "visual_deficit", "label": "Visual deficit" }
+              ]
+            },
+            {
+              "id": "cn_iii_iv_vi",
+              "kind": "choice",
+              "many": true,
+              "label": "CN III / IV / VI",
+              "options": [
+                {
+                  "code": "extraocular_movements_intact_eomi",
+                  "label": "Extraocular movements intact (EOMI)",
+                  "exclusive": true,
+                  "normal": true
+                },
+                { "code": "diplopia", "label": "Diplopia" },
+                { "code": "nystagmus", "label": "Nystagmus" },
+                { "code": "ptosis", "label": "Ptosis" }
+              ]
+            },
+            {
+              "id": "cn_v",
+              "kind": "choice",
+              "many": false,
+              "label": "CN V",
+              "options": [
+                { "code": "facial_sensation_intact", "label": "Facial sensation intact", "normal": true },
+                { "code": "decreased_sensation", "label": "Decreased sensation" }
+              ]
+            },
+            {
+              "id": "cn_vii",
+              "kind": "choice",
+              "many": false,
+              "label": "CN VII",
+              "options": [
+                { "code": "symmetric_facial_movement", "label": "Symmetric facial movement", "normal": true },
+                { "code": "facial_droop", "label": "Facial droop" }
+              ]
+            },
+            {
+              "id": "cn_viii",
+              "kind": "choice",
+              "many": false,
+              "label": "CN VIII",
+              "options": [
+                { "code": "hearing_grossly_intact", "label": "Hearing grossly intact", "normal": true },
+                { "code": "hearing_deficit", "label": "Hearing deficit" }
+              ]
+            },
+            {
+              "id": "cn_ix_x",
+              "kind": "choice",
+              "many": true,
+              "label": "CN IX / X",
+              "options": [
+                {
+                  "code": "palate_symmetric",
+                  "label": "Palate symmetric",
+                  "exclusive": true,
+                  "normal": true
+                },
+                { "code": "dysarthria", "label": "Dysarthria" },
+                { "code": "dysphagia", "label": "Dysphagia" }
+              ]
+            },
+            {
+              "id": "cn_xi",
+              "kind": "choice",
+              "many": false,
+              "label": "CN XI",
+              "options": [
+                { "code": "shoulder_shrug_intact", "label": "Shoulder shrug intact", "normal": true },
+                { "code": "weak", "label": "Weak" }
+              ]
+            },
+            {
+              "id": "cn_xii",
+              "kind": "choice",
+              "many": false,
+              "label": "CN XII",
+              "options": [
+                { "code": "tongue_midline", "label": "Tongue midline", "normal": true },
+                { "code": "deviation", "label": "Deviation" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
