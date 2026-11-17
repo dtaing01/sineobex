@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scanFixture, scanSource } from '../phi-guard-rules.mjs';
+import { FIXTURE_GLOBS, scanFixture, scanSource } from '../phi-guard-rules.mjs';
 
 describe('fixture scan', () => {
   it('flags identifiers that look real', () => {
@@ -26,6 +26,24 @@ describe('fixture scan', () => {
     expect(scanFixture('db/seed/x.ts', "id: '123-45-6789' // phi-guard: allow — format test only")).toEqual(
       [],
     );
+  });
+});
+
+describe('fixture locations', () => {
+  const scanned = (file) => FIXTURE_GLOBS.some((g) => g.test(file));
+
+  // Specification text, the definitions typed from it, what the export makes of them and the shared
+  // vectors ship in the app and the server's install, outside any test folder.
+  it('scans the note type definitions, their outputs and the shared vectors', () => {
+    expect(scanned('packages/forms/definitions/spec/x.txt')).toBe(true);
+    expect(scanned('packages/forms/definitions/lists/x.json')).toBe(true);
+    expect(scanned('packages/forms/generated/presets.json')).toBe(true);
+    expect(scanned('packages/contract/test-vectors/x.json')).toBe(true);
+  });
+
+  it('leaves ordinary source to the source rules', () => {
+    expect(scanned('packages/contract/src/index.ts')).toBe(false);
+    expect(scanned('services/api/src/app.ts')).toBe(false);
   });
 });
 
