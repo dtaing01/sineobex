@@ -10,6 +10,7 @@ import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/normal.dart';
 import 'package:sineobex_field/forms/read_model.dart';
 import 'package:sineobex_field/forms/recap.dart';
+import 'package:sineobex_field/forms/suggestions.dart';
 import 'package:sineobex_field/forms/visible.dart';
 
 /// The interpreter's answers are data (phase 4 design, forms 7.2): they live in
@@ -21,7 +22,7 @@ typedef Case = Map<String, Object?>;
 
 /// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
 /// the last one empties it.
-const notWrittenYet = {'handoffLines', 'suggestions', 'expandQuick'};
+const notWrittenYet = {'handoffLines', 'expandQuick'};
 
 /// The inputs each function reads from a case, beside name, definition, why and expected; the
 /// optional ones end in '?'. A case with any other key would be run without what it meant to give.
@@ -118,6 +119,7 @@ void main() {
     ]).toJson(),
     'visibleAnswers': (definition, c) =>
         visibleAnswers(definition, answersOf(c), readerOf(c['reader']! as Map<String, Object?>)),
+    'suggestions': (definition, c) => suggestions(definition, answersOf(c)),
   };
 
   group('the case reader', () {
