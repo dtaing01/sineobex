@@ -19,6 +19,9 @@ const OTHER = '_other';
  * region is marked, with its side and surface; and the Other text of a field whose picked Other
  * option was taken out (a field has one Other option: validate.other_twice).
  *
+ * An entry of a repeating section that held answers and is left with none goes too, its entryAt
+ * with it, as an entry with a sensitive diagnosis does for visibleAnswers.
+ *
  * `answers` are answers that count (effectiveAnswers): an answer taken out here changes no other
  * answer's showing, because no condition outside a sensitive exam reads one
  * (validate.condition_reads_restricted). The order of the paths is kept.
@@ -55,7 +58,27 @@ export function withoutSensitiveExams(
     else if (left.length > 0) kept.push([path, left]);
   }
   const dropped = new Set(texts.filter((path) => lostOther.has(choiceOf(definition, path))));
-  return Object.fromEntries(kept.filter(([path]) => !dropped.has(path)));
+  const left = kept.filter(([path]) => !dropped.has(path));
+  // An entry the exam was all of goes whole: its entryAt alone would show an empty entry where
+  // the exam was, and number the rest around it. An entry that held nothing keeps its entryAt.
+  const held = (paths: Iterable<string>) => {
+    const entries = new Set<string>();
+    for (const path of paths) {
+      const target = fieldAt(definition, path);
+      if (target?.entry && target.points !== 'entry') entries.add(`${target.section.id}.${target.entry}`);
+    }
+    return entries;
+  };
+  const before = held(Object.keys(answers));
+  const after = held(left.map(([path]) => path));
+  return Object.fromEntries(
+    left.filter(([path]) => {
+      const target = fieldAt(definition, path);
+      if (target?.points !== 'entry' || !target.entry) return true;
+      const entry = `${target.section.id}.${target.entry}`;
+      return after.has(entry) || !before.has(entry);
+    }),
+  );
 }
 
 /** A row of a grid whose option is marked `sensitiveExam`: its fixed row, or the option picked for it. */
