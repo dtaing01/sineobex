@@ -233,7 +233,8 @@
                 { "code": "heart", "label": "Demo heart" },
                 { "code": "lungs", "label": "Demo lungs" },
                 { "code": "skin", "label": "Demo skin", "suggests": "demo_wound" },
-                { "code": "gu", "label": "Demo private exam", "sensitiveExam": true }
+                { "code": "gu", "label": "Demo private exam", "sensitiveExam": true },
+                { "code": "msk", "label": "Demo joints" }
               ]
             }
           ]
@@ -380,6 +381,46 @@
               ]
             },
             { "id": "findings", "kind": "text", "label": "Demo findings", "lines": "many", "maxLength": 1000, "showWhen": { "field": "gu.consent", "is": "yes" } }
+          ]
+        },
+        {
+          "id": "msk",
+          "title": "Demo joints",
+          "normal": true,
+          "showWhen": { "field": "systems.picked", "is": "msk" },
+          "repeat": { "max": 4, "itemTitle": "Demo joint {n}" },
+          "fields": [
+            {
+              "id": "joint",
+              "kind": "choice",
+              "many": false,
+              "label": "Demo joint",
+              "required": true,
+              "options": [
+                { "code": "shoulder", "label": "Demo shoulder" },
+                { "code": "knee", "label": "Demo knee" }
+              ]
+            },
+            {
+              "id": "tests",
+              "kind": "grid",
+              "label": "Demo movement",
+              "rows": [
+                { "code": "flex", "label": "Demo flexion" },
+                { "code": "ext", "label": "Demo extension" }
+              ],
+              "cell": {
+                "id": "range",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo range",
+                "required": true,
+                "options": [
+                  { "code": "full", "label": "Demo full", "normal": true },
+                  { "code": "limited", "label": "Demo limited" }
+                ]
+              }
+            }
           ]
         }
       ]
@@ -1105,6 +1146,41 @@
           ]
         }
       ]
+    },
+    "rehab": {
+      "key": "demo_rehab",
+      "version": 1,
+      "title": "Demo rehab check",
+      "kinds": ["medical", "non_medical"],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "strength",
+          "title": "Demo strength",
+          "fields": [
+            {
+              "id": "hands",
+              "kind": "grid",
+              "label": "Demo hands",
+              "rows": [
+                { "code": "grip", "label": "Demo grip" },
+                { "code": "pinch", "label": "Demo pinch" }
+              ],
+              "cell": {
+                "id": "test",
+                "kind": "group",
+                "label": "Demo test",
+                "layout": "row",
+                "fields": [
+                  { "id": "unable", "kind": "flag", "label": "Demo unable to test", "clears": ["score"] },
+                  { "id": "score", "kind": "number", "label": "Demo score", "required": true, "min": 0, "max": 5, "decimals": 0 }
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   },
   "cases": {
@@ -1492,7 +1568,11 @@
       {"name": "a condition reads only answers that count: a hidden answer shows nothing", "definition": "checkup", "answers": {"general.nerves": "intact", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger"}, "why": "forms.md 7.1 line 920; the detail is hidden, so it does not count, and the note that hangs on it does not show", "expected": {"general.nerves": "intact"}},
       {"name": "the chain shown: each answer counts", "definition": "checkup", "answers": {"general.nerves": "focal", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger", "general.blink": "absent"}, "why": "forms.md 2.2 line 215", "expected": {"general.nerves": "focal", "general.nerveDetail": "unequal", "notes.pupilNote": "Demo: left larger"}},
       {"name": "sides, a fixed row and a group's field", "definition": "checkup", "answers": {"general.pain.right": 0, "general.pain.left": 4, "general.joints.knee": "limited", "general.gait.steady": "no"}, "why": "forms.md 2.3 lines 299, 300 and 305", "expected": {"general.pain.right": 0, "general.pain.left": 4, "general.joints.knee": "limited", "general.gait.steady": "no"}},
-      {"name": "./ with a list of codes hides a number in its entry", "definition": "checkup", "answers": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.extent": 4, "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}, "why": "forms.md 2.2 line 219", "expected": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}}
+      {"name": "./ with a list of codes hides a number in its entry", "definition": "checkup", "answers": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.extent": 4, "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}, "why": "forms.md 2.2 line 219", "expected": {"limbs.eeeeeee5.entryAt": "2026-03-01T10:00:00Z", "limbs.eeeeeee5.swelling": "none", "limbs.eeeeeee5.limb.region": "leg", "limbs.eeeeeee5.limb.side": "right"}},
+      {"name": "a hidden repeating section: an entry with only its entryAt does not count", "definition": "exam", "answers": {"systems.picked": ["heart"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z"}, "why": "forms.md 6.3 lines 791-797 (each system section has showWhen; MSK repeats) and 7.1: an answer counts while its section shows, an entry's own entryAt included; lifecycle 4.5 takes the hash over these (review finding INT-1)", "expected": {"systems.picked": ["heart"]}},
+      {"name": "a hidden repeating section: nothing of its entry counts, entryAt, answers or grid", "definition": "exam", "answers": {"systems.picked": ["heart"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z", "msk.eaaaaaa1.joint": "knee", "msk.eaaaaaa1.tests.flex": "limited"}, "why": "forms.md 7.1: the section's condition does not hold, so no answer of any entry counts (review finding INT-1)", "expected": {"systems.picked": ["heart"]}},
+      {"name": "the same repeating section shown: its entry counts again, nothing was deleted", "definition": "exam", "answers": {"systems.picked": ["heart", "msk"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z", "msk.eaaaaaa1.joint": "knee", "msk.eaaaaaa1.tests.flex": "limited"}, "why": "forms.md 2.2: a hidden answer counts again when its field shows again", "expected": {"msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z", "msk.eaaaaaa1.joint": "knee", "msk.eaaaaaa1.tests.flex": "limited", "systems.picked": ["heart", "msk"]}},
+      {"name": "a flag in a grid's cell clears its own row only", "definition": "rehab", "answers": {"strength.hands.grip.unable": true, "strength.hands.grip.score": 2, "strength.hands.pinch.score": 3}, "why": "forms.md 2.3: a flag's clears names fields beside it, and a cell's fields are stored per row; the flag set in the grip row clears the grip score, not the pinch score (review finding INT-2)", "expected": {"strength.hands.grip.unable": true, "strength.hands.pinch.score": 3}}
     ],
     "finishCheck": [
       {"name": "no required field: nothing to finish", "definition": "visit", "answers": {}, "why": "forms.md 7.1 line 906: a visible required field that is empty", "expected": []},
@@ -1520,7 +1600,10 @@
       {"name": "consent recorded as No fills it", "definition": "exam", "answers": {"systems.picked": ["gu"], "gu.consent": "no"}, "why": "forms.md 7.1 line 906", "expected": []},
       {"name": "a required time empty", "definition": "ems", "answers": {"ems.reason": "fall"}, "why": "forms.md 7.1 line 906", "expected": [{"section": "ems", "path": "ems.called", "problem": "required"}]},
       {"name": "a required time filled", "definition": "ems", "answers": {"ems.called": "10:15"}, "why": "forms.md 7.1 line 906", "expected": []},
-      {"name": "a diagnosis entry without its status", "definition": "problems", "answers": {"dx.ecccccc3.entryAt": "2026-03-01T10:00:00Z", "dx.ecccccc3.problem.code": "J45", "dx.ecccccc3.problem.label": "Demo asthma"}, "why": "forms.md 7.1 line 906", "expected": [{"section": "dx", "path": "dx.ecccccc3.status", "problem": "required"}]}
+      {"name": "a diagnosis entry without its status", "definition": "problems", "answers": {"dx.ecccccc3.entryAt": "2026-03-01T10:00:00Z", "dx.ecccccc3.problem.code": "J45", "dx.ecccccc3.problem.label": "Demo asthma"}, "why": "forms.md 7.1 line 906", "expected": [{"section": "dx", "path": "dx.ecccccc3.status", "problem": "required"}]},
+      {"name": "a required field in a live entry of a hidden repeating section is not asked for", "definition": "exam", "answers": {"systems.picked": ["heart"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z"}, "why": "forms.md 7.1: only a visible required field stops Complete (review finding INT-1)", "expected": []},
+      {"name": "the same entry, its section shown: its required fields are asked for, in each row", "definition": "exam", "answers": {"systems.picked": ["msk"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z", "msk.eaaaaaa1.tests.ext": "full"}, "why": "forms.md 7.1: a field in a grid's cell once for each row that counts", "expected": [{"section": "msk", "path": "msk.eaaaaaa1.joint", "problem": "required"}, {"section": "msk", "path": "msk.eaaaaaa1.tests.flex", "problem": "required"}]},
+      {"name": "a flag set in one row of a grid's cell: that row's cleared field is not asked for, the other row's is", "definition": "rehab", "answers": {"strength.hands.grip.unable": true}, "why": "forms.md 2.3: while the flag is set the fields it clears do not count, in its own row (review finding INT-2)", "expected": [{"section": "strength", "path": "strength.hands.pinch.score", "problem": "required"}]}
     ],
     "normalAnswers": [
       {"name": "an empty section: each visible field with a normal option or value, noNormal left alone", "definition": "checkup", "section": "general", "answers": {}, "why": "forms.md 6.3 lines 789-791: visible fields with no answer, each set to its normal option or a number to its normal value; never a noNormal field, nor a field in a noNormal group (chaperone, gait); a text, a flag and a field with no normal are left alone; a choose-many takes every normal option, in the definition's order; sides and rows each; visible means visible with Normal's answers in: a follow-up a normal answer hides is not filled (6.3 line 799: the cranial nerve groups that stay hidden while the screen is Grossly intact), one it shows is, written before or after it, and Normal never writes an answer that does not count: the gaze, written before the nerves, shows once they are Grossly intact and is filled; the recheck, written before them too and shown while they have no answer, is hidden once they are and is not", "expected": {"general.gaze": "steady", "general.nerves": "intact", "general.blink": "present", "general.skin": ["warm", "dry"], "general.reach": 3, "general.pain.right": 0, "general.pain.left": 0, "general.joints.knee": "full", "general.joints.hip": "full"}},
@@ -1549,7 +1632,9 @@
       {"name": "an entry that is not there gives nothing", "definition": "checkup", "section": "limbs", "entry": "ebbbbbb2", "answers": {"limbs.ebbbbbb2.swelling": "mild"}, "why": "forms.md 2.3 line 311: an entry exists when its entryAt answer does", "expected": {}},
       {"name": "a removed entry gives nothing", "definition": "checkup", "section": "limbs", "entry": "eaaaaaa1", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.eaaaaaa1.entryRemoved": true}, "why": "forms.md 2.3 line 313", "expected": {}},
       {"name": "a repeating section with no entry named gives nothing", "definition": "checkup", "section": "limbs", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z"}, "why": "forms.md 7.1 line 907: in that entry", "expected": {}},
-      {"name": "an entry named in a section that does not repeat gives nothing", "definition": "checkup", "section": "general", "entry": "eaaaaaa1", "answers": {}, "why": "forms.md 7.1 line 907: a section that does not repeat has no entry", "expected": {}}
+      {"name": "an entry named in a section that does not repeat gives nothing", "definition": "checkup", "section": "general", "entry": "eaaaaaa1", "answers": {}, "why": "forms.md 7.1 line 907: a section that does not repeat has no entry", "expected": {}},
+      {"name": "a live entry of a hidden repeating section gives nothing", "definition": "exam", "section": "msk", "entry": "eaaaaaa1", "answers": {"systems.picked": ["heart"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z"}, "why": "forms.md 6.3 line 799: visible fields only (review finding INT-1)", "expected": {}},
+      {"name": "a live entry of a shown repeating section: each row's cell with no answer", "definition": "exam", "section": "msk", "entry": "eaaaaaa1", "answers": {"systems.picked": ["msk"], "msk.eaaaaaa1.entryAt": "2026-02-01T09:00:00Z", "msk.eaaaaaa1.tests.ext": "limited"}, "why": "forms.md 6.3 lines 794-797: one-tap Normal takes the entry it is tapped in", "expected": {"msk.eaaaaaa1.tests.flex": "full"}}
     ],
     "recapLines": [
       {"name": "no answer: no line", "definition": "visit", "answers": {}, "why": "lifecycle 8.1 lines 1936-1937: one short line per section that has an answer, built from what was tapped", "expected": []},
@@ -1575,7 +1660,9 @@
       {"name": "a section shown by its condition: Yes for a ticked flag", "definition": "ems", "answers": {"ems.called": "10:15", "ems.reason": "other", "ems.reason_other": "Demo: dizzy", "transport.went": true, "transport.destination": "Demo: general hospital"}, "why": "forms.md 2.2: the transport section shows once EMS was called and the reason is not a fall; a flag stores true and shows Yes", "expected": [{"section": "ems", "text": "Demo time EMS called: 10:15; Demo reason: Demo other: Demo: dizzy"}, {"section": "transport", "text": "Demo transported: Yes; Demo destination: Demo: general hospital"}]},
       {"name": "a hidden section has no line", "definition": "ems", "answers": {"ems.reason": "fall", "ems.called": "10:15", "transport.went": true}, "why": "forms.md 7.1 line 905: only answers that count; the transport section is hidden after a fall", "expected": [{"section": "ems", "text": "Demo time EMS called: 10:15; Demo reason: Demo fall"}]},
       {"name": "a sensitive exam's row and region are left out like its code", "definition": "intake", "answers": {"body.areas": ["head", "groin", "other"], "body.marks.head": "bruise", "body.marks.groin": "bruise", "body.spot.region": "groin", "body.spot.side": "right"}, "why": "lifecycle 6.4 rule 8 (lines 1902-1906): an option marked sensitiveExam is dropped for everyone; a grid row whose option is marked is dropped whole, and a region whose region is marked is dropped with its side and surface, so nothing says the exam was done", "expected": [{"section": "body", "text": "Demo areas checked: Demo head, Demo other; Demo marks found, Demo head: Demo bruise"}]},
-      {"name": "the text of an Other option marked sensitiveExam goes with it", "definition": "intake", "answers": {"body.areas": ["head", "private", "other"], "body.areas_other": "Demo: left ear", "body.spot.region": "arm", "body.spot.side": "left"}, "why": "forms.md 2.3 line 291 and fieldAt: the text of an Other option is that option's; when the Other option is dropped as sensitive, its text is dropped too", "expected": [{"section": "body", "text": "Demo areas checked: Demo head, Demo other; Demo spot: Demo arm, Demo left"}]}
+      {"name": "the text of an Other option marked sensitiveExam goes with it", "definition": "intake", "answers": {"body.areas": ["head", "private", "other"], "body.areas_other": "Demo: left ear", "body.spot.region": "arm", "body.spot.side": "left"}, "why": "forms.md 2.3 line 291 and fieldAt: the text of an Other option is that option's; when the Other option is dropped as sensitive, its text is dropped too", "expected": [{"section": "body", "text": "Demo areas checked: Demo head, Demo other; Demo spot: Demo arm, Demo left"}]},
+      {"name": "two entries added in one instant, written two ways: ordered by ID (the later spelling has the lower ID)", "definition": "checkup", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00.000Z", "limbs.ebbbbbb2.entryAt": "2026-03-01T10:00:00Z", "limbs.eaaaaaa1.tone": "increased", "limbs.ebbbbbb2.tone": "normal"}, "why": "forms.md 2.3 and coordinator decision D5: entries are ordered by entryAt as an instant, ties by entry ID; 10:00:00Z and 10:00:00.000Z are one instant (review finding INT-6)", "expected": [{"section": "limbs", "text": "Demo limb 1: Demo tone: Demo increased. Demo limb 2: Demo tone: Demo normal"}]},
+      {"name": "two entries added in one instant, written two ways: ordered by ID (the earlier spelling has the lower ID)", "definition": "checkup", "answers": {"limbs.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z", "limbs.ebbbbbb2.entryAt": "2026-03-01T10:00:00.000Z", "limbs.eaaaaaa1.tone": "increased", "limbs.ebbbbbb2.tone": "normal"}, "why": "forms.md 2.3 and coordinator decision D5: as an instant, not as written (review finding INT-6)", "expected": [{"section": "limbs", "text": "Demo limb 1: Demo tone: Demo increased. Demo limb 2: Demo tone: Demo normal"}]}
     ],
     "readModel": [
       {"name": "no answer: no section", "definition": "visit", "answers": {}, "corrections": [], "why": "lifecycle 5.1 lines 1680-1683 and 9.7 lines 2119-2124: the note laid out for reading, its sections, labels and values; a section with no answer that counts is not listed", "expected": {"sections": []}},
