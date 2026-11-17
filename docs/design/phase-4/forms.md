@@ -511,7 +511,7 @@ trigger the app role loses `update` and `delete` on the table (`revoke`), as eve
 table has both. `insert ... on conflict do nothing` works for the app role. The row-level policy
 also lets a platform-scope request write and read a row of any team, as the policy of 0004 does.
 **The hash is checked for its form only** (64 lower-case hex characters): nothing in the database
-ties it to the definition. The export computes it (4.2), and the installer writes it as the
+ties it to the definition. The export computes it (4.1), and the installer writes it as the
 export wrote it.
 
 ### 3.2 Installing the presets
@@ -598,11 +598,12 @@ Rows never change, so the cache never goes stale. The sync rules and the visit r
 As built (unit F3):
 
 - **Both routes are in `services/api/src/routes/forms.ts`**, their work in
-  `services/api/src/forms/definitions.ts`. Each takes the team scope: a signed-in member of the
-  team named in `X-Team-Id`, whatever their role. No permission key guards them, since a
-  definition holds no patient data; `permissions.test.ts` lets every role through, one with no
-  permission among them, and refuses a member of another team. Without a sign-in the answer is
-  401, without a team 400 `team_required`, for another team 403 `not_a_member`.
+  `services/api/src/forms/definitions.ts`. Each takes the team scope, as every team route does:
+  an active member of the team named in `X-Team-Id`, whatever their role. No permission key
+  guards them, since a definition holds no patient data; `permissions.test.ts` lets every role
+  through, one with no permission among them, and refuses a member of another team. Without a
+  sign-in the answer is 401, without a team 400 `team_required`, for another team 403
+  `not_a_member`.
 - **The list** answers `{ noteTypes }`, one entry per key the team holds, ordered by key:
   `{ key, version, title, kinds, sensitivity, quick, auto, hash }` of its newest version, read
   from that row's definition (`quick` false and `auto` null where the definition leaves them
