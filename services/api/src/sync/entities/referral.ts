@@ -126,4 +126,6 @@ export const referralRules: EntityRules<Value> = {
   },
 
   writeAction: () => 'referral.entered_in_error',
+  // The visit it was made at, as its create's event names it (lifecycle 10.1, review finding REC-5).
+  writeDetails: (s) => ({ encounterId: s.rec.attributes.encounterId }),
 };

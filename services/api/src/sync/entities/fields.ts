@@ -84,6 +84,7 @@ export async function writeValue(
       kind: written,
       version,
       ...(s.redirect ? { redirectedFrom: s.change.recordId } : {}),
+      ...s.rules.writeDetails?.(s),
     },
   });
   await s.rules.afterWrite?.(s);

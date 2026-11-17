@@ -226,6 +226,21 @@ describe('phase 4 sync: referrals', () => {
     expect(refusal!.resolvedByChange).toBe(without.changeId);
   });
 
+  it('its entered-in-error event names the visit it was made at, as its create’s does', async () => {
+    const visit = await visitOf(dana, patientA);
+    const atVisit = await referral(dana, patientA, { encounterId: visit.encounterId });
+    const without = await referral(dana, patientA);
+    expect((await dana.send(atVisit, without)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+    const before = await auditMark(h);
+    const marks = [await mark(dana, atVisit.recordId), await mark(dana, without.recordId)];
+    expect((await dana.send(...marks)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+    const events = await expectAudit(h, 'referral.entered_in_error', { after: before, count: 2 });
+    expect(events.map((e) => [e.entityId, e.details.encounterId])).toEqual([
+      [atVisit.recordId, visit.encounterId],
+      [without.recordId, null],
+    ]);
+  });
+
   it('is entered in error once, by its author or by anyone who charts; anyone else is held for review', async () => {
     const kims = await referral(kim, patientA);
     const ivys = await referral(ivy, patientA);

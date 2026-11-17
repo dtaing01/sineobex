@@ -756,6 +756,8 @@ export interface EntityRules<C = unknown> {
   keptInstead?(s: SetContext): Promise<KeptInstead | null>;
   /** The audit action of a write to [field], when it isn't `${auditPrefix}.updated`. */
   writeAction?(field: string): string | null;
+  /** What a write's audit event names beside the field (a referral's visit, lifecycle 10.1). */
+  writeDetails?(s: SetContext): Record<string, unknown>;
   /** After a value reached the chart (matching re-runs on a name). */
   afterWrite?(s: SetContext): Promise<void>;
 }
