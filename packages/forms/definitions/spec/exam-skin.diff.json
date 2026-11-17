@@ -45,7 +45,7 @@
     },
     {
       "line": 23,
-      "what": "Skin Findings is a repeating section, Skin finding, one entry for each finding (Finding {n}, at most 20). Normal adds no entry and fills nothing in one: no option of a finding is normal.",
+      "what": "Skin Findings is a repeating section, Skin finding, one entry for each finding (Finding {n}, at most 20). It offers no one-tap Normal: no option of a finding is normal, so Normal would fill nothing, and it adds no entry.",
       "why": "focused-exam inventory 3.8, construct 29, default 29; forms 2.4"
     },
     {

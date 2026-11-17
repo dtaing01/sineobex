@@ -531,12 +531,16 @@ describe('the plans of the exam pieces', () => {
     expect(shapeOf(name).outside).toBeUndefined();
   });
 
-  // forms 6.3: only the systems picked open, and each offers one-tap Normal.
+  // forms 6.3: only the systems picked open, and each offers one-tap Normal, but where no field
+  // has a normal answer: a Normal that fills nothing would only puzzle the clinician.
   it.each(EXAM_PIECES)(
-    '%s shows each section only when its system is picked, and offers one-tap Normal',
+    '%s shows each section only when its system is picked, and offers one-tap Normal where it fills something',
     (name) => {
       const systems = shapeOf(name).sections.map((section) => {
-        expect(section.normal, section.id).toBe(true);
+        const fills = fieldsOf(name, section.id).some(
+          (field) => field.normal !== undefined || optionsOf(field).flagged('normal').length > 0,
+        );
+        expect(section.normal, section.id).toBe(fills ? true : undefined);
         expect(systemOf(section), `${section.id}: shows when its system is picked`).toBeDefined();
         return systemOf(section);
       });

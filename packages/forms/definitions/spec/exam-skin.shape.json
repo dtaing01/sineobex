@@ -7,7 +7,6 @@
       "id": "skin_findings",
       "title": "Skin finding",
       "showWhen": { "field": "exam.systems", "is": "skin" },
-      "normal": true,
       "repeat": { "max": 20, "itemTitle": "Finding {n}" }
     }
   ],
