@@ -1840,12 +1840,14 @@ void main() {
         ...taken(c, 1),
         'details': {'effect': effect, 'status': status, 'attestation': attestation, 'hashMatches': true},
       };
+
+      /// Stored with no effect. `hashMatches` goes only to whoever acts as the author: null leaves it out.
       Map<String, Object?> noEffect(
         Map<String, Object?> c,
         String reason,
         String status,
         String attestation,
-        bool hashMatches,
+        bool? hashMatches,
       ) => {
         ...taken(c, 1),
         'details': {
@@ -1853,7 +1855,7 @@ void main() {
           'reason': reason,
           'status': status,
           'attestation': attestation,
-          'hashMatches': hashMatches,
+          'hashMatches': ?hashMatches,
         },
       };
 
@@ -1948,7 +1950,8 @@ void main() {
                 expected['reason']! as String,
                 input['noteStatus']! as String,
                 'not_needed',
-                input['hashMatches']! as bool,
+                // Told only to whoever acts as the author.
+                input['actsAsAuthor'] == true ? input['hashMatches']! as bool : null,
               ),
             ], reason: reason);
             expect([status, server.records[s['recordId']]!.status], [input['noteStatus'], 'none'], reason: reason);
@@ -2101,9 +2104,17 @@ void main() {
           server.credentials[blair] = 'resident';
           final ours = chartedVisit(alex);
           final theirs = signoff(blair, ours.note, 'sign');
-          expect(await send(blair, [theirs]), [noEffect(theirs, 'not_author', 'draft', 'not_needed', true)]);
+          // Whether a hash matches is told to the author only: to Blair it would check any guess (RD-2).
+          final guess = signoff(blair, ours.note, 'sign', hash: 'ab' * 32);
+          expect(await send(blair, [theirs, guess]), [
+            noEffect(theirs, 'not_author', 'draft', 'not_needed', null),
+            noEffect(guess, 'not_author', 'draft', 'not_needed', null),
+          ]);
           expect(server.records[theirs['recordId']]!.author, blair);
-          expect(noticesOn(ours.note.noteId), ['$blair change_not_applied $entityNote']);
+          expect(noticesOn(ours.note.noteId), [
+            '$blair change_not_applied $entityNote',
+            '$blair change_not_applied $entityNote',
+          ]);
 
           // Assigned to Blair after Alex left (3.8): Blair acts as the author now, and Alex no longer does.
           server.records[ours.note.noteId]!.assignedTo = blair;
@@ -2111,10 +2122,13 @@ void main() {
           final writers = signoff(alex, ours.note, 'sign');
           expect(await send(alex, [flags, writers]), [
             applied(flags, 'signed', 'signed', 'not_needed'),
-            noEffect(writers, 'not_author', 'draft', 'not_needed', true),
+            noEffect(writers, 'not_author', 'draft', 'not_needed', null),
           ]);
           final assignees = signoff(blair, ours.note, 'sign');
           expect(await send(blair, [assignees]), [applied(assignees, 'signed', 'signed', 'waiting')]);
+          // On a finished note too: the first writer, no longer the author, is not told whether it matches.
+          final late = signoff(alex, ours.note, 'sign');
+          expect(await send(alex, [late]), [noEffect(late, 'already_finished', 'signed', 'waiting', null)]);
           expect(
             [server.records[ours.note.noteId]!.completedBy, server.records[ours.note.noteId]!.signoffId],
             [blair, assignees['recordId']],

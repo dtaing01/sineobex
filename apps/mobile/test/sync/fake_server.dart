@@ -1829,7 +1829,8 @@ class FakeSyncServer {
             'reason': reason.code,
             'status': status,
             'attestation': note.attestation,
-            'hashMatches': hashMatches,
+            // Only to whoever acts as the author (note-signoff.ts): to anyone else it checks a guess.
+            if (actor.userId == _actingAuthor(note)) 'hashMatches': hashMatches,
           },
         );
       case SignoffApplied(effect: final outcome, :final statusAfter, :final attestationAfter):

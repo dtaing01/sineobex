@@ -178,18 +178,25 @@ describe('phase 4 sync: sign-offs', () => {
     message: expect.any(String),
     details: { problem },
   });
+  /** Stored with no effect. `hashMatches` goes only to whoever acts as the author: null leaves it out. */
   const noEffect = (
     c: Change,
     reason: string,
     status: string,
     attestation: string,
-    hashMatches: boolean,
+    hashMatches: boolean | null,
   ) => ({
     changeId: c.changeId,
     status: 'accepted',
     serverVersion: 1,
     hash: c.valueHash,
-    details: { effect: 'none', reason, status, attestation, hashMatches },
+    details: {
+      effect: 'none',
+      reason,
+      status,
+      attestation,
+      ...(hashMatches === null ? {} : { hashMatches }),
+    },
   });
 
   const noteRow = async (id: string) =>
@@ -501,10 +508,16 @@ describe('phase 4 sync: sign-offs', () => {
     it('a sign-off from someone who does not act as the author is stored with no effect, and the sender is told', async () => {
       const ours = await chartedVisit(dana);
       const theirs = await signoff(rae, ours.note, 'sign');
-      expect(await rae.send(theirs)).toEqual([noEffect(theirs, 'not_author', 'draft', 'not_needed', true)]);
+      // Whether a hash matches is told to the author only: to Rae it would check any guess (RD-2).
+      const guess = await signoff(rae, ours.note, 'sign', { hash: 'ab'.repeat(32) });
+      expect(await rae.send(theirs, guess)).toEqual([
+        noEffect(theirs, 'not_author', 'draft', 'not_needed', null),
+        noEffect(guess, 'not_author', 'draft', 'not_needed', null),
+      ]);
       expect(await noteRow(ours.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
       expect(await signoffRow(theirs.recordId)).toMatchObject({ effect: 'none', signerUserId: rae.id });
       expect(await noticesOn(ours.note.noteId)).toEqual([
+        { userId: rae.id, kind: 'change_not_applied', entity: 'encounter_note' },
         { userId: rae.id, kind: 'change_not_applied', entity: 'encounter_note' },
       ]);
 
@@ -515,10 +528,13 @@ describe('phase 4 sync: sign-offs', () => {
       const writers = await signoff(dana, ours.note, 'sign');
       expect(await dana.send(flags, writers)).toEqual([
         applied(flags, 'signed', 'signed', 'not_needed'),
-        noEffect(writers, 'not_author', 'draft', 'not_needed', true),
+        noEffect(writers, 'not_author', 'draft', 'not_needed', null),
       ]);
       const assignees = await signoff(rae, ours.note, 'sign');
       expect(await rae.send(assignees)).toEqual([applied(assignees, 'signed', 'signed', 'waiting')]);
+      // On a finished note too: the first writer, no longer the author, is not told whether it matches.
+      const late = await signoff(dana, ours.note, 'sign');
+      expect(await dana.send(late)).toEqual([noEffect(late, 'already_finished', 'signed', 'waiting', null)]);
       expect(await noteRow(ours.note.noteId)).toMatchObject({
         status: 'signed',
         completedBy: rae.id,

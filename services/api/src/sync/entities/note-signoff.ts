@@ -202,7 +202,10 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
 
   if (effect.effect === 'none') {
     // "Only the note's author can do that. Nothing was changed." A finished note's own receipt
-    // says whether what was signed is what this person saw.
+    // says whether what was signed is what this person saw. Only to whoever acts as the author,
+    // the one who completes from two phones (3.4): to anyone else it would check any guess of
+    // what the note holds, a hidden answer included (review findings RD-2, NOT-6).
+    const toAuthor = actor.authorId === actingAuthor(note);
     if (effect.reason === 'not_author') await notify(ctx, 'change_not_applied', note.id);
     await ctx.audit({
       ...audit,
@@ -217,7 +220,7 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
         reason: effect.reason,
         status: note.status,
         attestation: note.internal.attestation,
-        hashMatches,
+        ...(toAuthor ? { hashMatches } : {}),
       },
     };
   }
