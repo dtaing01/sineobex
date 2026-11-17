@@ -130,6 +130,9 @@ importers:
 
   db:
     dependencies:
+      '@sineobex/forms':
+        specifier: workspace:*
+        version: link:../packages/forms
       postgres:
         specifier: 3.4.9
         version: 3.4.9
@@ -195,6 +198,9 @@ importers:
       '@hono/zod-openapi':
         specifier: 1.6.3
         version: 1.6.3(hono@4.13.16)(zod@4.6.7)
+      '@sineobex/forms':
+        specifier: workspace:*
+        version: link:../../packages/forms
       hono:
         specifier: 4.13.16
         version: 4.13.16

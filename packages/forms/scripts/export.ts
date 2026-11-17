@@ -26,6 +26,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, sha256Hex } from '../src/canonical.ts';
+import type { Preset } from '../src/install.ts';
 import { checkLock, LOCK_FILE, lockOf, lockText } from '../src/lock.ts';
 import { pathModel } from '../src/paths.ts';
 import { resolve } from '../src/resolve.ts';
@@ -43,7 +44,7 @@ import { checkVersions } from '../src/versions.ts';
 export const PRESETS_FILE = 'generated/presets.json';
 
 /** One note type version as the server installs it (3.2) and the phone bundles it (3.4). */
-export type Preset = { key: string; version: number; hash: string; definition: ResolvedNoteType };
+export type { Preset };
 
 /** Something worth knowing that fails nothing. */
 export type Note = { file: string; message: string };
