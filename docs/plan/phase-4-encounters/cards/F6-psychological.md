@@ -1,6 +1,6 @@
 # Card F6-psychological: the Behavioral health note type
 
-Level: S. Window: 16,000. Needs: E-presets, F6-lists, F6-spec-pieces, F6-shapes-notes, F6-red-flags, F6-harm-reduction.
+Level: S. Window: 16,000. Needs: E-presets, F6-lists, F6-spec-pieces, F6-shapes-notes, F6-red-flags, F6-harm-reduction. Done.
 
 ## Goal
 
