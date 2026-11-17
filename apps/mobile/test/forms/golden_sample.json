@@ -1,0 +1,4341 @@
+{
+  "note": "Written by packages/forms/test/golden.test.ts; read by golden_test.dart. Do not edit.",
+  "presets": [
+    {
+      "key": "checks_demo",
+      "version": 1,
+      "hash": "d5e1d9861f692952b6be0c9b5d90fffdc99822c805f2ac42a413b8be95c6994e",
+      "definition": {
+        "key": "checks_demo",
+        "version": 1,
+        "title": "Checks (test)",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "quick": true,
+        "sections": [
+          {
+            "id": "visit",
+            "title": "Visit",
+            "fields": [
+              {
+                "id": "systems",
+                "kind": "choice",
+                "many": true,
+                "label": "What did you examine?",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "None",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "eyes",
+                    "label": "Eyes"
+                  },
+                  {
+                    "code": "ears",
+                    "label": "Ears"
+                  },
+                  {
+                    "code": "skin",
+                    "label": "Skin",
+                    "suggests": "full_demo"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Other",
+                    "other": true
+                  }
+                ]
+              },
+              {
+                "id": "concern",
+                "kind": "choice",
+                "many": false,
+                "label": "New concern?",
+                "required": true,
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Yes"
+                  },
+                  {
+                    "code": "no",
+                    "label": "No"
+                  }
+                ]
+              },
+              {
+                "id": "story",
+                "kind": "text",
+                "label": "What happened?",
+                "lines": "many",
+                "maxLength": 2000,
+                "required": true,
+                "showWhen": {
+                  "field": "visit.concern",
+                  "is": "yes"
+                },
+                "mapsTo": "full_demo:history.story"
+              },
+              {
+                "id": "length",
+                "kind": "number",
+                "label": "Length",
+                "min": 0,
+                "max": 99.9,
+                "decimals": 1,
+                "unit": "cm",
+                "sides": true,
+                "mapsTo": "full_demo:history.length"
+              },
+              {
+                "id": "unable",
+                "kind": "flag",
+                "label": "Unable to measure",
+                "clears": [
+                  "length"
+                ]
+              },
+              {
+                "id": "onset",
+                "kind": "date",
+                "label": "Onset",
+                "range": "past"
+              },
+              {
+                "id": "called",
+                "kind": "time",
+                "label": "Time called"
+              },
+              {
+                "id": "lasting",
+                "kind": "duration",
+                "label": "How long"
+              },
+              {
+                "id": "pressure",
+                "kind": "group",
+                "label": "Blood pressure",
+                "layout": "row",
+                "mapsTo": "full_demo:history.pressure",
+                "fields": [
+                  {
+                    "id": "upper",
+                    "kind": "number",
+                    "label": "Upper",
+                    "min": 0,
+                    "max": 300,
+                    "decimals": 0
+                  },
+                  {
+                    "id": "lower",
+                    "kind": "number",
+                    "label": "Lower",
+                    "min": 0,
+                    "max": 300,
+                    "decimals": 0
+                  }
+                ]
+              },
+              {
+                "id": "plan",
+                "kind": "choice",
+                "many": true,
+                "label": "Plan",
+                "options": [
+                  {
+                    "code": "sent",
+                    "label": "Sent to ED"
+                  },
+                  {
+                    "code": "declined",
+                    "label": "Declined care"
+                  },
+                  {
+                    "code": "follow_up",
+                    "label": "Follow up"
+                  }
+                ],
+                "excludes": [
+                  [
+                    "sent",
+                    "declined"
+                  ]
+                ]
+              },
+              {
+                "id": "photos",
+                "kind": "photo",
+                "label": "Photos",
+                "max": 4
+              },
+              {
+                "id": "handoff",
+                "kind": "action",
+                "label": "Show the handoff summary",
+                "action": "show_handoff"
+              },
+              {
+                "id": "wound",
+                "kind": "action",
+                "label": "Go to the full module",
+                "action": "open_note_type",
+                "noteType": "full_demo",
+                "showWhen": {
+                  "field": "visit.systems",
+                  "is": "skin"
+                }
+              },
+              {
+                "id": "guidance",
+                "kind": "info",
+                "label": "The resource directory is coming."
+              }
+            ]
+          },
+          {
+            "id": "eyes",
+            "title": "Eyes",
+            "normal": true,
+            "showWhen": {
+              "all": [
+                {
+                  "field": "visit.concern",
+                  "is": "yes"
+                },
+                {
+                  "field": "visit.systems",
+                  "is": "eyes"
+                }
+              ]
+            },
+            "fields": [
+              {
+                "id": "pupils",
+                "kind": "choice",
+                "many": false,
+                "label": "Pupils",
+                "options": [
+                  {
+                    "code": "zero",
+                    "label": "0"
+                  },
+                  {
+                    "code": "one",
+                    "label": "1+"
+                  },
+                  {
+                    "code": "two",
+                    "label": "2+",
+                    "normal": true
+                  },
+                  {
+                    "code": "unable",
+                    "label": "Unable to assess",
+                    "unable": true
+                  }
+                ]
+              },
+              {
+                "id": "notes",
+                "kind": "text",
+                "label": "Notes",
+                "lines": "many",
+                "maxLength": 2000,
+                "showWhen": {
+                  "field": "eyes.pupils",
+                  "is": [
+                    "zero",
+                    "one"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "ears",
+            "title": "Ears",
+            "fields": [
+              {
+                "id": "hearing",
+                "kind": "choice",
+                "many": false,
+                "label": "Hearing",
+                "sides": true,
+                "options": [
+                  {
+                    "code": "intact",
+                    "label": "Grossly intact",
+                    "normal": true
+                  },
+                  {
+                    "code": "decreased",
+                    "label": "Decreased"
+                  }
+                ]
+              }
+            ],
+            "showWhen": {
+              "field": "visit.concern",
+              "is": "yes"
+            }
+          },
+          {
+            "id": "findings",
+            "title": "Findings",
+            "showWhen": {
+              "field": "visit.systems",
+              "is": "skin"
+            },
+            "repeat": {
+              "max": 5,
+              "itemTitle": "Finding {n}"
+            },
+            "fields": [
+              {
+                "id": "where",
+                "kind": "region",
+                "label": "Where",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Leg"
+                  },
+                  {
+                    "code": "back",
+                    "label": "Back"
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Left"
+                  }
+                ],
+                "surface": [
+                  {
+                    "code": "anterior",
+                    "label": "Anterior"
+                  },
+                  {
+                    "code": "posterior",
+                    "label": "Posterior"
+                  }
+                ]
+              },
+              {
+                "id": "diagnosis",
+                "kind": "problem",
+                "label": "Diagnosis"
+              },
+              {
+                "id": "type",
+                "kind": "choice",
+                "many": false,
+                "label": "Type",
+                "options": [
+                  {
+                    "code": "cut",
+                    "label": "Cut"
+                  },
+                  {
+                    "code": "burn",
+                    "label": "Burn"
+                  }
+                ]
+              },
+              {
+                "id": "depth",
+                "kind": "number",
+                "label": "Depth",
+                "min": 0,
+                "max": 50,
+                "decimals": 0,
+                "unit": "mm",
+                "required": true,
+                "showWhen": {
+                  "field": "./type",
+                  "is": "burn"
+                }
+              },
+              {
+                "id": "pulses",
+                "kind": "grid",
+                "label": "Pulses",
+                "rows": [
+                  {
+                    "code": "radial",
+                    "label": "Radial"
+                  },
+                  {
+                    "code": "pedal",
+                    "label": "Pedal"
+                  }
+                ],
+                "cell": {
+                  "id": "strength",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Strength",
+                  "options": [
+                    {
+                      "code": "zero",
+                      "label": "0"
+                    },
+                    {
+                      "code": "one",
+                      "label": "1+"
+                    },
+                    {
+                      "code": "two",
+                      "label": "2+",
+                      "normal": true
+                    },
+                    {
+                      "code": "unable",
+                      "label": "Unable to assess",
+                      "unable": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "status",
+            "title": "Status",
+            "fields": [
+              {
+                "id": "each",
+                "kind": "grid",
+                "label": "For each system examined",
+                "rows": {
+                  "pickedIn": "visit.systems"
+                },
+                "cell": {
+                  "id": "detail",
+                  "kind": "group",
+                  "label": "Detail",
+                  "layout": "stack",
+                  "fields": [
+                    {
+                      "id": "seen",
+                      "kind": "choice",
+                      "many": false,
+                      "label": "Seen before?",
+                      "options": [
+                        {
+                          "code": "yes",
+                          "label": "Yes"
+                        },
+                        {
+                          "code": "no",
+                          "label": "No"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "note",
+                      "kind": "text",
+                      "label": "Note",
+                      "lines": "one",
+                      "maxLength": 200,
+                      "required": true,
+                      "showWhen": {
+                        "field": "./seen",
+                        "is": "yes"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "reflexes",
+                "kind": "grid",
+                "label": "Reflexes",
+                "sides": true,
+                "rows": [
+                  {
+                    "code": "knee",
+                    "label": "Knee"
+                  },
+                  {
+                    "code": "ankle",
+                    "label": "Ankle"
+                  }
+                ],
+                "cell": {
+                  "id": "grade",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Grade",
+                  "options": [
+                    {
+                      "code": "zero",
+                      "label": "0"
+                    },
+                    {
+                      "code": "one",
+                      "label": "1+"
+                    },
+                    {
+                      "code": "two",
+                      "label": "2+",
+                      "normal": true
+                    },
+                    {
+                      "code": "unable",
+                      "label": "Unable to assess",
+                      "unable": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "injury",
+            "title": "Injury",
+            "fields": [
+              {
+                "id": "where",
+                "kind": "region",
+                "label": "Where",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Leg"
+                  }
+                ],
+                "mapsTo": "full_demo:wounds.where",
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Left"
+                  }
+                ],
+                "surface": [
+                  {
+                    "code": "anterior",
+                    "label": "Anterior"
+                  },
+                  {
+                    "code": "posterior",
+                    "label": "Posterior"
+                  }
+                ]
+              },
+              {
+                "id": "type",
+                "kind": "choice",
+                "many": false,
+                "label": "Type",
+                "options": [
+                  {
+                    "code": "cut",
+                    "label": "Cut"
+                  },
+                  {
+                    "code": "burn",
+                    "label": "Burn"
+                  }
+                ],
+                "mapsTo": "full_demo:wounds.type"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "full_demo",
+      "version": 1,
+      "hash": "37a7a9ce1a2b46ad3fab8cf656c58590be2412ae4efaeca7be9547d2c3d85cca",
+      "definition": {
+        "key": "full_demo",
+        "version": 1,
+        "title": "Full module (test)",
+        "kinds": [
+          "medical"
+        ],
+        "group": "wound",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "history",
+            "title": "History",
+            "fields": [
+              {
+                "id": "story",
+                "kind": "text",
+                "label": "What happened?",
+                "lines": "many",
+                "maxLength": 4000
+              },
+              {
+                "id": "length",
+                "kind": "number",
+                "label": "Length",
+                "min": 0,
+                "max": 200,
+                "decimals": 1,
+                "unit": "cm",
+                "sides": true
+              },
+              {
+                "id": "pressure",
+                "kind": "group",
+                "label": "Blood pressure",
+                "layout": "row",
+                "fields": [
+                  {
+                    "id": "upper",
+                    "kind": "number",
+                    "label": "Upper",
+                    "min": 0,
+                    "max": 300,
+                    "decimals": 0
+                  },
+                  {
+                    "id": "lower",
+                    "kind": "number",
+                    "label": "Lower",
+                    "min": 0,
+                    "max": 300,
+                    "decimals": 0
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "wounds",
+            "title": "Wounds",
+            "repeat": {
+              "max": 20,
+              "itemTitle": "Wound {n}"
+            },
+            "fields": [
+              {
+                "id": "where",
+                "kind": "region",
+                "label": "Where",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Leg"
+                  },
+                  {
+                    "code": "back",
+                    "label": "Back"
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Left"
+                  },
+                  {
+                    "code": "bilateral",
+                    "label": "Bilateral"
+                  }
+                ],
+                "surface": [
+                  {
+                    "code": "anterior",
+                    "label": "Anterior"
+                  },
+                  {
+                    "code": "posterior",
+                    "label": "Posterior"
+                  }
+                ]
+              },
+              {
+                "id": "type",
+                "kind": "choice",
+                "many": false,
+                "label": "Type",
+                "options": [
+                  {
+                    "code": "cut",
+                    "label": "Cut"
+                  },
+                  {
+                    "code": "burn",
+                    "label": "Burn"
+                  },
+                  {
+                    "code": "bite",
+                    "label": "Bite"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Other",
+                    "other": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_visit",
+      "version": 1,
+      "hash": "ef0cb0161f12cded6ccd4c6e33fd31634ac3b9e604a24d6c4a914a5a712b67e5",
+      "definition": {
+        "key": "demo_visit",
+        "version": 1,
+        "title": "Demo visit",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "auto": "medical",
+        "sections": [
+          {
+            "id": "vitals",
+            "title": "Demo vitals",
+            "normal": true,
+            "fields": [
+              {
+                "id": "bp",
+                "kind": "group",
+                "label": "Demo blood pressure",
+                "layout": "row",
+                "collapsed": true,
+                "fields": [
+                  {
+                    "id": "systolic",
+                    "kind": "number",
+                    "label": "Demo systolic",
+                    "min": 50,
+                    "max": 250,
+                    "decimals": 0,
+                    "unit": "mmHg",
+                    "handoff": true
+                  },
+                  {
+                    "id": "diastolic",
+                    "kind": "number",
+                    "label": "Demo diastolic",
+                    "min": 30,
+                    "max": 150,
+                    "decimals": 0,
+                    "unit": "mmHg",
+                    "handoff": true
+                  }
+                ]
+              },
+              {
+                "id": "unableBp",
+                "kind": "flag",
+                "label": "Demo unable to measure",
+                "clears": [
+                  "bp"
+                ],
+                "noNormal": true
+              },
+              {
+                "id": "pulse",
+                "kind": "number",
+                "label": "Demo pulse",
+                "min": 20,
+                "max": 250,
+                "decimals": 0,
+                "unit": "bpm",
+                "handoff": true
+              },
+              {
+                "id": "temp",
+                "kind": "number",
+                "label": "Demo temperature",
+                "min": 30,
+                "max": 43,
+                "decimals": 1,
+                "unit": "C",
+                "display": "box"
+              },
+              {
+                "id": "weight",
+                "kind": "number",
+                "label": "Demo weight",
+                "min": 0.5,
+                "max": 300,
+                "decimals": 2,
+                "unit": "kg",
+                "altUnit": {
+                  "unit": "lb",
+                  "perUnit": 0.45359237
+                }
+              },
+              {
+                "id": "strength",
+                "kind": "number",
+                "label": "Demo grip strength",
+                "min": 0,
+                "max": 5,
+                "decimals": 0,
+                "display": "outOf",
+                "normal": 5
+              },
+              {
+                "id": "measured",
+                "kind": "time",
+                "label": "Demo time measured",
+                "recap": false
+              },
+              {
+                "id": "alert",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo level of alertness",
+                "handoff": true,
+                "options": [
+                  {
+                    "code": "alert",
+                    "label": "Demo alert",
+                    "normal": true,
+                    "icon": "eye"
+                  },
+                  {
+                    "code": "drowsy",
+                    "label": "Demo drowsy"
+                  },
+                  {
+                    "code": "unresponsive",
+                    "label": "Demo unresponsive"
+                  }
+                ]
+              },
+              {
+                "id": "seated",
+                "kind": "info",
+                "label": "Demo: take vitals seated."
+              },
+              {
+                "id": "pictures",
+                "kind": "photo",
+                "label": "Demo photos",
+                "max": 3
+              }
+            ]
+          },
+          {
+            "id": "meds",
+            "title": "Demo medications",
+            "needs": "orderMedications",
+            "fields": [
+              {
+                "id": "given",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo medications given",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "naloxone",
+                    "label": "Demo naloxone"
+                  },
+                  {
+                    "code": "ondansetron",
+                    "label": "Demo ondansetron"
+                  },
+                  {
+                    "code": "ibuprofen",
+                    "label": "Demo ibuprofen"
+                  }
+                ]
+              },
+              {
+                "id": "doses",
+                "kind": "number",
+                "label": "Demo naloxone doses",
+                "min": 1,
+                "max": 10,
+                "decimals": 0,
+                "unit": "doses",
+                "display": "stepper",
+                "showWhen": {
+                  "field": "meds.given",
+                  "is": "naloxone"
+                }
+              }
+            ]
+          },
+          {
+            "id": "plan",
+            "title": "Demo plan",
+            "fields": [
+              {
+                "id": "next",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo next step",
+                "help": "Demo: the step agreed with the patient.",
+                "options": [
+                  {
+                    "code": "wound",
+                    "label": "Demo wound care",
+                    "suggests": "demo_wound"
+                  },
+                  {
+                    "code": "talk",
+                    "label": "Demo talk again",
+                    "suggests": "demo_psych"
+                  },
+                  {
+                    "code": "none",
+                    "label": "Demo nothing more"
+                  }
+                ]
+              },
+              {
+                "id": "notes",
+                "kind": "text",
+                "label": "Demo plan notes",
+                "lines": "many",
+                "maxLength": 500
+              },
+              {
+                "id": "followUp",
+                "kind": "date",
+                "label": "Demo follow-up date",
+                "range": "any"
+              },
+              {
+                "id": "openWound",
+                "kind": "action",
+                "label": "Demo open wound care",
+                "action": "open_note_type",
+                "noteType": "demo_wound"
+              },
+              {
+                "id": "refer",
+                "kind": "action",
+                "label": "Demo add a referral",
+                "action": "add_referral"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_wound",
+      "version": 1,
+      "hash": "2360b410ae5011087018ba89aeb4708dc64566193eb965ac3c49cdfb75fd8856",
+      "definition": {
+        "key": "demo_wound",
+        "version": 1,
+        "title": "Demo wound care",
+        "kinds": [
+          "medical"
+        ],
+        "group": "wound",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "wounds",
+            "title": "Demo wounds",
+            "repeat": {
+              "max": 5,
+              "itemTitle": "Demo wound {n}"
+            },
+            "fields": [
+              {
+                "id": "where",
+                "kind": "region",
+                "label": "Demo location",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Demo arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Demo leg"
+                  },
+                  {
+                    "code": "foot",
+                    "label": "Demo foot",
+                    "icon": "foot"
+                  },
+                  {
+                    "code": "back",
+                    "label": "Demo back"
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Demo right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Demo left"
+                  },
+                  {
+                    "code": "bilateral",
+                    "label": "Demo bilateral"
+                  }
+                ],
+                "surface": [
+                  {
+                    "code": "anterior",
+                    "label": "Anterior"
+                  },
+                  {
+                    "code": "posterior",
+                    "label": "Posterior"
+                  }
+                ]
+              },
+              {
+                "id": "eachSide",
+                "kind": "info",
+                "label": "Demo: measure each side.",
+                "showWhen": {
+                  "field": "./where.side",
+                  "is": "bilateral"
+                }
+              },
+              {
+                "id": "type",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo wound type",
+                "required": true,
+                "options": [
+                  {
+                    "code": "laceration",
+                    "label": "Demo laceration"
+                  },
+                  {
+                    "code": "abscess",
+                    "label": "Demo abscess"
+                  },
+                  {
+                    "code": "burn",
+                    "label": "Demo burn"
+                  },
+                  {
+                    "code": "ulcer",
+                    "label": "Demo ulcer"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ]
+              },
+              {
+                "id": "degree",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo burn degree",
+                "showWhen": {
+                  "field": "./type",
+                  "is": "burn"
+                },
+                "options": [
+                  {
+                    "code": "first",
+                    "label": "Demo first"
+                  },
+                  {
+                    "code": "second",
+                    "label": "Demo second"
+                  },
+                  {
+                    "code": "third",
+                    "label": "Demo third"
+                  }
+                ]
+              },
+              {
+                "id": "drainage",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo drainage",
+                "showWhen": {
+                  "field": "./type",
+                  "is": [
+                    "abscess",
+                    "ulcer"
+                  ]
+                },
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "serous",
+                    "label": "Demo serous"
+                  },
+                  {
+                    "code": "purulent",
+                    "label": "Demo purulent",
+                    "suggests": "demo_problems"
+                  },
+                  {
+                    "code": "bloody",
+                    "label": "Demo bloody",
+                    "suggests": "demo_problems"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ],
+                "excludes": [
+                  [
+                    "serous",
+                    "purulent"
+                  ]
+                ]
+              },
+              {
+                "id": "length",
+                "kind": "number",
+                "label": "Demo length",
+                "min": 0,
+                "max": 50,
+                "decimals": 1,
+                "unit": "cm",
+                "altUnit": {
+                  "unit": "in",
+                  "perUnit": 2.54
+                }
+              },
+              {
+                "id": "unableLength",
+                "kind": "flag",
+                "label": "Demo unable to measure",
+                "clears": [
+                  "length"
+                ]
+              },
+              {
+                "id": "injuredOn",
+                "kind": "date",
+                "label": "Demo date of injury",
+                "range": "past"
+              },
+              {
+                "id": "healing",
+                "kind": "duration",
+                "label": "Demo time healing"
+              },
+              {
+                "id": "photos",
+                "kind": "photo",
+                "label": "Demo wound photos",
+                "max": 5
+              },
+              {
+                "id": "edge",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo wound edge",
+                "sides": true,
+                "options": [
+                  {
+                    "code": "clean",
+                    "label": "Demo clean"
+                  },
+                  {
+                    "code": "ragged",
+                    "label": "Demo ragged"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ]
+              },
+              {
+                "id": "size",
+                "kind": "group",
+                "label": "Demo size",
+                "layout": "row",
+                "fields": [
+                  {
+                    "id": "len",
+                    "kind": "number",
+                    "label": "Demo size length",
+                    "min": 0,
+                    "max": 50,
+                    "decimals": 1,
+                    "unit": "cm"
+                  },
+                  {
+                    "id": "wid",
+                    "kind": "number",
+                    "label": "Demo size width",
+                    "min": 0,
+                    "max": 50,
+                    "decimals": 1,
+                    "unit": "cm"
+                  }
+                ]
+              },
+              {
+                "id": "pulses",
+                "kind": "grid",
+                "label": "Demo pulses near",
+                "rows": [
+                  {
+                    "code": "radial",
+                    "label": "Demo radial"
+                  },
+                  {
+                    "code": "pedal",
+                    "label": "Demo pedal"
+                  }
+                ],
+                "cell": {
+                  "id": "strength",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo strength",
+                  "options": [
+                    {
+                      "code": "absent",
+                      "label": "Demo absent"
+                    },
+                    {
+                      "code": "weak",
+                      "label": "Demo weak"
+                    },
+                    {
+                      "code": "normal",
+                      "label": "Demo normal"
+                    },
+                    {
+                      "code": "other",
+                      "label": "Demo other",
+                      "other": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "care",
+            "title": "Demo care",
+            "fields": [
+              {
+                "id": "changeBy",
+                "kind": "date",
+                "label": "Demo change dressing by",
+                "range": "future"
+              },
+              {
+                "id": "teaching",
+                "kind": "text",
+                "label": "Demo teaching given",
+                "lines": "one",
+                "maxLength": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_exam",
+      "version": 1,
+      "hash": "6c6507c88d7f1f3a5f5a4055084a03d3617e74a3acedb1a2a1913ff60773ce3c",
+      "definition": {
+        "key": "demo_exam",
+        "version": 1,
+        "title": "Demo exam",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "systems",
+            "title": "Demo systems",
+            "fields": [
+              {
+                "id": "picked",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo systems examined",
+                "options": [
+                  {
+                    "code": "heart",
+                    "label": "Demo heart"
+                  },
+                  {
+                    "code": "lungs",
+                    "label": "Demo lungs"
+                  },
+                  {
+                    "code": "skin",
+                    "label": "Demo skin",
+                    "suggests": "demo_wound"
+                  },
+                  {
+                    "code": "gu",
+                    "label": "Demo private exam",
+                    "sensitiveExam": true
+                  },
+                  {
+                    "code": "msk",
+                    "label": "Demo joints"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "heart",
+            "title": "Demo heart",
+            "normal": true,
+            "showWhen": {
+              "field": "systems.picked",
+              "is": "heart"
+            },
+            "fields": [
+              {
+                "id": "rhythm",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo rhythm",
+                "options": [
+                  {
+                    "code": "regular",
+                    "label": "Demo regular",
+                    "normal": true
+                  },
+                  {
+                    "code": "irregular",
+                    "label": "Demo irregular"
+                  },
+                  {
+                    "code": "unable",
+                    "label": "Demo unable to assess",
+                    "unable": true
+                  }
+                ]
+              },
+              {
+                "id": "murmur",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo murmur",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "normal": true
+                  },
+                  {
+                    "code": "present",
+                    "label": "Demo present"
+                  }
+                ]
+              },
+              {
+                "id": "grade",
+                "kind": "number",
+                "label": "Demo murmur grade",
+                "min": 1,
+                "max": 6,
+                "decimals": 0,
+                "display": "outOf",
+                "showWhen": {
+                  "all": [
+                    {
+                      "field": "heart.murmur",
+                      "is": "present"
+                    },
+                    {
+                      "field": "heart.rhythm",
+                      "filled": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "lungs",
+            "title": "Demo lungs",
+            "normal": true,
+            "showWhen": {
+              "field": "systems.picked",
+              "is": [
+                "lungs"
+              ]
+            },
+            "fields": [
+              {
+                "id": "sounds",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo breath sounds",
+                "sides": true,
+                "options": [
+                  {
+                    "code": "clear",
+                    "label": "Demo clear",
+                    "normal": true
+                  },
+                  {
+                    "code": "wheeze",
+                    "label": "Demo wheeze"
+                  },
+                  {
+                    "code": "crackles",
+                    "label": "Demo crackles"
+                  },
+                  {
+                    "code": "unable",
+                    "label": "Demo unable to assess",
+                    "unable": true
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ]
+              },
+              {
+                "id": "where",
+                "kind": "text",
+                "label": "Demo where heard",
+                "lines": "one",
+                "maxLength": 100,
+                "showWhen": {
+                  "any": [
+                    {
+                      "field": "lungs.sounds.right",
+                      "is": [
+                        "wheeze",
+                        "crackles"
+                      ]
+                    },
+                    {
+                      "field": "lungs.sounds.left",
+                      "is": [
+                        "wheeze",
+                        "crackles"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "pulses",
+            "title": "Demo pulses and reflexes",
+            "normal": true,
+            "fields": [
+              {
+                "id": "pulses",
+                "kind": "grid",
+                "label": "Demo pulses",
+                "sides": true,
+                "handoff": true,
+                "rows": [
+                  {
+                    "code": "radial",
+                    "label": "Demo radial"
+                  },
+                  {
+                    "code": "pedal",
+                    "label": "Demo pedal",
+                    "icon": "foot"
+                  }
+                ],
+                "cell": {
+                  "id": "strength",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo pulse strength",
+                  "options": [
+                    {
+                      "code": "absent",
+                      "label": "Demo absent"
+                    },
+                    {
+                      "code": "weak",
+                      "label": "Demo weak"
+                    },
+                    {
+                      "code": "normal",
+                      "label": "Demo normal",
+                      "normal": true
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "reflexes",
+                "kind": "grid",
+                "label": "Demo reflexes",
+                "collapsed": true,
+                "rows": [
+                  {
+                    "code": "biceps",
+                    "label": "Demo biceps"
+                  },
+                  {
+                    "code": "knee",
+                    "label": "Demo knee"
+                  }
+                ],
+                "cell": {
+                  "id": "reflex",
+                  "kind": "group",
+                  "label": "Demo reflex",
+                  "layout": "row",
+                  "fields": [
+                    {
+                      "id": "grade",
+                      "kind": "number",
+                      "label": "Demo grade",
+                      "min": 0,
+                      "max": 4,
+                      "decimals": 0,
+                      "normal": 2
+                    },
+                    {
+                      "id": "comment",
+                      "kind": "text",
+                      "label": "Demo comment",
+                      "lines": "one",
+                      "maxLength": 40,
+                      "showWhen": {
+                        "field": "./grade",
+                        "filled": true
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "more",
+                "kind": "group",
+                "label": "Demo further checks",
+                "layout": "stack",
+                "collapsed": true,
+                "fields": [
+                  {
+                    "id": "bruit",
+                    "kind": "choice",
+                    "many": false,
+                    "label": "Demo bruit",
+                    "sides": true,
+                    "options": [
+                      {
+                        "code": "none",
+                        "label": "Demo none",
+                        "normal": true
+                      },
+                      {
+                        "code": "present",
+                        "label": "Demo present"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "gu",
+            "title": "Demo private exam",
+            "sensitiveExam": true,
+            "showWhen": {
+              "field": "systems.picked",
+              "is": "gu"
+            },
+            "fields": [
+              {
+                "id": "consent",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo consent recorded",
+                "required": true,
+                "noNormal": true,
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Demo yes"
+                  },
+                  {
+                    "code": "no",
+                    "label": "Demo no"
+                  }
+                ]
+              },
+              {
+                "id": "findings",
+                "kind": "text",
+                "label": "Demo findings",
+                "lines": "many",
+                "maxLength": 1000,
+                "showWhen": {
+                  "field": "gu.consent",
+                  "is": "yes"
+                }
+              }
+            ]
+          },
+          {
+            "id": "msk",
+            "title": "Demo joints",
+            "normal": true,
+            "showWhen": {
+              "field": "systems.picked",
+              "is": "msk"
+            },
+            "repeat": {
+              "max": 4,
+              "itemTitle": "Demo joint {n}"
+            },
+            "fields": [
+              {
+                "id": "joint",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo joint",
+                "required": true,
+                "options": [
+                  {
+                    "code": "shoulder",
+                    "label": "Demo shoulder"
+                  },
+                  {
+                    "code": "knee",
+                    "label": "Demo knee"
+                  }
+                ]
+              },
+              {
+                "id": "tests",
+                "kind": "grid",
+                "label": "Demo movement",
+                "rows": [
+                  {
+                    "code": "flex",
+                    "label": "Demo flexion"
+                  },
+                  {
+                    "code": "ext",
+                    "label": "Demo extension"
+                  }
+                ],
+                "cell": {
+                  "id": "range",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo range",
+                  "required": true,
+                  "options": [
+                    {
+                      "code": "full",
+                      "label": "Demo full",
+                      "normal": true
+                    },
+                    {
+                      "code": "limited",
+                      "label": "Demo limited"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_outreach",
+      "version": 1,
+      "hash": "be19c2714c1e5c34bc5f95328c2f939aa7d1ef4c0784bfc95aea97c6c03d7e6a",
+      "definition": {
+        "key": "demo_outreach",
+        "version": 1,
+        "title": "Demo outreach",
+        "kinds": [
+          "medical",
+          "non_medical"
+        ],
+        "group": "outreach",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "supplies",
+            "title": "Demo supplies",
+            "fields": [
+              {
+                "id": "given",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo supplies given",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "socks",
+                    "label": "Demo socks",
+                    "icon": "sock"
+                  },
+                  {
+                    "code": "water",
+                    "label": "Demo water"
+                  },
+                  {
+                    "code": "blanket",
+                    "label": "Demo blanket"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ],
+                "excludes": [
+                  [
+                    "socks",
+                    "blanket"
+                  ],
+                  [
+                    "water",
+                    "blanket"
+                  ]
+                ]
+              },
+              {
+                "id": "vaccines",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo vaccines offered",
+                "options": [
+                  {
+                    "code": "flu",
+                    "label": "Demo flu"
+                  },
+                  {
+                    "code": "tetanus",
+                    "label": "Demo tetanus"
+                  },
+                  {
+                    "code": "hepa",
+                    "label": "Demo hepatitis A"
+                  }
+                ]
+              },
+              {
+                "id": "status",
+                "kind": "grid",
+                "label": "Demo vaccine status",
+                "rows": {
+                  "pickedIn": "supplies.vaccines"
+                },
+                "cell": {
+                  "id": "outcome",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo outcome",
+                  "options": [
+                    {
+                      "code": "given",
+                      "label": "Demo given"
+                    },
+                    {
+                      "code": "declined",
+                      "label": "Demo declined"
+                    },
+                    {
+                      "code": "other",
+                      "label": "Demo other",
+                      "other": true
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "counts",
+                "kind": "grid",
+                "label": "Demo how many",
+                "rows": [
+                  {
+                    "code": "socks",
+                    "label": "Demo socks"
+                  },
+                  {
+                    "code": "water",
+                    "label": "Demo water"
+                  }
+                ],
+                "cell": {
+                  "id": "count",
+                  "kind": "number",
+                  "label": "Demo count",
+                  "min": 0,
+                  "max": 20,
+                  "decimals": 0,
+                  "display": "stepper"
+                }
+              },
+              {
+                "id": "seenAt",
+                "kind": "time",
+                "label": "Demo time seen"
+              },
+              {
+                "id": "openWound",
+                "kind": "action",
+                "label": "Demo open wound care",
+                "action": "open_note_type",
+                "noteType": "demo_wound"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_psych",
+      "version": 1,
+      "hash": "77164dac27609da6b4eb7ddcd9c0817791553046b85d22314554d1046789773c",
+      "definition": {
+        "key": "demo_psych",
+        "version": 1,
+        "title": "Demo check-in",
+        "kinds": [
+          "medical",
+          "non_medical"
+        ],
+        "group": "psych",
+        "sensitivity": "sensitive",
+        "sections": [
+          {
+            "id": "mood",
+            "title": "Demo mood",
+            "fields": [
+              {
+                "id": "mood",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo mood today",
+                "options": [
+                  {
+                    "code": "good",
+                    "label": "Demo good",
+                    "normal": true
+                  },
+                  {
+                    "code": "low",
+                    "label": "Demo low"
+                  },
+                  {
+                    "code": "anxious",
+                    "label": "Demo anxious",
+                    "icon": "cloud"
+                  }
+                ]
+              },
+              {
+                "id": "safety",
+                "kind": "text",
+                "label": "Demo safety plan",
+                "lines": "many",
+                "maxLength": 300,
+                "showWhen": {
+                  "not": {
+                    "field": "mood.mood",
+                    "is": "good"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "treatment",
+            "title": "Demo treatment program",
+            "treatmentRecord": true,
+            "fields": [
+              {
+                "id": "program",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo program",
+                "options": [
+                  {
+                    "code": "clinic",
+                    "label": "Demo clinic program"
+                  },
+                  {
+                    "code": "peer",
+                    "label": "Demo peer program"
+                  },
+                  {
+                    "code": "none",
+                    "label": "Demo no program"
+                  }
+                ]
+              },
+              {
+                "id": "since",
+                "kind": "date",
+                "label": "Demo in program since",
+                "range": "past",
+                "showWhen": {
+                  "not": {
+                    "field": "treatment.program",
+                    "is": "none"
+                  }
+                }
+              },
+              {
+                "id": "length",
+                "kind": "duration",
+                "label": "Demo time in program"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_quick",
+      "version": 2,
+      "hash": "627023362f7b150100fd1d9507078293225f874f8926c5538d31d5108d628f23",
+      "definition": {
+        "key": "demo_quick",
+        "version": 2,
+        "title": "Demo quick visit",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "quick": true,
+        "sections": [
+          {
+            "id": "hpi",
+            "title": "Demo history",
+            "fields": [
+              {
+                "id": "concern",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo new concern",
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Demo yes"
+                  },
+                  {
+                    "code": "no",
+                    "label": "Demo no"
+                  },
+                  {
+                    "code": "unknown",
+                    "label": "Demo unknown"
+                  }
+                ]
+              },
+              {
+                "id": "details",
+                "kind": "text",
+                "label": "Demo details",
+                "lines": "many",
+                "maxLength": 400,
+                "showWhen": {
+                  "field": "hpi.concern",
+                  "is": "yes"
+                },
+                "mapsTo": "demo_visit:plan.notes"
+              }
+            ]
+          },
+          {
+            "id": "vitals",
+            "title": "Demo vitals",
+            "fields": [
+              {
+                "id": "pulse",
+                "kind": "number",
+                "label": "Demo pulse",
+                "min": 30,
+                "max": 200,
+                "decimals": 0,
+                "unit": "bpm",
+                "mapsTo": "demo_visit:vitals.pulse"
+              },
+              {
+                "id": "woundType",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo wound type",
+                "options": [
+                  {
+                    "code": "laceration",
+                    "label": "Demo laceration"
+                  },
+                  {
+                    "code": "abscess",
+                    "label": "Demo abscess"
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.type"
+              },
+              {
+                "id": "woundLength",
+                "kind": "number",
+                "label": "Demo wound length",
+                "min": 0,
+                "max": 20,
+                "decimals": 1,
+                "unit": "cm",
+                "mapsTo": "demo_wound:wounds.length"
+              }
+            ]
+          },
+          {
+            "id": "meds",
+            "title": "Demo medications",
+            "needs": "orderMedications",
+            "fields": [
+              {
+                "id": "given",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo medications given",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "naloxone",
+                    "label": "Demo naloxone"
+                  }
+                ],
+                "mapsTo": "demo_visit:meds.given"
+              }
+            ]
+          },
+          {
+            "id": "found",
+            "title": "Demo wound found",
+            "fields": [
+              {
+                "id": "edge",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo wound edge",
+                "sides": true,
+                "options": [
+                  {
+                    "code": "clean",
+                    "label": "Demo clean"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.edge"
+              },
+              {
+                "id": "where",
+                "kind": "region",
+                "label": "Demo location",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Demo arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Demo leg"
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Demo right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Demo left"
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.where"
+              },
+              {
+                "id": "size",
+                "kind": "group",
+                "label": "Demo size",
+                "layout": "row",
+                "mapsTo": "demo_wound:wounds.size",
+                "fields": [
+                  {
+                    "id": "len",
+                    "kind": "number",
+                    "label": "Demo size length",
+                    "min": 0,
+                    "max": 20,
+                    "decimals": 1,
+                    "unit": "cm"
+                  },
+                  {
+                    "id": "wid",
+                    "kind": "number",
+                    "label": "Demo size width",
+                    "min": 0,
+                    "max": 20,
+                    "decimals": 1,
+                    "unit": "cm"
+                  }
+                ]
+              },
+              {
+                "id": "pulses",
+                "kind": "grid",
+                "label": "Demo pulses near",
+                "rows": [
+                  {
+                    "code": "radial",
+                    "label": "Demo radial"
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.pulses",
+                "cell": {
+                  "id": "strength",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo strength",
+                  "options": [
+                    {
+                      "code": "absent",
+                      "label": "Demo absent"
+                    },
+                    {
+                      "code": "normal",
+                      "label": "Demo normal"
+                    },
+                    {
+                      "code": "other",
+                      "label": "Demo other",
+                      "other": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_quick",
+      "version": 1,
+      "hash": "8ef994f0904a8840e6cd4e69aa8b3931c274ae6762d6ce7cadb8986d96dd7c01",
+      "definition": {
+        "key": "demo_quick",
+        "version": 1,
+        "title": "Demo quick visit",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "quick": true,
+        "sections": [
+          {
+            "id": "hpi",
+            "title": "Demo history",
+            "fields": [
+              {
+                "id": "concern",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo new concern",
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Demo yes"
+                  },
+                  {
+                    "code": "no",
+                    "label": "Demo no"
+                  },
+                  {
+                    "code": "unknown",
+                    "label": "Demo unknown"
+                  }
+                ]
+              },
+              {
+                "id": "details",
+                "kind": "text",
+                "label": "Demo details",
+                "lines": "many",
+                "maxLength": 400,
+                "showWhen": {
+                  "field": "hpi.concern",
+                  "is": "yes"
+                },
+                "mapsTo": "demo_visit:plan.notes"
+              }
+            ]
+          },
+          {
+            "id": "vitals",
+            "title": "Demo vitals",
+            "fields": [
+              {
+                "id": "pulse",
+                "kind": "number",
+                "label": "Demo pulse",
+                "min": 10,
+                "max": 300,
+                "decimals": 0,
+                "unit": "bpm",
+                "mapsTo": "demo_visit:vitals.pulse"
+              },
+              {
+                "id": "spo2",
+                "kind": "number",
+                "label": "Demo oxygen saturation",
+                "min": 50,
+                "max": 100,
+                "decimals": 0,
+                "unit": "%",
+                "mapsTo": "demo_visit:vitals.spo2"
+              },
+              {
+                "id": "woundType",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo wound type",
+                "options": [
+                  {
+                    "code": "laceration",
+                    "label": "Demo laceration"
+                  },
+                  {
+                    "code": "abscess",
+                    "label": "Demo abscess"
+                  },
+                  {
+                    "code": "bite",
+                    "label": "Demo bite"
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.type"
+              },
+              {
+                "id": "woundLength",
+                "kind": "number",
+                "label": "Demo wound length",
+                "min": 0,
+                "max": 8,
+                "decimals": 1,
+                "unit": "in",
+                "mapsTo": "demo_wound:wounds.length"
+              }
+            ]
+          },
+          {
+            "id": "meds",
+            "title": "Demo medications",
+            "needs": "orderMedications",
+            "fields": [
+              {
+                "id": "given",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo medications given",
+                "options": [
+                  {
+                    "code": "ondansetron",
+                    "label": "Demo ondansetron"
+                  },
+                  {
+                    "code": "naloxone",
+                    "label": "Demo naloxone"
+                  },
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  }
+                ],
+                "mapsTo": "demo_visit:meds.given"
+              }
+            ]
+          },
+          {
+            "id": "found",
+            "title": "Demo wound found",
+            "fields": [
+              {
+                "id": "degree",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo burn degree",
+                "options": [
+                  {
+                    "code": "first",
+                    "label": "Demo first"
+                  },
+                  {
+                    "code": "third",
+                    "label": "Demo deeper",
+                    "other": true
+                  }
+                ],
+                "mapsTo": "demo_wound:wounds.degree"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_problems",
+      "version": 1,
+      "hash": "8297841a0f7e9eefd1451d1f5095e9e29a616e0fb6a3bf48b111e045e7c8ec85",
+      "definition": {
+        "key": "demo_problems",
+        "version": 1,
+        "title": "Demo diagnoses",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "dx",
+            "title": "Demo diagnoses",
+            "repeat": {
+              "max": 10,
+              "itemTitle": "Demo diagnosis {n}"
+            },
+            "fields": [
+              {
+                "id": "problem",
+                "kind": "problem",
+                "label": "Demo diagnosis",
+                "handoff": true
+              },
+              {
+                "id": "status",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo status",
+                "required": true,
+                "options": [
+                  {
+                    "code": "new",
+                    "label": "Demo new"
+                  },
+                  {
+                    "code": "ongoing",
+                    "label": "Demo ongoing"
+                  },
+                  {
+                    "code": "resolved",
+                    "label": "Demo resolved"
+                  }
+                ]
+              },
+              {
+                "id": "steps",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo what was done",
+                "showWhen": {
+                  "not": {
+                    "field": "./status",
+                    "is": "resolved"
+                  }
+                },
+                "options": [
+                  {
+                    "code": "education",
+                    "label": "Demo education"
+                  },
+                  {
+                    "code": "referral",
+                    "label": "Demo referral"
+                  },
+                  {
+                    "code": "medication",
+                    "label": "Demo medication"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_ems",
+      "version": 1,
+      "hash": "c1213268e378eccf5c1bcc245dc2071c77ecb16694fcc93b42ae3c655f969538",
+      "definition": {
+        "key": "demo_ems",
+        "version": 1,
+        "title": "Demo EMS call",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "ems",
+            "title": "Demo EMS",
+            "fields": [
+              {
+                "id": "called",
+                "kind": "time",
+                "label": "Demo time EMS called",
+                "required": true,
+                "handoff": true
+              },
+              {
+                "id": "reason",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo reason",
+                "handoff": true,
+                "options": [
+                  {
+                    "code": "breathing",
+                    "label": "Demo trouble breathing",
+                    "icon": "lungs"
+                  },
+                  {
+                    "code": "fall",
+                    "label": "Demo fall"
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other",
+                    "other": true
+                  }
+                ]
+              },
+              {
+                "id": "showHandoff",
+                "kind": "action",
+                "label": "Demo show handoff",
+                "action": "show_handoff"
+              }
+            ]
+          },
+          {
+            "id": "transport",
+            "title": "Demo transport",
+            "showWhen": {
+              "all": [
+                {
+                  "field": "ems.called",
+                  "filled": true
+                },
+                {
+                  "not": {
+                    "field": "ems.reason",
+                    "is": "fall"
+                  }
+                }
+              ]
+            },
+            "fields": [
+              {
+                "id": "went",
+                "kind": "flag",
+                "label": "Demo transported",
+                "handoff": true
+              },
+              {
+                "id": "destination",
+                "kind": "text",
+                "label": "Demo destination",
+                "lines": "one",
+                "maxLength": 80,
+                "handoff": true,
+                "showWhen": {
+                  "field": "transport.went",
+                  "filled": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_social",
+      "version": 1,
+      "hash": "e19fc7901290f25f9354be2371c5da56c84287165bb29034c6704fe8e9412a3f",
+      "definition": {
+        "key": "demo_social",
+        "version": 1,
+        "title": "Demo social needs",
+        "kinds": [
+          "non_medical"
+        ],
+        "group": "social",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "housing",
+            "title": "Demo housing",
+            "fields": [
+              {
+                "id": "status",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo where staying",
+                "options": [
+                  {
+                    "code": "housed",
+                    "label": "Demo housed"
+                  },
+                  {
+                    "code": "shelter",
+                    "label": "Demo shelter"
+                  },
+                  {
+                    "code": "outside",
+                    "label": "Demo outside"
+                  }
+                ]
+              },
+              {
+                "id": "needs",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo needs today",
+                "options": [
+                  {
+                    "code": "food",
+                    "label": "Demo food"
+                  },
+                  {
+                    "code": "wound",
+                    "label": "Demo wound looked at",
+                    "suggests": "demo_wound"
+                  },
+                  {
+                    "code": "talk",
+                    "label": "Demo someone to talk to",
+                    "suggests": "demo_psych"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "shelter",
+            "title": "Demo shelter search",
+            "showWhen": {
+              "any": [
+                {
+                  "not": {
+                    "field": "housing.status",
+                    "is": "housed"
+                  }
+                },
+                {
+                  "field": "housing.needs",
+                  "is": "food"
+                }
+              ]
+            },
+            "fields": [
+              {
+                "id": "tried",
+                "kind": "duration",
+                "label": "Demo time looking"
+              },
+              {
+                "id": "place",
+                "kind": "text",
+                "label": "Demo shelter tried",
+                "lines": "one",
+                "maxLength": 60
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_checkup",
+      "version": 1,
+      "hash": "3ec8f729ab6e0b668c783721af5d53b00288ba69379fd4f61bb935dad0b43309",
+      "definition": {
+        "key": "demo_checkup",
+        "version": 1,
+        "title": "Demo checkup",
+        "kinds": [
+          "medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "general",
+            "title": "Demo general look",
+            "normal": true,
+            "fields": [
+              {
+                "id": "gaze",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo gaze",
+                "showWhen": {
+                  "field": "general.nerves",
+                  "is": "intact"
+                },
+                "options": [
+                  {
+                    "code": "steady",
+                    "label": "Demo steady",
+                    "normal": true
+                  },
+                  {
+                    "code": "drifting",
+                    "label": "Demo drifting"
+                  }
+                ]
+              },
+              {
+                "id": "recheck",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo recheck planned",
+                "showWhen": {
+                  "not": {
+                    "field": "general.nerves",
+                    "is": "intact"
+                  }
+                },
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Demo yes",
+                    "normal": true
+                  },
+                  {
+                    "code": "no",
+                    "label": "Demo no"
+                  }
+                ]
+              },
+              {
+                "id": "nerves",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo nerves",
+                "options": [
+                  {
+                    "code": "intact",
+                    "label": "Demo grossly intact",
+                    "normal": true
+                  },
+                  {
+                    "code": "focal",
+                    "label": "Demo focal finding"
+                  }
+                ]
+              },
+              {
+                "id": "nerveDetail",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo nerve detail",
+                "showWhen": {
+                  "not": {
+                    "field": "general.nerves",
+                    "is": "intact"
+                  }
+                },
+                "options": [
+                  {
+                    "code": "equal",
+                    "label": "Demo pupils equal",
+                    "normal": true
+                  },
+                  {
+                    "code": "unequal",
+                    "label": "Demo pupils unequal"
+                  }
+                ]
+              },
+              {
+                "id": "blink",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo blink",
+                "showWhen": {
+                  "field": "general.nerves",
+                  "is": "intact"
+                },
+                "options": [
+                  {
+                    "code": "present",
+                    "label": "Demo present",
+                    "normal": true
+                  },
+                  {
+                    "code": "absent",
+                    "label": "Demo absent"
+                  }
+                ]
+              },
+              {
+                "id": "skin",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo skin",
+                "options": [
+                  {
+                    "code": "warm",
+                    "label": "Demo warm",
+                    "normal": true
+                  },
+                  {
+                    "code": "rash",
+                    "label": "Demo rash"
+                  },
+                  {
+                    "code": "dry",
+                    "label": "Demo dry",
+                    "normal": true
+                  }
+                ]
+              },
+              {
+                "id": "chaperone",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo chaperone present",
+                "required": true,
+                "noNormal": true,
+                "options": [
+                  {
+                    "code": "yes",
+                    "label": "Demo yes",
+                    "normal": true
+                  },
+                  {
+                    "code": "no",
+                    "label": "Demo no"
+                  }
+                ]
+              },
+              {
+                "id": "gait",
+                "kind": "group",
+                "label": "Demo gait",
+                "layout": "stack",
+                "noNormal": true,
+                "fields": [
+                  {
+                    "id": "steady",
+                    "kind": "choice",
+                    "many": false,
+                    "label": "Demo steady",
+                    "options": [
+                      {
+                        "code": "yes",
+                        "label": "Demo yes",
+                        "normal": true
+                      },
+                      {
+                        "code": "no",
+                        "label": "Demo no"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "reach",
+                "kind": "number",
+                "label": "Demo reach score",
+                "required": true,
+                "min": 0,
+                "max": 5,
+                "decimals": 0,
+                "normal": 3
+              },
+              {
+                "id": "unableReach",
+                "kind": "flag",
+                "label": "Demo unable to test reach",
+                "clears": [
+                  "reach"
+                ]
+              },
+              {
+                "id": "pain",
+                "kind": "number",
+                "label": "Demo pain score",
+                "sides": true,
+                "required": true,
+                "min": 0,
+                "max": 10,
+                "decimals": 0,
+                "normal": 0
+              },
+              {
+                "id": "remarks",
+                "kind": "text",
+                "label": "Demo remarks",
+                "lines": "one",
+                "maxLength": 40
+              },
+              {
+                "id": "joints",
+                "kind": "grid",
+                "label": "Demo joints",
+                "rows": [
+                  {
+                    "code": "knee",
+                    "label": "Demo knee"
+                  },
+                  {
+                    "code": "hip",
+                    "label": "Demo hip"
+                  }
+                ],
+                "cell": {
+                  "id": "motion",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo range of motion",
+                  "required": true,
+                  "options": [
+                    {
+                      "code": "full",
+                      "label": "Demo full",
+                      "normal": true
+                    },
+                    {
+                      "code": "limited",
+                      "label": "Demo limited"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "history",
+            "title": "Demo history",
+            "fields": [
+              {
+                "id": "story",
+                "kind": "text",
+                "label": "Demo what happened",
+                "required": true,
+                "lines": "many",
+                "maxLength": 200
+              },
+              {
+                "id": "onset",
+                "kind": "date",
+                "label": "Demo onset",
+                "required": true,
+                "range": "past"
+              },
+              {
+                "id": "seenAt",
+                "kind": "time",
+                "label": "Demo time seen",
+                "required": true
+              },
+              {
+                "id": "howLong",
+                "kind": "duration",
+                "label": "Demo how long",
+                "required": true
+              },
+              {
+                "id": "confirmed",
+                "kind": "flag",
+                "label": "Demo history confirmed",
+                "required": true
+              },
+              {
+                "id": "symptoms",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo symptoms",
+                "required": true,
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "exclusive": true
+                  },
+                  {
+                    "code": "cough",
+                    "label": "Demo cough"
+                  },
+                  {
+                    "code": "fever",
+                    "label": "Demo fever"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "notes",
+            "title": "Demo notes",
+            "fields": [
+              {
+                "id": "pupilNote",
+                "kind": "text",
+                "label": "Demo pupil note",
+                "lines": "one",
+                "maxLength": 80,
+                "showWhen": {
+                  "field": "general.nerveDetail",
+                  "is": "unequal"
+                }
+              },
+              {
+                "id": "reachNote",
+                "kind": "text",
+                "label": "Demo reach note",
+                "lines": "one",
+                "maxLength": 80,
+                "showWhen": {
+                  "field": "general.reach",
+                  "filled": true
+                }
+              },
+              {
+                "id": "noReach",
+                "kind": "text",
+                "label": "Demo why no reach",
+                "lines": "one",
+                "maxLength": 80,
+                "showWhen": {
+                  "not": {
+                    "field": "general.reach",
+                    "filled": true
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "limbs",
+            "title": "Demo limbs",
+            "normal": true,
+            "repeat": {
+              "max": 4,
+              "itemTitle": "Demo limb {n}"
+            },
+            "fields": [
+              {
+                "id": "limb",
+                "kind": "region",
+                "label": "Demo limb",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Demo arm"
+                  },
+                  {
+                    "code": "leg",
+                    "label": "Demo leg"
+                  },
+                  {
+                    "code": "groin",
+                    "label": "Demo groin",
+                    "sensitiveExam": true
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Demo right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Demo left"
+                  }
+                ]
+              },
+              {
+                "id": "tone",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo tone",
+                "required": true,
+                "options": [
+                  {
+                    "code": "normal",
+                    "label": "Demo normal",
+                    "normal": true
+                  },
+                  {
+                    "code": "increased",
+                    "label": "Demo increased"
+                  }
+                ]
+              },
+              {
+                "id": "swelling",
+                "kind": "choice",
+                "many": false,
+                "label": "Demo swelling",
+                "options": [
+                  {
+                    "code": "none",
+                    "label": "Demo none",
+                    "normal": true
+                  },
+                  {
+                    "code": "mild",
+                    "label": "Demo mild"
+                  },
+                  {
+                    "code": "severe",
+                    "label": "Demo severe"
+                  }
+                ]
+              },
+              {
+                "id": "extent",
+                "kind": "number",
+                "label": "Demo swelling extent",
+                "min": 0,
+                "max": 10,
+                "decimals": 0,
+                "normal": 0,
+                "showWhen": {
+                  "field": "./swelling",
+                  "is": [
+                    "mild",
+                    "severe"
+                  ]
+                }
+              },
+              {
+                "id": "grip",
+                "kind": "number",
+                "label": "Demo grip",
+                "min": 0,
+                "max": 5,
+                "decimals": 0,
+                "normal": 5,
+                "noNormal": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_intake",
+      "version": 1,
+      "hash": "e2c3ccbb6eedbf64147f5b412a8da38c33d36caccd82e1658eb89374c3711579",
+      "definition": {
+        "key": "demo_intake",
+        "version": 1,
+        "title": "Demo intake",
+        "kinds": [
+          "medical",
+          "non_medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "reason",
+            "title": "Demo reason for visit",
+            "fields": [
+              {
+                "id": "dx",
+                "kind": "problem",
+                "label": "Demo main diagnosis"
+              },
+              {
+                "id": "since",
+                "kind": "date",
+                "label": "Demo since",
+                "range": "past"
+              }
+            ]
+          },
+          {
+            "id": "body",
+            "title": "Demo body check",
+            "fields": [
+              {
+                "id": "areas",
+                "kind": "choice",
+                "many": true,
+                "label": "Demo areas checked",
+                "handoff": true,
+                "options": [
+                  {
+                    "code": "head",
+                    "label": "Demo head"
+                  },
+                  {
+                    "code": "groin",
+                    "label": "Demo groin",
+                    "sensitiveExam": true
+                  },
+                  {
+                    "code": "private",
+                    "label": "Demo other private area",
+                    "other": true,
+                    "sensitiveExam": true
+                  },
+                  {
+                    "code": "other",
+                    "label": "Demo other"
+                  }
+                ]
+              },
+              {
+                "id": "marks",
+                "kind": "grid",
+                "label": "Demo marks found",
+                "rows": [
+                  {
+                    "code": "head",
+                    "label": "Demo head"
+                  },
+                  {
+                    "code": "groin",
+                    "label": "Demo groin",
+                    "sensitiveExam": true
+                  }
+                ],
+                "cell": {
+                  "id": "mark",
+                  "kind": "choice",
+                  "many": false,
+                  "label": "Demo mark",
+                  "options": [
+                    {
+                      "code": "none",
+                      "label": "Demo none"
+                    },
+                    {
+                      "code": "bruise",
+                      "label": "Demo bruise"
+                    },
+                    {
+                      "code": "other",
+                      "label": "Demo other",
+                      "other": true
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "spot",
+                "kind": "region",
+                "label": "Demo spot",
+                "options": [
+                  {
+                    "code": "arm",
+                    "label": "Demo arm"
+                  },
+                  {
+                    "code": "groin",
+                    "label": "Demo groin",
+                    "sensitiveExam": true
+                  }
+                ],
+                "side": [
+                  {
+                    "code": "right",
+                    "label": "Demo right"
+                  },
+                  {
+                    "code": "left",
+                    "label": "Demo left"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "demo_rehab",
+      "version": 1,
+      "hash": "5ecbdc19495bb6229e5a7be7d311374c08ebbbbaebee9398e88a260f180b858d",
+      "definition": {
+        "key": "demo_rehab",
+        "version": 1,
+        "title": "Demo rehab check",
+        "kinds": [
+          "medical",
+          "non_medical"
+        ],
+        "group": "clinical",
+        "sensitivity": "none",
+        "sections": [
+          {
+            "id": "strength",
+            "title": "Demo strength",
+            "fields": [
+              {
+                "id": "hands",
+                "kind": "grid",
+                "label": "Demo hands",
+                "rows": [
+                  {
+                    "code": "grip",
+                    "label": "Demo grip"
+                  },
+                  {
+                    "code": "pinch",
+                    "label": "Demo pinch"
+                  }
+                ],
+                "cell": {
+                  "id": "test",
+                  "kind": "group",
+                  "label": "Demo test",
+                  "layout": "row",
+                  "fields": [
+                    {
+                      "id": "unable",
+                      "kind": "flag",
+                      "label": "Demo unable to test",
+                      "clears": [
+                        "score"
+                      ]
+                    },
+                    {
+                      "id": "score",
+                      "kind": "number",
+                      "label": "Demo score",
+                      "required": true,
+                      "min": 0,
+                      "max": 5,
+                      "decimals": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "notes",
+                "kind": "group",
+                "label": "Demo notes for the team",
+                "layout": "stack",
+                "recap": false,
+                "fields": [
+                  {
+                    "id": "comment",
+                    "kind": "text",
+                    "label": "Demo comment",
+                    "lines": "one",
+                    "maxLength": 80
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "care",
+            "title": "Demo care plan",
+            "treatmentRecord": true,
+            "fields": [
+              {
+                "id": "plan",
+                "kind": "text",
+                "label": "Demo plan",
+                "lines": "one",
+                "maxLength": 80
+              }
+            ]
+          },
+          {
+            "id": "assess",
+            "title": "Demo assessment",
+            "fields": [
+              {
+                "id": "dx",
+                "kind": "problem",
+                "label": "Demo diagnosis"
+              }
+            ]
+          },
+          {
+            "id": "assessMore",
+            "title": "Demo more assessment",
+            "fields": [
+              {
+                "id": "more",
+                "kind": "text",
+                "label": "Demo more",
+                "lines": "one",
+                "maxLength": 80
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "golden": [
+    {
+      "key": "checks_demo",
+      "version": 1,
+      "hash": "d5e1d9861f692952b6be0c9b5d90fffdc99822c805f2ac42a413b8be95c6994e",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "visit",
+              "path": "visit.concern",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "findings.e0000001.entryAt": "2000-01-01T00:00:00Z"
+          },
+          "finishCheck": [
+            {
+              "section": "visit",
+              "path": "visit.concern",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "ears.hearing.left": "intact",
+            "ears.hearing.right": "intact",
+            "eyes.pupils": "zero",
+            "findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "findings.e0000001.pulses.pedal": "zero",
+            "findings.e0000001.pulses.radial": "zero",
+            "findings.e0000001.type": "cut",
+            "findings.e0000001.where.region": "arm",
+            "findings.e0000001.where.side": "right",
+            "findings.e0000001.where.surface": "anterior",
+            "injury.type": "cut",
+            "injury.where.region": "arm",
+            "injury.where.side": "right",
+            "injury.where.surface": "anterior",
+            "status.each.ears.seen": "yes",
+            "status.each.eyes.seen": "yes",
+            "status.each.none.seen": "yes",
+            "status.each.other.seen": "yes",
+            "status.each.skin.seen": "yes",
+            "status.reflexes.ankle.left": "zero",
+            "status.reflexes.ankle.right": "zero",
+            "status.reflexes.knee.left": "zero",
+            "status.reflexes.knee.right": "zero",
+            "visit.concern": "yes",
+            "visit.plan": [
+              "sent"
+            ],
+            "visit.systems": [
+              "none"
+            ]
+          },
+          "finishCheck": [
+            {
+              "section": "visit",
+              "path": "visit.story",
+              "problem": "required"
+            },
+            {
+              "section": "status",
+              "path": "status.each.none.note",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "visit",
+              "text": "What did you examine?: None; New concern?: Yes; Plan: Sent to ED"
+            },
+            {
+              "section": "ears",
+              "text": "Hearing, Right: Grossly intact; Hearing, Left: Grossly intact"
+            },
+            {
+              "section": "status",
+              "text": "For each system examined, None, Seen before?: Yes; Reflexes, Knee, Right: 0; Reflexes, Knee, Left: 0; Reflexes, Ankle, Right: 0; Reflexes, Ankle, Left: 0"
+            },
+            {
+              "section": "injury",
+              "text": "Where: Arm, Right, Anterior; Type: Cut"
+            }
+          ],
+          "readModelHash": "9d41561e1ea7027ed49286ed11f698b6146ed3ca485fe61e00b17f6508a97228"
+        }
+      ]
+    },
+    {
+      "key": "full_demo",
+      "version": 1,
+      "hash": "37a7a9ce1a2b46ad3fab8cf656c58590be2412ae4efaeca7be9547d2c3d85cca",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z"
+          },
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "wounds.e0000001.type": "cut",
+            "wounds.e0000001.where.region": "arm",
+            "wounds.e0000001.where.side": "right",
+            "wounds.e0000001.where.surface": "anterior"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "wounds",
+              "text": "Wound 1: Where: Arm, Right, Anterior; Type: Cut"
+            }
+          ],
+          "readModelHash": "d9591df3682738d0f25f3acf89a4fad561ef563121212453def36a2611229152"
+        }
+      ]
+    },
+    {
+      "key": "demo_visit",
+      "version": 1,
+      "hash": "ef0cb0161f12cded6ccd4c6e33fd31634ac3b9e604a24d6c4a914a5a712b67e5",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "vitals.alert": "alert",
+            "vitals.strength": 5
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "vitals",
+              "text": "Demo grip strength: 5 of 5; Demo level of alertness: Demo alert"
+            }
+          ],
+          "readModelHash": "9ca180d70d0994f19e0500900e98d8462bbd97e6d09cb5228ab6b6c56db41fd4"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "meds.given": [
+              "none"
+            ],
+            "plan.next": "wound",
+            "vitals.alert": "alert"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "vitals",
+              "text": "Demo level of alertness: Demo alert"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo none"
+            },
+            {
+              "section": "plan",
+              "text": "Demo next step: Demo wound care"
+            }
+          ],
+          "readModelHash": "aeba027dea258183aa1562e48e5199060f3ae9f55177a5e0d2e50f2a635a269b"
+        }
+      ]
+    },
+    {
+      "key": "demo_wound",
+      "version": 1,
+      "hash": "2360b410ae5011087018ba89aeb4708dc64566193eb965ac3c49cdfb75fd8856",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z"
+          },
+          "finishCheck": [
+            {
+              "section": "wounds",
+              "path": "wounds.e0000001.type",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "wounds.e0000001.degree": "first",
+            "wounds.e0000001.drainage": [
+              "none"
+            ],
+            "wounds.e0000001.edge.left": "clean",
+            "wounds.e0000001.edge.right": "clean",
+            "wounds.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "wounds.e0000001.pulses.pedal": "absent",
+            "wounds.e0000001.pulses.radial": "absent",
+            "wounds.e0000001.type": "laceration",
+            "wounds.e0000001.where.region": "arm",
+            "wounds.e0000001.where.side": "right",
+            "wounds.e0000001.where.surface": "anterior"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "wounds",
+              "text": "Demo wound 1: Demo location: Demo arm, Demo right, Anterior; Demo wound type: Demo laceration; Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo pulses near, Demo radial: Demo absent; Demo pulses near, Demo pedal: Demo absent"
+            }
+          ],
+          "readModelHash": "3253f1dd2d7f5516760f9d5db37e448f2a0d2ecca64f56253e79fba5782fe4d6"
+        }
+      ]
+    },
+    {
+      "key": "demo_exam",
+      "version": 1,
+      "hash": "6c6507c88d7f1f3a5f5a4055084a03d3617e74a3acedb1a2a1913ff60773ce3c",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "pulses.pulses.pedal.left": "normal",
+            "pulses.pulses.pedal.right": "normal",
+            "pulses.pulses.radial.left": "normal",
+            "pulses.pulses.radial.right": "normal"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "pulses",
+              "text": "Demo pulses, Demo radial, Right: Demo normal; Demo pulses, Demo radial, Left: Demo normal; Demo pulses, Demo pedal, Right: Demo normal; Demo pulses, Demo pedal, Left: Demo normal"
+            }
+          ],
+          "readModelHash": "b8432d1ceb7deb292d438a16cdaa7bdef54a93d79e69081133592fdad55e8a89"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "gu.consent": "yes",
+            "heart.murmur": "none",
+            "heart.rhythm": "regular",
+            "lungs.sounds.left": "clear",
+            "lungs.sounds.right": "clear",
+            "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "msk.e0000001.joint": "shoulder",
+            "msk.e0000001.tests.ext": "full",
+            "msk.e0000001.tests.flex": "full",
+            "pulses.more.bruit.left": "none",
+            "pulses.more.bruit.right": "none",
+            "pulses.pulses.pedal.left": "absent",
+            "pulses.pulses.pedal.right": "absent",
+            "pulses.pulses.radial.left": "absent",
+            "pulses.pulses.radial.right": "absent",
+            "systems.picked": [
+              "heart"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "systems",
+              "text": "Demo systems examined: Demo heart"
+            },
+            {
+              "section": "heart",
+              "text": "Demo rhythm: Demo regular; Demo murmur: Demo none"
+            },
+            {
+              "section": "pulses",
+              "text": "Demo pulses, Demo radial, Right: Demo absent; Demo pulses, Demo radial, Left: Demo absent; Demo pulses, Demo pedal, Right: Demo absent; Demo pulses, Demo pedal, Left: Demo absent; Demo further checks, Demo bruit, Right: Demo none; Demo further checks, Demo bruit, Left: Demo none"
+            }
+          ],
+          "readModelHash": "80ea38ff2cd56c8afa7a5209c9a6c9cdcfde7620ffb53b3d18c0d12e88f71f75"
+        }
+      ]
+    },
+    {
+      "key": "demo_outreach",
+      "version": 1,
+      "hash": "be19c2714c1e5c34bc5f95328c2f939aa7d1ef4c0784bfc95aea97c6c03d7e6a",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "supplies.given": [
+              "none"
+            ],
+            "supplies.status.flu": "given",
+            "supplies.status.hepa": "given",
+            "supplies.status.tetanus": "given",
+            "supplies.vaccines": [
+              "flu"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "supplies",
+              "text": "Demo supplies given: Demo none; Demo vaccines offered: Demo flu; Demo vaccine status, Demo flu: Demo given"
+            }
+          ],
+          "readModelHash": "e1b22180c8618ae1ff374a752091159c86fb874dccef0f51b7e6ef9f1c5de952"
+        }
+      ]
+    },
+    {
+      "key": "demo_psych",
+      "version": 1,
+      "hash": "77164dac27609da6b4eb7ddcd9c0817791553046b85d22314554d1046789773c",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "mood.mood": "good",
+            "treatment.program": "clinic"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "mood",
+              "text": "Demo mood today: Demo good"
+            },
+            {
+              "section": "treatment",
+              "text": "Demo program: Demo clinic program"
+            }
+          ],
+          "readModelHash": "614cdf94075db8d0de65debad2ef28f7878c4a07ba5f9ed439f6ad078f985c34"
+        }
+      ]
+    },
+    {
+      "key": "demo_quick",
+      "version": 2,
+      "hash": "627023362f7b150100fd1d9507078293225f874f8926c5538d31d5108d628f23",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "found.edge.left": "clean",
+            "found.edge.right": "clean",
+            "found.pulses.radial": "absent",
+            "found.where.region": "arm",
+            "found.where.side": "right",
+            "hpi.concern": "yes",
+            "meds.given": [
+              "none"
+            ],
+            "vitals.woundType": "laceration"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo yes"
+            },
+            {
+              "section": "vitals",
+              "text": "Demo wound type: Demo laceration"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo none"
+            },
+            {
+              "section": "found",
+              "text": "Demo wound edge, Right: Demo clean; Demo wound edge, Left: Demo clean; Demo location: Demo arm, Demo right; Demo pulses near, Demo radial: Demo absent"
+            }
+          ],
+          "readModelHash": "3b73f90a5782365d9fbb009eb1ae2527215d52f0c0c6f841ae4a31a665e8a459"
+        }
+      ]
+    },
+    {
+      "key": "demo_quick",
+      "version": 1,
+      "hash": "8ef994f0904a8840e6cd4e69aa8b3931c274ae6762d6ce7cadb8986d96dd7c01",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "found.degree": "first",
+            "hpi.concern": "yes",
+            "meds.given": [
+              "ondansetron"
+            ],
+            "vitals.woundType": "laceration"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "hpi",
+              "text": "Demo new concern: Demo yes"
+            },
+            {
+              "section": "vitals",
+              "text": "Demo wound type: Demo laceration"
+            },
+            {
+              "section": "meds",
+              "text": "Demo medications given: Demo ondansetron"
+            },
+            {
+              "section": "found",
+              "text": "Demo burn degree: Demo first"
+            }
+          ],
+          "readModelHash": "80d844acb683e3020c72318073703cf5683229bd03963f56a7d94929d257fdf3"
+        }
+      ]
+    },
+    {
+      "key": "demo_problems",
+      "version": 1,
+      "hash": "8297841a0f7e9eefd1451d1f5095e9e29a616e0fb6a3bf48b111e045e7c8ec85",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "dx.e0000001.entryAt": "2000-01-01T00:00:00Z"
+          },
+          "finishCheck": [
+            {
+              "section": "dx",
+              "path": "dx.e0000001.status",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "dx.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "dx.e0000001.status": "new",
+            "dx.e0000001.steps": [
+              "education"
+            ]
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "dx",
+              "text": "Demo diagnosis 1: Demo status: Demo new; Demo what was done: Demo education"
+            }
+          ],
+          "readModelHash": "2413fdeee6228755131f5e6bdf61f6fe879b07d1fbe3189485b0e9148f4f2381"
+        }
+      ]
+    },
+    {
+      "key": "demo_ems",
+      "version": 1,
+      "hash": "c1213268e378eccf5c1bcc245dc2071c77ecb16694fcc93b42ae3c655f969538",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "ems",
+              "path": "ems.called",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "ems",
+              "path": "ems.called",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "ems.reason": "breathing"
+          },
+          "finishCheck": [
+            {
+              "section": "ems",
+              "path": "ems.called",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "ems",
+              "text": "Demo reason: Demo trouble breathing"
+            }
+          ],
+          "readModelHash": "6b19be9d1b2e09e3dd7e7e8cd3d37a72ab3815de074be5d64e32381c62fbe133"
+        }
+      ]
+    },
+    {
+      "key": "demo_social",
+      "version": 1,
+      "hash": "e19fc7901290f25f9354be2371c5da56c84287165bb29034c6704fe8e9412a3f",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "housing.needs": [
+              "food"
+            ],
+            "housing.status": "housed"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "housing",
+              "text": "Demo where staying: Demo housed; Demo needs today: Demo food"
+            }
+          ],
+          "readModelHash": "501580682fa2b460d475ca30420aacb171c86070e4c170004750f93ac3a50116"
+        }
+      ]
+    },
+    {
+      "key": "demo_checkup",
+      "version": 1,
+      "hash": "3ec8f729ab6e0b668c783721af5d53b00288ba69379fd4f61bb935dad0b43309",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "general",
+              "path": "general.chaperone",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.reach",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.pain.right",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.pain.left",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.joints.knee",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.joints.hip",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.story",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.onset",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.seenAt",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.howLong",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.confirmed",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.symptoms",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {
+            "general.blink": "present",
+            "general.gaze": "steady",
+            "general.joints.hip": "full",
+            "general.joints.knee": "full",
+            "general.nerves": "intact",
+            "general.pain.left": 0,
+            "general.pain.right": 0,
+            "general.reach": 3,
+            "general.skin": [
+              "warm",
+              "dry"
+            ],
+            "limbs.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "limbs.e0000001.swelling": "none",
+            "limbs.e0000001.tone": "normal"
+          },
+          "finishCheck": [
+            {
+              "section": "general",
+              "path": "general.chaperone",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.story",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.onset",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.seenAt",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.howLong",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.confirmed",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.symptoms",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "general",
+              "text": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm, Demo dry; Demo reach score: 3; Demo pain score, Right: 0; Demo pain score, Left: 0; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "section": "limbs",
+              "text": "Demo limb 1: Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "readModelHash": "ccb1e72b8c0d8352e7e2e6030c7293e75b91a4e72d69b8ce05123314e83a85ae"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "general.blink": "present",
+            "general.chaperone": "yes",
+            "general.gait.steady": "yes",
+            "general.gaze": "steady",
+            "general.joints.hip": "full",
+            "general.joints.knee": "full",
+            "general.nerveDetail": "equal",
+            "general.nerves": "intact",
+            "general.recheck": "yes",
+            "general.skin": [
+              "warm"
+            ],
+            "history.symptoms": [
+              "none"
+            ],
+            "limbs.e0000001.entryAt": "2000-01-01T00:00:00Z",
+            "limbs.e0000001.limb.region": "arm",
+            "limbs.e0000001.limb.side": "right",
+            "limbs.e0000001.swelling": "none",
+            "limbs.e0000001.tone": "normal"
+          },
+          "finishCheck": [
+            {
+              "section": "general",
+              "path": "general.reach",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.pain.right",
+              "problem": "required"
+            },
+            {
+              "section": "general",
+              "path": "general.pain.left",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.story",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.onset",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.seenAt",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.howLong",
+              "problem": "required"
+            },
+            {
+              "section": "history",
+              "path": "history.confirmed",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [
+            {
+              "section": "general",
+              "text": "Demo gaze: Demo steady; Demo nerves: Demo grossly intact; Demo blink: Demo present; Demo skin: Demo warm; Demo chaperone present: Demo yes; Demo gait, Demo steady: Demo yes; Demo joints, Demo knee: Demo full; Demo joints, Demo hip: Demo full"
+            },
+            {
+              "section": "history",
+              "text": "Demo symptoms: Demo none"
+            },
+            {
+              "section": "limbs",
+              "text": "Demo limb 1: Demo limb: Demo arm, Demo right; Demo tone: Demo normal; Demo swelling: Demo none"
+            }
+          ],
+          "readModelHash": "b239fa689407efd9409757b68cbd383fd9da5ef926de3e6c8d21a363d513a8bf"
+        }
+      ]
+    },
+    {
+      "key": "demo_intake",
+      "version": 1,
+      "hash": "e2c3ccbb6eedbf64147f5b412a8da38c33d36caccd82e1658eb89374c3711579",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {
+            "body.areas": [
+              "head"
+            ],
+            "body.marks.groin": "none",
+            "body.marks.head": "none",
+            "body.spot.region": "arm",
+            "body.spot.side": "right"
+          },
+          "finishCheck": [],
+          "recapLines": [
+            {
+              "section": "body",
+              "text": "Demo areas checked: Demo head; Demo marks found, Demo head: Demo none; Demo spot: Demo arm, Demo right"
+            }
+          ],
+          "readModelHash": "7ead9c8ee5c1965d26852a04ceee3be84faea178707c9bd210cfdfd4874fa28f"
+        }
+      ]
+    },
+    {
+      "key": "demo_rehab",
+      "version": 1,
+      "hash": "5ecbdc19495bb6229e5a7be7d311374c08ebbbbaebee9398e88a260f180b858d",
+      "cases": [
+        {
+          "name": "blank",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "strength",
+              "path": "strength.hands.grip.score",
+              "problem": "required"
+            },
+            {
+              "section": "strength",
+              "path": "strength.hands.pinch.score",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "normal",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "strength",
+              "path": "strength.hands.grip.score",
+              "problem": "required"
+            },
+            {
+              "section": "strength",
+              "path": "strength.hands.pinch.score",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        {
+          "name": "first",
+          "answers": {},
+          "finishCheck": [
+            {
+              "section": "strength",
+              "path": "strength.hands.grip.score",
+              "problem": "required"
+            },
+            {
+              "section": "strength",
+              "path": "strength.hands.pinch.score",
+              "problem": "required"
+            }
+          ],
+          "recapLines": [],
+          "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        }
+      ]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import type { ResolvedNoteType } from '../src/resolve.ts';
 import { exportDefinitions, PRESETS_FILE } from '../scripts/export.ts';
 import type { Preset } from '../scripts/export.ts';
 import { GOLDEN_ENTRY, GOLDEN_FILE, goldenOf, main, writeGolden } from '../scripts/golden.ts';
+import { fixturePresets } from './fixtures/presets.ts';
 
 // The golden file (forms 7.3): what the TypeScript interpreter says about every preset for three
 // sets of answers made by rule, which the phone's interpreter is held to. Each case runs the export
@@ -242,6 +243,36 @@ describe('the golden file', () => {
     const presets = JSON.parse(readFileSync(join(PACKAGE, PRESETS_FILE), 'utf8')) as Preset[];
     const committed = readFileSync(join(PACKAGE, GOLDEN_FILE), 'utf8');
     expect(`${JSON.stringify(await goldenOf(presets), null, 2)}\n`).toBe(committed);
+  });
+});
+
+// The phone's golden test (apps/mobile/test/forms/golden_test.dart) holds its interpreter to
+// golden.json, which is empty until the definitions are typed. So it also reads this sample: the
+// fixture note types and the conformance vectors' definitions as presets, and what this
+// interpreter says about each. A change to either interpreter, the fixtures or the vectors'
+// definitions shows here; `pnpm --filter @sineobex/forms exec vitest run test/golden.test.ts -u`
+// writes the sample again, and the phone's test then says whether Dart agrees.
+const SAMPLE = '../../../apps/mobile/test/forms/golden_sample.json';
+
+describe('the phone’s golden sample', () => {
+  it('is what goldenOf says for the fixture note types and the vectors’ definitions', async () => {
+    const vectors = JSON.parse(
+      readFileSync(new URL('../../contract/test-vectors/forms-conformance.json', import.meta.url), 'utf8'),
+    ) as { definitions: Record<string, ResolvedNoteType> };
+    const presets: Preset[] = [...(await fixturePresets())];
+    for (const definition of Object.values(vectors.definitions))
+      presets.push({
+        key: definition.key,
+        version: definition.version,
+        hash: await sha256Hex(canonicalJson(definition)),
+        definition,
+      });
+    const sample = {
+      note: 'Written by packages/forms/test/golden.test.ts; read by golden_test.dart. Do not edit.',
+      presets,
+      golden: await goldenOf(presets),
+    };
+    await expect(`${JSON.stringify(sample, null, 2)}\n`).toMatchFileSnapshot(SAMPLE);
   });
 });
 
