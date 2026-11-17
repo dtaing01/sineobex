@@ -2933,26 +2933,37 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 
 | Rule | Section | Test |
 |---|---|---|
-| The six states and the encounter's status | 3.1, 2.2 | `note-lifecycle.json` through `services/api/test/encounter-rules.test.ts` and `apps/mobile/test/encounters/rules_test.dart`; the trigger in `db/test/encounter-lifecycle.test.ts` |
-| A finished note's answers change only through a correction | 2.2 | `db/test/encounter-lifecycle.test.ts` (the guard refuses an update, and lets a correction through) |
+| The six states and the encounter's status | 3.1, 2.2 | `note-lifecycle.json` through `services/api/test/encounter-rules.test.ts` and `apps/mobile/test/encounters/rules_test.dart`; the trigger in `db/test/encounter-lifecycle.test.ts`; through the fake, parity case 13, named after that db test |
+| A finished note's answers change only through a correction | 2.2 | `db/test/encounter-lifecycle.test.ts` (the guard refuses an update, and lets a correction through); `sync-corrections.test.ts` (a correction opens its note to the guard for its own write only) |
 | The draft stays on its author's phone until finished | 3.2 | `apps/mobile/test/sync/store_encounters_test.dart` |
 | Complete's hard stops | 3.3 | `apps/mobile/test/encounters/complete_test.dart` |
-| Every row of the sign-off table | 3.4 | `note-lifecycle.json`; `services/api/test/sync-signoffs.test.ts`; parity case 7 |
-| The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`; one end-to-end case in `sync-signoffs.test.ts` (signs Monday, promoted Tuesday, syncs Wednesday) |
-| A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts`; parity cases 2 and 5 |
-| Reopen | 3.6, 4.4 | `sync-encounters.test.ts`; parity case 6 |
-| Corrections, and what happens to the signature after one | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts`; parity case 10 |
-| A correction waits behind a refused sign-off | 4.7 | `apps/mobile/test/sync/store_encounters_test.dart` |
+| Every row of the sign-off table | 3.4 | `note-lifecycle.json`; `services/api/test/sync-signoffs.test.ts` ("what a sign-off does", "refusals", "what a sign-off names, and what it is"); parity case 7, which sends every `signoffEffect` case through a real sign-off |
+| The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
+| A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts` ("the encounter's fields", "a finished note, and its reopen"); parity cases 2 and 5 |
+| Reopen | 3.6, 4.4 | `sync-encounters.test.ts` ("the reopen: a set of status to draft"); parity case 6 |
+| Corrections, and what happens to the signature after one | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7"); parity case 10 |
+| Addenda | 3.6, 4.7 | `sync-corrections.test.ts` ("addenda"); parity case 9 |
+| What an addendum and a correction name: a note of the visit, a sign-off of the note | 4.1, 4.7 | `sync-corrections.test.ts`; parity "what an addendum and a correction name" |
+| Referrals, and a visit of another patient | 4.7, 8.3 | `services/api/test/sync-referrals.test.ts`; `sync-encounters.test.ts` ("an allergy and a problem's note made at a visit", "a problem made at a visit"); parity case 11 |
+| A correction waits behind a refused sign-off | 4.7 | `apps/mobile/test/sync/store_encounters_test.dart`; on the server, a correction or an addendum that names a held sign-off is held with it (`sync-corrections.test.ts`) |
 | Co-sign and attest: a second person, online, sees every section, hash matches | 3.7, 5.3, 5.4 | `services/api/test/encounters-cosign.test.ts`, `encounters-attest.test.ts` |
 | Assigning a note | 3.8, 5.5 | `services/api/test/encounters-assign.test.ts` |
 | Overdue after 24 hours, worked out when read | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` |
-| No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts`; parity case 3 |
-| The clock pause covers sign-offs, addenda and corrections, not referrals | 3.11 | `apps/mobile/test/sync/store_encounters_test.dart` |
-| The content hash | 4.5 | `note-content-hash.json` through `services/api/test/note-content-hash.test.ts` and `apps/mobile/test/encounters/content_hash_test.dart`; a missing patient or summary hashed as `null`, in the TypeScript test alone (a vector cannot hold undefined); parity case 8 |
-| The Medical gate holds a change for review | 4.2 | `sync-encounters.test.ts`; parity case 12 |
-| Every encounter-side change takes the team lock | 4.2 | `services/api/test/sync-concurrency.test.ts` (two sign-offs and a kind change at once) |
+| No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts` ("the note's create", "the encounter's fields"); parity case 3 |
+| The clock pause covers sign-offs, addenda and corrections, not referrals | 3.11 | `apps/mobile/test/sync/store_encounters_test.dart`; the registry's `pausesWithClock` in `apps/mobile/test/patients/entities_test.dart` |
+| The content hash | 4.5 | `note-content-hash.json` through `services/api/test/note-content-hash.test.ts` and `apps/mobile/test/encounters/content_hash_test.dart`; a missing patient or summary hashed as `null`, in the TypeScript test alone (a vector cannot hold undefined); `sync-signoffs.test.ts` ("the content hash"); parity case 8, which sends every case through a real sign-off |
+| A note's create, its answers, `notCounted`, the 1,000-answer bound and `definition_error` | 4.1, 4.4 | `sync-encounters.test.ts` ("the note's create", "a note's answers"); parity cases 4 and 14 |
+| The test-only note types are definitions the export would take, held by every test team | 4.4 | `sync-encounters.test.ts` ("the test-only note types"); `sync-reads.test.ts`; `apps/mobile/test/sync/test_note_types_test.dart`; the live job's install in `db/test/install-presets.test.ts` |
+| A definition row is checked against its hash, its key and its version; two bounded maps | forms 3.3 (D79) | `services/api/test/forms-routes.test.ts` |
+| The Medical gate, and the gate of a `needs` section, hold a change for review | 4.2 | `sync-encounters.test.ts` ("the Medical gate"); `sync-reads.test.ts` ("the Medical gate", and the `needs` section that holds the author's create, set and correction); parity case 12 |
+| Every encounter-side change takes the team lock | 4.2 | `sync-encounters.test.ts` ("the team lock": every kind of change, and an encounter naming no patient); `services/api/test/sync-concurrency.test.ts` (two sign-offs and a kind change at once; a sign-off and a correction each wait for another writer) |
+| What is accepted with no effect, in place of a refusal | 4.1 | `sync-corrections.test.ts` ("what is accepted with no effect, in place of a refusal: each row of the second table of 4.1"); `sync-reads.test.ts` (from someone who does not act as the author, whatever their credential); parity case 17 |
 | Each route's permission, and its refusal logged | 5, 6.1 | `services/api/test/permissions.test.ts` |
-| Sensitive content is absent, not blanked | 6.4 | `services/api/test/encounters-read.test.ts`; a `/v1/sync/records` case in `sync-encounters.test.ts` |
+| Sensitive content is absent, not blanked | 6.4 | `services/api/test/encounters-read.test.ts`; the sync read in `services/api/test/sync-reads.test.ts` ("the sync read of a note", "what hangs off a note, and referrals"), held on the fake by `apps/mobile/test/sync/fake_reads_test.dart` |
+| A change the sender may not see, or of a note they may not read, is held; a retry is answered as they may see the field; the review queue shows only what the reviewer may read | 4.4, 6.4 | `sync-reads.test.ts` ("a set of an answer the sender may not see", "a retry is answered from its receipt", "the review queue"); the same groups in `apps/mobile/test/sync/fake_parity_test.dart`, but the queue, which the fake has no route for |
+| The values of the new records, the same on both sides | 4.6, 4.7, 4.8 | `packages/contract/test-vectors/sync-values.json` through `services/api/test/contract-vectors.test.ts`, `apps/mobile/test/patients/entities_test.dart` (the registry) and `apps/mobile/test/sync/patient_rules_test.dart` (the fake) |
+| A phone logs the EMS handoff shown and Notes to finish offline | 4.8, 10.1 | `sync-encounters.test.ts` ("offline reads of a visit"); parity case 15; `entities_test.dart` |
+| Every kind of record has a name on the phone and in the portal | 9.13 | `apps/mobile/test/features/sync_labels_test.dart`; the portal's `SYNC_ENTITY` is typed by the contract |
 | Every action writes its audit event in the same transaction, with no answer in it | 10.1 | `expectAudit` and `expectAuditClean` in each API test above (`services/api/test/patient-fixtures.ts`) |
 | A visit read offline is logged or refused | 9.7 | `apps/mobile/test/encounters/visit_read_test.dart` |
 | `referrals` is a chart table | 2.5 | the schema test in `services/api/test/patients-charts.test.ts:334-351` |
