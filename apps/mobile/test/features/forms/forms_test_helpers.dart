@@ -40,10 +40,13 @@ final _presets = [
     NoteTypeDef.fromJson((p! as Map<String, Object?>)['definition']! as Map<String, Object?>),
 ];
 
+/// The latest bundled version of the note type [key].
+NoteTypeDef presetDefinition(String key) => _presets.lastWhere((d) => d.key == key);
+
 /// The field at [path] (section, then field IDs, entry part left out) of the bundled note type [key].
 FieldDef presetField(String key, String path) {
   final parts = path.split('.');
-  final definition = _presets.lastWhere((d) => d.key == key);
+  final definition = presetDefinition(key);
   var fields = definition.sections.firstWhere((s) => s.id == parts.first).fields;
   late FieldDef found;
   for (final part in parts.skip(1)) {
@@ -54,7 +57,9 @@ FieldDef presetField(String key, String path) {
 }
 
 /// The answers a form hands its fields, in memory; [changes] records every change a widget made.
-class TestAnswers implements FormAnswers {
+/// It tells its listeners of each change, so a test can draw a field again with what it stored,
+/// as the form does.
+class TestAnswers with ChangeNotifier implements FormAnswers {
   TestAnswers([Map<String, Object?>? values]) : values = {...?values};
   final Map<String, Object?> values;
   final Set<String> pending = {};
@@ -69,8 +74,13 @@ class TestAnswers implements FormAnswers {
   void change(String path, Object? value) {
     changes.add((path, value));
     values[path] = value;
+    notifyListeners();
   }
 }
+
+/// [build] drawn again each time [answers] changes, as the form draws a field with what it stored.
+Widget answering(TestAnswers answers, Widget Function() build) =>
+    ListenableBuilder(listenable: answers, builder: (_, _) => build());
 
 /// Puts [child] on a screen of a 390 × 844 phone (320 × 640 when [run] is narrow), in [run]'s
 /// theme and text size, in a scrolling list as the note form lays fields out.
