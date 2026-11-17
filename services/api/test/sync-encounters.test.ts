@@ -1737,6 +1737,21 @@ describe('phase 4 sync: encounters and notes', () => {
       );
     });
 
+    it('a stale answer to a conflict on a finished note is kept in history, never asked again', async () => {
+      const { noteId } = await noteBy(gil, TEST_NOTE);
+      await complete(noteId);
+      // Hal kept the value he was shown, which is not the one the note holds now (NOT-10): the
+      // note takes no change, so there is nothing to choose between again.
+      const keep = await setOn(hal, noteId, 'data.care.plan', 'Demo: theirs', 0, {
+        resolution: 'keep_server',
+      });
+      expect(await hal.send(keep)).toEqual([kept(keep, 'Demo: rest and fluids', 1, 'note_finished')]);
+      expect((await noteState(noteId)).data).toEqual({ 'care.plan': 'Demo: rest and fluids' });
+      expect(await historyOf(noteId, 'data.care.plan')).toEqual([
+        { version: 1, value: 'Demo: theirs', previousValue: 'Demo: rest and fluids', kind: 'kept_both' },
+      ]);
+    });
+
     it('a late change at a new path is kept however many answers the note holds', async () => {
       // A finished note at the bound, written as a create of MAX_NOTE_FIELDS answers leaves it.
       const encounterId = await encounterOf(gil, patientId);

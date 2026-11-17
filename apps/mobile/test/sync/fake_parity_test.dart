@@ -951,6 +951,16 @@ void main() {
         },
       );
 
+      test('a stale answer to a conflict on a finished note is kept in history, never asked again', () async {
+        final note = noteBy();
+        server.finishNote(note);
+        // Blair kept the value he was shown, which is not the one the note holds now (NOT-10).
+        final keep = setNote(note, 'data.care.plan', 'Demo: theirs', 0, {'resolution': 'keep_server'});
+        expect(await send(blair, [keep]), [kept(keep, 'Demo: rest and fluids', 1, 'note_finished')]);
+        expect(server.records[note]!.fields['data.care.plan']!.value, 'Demo: rest and fluids');
+        expect(historyOf(note, 'data.care.plan').where((h) => h.$1 != 'created'), [('kept_both', 'Demo: theirs', '1')]);
+      });
+
       test('a late change at a new path is kept however many answers the note holds', () async {
         final note = server.seed(
           entityNote,

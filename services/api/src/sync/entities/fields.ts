@@ -208,7 +208,12 @@ export async function keepServer(s: SetContext, notifyAuthor: boolean): Promise<
 /** The draft reconciliation rule (Oct 19 decisions; plan D9). */
 async function draftSet(s: SetContext): Promise<Outcome> {
   const { actor, change: c, rec, field, cur } = s;
-  if (c.resolution === 'keep_server') return keepServer(s, true);
+  if (c.resolution === 'keep_server') {
+    // A choice made on a value that has moved since, on a record that takes no more values: kept
+    // in history like any late change, since asking to choose again would be for nothing (NOT-10).
+    const kept = s.saw ? null : await s.rules.keptInstead?.(s);
+    return kept ? keepInHistory(s, kept) : keepServer(s, true);
+  }
 
   // Already the server's value: nothing to write, and the phone now holds the current version.
   if (sameValue(cur.value, s.value)) return { status: 'accepted', serverVersion: cur.version };

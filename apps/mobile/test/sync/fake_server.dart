@@ -1368,13 +1368,19 @@ class FakeSyncServer {
   /// conflict included, once it differs from the value held (fields.ts draftSet).
   Map<String, Object?> _draftSet(_SetContext s) {
     final resolution = s.c['resolution'];
-    if (resolution == 'keep_server') return _keepServer(s, notifyAuthor: true);
-    if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
-    final kept = switch (s.rec.entity) {
+    _Kept? keptInstead() => switch (s.rec.entity) {
       entityEncounter => _envelopeKept(s),
       entityNote => _lateChange(s),
       _ => null,
     };
+    if (resolution == 'keep_server') {
+      // A choice made on a value that has moved since, on a record that takes no more: kept (NOT-10).
+      final kept = s.saw ? null : keptInstead();
+      if (kept != null) return _keepInHistory(s, problem: kept.problem, notice: kept.notice);
+      return _keepServer(s, notifyAuthor: true);
+    }
+    if (_same(s.cur['value'], s.value)) return _accepted(s.cur['version']! as int);
+    final kept = keptInstead();
     if (kept != null) return _keepInHistory(s, problem: kept.problem, notice: kept.notice);
     // The bound is on what reaches the chart: a value kept in history adds no field.
     final dataFields = s.rec.fields.keys.where((f) => f.startsWith('data.')).length;
