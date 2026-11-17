@@ -2855,9 +2855,9 @@ referral's details or a name.
 Every event names its patient in the audit row's patient column, so the audit search by patient
 finds it (D53). A refused online request is logged with the reason's name.
 
-As built for the sync half (unit L1, with wave D's review). Every event below names its patient
-in the row's patient column; its own keys follow `changeId` and, on a create, `clockVerified`.
-None holds a value, a reason's text or an addendum's.
+As built for the sync half (unit L1, with wave D's review). The event of a change carries
+`changeId`, and a create's `clockVerified`, beside the keys below, and names its patient, when
+there is one, in the row's patient column. None holds a value, a reason's text or an addendum's.
 
 | Action | As built |
 |---|---|
