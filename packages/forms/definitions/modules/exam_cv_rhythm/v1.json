@@ -1,0 +1,104 @@
+{
+  "name": "exam_cv_rhythm",
+  "version": 1,
+  "sections": [
+    {
+      "id": "heart",
+      "title": "Heart rate, rhythm and sounds",
+      "spec": "exam-cv-rhythm",
+      "showWhen": { "field": "exam.systems", "is": "cardiovascular" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "rate",
+          "kind": "choice",
+          "many": false,
+          "label": "Rate",
+          "options": [
+            { "code": "normal", "label": "Normal", "normal": true },
+            { "code": "tachycardic", "label": "Tachycardic" },
+            { "code": "bradycardic", "label": "Bradycardic" }
+          ]
+        },
+        {
+          "id": "rhythm",
+          "kind": "choice",
+          "many": false,
+          "label": "Rhythm",
+          "options": [
+            { "code": "regular", "label": "Regular", "normal": true },
+            { "code": "irregular", "label": "Irregular" }
+          ]
+        },
+        {
+          "id": "sounds",
+          "kind": "choice",
+          "many": true,
+          "label": "Heart sounds",
+          "options": [
+            { "code": "normal_s1_s2", "label": "Normal S1/S2", "exclusive": true, "normal": true },
+            { "code": "murmur", "label": "Murmur" },
+            { "code": "rub", "label": "Rub" },
+            { "code": "gallop", "label": "Gallop" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        },
+        {
+          "id": "murmur",
+          "kind": "group",
+          "label": "Murmur",
+          "layout": "stack",
+          "showWhen": { "field": "heart.sounds", "is": "murmur" },
+          "fields": [
+            {
+              "id": "location",
+              "kind": "choice",
+              "many": true,
+              "label": "Location",
+              "options": [
+                { "code": "aortic", "label": "Aortic" },
+                { "code": "pulmonic", "label": "Pulmonic" },
+                { "code": "tricuspid", "label": "Tricuspid" },
+                { "code": "mitral", "label": "Mitral" },
+                { "code": "other", "label": "Other", "other": true }
+              ]
+            },
+            {
+              "id": "character",
+              "kind": "choice",
+              "many": false,
+              "label": "Character",
+              "options": [
+                { "code": "systolic", "label": "Systolic" },
+                { "code": "diastolic", "label": "Diastolic" },
+                { "code": "continuous", "label": "Continuous" }
+              ]
+            },
+            {
+              "id": "intensity",
+              "kind": "number",
+              "label": "Intensity",
+              "min": 1,
+              "max": 6,
+              "decimals": 0,
+              "display": "outOf"
+            },
+            {
+              "id": "radiation",
+              "kind": "choice",
+              "many": true,
+              "label": "Radiation",
+              "options": [
+                { "code": "none", "label": "None", "exclusive": true },
+                { "code": "carotids", "label": "Carotids" },
+                { "code": "axilla", "label": "Axilla" },
+                { "code": "back", "label": "Back" },
+                { "code": "other", "label": "Other", "other": true }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

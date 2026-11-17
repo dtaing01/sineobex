@@ -1,0 +1,93 @@
+{
+  "name": "exam_cv_perfusion",
+  "version": 1,
+  "sections": [
+    {
+      "id": "cv_perfusion",
+      "title": "Perfusion, edema and JVD",
+      "spec": "exam-cv-perfusion",
+      "showWhen": { "field": "exam.systems", "is": "cardiovascular" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "pulses",
+          "kind": "grid",
+          "label": "Pulses",
+          "sides": true,
+          "rows": [
+            { "code": "radial", "label": "Radial" },
+            { "code": "dorsalis_pedis_dp", "label": "Dorsalis pedis (DP)" },
+            { "code": "posterior_tibial_pt", "label": "Posterior tibial (PT)" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Pulse",
+            "options": { "list": "pulse_scale" }
+          }
+        },
+        {
+          "id": "more_pulses",
+          "kind": "grid",
+          "label": "More pulse sites",
+          "collapsed": true,
+          "sides": true,
+          "rows": [
+            { "code": "brachial", "label": "Brachial" },
+            { "code": "femoral", "label": "Femoral" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Pulse",
+            "options": { "list": "pulse_scale" }
+          }
+        },
+        {
+          "id": "edema",
+          "kind": "choice",
+          "many": false,
+          "label": "Edema",
+          "options": [
+            { "code": "none", "label": "None", "normal": true },
+            { "code": "trace", "label": "Trace" },
+            { "code": "one_plus", "label": "1+" },
+            { "code": "two_plus", "label": "2+" },
+            { "code": "three_plus", "label": "3+" },
+            { "code": "four_plus", "label": "4+" }
+          ]
+        },
+        {
+          "id": "edema_location",
+          "kind": "choice",
+          "many": true,
+          "label": "Edema location",
+          "options": [
+            { "code": "bilateral_lower_extremities", "label": "Bilateral lower extremities" },
+            { "code": "right", "label": "Right" },
+            { "code": "left", "label": "Left" },
+            { "code": "upper_extremity", "label": "Upper extremity" },
+            { "code": "generalized", "label": "Generalized" }
+          ],
+          "showWhen": {
+            "field": "cv_perfusion.edema",
+            "is": ["trace", "one_plus", "two_plus", "three_plus", "four_plus"]
+          }
+        },
+        {
+          "id": "jvd",
+          "kind": "choice",
+          "many": false,
+          "label": "Jugular venous distention (JVD)",
+          "options": [
+            { "code": "none", "label": "None", "normal": true },
+            { "code": "present", "label": "Present" },
+            { "code": "unable_to_assess", "label": "Unable to assess", "unable": true }
+          ]
+        }
+      ]
+    }
+  ]
+}
