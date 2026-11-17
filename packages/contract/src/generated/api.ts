@@ -462,7 +462,7 @@ export interface paths {
         put?: never;
         /**
          * The server’s copy of records, with each field’s version, for records a phone holds open
-         * @description Each kind of record needs its read permission: encounters and notes encounters.chart, patient records patients.view, problems and their notes patients.view with encounters.chart or billing.view_codes. A sensitive problem the role can’t see is reported missing, like a record the team doesn’t have.
+         * @description Each kind of record needs its read permission: encounters, notes and what hangs off a note (sign-offs, addenda, corrections) encounters.chart; patient records and referrals patients.view; problems and their notes patients.view with encounters.chart or billing.view_codes. What the reader may not see is reported missing, like a record the team doesn’t have: a sensitive problem the role can’t see, a note they may not read with its sign-offs, addenda and corrections, and a correction to an answer hidden from them. A note they may read lists only the answers they may see, each with its version; a hidden one leaves no key.
          */
         post: operations["fetchRecords"];
         delete?: never;

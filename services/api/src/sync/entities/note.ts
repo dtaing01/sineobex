@@ -4,6 +4,7 @@ import type { Tx } from '../../db/database.ts';
 import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { chartsMedical, loadSigner } from '../../encounters/signer.ts';
 import {
+  answerHidden,
   bookkeeping,
   byDefinition,
   DefinitionError,
@@ -14,6 +15,7 @@ import {
   invalid,
   jsonb,
   NoteCreate,
+  noteReader,
   rejected,
   storeCreate,
   type ChangeContext,
@@ -42,9 +44,10 @@ import { valueParents } from './values.ts';
  * in: the note is the unit, so a teammate's note added after the clinician signed is never lost.
  *
  * A set goes through the note's own rule (the `status` class, the hook a problem's status uses),
- * since its checks need the loaded note: first the Medical gate (4.2), which needs the sender's
- * credential; then, for an answer of a note with a version, its type's checkAnswer (4.4), which
- * needs the note's type; then the draft rule, unchanged. The schema hooks that run before the load
+ * since its checks need the loaded note: first an answer the sender may not see (6.4), held for
+ * review before anything answers with the value held there; then the Medical gate (4.2), which
+ * needs the sender's credential; then, for an answer of a note with a version, its type's
+ * checkAnswer (4.4), which needs the note's type; then the draft rule, unchanged. The schema hooks that run before the load
  * know only phase 2's open path pattern. An answer put on the chart where it does not count says so
  * on its receipt. A note with no version is a phase 2 preview row: it keeps the open path rule and
  * is never read against a definition.
@@ -70,6 +73,8 @@ interface NoteRow {
   medical: boolean;
   assignedUserId: string | null;
   firstSignedAt: Date | null;
+  completedAt: Date | null;
+  signoffId: string | null;
   attestation: string;
   data: Record<string, unknown>;
   fieldVersions: Record<string, number>;
@@ -155,10 +160,15 @@ export const noteRules: EntityRules<Value> = {
       fieldVersions: r.fieldVersions,
       fieldMeta: r.fieldMeta,
       values,
+      // Its state too, so the author's phone can show the state of a note it still holds (4.4, 4.10).
       attributes: {
         encounterId: r.encounterId,
         noteTypeKey: r.noteTypeKey,
         noteTypeVersion: r.noteTypeVersion,
+        attestation: r.attestation,
+        actingAuthorId: r.assignedUserId ?? r.authorUserId,
+        completedAt: r.completedAt?.toISOString() ?? null,
+        signoffId: r.signoffId,
       },
       internal: {
         medical: r.medical,
@@ -210,10 +220,13 @@ function answersProblem(type: ResolvedNoteType, data: Record<string, unknown>): 
 }
 
 /**
- * A set of a note's field: the gate; the status's own rule; a finished note's late change, kept by
- * the draft rule (lateChange); then the answer's check against the note's type, and the draft rule.
+ * A set of a note's field: an answer the sender may not see; the gate; the status's own rule; a
+ * finished note's late change, kept by the draft rule (lateChange); then the answer's check against
+ * the note's type, and the draft rule.
  */
 async function noteSet(s: SetContext): Promise<Outcome> {
+  const hidden = await hiddenFromSender(s);
+  if (hidden) return hidden;
   const gated = await medicalGate(s, s.rec.internal.medical === true);
   if (gated) return gated;
   if (s.field === 'status') return statusSet(s);
@@ -230,6 +243,32 @@ async function noteSet(s: SetContext): Promise<Outcome> {
     return outcome;
   const why = byDefinition(() => notCounted(type, answersWith(s.rec, path, s.value), path));
   return why ? { ...outcome, details: { ...outcome.details, notCounted: why } } : outcome;
+}
+
+/**
+ * A set of an answer the sender may not see (lifecycle 4.4, 6.4 rule 5): what the answer holds now,
+ * or would hold, is hidden from them, or its section needs a capability their credential lacks (the
+ * Quick encounter's Medication section needs an ordering credential). It is held for a Program
+ * Admin, for a draft and a finished note alike, before anything answers with the value held there:
+ * a conflict or a late change would send it back. Whoever acts as the author may always set their
+ * own note's answers, and an admin's accept passes, as through the Medical gate.
+ */
+async function hiddenFromSender(s: SetContext): Promise<Outcome | null> {
+  if (!s.field.startsWith('data.') || s.actor.approvedBy !== null) return null;
+  if (s.actor.authorId === actingAuthor(s.rec)) return null;
+  const type = await noteTypeOf(s.tx, s.rec);
+  if (type === undefined) return null;
+  const sender = await loadSigner(s.tx, s.actor.teamId, s.actor.authorId);
+  const reader = noteReader(s.actor.permissions, sender?.credential ?? 'none', false);
+  const path = s.field.slice('data.'.length);
+  const answers = answersOf(s.rec);
+  const hidden = byDefinition(
+    () =>
+      (fieldAt(type, path)?.section.needs === 'orderMedications' && !reader.ordersMedications) ||
+      (Object.hasOwn(answers, path) && answerHidden(type, answers, path, answers[path], reader)) ||
+      answerHidden(type, answers, path, s.value, reader),
+  );
+  return hidden ? rejected('permission') : null;
 }
 
 /** Who acts as a loaded note's author (lifecycle 3.8). */

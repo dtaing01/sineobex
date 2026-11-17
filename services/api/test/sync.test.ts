@@ -780,8 +780,10 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
 
     it('different fields merge; a blank server field fills in; the same field with a different value conflicts', async () => {
       const { noteId } = await syncedDraft({ 'care.allergies': '' });
-      const seen = await snapshotOf(t.bToken, noteId);
+      const seen = await snapshotOf(t.aToken, noteId);
       expect(seen.fields['data.care.allergies']).toMatchObject({ value: '', version: 1 });
+      // A teammate's copy holds the answers that count (phase 4 lifecycle 4.4, 6.4): a blank is none.
+      expect((await snapshotOf(t.bToken, noteId)).fields['data.care.allergies']).toBeUndefined();
 
       const aTemp = await phoneA.change({
         entity: 'encounter_note',

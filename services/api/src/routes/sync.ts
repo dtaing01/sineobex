@@ -38,9 +38,12 @@ const recordsRoute = createRoute({
   tags: ['sync'],
   summary: 'The server’s copy of records, with each field’s version, for records a phone holds open',
   description:
-    'Each kind of record needs its read permission: encounters and notes encounters.chart, patient records ' +
-    'patients.view, problems and their notes patients.view with encounters.chart or billing.view_codes. A ' +
-    'sensitive problem the role can’t see is reported missing, like a record the team doesn’t have.',
+    'Each kind of record needs its read permission: encounters, notes and what hangs off a note (sign-offs, ' +
+    'addenda, corrections) encounters.chart; patient records and referrals patients.view; problems and their ' +
+    'notes patients.view with encounters.chart or billing.view_codes. What the reader may not see is reported ' +
+    'missing, like a record the team doesn’t have: a sensitive problem the role can’t see, a note they may not ' +
+    'read with its sign-offs, addenda and corrections, and a correction to an answer hidden from them. A note ' +
+    'they may read lists only the answers they may see, each with its version; a hidden one leaves no key.',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(FetchRecords) } },
   responses: { 200: { description: 'Records', ...json(FetchRecordsResult) }, ...errors(401, 403, 422) },
@@ -68,13 +71,19 @@ const readNoticeRoute = createRoute({
 
 /**
  * Who may read each kind of record through sync (phase 3 design 3.6, 4.1): refused and logged
- * like any route's permission, for the whole request.
+ * like any route's permission, for the whole request. The sync read feeds editing, so a visit's
+ * records need encounters.chart; a sign-off, an addendum and a correction are read by whoever may
+ * read their note (phase 4 lifecycle 6.1, 6.4 rule 7), which fetchRecords then checks note by note.
+ * A referral is a patient's record, read with patients.view.
  */
 async function requireRead(scope: TeamScope, entity: AnyRecordEntityName) {
   const route = '/v1/sync/records';
   switch (entity) {
     case 'encounter':
     case 'encounter_note':
+    case 'note_signoff':
+    case 'note_addendum':
+    case 'note_correction':
       return scope.require('encounters.chart', route);
     case 'problem':
     case 'problem_note':

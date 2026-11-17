@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written (phase 4 design, lifecycle 4.4). The test-only note types phase 2's sync tests chart on, in place of the keys they made up before note types existed (vitals, wound_care), with the paths those tests use. Each is a resolved definition as the export writes one; a team holds it with the hash sha256Hex(canonicalJson(definition)). test_note is a Non-Medical note type (offered for both kinds of encounter), so the Medical gate never applies to it; test_medical is a Medical note type with the same sections. No field is required, so a note on either passes the finish check whatever it holds. rows repeats: its entries give a note as many answers as a test needs. more.detail shows only while more.none is not ticked, so an answer there can be one that does not count (lifecycle 4.4, notCounted). redFlags is a Medical note type marked auto: 'medical', as the Red flags and disposition note is (forms 6.2): a visit's finished one lets its Medical notes be finished (lifecycle 4.6, red_flags_first), and its one required answer, flags.any, makes the finish check fail while it is empty (incomplete); the sign-off tests install it in their own team. services/api/test/sync-fixtures.ts installs both noteTypes in every test team; the phone's tests read them through apps/mobile/test/sync/test_note_types.dart. Never installed outside tests.",
+  "note": "Hand-written (phase 4 design, lifecycle 4.4). The test-only note types phase 2's sync tests chart on, in place of the keys they made up before note types existed (vitals, wound_care), with the paths those tests use. Each is a resolved definition as the export writes one; a team holds it with the hash sha256Hex(canonicalJson(definition)). test_note is a Non-Medical note type (offered for both kinds of encounter), so the Medical gate never applies to it; test_medical is a Medical note type with the same sections. No field is required, so a note on either passes the finish check whatever it holds. rows repeats: its entries give a note as many answers as a test needs. more.detail shows only while more.none is not ticked, so an answer there can be one that does not count (lifecycle 4.4, notCounted). redFlags is a Medical note type marked auto: 'medical', as the Red flags and disposition note is (forms 6.2): a visit's finished one lets its Medical notes be finished (lifecycle 4.6, red_flags_first), and its one required answer, flags.any, makes the finish check fail while it is empty (incomplete); the sign-off tests install it in their own team. services/api/test/sync-fixtures.ts installs both noteTypes in every test team; the phone's tests read them through apps/mobile/test/sync/test_note_types.dart. Never installed outside tests. restricted holds two Non-Medical note types for who may read and change what (lifecycle 6.4): test_restricted has a sensitive exam section (exam), a treatment record section (moud), a section only a credential that orders medications may change (meds), a picker with a sensitive exam option (systems.seen, gu) and a repeating section with a diagnosis (dx), a sensitive code taking its entry with it; test_sensitive is a sensitive note type. The sync read tests install them in their own team.",
   "noteTypes": [
     {
       "key": "test_note",
@@ -431,5 +431,150 @@
         ]
       }
     ]
-  }
+  },
+  "restricted": [
+    {
+      "key": "test_restricted",
+      "version": 1,
+      "title": "Test restricted",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "general",
+          "title": "General",
+          "fields": [
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "exam",
+          "title": "Exam",
+          "sensitiveExam": true,
+          "fields": [
+            {
+              "id": "findings",
+              "kind": "text",
+              "label": "Findings",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "moud",
+          "title": "Treatment",
+          "treatmentRecord": true,
+          "fields": [
+            {
+              "id": "dose",
+              "kind": "text",
+              "label": "Dose",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "meds",
+          "title": "Medication",
+          "needs": "orderMedications",
+          "fields": [
+            {
+              "id": "given",
+              "kind": "text",
+              "label": "Given",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "systems",
+          "title": "Systems",
+          "fields": [
+            {
+              "id": "seen",
+              "kind": "choice",
+              "label": "Systems examined",
+              "many": true,
+              "options": [
+                {
+                  "code": "heart",
+                  "label": "Heart"
+                },
+                {
+                  "code": "lungs",
+                  "label": "Lungs"
+                },
+                {
+                  "code": "gu",
+                  "label": "GU",
+                  "sensitiveExam": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dx",
+          "title": "Diagnoses",
+          "repeat": {
+            "max": 20,
+            "itemTitle": "Diagnosis {n}"
+          },
+          "fields": [
+            {
+              "id": "diagnosis",
+              "kind": "problem",
+              "label": "Diagnosis"
+            },
+            {
+              "id": "note",
+              "kind": "text",
+              "label": "Note",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_sensitive",
+      "version": 1,
+      "title": "Test sensitive",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "psych",
+      "sensitivity": "sensitive",
+      "sections": [
+        {
+          "id": "talk",
+          "title": "Talk",
+          "fields": [
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

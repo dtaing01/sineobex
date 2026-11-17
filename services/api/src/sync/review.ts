@@ -1,3 +1,4 @@
+import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import { PERMISSION_KEYS } from '../auth/permissions.ts';
 import { conflict, forbidden, notFound } from '../lib/errors.ts';
@@ -11,8 +12,16 @@ import {
   type ApplyActor,
 } from './apply.ts';
 import { RULES, takesTeamLock } from './entities/index.ts';
+import { actingAuthor, answersOf, noteRules, noteTypeOf } from './entities/note.ts';
 import { lockTeamWrites } from './locks.ts';
-import { snapshot } from './records.ts';
+import {
+  answerHidden,
+  byDefinition,
+  DefinitionError,
+  noteReader,
+  snapshot,
+  type StoredRecord,
+} from './records.ts';
 import type {
   AnyRecordEntityName,
   QuarantineQueryValue,
@@ -143,8 +152,9 @@ async function shownValue(r: Pick<QuarantineRow, 'entity' | 'op' | 'value'>): Pr
 
 /**
  * Accept applies the change to the chart under the usual rules, as the person who made it and
- * approved by the admin; if it would overwrite a different value or touch a signed note, nothing
- * is applied and the admin is told. Reject keeps the item, with the reason, forever.
+ * approved by the admin; if it would overwrite a different value, nothing is applied and the admin
+ * is told, and a late change to a finished note is kept in its history as a push of it would be.
+ * Reject keeps the item, with the reason, forever.
  */
 export async function decideQuarantine(
   scope: TeamScope,
@@ -153,9 +163,9 @@ export async function decideQuarantine(
   reason: string,
 ) {
   const outcome = await scope.tx(async (tx, audit) => {
-    // A patient-side item, or an encounter naming a patient, takes the team's write lock before
-    // its row (D32), as a push of the same change would. What it is never changes, so a look first
-    // is enough to know.
+    // An item takes the team's write lock before its row when a push of the same change would (D32,
+    // takesTeamLock: every patient-side change, and every change of a visit and what belongs to it).
+    // What it is never changes, so a look first is enough to know.
     const [peek] = await tx<Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value'>[]>`
       select entity, op, field, value from sineobex.quarantine_items where id = ${itemId}`;
     if (peek && takesTeamLock(peek as SyncChangeInput)) await lockTeamWrites(tx, scope.team.teamId);
@@ -263,9 +273,9 @@ export async function decideQuarantine(
 
 /**
  * The server's copy of records a phone holds open, with every field's version. The route has
- * checked each entity's read rule; a sensitive problem (or its note) the role can't see is
- * reported missing, like one the team lacks (design 4.3). Each read is logged, a patient-side
- * one as a view of that patient.
+ * checked each entity's read rule; what the reader may not see is reported missing, like a record
+ * the team lacks, or left out of the record. Each read is logged, a patient-side one as a view of
+ * that patient.
  */
 export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEntityName; id: string }[]) {
   return scope.tx(async (tx, audit) => {
@@ -274,31 +284,151 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     for (const ref of refs) {
       const rules = RULES[ref.entity];
       const record = await rules.load(tx, ref.id, false);
-      if (!record || !(await mayRead(scope, record))) {
+      const shown = record && (await asRead(record));
+      if (!shown) {
         missing.push(ref);
         continue;
       }
-      records.push(snapshot(record));
-      const encounterSide = ref.entity === 'encounter' || ref.entity === 'encounter_note';
+      records.push(snapshot(shown));
       await audit({
-        action: encounterSide ? `${rules.auditPrefix}.viewed` : 'patient.viewed',
+        action:
+          ref.entity === 'encounter'
+            ? 'encounter.viewed'
+            : NOTE_SIDE.has(ref.entity)
+              ? 'note.viewed'
+              : 'patient.viewed',
         entity: ref.entity,
         entityId: ref.id,
-        patientId: record.patientId,
+        patientId: shown.patientId,
         details: { source: 'sync' },
       });
     }
     return { records, missing };
 
-    /** Sensitive problems need patients.view_sensitive (Oct 19); a note goes with its problem. */
-    async function mayRead(s: TeamScope, record: { entity: string; attributes: Record<string, unknown> }) {
-      if (s.can('patients.view_sensitive')) return true;
-      if (record.entity === 'problem') return record.attributes.sensitive !== true;
-      if (record.entity !== 'problem_note') return true;
-      const problem = await RULES.problem.load(tx, record.attributes.problemId as string, false);
-      return problem?.attributes.sensitive !== true;
+    /**
+     * The record as this reader may see it, or null when they may not see it at all. Sensitive
+     * problems need patients.view_sensitive (Oct 19), and a problem's note goes with it. A note
+     * leaves out the answers the reader may not see (lifecycle 6.4), and what hangs off a note goes
+     * with it: its sign-offs, its addenda, and a correction, which is also missing when one of the
+     * answers it changes is hidden from the reader, since its old or new value would give it away.
+     */
+    async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
+      switch (record.entity) {
+        case 'problem':
+          return scope.can('patients.view_sensitive') || record.attributes.sensitive !== true ? record : null;
+        case 'problem_note': {
+          if (scope.can('patients.view_sensitive')) return record;
+          const problem = await RULES.problem.load(tx, record.attributes.problemId as string, false);
+          return problem?.attributes.sensitive !== true ? record : null;
+        }
+        case 'encounter_note':
+          return (await noteAsRead(record))?.note ?? null;
+        case 'note_signoff':
+          return (await noteAsRead(await noteOf(record))) ? record : null;
+        case 'note_addendum':
+          // An addendum to the visit itself is read with the visit.
+          return record.attributes.noteId === null || (await noteAsRead(await noteOf(record)))
+            ? record
+            : null;
+        case 'note_correction': {
+          const read = await noteAsRead(await noteOf(record));
+          if (!read) return null;
+          const changes = record.attributes.changes as {
+            field: string;
+            oldValue: unknown;
+            newValue: unknown;
+          }[];
+          return read.type === undefined ||
+            !changes.some((c) => changeHidden(read.type!, read.answers, read.reader, c))
+            ? record
+            : null;
+        }
+        default:
+          return record;
+      }
+    }
+
+    function noteOf(record: StoredRecord) {
+      return noteRules.load(tx, record.attributes.noteId as string, false);
+    }
+
+    /**
+     * A note as this reader may read it (lifecycle 4.4, 6.4), with its type, the answers it holds
+     * and the reader; null when they may not read it. Whoever acts as the author of a draft is sent
+     * every answer it holds, hidden ones included, so they come back when their field shows again;
+     * everyone else, and every finished note, gets the answers that count that the reader may see.
+     * A hidden answer leaves no key behind: no value, no version, no mark of who changed it. A phase
+     * 2 note with no version has no definition and is read whole. One whose definition the server
+     * cannot read is missing: what it hides cannot be told.
+     */
+    async function noteAsRead(note: StoredRecord | null) {
+      if (!note) return null;
+      let type: ResolvedNoteType | undefined;
+      try {
+        type = await noteTypeOf(tx, note);
+      } catch (err) {
+        if (err instanceof DefinitionError) return null;
+        throw err;
+      }
+      const reader = noteReader(
+        scope.team.permissions,
+        scope.team.credential,
+        scope.principal.userId === actingAuthor(note),
+      );
+      const answers = answersOf(note);
+      if (type === undefined || (reader.actsAsAuthor && note.status === 'draft')) {
+        return { note, type, answers, reader };
+      }
+      let seen: Record<string, unknown> | null;
+      try {
+        seen = byDefinition(() => visibleAnswers(type, answers, reader));
+      } catch (err) {
+        if (err instanceof DefinitionError) return null;
+        throw err;
+      }
+      return seen && { note: onlyAnswers(note, seen), type, answers, reader };
+    }
+
+    function changeHidden(
+      type: ResolvedNoteType,
+      answers: Record<string, unknown>,
+      reader: NoteReader,
+      c: { field: string; oldValue: unknown; newValue: unknown },
+    ): boolean {
+      const path = c.field.slice('data.'.length);
+      try {
+        return byDefinition(
+          () =>
+            answerHidden(type, answers, path, c.oldValue, reader) ||
+            answerHidden(type, answers, path, c.newValue, reader),
+        );
+      } catch (err) {
+        if (err instanceof DefinitionError) return true;
+        throw err;
+      }
     }
   });
+}
+
+/** The records of a visit's notes: read through their note, and logged as a view of it. */
+const NOTE_SIDE: ReadonlySet<AnyRecordEntityName> = new Set([
+  'encounter_note',
+  'note_signoff',
+  'note_addendum',
+  'note_correction',
+]);
+
+/** A note with only [shown] for answers, each at the value shown: a hidden one leaves no key. */
+function onlyAnswers(note: StoredRecord, shown: Record<string, unknown>): StoredRecord {
+  const kept = <T>(byField: Record<string, T>) =>
+    Object.fromEntries(
+      Object.entries(byField).filter(
+        ([field]) => !field.startsWith('data.') || Object.hasOwn(shown, field.slice('data.'.length)),
+      ),
+    );
+  const values = kept(note.values);
+  for (const [path, value] of Object.entries(shown)) values[`data.${path}`] = value;
+  return { ...note, values, fieldVersions: kept(note.fieldVersions), fieldMeta: kept(note.fieldMeta) };
 }
 
 export async function listNotices(scope: TeamScope) {

@@ -1,9 +1,16 @@
 import { z } from '@hono/zod-openapi';
-import type { ResolvedNoteType } from '@sineobex/forms';
+import {
+  effectiveAnswers,
+  fieldAt,
+  visibleAnswers,
+  type NoteReader,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import type { AuditFn } from '../auth/context.ts';
-import type { Permission } from '../auth/permissions.ts';
+import { CAPABILITIES, mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { definitionFor, DefinitionMismatch } from '../forms/definitions.ts';
+import { SENSITIVE_CODE_RANGES } from '../patients/generated/sensitive-codes.ts';
 import { Uuid } from '../routes/schemas.ts';
 import { canonicalJson } from './canonical.ts';
 import type { ParentRef } from './entities/values.ts';
@@ -22,6 +29,8 @@ import type {
  * stored record, its history, the change being applied, and phase 2's encounter and note values.
  * A note's answers keep phase 2's open `data.<path>` pattern here, before the note is loaded; once it
  * is, the team's definition of its type checks each one (phase 4, lifecycle 4.4, entities/note.ts).
+ * Who may read which answers of a note (lifecycle 6.4) is here too: the sync read leaves out what
+ * the reader may not see (review.ts), and a set of an answer the sender may not see is held.
  */
 
 /** Largest canonical JSON for one value. Photos travel separately (module 8). */
@@ -367,6 +376,60 @@ export async function definitionOf(
     if (err instanceof DefinitionMismatch) throw new DefinitionError();
     throw err;
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Who may read what in a note (lifecycle 6.4)
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * A person as visibleAnswers reads them: their role's keys and their credential now. A Medical note
+ * is read by whoever may read the problem list (D37: patients.view with encounters.chart or
+ * billing.view_codes), so the CHW preset reads no clinical notes.
+ */
+export function noteReader(
+  permissions: ReadonlySet<Permission>,
+  credential: Credential,
+  actsAsAuthor: boolean,
+): NoteReader {
+  const can = CAPABILITIES[credential];
+  return {
+    actsAsAuthor,
+    viewSensitive: permissions.has('patients.view_sensitive'),
+    viewSensitiveExams: permissions.has('patients.view_sensitive_exams'),
+    readsMedical: mayViewProblems(permissions),
+    chartsMedical: can.chartMedical,
+    ordersMedications: can.orderMedications,
+    sensitiveCodes: SENSITIVE_CODE_RANGES,
+  };
+}
+
+/**
+ * Whether [reader] may not see [value] as the answer at [path] of a note that holds [answers]
+ * (lifecycle 5.1, 6.4): the note is one they may not read, the answer is in a section they may not
+ * read (a sensitive exam, a treatment record), or, put in place, it is something visibleAnswers
+ * takes out or cuts down (a sensitive exam's option, the entry of a sensitive diagnosis). A change
+ * is tested with its old value and then its new one, since either would give the answer away. An
+ * answer that does not count leaves only its section to go by. Interpreter calls: callers wrap
+ * this in byDefinition.
+ */
+export function answerHidden(
+  type: ResolvedNoteType,
+  answers: Record<string, unknown>,
+  path: string,
+  value: unknown,
+  reader: NoteReader,
+): boolean {
+  if (reader.actsAsAuthor) return false;
+  const placed = { ...answers, [path]: value };
+  const seen = visibleAnswers(type, placed, reader);
+  if (seen === null) return true;
+  const section = fieldAt(type, path)?.section;
+  if (section?.sensitiveExam && !reader.viewSensitiveExams) return true;
+  if (section?.treatmentRecord && !(reader.viewSensitive && reader.chartsMedical)) return true;
+  const counted = effectiveAnswers(type, placed);
+  if (!Object.hasOwn(counted, path)) return false;
+  return !Object.hasOwn(seen, path) || !sameValue(seen[path], counted[path]);
 }
 
 // ------------------------------------------------------------------------------------------------
