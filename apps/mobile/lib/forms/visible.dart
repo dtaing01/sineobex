@@ -73,7 +73,7 @@ Map<String, Object>? visibleAnswers(NoteTypeDef definition, Answers answers, Not
   final treatment = reader.viewSensitive && reader.chartsMedical;
   final hidden = reader.viewSensitive
       ? const <String>[]
-      : _sensitiveDiagnoses(definition, counted, reader.sensitiveCodes);
+      : sensitiveDiagnoses(definition, counted, reader.sensitiveCodes);
   return {
     for (final MapEntry(key: path, value: value) in seen.entries)
       if ((treatment || !(fieldAt(definition, path)?.section.treatmentRecord ?? false)) && !hidden.any(path.startsWith))
@@ -82,7 +82,8 @@ Map<String, Object>? visibleAnswers(NoteTypeDef definition, Answers answers, Not
 }
 
 /// Where each sensitive diagnosis's answers are: the start of every path of its entry or section.
-List<String> _sensitiveDiagnoses(
+/// [counted] are answers that count. The EMS handoff leaves them out for every reader (handoff.dart).
+List<String> sensitiveDiagnoses(
   NoteTypeDef definition,
   Map<String, Object> counted,
   List<SensitiveCodeRange> ranges,

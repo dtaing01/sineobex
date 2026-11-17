@@ -272,11 +272,36 @@ describe('the EMS handoff on the real definitions', () => {
       problems: { id: 'e2aaaaaa', at: AT },
     }).answers;
     expect(Object.keys(expanded)).toEqual(expect.arrayContaining(['reason.concern', `vitals.${ENTRY}.hr`]));
-    const fields = handoffLines([quick, general], [answers, expanded]).filter((l) => l.kind === 'field');
+    const fields = handoffLines([quick, general], [answers, expanded], []).filter((l) => l.kind === 'field');
     expect(fields.filter((l) => l.value === '130 bpm').map((l) => l.note)).toEqual([1]);
     expect(fields.filter((l) => l.value === 'Demo: cough').map((l) => l.note)).toEqual([1]);
     // Before Expand the quick note's own lines are the summary.
-    const alone = handoffLines([quick], [answers]).filter((l) => l.kind === 'field');
+    const alone = handoffLines([quick], [answers], []).filter((l) => l.kind === 'field');
     expect(alone.map((l) => l.value)).toEqual(expect.arrayContaining(['130 bpm', 'Demo: cough']));
+  });
+  // GEN-8: General's recap puts its Assessment in the handoff, which goes to EMS: a diagnosis on
+  // phase 3's sensitive list (here an opioid use disorder, a 42 CFR Part 2 record) stays out of it
+  // for every reader (forms 10.1 #6).
+  it('leaves a sensitive diagnosis out of General’s recap in the handoff', () => {
+    const problem = (id: string, at: string, code: string, label: string): Answers => ({
+      [`problems.${id}.entryAt`]: at,
+      [`problems.${id}.diagnosis.code`]: code,
+      [`problems.${id}.diagnosis.label`]: label,
+    });
+    const answers = {
+      ...problem(ENTRY, AT, 'F11.20', 'Demo opioid use disorder'),
+      ...problem('e2aaaaaa', '2026-11-17T10:05:00Z', 'J45', 'Demo asthma'),
+    };
+    const ranges = [{ from: 'F01', to: 'F99' }];
+    const text = (lines: { value: string }[]) => lines.map((l) => l.value).join(' ');
+    expect(text(handoffLines([general], [answers], []))).toContain('F11.20');
+    const lines = handoffLines([general], [answers], ranges);
+    expect(text(lines)).not.toMatch(/F11|opioid/);
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        section: 'problems',
+        value: expect.stringContaining('Problem 1: Diagnosis or problem: Demo asthma (J45)'),
+      }),
+    );
   });
 });

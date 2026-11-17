@@ -3862,13 +3862,6 @@
             {
               "kind": "recap",
               "note": 0,
-              "section": "findings",
-              "label": "Findings",
-              "value": "Finding 1: Where: Back, Left, Posterior; Diagnosis: Demo problem (F11.20); Type: Burn; Depth: 0 mm; Pulses, Radial: Unable to assess; Pulses, Pedal: Unable to assess"
-            },
-            {
-              "kind": "recap",
-              "note": 0,
               "section": "status",
               "label": "Status",
               "value": "For each system examined, Eyes, Seen before?: No; For each system examined, Ears, Seen before?: No; For each system examined, Skin, Seen before?: No; For each system examined, Other, Seen before?: No; Reflexes, Knee, Right: Unable to assess; Reflexes, Knee, Left: Unable to assess; Reflexes, Ankle, Right: Unable to assess; Reflexes, Ankle, Left: Unable to assess"
@@ -6304,22 +6297,7 @@
               "text": "Demo diagnosis 1: Demo diagnosis: Demo problem (F11.20); Demo status: Demo resolved"
             }
           ],
-          "handoffLines": [
-            {
-              "kind": "field",
-              "note": 0,
-              "section": "dx",
-              "label": "Demo diagnosis 1, Demo diagnosis",
-              "value": "Demo problem (F11.20)"
-            },
-            {
-              "kind": "recap",
-              "note": 0,
-              "section": "dx",
-              "label": "Demo diagnoses",
-              "value": "Demo diagnosis 1: Demo diagnosis: Demo problem (F11.20); Demo status: Demo resolved"
-            }
-          ],
+          "handoffLines": [],
           "effectiveKeys": [
             "dx.e0000001.entryAt",
             "dx.e0000001.problem.code",
@@ -7427,13 +7405,6 @@
             {
               "kind": "recap",
               "note": 0,
-              "section": "reason",
-              "label": "Demo reason for visit",
-              "value": "Demo main diagnosis: Demo problem (F11.20); Demo since: 2000-01-01"
-            },
-            {
-              "kind": "recap",
-              "note": 0,
               "section": "body",
               "label": "Demo body check",
               "value": "Demo areas checked: Demo head, Demo other; Demo marks found, Demo head: Demo other: Demo"
@@ -7615,13 +7586,6 @@
               "section": "strength",
               "label": "Demo strength",
               "value": "Demo hands, Demo grip, Demo unable to test: Yes; Demo hands, Demo pinch, Demo unable to test: Yes"
-            },
-            {
-              "kind": "recap",
-              "note": 0,
-              "section": "assess",
-              "label": "Demo assessment",
-              "value": "Demo diagnosis: Demo problem (F11.20)"
             },
             {
               "kind": "recap",

@@ -21,6 +21,7 @@ void main() {
         [
           {'ems.called': '14:05'},
         ],
+        const [],
       ),
       throwsA(isA<ArgumentError>().having((e) => '${e.message}', 'message', contains('2 definitions for 1 notes'))),
     );

@@ -13,6 +13,7 @@ import { fieldAt } from './field-at.ts';
 import { layOut } from './layout.ts';
 import { recapLines } from './recap.ts';
 import { withoutSensitiveExams } from './sensitive-exams.ts';
+import { sensitiveDiagnoses, type SensitiveCodeRange } from './visible.ts';
 
 export type HandoffLine = {
   /** `field`: an answer of a field marked `handoff`. `recap`: a line of a note's recap. */
@@ -38,20 +39,29 @@ export type HandoffLine = {
  * which then answers at the field it maps to (`expanded`), note by note in the order given, each
  * laid out and written as the read model writes it, its labels joined by ', ', an entry's title
  * first in a repeating section; then each note's recap (recapLines), less every `treatmentRecord`
- * section, in the same order of notes. The patient's name, age and allergies come from the chart,
- * not from here.
+ * section, in the same order of notes. In both parts, for every reader, nothing of a diagnosis
+ * whose code is on `sensitiveCodes` (phase 3's list), as visibleAnswers leaves it out for a reader
+ * without view_sensitive: its entry, or outside a repeating section its section. The patient's
+ * name, age and allergies come from the chart, not from here.
  */
 export function handoffLines(
   definitions: readonly ResolvedNoteType[],
   answersByNote: readonly (Answers | null)[],
+  sensitiveCodes: readonly SensitiveCodeRange[],
 ): HandoffLine[] {
   if (definitions.length !== answersByNote.length)
     throw new Error(`handoffLines: ${definitions.length} definitions for ${answersByNote.length} notes`);
   const fields: HandoffLine[] = [];
   const recaps: HandoffLine[] = [];
-  const held = answeredFields(definitions, answersByNote);
+  // PLAN-OPEN (forms.md 10.1 #6): whether a sensitive diagnosis should ever reach EMS, for the
+  // clinical team and counsel. Until they say, none does: the list holds substance use disorders,
+  // whose records 42 CFR Part 2 restricts.
+  const notes = answersByNote.map((answers, note) =>
+    answers ? withoutSensitiveDiagnoses(definitions[note]!, answers, sensitiveCodes) : null,
+  );
+  const held = answeredFields(definitions, notes);
   definitions.forEach((definition, note) => {
-    const answers = answersByNote[note];
+    const answers = notes[note];
     if (!answers) return;
     const line = (section: string, labels: string[], value: string) =>
       fields.push({ kind: 'field', note, section, label: labels.join(', '), value });
@@ -76,6 +86,19 @@ export function handoffLines(
     }
   });
   return [...fields, ...recaps];
+}
+
+/** The answers that count, less each sensitive diagnosis with its entry or section. */
+function withoutSensitiveDiagnoses(
+  definition: ResolvedNoteType,
+  answers: Answers,
+  ranges: readonly SensitiveCodeRange[],
+): Answers {
+  const counted = effectiveAnswers(definition, answers);
+  const hidden = sensitiveDiagnoses(definition, counted, ranges);
+  return Object.fromEntries(
+    Object.entries(counted).filter(([path]) => !hidden.some((prefix) => path.startsWith(prefix))),
+  );
 }
 
 /**

@@ -70,8 +70,11 @@ export function visibleAnswers(
   );
 }
 
-/** Where each sensitive diagnosis's answers are: the start of every path of its entry or section. */
-function sensitiveDiagnoses(
+/**
+ * Where each sensitive diagnosis's answers are: the start of every path of its entry or section.
+ * `counted` are answers that count. The EMS handoff leaves them out for every reader (handoff.ts).
+ */
+export function sensitiveDiagnoses(
   definition: ResolvedNoteType,
   counted: Record<string, unknown>,
   ranges: readonly SensitiveCodeRange[],

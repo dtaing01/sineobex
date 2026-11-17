@@ -26,7 +26,8 @@
  *    every option it can hold, a choose-one its last option, a flag is set, and every other kind a
  *    fixed value (FILLED; a text cut to its maxLength, a number its min). So every system is picked
  *    with a finding charted in each, and every follow-up a finding opens is reached.
- * For each: `finishCheck`, `recapLines` and the handoff of the note alone as they are; the keys of
+ * For each: `finishCheck`, `recapLines` and the handoff of the note alone (GOLDEN_SENSITIVE_CODES
+ * the sensitive list) as they are; the keys of
  * `effectiveAnswers` in their order; the SHA-256 of the canonical JSON of `readModel` with no
  * correction, of `visibleAnswers` for each of GOLDEN_READERS (of null for a reader who may not see
  * the note), and the content hash a sign-off would carry (GOLDEN_NOTE), each of which holds every
@@ -53,7 +54,7 @@ import { readModel } from '../src/interp/read-model.ts';
 import { recapLines } from '../src/interp/recap.ts';
 import type { RecapLine } from '../src/interp/recap.ts';
 import { visibleAnswers } from '../src/interp/visible.ts';
-import type { NoteReader } from '../src/interp/visible.ts';
+import type { NoteReader, SensitiveCodeRange } from '../src/interp/visible.ts';
 import { leafAt } from '../src/paths.ts';
 import type { FieldNode, Holds, Leaf, PathModel, SectionNode } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
@@ -88,6 +89,9 @@ export const GOLDEN_NOTE = {
   summary: 'Demo summary',
 } as const;
 
+/** The sensitive diagnosis codes the readers and the handoff are given. FILLED's problem code is in it, so a diagnosis `every` makes is sensitive. */
+export const GOLDEN_SENSITIVE_CODES: readonly SensitiveCodeRange[] = [{ from: 'F10', to: 'F19' }];
+
 const reader = (facts: Partial<NoteReader>): NoteReader => ({
   actsAsAuthor: false,
   viewSensitive: true,
@@ -95,8 +99,7 @@ const reader = (facts: Partial<NoteReader>): NoteReader => ({
   readsMedical: true,
   chartsMedical: true,
   ordersMedications: true,
-  // FILLED's problem code is in it, so a diagnosis `every` makes is sensitive.
-  sensitiveCodes: [{ from: 'F10', to: 'F19' }],
+  sensitiveCodes: GOLDEN_SENSITIVE_CODES,
   ...facts,
 });
 
@@ -127,7 +130,7 @@ export type GoldenCase = {
   answers: Record<string, unknown>;
   finishCheck: FinishProblem[];
   recapLines: RecapLine[];
-  /** `handoffLines` of this note alone, as its author sees it. */
+  /** `handoffLines` of this note alone, as its author sees it, with GOLDEN_SENSITIVE_CODES. */
   handoffLines: HandoffLine[];
   /** The paths of `effectiveAnswers`, in its order. */
   effectiveKeys: string[];
@@ -297,7 +300,7 @@ export async function goldenOf(presets: readonly Preset[]): Promise<Golden[]> {
         answers,
         finishCheck: finishCheck(definition, answers),
         recapLines: recapLines(definition, answers),
-        handoffLines: handoffLines([definition], [answers]),
+        handoffLines: handoffLines([definition], [answers], GOLDEN_SENSITIVE_CODES),
         effectiveKeys: Object.keys(effectiveAnswers(definition, answers)),
         readModelHash: await hashOf(readModel(definition, answers, [])),
         visibleHashes,

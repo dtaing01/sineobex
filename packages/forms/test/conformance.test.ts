@@ -13,7 +13,7 @@ import type { NoteCorrection } from '../src/interp/read-model.ts';
 import { recapLines } from '../src/interp/recap.ts';
 import { suggestions } from '../src/interp/suggestions.ts';
 import { visibleAnswers } from '../src/interp/visible.ts';
-import type { NoteReader } from '../src/interp/visible.ts';
+import type { NoteReader, SensitiveCodeRange } from '../src/interp/visible.ts';
 import { fieldAt } from '../src/interp/field-at.ts';
 import { pathModel } from '../src/paths.ts';
 import type { ResolvedNoteType } from '../src/resolve.ts';
@@ -77,6 +77,7 @@ const FUNCTIONS: Record<string, (definition: ResolvedNoteType, c: Case) => unkno
     return handoffLines(
       notes.map((n) => vectors.definitions[n.definition]!),
       notes.map((n) => n.answers),
+      c.sensitiveCodes as SensitiveCodeRange[],
     );
   },
 };
@@ -97,7 +98,7 @@ const INPUTS: Record<string, string[]> = {
   visibleAnswers: ['answers', 'reader'],
   suggestions: ['answers'],
   expandQuick: ['answers', 'full', 'newEntryIds'],
-  handoffLines: ['notes'],
+  handoffLines: ['notes', 'sensitiveCodes'],
 };
 
 /** What is wrong with a case's keys for its function: one it does not read, or one it needs. */
@@ -228,7 +229,7 @@ const INTERPRETER: Record<string, number> = {
   recapLines: 2,
   readModel: 3,
   visibleAnswers: 3,
-  handoffLines: 2,
+  handoffLines: 3,
   suggestions: 2,
   expandQuick: 4,
 };

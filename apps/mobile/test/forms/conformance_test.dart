@@ -35,7 +35,7 @@ const inputs = {
   'visibleAnswers': ['answers', 'reader'],
   'suggestions': ['answers'],
   'expandQuick': ['answers', 'full', 'newEntryIds'],
-  'handoffLines': ['notes'],
+  'handoffLines': ['notes', 'sensitiveCodes'],
 };
 
 /// The functions that give a map whose key order is part of the answer, and where in the result it
@@ -79,11 +79,14 @@ NoteReader readerOf(Map<String, Object?> json) => NoteReader(
   readsMedical: json['readsMedical']! as bool,
   chartsMedical: json['chartsMedical']! as bool,
   ordersMedications: json['ordersMedications']! as bool,
-  sensitiveCodes: [
-    for (final range in (json['sensitiveCodes']! as List<Object?>).cast<Map<String, Object?>>())
-      (from: range['from']! as String, to: range['to']! as String),
-  ],
+  sensitiveCodes: rangesOf(json['sensitiveCodes']),
 );
+
+/// The sensitive code ranges, as the vector file writes them.
+List<SensitiveCodeRange> rangesOf(Object? json) => [
+  for (final range in (json! as List<Object?>).cast<Map<String, Object?>>())
+    (from: range['from']! as String, to: range['to']! as String),
+];
 
 void main() {
   final vectors = jsonDecode(
@@ -138,6 +141,7 @@ void main() {
         for (final line in handoffLines(
           [for (final n in notes) definitions[n['definition']! as String]!],
           [for (final n in notes) n['answers'] as Map<String, Object?>?],
+          rangesOf(c['sensitiveCodes']),
         ))
           line.toJson(),
       ];

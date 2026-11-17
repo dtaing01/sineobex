@@ -22,6 +22,7 @@ import {
   GOLDEN_FILE,
   GOLDEN_NEW_ENTRY,
   GOLDEN_READERS,
+  GOLDEN_SENSITIVE_CODES,
   goldenOf,
   main,
   writeGolden,
@@ -177,7 +178,7 @@ describe('the golden file', () => {
         expect(c.finishCheck).toEqual(finishCheck(definition, c.answers));
         expect(c.recapLines).toEqual(recapLines(definition, c.answers));
         expect(c.readModelHash).toBe(await sha256Hex(canonicalJson(readModel(definition, c.answers, []))));
-        expect(c.handoffLines).toEqual(handoffLines([definition], [c.answers]));
+        expect(c.handoffLines).toEqual(handoffLines([definition], [c.answers], GOLDEN_SENSITIVE_CODES));
         expect(c.effectiveKeys).toEqual(Object.keys(effectiveAnswers(definition, c.answers)));
         for (const [who, reader] of Object.entries(GOLDEN_READERS))
           expect(c.visibleHashes[who as keyof typeof GOLDEN_READERS]).toBe(

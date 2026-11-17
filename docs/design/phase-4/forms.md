@@ -1427,7 +1427,7 @@ built (unit F1); what each does in full follows it.
 | `recapLines(def, answers)` | `{ section, text }[]`: one line per section that has an answer | lifecycle 8.1 |
 | `readModel(def, answers, corrections)` | `{ sections }`: each `{ id, title, items }`, or `{ id, title, entries }` with each entry `{ id, title, items }` for a repeating section; an item is `{ path, labels, value, corrections }`, `value` a string, or null for an answer a correction took away, and a correction `{ path, old, by, credential, at, reason }` | The visit read (3.5), the phone's read view |
 | `visibleAnswers(def, answers, reader)` | The answers that count that a reader may see, a subset of `effectiveAnswers` in its order, or null when the reader may not see the note at all. `reader` is `{ actsAsAuthor, viewSensitive, viewSensitiveExams, readsMedical, chartsMedical, ordersMedications, sensitiveCodes }`: six facts about the person, and phase 3's sensitive diagnosis codes as ranges `{ from, to }` | lifecycle 6.4 |
-| `handoffLines(defs, answersByNote)` | The EMS handoff summary of one visit's notes, `{ kind, note, section, label, value }[]`: first a `field` line for each answer of the fields marked `handoff`, but a quick answer Expand carried into a full note of the visit, then each note's `recap` lines, but a treatment record's (10.1 #6) | lifecycle 5.7, 9.8 |
+| `handoffLines(defs, answersByNote, sensitiveCodes)` | The EMS handoff summary of one visit's notes, `{ kind, note, section, label, value }[]`: first a `field` line for each answer of the fields marked `handoff`, but a quick answer Expand carried into a full note of the visit, then each note's `recap` lines, but a treatment record's; in neither part a diagnosis on the sensitive list (10.1 #6) | lifecycle 5.7, 9.8 |
 | `suggestions(def, answers)` | The note type keys the options picked suggest, each once, in the definition's order | lifecycle 9.6 |
 | `expandQuick(quickDef, answers, fullDef, newEntryIds)` | `{ answers, leftOut }`: the answers to write into the full note, and `{ path, target, problem }` for each one left out. `newEntryIds` is `{ <section id>: { id, at } }`, the new entry of each repeating section of the full note | 6.4 |
 
@@ -1558,7 +1558,8 @@ Each function, as built:
 - **`handoffLines`** takes two lists side by side: `defs[i]` is the definition of note `i`'s own
   version, and `answersByNote[i]` the answers its reader may see (`visibleAnswers`, applied by the
   caller), or null for a note they may not see, which gives no line and keeps its place; lists of
-  different lengths throw. The field lines come first, note by note in the order given: the items,
+  different lengths throw. Its third argument is phase 3's sensitive code list, as a reader's
+  `sensitiveCodes`. The field lines come first, note by note in the order given: the items,
   laid out as the read model lays them out from the answers that count less what a sensitive exam
   put there, of each field marked `handoff` with everything in it, and of a marked field inside a
   group or grid that is not marked, alone. `label` is the item's labels joined by `, `, with an
@@ -1575,6 +1576,11 @@ Each function, as built:
   - **No recap line of a `treatmentRecord` section**, for any reader: EMS may not read a
     treatment record (`validate.handoff_restricted`), and a reader who may see one, its author or
     one with `view_sensitive` and a clinical credential, would otherwise hand it over.
+  - **No sensitive diagnosis**, for any reader, in either part: before anything is laid out, each
+    note's answers that count lose every diagnosis whose code is on the list, with its entry or,
+    outside a repeating section, its section, as `visibleAnswers` takes them from a reader without
+    `view_sensitive` (the two share `sensitiveDiagnoses`). The entries left are numbered among
+    themselves. A sensitive note type's own recap stays for a reader who may see it (10.1 #6).
 - **`suggestions`** reads only stored codes that count: a choice's, a region's parts, a choice in
   a grid's cell. A grid's fixed row is never picked, so a `suggests` on one suggests nothing. The
   order is the definition's (fields as written, a field's options as listed, a region's options,
@@ -1611,7 +1617,8 @@ As built (unit F1):
   with `section` and an optional `entry` for `normalAnswers`, `corrections` for `readModel`,
   `reader` for `visibleAnswers`, and `full` (the full definition's name) and `newEntryIds` for
   `expandQuick`. A `handoffLines` case gives `notes`, a list of `{ definition, answers }`, with
-  `answers` null for a note the reader may not see, and its own `definition` is the first note's.
+  `answers` null for a note the reader may not see, and `sensitiveCodes`, the list it is given;
+  its own `definition` is the first note's.
   `fieldAt`'s expected value is the plain projection `{ points, at, entry, row, side, part,
   stores }`, `stores` saying whether `holds` is set.
 - **The TypeScript reader** (`packages/forms/test/conformance.test.ts`) runs `validate()` on
@@ -1701,7 +1708,8 @@ after the export, from the `presets.json` it wrote). Wave D's review found that 
     every follow-up a finding opens is reached.
 - **Each case** is `{ name, answers, finishCheck, recapLines, handoffLines, effectiveKeys,
   readModelHash, visibleHashes, contentHash, expansions }`. `handoffLines` is the note's alone, as
-  its author sees it; `effectiveKeys` are the keys of `effectiveAnswers`, in its order. The hashes
+  its author sees it, with the sensitive codes F10 to F19 (`GOLDEN_SENSITIVE_CODES`), so the
+  diagnosis `every` makes is left out of it; `effectiveKeys` are the keys of `effectiveAnswers`, in its order. The hashes
   are SHA-256 of canonical JSON, which holds every label and value without copying them:
   `readModelHash` of `readModel(definition, answers, [])`; `visibleHashes` of `visibleAnswers`,
   null included, for three fixed readers (`GOLDEN_READERS`), none acting as the author, so every
@@ -1808,7 +1816,7 @@ the rest of the visit page.
 | A path or code is never reused for another meaning | `packages/forms/test/versions.test.ts` |
 | Every option in SPEC is in a definition, or declared | `packages/forms/test/spec-check.test.ts`, and the export itself in CI |
 | Both interpreters agree, on every function | `forms-conformance.json` through both readers, `packages/forms/test/conformance.test.ts` and `apps/mobile/test/forms/conformance_test.dart`; the Dart reader also holds the key order of the four functions where it is part of the answer (7.2) |
-| The EMS handoff gives no recap line of a treatment record section, for any reader, and no field line of its own to a quick answer Expand carried into a full note of the visit | the `handoffLines` cases of `forms-conformance.json` through both readers; `packages/forms/test/real-definitions.test.ts`, "the EMS handoff on the real definitions" (7.1) |
+| The EMS handoff gives no recap line of a treatment record section and no line of a sensitive diagnosis, for any reader, and no field line of its own to a quick answer Expand carried into a full note of the visit | the `handoffLines` cases of `forms-conformance.json` through both readers; `packages/forms/test/real-definitions.test.ts`, "the EMS handoff on the real definitions" (7.1) |
 | The validator and the interpreter mean one thing by what counts, and what a reader sees counts by itself | `packages/forms/test/interp/one-meaning.test.ts` (7.2) |
 | The phone's interpreter holds what the vectors cannot say: a whole number held as a double, values no JSON decoder made, key order and copies, odd data read without a throw or a loop, and a definition the validator would never pass refused by its place | `apps/mobile/test/forms/{check_answer,definition,effective,expand,handoff,read,visible}_test.dart` (7.2) |
 | Both interpreters agree on every real note type: the five answer sets, and over them the finish check, the recap, the handoff, the order of the answers that count, the read model, what three readers see, the content hash and Expand | `golden.json` and `apps/mobile/test/forms/golden_test.dart`; until the definitions are released, the same test over `apps/mobile/test/forms/golden_sample.json`, which `packages/forms/test/golden.test.ts` writes as a snapshot (7.3) |
@@ -1852,7 +1860,7 @@ the rest of the visit page.
 | 3 | The body map | A list of regions by front and back, with side and surface. The codes are those behind the quick form's region list (SPEC 299), and Feet, Face and Groin (#27). | The team |
 | 4 | Where red flags and disposition are asked | Once per Medical encounter, in their own short note (6.2) | Brooke and Mercy |
 | 5 | What one-tap Normal does to a field that already has an answer | Leaves it, and fills no normal that would hide an answer already charted (7.1) | Brooke and Mercy |
-| 6 | The content of the EMS handoff summary | The fields marked `handoff`: chief concern, vitals, the red-flag answers, EMS time, and each note's recap. The patient's name, age and allergies come from the chart. As built: a line for each answer of the marked fields, note by note, then every note's recap lines, so a handoff field appears twice, once in its note's recap. Nothing a sensitive exam put there is in either part, and no recap line of a treatment record section, for any reader. A quick answer Expand carried into a full note of the visit has no field line of its own: the full note's stands for it (7.1). Still open: whether the recaps of the sensitive note types (Behavioral health, Sexual and reproductive health) belong in it at all, and a diagnosis with a sensitive code, which General's recap puts in it whenever its reader may see it | Brooke and Mercy |
+| 6 | The content of the EMS handoff summary | The fields marked `handoff`: chief concern, vitals, the red-flag answers, EMS time, and each note's recap. The patient's name, age and allergies come from the chart. As built: a line for each answer of the marked fields, note by note, then every note's recap lines, so a handoff field appears twice, once in its note's recap. Nothing a sensitive exam put there is in either part, and no recap line of a treatment record section, for any reader. Nor, for any reader, a diagnosis on phase 3's sensitive list, with its entry or, outside a repeating section, its section, as `visibleAnswers` leaves it out for a reader without `view_sensitive`; the list holds substance use disorders, so no 42 CFR Part 2 record reaches EMS until counsel decides. A quick answer Expand carried into a full note of the visit has no field line of its own: the full note's stands for it (7.1). Still open: whether a sensitive diagnosis should ever reach EMS, for treatment (with counsel), and whether the recaps of the sensitive note types (Behavioral health, Sexual and reproductive health) belong in it at all, which stay for a reader who may see them | Brooke and Mercy; counsel for the sensitive diagnoses |
 | 7 | The contents of the full safety assessment and the mental status exam (SPEC 164, 166, which are empty) | One text box each | Brooke and Mercy |
 | 8 | Chaperone and consent for Breast and Rectal (SPEC gives them for GU only) | All three sensitive exams get them (PRD main 415) | Brooke and Mercy |
 | 9 | The label of the psych note type (three names in the PRD) | "Behavioral health"; key `psychological` | Brooke and Mercy |

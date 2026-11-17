@@ -2571,7 +2571,7 @@ pure function with no database or network in it (forms 7.1 has the signatures):
 | `visibleAnswers(definition, answers, reader)`: the answers a reader may see, or null for a note they may not see | 5.1, 6.4 |
 | `recapLines(definition, answers)`: one line per section, nothing from a sensitive exam | 8.1 |
 | `readModel(definition, answers, corrections)`: a note laid out for reading | 5.1, 5.2, 9.7 |
-| `handoffLines(definitions, answersByNote)`: the EMS handoff summary | 5.7, 9.8 |
+| `handoffLines(definitions, answersByNote, sensitiveCodes)`: the EMS handoff summary | 5.7, 9.8 |
 | `suggestions(definition, answers)`: note types suggested by the options picked | 9.6 |
 | A problem field that stores a code and a label, with the status tapped as an ordinary field beside it | 8.3 |
 | The form widget for a draft note, and the read widget that draws a read model with corrected answers struck through | 9.5, 9.7 |

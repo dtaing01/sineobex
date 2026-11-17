@@ -60,8 +60,11 @@ NoteReader _reader({bool viewSensitive = true, bool viewSensitiveExams = true, b
       readsMedical: true,
       chartsMedical: chartsMedical,
       ordersMedications: true,
-      sensitiveCodes: const [(from: 'F10', to: 'F19')],
+      sensitiveCodes: _sensitiveCodes,
     );
+
+/// golden.ts's GOLDEN_SENSITIVE_CODES, which the readers and the handoff are given.
+const _sensitiveCodes = [(from: 'F10', to: 'F19')];
 
 /// golden.ts's GOLDEN_READERS, by the same names.
 final _readers = {
@@ -257,7 +260,7 @@ void checkGolden(String what, List<Map<String, Object?>> presets, List<Map<Strin
           expect([for (final line in recapLines(definition, answers)) line.toJson()], c['recapLines']);
           expect(valueHash(readModel(definition, answers, const []).toJson()), c['readModelHash']);
           expect([
-            for (final line in handoffLines([definition], [answers])) line.toJson(),
+            for (final line in handoffLines([definition], [answers], _sensitiveCodes)) line.toJson(),
           ], c['handoffLines']);
           expect(effectiveAnswers(definition, answers).keys.toList(), c['effectiveKeys']);
           final hashes = c['visibleHashes']! as Map<String, Object?>;

@@ -13,6 +13,8 @@ const ems = vectors.definitions.ems!;
 
 describe('handoffLines', () => {
   it('refuses a definition without its note, rather than pairing the wrong ones', () => {
-    expect(() => handoffLines([ems, ems], [{ 'ems.called': '14:05' }])).toThrow(/2 definitions for 1 notes/);
+    expect(() => handoffLines([ems, ems], [{ 'ems.called': '14:05' }], [])).toThrow(
+      /2 definitions for 1 notes/,
+    );
   });
 });

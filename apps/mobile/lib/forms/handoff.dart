@@ -12,6 +12,7 @@ import 'layout.dart';
 import 'paths.dart';
 import 'recap.dart';
 import 'sensitive_exams.dart';
+import 'visible.dart';
 
 /// What a line is. The names are the wire values.
 enum HandoffKind {
@@ -56,17 +57,30 @@ class HandoffLine {
 /// which then answers at the field it maps to ([_expanded]), note by note in the order given, each
 /// laid out and written as the read model writes it, its labels joined by ', ', an entry's title
 /// first in a repeating section; then each note's recap (recapLines), less every `treatmentRecord`
-/// section, in the same order of notes. The patient's name, age and allergies come from the chart,
-/// not from here.
-List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> answersByNote) {
+/// section, in the same order of notes. In both parts, for every reader, nothing of a diagnosis
+/// whose code is on [sensitiveCodes] (phase 3's list), as visibleAnswers leaves it out for a reader
+/// without view_sensitive: its entry, or outside a repeating section its section. The patient's
+/// name, age and allergies come from the chart, not from here.
+List<HandoffLine> handoffLines(
+  List<NoteTypeDef> definitions,
+  List<Answers?> answersByNote,
+  List<SensitiveCodeRange> sensitiveCodes,
+) {
   if (definitions.length != answersByNote.length) {
     throw ArgumentError('handoffLines: ${definitions.length} definitions for ${answersByNote.length} notes');
   }
   final fields = <HandoffLine>[];
   final recaps = <HandoffLine>[];
-  final held = _answeredFields(definitions, answersByNote);
+  // PLAN-OPEN (forms.md 10.1 #6): whether a sensitive diagnosis should ever reach EMS, for the
+  // clinical team and counsel. Until they say, none does: the list holds substance use disorders,
+  // whose records 42 CFR Part 2 restricts.
+  final notes = [
+    for (final (note, answers) in answersByNote.indexed)
+      answers == null ? null : _withoutSensitiveDiagnoses(definitions[note], answers, sensitiveCodes),
+  ];
+  final held = _answeredFields(definitions, notes);
   for (final (note, definition) in definitions.indexed) {
-    final answers = answersByNote[note];
+    final answers = notes[note];
     if (answers == null) continue;
     void line(String section, List<String> labels, String value) => fields.add(
       HandoffLine(kind: HandoffKind.field, note: note, section: section, label: labels.join(', '), value: value),
@@ -98,6 +112,16 @@ List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> ans
     }
   }
   return [...fields, ...recaps];
+}
+
+/// The answers that count, less each sensitive diagnosis with its entry or section.
+Answers _withoutSensitiveDiagnoses(NoteTypeDef definition, Answers answers, List<SensitiveCodeRange> ranges) {
+  final counted = effectiveAnswers(definition, answers);
+  final hidden = sensitiveDiagnoses(definition, counted, ranges);
+  return {
+    for (final MapEntry(key: path, value: value) in counted.entries)
+      if (!hidden.any(path.startsWith)) path: value,
+  };
 }
 
 /// For each note type of the visit, by key, the answers that count in its notes, by their path
