@@ -3014,7 +3014,7 @@ class FakeSyncServer {
     final sensitive = perms.contains('patients.view_sensitive');
     switch (r.entity) {
       case entityProblem:
-        return sensitive || r.attributes['sensitive'] != true ? _readSnapshot(r) : null;
+        return sensitive || r.attributes['sensitive'] != true ? _problemSnapshot(r) : null;
       case entityProblemNote:
         return sensitive || records[r.attributes['problemId']]?.attributes['sensitive'] != true
             ? _readSnapshot(r)

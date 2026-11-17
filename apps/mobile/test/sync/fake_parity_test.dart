@@ -3252,6 +3252,28 @@ void main() {
       );
       expect(await send(alex, [without]), [taken(without, 1)]);
       expect(server.records[without['recordId']]!.attributes['source'], 'manual');
+      // The sync read shows a problem as its chart does (problem.ts load).
+      final synced = (await as(alex).fetchRecords(
+        body: FetchRecords(
+          records: [RecordRef(entity: RecordEntity.fromJson(entityProblem), id: changes[0]['recordId']! as String)],
+        ),
+      )).records.single;
+      expect([synced.attributes['source'], synced.attributes['createdEncounterId']], ['encounter', ofP]);
+      expect(synced.attributes.keys.toSet(), {
+        'patientId',
+        'title',
+        'code',
+        'sensitive',
+        'source',
+        'createdEncounterId',
+        'onsetDate',
+        'recurrenceOf',
+        'resolvedInErrorOf',
+        'reversalRequest',
+        'mergedInto',
+        'statusChangedAt',
+        'statusCheckedAt',
+      });
       final chart = await as(alex).getPatient(patientId: p);
       expect(
         [
