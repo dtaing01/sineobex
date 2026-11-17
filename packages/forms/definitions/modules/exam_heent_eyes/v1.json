@@ -16,7 +16,7 @@
           "label": "Pupils",
           "options": [
             { "code": "perrl", "label": "PERRL", "exclusive": true, "normal": true },
-            { "code": "perrla", "label": "PERRLA" },
+            { "code": "perrla", "label": "PERRLA", "exclusive": true },
             { "code": "unequal_pupils", "label": "Unequal pupils" },
             { "code": "sluggish_reaction", "label": "Sluggish reaction" },
             { "code": "nonreactive", "label": "Nonreactive" },

@@ -15,8 +15,8 @@
     },
     {
       "line": 7,
-      "what": "Pupils is choose-many. PERRL is the normal option and clears the others. Other asks for a short text.",
-      "why": "focused-exam inventory default 13, 26, 31"
+      "what": "Pupils is choose-many. PERRL is the normal option and clears the others. PERRLA, the same normal pupils with accommodation, clears the others too, so neither is held beside an abnormal pupil; Normal fills PERRL. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 17, 26, 31; PLAN-OPEN (forms 10.1 #23)"
     },
     {
       "line": 21,

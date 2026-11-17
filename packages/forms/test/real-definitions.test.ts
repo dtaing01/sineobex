@@ -121,6 +121,10 @@ describe('findings a clinician charts together on the real definitions', () => {
     ['diabetic_foot.inspection', ['intact_skin', 'fissure']],
     ['diabetic_foot.inspection', ['intact_skin', 'blister']],
     ['diabetic_foot.inspection', ['intact_skin', 'necrosis']],
+    // GEN-5: PERRLA is the normal pupils as PERRL is, and holds no abnormal pupil beside it.
+    ['eyes.pupils', ['perrla', 'unequal_pupils']],
+    ['eyes.pupils', ['perrla', 'sluggish_reaction']],
+    ['eyes.pupils', ['perrla', 'nonreactive']],
   ];
   it.each(REFUSED)('%s refuses %j', (path, value) => {
     expect(checkAnswer(general, path, value)).not.toBeNull();

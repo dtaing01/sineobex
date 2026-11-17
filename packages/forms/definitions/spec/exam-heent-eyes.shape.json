@@ -11,7 +11,7 @@
       "many": true,
       "label": "Pupils",
       "options": ["perrl", "perrla", "unequal_pupils", "sluggish_reaction", "nonreactive", "other"],
-      "flags": { "exclusive": ["perrl"], "normal": ["perrl"], "other": ["other"] }
+      "flags": { "exclusive": ["perrl", "perrla"], "normal": ["perrl"], "other": ["other"] }
     },
     {
       "path": "eyes.pupil_size",
