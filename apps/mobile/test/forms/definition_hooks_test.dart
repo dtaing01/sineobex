@@ -8,6 +8,7 @@ import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/app_providers.dart' show syncControllerProvider;
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/forms/definition_store.dart';
+import 'package:sineobex_field/forms/forms_api.dart';
 import 'package:sineobex_field/forms/forms_providers.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
@@ -291,6 +292,18 @@ void main() {
     expect(await sync.syncNow(), isA<SyncWipeRequested>());
     expect(filesFor('team-0'), isFalse);
     expect(filesFor('team-1'), isTrue);
+  });
+
+  test('a version fetched for a note the list no longer names reaches the screens', () async {
+    final container = ProviderContainer(overrides: [syncControllerProvider.overrideWithValue(sync)]);
+    addTearDown(container.dispose);
+    await signIn();
+    const at = (key: 'demo_wound', version: 1);
+    container.listen(noteTypeDefinitionProvider(at), (_, _) {});
+    expect(await container.read(noteTypeDefinitionProvider(at).future), isNull);
+    forms.teams['team-0'] = [checks, visit, wound];
+    await DefinitionSync(definitions).fetchVersion(userId, 'team-0', 'demo_wound', 1, FormsApi(sync.engine!.api));
+    expect((await container.read(noteTypeDefinitionProvider(at).future))?.key, 'demo_wound');
   });
 
   test('the screens get the open team’s note types, and null where it has no list', () async {

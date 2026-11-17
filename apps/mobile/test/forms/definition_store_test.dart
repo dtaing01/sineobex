@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -24,11 +25,16 @@ void main() {
   ListedVersion listed(Version v) =>
       ListedVersion(key: v['key']! as String, version: v['version']! as int, hash: v['hash']! as String);
 
-  Future<void> keep(Version v, {String user = userId, String team = teamId}) =>
-      store.keep(user, team, listed(v), v['definition']! as Map<String, Object?>, generation: store.generation(user));
+  Future<void> keep(Version v, {String user = userId, String team = teamId}) => store.keep(
+    user,
+    team,
+    listed(v),
+    v['definition']! as Map<String, Object?>,
+    generation: store.generation(user, team),
+  );
 
   Future<void> keepList(List<Version> versions, {String user = userId, String team = teamId}) =>
-      store.keepList(user, team, [for (final v in versions) listed(v)], generation: store.generation(user));
+      store.keepList(user, team, [for (final v in versions) listed(v)], generation: store.generation(user, team));
 
   List<String> files() =>
       [for (final f in dir.listSync(recursive: true).whereType<File>()) p.relative(f.path, from: dir.path)]..sort();
@@ -77,7 +83,7 @@ void main() {
         teamId,
         listed(visit),
         changed['definition']! as Map<String, Object?>,
-        generation: store.generation(userId),
+        generation: store.generation(userId, teamId),
       ),
       throwsA(isA<DefinitionRefused>()),
     );
@@ -93,7 +99,7 @@ void main() {
         teamId,
         ListedVersion(key: 'demo_quick', version: 2, hash: quick1['hash']! as String),
         quick1['definition']! as Map<String, Object?>,
-        generation: store.generation(userId),
+        generation: store.generation(userId, teamId),
       ),
       throwsA(isA<DefinitionRefused>()),
     );
@@ -108,7 +114,7 @@ void main() {
         teamId,
         ListedVersion(key: 'demo_visit', version: 1, hash: valueHash(unreadable)),
         unreadable,
-        generation: store.generation(userId),
+        generation: store.generation(userId, teamId),
       ),
       throwsA(isA<DefinitionRefused>()),
     );
@@ -205,7 +211,7 @@ void main() {
   });
 
   test('a fetch that began before its person was forgotten writes nothing back', () async {
-    final before = store.generation(userId);
+    final before = store.generation(userId, teamId);
     await store.forgetUser(userId);
     await expectLater(
       store.keep(userId, teamId, listed(visit), visit['definition']! as Map<String, Object?>, generation: before),
@@ -223,6 +229,71 @@ void main() {
     expect(told, 1);
     await store.forgetUser(userId);
     expect(told, 2);
+  });
+
+  test('a definition kept tells the listeners, so a screen waiting on an old draft’s version opens it', () async {
+    var told = 0;
+    store.addListener(() => told++);
+    await keep(quick1);
+    expect(told, 1);
+  });
+
+  test('a wipe of one team stops no fetch of another', () async {
+    final began = store.generation(userId, teamId);
+    await store.forgetTeam(userId, 'team-1');
+    expect(store.generation(userId, teamId), began);
+    await store.keep(userId, teamId, listed(visit), visit['definition']! as Map<String, Object?>, generation: began);
+    await store.keepList(userId, teamId, [listed(visit)], generation: began);
+    expect(await store.team(userId, teamId), isNotNull);
+    await store.forgetUser(userId);
+    expect(store.generation(userId, teamId), isNot(began), reason: 'a sign-out stops every team’s');
+  });
+
+  group('a list read while a newer one is kept, or the files deleted, is not what the screens get', () {
+    late Completer<void> slow;
+
+    /// A restarted store whose presets come in only when [slow] completes, so a read of the list
+    /// waits part way.
+    DefinitionStore restarted() {
+      slow = Completer<void>();
+      return DefinitionStore(
+        directory: () async => dir.path,
+        presets: () async {
+          await slow.future;
+          return bundled;
+        },
+      );
+    }
+
+    setUp(() async {
+      await keep(quick1);
+      await keep(visit);
+      await keepList([checks, quick1, visit]);
+      await keep(quick2);
+    });
+
+    test('a newer list', () async {
+      store = restarted();
+      // The old list names more versions than the new one, so its read finishes last.
+      final reading = store.team(userId, teamId);
+      final keeping = keepList([quick2]);
+      slow.complete();
+      await Future.wait([reading, keeping]);
+      final team = (await store.team(userId, teamId))!;
+      expect(team.startable('demo_quick', 2), isNotNull);
+      expect(team.startable('demo_quick', 1), isNull);
+    });
+
+    test('a sign-out', () async {
+      store = restarted();
+      final reading = store.team(userId, teamId);
+      await Future<void>.delayed(Duration.zero);
+      final forgetting = store.forgetUser(userId);
+      slow.complete();
+      await Future.wait([reading, forgetting]);
+      expect(files(), isEmpty);
+      expect(await store.team(userId, teamId), isNull, reason: 'nothing held: Start asks to connect once');
+    });
   });
 
   test('a key or a team that could leave its folder is refused', () async {

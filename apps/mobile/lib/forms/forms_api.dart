@@ -61,7 +61,7 @@ class DefinitionSync {
   }
 
   Future<void> _refresh(String userId, String teamId, FormsApi api) async {
-    final generation = store.generation(userId);
+    final generation = store.generation(userId, teamId);
     final listed = await api.list();
     DefinitionRefused? refused;
     for (final v in listed) {
@@ -89,7 +89,7 @@ class DefinitionSync {
   Future<NoteTypeDef> fetchVersion(String userId, String teamId, String key, int version, FormsApi api) async {
     final held = await store.definition(userId, teamId, key, version);
     if (held != null) return held;
-    final generation = store.generation(userId);
+    final generation = store.generation(userId, teamId);
     final answer = await api.version(key, version);
     final asked = ListedVersion(key: key, version: version, hash: answer.listed.hash);
     return store.keep(userId, teamId, asked, answer.definition, generation: generation);

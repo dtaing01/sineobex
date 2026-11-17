@@ -91,17 +91,28 @@ class DefinitionStore extends ChangeNotifier {
   /// Teams' lists as read, by folder.
   final _teams = <String, TeamNoteTypes?>{};
 
-  final _generations = <String, int>{};
+  /// Bumped when every file of a person's is deleted ([forgetUser]), by person.
+  final _people = <String, int>{};
 
-  /// Bumped when [userId]'s files are deleted. A fetch takes it when it starts and hands it to
-  /// [keep] and [keepList], which write nothing for a person forgotten meanwhile: a download still
-  /// on its way at sign-out must not write the team's data back.
-  int generation(String userId) => _generations[_who(userId)] ?? 0;
+  /// Bumped when one team's files are deleted ([forgetTeam]), by person and team.
+  final _forgotten = <String, int>{};
+
+  /// Bumped when a team's files are written ([keep], [keepList]), by person and team.
+  final _written = <String, int>{};
+
+  /// Changes whenever [userId]'s files of [teamId] are deleted: at sign-out, and at a wipe of that
+  /// team. A fetch takes it when it starts and hands it to [keep] and [keepList], which write
+  /// nothing when it has changed meanwhile: a download still on its way at sign-out must not write
+  /// the team's data back. A wipe of one team leaves the others' fetches alone.
+  int generation(String userId, String teamId) =>
+      (_people[_who(userId)] ?? 0) + (_forgotten[_teamKey(userId, teamId)] ?? 0);
 
   /// The team's list with each version's definition; null when this phone holds no list for the
   /// team (Start then asks to connect once). A version whose definition is missing or changed on
   /// disk is left out until the next fetch brings it back.
   Future<TeamNoteTypes?> team(String userId, String teamId) async {
+    final key = _teamKey(userId, teamId);
+    final began = (generation(userId, teamId), _written[key] ?? 0);
     final folder = _teamFolder(await directory(), userId, teamId);
     if (_teams.containsKey(folder)) return _teams[folder];
     final listed = _readList(folder);
@@ -114,6 +125,9 @@ class DefinitionStore extends ChangeNotifier {
       }
       team = TeamNoteTypes(defs);
     }
+    // A list kept, or the files deleted, while this read waited: what it read is older than what
+    // is there now, and must not be what the screens are given from now on.
+    if ((generation(userId, teamId), _written[key] ?? 0) != began) return this.team(userId, teamId);
     return _teams[folder] = team;
   }
 
@@ -158,12 +172,15 @@ class DefinitionStore extends ChangeNotifier {
       throw DefinitionRefused(listed.key, listed.version, 'it is another key or version');
     }
     final bundled = (await _bundled())[listed.hash] != null;
-    _checkGeneration(userId, generation);
+    _checkGeneration(userId, teamId, generation);
     final path = _versionFile(folder, listed.key, listed.version);
     _write(path, {...listed.toJson(), if (!bundled) 'definition': definition});
     _checked[path] = listed.hash;
-    _teams.remove(folder);
-    return _read[listed.hash] = def;
+    _wrote(userId, teamId, folder);
+    _read[listed.hash] = def;
+    // A screen waiting on this version (an old draft's) can open it now.
+    notifyListeners();
+    return def;
   }
 
   /// Keeps [listed] as the team's list. Every version it names must be held already ([holds],
@@ -179,7 +196,7 @@ class DefinitionStore extends ChangeNotifier {
       if (def == null) throw StateError('${v.key} v${v.version} is not held');
       defs.add(def);
     }
-    _checkGeneration(userId, generation);
+    _checkGeneration(userId, teamId, generation);
     for (final v in listed) {
       // A preset listed for the first time: its file records that this team's version is it.
       final file = _versionFile(folder, v.key, v.version);
@@ -191,6 +208,7 @@ class DefinitionStore extends ChangeNotifier {
     _write(p.join(folder, _listFile), {
       'noteTypes': [for (final v in listed) v.toJson()],
     });
+    _wrote(userId, teamId, folder);
     _teams[folder] = TeamNoteTypes(defs);
     notifyListeners();
   }
@@ -198,7 +216,7 @@ class DefinitionStore extends ChangeNotifier {
   /// Deletes every file of [userId]'s, every team's (sign-out, the tenth wrong PIN).
   Future<void> forgetUser(String userId) async {
     final who = _who(userId);
-    _generations[who] = generation(userId) + 1;
+    _people[who] = (_people[who] ?? 0) + 1;
     final folder = p.join(await directory(), who);
     _teams.removeWhere((path, _) => p.isWithin(folder, path));
     _checked.removeWhere((path, _) => p.isWithin(folder, path));
@@ -209,8 +227,8 @@ class DefinitionStore extends ChangeNotifier {
 
   /// Deletes [userId]'s files of one team (a remote wipe of that team, a removal's hand-over).
   Future<void> forgetTeam(String userId, String teamId) async {
-    final who = _who(userId);
-    _generations[who] = generation(userId) + 1;
+    final key = _teamKey(userId, teamId);
+    _forgotten[key] = (_forgotten[key] ?? 0) + 1;
     final folder = _teamFolder(await directory(), userId, teamId);
     _teams.remove(folder);
     _checked.removeWhere((path, _) => p.isWithin(folder, path));
@@ -234,9 +252,11 @@ class DefinitionStore extends ChangeNotifier {
   /// The person, as the databases name them (LocalDatabase.fileFor): never their ID in clear.
   static String _who(String userId) => sha256.convert(userId.codeUnits).toString().substring(0, 16);
 
-  static String _teamFolder(String dir, String userId, String teamId) {
+  static String _teamFolder(String dir, String userId, String teamId) => p.join(dir, _teamKey(userId, teamId));
+
+  static String _teamKey(String userId, String teamId) {
     if (!_teamPattern.hasMatch(teamId)) throw ArgumentError.value(teamId, 'teamId', 'not a team ID');
-    return p.join(dir, _who(userId), teamId);
+    return p.join(_who(userId), teamId);
   }
 
   static void _checkKey(String key, int version) {
@@ -246,8 +266,15 @@ class DefinitionStore extends ChangeNotifier {
 
   static String _versionFile(String folder, String key, int version) => p.join(folder, '$key.$version.json');
 
-  void _checkGeneration(String userId, int generation) {
-    if (generation != this.generation(userId)) throw StateError('Signed out since this fetch began.');
+  void _checkGeneration(String userId, String teamId, int generation) {
+    if (generation != this.generation(userId, teamId)) throw StateError('Deleted since this fetch began.');
+  }
+
+  /// The team's files changed: a list read before this is not what is there now.
+  void _wrote(String userId, String teamId, String folder) {
+    final key = _teamKey(userId, teamId);
+    _written[key] = (_written[key] ?? 0) + 1;
+    _teams.remove(folder);
   }
 
   /// Written whole or not at all: a file cut short by the app dying would otherwise read as
