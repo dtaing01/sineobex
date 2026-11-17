@@ -1,5 +1,5 @@
 {
-  "piece": "wound-1",
+  "piece": "wound",
   "file": "note-types/wound_care/v1.json",
   "header": {
     "key": "wound_care",
@@ -152,6 +152,58 @@
       "label": "Systemic symptoms",
       "options": ["none", "fever", "chills", "malaise", "other"],
       "flags": { "exclusive": ["none"], "other": ["other"] }
+    },
+    {
+      "path": "wound.treatment",
+      "kind": "group",
+      "label": "Wound treatment",
+      "layout": "stack"
+    },
+    {
+      "path": "wound.treatment.cleansing",
+      "kind": "choice",
+      "many": true,
+      "label": "Cleansing",
+      "options": ["none", "soap_water", "ns", "antiseptic", "irrigation"],
+      "flags": { "exclusive": ["none"] }
+    },
+    {
+      "path": "wound.treatment.procedure",
+      "kind": "choice",
+      "many": true,
+      "label": "Procedure",
+      "options": ["none", "debridement", "drainage", "packing"],
+      "flags": { "exclusive": ["none"] }
+    },
+    {
+      "path": "wound.treatment.dressing",
+      "kind": "choice",
+      "many": true,
+      "label": "Dressing",
+      "options": { "list": "dressing" }
+    },
+    {
+      "path": "wound.treatment.medication",
+      "kind": "choice",
+      "many": true,
+      "label": "Medication",
+      "options": ["topical", "antibiotic", "pain_medication", "none"],
+      "flags": { "exclusive": ["none"] }
+    },
+    { "path": "wound.treatment.photos", "kind": "photo", "label": "Wound photos", "max": 5 },
+    {
+      "path": "wound.treatment.follow_up",
+      "kind": "choice",
+      "many": false,
+      "label": "Follow-up",
+      "options": [
+        "tomorrow",
+        { "code": "days_2_to_3", "label": "2–3 days" },
+        { "code": "week_1", "label": "1 week" },
+        "next_clinic",
+        "wound_clinic",
+        "ed"
+      ]
     }
   ]
 }

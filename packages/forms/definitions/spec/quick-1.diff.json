@@ -60,7 +60,7 @@
     },
     {
       "line": 23,
-      "what": "Choose-many. The four chips have the shared list dressing's codes, and Other (added) asks for a short text. Expand maps it to wound_care:treatment.dressing.",
+      "what": "Choose-many. The four chips have the shared list dressing's codes, and Other (added) asks for a short text. Expand maps it to wound_care:wound.treatment.dressing.",
       "why": "PRD main 103 (Oct 19), 410; inventory A63; forms 6.4"
     },
     {

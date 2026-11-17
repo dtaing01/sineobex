@@ -36,8 +36,7 @@ const PIECES: Record<string, [number, number][]> = {
     [61, 62],
   ],
   'red-flags': [[36, 60]],
-  'wound-1': [[63, 103]],
-  'wound-2': [[104, 119]],
+  wound: [[63, 119]],
   'harm-reduction': [[120, 148]],
   psychological: [[150, 171]],
   'sexrepro-1': [[173, 203]],
@@ -122,8 +121,7 @@ const NOTE_PIECES: Record<string, string> = {
   'general-1': 'note-types/general_primary_care/v1.json',
   'general-2': 'note-types/general_primary_care/v1.json',
   'red-flags': 'note-types/red_flags_disposition/v1.json',
-  'wound-1': 'note-types/wound_care/v1.json',
-  'wound-2': 'note-types/wound_care/v1.json',
+  wound: 'note-types/wound_care/v1.json',
   'harm-reduction': 'note-types/harm_reduction/v1.json',
   psychological: 'note-types/psychological/v1.json',
   'sexrepro-1': 'note-types/sexual_reproductive/v1.json',
@@ -299,6 +297,24 @@ describe('the plans of the pieces', () => {
       expect(rest, String(key)).toEqual(NOTE_TYPES[String(key)]);
     },
   );
+
+  // Inventory A26: each wound has its own cleansing, dressing, photos and follow-up, so the
+  // treatment is inside the repeating Wound section and never one set for the whole note.
+  it('record the wound treatment once for each wound', () => {
+    const wound = Object.keys(NOTE_PIECES).filter(
+      (name) => NOTE_PIECES[name] === 'note-types/wound_care/v1.json',
+    );
+    const sections = wound.flatMap((name) => shapeOf(name).sections);
+    expect(sections.map((section) => [section.id, section.repeat !== undefined])).toEqual([['wound', true]]);
+    const paths = wound.flatMap((name) => shapeOf(name).fields.map((field) => field.path));
+    for (const path of [
+      'wound.treatment.cleansing',
+      'wound.treatment.dressing',
+      'wound.treatment.photos',
+      'wound.treatment.follow_up',
+    ])
+      expect(paths).toContain(path);
+  });
 
   it('give every note type of forms 5 a header', () => {
     const keys = Object.keys(NOTE_PIECES).flatMap((name) => {

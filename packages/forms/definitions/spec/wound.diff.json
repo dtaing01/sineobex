@@ -1,5 +1,5 @@
 {
-  "piece": "wound-1",
+  "piece": "wound",
   "notOptions": [
     "WOUND 1",
     "WOUND 2",
@@ -10,7 +10,10 @@
     "___ cm",
     "Unable to Measure",
     "Mod",
-    "+ SHOW INFECTION DETAILS"
+    "+ SHOW INFECTION DETAILS",
+    "Retake photo",
+    "Add another photo",
+    "Submit photo"
   ],
   "added": [
     "Head",
@@ -106,6 +109,41 @@
       "line": 41,
       "what": "Choose-many. None is exclusive. Other asks for a short text.",
       "why": "inventory A1, A2, A4"
+    },
+    {
+      "line": 43,
+      "what": "WOUND TREATMENT is a group, Wound treatment, inside the repeating Wound section: each wound has its own cleansing, procedure, dressing, medication, photos and follow-up.",
+      "why": "inventory A26 (the treatment is recorded for each wound): one piece holds both subsections, so the treatment sits in the entry"
+    },
+    {
+      "line": 45,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 47,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 49,
+      "what": "Choose-many from the shared list dressing. Other asks for a short text.",
+      "why": "PRD main 103, 410; inventory A2"
+    },
+    {
+      "line": 53,
+      "what": "Choose-many. None is exclusive. The answer is recorded; the order is placed in Orders.",
+      "why": "inventory A1, A4, A34a"
+    },
+    {
+      "line": 54,
+      "what": "TAKE WOUND PHOTO is a photo field, up to 5, a placeholder until phase 8. Its three buttons are the capture flow, not options.",
+      "why": "inventory A33; forms 6.8"
+    },
+    {
+      "line": 57,
+      "what": "Choose-one. The codes days_2_to_3 and week_1 are given: the rule makes no code that starts with a letter from these labels.",
+      "why": "inventory A1; recipe step 5"
     }
   ]
 }
