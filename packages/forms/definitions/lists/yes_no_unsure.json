@@ -1,8 +1,0 @@
-{
-  "name": "yes_no_unsure",
-  "options": [
-    { "code": "yes", "label": "Yes" },
-    { "code": "no", "label": "No" },
-    { "code": "unsure", "label": "Unsure" }
-  ]
-}

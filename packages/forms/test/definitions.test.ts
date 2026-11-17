@@ -762,7 +762,6 @@ const LIST_PINS: Record<string, string[]> = {
   ],
   yes_no: ['yes=Yes', 'no=No'],
   yes_no_unknown: ['yes=Yes', 'no=No', 'unknown=Unknown'],
-  yes_no_unsure: ['yes=Yes', 'no=No', 'unsure=Unsure'],
 };
 const LISTS = Object.keys(LIST_PINS);
 
@@ -783,6 +782,20 @@ const pinOf = (list: OptionList): string[] =>
 describe('the shared lists', () => {
   it('are exactly the lists the definitions draw on', () => {
     expect(filesIn('lists')).toEqual(LISTS.map((name) => `${name}.json`).sort());
+  });
+
+  // The export refuses a list that no definition names: each one is named by some plan, through
+  // a choice's options, a grid's rows, a region's side or its surface.
+  it('are each named by the plan of some piece', () => {
+    const { pieces } = readPieces(specTexts());
+    const named = new Set<string>();
+    for (const name of Object.keys(PLANNED))
+      for (const field of (pieces[name]?.shape as Shape).fields) {
+        for (const key of ['options', 'rows']) if (isListRef(field[key])) named.add(field[key].list);
+        if (typeof field.side === 'string') named.add(field.side);
+        if (field.surface === true) named.add(SURFACE_LIST);
+      }
+    expect(LISTS.filter((list) => !named.has(list))).toEqual([]);
   });
 
   it.each(LISTS)('%s passes the schema, is named as its file and codes each label by the rule', (name) => {
