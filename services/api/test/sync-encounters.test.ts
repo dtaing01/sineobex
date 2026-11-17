@@ -2115,6 +2115,17 @@ describe('phase 4 sync: encounters and notes', () => {
         // A sign-off writes the note and, through the trigger of 0018, the visit.
         change({ entity: 'note_signoff', op: 'create', value: { noteId: randomUUID(), act: 'sign' } }),
         change({ entity: 'note_signoff', op: 'create', value: null }),
+        // A correction locks its note and the visit before its audit event (review finding REC-1);
+        // an addendum and a referral are a visit's and a patient's records (lifecycle 4.1).
+        change({ entity: 'note_correction', op: 'create', value: { noteId: randomUUID() } }),
+        change({ entity: 'note_addendum', op: 'create', value: { encounterId, noteId: null } }),
+        change({ entity: 'referral', op: 'create', value: { patientId: randomUUID() } }),
+        change({
+          entity: 'referral',
+          op: 'set',
+          field: 'enteredInError',
+          value: { reason: 'Demo: wrong person' },
+        }),
       ];
       expect(changes.map((c) => takesTeamLock(c as never))).toEqual(changes.map(() => true));
     });

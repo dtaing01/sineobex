@@ -5,6 +5,7 @@ import {
   clinician,
   createEncounter,
   FakePhone,
+  finishNote,
   intakeValue,
   noteOn,
   push,
@@ -336,6 +337,49 @@ describe('phase 3 sync: lock order', () => {
       await other`select id from sineobex.encounter_notes where id = ${note.noteId} for no key update`;
       await other`commit`;
       expect((await pushing).map((r) => [r.status, r.details?.effect])).toEqual([['accepted', 'completed']]);
+    } finally {
+      await other`rollback`.catch(() => {});
+      other.release();
+    }
+  });
+
+  it('a correction waits for another writer of the team before it locks its note or its visit', async () => {
+    // As a sign-off does (review finding REC-1): it locks its note row, and its status trigger the
+    // visit, before its audit event, so the team lock must come first.
+    const [nonMedical] = TEST_NOTE_TYPES;
+    const p = await createPatient(h, t.teamId, t.aId);
+    const di = await clinician(h, t, 'di-concurrent@example.com', 'Di (demo)', 'none');
+    const visit = {
+      encounterId: await createEncounter(h, t.teamId, t.aId, p.id),
+      patientId: p.id,
+      summary: null,
+    };
+    const note = await noteOn(di, visit, nonMedical!, { 'care.plan': 'Demo: rest' });
+    await finishNote(di, note, 'complete', 'completed');
+    const correction = await di.phone.change({
+      entity: 'note_correction',
+      op: 'create',
+      value: {
+        noteId: note.noteId,
+        changes: [{ field: 'data.care.plan', newValue: 'Demo: rest and fluids', baseVersion: 1 }],
+        reason: 'Demo: left out',
+        requestedByPatient: false,
+        declined: false,
+        claimedCredential: null,
+        signoffId: null,
+      },
+    });
+    const other = await h.scratch.owner.reserve();
+    try {
+      await other`begin`;
+      await other`set local lock_timeout = '3s'`;
+      await other`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${t.teamId}::uuid::text, 0))`;
+      const pushing = di.send(correction);
+      await pushWaitsForTeamLock();
+      await other`select id from sineobex.encounters where id = ${visit.encounterId} for no key update`;
+      await other`select id from sineobex.encounter_notes where id = ${note.noteId} for no key update`;
+      await other`commit`;
+      expect((await pushing).map((r) => [r.status, r.details?.outcome])).toEqual([['accepted', 'corrected']]);
     } finally {
       await other`rollback`.catch(() => {});
       other.release();
