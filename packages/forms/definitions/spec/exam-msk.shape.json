@@ -91,16 +91,36 @@
       "showWhen": { "field": "./region", "filled": true }
     },
     {
-      "path": "msk.strength",
+      "path": "msk.strength_right",
       "kind": "number",
-      "label": "Strength",
+      "label": "Strength, right",
       "min": 0,
       "max": 5,
       "decimals": 0,
       "display": "outOf",
       "normal": 5,
-      "sides": true,
-      "showWhen": { "field": "./region", "filled": true }
+      "showWhen": {
+        "any": [
+          { "field": "./side", "is": ["right", "bilateral"] },
+          { "field": "./region", "is": ["head_neck", "back"] }
+        ]
+      }
+    },
+    {
+      "path": "msk.strength_left",
+      "kind": "number",
+      "label": "Strength, left",
+      "min": 0,
+      "max": 5,
+      "decimals": 0,
+      "display": "outOf",
+      "normal": 5,
+      "showWhen": {
+        "any": [
+          { "field": "./side", "is": ["left", "bilateral"] },
+          { "field": "./region", "is": ["head_neck", "back"] }
+        ]
+      }
     },
     {
       "path": "msk.tone",

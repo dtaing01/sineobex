@@ -46,8 +46,8 @@
     },
     {
       "line": 85,
-      "what": "Strength is a whole number from 0 to 5 out of 5, recorded for the right and the left (sides: the bullets Right and Left are the sides, not options). Normal fills 5.",
-      "why": "focused-exam inventory default 28, 44; forms 2.2 (normal on a number)"
+      "what": "Strength is two fields, Strength, right and Strength, left (the bullets Right and Left, not options), each a whole number from 0 to 5 out of 5. Each shows only for the side the entry examines: Strength, right while Side is Right or Bilateral, Strength, left while it is Left or Bilateral, and both for Head / Neck and Back, which have no Side. Normal fills 5 in each that shows, so a right knee examined says nothing of the left, and neither shows until the Side is picked.",
+      "why": "PRD main 414 (left and right are recorded where it matters); focused-exam inventory default 4, 28, 44; forms 2.2 (normal on a number), 2.3 (a follow-up for one side is two fields)"
     },
     {
       "line": 87,

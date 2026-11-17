@@ -97,16 +97,36 @@
           "showWhen": { "field": "./region", "filled": true }
         },
         {
-          "id": "strength",
+          "id": "strength_right",
           "kind": "number",
-          "label": "Strength",
+          "label": "Strength, right",
           "min": 0,
           "max": 5,
           "decimals": 0,
           "display": "outOf",
           "normal": 5,
-          "sides": true,
-          "showWhen": { "field": "./region", "filled": true }
+          "showWhen": {
+            "any": [
+              { "field": "./side", "is": ["right", "bilateral"] },
+              { "field": "./region", "is": ["head_neck", "back"] }
+            ]
+          }
+        },
+        {
+          "id": "strength_left",
+          "kind": "number",
+          "label": "Strength, left",
+          "min": 0,
+          "max": 5,
+          "decimals": 0,
+          "display": "outOf",
+          "normal": 5,
+          "showWhen": {
+            "any": [
+              { "field": "./side", "is": ["left", "bilateral"] },
+              { "field": "./region", "is": ["head_neck", "back"] }
+            ]
+          }
         },
         {
           "id": "tone",
