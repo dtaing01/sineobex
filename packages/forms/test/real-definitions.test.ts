@@ -170,6 +170,16 @@ describe('what hands off to another note on the real definitions', () => {
 describe('what a later phase reads on the real definitions', () => {
   const redFlags = definition('red_flags_disposition');
 
+  // GEN-7: the supply mapping fires on a screening's action (PRD main 431), so a declined test is
+  // never also performed or ordered.
+  it.each([[['performed', 'declined']], [['ordered', 'declined']]])(
+    'refuses a screening action of %j',
+    (action) => {
+      expect(checkAnswer(general, 'preventive.screening_action.hiv', action)).not.toBeNull();
+      expect(checkAnswer(general, 'preventive.screening_action.hiv', ['education', 'declined'])).toBeNull();
+    },
+  );
+
   // TYP-3: the quick encounter's follow-up note (PRD main 404) has its one home in the Red flags
   // and disposition note, beside the date, where the phase 7 follow-up task reads it.
   it('keeps a follow-up note beside the follow-up the Red flags note records', () => {

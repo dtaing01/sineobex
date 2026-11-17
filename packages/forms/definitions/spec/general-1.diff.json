@@ -59,8 +59,8 @@
     },
     {
       "line": 17,
-      "what": "Action is asked once for each screening picked: a grid whose rows are the screenings picked, its cell choose-many. The row has no Buttons: label.",
-      "why": "inventory A12, A24; PRD main 431 (the supply mapping fires on the action)"
+      "what": "Action is asked once for each screening picked: a grid whose rows are the screenings picked, its cell choose-many. Declined cannot be held with Performed or Ordered, so a declined test deducts no kit; Education and Referred can be held beside it. The row has no Buttons: label.",
+      "why": "inventory A12, A21, A24; PRD main 431 (the supply mapping fires on the action); focused-exam inventory default 17; PLAN-OPEN (forms 10.1 #1): the pairs, for the clinical team"
     },
     {
       "line": 20,

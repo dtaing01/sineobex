@@ -230,6 +230,10 @@
                 "code": "declined",
                 "label": "Declined"
               }
+            ],
+            "excludes": [
+              ["performed", "declined"],
+              ["ordered", "declined"]
             ]
           }
         }

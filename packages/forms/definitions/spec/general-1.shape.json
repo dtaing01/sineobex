@@ -85,7 +85,11 @@
       "kind": "choice",
       "many": true,
       "label": "Action",
-      "options": ["performed", "ordered", "referred", "education", "declined"]
+      "options": ["performed", "ordered", "referred", "education", "declined"],
+      "excludes": [
+        ["performed", "declined"],
+        ["ordered", "declined"]
+      ]
     },
     { "path": "vitals.bp", "kind": "group", "label": "Blood pressure", "layout": "row" },
     {
