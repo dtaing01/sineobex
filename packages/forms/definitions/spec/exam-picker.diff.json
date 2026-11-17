@@ -25,7 +25,7 @@
     },
     {
       "line": 41,
-      "what": "Other is kept, with no module: it asks for a short text, which is the free-text exam.",
+      "what": "Other is kept, with no module: its short text names what was examined, and a text box, Other exam findings, shown while Other is picked, holds the findings (at most 2,000 characters).",
       "why": "focused-exam inventory default 9, 31"
     },
     {

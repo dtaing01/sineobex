@@ -28,6 +28,14 @@
         "other"
       ],
       "flags": { "sensitiveExam": ["gu", "breast", "rectal"], "other": ["other"] }
+    },
+    {
+      "path": "exam.other_findings",
+      "kind": "text",
+      "label": "Other exam findings",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "exam.systems", "is": "other" }
     }
   ]
 }

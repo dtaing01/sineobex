@@ -650,7 +650,17 @@ describe('the plans of the exam pieces', () => {
     // The picker always shows, and has nothing for one-tap Normal to fill.
     expect(shape.sections.map((section) => Object.keys(section).sort())).toEqual([['id', 'title']]);
     expect(shape.sections[0]!.id).toBe(PICKER.split('.')[0]);
-    expect(shape.fields.map((field) => field.path)).toEqual([PICKER]);
+    expect(shape.fields.map((field) => field.path)).toEqual([PICKER, 'exam.other_findings']);
+    // Other is the free-text exam (default 9): the picker's Other text names the system, in at most
+    // 200 characters, and the findings have a text box of their own.
+    expect(shape.fields[1]).toEqual({
+      path: 'exam.other_findings',
+      kind: 'text',
+      label: 'Other exam findings',
+      lines: 'many',
+      maxLength: 2000,
+      showWhen: { field: PICKER, is: 'other' },
+    });
     const picker = shape.fields[0]!;
     expect([picker.kind, picker.many]).toEqual(['choice', true]);
     const { codes, flagged } = optionsOf(picker);
