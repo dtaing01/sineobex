@@ -17,7 +17,7 @@ const OTHER = '_other';
  * `sensitiveExam`; an option marked `sensitiveExam` from a code answer, the answer itself when
  * nothing else is left in it; every answer in a grid row whose option is marked; a region whose
  * region is marked, with its side and surface; and the Other text of a field whose picked Other
- * option was taken out, since the Other options of a field share one text, which may describe it.
+ * option was taken out (a field has one Other option: validate.other_twice).
  *
  * `answers` are answers that count (effectiveAnswers): an answer taken out here changes no other
  * answer's showing, because no condition outside a sensitive exam reads one

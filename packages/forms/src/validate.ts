@@ -476,6 +476,21 @@ function checkFlags(model: PathModel, report: Report) {
             `row "${option.code}" of a grid cannot be ${option.other ? 'an Other option' : 'exclusive'}`,
           );
 
+    if (field.kind === 'choice') checkOtherAndNormal(node, field, report);
+
+    // The handoff summary goes to EMS (lifecycle 5.7), whose reader holds no key.
+    const restricted = node.section.section.sensitiveExam
+      ? 'sensitiveExam'
+      : node.section.section.treatmentRecord
+        ? 'treatmentRecord'
+        : null;
+    if (field.handoff && restricted)
+      report(
+        `${at}.handoff`,
+        'handoff_restricted',
+        `the section is marked ${restricted}, and the handoff summary goes to EMS, who may not read it`,
+      );
+
     if (field.kind === 'number') checkNumber(field, at, report);
 
     if (field.sides && !SIDED_KINDS.has(field.kind))
@@ -516,6 +531,36 @@ function checkFlags(model: PathModel, report: Report) {
           report(`${at}.clears[${index}]`, 'clears_unknown_field', `"${id}" is not a field beside this flag`);
       });
   }
+}
+
+/**
+ * The Other options of a field share one text (2.3), which could not say which of them it is for.
+ * One-tap Normal puts every normal option of a field in at once (normalAnswers): one answer must
+ * hold them all, and checkAnswer must take it.
+ */
+function checkOtherAndNormal(
+  node: FieldNode,
+  field: Extract<ResolvedField, { kind: 'choice' }>,
+  report: Report,
+) {
+  const others = field.options.flatMap((option, index) => (option.other ? [index] : []));
+  for (const index of others.slice(1))
+    report(
+      `${node.at}.options[${index}].other`,
+      'other_twice',
+      'this field already has an Other option, and the two would share one text',
+    );
+  const normal = field.options.filter((option) => option.normal);
+  if (normal.length < 2) return;
+  const codes = new Set(normal.map((option) => option.code));
+  const clash = !field.many
+    ? 'a choose-one field holds one option, and two are marked normal'
+    : normal.some((option) => option.exclusive)
+      ? 'an exclusive option is marked normal beside others, and is never held with them'
+      : (field.excludes ?? []).some(([a, b]) => codes.has(a) && codes.has(b))
+        ? 'two of its normal options are a blocked pair, never held together'
+        : null;
+  if (clash) report(node.at, 'normal_conflict', `one-tap Normal would fill every normal option: ${clash}`);
 }
 
 /**

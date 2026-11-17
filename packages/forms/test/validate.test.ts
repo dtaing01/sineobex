@@ -1582,6 +1582,60 @@ describe('a flag that clears', () => {
   fits('two fields beside it', (f) => (visit(f, 'unable').clears = ['length', 'lasting']));
 });
 
+describe('two Other options in one field', () => {
+  // The Other options of a field share one text (2.3): it could not say which of them it describes.
+  broken(
+    'a second Other option',
+    (f) => visit(f, 'systems').options.push({ code: 'more', label: 'More', other: true }),
+    [CHECKS, `${V('systems')}.options[5].other`, rule('other_twice')],
+  );
+  fits('one Other option', () => undefined);
+});
+
+describe('what one-tap Normal fills', () => {
+  // normalAnswers puts every normal option in at once; checkAnswer must take what it puts in.
+  const CONFLICT = rule('normal_conflict');
+  broken(
+    'a choose-one field with two normal options',
+    (f) => injury(f, 'type').options.forEach((o: Loose) => (o.normal = true)),
+    [CHECKS, I('type'), CONFLICT],
+  );
+  broken(
+    'a choose-many field whose normal options are a blocked pair',
+    (f) => visit(f, 'plan').options.forEach((o: Loose) => o.code !== 'follow_up' && (o.normal = true)),
+    [CHECKS, V('plan'), CONFLICT],
+  );
+  broken(
+    'a choose-many field with an exclusive normal option among others',
+    (f) =>
+      visit(f, 'systems').options.forEach(
+        (o: Loose) => ['none', 'eyes'].includes(o.code) && (o.normal = true),
+      ),
+    [CHECKS, V('systems'), CONFLICT],
+  );
+  fits('a choose-many field whose normal options can be held together', (f) =>
+    visit(f, 'plan').options.forEach((o: Loose) => o.code !== 'declined' && (o.normal = true)),
+  );
+  fits('a choose-many field whose one normal option is exclusive', (f) => {
+    visit(f, 'systems').options[0].normal = true;
+  });
+});
+
+describe('the handoff', () => {
+  // The handoff summary goes to EMS (lifecycle 5.7), and a reader of it holds no key.
+  const RESTRICTED = rule('handoff_restricted');
+  for (const mark of ['sensitiveExam', 'treatmentRecord'])
+    broken(
+      `a field in a section marked ${mark}`,
+      (f) => {
+        checks(f).sections[4][mark] = true;
+        injury(f, 'type').handoff = true;
+      },
+      [CHECKS, `${I('type')}.handoff`, RESTRICTED],
+    );
+  fits('a field in an open section', (f) => (injury(f, 'type').handoff = true));
+});
+
 describe('the limits of design 2.4', () => {
   const full = (f: LooseFiles): Loose => f.noteTypes[FULL];
   // full_demo is at both limits as written: a text of 4,000 characters and 20 entries.
