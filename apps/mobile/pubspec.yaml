@@ -44,6 +44,9 @@ flutter:
   # packages/contract/data/icd10cm-curated.csv.
   assets:
     - assets/problem_codes.json
+    # Every platform note type version, resolved, with its hash (forms design 3.4): written by
+    # `pnpm forms:export`, byte for byte packages/forms/generated/presets.json. Never edited by hand.
+    - assets/forms/presets.json
   fonts:
     # Atkinson Hyperlegible Next, Atkinson Hyperlegible Mono and Barlow Condensed, all under the
     # SIL Open Font License (assets/fonts/OFL.txt). Bundled so the app never fetches fonts at runtime.

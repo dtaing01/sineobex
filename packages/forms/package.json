@@ -9,6 +9,7 @@
     "./definition.schema.json": "./schema/definition.schema.json"
   },
   "scripts": {
+    "export": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/export.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
