@@ -479,6 +479,30 @@ describe('definitionFor', () => {
     );
   });
 
+  it('refuses a row filed under a key or version its definition does not hold, before or after its hash is kept', async () => {
+    const [p] = await fixturePresets();
+    const [one, two] = [randomUUID(), randomUUID()];
+    // Its hash is its definition's; the row names another key and version (review finding NOT-8).
+    const row = { hash: p!.hash, definition: p!.definition };
+    const tx = fakeTx(
+      new Map([
+        [`${one}/${p!.key}/${p!.version}`, row],
+        [`${two}/test_other/5`, row],
+        [`${two}/${p!.key}/${p!.version + 1}`, row],
+      ]),
+    );
+    await expect(definitionFor(tx as unknown as Tx, two, 'test_other', 5)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+    expect(await definitionFor(tx as unknown as Tx, one, p!.key, p!.version)).toMatchObject({ key: p!.key });
+    await expect(definitionFor(tx as unknown as Tx, two, 'test_other', 5)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+    await expect(definitionFor(tx as unknown as Tx, two, p!.key, p!.version + 1)).rejects.toThrow(
+      DefinitionMismatch,
+    );
+  });
+
   it('keeps one frozen copy per hash, shared by every team that holds it', async () => {
     const [p] = await fixturePresets();
     const [one, two] = [randomUUID(), randomUUID()];

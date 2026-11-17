@@ -127,7 +127,8 @@ const definitions = new Recent<string, StoredDefinition>(MAX_DEFINITIONS);
  * reading, so the team ID is what keeps teams apart.
  *
  * Each row is checked the first time it is read (D79): the hash of its canonical definition must
- * be its hash, or this throws DefinitionMismatch and keeps nothing. A row that passes shares the
+ * be its hash, and the definition must hold the row's key and version, or this throws
+ * DefinitionMismatch and keeps nothing. A row that passes shares the
  * one frozen copy kept for its hash, so teams holding the same preset hold it once.
  */
 export async function definitionFor(
@@ -145,7 +146,10 @@ export async function definitionFor(
     where team_id = ${teamId} and key = ${key} and version = ${version}`;
   if (!row) return undefined;
   if ((await sha256Hex(canonicalJson(row.definition))) !== row.hash) throw new DefinitionMismatch();
-  // Its own key and version are in the definition, so one hash is one key and version.
+  // Its own key and version are in the definition, so one hash is one key and version, once the row
+  // names the key and version its definition holds: a row filed under another (written by hand, or a
+  // team's own type from phase 5) would answer another row's definition (review finding NOT-8).
+  if (row.definition.key !== key || row.definition.version !== version) throw new DefinitionMismatch();
   const stored =
     definitions.get(row.hash) ??
     // Frozen: every caller shares the one copy, so none may change it under another.
