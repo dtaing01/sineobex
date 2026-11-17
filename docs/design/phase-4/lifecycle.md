@@ -1353,6 +1353,11 @@ it.
 - **What the sync read shows of a note.** The snapshot of a note in `/v1/sync/records` gains the
   attributes `attestation`, `actingAuthorId`, `completedAt` and `signoffId`, so the author's
   phone can show the state of a note it still holds.
+- **The author's own sync read of a draft does not go through `visibleAnswers`.** That function
+  gives only the answers that count (forms 7.1), and a draft keeps the answers of a hidden field
+  so that they come back when the field shows again. Whoever acts as a draft's author is sent its
+  stored answers, hidden ones included; everyone else gets the draft through `visibleAnswers`
+  (6.4).
 
 **What wave A leaves L1 to do for notes.** The database now refuses what today's note path
 still sends, and L1 meets it:
@@ -1684,6 +1689,15 @@ portal and the phone draw), `signoffs`, `addenda`, `corrections`, `attestations`
   A note the reader may not see at all is absent, not blanked, and so is everything that hangs
   off it. A correction to an answer the reader may not see is absent too: its old and new
   values would give the answer away.
+- **A correction is absent when its old or its new value holds anything `visibleAnswers` hides
+  from the reader**, not only when the answer itself is hidden: a picker corrected from heart
+  and GU to heart alone would show GU's label to a reader without
+  `patients.view_sensitive_exams`. The server tests each change by putting its old value, and
+  then its new one, in place of the answer and comparing what `visibleAnswers` keeps at that path
+  with what `effectiveAnswers` keeps; a change in a section or an entry the reader may not see is
+  absent whatever its values. `readModel` is given only the corrections that remain: it lays out
+  every corrected change it is given, an answer the correction took away as an item with no
+  value under its old one struck through (forms 7.1).
 - `contentHash` is present only when the reader sees every answer that counts. Co-sign and
   attest need it.
 - Refusals: `404` for an encounter the team does not have. Audit: `encounter.viewed`, with the
@@ -1905,6 +1919,35 @@ Rules:
    reader without the key, and `recapLines` drops them for everyone, so nobody learns from the
    overview that the exam was done (PRD main 415).
 
+**`visibleAnswers` as built** (unit F1; forms 7.1):
+
+- **It returns a subset of `effectiveAnswers`**, worked out on the whole note and kept in its
+  order, or null for a note the reader may not see at all: a note type offered for Medical only,
+  to a reader who does not read Medical notes; a sensitive note type, to a reader without
+  `patients.view_sensitive`. Whoever acts as the author gets every answer that counts (rule 1),
+  and no reader gets an answer that does not count. The author's own sync read of a draft does
+  not go through it (4.4).
+- **`sensitiveCodes` is phase 3's list of ranges** `{ from, to }`, the only form the sensitive
+  list exists in: `SENSITIVE_CODE_RANGES` in
+  `services/api/src/patients/generated/sensitive-codes.ts` on the server, `sensitiveCodeRanges`
+  in `apps/mobile/lib/patients/generated/sensitive_codes.dart` on the phone. A code is sensitive
+  by phase 3's rule (`isSensitiveCode`). Only the code decides, as on the problem list: a
+  diagnosis with a label and no code is not sensitive.
+- **A sensitive diagnosis takes its entry or its section with it.** Without
+  `patients.view_sensitive` the reader gets nothing of the entry that holds the diagnosis, its
+  `entryAt` included, or, outside a repeating section, of the whole section: a status or
+  interventions with no diagnosis beside them would hint at one (rule 2). The forms part's
+  validator keeps a condition elsewhere from reading such a section (forms 2.2).
+- **A sensitive exam leaves nothing** for a reader without `patients.view_sensitive_exams`: not
+  its sections, nor a picker code marked `sensitiveExam` (an answer left with no code goes too),
+  nor any answer in a grid row whose option is marked, nor a region whose region is marked, with
+  its side and surface, nor the Other text of a field whose picked Other option is marked. An
+  entry that held answers and has none left once these are out goes whole, `entryAt` and all, so
+  the entries after it are numbered as if it had never been there. `recapLines` and the
+  handoff's field lines leave out the same for every reader (rules 3 and 8; 5.7).
+- **`ordersMedications` changes nothing here**: a `needs` section is shown to every reader, and
+  rule 5 decides who may change it.
+
 ## 7. Referrals in this phase
 
 "Tapping Referral shows the patient's past referrals and Add referral; a referral records only a
@@ -2095,11 +2138,14 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
    box under it is **Add to the assessment**, which makes an addendum to the visit when the
    person completes.
 3. **Suggested next steps**: chips from the forms part's suggestion rules (PRD main 433), each
-   adding a note type.
+   adding a note type. `suggestions` gives every key the options picked suggest (forms 7.1); the
+   screen leaves out the note types already in the visit, so a chip always adds a note the visit
+   does not have.
 4. **Add referral** (7).
 5. **Follow-up**: what the notes say about follow-up, as recorded. "Follow-up tasks created in
    one tap" (PRD main 433) needs tasks, which arrive in phase 7; the answers are stored now and
-   phase 7 makes the tasks from them (12.3).
+   phase 7 makes the tasks from them (12.3). In a Medical visit the follow-up is the Red flags and
+   disposition note's: the Quick encounter asks none of its own (forms 6.2, 6.4).
 6. What stops Complete, when anything does, as a list. Each line names the note and the section,
    and jumps to it: "Wound care: record consent for the exam."
 7. The signing sentence (3.5), when a note will be signed.
@@ -2119,8 +2165,10 @@ online, for the rest (8.2). The view:
 - The envelope: date and time ("time not verified" when it was not), place, Medical or
   Non-Medical, the assessment.
 - Each note: its recap, then its sections. A corrected answer shows the new value, and under it
-  the old one struck through with who changed it, when and why (PRD main 460). For a screen
-  reader the old value is announced as "Replaced: {old value}".
+  the old one struck through with who changed it, when and why (PRD main 460). An answer a
+  correction took away shows no value, only the old one struck through (the read model's item
+  with value null, forms 7.1). For a screen reader the old value is announced as "Replaced: {old
+  value}".
 - Below each note, in time order: sign-offs ("Signed by {name}, {credential}, {date}"),
   co-signatures, attestations ("Attested by {name}, {date}"), addenda (PRD main 459, 725).
 - Actions, each shown only when the server would accept it: **Add addendum**; **Correct** on an
@@ -2453,7 +2501,7 @@ their levels, files and order. This part's units, and what each owns:
 | **L6** The portal | `apps/portal/src/app/(app)/encounters/`, `team/{cosign,attestation,incomplete-notes}/`, `apps/portal/src/app/actions/encounters.ts`, `apps/portal/e2e/{encounters,attestation}.spec.ts`, the Timeline on the patient page, the navigation links in `layout.tsx` | L2 |
 | **L7** The Done when | `packages/contract/test-vectors/encounters-done-when.json`, `apps/mobile/test/encounters/{done_when_test,live_encounters_test}.dart`, `services/api/test/encounters-done-when.test.ts`, the line in `tools/live-sync.sh` | all |
 
-This part is 94 of the phase's 220 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
+This part is 94 of the phase's 218 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
 core, the phone's store and the phone's test server are where the X cards are, and a small model
 cannot shorten that third.
 
