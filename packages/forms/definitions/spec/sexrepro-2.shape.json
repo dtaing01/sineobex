@@ -5,7 +5,12 @@
     {
       "id": "pregnant",
       "title": "Current pregnancy",
-      "showWhen": { "field": "pregnancy.test", "is": "positive" }
+      "showWhen": {
+        "any": [
+          { "field": "pregnancy.test", "is": "positive" },
+          { "field": "pregnancy.known", "filled": true }
+        ]
+      }
     }
   ],
   "fields": [

@@ -5,8 +5,8 @@
   "differences": [
     {
       "line": 1,
-      "what": "The section shows when the pregnancy test is Positive. A pregnancy known before this visit, with no test today, does not open it: the danger signs of a known pregnancy cannot be charted without recording a test.",
-      "why": "inventory A44; PRD main 417; PLAN-OPEN (forms 10.1 #1): whether a known pregnancy also opens the section, for the clinical team"
+      "what": "The section shows when the pregnancy test is Positive, or when the flag Known pregnancy, no test today (sexrepro-1, beside the test) is set: a pregnancy known before this visit is charted without a test being recorded that was not done. The flag is a departure from the lines.",
+      "why": "inventory A44; PRD main 417 (once a pregnancy is confirmed); PLAN-OPEN (forms 10.1 #1): whether a known pregnancy opens the section, for the clinical team to confirm"
     },
     {
       "line": 4,

@@ -38,6 +38,11 @@
       "why": "inventory A46"
     },
     {
+      "line": 13,
+      "what": "Beside the pregnancy test, a flag the lines do not have: Known pregnancy, no test today. A pregnancy known before this visit opens Current pregnancy without a test being recorded that was not done.",
+      "why": "inventory A44; PRD main 417; PLAN-OPEN (forms 10.1 #1): a departure from the lines, for the clinical team to confirm"
+    },
+    {
       "line": 18,
       "what": "Choose-one. Other asks for a short text. A patient using two methods (the pill and condoms) records one.",
       "why": "inventory A1, A2; PLAN-OPEN (forms 10.1 #1): choose-one or choose-many (A1 lists the line among the least certain)"

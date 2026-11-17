@@ -384,6 +384,34 @@ describe('the plans of the pieces', () => {
     expect(shapeOf('quick-2').sections.map((section) => section.id)).not.toContain('follow_up');
   });
 
+  // Inventory A44, a departure from the lines for the clinical team to confirm: Current pregnancy
+  // opens on a positive test, or on a pregnancy already known and not tested today, so that no one
+  // records a test that was not done to chart a known pregnancy's danger signs.
+  it('open Current pregnancy on a positive test or on a pregnancy known without one', () => {
+    const paths = shapeOf('sexrepro-1').fields.map((field) => field.path);
+    expect(shapeOf('sexrepro-1').fields[paths.indexOf('pregnancy.test') + 1]).toEqual({
+      path: 'pregnancy.known',
+      kind: 'flag',
+      label: 'Known pregnancy, no test today',
+    });
+    const showWhen = shapeOf('sexrepro-2').sections.find((section) => section.id === 'pregnant')
+      ?.showWhen as Condition;
+    const shows = (c: Condition, answers: Record<string, unknown>): boolean =>
+      'all' in c
+        ? c.all.every((x) => shows(x, answers))
+        : 'any' in c
+          ? c.any.some((x) => shows(x, answers))
+          : 'not' in c
+            ? !shows(c.not, answers)
+            : 'filled' in c
+              ? answers[c.field] !== undefined
+              : [c.is].flat().some((code) => answers[c.field] === code);
+    expect(shows(showWhen, { 'pregnancy.test': 'positive' })).toBe(true);
+    expect(shows(showWhen, { 'pregnancy.known': true })).toBe(true);
+    expect(shows(showWhen, { 'pregnancy.test': 'negative' })).toBe(false);
+    expect(shows(showWhen, {})).toBe(false);
+  });
+
   // What the spec check finds of a diff file without a definition: a declaration that nothing in
   // the lines needs (spec.not_option_unused, spec.added_in_piece).
   it.each(Object.keys(PLANNED))(
