@@ -234,15 +234,18 @@ function answersProblem(type: ResolvedNoteType, data: Record<string, unknown>): 
 }
 
 /**
- * A set of a note's field: an answer the sender may not see; the gate; the status's own rule; a
- * finished note's late change, kept by the draft rule (lateChange); then the answer's check against
- * the note's type, and the draft rule.
+ * A set of a note's field: an answer the sender may not see; a non-author's reopen, which changes
+ * nothing; the gate; the status's own rule; a finished note's late change, kept by the draft rule
+ * (lateChange); then the answer's check against the note's type, and the draft rule.
  */
 async function noteSet(s: SetContext): Promise<Outcome> {
   const unread = await unreadableBySender(s, s.rec);
   if (unread) return unread;
   const hidden = await hiddenFromSender(s);
   if (hidden) return hidden;
+  // A reopen from someone who does not act as the author changes nothing, whatever their
+  // credential, as their sign-off and correction do: not_author answers before the gate (4.1; RD-8).
+  if (s.field === 'status' && s.actor.authorId !== actingAuthor(s.rec)) return statusSet(s);
   const gated = await medicalGate(s, s.rec.internal.medical === true);
   if (gated) return gated;
   if (s.field === 'status') return statusSet(s);

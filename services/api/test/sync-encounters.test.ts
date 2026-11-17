@@ -413,7 +413,9 @@ describe('phase 4 sync: encounters and notes', () => {
         const wrong = await answer(who, create.recordId, 'data.vitals.pulse', 'fast');
         expect(await who.send(pulse, status, wrong)).toEqual([
           expect.objectContaining(held),
-          expect.objectContaining(held),
+          // A reopen from someone who does not act as the author changes nothing, whatever their
+          // credential: not_author answers before the gate (4.1; RD-8). The author's is held.
+          expect.objectContaining({ status: 'accepted', serverVersion: 1 }),
           expect.objectContaining(held),
         ]);
       }

@@ -1145,7 +1145,13 @@ void main() {
               // The gate comes first: an answer the type refuses is held too, and checked when accepted.
               setOn(entityNote, note, 'data.vitals.pulse', 'fast', 1),
             ];
-            expect(await send(who, changes), [for (final c in changes) heldOnly(c)]);
+            expect(await send(who, changes), [
+              heldOnly(changes[0]),
+              // A reopen from someone who does not act as the author changes nothing, whatever their
+              // credential: not_author answers before the gate (4.1; RD-8). The author's is held.
+              taken(changes[1], 1),
+              heldOnly(changes[2]),
+            ]);
           }
           expect(server.records[note]!.fields['data.vitals.pulse']!.value, 88);
           final own = setOn(entityNote, note, 'data.vitals.pulse', 92, 1);
@@ -1245,6 +1251,76 @@ void main() {
           expect(server.records[c['recordId']], isNull);
         }
         expect([for (final c in gated) server.held[c['changeId']]!.reason], List.filled(gated.length, 'permission'));
+      });
+
+      test('a sign-off, a reopen or a correction from someone who does not act as the author is stored with no effect, whatever their credential', () async {
+        // 4.1's second table: not_author answers before the gate, for all three alike (RD-8).
+        server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+        server.credentials[dana] = 'attending';
+        server.credentials[blair] = 'attending';
+        final visit = visitOf(patientId: patient, by: dana);
+        String noteBy(TestNoteType type, Map<String, Object?> data) =>
+            server.seed(entityNote, noteValue(visit, type, data), by: dana);
+        server.finishNote(noteBy(testRedFlags, const {'flags.any': 'no'}), status: 'signed');
+        final draft = noteBy(testMedical, const {'care.plan': 'Demo: fluids'});
+        final completed = noteBy(testMedical, const {'care.plan': 'Demo: rest'});
+        server.finishNote(completed);
+        final signed = noteBy(testMedical, const {'care.plan': 'Demo: sleep'});
+        server.finishNote(signed, status: 'signed');
+
+        final signoff = change(entitySignoff, 'create', {
+          'noteId': draft,
+          'act': 'sign',
+          'contentHash': noteContentHash(
+            noteId: draft,
+            encounterId: visit,
+            patientId: patient,
+            summary: null,
+            definition: NoteTypeDef.fromJson(server.noteTypes[(testMedical.key, 1)]!),
+            answers: const {'care.plan': 'Demo: fluids'},
+          ),
+          'claimedCredential': 'attending',
+          'statementVersion': 'sign-2026-11',
+        });
+        final reopen = setOn(entityNote, completed, 'status', 'draft', 2);
+        final correction = change(entityCorrection, 'create', {
+          'noteId': signed,
+          'changes': [
+            {'field': 'data.care.plan', 'newValue': 'Demo: sleep and food', 'baseVersion': 1},
+          ],
+          'reason': 'Demo: left out',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': 'attending',
+          'signoffId': null,
+        });
+        server.changeCredential(blair, 'chw');
+        final answers = await send(blair, [signoff, reopen, correction]);
+        expect(
+          [
+            for (final r in answers) [r['status'], r['reason'], r['details']],
+          ],
+          [
+            [
+              'accepted',
+              null,
+              {'effect': 'none', 'reason': 'not_author', 'status': 'draft', 'attestation': 'not_needed'},
+            ],
+            [
+              'accepted',
+              null,
+              {'outcome': 'history_only', 'problem': 'not_author'},
+            ],
+            [
+              'accepted',
+              null,
+              {'outcome': 'not_author', 'status': 'signed', 'attestation': 'not_needed'},
+            ],
+          ],
+        );
+        expect(server.held, isEmpty);
+        expect(server.records[completed]!.fields['status']!.value, 'completed');
+        expect(server.records[signed]!.fields['data.care.plan']!.value, 'Demo: sleep');
       });
     });
 

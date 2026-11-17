@@ -1433,6 +1433,8 @@ class FakeSyncServer {
     if (unread != null) return unread;
     final hidden = _hiddenFromSender(s);
     if (hidden != null) return hidden;
+    // A non-author's reopen changes nothing, whatever their credential: not_author first (note.ts).
+    if (s.field == 'status' && s.actor.userId != _actingAuthor(s.rec)) return _noteStatusSet(s);
     final gated = _medicalGate(s.actor, s.rec.medical);
     if (gated != null) return gated;
     if (s.field == 'status') return _noteStatusSet(s);
@@ -1801,7 +1803,10 @@ class FakeSyncServer {
   /// is applied fresh. Effect `none` stores the sign-off only; any other finishes the note.
   Map<String, Object?> _signoff(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final note = records[v['noteId']]!;
-    final gated = _medicalGate(actor, note.medical) ?? _unreadableBySender(actor, note);
+    // A non-author's sign-off changes nothing, whatever their credential: not_author first (note-signoff.ts).
+    final gated =
+        _unreadableBySender(actor, note) ??
+        (actor.userId == _actingAuthor(note) ? _medicalGate(actor, note.medical) : null);
     if (gated != null) return gated;
     // A phase 2 note has no type to hash it by, and the phone can make no sign-off of one.
     final definition = _noteTypeOf(note) ?? (throw _DefinitionError());

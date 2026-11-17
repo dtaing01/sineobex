@@ -127,7 +127,11 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
   const { tx, actor, change: c } = ctx;
   const note = (await noteRules.load(tx, v.noteId, true))!;
   const medicalNote = note.internal.medical === true;
-  const gated = (await medicalGate(ctx, medicalNote)) ?? (await unreadableBySender(ctx, note));
+  // A sender who does not act as the author changes nothing (effect none) whatever their credential,
+  // as a reopen and a correction from them do: not_author answers before the gate (4.1; RD-8).
+  const gated =
+    (await unreadableBySender(ctx, note)) ??
+    (actor.authorId === actingAuthor(note) ? await medicalGate(ctx, medicalNote) : null);
   if (gated) return gated;
 
   const visit = (await loadEncounter(tx, note.attributes.encounterId as string, false))!;

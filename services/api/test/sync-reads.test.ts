@@ -1150,5 +1150,59 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         where user_id = ${kay.id} order by received_at, id`;
       expect(items).toEqual(gated.map((c) => ({ changeId: c.changeId, reason: 'permission' })));
     });
+
+    it('a sign-off, a reopen or a correction from someone who does not act as the author is stored with no effect, whatever their credential', async () => {
+      // 4.1's second table: not_author answers before the gate, for all three alike (RD-8). Jo
+      // charts Medical notes but not this one, and was lowered to a CHW while the phone was offline.
+      const kay = await clinician(h, t, 'kay2@example.com', 'Kay (demo)', 'attending');
+      const jo = await clinician(h, t, 'jo@example.com', 'Jo (demo)', 'attending');
+      const visit = await visitOf(kay, patientId);
+      const flags = await noteOn(kay, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
+      await finishNote(kay, flags, 'sign', 'signed');
+      const draft = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: fluids' });
+      const completed = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: rest' });
+      await finishNote(kay, completed, 'complete', 'completed');
+      const signed = await noteOn(kay, visit, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: sleep' });
+      await finishNote(kay, signed, 'sign', 'signed');
+
+      const signoff = await signoffOf(jo, draft, 'sign');
+      const reopen = await jo.phone.change({
+        entity: 'encounter_note',
+        recordId: completed.noteId,
+        op: 'set',
+        field: 'status',
+        value: 'draft',
+        baseVersion: 2,
+      });
+      const correction = await jo.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: signed.noteId,
+          changes: [{ field: 'data.care.plan', newValue: 'Demo: sleep and food', baseVersion: 1 }],
+          reason: 'Demo: left out',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: 'attending',
+          signoffId: null,
+        },
+      });
+      await setCredential(h, t, jo.membershipId, 'chw');
+      const answers = await jo.send(signoff, reopen, correction);
+      expect(answers.map((r) => [r.status, r.reason ?? null, r.details ?? null])).toEqual([
+        [
+          'accepted',
+          null,
+          { effect: 'none', reason: 'not_author', status: 'draft', attestation: 'not_needed' },
+        ],
+        ['accepted', null, { outcome: 'history_only', problem: 'not_author' }],
+        ['accepted', null, { outcome: 'not_author', status: 'signed', attestation: 'not_needed' }],
+      ]);
+      const items = await h.scratch.owner`select 1 from sineobex.quarantine_items where user_id = ${jo.id}`;
+      expect(items).toEqual([]);
+      expect((await noteRow(draft.noteId)).status).toBe('draft');
+      expect((await noteRow(completed.noteId)).status).toBe('completed');
+      expect((await noteRow(signed.noteId)).data).toEqual({ 'care.plan': 'Demo: sleep' });
+    });
   });
 });
