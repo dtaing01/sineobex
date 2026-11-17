@@ -26,7 +26,15 @@ import {
   type Outcome,
   type StoredRecord,
 } from '../records.ts';
-import { actingAuthor, answersOf, medicalGate, needsGate, noteRules, noteTypeOf } from './note.ts';
+import {
+  actingAuthor,
+  answersOf,
+  medicalGate,
+  needsGate,
+  noteRules,
+  noteTypeOf,
+  unreadableBySender,
+} from './note.ts';
 import { NoteCorrectionCreate, valueParents } from './values.ts';
 
 /**
@@ -155,6 +163,8 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
   if (other) return other;
 
   const note = (await noteRules.load(tx, v.noteId, true))!;
+  const unread = await unreadableBySender(ctx, note);
+  if (unread) return unread;
   const under = await correctorOf(ctx, v, note);
   const asked: Asked[] = v.changes.map((ch) => ({
     field: ch.field,

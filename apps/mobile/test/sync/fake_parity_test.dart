@@ -1702,6 +1702,45 @@ void main() {
         expect(server.records[n]!.fields['data.exam.findings']!.value, 'Demo: a small rash');
       });
 
+      test('any change of a note the sender may not read at all is held, with nothing told of its state', () async {
+        final talk = restrictedNote(const {'talk.notes': 'Demo: talked about sleep'}, type: testSensitive);
+        server.finishNote(talk);
+        final visit = server.records[talk]!.attributes['encounterId']! as String;
+        // Casey holds the note's ID from before her role was lowered (review finding RD-11).
+        final caseys = [
+          change(entitySignoff, 'create', {
+            'noteId': talk,
+            'act': 'complete',
+            'contentHash': '0' * 64,
+            'claimedCredential': null,
+            'statementVersion': 'complete-2026-11',
+          }),
+          setOn(entityNote, talk, 'status', 'draft', 1),
+          change(entityCorrection, 'create', {
+            'noteId': talk,
+            'changes': [
+              {'field': 'data.talk.notes', 'newValue': 'Demo: a guess', 'baseVersion': 1},
+            ],
+            'reason': 'Demo: the wrong field was picked',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': null,
+          }),
+          change(entityAddendum, 'create', {
+            'encounterId': visit,
+            'noteId': talk,
+            'text': 'Demo: called back',
+            'signoffId': null,
+          }),
+        ];
+        expect(await send(casey, caseys), [for (final c in caseys) heldOnly(c)]);
+        // Dana may read it: hers is answered as before.
+        final danas = [setOn(entityNote, talk, 'status', 'draft', 1)];
+        expect((await send(dana, danas)).single['details'], containsPair('outcome', 'history_only'));
+        expect(server.records[talk]!.fields['status']!.value, 'completed');
+      });
+
       test('on a finished note too: held, where a late change would send back the answer it keeps', () async {
         final n = restrictedNote(answers);
         server.finishNote(n);

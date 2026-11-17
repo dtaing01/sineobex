@@ -11,7 +11,7 @@ import {
   type EntityRules,
 } from '../records.ts';
 import { loadEncounter } from './encounter.ts';
-import { noteRules } from './note.ts';
+import { noteRules, unreadableBySender } from './note.ts';
 import { NoteAddendumCreate, valueParents } from './values.ts';
 
 /**
@@ -63,6 +63,8 @@ export const noteAddendumRules: EntityRules<Value> = {
       if (note.attributes.encounterId !== visit.id) {
         return rejected('stale_reference', { problem: 'encounter_note_missing' });
       }
+      const unread = await unreadableBySender(ctx, note);
+      if (unread) return unread;
     }
     const other = await signoffOfOther(tx, v.signoffId, v.noteId, visit.id);
     if (other) return other;

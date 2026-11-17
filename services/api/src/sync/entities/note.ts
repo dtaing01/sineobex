@@ -1,5 +1,12 @@
 import type { z } from '@hono/zod-openapi';
-import { checkAnswer, fieldAt, isBlank, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
+import {
+  checkAnswer,
+  fieldAt,
+  isBlank,
+  NoteReading,
+  visibleAnswers,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import { CAPABILITIES } from '../../auth/permissions.ts';
 import type { Tx } from '../../db/database.ts';
 import { reopenEffect, type NoteStatus } from '../../encounters/rules.ts';
@@ -232,6 +239,8 @@ function answersProblem(type: ResolvedNoteType, data: Record<string, unknown>): 
  * the note's type, and the draft rule.
  */
 async function noteSet(s: SetContext): Promise<Outcome> {
+  const unread = await unreadableBySender(s, s.rec);
+  if (unread) return unread;
   const hidden = await hiddenFromSender(s);
   if (hidden) return hidden;
   const gated = await medicalGate(s, s.rec.internal.medical === true);
@@ -316,6 +325,22 @@ export async function fieldForSender(
     if (err instanceof DefinitionError) return NOTHING_SHOWN;
     throw err;
   }
+}
+
+/**
+ * A note the sender may not read at all (lifecycle 6.4, rows 1 and 2): every change of it, and of
+ * what hangs off it, is held for a Program Admin as a set of a hidden answer is, so no answer tells
+ * its state, who finished it, or whether a guess of it matches (review finding RD-11). Whoever acts
+ * as the author reads it, an admin's accept passes, and a phase 2 note is read whole.
+ */
+export async function unreadableBySender(ctx: ChangeContext, note: StoredRecord): Promise<Outcome | null> {
+  if (ctx.actor.approvedBy !== null || ctx.actor.authorId === actingAuthor(note)) return null;
+  const type = await noteTypeOf(ctx.tx, note);
+  if (type === undefined) return null;
+  const reader = await senderReader(ctx.tx, ctx.actor);
+  return byDefinition(() => visibleAnswers(type, answersOf(note), reader)) === null
+    ? rejected('permission')
+    : null;
 }
 
 /** Who acts as a loaded note's author (lifecycle 3.8). */

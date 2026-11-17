@@ -831,6 +831,8 @@ class FakeSyncServer {
         if (noteId != null && records[noteId]!.attributes['encounterId'] != visit.id) {
           return _rejected('stale_reference', {'problem': 'encounter_note_missing'});
         }
+        final unread = noteId == null ? null : _unreadableBySender(actor, records[noteId]!);
+        if (unread != null) return unread;
         final other = _signoffOfOther(v['signoffId'] as String?, noteId, visit.id);
         if (other != null) return other;
         authorCredential = _signedUnderFor(actor, c, notBefore: visit.storedAt ?? visit.createdAt).credential;
@@ -1421,6 +1423,8 @@ class FakeSyncServer {
   /// note with a version, the answer's check against its type, the draft rule, and whether the
   /// answer now on the chart counts. A phase 2 note with no version keeps the open path rule.
   Map<String, Object?> _noteSet(_SetContext s) {
+    final unread = _unreadableBySender(s.actor, s.rec);
+    if (unread != null) return unread;
     final hidden = _hiddenFromSender(s);
     if (hidden != null) return hidden;
     final gated = _medicalGate(s.actor, s.rec.medical);
@@ -1495,6 +1499,17 @@ class FakeSyncServer {
           answerHidden(type, answers, path, s.value, reader),
     );
     return hidden ? _rejected('permission') : null;
+  }
+
+  /// A note the sender may not read at all (note.ts unreadableBySender, review finding RD-11): every
+  /// change of it, and of what hangs off it, is held as a set of a hidden answer is. Whoever acts as
+  /// the author reads it, an admin's accept passes, and a phase 2 note is read whole.
+  Map<String, Object?>? _unreadableBySender(_Actor actor, FakeRecord note) {
+    if (actor.approvedBy != null || actor.userId == _actingAuthor(note)) return null;
+    final type = _noteTypeOf(note);
+    if (type == null) return null;
+    final reader = noteReader(actor.permissions, credentialOf(actor.userId), actsAsAuthor: false);
+    return _byDefinition(() => visibleAnswers(type, _answersOf(note), reader)) == null ? _rejected('permission') : null;
   }
 
   /// A field that holds nothing, as a retry is answered with an answer hidden from its sender.
@@ -1780,7 +1795,7 @@ class FakeSyncServer {
   /// is applied fresh. Effect `none` stores the sign-off only; any other finishes the note.
   Map<String, Object?> _signoff(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final note = records[v['noteId']]!;
-    final gated = _medicalGate(actor, note.medical);
+    final gated = _medicalGate(actor, note.medical) ?? _unreadableBySender(actor, note);
     if (gated != null) return gated;
     // A phase 2 note has no type to hash it by, and the phone can make no sign-off of one.
     final definition = _noteTypeOf(note) ?? (throw _DefinitionError());
@@ -2034,6 +2049,8 @@ class FakeSyncServer {
     final other = _signoffOfOther(v['signoffId'] as String?, v['noteId']! as String, null);
     if (other != null) return other;
     final note = records[v['noteId']]!;
+    final unread = _unreadableBySender(actor, note);
+    if (unread != null) return unread;
     final under = _signedUnderFor(
       actor,
       c,

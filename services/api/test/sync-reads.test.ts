@@ -768,6 +768,50 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await noteRow(n.noteId)).data).toMatchObject({ 'exam.findings': 'Demo: a small rash' });
     });
 
+    it('any change of a note the sender may not read at all is held, with nothing told of its state', async () => {
+      const visit = await visitOf(ana, patientId);
+      const talk = await noteOn(ana, visit, TEST_SENSITIVE_TYPE, {
+        'talk.notes': 'Demo: talked about sleep',
+      });
+      await finishNote(ana, talk, 'complete', 'completed');
+      // Dee holds the note's ID from before her role was lowered (review finding RD-11).
+      const dees = [
+        await signoffOf(dee, talk, 'complete'),
+        await set(dee, talk, 'status', 'draft', 2),
+        await dee.phone.change({
+          entity: 'note_correction',
+          op: 'create',
+          value: {
+            noteId: talk.noteId,
+            changes: [{ field: 'data.talk.notes', newValue: 'Demo: a guess', baseVersion: 1 }],
+            reason: 'Demo: the wrong field was picked',
+            requestedByPatient: false,
+            declined: false,
+            claimedCredential: null,
+            signoffId: null,
+          },
+        }),
+        await dee.phone.change({
+          entity: 'note_addendum',
+          op: 'create',
+          value: {
+            encounterId: visit.encounterId,
+            noteId: talk.noteId,
+            text: 'Demo: called back',
+            signoffId: null,
+          },
+        }),
+      ];
+      expect(await dee.send(...dees)).toEqual(dees.map(heldOnly));
+      // Ben may read it: his are answered as before.
+      const bens = [await set(ben, talk, 'status', 'draft', 2)];
+      expect((await ben.send(...bens))[0]).toMatchObject({
+        status: 'accepted',
+        details: { outcome: 'history_only' },
+      });
+      expect((await noteRow(talk.noteId)).status).toBe('completed');
+    });
+
     it('on a finished note too: held, where a late change would send back the answer it keeps', async () => {
       const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
       await finishNote(ana, n, 'complete', 'completed');

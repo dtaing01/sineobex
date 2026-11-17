@@ -22,7 +22,7 @@ import {
   type StoredRecord,
 } from '../records.ts';
 import { loadEncounter } from './encounter.ts';
-import { actingAuthor, answersOf, medicalGate, noteRules, noteTypeOf } from './note.ts';
+import { actingAuthor, answersOf, medicalGate, noteRules, noteTypeOf, unreadableBySender } from './note.ts';
 import { NoteSignoffCreate, valueParents } from './values.ts';
 
 /**
@@ -127,7 +127,7 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
   const { tx, actor, change: c } = ctx;
   const note = (await noteRules.load(tx, v.noteId, true))!;
   const medicalNote = note.internal.medical === true;
-  const gated = await medicalGate(ctx, medicalNote);
+  const gated = (await medicalGate(ctx, medicalNote)) ?? (await unreadableBySender(ctx, note));
   if (gated) return gated;
 
   const visit = (await loadEncounter(tx, note.attributes.encounterId as string, false))!;
