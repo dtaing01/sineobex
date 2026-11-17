@@ -5,13 +5,14 @@ import 'dart:math';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:sineobex_field/api/transport.dart';
-import 'package:sineobex_field/encounters/rules.dart'
-    show NoteStatus, ReopenEffect, encounterStatus, noteIsEmpty, reopenEffect;
+import 'package:sineobex_field/encounters/content_hash.dart';
+import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/check_answer.dart';
 import 'package:sineobex_field/forms/conditions.dart' show Answers, NoteReading, isBlank;
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
+import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/visible.dart';
 import 'package:sineobex_field/patients/access.dart';
 import 'package:sineobex_field/patients/dob.dart';
@@ -37,10 +38,15 @@ import 'test_note_types.dart';
 /// handshake over the group; and duplicate matching with the phone's own scorer.
 ///
 /// Phase 4 (lifecycle 4.9), each rule as services/api/src/sync/entities builds it and with its case
-/// in fake_parity_test.dart: an encounter's fields and the envelope lock (rules 1 and 2, encounter.ts);
-/// a note's type, a Medical note's patient and its visit made Medical (3 and 4, note.ts); a finished
-/// note's late changes and the reopen (5 and 6); the visit's status worked out from its notes, as the
-/// trigger of migration 0018 does (13).
+/// in fake_parity_test.dart or fake_reads_test.dart: an encounter's fields and the envelope lock
+/// (rules 1 and 2, encounter.ts); a note's type, a Medical note's patient and its visit made Medical
+/// (3 and 4, note.ts); a finished note's late changes and the reopen (5 and 6); the sign-off, by
+/// signoffEffect, over the content hash, under the credential signedUnder finds (7 and 8,
+/// note-signoff.ts); addenda (9) and corrections (10); referrals, and a visit of someone else
+/// (11); the Medical gate (12); the visit's status worked out from its notes, as the trigger of
+/// migration 0018 does (13); each answer checked against its type (14); the offline audit actions
+/// (15, the registry's); what a sync read shows of a note and what hangs off it (16); what is
+/// accepted with no effect (17). Each person has a credential, an attending's unless a test says.
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -100,6 +106,12 @@ class FakeSyncServer {
   /// time is checked against it once an admin accepts it, not against the accept.
   final heldAt = <String, DateTime>{};
 
+  /// Attestations made online (note_attestations): the note, the signature attested, the attending.
+  final attestations = <({String noteId, String? signoffId, String by})>[];
+
+  /// Each correction's history rows, by the field each changed (note_corrections.changes[].historyId).
+  final correctionHistory = <String, Map<String, String>>{};
+
   /// What each credential may do (services/api/src/auth/permissions.ts CAPABILITIES).
   static const capabilities =
       <String, ({bool chartMedical, bool orderMedications, bool sign, bool billingNeedsAttestation})>{
@@ -124,8 +136,9 @@ class FakeSyncServer {
     'inventory.view',
   };
 
-  /// The CHW preset (design 4.2): registers patients, never charts.
-  static const chw = {'patients.view', 'patients.edit', 'checkins.create'};
+  /// The CHW preset (design 4.2; permissions.ts CHW_PRESET): registers patients and makes referrals,
+  /// never charts.
+  static const chw = {'patients.view', 'patients.edit', 'checkins.create', 'referrals.create', 'routes.view'};
 
   Set<String> permissionsOf(String userId) => permissions[userId] ?? healthcareStaff;
 
@@ -210,6 +223,37 @@ class FakeSyncServer {
       ..completedBy = note.author
       ..everSigned = note.everSigned || everSigned || status == 'signed';
     _refreshVisit(note.attributes['encounterId']);
+  }
+
+  /// Someone else co-signs [noteId] online, as the API's tests do until the route exists (L2): a
+  /// sign-off of act `cosign` that signs the note, which the note then names.
+  String cosign(String noteId, {required String by}) {
+    final note = records[noteId]!;
+    final id = _uuid();
+    records[id] = FakeRecord(
+      id: id,
+      entity: entitySignoff,
+      author: by,
+      createdAt: now(),
+      attributes: {'noteId': noteId, 'act': 'cosign', 'effect': 'signed', 'signerCredential': credentialOf(by)},
+      status: 'signed',
+      fields: {},
+    )..storedAt = now().toUtc();
+    final cur = note.fields['status']!;
+    note
+      ..fields['status'] = FakeField('signed', cur.version, cur.by, cur.at, cur.changeId)
+      ..signoffId = id
+      ..everSigned = true
+      ..attestation = 'not_needed';
+    _refreshVisit(note.attributes['encounterId']);
+    return id;
+  }
+
+  /// An attending attests [noteId]'s current signature online, as the API's tests do (L2).
+  void attest(String noteId, {required String by}) {
+    final note = records[noteId]!;
+    attestations.add((noteId: noteId, signoffId: note.signoffId, by: by));
+    note.attestation = 'attested';
   }
 
   /// A record made online (or seeded): [entity]'s create applied with every permission, as an
@@ -767,7 +811,27 @@ class FakeSyncServer {
 
     // The entity's own checks, before the insert (storeCreate's `check`).
     NoteTypeDef? noteType;
+    String? authorCredential;
     switch (rules.entity) {
+      case entitySignoff:
+        return _signoff(actor, c, v);
+      case entityCorrection:
+        return _correction(actor, c, v);
+      // A note of its visit (note-addendum.ts): checked before the insert, as a missing parent is.
+      // Its author is recorded as they were when they wrote it.
+      case entityAddendum:
+        final visit = records[v['encounterId']]!;
+        final noteId = v['noteId'] as String?;
+        if (noteId != null && records[noteId]!.attributes['encounterId'] != visit.id) {
+          return _rejected('stale_reference', {'problem': 'encounter_note_missing'});
+        }
+        authorCredential = _signedUnderFor(actor, c, notBefore: visit.storedAt ?? visit.createdAt).credential;
+      // A visit of the referral's patient's merged group, or none (referral.ts).
+      case entityReferral:
+        final encounterId = v['encounterId'] as String?;
+        if (encounterId != null && _visitOfOtherPatient(v['patientId']! as String, encounterId)) {
+          return _rejected('stale_reference', {'problem': 'encounter_other_patient'});
+        }
       // In this order (note.ts applyCreate): the type and the visit, which the worker can fix; the
       // gate, which holds the change for review; then each answer, as a set of it is checked. A note
       // is taken whatever state the visit's other notes are in.
@@ -796,6 +860,11 @@ class FakeSyncServer {
       case entityAllergy:
         if (_active(entityAllergy, v['patientId']) >= 30) return _invalid('too_many_allergies');
       case entityProblem:
+        // A visit of the patient's merged group, or none (problem.ts), before the recurrence check.
+        final encounterId = v['encounterId'] as String?;
+        if (encounterId != null && _visitOfOtherPatient(v['patientId']! as String, encounterId)) {
+          return _rejected('stale_reference', {'problem': 'encounter_other_patient'});
+        }
         final origin = (v['recurrenceOf'] ?? v['resolvedInErrorOf']) as String?;
         if (origin != null) {
           final earlier = records[origin]!;
@@ -824,11 +893,36 @@ class FakeSyncServer {
         for (final MapEntry(:key, :value) in initial.entries) key: FakeField(value, 1, actor.userId, at, changeId),
       },
     );
+    record.storedAt = now().toUtc();
     for (final MapEntry(:key, :value) in initial.entries) {
       _history(record, key, 1, value, null, 'created', actor, c);
     }
     Map<String, Object?>? details;
     switch (rules.entity) {
+      // What each keeps, as its load() shows it.
+      case entityAddendum:
+        record.attributes
+          ..clear()
+          ..addAll({
+            'encounterId': v['encounterId'],
+            'noteId': v['noteId'],
+            'text': v['text'],
+            'writtenAt': _iso(DateTime.parse(at)),
+            'clockVerified': c['clockVerified'] == true,
+            'authorName': 'Demo user',
+            'authorCredential': authorCredential,
+          });
+      case entityReferral:
+        record.attributes
+          ..clear()
+          ..addAll({
+            'patientId': v['patientId'],
+            'referredOn': v['referredOn'],
+            'details': v['details'],
+            'encounterId': v['encounterId'],
+            'recordedAt': _iso(DateTime.parse(at)),
+            'clockVerified': c['clockVerified'] == true,
+          });
       case entityEncounter:
         // What the server keeps with a visit and no set changes (encounter.ts load).
         record.attributes.addAll({
@@ -877,7 +971,10 @@ class FakeSyncServer {
         record
           ..checkedAt = DateTime.parse(at)
           ..attributes['sensitive'] = v['sensitive'] == true || _sensitiveCode(v['code'])
-          ..attributes['reversalRequest'] = v['resolvedInErrorOf'] == null ? null : 'open';
+          ..attributes['reversalRequest'] = v['resolvedInErrorOf'] == null ? null : 'open'
+          // Made at a visit, or by hand (problem.ts, lifecycle 8.3).
+          ..attributes['source'] = v['encounterId'] == null ? 'manual' : 'encounter'
+          ..attributes['createdEncounterId'] = v['encounterId'];
       case entityProblemNote:
         // Stored as sent, with the problem it names, retracted or merged since (review finding 7).
         if (records[v['problemId']]!.retracted) details = {'problemRetracted': true};
@@ -1007,6 +1104,12 @@ class FakeSyncServer {
         !actor.permissions.contains('patients.reverse_resolved')) {
       return _rejected('permission');
     }
+    // A referral is taken back by its author, or by anyone who charts (referral.ts mayChange).
+    if (rules.entity == entityReferral &&
+        named.author != actor.userId &&
+        !actor.permissions.contains('encounters.chart')) {
+      return _rejected('permission');
+    }
     // A set naming a merged record applies to its survivor, as one that never saw the survivor's
     // value (design 2.7), unless it answers a conflict that showed the survivor's value.
     final redirect = _redirect(named, field);
@@ -1113,7 +1216,7 @@ class FakeSyncServer {
     switch ((rec.entity, field)) {
       case (entityAlias, 'removal'):
         rec.status = 'removed';
-      case (entityAllergy, 'enteredInError'):
+      case (entityAllergy, 'enteredInError') || (entityReferral, 'enteredInError'):
         rec.status = 'entered_in_error';
       case (entityProblem, 'enteredInError'):
         rec.retracted = true;
@@ -1576,6 +1679,438 @@ class FakeSyncServer {
     return _keepInHistory(s);
   }
 
+  // ---- sign-offs, addenda and corrections (lifecycle 4.6, 4.7) ----
+
+  /// A sign-off (note-signoff.ts): the gate, then signoffEffect's inputs from the note as the server
+  /// holds it, and what the function says. A refusal stores nothing, so the same record sent again
+  /// is applied fresh. Effect `none` stores the sign-off only; any other finishes the note.
+  Map<String, Object?> _signoff(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
+    final note = records[v['noteId']]!;
+    final gated = _medicalGate(actor, note.medical);
+    if (gated != null) return gated;
+    // A phase 2 note has no type to hash it by, and the phone can make no sign-off of one.
+    final definition = _noteTypeOf(note) ?? (throw _DefinitionError());
+    final answers = _answersOf(note);
+    final hashMatches = _byDefinition(() => _contentHash(note, definition)) == v['contentHash'];
+    final finishOk = _byDefinition(() => finishCheck(definition, answers)).isEmpty;
+    // Asked of a Medical note only: signoffEffect reads it of no other.
+    final redFlagsDone =
+        !note.medical ||
+        _isRedFlags(definition) ||
+        _finishedRedFlags(note.attributes['encounterId']! as String, note.id);
+    final under = _signedUnderFor(
+      actor,
+      c,
+      notBefore: note.storedAt ?? note.createdAt,
+      claimed: v['claimedCredential'] as String?,
+    );
+    final status = _noteStatusOf(note);
+    final effect = signoffEffect(
+      noteStatus: NoteStatus.values.byName(status),
+      medicalNote: note.medical,
+      act: SignoffAct.values.byName(v['act']! as String),
+      actsAsAuthor: actor.userId == _actingAuthor(note),
+      canSign: under.canSign,
+      needsAttestation: under.needsAttestation,
+      hashMatches: hashMatches,
+      finishOk: finishOk,
+      redFlagsDone: redFlagsDone,
+    );
+    if (effect is SignoffRefused) return _invalid(effect.problem.code);
+    final counting = _byDefinition(() => effectiveAnswers(definition, answers));
+    if (records.containsKey(c['recordId'])) return _invalid('record_exists');
+    final signedAt = _iso(DateTime.parse(_when(c)));
+    records[c['recordId']! as String] = FakeRecord(
+      id: c['recordId']! as String,
+      entity: entitySignoff,
+      author: actor.userId,
+      createdAt: DateTime.parse(_when(c)),
+      clockVerified: c['clockVerified'] == true,
+      // The NPI and the credential's other fields stay with the billing export, not the phone.
+      attributes: {
+        'noteId': note.id,
+        'act': v['act'],
+        'effect': switch (effect) {
+          SignoffApplied(:final effect) => effect.code,
+          _ => 'none',
+        },
+        'contentHash': v['contentHash'],
+        'signerCredential': under.credential,
+        'claimedCredential': v['claimedCredential'],
+        'needsAttestation': under.needsAttestation,
+        'statementVersion': v['statementVersion'],
+        'signedAt': signedAt,
+        'clockVerified': c['clockVerified'] == true,
+      },
+      status: switch (effect) {
+        SignoffApplied(:final effect) => effect.code,
+        _ => 'none',
+      },
+      fields: {},
+    )..storedAt = now().toUtc();
+    switch (effect) {
+      case SignoffRefused():
+        throw StateError('refused above');
+      case SignoffUnchanged(:final reason):
+        // "Only the note's author can do that. Nothing was changed."
+        if (reason == SignoffUnchangedReason.notAuthor) {
+          _notify(actor.userId, 'change_not_applied', entityNote, note.id);
+        }
+        return _accepted(
+          1,
+          details: {
+            'effect': 'none',
+            'reason': reason.code,
+            'status': status,
+            'attestation': note.attestation,
+            'hashMatches': hashMatches,
+          },
+        );
+      case SignoffApplied(effect: final outcome, :final statusAfter, :final attestationAfter):
+        _finishNote(actor, c, note, counting, statusAfter, attestationAfter, signed: outcome == SignoffOutcome.signed);
+        // "Your credential can't sign this note type. It was saved unsigned for a co-signer."
+        if (outcome == SignoffOutcome.savedUnsigned) _notify(actor.userId, 'note_saved_unsigned', entityNote, note.id);
+        return _accepted(
+          1,
+          details: {
+            'effect': outcome.code,
+            'status': statusAfter.name,
+            'attestation': attestationAfter.code,
+            'hashMatches': hashMatches,
+          },
+        );
+    }
+  }
+
+  /// Finishes a note as a sign-off's effect says (note-signoff.ts finishNote): its answers become
+  /// those that count, which is what was hashed; its status, who finished it and when, and when
+  /// signed the signature it names. The status and each answer dropped get their next version and
+  /// a history row, so nothing is lost.
+  void _finishNote(
+    _Actor actor,
+    Map<String, Object?> c,
+    FakeRecord note,
+    Map<String, Object> counting,
+    NoteStatus statusAfter,
+    Attestation attestationAfter, {
+    required bool signed,
+  }) {
+    final answers = _answersOf(note);
+    final at = _when(c);
+    void write(String field, Object? value, Object? previous) {
+      final version = (note.fields[field]?.version ?? 0) + 1;
+      note.fields[field] = FakeField(value, version, actor.userId, at, c['changeId'] as String?);
+      _history(note, field, version, value, previous, 'set', actor, c);
+    }
+
+    write('status', statusAfter.name, _noteStatusOf(note));
+    for (final path in answers.keys) {
+      if (!counting.containsKey(path)) write('data.$path', null, answers[path]);
+    }
+    note
+      ..completedAt = _iso(DateTime.parse(at))
+      ..completedBy = actor.userId
+      ..everSigned = signed
+      ..signoffId = signed ? c['recordId'] as String? : null
+      ..attestation = attestationAfter.code;
+    _refreshVisit(note.attributes['encounterId']);
+  }
+
+  /// The hash of a note as the server holds it (lifecycle 4.5): its visit's patient and summary now.
+  String _contentHash(FakeRecord note, NoteTypeDef definition) {
+    final visit = records[note.attributes['encounterId']]!;
+    return noteContentHash(
+      noteId: note.id,
+      encounterId: visit.id,
+      patientId: visit.fields['patientId']?.value as String?,
+      summary: visit.fields['summary']?.value as String?,
+      definition: definition,
+      answers: _answersOf(note),
+    );
+  }
+
+  /// The Red flags and disposition note, added by itself to a Medical visit (forms 6.2).
+  static bool _isRedFlags(NoteTypeDef definition) => definition.auto == 'medical';
+
+  /// The visit holds a finished Red flags note other than [noteId] (note-signoff.ts finishedRedFlags).
+  bool _finishedRedFlags(String encounterId, String noteId) => _notesOf(encounterId).any((n) {
+    final version = n.attributes['noteTypeVersion'] as int?;
+    if (n.id == noteId || _noteStatusOf(n) == 'draft' || version == null) return false;
+    final definition = _definition(n.attributes['noteTypeKey']! as String, version);
+    return definition != null && _isRedFlags(definition);
+  });
+
+  /// signed-under.ts signedUnder (lifecycle 3.5): the credential a signature, an addendum or a
+  /// correction is recorded under. A time the server can trust finds the credential held then,
+  /// from the first later change; otherwise the one held now. A claim only makes it more careful.
+  static SignedUnder signedUnder({
+    required String current,
+    required List<({String changedAt, String oldCredential})> laterChanges,
+    required String signedAt,
+    required String receivedAt,
+    required bool clockVerified,
+    required String notBefore,
+    required String? claimed,
+  }) {
+    if (laterChanges.any((change) => DateTime.tryParse(change.changedAt) == null)) {
+      throw StateError('a credential change has a time that cannot be read');
+    }
+    final at = DateTime.tryParse(signedAt);
+    final received = DateTime.tryParse(receivedAt);
+    final before = DateTime.tryParse(notBefore);
+    // sync/push.ts CLOCK_LIMIT_MS: how far ahead of its receipt a time is believed.
+    final timeTrusted =
+        clockVerified &&
+        at != null &&
+        received != null &&
+        before != null &&
+        at.difference(received) <= const Duration(minutes: 5) &&
+        !at.isBefore(before);
+    var found = current;
+    if (timeTrusted) {
+      DateTime? first;
+      for (final change in laterChanges) {
+        final changed = DateTime.parse(change.changedAt);
+        if (changed.isAfter(at) && (first == null || changed.isBefore(first))) {
+          first = changed;
+          found = change.oldCredential;
+        }
+      }
+    }
+    return (
+      credential: found,
+      timeTrusted: timeTrusted,
+      canSign: capabilities[found]!.sign,
+      needsAttestation:
+          capabilities[found]!.billingNeedsAttestation ||
+          (claimed != null && capabilities[claimed]!.billingNeedsAttestation),
+      claimDiffers: claimed != null && claimed != found,
+    );
+  }
+
+  /// [signedUnder] for [actor]'s change [c]: their credential now and its later changes
+  /// (signer.ts), the change's time, and when the server received it (records.ts receivedAtOf).
+  SignedUnder _signedUnderFor(_Actor actor, Map<String, Object?> c, {required DateTime notBefore, String? claimed}) {
+    final signedAt = DateTime.parse(_when(c));
+    return signedUnder(
+      current: credentialOf(actor.userId),
+      laterChanges: [
+        for (final change in credentialChanges)
+          if (change.userId == actor.userId && change.changedAt.isAfter(signedAt))
+            (changedAt: _iso(change.changedAt), oldCredential: change.oldCredential),
+      ],
+      signedAt: _when(c),
+      receivedAt: _iso(heldAt[c['changeId']] ?? now()),
+      clockVerified: c['clockVerified'] == true,
+      notBefore: _iso(notBefore),
+      claimed: claimed,
+    );
+  }
+
+  /// A notice with no text (user_notices).
+  void _notify(String userId, String kind, String entity, String recordId) =>
+      notices.add(FakeNotice(_uuid(), userId, kind, entity, recordId, now()));
+
+  /// A patient's record names a visit of someone else (records.ts visitOfOtherPatient): one whose
+  /// patient is outside [patientId]'s merged group. A visit that names no patient names nobody else.
+  bool _visitOfOtherPatient(String patientId, String encounterId) {
+    final seen = records[encounterId]!.fields['patientId']?.value as String?;
+    return seen != null && canonicalOf(seen) != canonicalOf(patientId);
+  }
+
+  /// A correction (note-correction.ts, lifecycle 4.7), step by step from the one note: whoever does
+  /// not act as the author is told; the Medical gate; a declined request is stored as it is; each
+  /// new value is one the type takes; a draft is edited by the draft rule; then each answer is still
+  /// at the version the person saw, a correction that changes nothing is stored as such, and one that
+  /// would leave the note failing its finish check is refused. Otherwise the answers are written as
+  /// `corrected`, and correctionEffect says what is left of the signature.
+  Map<String, Object?> _correction(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
+    final recordId = c['recordId']! as String;
+    if (records.containsKey(recordId)) return _invalid('record_exists');
+    final note = records[v['noteId']]!;
+    final under = _signedUnderFor(
+      actor,
+      c,
+      notBefore: note.storedAt ?? note.createdAt,
+      claimed: v['claimedCredential'] as String?,
+    );
+    final asked = [
+      for (final change in (v['changes']! as List<Object?>).cast<Map<String, Object?>>())
+        (
+          field: change['field']! as String,
+          path: (change['field']! as String).substring('data.'.length),
+          newValue: change['newValue'],
+          baseVersion: change['baseVersion']! as int,
+          cur: note.state(change['field']! as String),
+        ),
+    ];
+    final status = _noteStatusOf(note);
+    final unchanged = (status: status, attestation: note.attestation);
+    Map<String, Object?> store(
+      String outcome, [
+      ({String status, String attestation})? after,
+      Map<String, String> ids = const {},
+    ]) {
+      final shown = after ?? unchanged;
+      records[recordId] = FakeRecord(
+        id: recordId,
+        entity: entityCorrection,
+        author: actor.userId,
+        createdAt: DateTime.parse(_when(c)),
+        clockVerified: c['clockVerified'] == true,
+        attributes: {
+          'noteId': note.id,
+          'changes': [
+            for (final a in asked) {'field': a.field, 'oldValue': a.cur['value'], 'newValue': a.newValue},
+          ],
+          'outcome': outcome,
+          'reason': v['reason'],
+          'requestedByPatient': v['requestedByPatient'],
+          'correctorCredential': under.credential,
+          'claimedCredential': v['claimedCredential'],
+          'correctedAt': _iso(DateTime.parse(_when(c))),
+          'clockVerified': c['clockVerified'] == true,
+        },
+        status: outcome,
+        fields: {},
+      )..storedAt = now().toUtc();
+      correctionHistory[recordId] = ids;
+      return _accepted(1, details: {'outcome': outcome, 'status': shown.status, 'attestation': shown.attestation});
+    }
+
+    // 1. "The original signer corrects their own note" (PRD main 461): whoever acts as its author.
+    if (actor.userId != _actingAuthor(note)) {
+      _notify(actor.userId, 'change_not_applied', entityNote, note.id);
+      return store('not_author');
+    }
+    final gated = _medicalGate(actor, note.medical);
+    if (gated != null) return gated;
+    if (v['declined'] == true) return store('declined');
+
+    // A phase 2 note has no type to check a correction by; as a draft it keeps the open path rule.
+    final definition = _noteTypeOf(note);
+    final draft = status == 'draft';
+    if (definition == null && !draft) throw _DefinitionError();
+    if (definition != null) {
+      for (final a in asked) {
+        final problem = _byDefinition(() => checkAnswer(definition, a.path, a.newValue));
+        if (problem != null) return _invalid(problem.code, {'field': a.field});
+      }
+    }
+    // The draft rule's bound: on what reaches the chart.
+    final held = note.fields.keys.where((f) => f.startsWith('data.')).length;
+    final added = asked.where((a) => !note.fields.containsKey(a.field)).length;
+    if (added > 0 && held + added > maxNoteFields) return _invalid('too_many_fields');
+
+    // 2. A note reopened since is edited as a draft: a value the person saw, or a blank, is
+    // written; one they did not see is never overwritten silently.
+    if (draft) {
+      final writes = <_AnswerWrite>[];
+      for (final a in asked) {
+        if (_same(a.cur['value'], a.newValue)) continue;
+        final kind = a.cur['version'] == a.baseVersion
+            ? 'set'
+            : isBlankValue(a.cur['value'])
+            ? 'filled_blank'
+            : null;
+        if (kind == null) return _invalid('field_changed', {'field': a.field});
+        writes.add((field: a.field, value: a.newValue, previous: a.cur['value'], kind: kind));
+      }
+      return store('draft_edit', unchanged, _writeAnswers(actor, c, note, writes, null));
+    }
+    // 6. Each answer is as the person saw it: another correction may have got there first.
+    final moved = asked.where((a) => a.cur['version'] != a.baseVersion).firstOrNull;
+    if (moved != null) return _invalid('field_changed', {'field': moved.field});
+    // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds.
+    final writes = <_AnswerWrite>[
+      for (final a in asked)
+        if (!_same(a.cur['value'], a.newValue))
+          (field: a.field, value: a.newValue, previous: a.cur['value'], kind: 'corrected'),
+    ];
+    if (writes.isEmpty) return store('no_change');
+    // 8. A correction can never leave a signed note failing its own finish check.
+    final answers = {..._answersOf(note), for (final a in asked) a.path: a.newValue};
+    if (_byDefinition(() => finishCheck(definition!, answers)).isNotEmpty) return _invalid('incomplete');
+
+    // 9. The table of 3.6.
+    final effect = correctionEffect(
+      noteStatus: NoteStatus.values.byName(status),
+      attestation: Attestation.values.firstWhere((a) => a.code == note.attestation),
+      correctorCanSign: under.canSign,
+      correctorNeedsAttestation: under.needsAttestation,
+    );
+    final told = _reviewersUndone(actor, note, effect);
+    final ids = _writeAnswers(actor, c, note, writes, effect);
+    final outcome = store('corrected', (
+      status: effect.statusAfter.name,
+      attestation: effect.attestationAfter.code,
+    ), ids);
+    // "A note you signed was corrected. It needs your review again."
+    for (final userId in told) {
+      _notify(userId, 'note_corrected', entityNote, note.id);
+    }
+    return outcome;
+  }
+
+  /// The co-signer of the signature a correction clears, and whoever attested the note when it is no
+  /// longer attested (note-correction.ts reviewersUndone), read before the note is written. Never
+  /// the corrector.
+  List<String> _reviewersUndone(_Actor actor, FakeRecord note, CorrectionEffect effect) {
+    final told = <String>{};
+    final signature = records[note.signoffId];
+    if (effect.clearSignoff && signature != null && signature.attributes['act'] == 'cosign') told.add(signature.author);
+    if (note.attestation == 'attested' && effect.attestationAfter != Attestation.attested) {
+      told.addAll([
+        for (final a in attestations)
+          if (a.noteId == note.id && a.signoffId == note.signoffId) a.by,
+      ]);
+    }
+    return [...told..remove(actor.userId)];
+  }
+
+  /// Writes a correction's answers (note-correction.ts writeAnswers): each its next version, with
+  /// what correctionEffect says of the status, the signature and the attestation of a finished note;
+  /// then a history row for each answer, and for the status when it moves. Each answer's history ID.
+  Map<String, String> _writeAnswers(
+    _Actor actor,
+    Map<String, Object?> c,
+    FakeRecord note,
+    List<_AnswerWrite> writes,
+    CorrectionEffect? effect,
+  ) {
+    if (writes.isEmpty) return const {};
+    final at = _when(c);
+    final changeId = c['changeId'] as String?;
+    final previous = _noteStatusOf(note);
+    final moves = effect != null && effect.statusAfter.name != previous;
+    for (final w in writes) {
+      note.fields[w.field] = FakeField(w.value, (note.fields[w.field]?.version ?? 0) + 1, actor.userId, at, changeId);
+    }
+    if (moves) {
+      note.fields['status'] = FakeField(
+        effect.statusAfter.name,
+        note.fields['status']!.version + 1,
+        actor.userId,
+        at,
+        changeId,
+      );
+    }
+    if (effect != null) {
+      note.attestation = effect.attestationAfter.code;
+      if (effect.clearSignoff) note.signoffId = null;
+    }
+    final ids = <String, String>{};
+    for (final w in writes) {
+      _history(note, w.field, note.fields[w.field]!.version, w.value, w.previous, w.kind, actor, c);
+      ids[w.field] = history.last['id']! as String;
+    }
+    if (moves) {
+      _history(note, 'status', note.fields['status']!.version, effect.statusAfter.name, previous, 'set', actor, c);
+    }
+    _refreshVisit(note.attributes['encounterId']);
+    return ids;
+  }
+
   // ---- duplicate matching (design 8.2), with the phone's scorer and no sound-alike term ----
 
   /// The names of a canonical patient's group, as the server's patient_name_keys hold them.
@@ -1811,8 +2346,8 @@ class FakeSyncServer {
         'title': r.attributes['title'],
         'code': code == null ? null : {'system': code['system'], 'code': code['code'], 'display': code['display']},
         'sensitive': r.attributes['sensitive'] == true,
-        'source': 'sync',
-        'createdEncounterId': r.attributes['encounterId'],
+        'source': r.attributes['source'],
+        'createdEncounterId': r.attributes['createdEncounterId'],
         'onsetDate': r.attributes['onsetDate'],
         'recurrenceOf': r.attributes['recurrenceOf'],
         'resolvedInErrorOf': r.attributes['resolvedInErrorOf'],
@@ -2557,6 +3092,12 @@ class FakeSyncServer {
 /// Why a value the draft rule would write is kept in history instead (records.ts KeptInstead).
 typedef _Kept = ({String problem, ({String kind, List<String> to})? notice});
 
+/// What signedUnder finds: the credential, whether the time was believed, and what it may do.
+typedef SignedUnder = ({String credential, bool timeTrusted, bool canSign, bool needsAttestation, bool claimDiffers});
+
+/// One answer a correction writes, with the history kind it is written under.
+typedef _AnswerWrite = ({String field, Object? value, Object? previous, String kind});
+
 /// A rule could not apply a note type's definition (records.ts DefinitionError): its row is forged,
 /// a note names a version the team does not hold, or the interpreter threw on it.
 class _DefinitionError implements Exception {}
@@ -2705,6 +3246,13 @@ class FakeRecord {
   bool everSigned = false;
   String? completedAt;
   String? completedBy;
+
+  /// A note's attestation (not_needed, waiting, attested) and the signature that signs it.
+  String attestation = 'not_needed';
+  String? signoffId;
+
+  /// When the server received its create (created_at): signedUnder believes no time before it.
+  DateTime? storedAt;
 
   /// The field as a FieldState: version 0 and no value when never written.
   Map<String, Object?> state(String field) {

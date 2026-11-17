@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/encounters/content_hash.dart';
+import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/entities.dart';
 
@@ -14,6 +17,21 @@ import 'test_note_types.dart';
 /// services/api does: notices (patients/id-links.ts, sync/entities/fields.ts, sync/review.ts), the
 /// push (sync/push.ts, sync/apply.ts) and the sync read (routes/sync.ts, sync/review.ts). Phase 4's
 /// rules (lifecycle 4.9) follow, each case named after the API test that holds the same rule.
+/// A note as a phone holds it: enough to hash it the way the phone does (lifecycle 4.5).
+typedef Held = ({
+  String noteId,
+  String encounterId,
+  String? patientId,
+  String? summary,
+  TestNoteType type,
+  Map<String, Object?> answers,
+});
+
+/// The note lifecycle's vectors (packages/contract/test-vectors), which the API's own readers hold
+/// it to: the fake's sign-off, hash and credential rules answer every case the same.
+Map<String, Object?> vectors(String name) =>
+    jsonDecode(File('../../packages/contract/test-vectors/$name.json').readAsStringSync()) as Map<String, Object?>;
+
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
@@ -377,6 +395,12 @@ void main() {
       for (final n in server.notices)
         if (n.recordId == recordId) '${n.userId} ${n.kind}',
     ]..sort();
+
+    /// Notices on a note, in the order made: who, what kind, and on which entity.
+    List<String> noticesOn(String noteId) => [
+      for (final n in server.notices)
+        if (n.recordId == noteId) '${n.userId} ${n.kind} ${n.entity}',
+    ];
 
     List<(String, Object?, String)> historyOf(String recordId, String field) => [
       for (final h in server.history)
@@ -1098,6 +1122,69 @@ void main() {
           expect([written['version'], written['by'], written['approvedBy']], [2, dana, admin]);
         },
       );
+
+      // services/api/test/sync-reads.test.ts, 'the Medical gate (lifecycle 4.2; 4.9 rule 12)'.
+      test('holds every kind of change to a Medical note from a credential lowered offline; an addendum changes no note and is taken', () async {
+        server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+        server.credentials[dana] = 'attending';
+        final visit = visitOf(patientId: patient, by: dana);
+        String noteBy(TestNoteType type, Map<String, Object?> data) =>
+            server.seed(entityNote, noteValue(visit, type, data), by: dana);
+        server.finishNote(noteBy(testRedFlags, const {'flags.any': 'no'}), status: 'signed');
+        final draft = noteBy(testMedical, const {'care.plan': 'Demo: fluids'});
+        final completed = noteBy(testMedical, const {'care.plan': 'Demo: rest'});
+        server.finishNote(completed);
+        final signed = noteBy(testMedical, const {'care.plan': 'Demo: sleep'});
+        server.finishNote(signed, status: 'signed');
+
+        // Made offline, before the credential went down; sent after.
+        final created = change(entityNote, 'create', noteValue(visit, testMedical));
+        final answer = setOn(entityNote, draft, 'data.care.plan', 'Demo: fluids and rest', 1);
+        final reopen = setOn(entityNote, completed, 'status', 'draft', 1);
+        final signoff = change(entitySignoff, 'create', {
+          'noteId': draft,
+          'act': 'sign',
+          'contentHash': noteContentHash(
+            noteId: draft,
+            encounterId: visit,
+            patientId: patient,
+            summary: null,
+            definition: NoteTypeDef.fromJson(server.noteTypes[(testMedical.key, 1)]!),
+            answers: const {'care.plan': 'Demo: fluids'},
+          ),
+          'claimedCredential': 'attending',
+          'statementVersion': 'sign-2026-11',
+        });
+        final correction = change(entityCorrection, 'create', {
+          'noteId': signed,
+          'changes': [
+            {'field': 'data.care.plan', 'newValue': 'Demo: sleep and food', 'baseVersion': 1},
+          ],
+          'reason': 'Demo: left out',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': 'attending',
+          'signoffId': null,
+        });
+        final addendum = change(entityAddendum, 'create', {
+          'encounterId': visit,
+          'noteId': signed,
+          'text': 'Demo: called back',
+          'signoffId': null,
+        });
+        server.changeCredential(dana, 'chw');
+        final gated = [created, answer, reopen, signoff, correction];
+        expect(await send(dana, [...gated, addendum]), [for (final c in gated) heldOnly(c), taken(addendum, 1)]);
+
+        // Nothing of the held changes reached the chart.
+        expect(server.records[draft]!.fields['data.care.plan']!.value, 'Demo: fluids');
+        expect(server.records[completed]!.fields['status']!.value, 'completed');
+        expect(server.records[signed]!.fields['data.care.plan']!.value, 'Demo: sleep');
+        for (final c in [created, signoff, correction]) {
+          expect(server.records[c['recordId']], isNull);
+        }
+        expect([for (final c in gated) server.held[c['changeId']]!.reason], List.filled(gated.length, 'permission'));
+      });
     });
 
     // Rule 14: services/api/test/sync-encounters.test.ts, 'a note’s answers (lifecycle 4.4)'. Alex and
@@ -1418,6 +1505,1697 @@ void main() {
           kept(plain, answers['general.notes'], 1, 'note_finished'),
         ]);
       });
+    });
+
+    // Rules 7 to 10: services/api/test/sync-signoffs.test.ts and sync-corrections.test.ts. Alex is an
+    // attending unless a case says otherwise. The phone's hash is worked out here from what the test
+    // holds, as the API's tests do, never read from the fake.
+    group('sign-offs (lifecycle 4.6)', () {
+      late String patient;
+      setUp(() {
+        server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+        patient = server.seedPatient();
+      });
+
+      Held noteHeld(String encounterId, TestNoteType type, Map<String, Object?> answers, {String by = alex}) {
+        final visit = server.records[encounterId]!;
+        return (
+          noteId: server.seed(entityNote, noteValue(encounterId, type, answers), by: by),
+          encounterId: encounterId,
+          patientId: visit.fields['patientId']?.value as String?,
+          summary: visit.fields['summary']?.value as String?,
+          type: type,
+          answers: answers,
+        );
+      }
+
+      String hashOf(Held n) => noteContentHash(
+        noteId: n.noteId,
+        encounterId: n.encounterId,
+        patientId: n.patientId,
+        summary: n.summary,
+        definition: NoteTypeDef.fromJson(server.noteTypes[(n.type.key, n.type.version)]!),
+        answers: n.answers,
+      );
+
+      /// A sign-off as the phone makes one; a `sign` claims the credential its saved profile shows.
+      Map<String, Object?> signoff(
+        String user,
+        Held n,
+        String act, {
+        String? hash,
+        String? claimed,
+        bool claimsNothing = false,
+        String? recordId,
+        String? supersedes,
+        String? at,
+        bool clockVerified = true,
+      }) => change(
+        entitySignoff,
+        'create',
+        {
+          'noteId': n.noteId,
+          'act': act,
+          'contentHash': hash ?? hashOf(n),
+          'claimedCredential': claimsNothing ? null : claimed ?? (act == 'sign' ? server.credentialOf(user) : null),
+          'statementVersion': act == 'sign' ? 'sign-2026-11' : 'complete-2026-11',
+        },
+        recordId: recordId,
+        more: {
+          'supersedes': ?supersedes,
+          if (at != null) ...{'deviceTime': at, 'correctedTime': at},
+          'clockVerified': clockVerified,
+        },
+      );
+
+      /// The same sign-off record sent again, as the phone's fix path sends it.
+      Map<String, Object?> again(String user, Held n, String act, Map<String, Object?> refusedOne) => signoff(
+        user,
+        n,
+        act,
+        recordId: refusedOne['recordId']! as String,
+        supersedes: refusedOne['changeId']! as String,
+      );
+
+      Map<String, Object?> applied(Map<String, Object?> c, String effect, String status, String attestation) => {
+        ...taken(c, 1),
+        'details': {'effect': effect, 'status': status, 'attestation': attestation, 'hashMatches': true},
+      };
+      Map<String, Object?> noEffect(
+        Map<String, Object?> c,
+        String reason,
+        String status,
+        String attestation,
+        bool hashMatches,
+      ) => {
+        ...taken(c, 1),
+        'details': {
+          'effect': 'none',
+          'reason': reason,
+          'status': status,
+          'attestation': attestation,
+          'hashMatches': hashMatches,
+        },
+      };
+
+      /// A visit of the patient with [by]'s Red flags note answered and a draft of [type].
+      ({String visit, Held flags, Held note}) chartedVisit(
+        String by, {
+        TestNoteType type = testMedical,
+        Map<String, Object?> answers = const {},
+      }) {
+        final visit = visitOf(patientId: patient, by: by);
+        return (
+          visit: visit,
+          flags: noteHeld(visit, testRedFlags, const {'flags.any': 'no'}, by: by),
+          note: noteHeld(visit, type, {'care.plan': 'Demo: rest and fluids', ...answers}, by: by),
+        );
+      }
+
+      test('every case of signoffEffect in note-lifecycle.json, from the note as the server holds it', () async {
+        final cases = ((vectors('note-lifecycle')['cases']! as Map<String, Object?>)['signoffEffect']! as List<Object?>)
+            .cast<Map<String, Object?>>();
+        expect(cases.length, greaterThanOrEqualTo(31));
+        // Each test type with one required answer more, so the finish check can fail.
+        TestNoteType withRequired(TestNoteType type) {
+          final d = server.noteTypes[(type.key, type.version)]!;
+          final key = '${type.key}_required';
+          server.noteTypes[(key, 1)] = {
+            ...d,
+            'key': key,
+            'sections': [
+              ...d['sections']! as List<Object?>,
+              {
+                'id': 'must',
+                'title': 'Must',
+                'fields': [
+                  {
+                    'id': 'answer',
+                    'kind': 'text',
+                    'label': 'Answer',
+                    'lines': 'one',
+                    'maxLength': 200,
+                    'required': true,
+                  },
+                ],
+              },
+            ],
+          };
+          return (key: key, version: 1);
+        }
+
+        final types = {false: withRequired(testNote), true: withRequired(testMedical)};
+        for (final c in cases) {
+          final input = c['input']! as Map<String, Object?>;
+          final expected = c['expected']! as Map<String, Object?>;
+          final medical = input['medicalNote'] == true;
+          final signer = input['actsAsAuthor'] == true ? alex : blair;
+          // The credential found at the signature: held then, raised to an attending since, so the
+          // gate (which reads the credential now) lets every case through.
+          final found = switch ((input['canSign'], input['needsAttestation'])) {
+            (true, false) => 'attending',
+            (true, true) => 'resident',
+            (false, true) => 'student',
+            _ => 'chw',
+          };
+          final visit = visitOf(patientId: patient);
+          if (medical && input['redFlagsDone'] == true) {
+            server.finishNote(noteHeld(visit, testRedFlags, const {'flags.any': 'no'}).noteId);
+          }
+          final n = noteHeld(visit, types[medical]!, {
+            'care.plan': 'Demo: rest and fluids',
+            if (input['finishOk'] == true) 'must.answer': 'Demo: done',
+          });
+          if (input['noteStatus'] != 'draft') server.finishNote(n.noteId, status: input['noteStatus']! as String);
+          server.credentials[signer] = found;
+          server.changeCredential(signer, 'attending', at: now.add(const Duration(minutes: 1)));
+          final s = signoff(
+            signer,
+            n,
+            input['act']! as String,
+            hash: input['hashMatches'] == true ? null : '0' * 64,
+            claimsNothing: true,
+          );
+          final answered = await send(signer, [s]);
+          final reason = c['name']! as String;
+          final status = server.records[n.noteId]!.fields['status']!.value;
+          if (expected['refuse'] case final String problem) {
+            expect(answered, [refused(problem)], reason: reason);
+            expect([status, server.records[s['recordId']]], [input['noteStatus'], isNull], reason: reason);
+          } else if (expected['effect'] == 'none') {
+            expect(answered, [
+              noEffect(
+                s,
+                expected['reason']! as String,
+                input['noteStatus']! as String,
+                'not_needed',
+                input['hashMatches']! as bool,
+              ),
+            ], reason: reason);
+            expect([status, server.records[s['recordId']]!.status], [input['noteStatus'], 'none'], reason: reason);
+            expect(noticesOn(n.noteId), [
+              if (expected['reason'] == 'not_author') '$signer change_not_applied $entityNote',
+            ], reason: reason);
+          } else {
+            final effect = expected['effect']! as String;
+            expect(answered, [
+              applied(s, effect, expected['statusAfter']! as String, expected['attestationAfter']! as String),
+            ], reason: reason);
+            expect(status, expected['statusAfter'], reason: reason);
+            expect(noticesOn(n.noteId), [
+              if (effect == 'saved_unsigned') '$signer note_saved_unsigned $entityNote',
+            ], reason: reason);
+          }
+          server.credentials.clear();
+          server.credentialChanges.clear();
+        }
+      });
+
+      test(
+        'a Non-Medical note is completed: the sign-off row, then the note, in one change with one audit event',
+        () async {
+          server.credentials[dana] = 'none';
+          final visit = visitOf(by: dana);
+          final note = noteHeld(visit, testNote, const {'care.plan': 'Demo: rest and fluids'}, by: dana);
+          final done = signoff(dana, note, 'complete');
+          final answered = await send(dana, [done]);
+          expect(answered, [applied(done, 'completed', 'completed', 'not_needed')]);
+          final n = server.records[note.noteId]!;
+          expect(
+            [
+              n.fields['status']!.value,
+              n.fields['status']!.version,
+              n.completedAt,
+              n.completedBy,
+              n.signoffId,
+              n.everSigned,
+            ],
+            ['completed', 2, now.toIso8601String(), dana, null, false],
+          );
+          expect(server.records[done['recordId']]!.attributes, {
+            'noteId': note.noteId,
+            'act': 'complete',
+            'effect': 'completed',
+            'contentHash': (done['value']! as Map<String, Object?>)['contentHash'],
+            'signerCredential': 'none',
+            'claimedCredential': null,
+            'needsAttestation': false,
+            'statementVersion': 'complete-2026-11',
+            'signedAt': now.toIso8601String(),
+            'clockVerified': true,
+          });
+          expect(historyOf(note.noteId, 'status'), [('created', 'draft', '1'), ('set', 'completed', '2')]);
+          expect((await read(entityEncounter, visit)).status, 'completed');
+          // Sent twice, it answers the same from its receipt, and nothing more is written.
+          expect(await send(dana, [done]), answered);
+          expect(historyOf(note.noteId, 'status'), hasLength(2));
+
+          // A Non-Medical note is never signed: `sign` is a `complete`, whatever the credential.
+          final social = noteHeld(visit, testNote, const {'care.plan': 'Demo: housing list'});
+          final signs = signoff(alex, social, 'sign');
+          expect(await send(alex, [signs]), [applied(signs, 'completed', 'completed', 'not_needed')]);
+          expect(server.records[social.noteId]!.signoffId, isNull);
+        },
+      );
+
+      test('a Medical note: an attending’s sign is signed with nothing held, a resident’s waits for attestation, and complete waits for a co-signer', () async {
+        final ours = chartedVisit(alex, answers: const {'vitals.pulse': 88});
+        final flags = signoff(alex, ours.flags, 'sign');
+        final note = signoff(alex, ours.note, 'sign');
+        expect(await send(alex, [flags, note]), [
+          applied(flags, 'signed', 'signed', 'not_needed'),
+          applied(note, 'signed', 'signed', 'not_needed'),
+        ]);
+        final n = server.records[ours.note.noteId]!;
+        expect(
+          [n.attestation, n.completedAt, n.completedBy, n.everSigned, n.signoffId],
+          ['not_needed', now.toIso8601String(), alex, isTrue, note['recordId']],
+        );
+        expect(server.records[note['recordId']]!.attributes, containsPair('signerCredential', 'attending'));
+        expect((await read(entityEncounter, ours.visit)).status, 'signed');
+
+        server.credentials[blair] = 'resident';
+        final hers = chartedVisit(blair);
+        final blairs = [signoff(blair, hers.flags, 'sign'), signoff(blair, hers.note, 'sign')];
+        expect(await send(blair, blairs), [for (final c in blairs) applied(c, 'signed', 'signed', 'waiting')]);
+        expect(server.records[blairs[1]['recordId']]!.attributes, containsPair('needsAttestation', true));
+
+        final waits = chartedVisit(alex);
+        final completes = [signoff(alex, waits.flags, 'complete'), signoff(alex, waits.note, 'complete')];
+        expect(await send(alex, completes), [
+          for (final c in completes) applied(c, 'completed', 'completed', 'not_needed'),
+        ]);
+        expect(
+          [server.records[waits.note.noteId]!.signoffId, server.records[waits.note.noteId]!.everSigned],
+          [null, false],
+        );
+        expect((await read(entityEncounter, waits.visit)).status, 'completed');
+      });
+
+      test(
+        'sign from a credential that cannot sign is saved unsigned for a co-signer, and the signer is told',
+        () async {
+          server.credentials[blair] = 'student';
+          final his = chartedVisit(blair);
+          // His phone's saved profile still showed resident.
+          final flags = signoff(blair, his.flags, 'complete');
+          final note = signoff(blair, his.note, 'sign', claimed: 'resident');
+          expect(await send(blair, [flags, note]), [
+            applied(flags, 'completed', 'completed', 'not_needed'),
+            applied(note, 'saved_unsigned', 'completed', 'not_needed'),
+          ]);
+          expect(
+            server.records[note['recordId']]!.attributes,
+            allOf(
+              containsPair('signerCredential', 'student'),
+              containsPair('claimedCredential', 'resident'),
+              containsPair('needsAttestation', true),
+            ),
+          );
+          expect(noticesOn(his.note.noteId), ['$blair note_saved_unsigned $entityNote']);
+          expect(noticesOn(his.flags.noteId), isEmpty);
+        },
+      );
+
+      test('a second sign-off of a finished note is stored and changes nothing; its receipt says whether it saw what was signed', () async {
+        final ours = chartedVisit(alex);
+        await send(alex, [signoff(alex, ours.flags, 'sign'), signoff(alex, ours.note, 'sign')]);
+        final versions = {
+          for (final MapEntry(:key, :value) in server.records[ours.note.noteId]!.fields.entries) key: value.version,
+        };
+        final same = signoff(alex, ours.note, 'sign');
+        final other = signoff(alex, ours.note, 'complete', hash: 'ab' * 32);
+        expect(await send(alex, [same, other]), [
+          noEffect(same, 'already_finished', 'signed', 'not_needed', true),
+          noEffect(other, 'already_finished', 'signed', 'not_needed', false),
+        ]);
+        expect({
+          for (final MapEntry(:key, :value) in server.records[ours.note.noteId]!.fields.entries) key: value.version,
+        }, versions);
+        expect([server.records[same['recordId']]!.status, server.records[other['recordId']]!.status], ['none', 'none']);
+        expect(noticesOn(ours.note.noteId), isEmpty);
+      });
+
+      test(
+        'a sign-off from someone who does not act as the author is stored with no effect, and the sender is told',
+        () async {
+          server.credentials[blair] = 'resident';
+          final ours = chartedVisit(alex);
+          final theirs = signoff(blair, ours.note, 'sign');
+          expect(await send(blair, [theirs]), [noEffect(theirs, 'not_author', 'draft', 'not_needed', true)]);
+          expect(server.records[theirs['recordId']]!.author, blair);
+          expect(noticesOn(ours.note.noteId), ['$blair change_not_applied $entityNote']);
+
+          // Assigned to Blair after Alex left (3.8): Blair acts as the author now, and Alex no longer does.
+          server.records[ours.note.noteId]!.assignedTo = blair;
+          final flags = signoff(alex, ours.flags, 'sign');
+          final writers = signoff(alex, ours.note, 'sign');
+          expect(await send(alex, [flags, writers]), [
+            applied(flags, 'signed', 'signed', 'not_needed'),
+            noEffect(writers, 'not_author', 'draft', 'not_needed', true),
+          ]);
+          final assignees = signoff(blair, ours.note, 'sign');
+          expect(await send(blair, [assignees]), [applied(assignees, 'signed', 'signed', 'waiting')]);
+          expect(
+            [server.records[ours.note.noteId]!.completedBy, server.records[ours.note.noteId]!.signoffId],
+            [blair, assignees['recordId']],
+          );
+        },
+      );
+
+      test('content_changed, incomplete and red_flags_first, each fixed by sending the same record again', () async {
+        final visit = visitOf(patientId: patient);
+        // The Red flags note the app added, not answered yet.
+        final flags = noteHeld(visit, testRedFlags, const {});
+        final note = noteHeld(visit, testMedical, const {'care.plan': 'Demo: rest'});
+        final noteFirst = signoff(alex, note, 'sign', hash: 'cd' * 32);
+        final flagsFirst = signoff(alex, flags, 'sign');
+        expect(await send(alex, [noteFirst, flagsFirst]), [refused('content_changed'), refused('incomplete')]);
+        final noteSecond = again(alex, note, 'sign', noteFirst);
+        expect(await send(alex, [noteSecond]), [refused('red_flags_first')]);
+        for (final n in [flags, note]) {
+          expect(server.records[n.noteId]!.fields['status']!.value, 'draft');
+        }
+        for (final c in [noteFirst, flagsFirst]) {
+          expect(server.records[c['recordId']], isNull);
+        }
+
+        // One Complete fixes them all: the red-flag answer, then the Red flags note first.
+        final answer = setOn(entityNote, flags.noteId, 'data.flags.any', 'no', 0);
+        final answered = (
+          noteId: flags.noteId,
+          encounterId: visit,
+          patientId: patient,
+          summary: null,
+          type: testRedFlags,
+          answers: const <String, Object?>{'flags.any': 'no'},
+        );
+        final flagsFix = again(alex, answered, 'sign', flagsFirst);
+        final noteFix = again(alex, note, 'sign', noteSecond);
+        expect(await send(alex, [answer, flagsFix, noteFix]), [
+          taken(answer, 1),
+          applied(flagsFix, 'signed', 'signed', 'not_needed'),
+          applied(noteFix, 'signed', 'signed', 'not_needed'),
+        ]);
+        expect(
+          [
+            for (final c in [noteFirst, flagsFirst, noteSecond]) server.receipts[c['changeId']]!.resolved,
+          ],
+          [true, true, true],
+        );
+      });
+
+      test('only a finished Red flags note of the visit counts, and a Non-Medical note never waits for one', () async {
+        final elsewhere = chartedVisit(alex);
+        expect(
+          (await send(alex, [signoff(alex, elsewhere.flags, 'sign')])).single['details'],
+          containsPair('effect', 'signed'),
+        );
+        // This visit's Red flags note is answered but not finished; another visit's is finished.
+        final here = chartedVisit(alex);
+        final social = noteHeld(here.visit, testNote, const {'care.plan': 'Demo: housing list'});
+        final medical = signoff(alex, here.note, 'complete');
+        final nonMedical = signoff(alex, social, 'complete');
+        expect(await send(alex, [medical, nonMedical]), [
+          refused('red_flags_first'),
+          applied(nonMedical, 'completed', 'completed', 'not_needed'),
+        ]);
+        // A completed Red flags note is finished: one that waits for a co-signer counts.
+        final flags = signoff(alex, here.flags, 'complete');
+        final fix = again(alex, here.note, 'sign', medical);
+        expect(await send(alex, [flags, fix]), [
+          applied(flags, 'completed', 'completed', 'not_needed'),
+          applied(fix, 'signed', 'signed', 'not_needed'),
+        ]);
+      });
+
+      test('a note with no version has no type to hash it by: definition_error, and the queue goes on', () async {
+        final visit = visitOf();
+        final preview = noteHeld(visit, testNote, const {});
+        server.records[preview.noteId]!.attributes['noteTypeVersion'] = null;
+        final stuck = signoff(alex, preview, 'complete', hash: 'ef' * 32);
+        final next = signoff(alex, noteHeld(visit, testNote, const {}), 'complete');
+        expect(await send(alex, [stuck, next]), [
+          refused('definition_error'),
+          applied(next, 'completed', 'completed', 'not_needed'),
+        ]);
+        expect(server.records[stuck['recordId']], isNull);
+      });
+
+      group('the content hash (lifecycle 4.5)', () {
+        test('covers the visit’s patient and summary: a sign-off on what changed since is refused, and the same record sent again is taken', () async {
+          final visit = visitOf(patientId: patient);
+          final summary = setOn(entityEncounter, visit, 'summary', 'Demo: seen by the river', 0);
+          expect(await send(alex, [summary]), [taken(summary, 1)]);
+          final flags = noteHeld(visit, testRedFlags, const {'flags.any': 'no'});
+          final note = noteHeld(visit, testMedical, const {'care.plan': 'Demo: rest'});
+          // Blair rewrites the summary while every note is a draft: the draft rule takes it.
+          final rewrite = setOn(entityEncounter, visit, 'summary', 'Demo: seen by the bridge', 1);
+          expect(await send(blair, [rewrite]), [taken(rewrite, 2)]);
+          final stale = [signoff(alex, flags, 'sign'), signoff(alex, note, 'sign')];
+          expect(await send(alex, stale), [refused('content_changed'), refused('content_changed')]);
+          expect(server.records[note.noteId]!.fields['status']!.value, 'draft');
+
+          // The person looks again and completes: the phone sends the same records with the new hash.
+          Held seen(Held n) => (
+            noteId: n.noteId,
+            encounterId: n.encounterId,
+            patientId: n.patientId,
+            summary: 'Demo: seen by the bridge',
+            type: n.type,
+            answers: n.answers,
+          );
+          final fixes = [again(alex, seen(flags), 'sign', stale[0]), again(alex, seen(note), 'sign', stale[1])];
+          expect(await send(alex, fixes), [for (final c in fixes) applied(c, 'signed', 'signed', 'not_needed')]);
+          expect([for (final c in stale) server.receipts[c['changeId']]!.resolved], [true, true]);
+
+          // A visit moved to another patient between what was seen and what is held: refused too.
+          final moved = chartedVisit(alex);
+          final other = server.seedPatient();
+          final move = setOn(entityEncounter, moved.visit, 'patientId', other, 1);
+          expect(await send(blair, [move]), [taken(move, 2)]);
+          final old = signoff(alex, moved.flags, 'sign');
+          expect(await send(alex, [old]), [refused('content_changed')]);
+          final f = moved.flags;
+          final fixed = again(
+            alex,
+            (
+              noteId: f.noteId,
+              encounterId: f.encounterId,
+              patientId: other,
+              summary: f.summary,
+              type: f.type,
+              answers: f.answers,
+            ),
+            'sign',
+            old,
+          );
+          expect(await send(alex, [fixed]), [applied(fixed, 'signed', 'signed', 'not_needed')]);
+        });
+
+        test(
+          'is taken over the answers that count, and a finished note keeps only those, each one dropped in its history',
+          () async {
+            const at = '2026-10-20T14:40:00.000Z';
+            String entry(int n) => 'rows.e${'$n'.padLeft(7, '0')}';
+            final visit = visitOf(patientId: patient);
+            final flags = noteHeld(visit, testRedFlags, const {'flags.any': 'no'});
+            final answers = <String, Object?>{
+              'care.plan': 'Demo: dress daily',
+              // A clear holds no answer.
+              'care.followup': null,
+              // Hidden while "Nothing more" is ticked.
+              'more.none': true,
+              'more.detail': 'Demo: one more thing',
+              // A removed entry, and one that is there.
+              '${entry(1)}.entryAt': at,
+              '${entry(1)}.n': 3,
+              '${entry(1)}.entryRemoved': true,
+              '${entry(2)}.entryAt': at,
+              '${entry(2)}.n': 4,
+            };
+            final note = noteHeld(visit, testMedical, answers);
+            // A teammate's answer that does not count changes nothing that is signed.
+            final hidden = setOn(entityNote, note.noteId, 'data.more.detail', 'Demo: from Blair', 1);
+            expect((await send(blair, [hidden])).single['details'], {'notCounted': 'hidden_field'});
+            final signs = [signoff(alex, flags, 'sign'), signoff(alex, note, 'sign')];
+            expect(await send(alex, signs), [for (final c in signs) applied(c, 'signed', 'signed', 'not_needed')]);
+
+            final fields = server.records[note.noteId]!.fields;
+            expect(
+              {
+                for (final MapEntry(:key, :value) in fields.entries)
+                  if (key.startsWith('data.') && value.value != null) key.substring(5): value.value,
+              },
+              {'care.plan': 'Demo: dress daily', 'more.none': true, '${entry(2)}.entryAt': at, '${entry(2)}.n': 4},
+            );
+            final dropped = {
+              'care.followup': null,
+              'more.detail': 'Demo: from Blair',
+              '${entry(1)}.entryAt': at,
+              '${entry(1)}.n': 3,
+              '${entry(1)}.entryRemoved': true,
+            };
+            expect(
+              {for (final path in dropped.keys) path: fields['data.$path']!.version},
+              {for (final path in dropped.keys) path: path == 'more.detail' ? 3 : 2},
+            );
+            expect(
+              {
+                for (final h in server.history)
+                  if (h['recordId'] == note.noteId &&
+                      h['changeId'] == signs[1]['changeId'] &&
+                      (h['field']! as String).startsWith('data.'))
+                    (h['field']! as String).substring(5): [h['value'], h['previous']],
+              },
+              {
+                for (final MapEntry(:key, :value) in dropped.entries) key: [null, value],
+              },
+            );
+          },
+        );
+
+        test('every case of note-content-hash.json: the hash a sign-off is checked against, and what a finished note keeps', () async {
+          final file = vectors('note-content-hash');
+          final definitions = vectors('forms-conformance')['definitions']! as Map<String, Object?>;
+          final cases = (file['cases']! as List<Object?>).cast<Map<String, Object?>>();
+          expect(cases.length, greaterThanOrEqualTo(21));
+          for (final c in cases) {
+            final reason = c['name']! as String;
+            final definition = definitions[c['definition']]! as Map<String, Object?>;
+            final type = (key: definition['key']! as String, version: definition['version']! as int);
+            server.noteTypes[(type.key, type.version)] = definition;
+            final patientId = c['patientId'] as String?;
+            final encounterId = c['encounterId']! as String;
+            final noteId = c['noteId']! as String;
+            // The note as the database holds it, each answer as stored: some the type refuses, or
+            // that would not count.
+            server.records.remove(noteId);
+            if (!server.records.containsKey(encounterId)) {
+              if (patientId != null && !server.records.containsKey(patientId)) server.seedPatient(id: patientId);
+              server.seed(entityEncounter, {'kind': 'medical', 'patientId': ?patientId}, id: encounterId, by: alex);
+            }
+            server.records[encounterId]!.fields
+              ..['patientId'] = FakeField(patientId, 1, alex, null, null)
+              ..['summary'] = FakeField(c['summary'], 1, alex, null, null);
+            final medical = !(definition['kinds']! as List<Object?>).contains('non_medical');
+            server.records[noteId] = FakeRecord(
+              id: noteId,
+              entity: entityNote,
+              author: alex,
+              attributes: {'encounterId': encounterId, 'noteTypeKey': type.key, 'noteTypeVersion': type.version},
+              fields: {
+                'status': FakeField('draft', 1, alex, null, null),
+                for (final MapEntry(:key, :value) in (c['answers']! as Map<String, Object?>).entries)
+                  'data.$key': FakeField(value, 1, alex, null, null),
+              },
+            )..medical = medical;
+            final held = (
+              noteId: noteId,
+              encounterId: encounterId,
+              patientId: patientId,
+              summary: c['summary'] as String?,
+              type: type,
+              answers: c['answers']! as Map<String, Object?>,
+            );
+            final wrong = signoff(alex, held, 'complete', hash: c['hash'] == 'ab' * 32 ? 'cd' * 32 : 'ab' * 32);
+            expect(await send(alex, [wrong]), [refused('content_changed')], reason: reason);
+            final right = signoff(alex, held, 'complete', hash: c['hash']! as String);
+            final [answer] = await send(alex, [right]);
+            // Past the hash, the note may still ask for an answer or for its Red flags note first.
+            expect(answer['details'], isNot({'problem': 'content_changed'}), reason: reason);
+            if (answer['status'] == 'accepted') {
+              expect(
+                {
+                  for (final MapEntry(:key, :value) in server.records[noteId]!.fields.entries)
+                    if (key.startsWith('data.') && value.value != null) key.substring(5): value.value,
+                },
+                c['effective'],
+                reason: reason,
+              );
+            }
+          }
+        });
+      });
+
+      group('the credential a sign-off is recorded under, and the Medical gate (lifecycle 3.5, 4.2)', () {
+        test('every case of signed-under.json, as the fake finds a credential', () {
+          final cases = (vectors('signed-under')['cases']! as List<Object?>).cast<Map<String, Object?>>();
+          expect(cases.length, greaterThanOrEqualTo(38));
+          expect(FakeSyncServer.capabilities.keys.toSet(), credentials);
+          for (final c in cases) {
+            final input = c['input']! as Map<String, Object?>;
+            final expected = c['expected']! as Map<String, Object?>;
+            SignedUnder found() => FakeSyncServer.signedUnder(
+              current: (input['current']! as Map<String, Object?>)['credential']! as String,
+              laterChanges: [
+                for (final change in (input['laterChanges']! as List<Object?>).cast<Map<String, Object?>>())
+                  (
+                    changedAt: change['changedAt']! as String,
+                    oldCredential: (change['oldValue']! as Map<String, Object?>)['credential']! as String,
+                  ),
+              ],
+              signedAt: input['signedAt']! as String,
+              receivedAt: input['receivedAt']! as String,
+              clockVerified: input['clockVerified']! as bool,
+              notBefore: input['notBefore']! as String,
+              claimed: input['claimed'] as String?,
+            );
+            if (expected['throws'] case final String message) {
+              expect(
+                found,
+                throwsA(isA<StateError>().having((e) => e.message, 'message', message)),
+                reason: c['name'] as String,
+              );
+              continue;
+            }
+            final f = found();
+            expect(
+              [f.credential, f.timeTrusted, f.canSign, f.needsAttestation, f.claimDiffers],
+              [
+                for (final k in ['credential', 'timeTrusted', 'canSign', 'needsAttestation', 'claimDiffers'])
+                  expected[k],
+              ],
+              reason: c['name'] as String,
+            );
+          }
+        });
+
+        test(
+          'signed Monday, promoted Tuesday, synced Wednesday: the signature keeps the credential it was signed under',
+          () async {
+            server.credentials[blair] = 'resident';
+            final synced = chartedVisit(blair);
+            final unverified = chartedVisit(blair);
+            // Monday: the drafts reach the server, then Blair completes them offline.
+            final monday = now.add(const Duration(hours: 1)).toIso8601String();
+            final flags = signoff(blair, synced.flags, 'sign', at: monday);
+            final note = signoff(blair, synced.note, 'sign', at: monday);
+            // A phone that could not check its clock: its time is its own word, and not believed.
+            final unchecked = [
+              signoff(blair, unverified.flags, 'sign', at: monday, clockVerified: false),
+              signoff(blair, unverified.note, 'sign', at: monday, clockVerified: false),
+            ];
+            // Tuesday: an admin makes Blair an attending.
+            server.changeCredential(blair, 'attending', at: now.add(const Duration(days: 1)));
+            // Wednesday: everything syncs, and a whole visit charted offline reaches the server.
+            final wednesday = now.add(const Duration(days: 2));
+            server.now = () => wednesday;
+            Future<List<Map<String, Object?>>> sync(List<Map<String, Object?>> changes) async =>
+                results(await push(blair, 'dev-$blair', changes, clock: wednesday));
+            expect(await sync([flags, note]), [
+              applied(flags, 'signed', 'signed', 'waiting'),
+              applied(note, 'signed', 'signed', 'waiting'),
+            ]);
+            expect(
+              server.records[note['recordId']]!.attributes,
+              allOf(
+                containsPair('signerCredential', 'resident'),
+                containsPair('claimedCredential', 'resident'),
+                containsPair('needsAttestation', true),
+                containsPair('signedAt', monday),
+              ),
+            );
+            expect(await sync(unchecked), [for (final c in unchecked) applied(c, 'signed', 'signed', 'waiting')]);
+            expect(
+              server.records[unchecked[1]['recordId']]!.attributes,
+              allOf(containsPair('signerCredential', 'attending'), containsPair('clockVerified', false)),
+            );
+            // The note reached the server after the time the signature claims: that time is not
+            // believed, so the credential is the one held now, and the claim keeps it waiting.
+            final offline = chartedVisit(blair);
+            final early = signoff(blair, offline.flags, 'sign', at: monday, claimed: 'resident');
+            final late = signoff(blair, offline.note, 'sign', at: monday, claimed: 'resident');
+            expect(await sync([early, late]), [
+              applied(early, 'signed', 'signed', 'waiting'),
+              applied(late, 'signed', 'signed', 'waiting'),
+            ]);
+            expect(server.records[late['recordId']]!.attributes, containsPair('signerCredential', 'attending'));
+          },
+        );
+
+        test('a credential lowered while the phone was offline holds the sign-off; an admin’s accept records it as it was signed', () async {
+          server.credentials[dana] = 'np';
+          final charted = chartedVisit(dana);
+          final signs = [signoff(dana, charted.flags, 'sign'), signoff(dana, charted.note, 'sign')];
+          server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+          expect(await send(dana, signs), [for (final c in signs) heldOnly(c)]);
+          for (final c in signs) {
+            expect(server.records[c['recordId']], isNull);
+            expect(server.acceptHeld(c['changeId']! as String, by: admin)['status'], 'accepted');
+          }
+          final n = server.records[charted.note.noteId]!;
+          expect([n.fields['status']!.value, n.attestation], ['signed', 'waiting']);
+          expect(
+            server.records[signs[1]['recordId']]!.attributes,
+            allOf(containsPair('signerCredential', 'np'), containsPair('needsAttestation', true)),
+          );
+          expect(server.records[signs[1]['recordId']]!.author, dana);
+        });
+
+        test(
+          'a held sign-off’s time is checked against when its push arrived, not when an admin accepted it',
+          () async {
+            server.credentials[dana] = 'np';
+            final charted = chartedVisit(dana);
+            expect(
+              (await send(dana, [signoff(dana, charted.flags, 'sign')])).single['details'],
+              containsPair('effect', 'signed'),
+            );
+            final sign = signoff(dana, charted.note, 'sign');
+            server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+            expect(await send(dana, [sign]), [heldOnly(sign)]);
+            // As if the push had arrived ten minutes before the time its signature claims: a phone clock
+            // running ahead. Accepted now, that time would be believed; it was not when it arrived.
+            server.heldAt[sign['changeId']! as String] = now.subtract(const Duration(minutes: 10));
+            expect(server.acceptHeld(sign['changeId']! as String, by: admin)['status'], 'accepted');
+            // So the credential is the one held now, which cannot sign.
+            expect(
+              server.records[sign['recordId']]!.attributes,
+              allOf(containsPair('effect', 'saved_unsigned'), containsPair('signerCredential', 'chw')),
+            );
+            expect(server.records[charted.note.noteId]!.signoffId, isNull);
+          },
+        );
+      });
+    });
+
+    // Rule 9: services/api/test/sync-corrections.test.ts, 'addenda (lifecycle 4.7)'.
+    group('addenda (lifecycle 4.7)', () {
+      Map<String, Object?> addendum(
+        String encounterId,
+        String? noteId, {
+        String text = 'Demo: called back',
+        String? at,
+      }) => change(
+        entityAddendum,
+        'create',
+        {'encounterId': encounterId, 'noteId': noteId, 'text': text, 'signoffId': null},
+        more: {
+          if (at != null) ...{'deviceTime': at, 'correctedTime': at},
+        },
+      );
+
+      test('is taken in every state of its note, and below the visit itself, from anyone who charts', () async {
+        final patient = server.seedPatient();
+        final visit = visitOf(patientId: patient);
+        final draft = noteOn(visit, type: testMedical);
+        final completed = noteOn(visit);
+        server.finishNote(completed);
+        final signed = noteOn(visit, type: testMedical);
+        server.finishNote(signed, status: 'signed');
+        // Dana charts, and may not chart Medical: an addendum changes no note, so it needs no Medical credential.
+        server.credentials[dana] = 'none';
+        final addenda = [
+          addendum(visit, draft),
+          addendum(visit, completed),
+          addendum(visit, signed),
+          addendum(visit, null, text: 'Demo: the van ran late'),
+        ];
+        final answered = await send(dana, addenda);
+        expect(answered, [for (final c in addenda) taken(c, 1)]);
+        final made = server.records[addenda[2]['recordId']]!;
+        expect(
+          [made.status, made.author, made.attributes['noteId'], made.attributes['text']],
+          ['written', dana, signed, 'Demo: called back'],
+        );
+        expect(
+          [
+            for (final id in [draft, completed, signed]) server.records[id]!.fields['status']!.value,
+          ],
+          ['draft', 'completed', 'signed'],
+        );
+        // Sent twice, it answers the same.
+        expect(await send(dana, addenda), answered);
+      });
+
+      test('records its author as they were when it was written, as a signature does (lifecycle 3.5)', () async {
+        server.credentials[blair] = 'resident';
+        final visit = visitOf(patientId: server.seedPatient());
+        final written = addendum(visit, null);
+        server.changeCredential(blair, 'attending', at: now.add(const Duration(minutes: 1)));
+        expect(await send(blair, [written]), [taken(written, 1)]);
+        expect(server.records[written['recordId']]!.attributes['authorCredential'], 'resident');
+      });
+
+      test('names a note of its visit: another visit’s note answers stale_reference before the insert, as a missing one does', () async {
+        final patient = server.seedPatient();
+        final visit = visitOf(patientId: patient);
+        final elsewhere = noteOn(visitOf(patientId: patient));
+        final wrongVisit = addendum(visit, elsewhere);
+        final missing = addendum(visit, uuid());
+        expect(await send(alex, [wrongVisit, missing]), [
+          for (final _ in [wrongVisit, missing])
+            allOf(
+              containsPair('status', 'rejected'),
+              containsPair('reason', 'stale_reference'),
+              containsPair('details', {'problem': 'encounter_note_missing'}),
+            ),
+        ]);
+        expect(server.records[wrongVisit['recordId']], isNull);
+      });
+    });
+
+    // Rule 10: services/api/test/sync-corrections.test.ts, 'corrections (lifecycle 3.6, 4.7)'. Dana
+    // holds no credential, Alex is an attending, Blair a resident, Casey a student; the co-signer and
+    // attester is the admin, an attending.
+    group('corrections (lifecycle 3.6, 4.7)', () {
+      late String patient;
+      setUp(() {
+        server.noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+        patient = server.seedPatient();
+        server.credentials
+          ..[dana] = 'none'
+          ..[blair] = 'resident'
+          ..[casey] = 'student';
+      });
+
+      Map<String, Object?> answer(String path, Object? newValue, [int baseVersion = 1]) => {
+        'field': 'data.$path',
+        'newValue': newValue,
+        'baseVersion': baseVersion,
+      };
+      Map<String, Object?> correction(
+        String user,
+        String noteId,
+        List<Map<String, Object?>> changes, {
+        String reason = 'Demo: the wrong field was picked',
+        bool requestedByPatient = false,
+        bool declined = false,
+        String? recordId,
+        String? supersedes,
+      }) => change(
+        entityCorrection,
+        'create',
+        {
+          'noteId': noteId,
+          'changes': changes,
+          'reason': reason,
+          'requestedByPatient': requestedByPatient,
+          'declined': declined,
+          'claimedCredential': server.credentialOf(user),
+          'signoffId': null,
+        },
+        recordId: recordId,
+        more: {'supersedes': ?supersedes},
+      );
+      Map<String, Object?> corrected(Map<String, Object?> c, String outcome, String status, String attestation) => {
+        ...taken(c, 1),
+        'details': {'outcome': outcome, 'status': status, 'attestation': attestation},
+      };
+
+      /// A Medical note of [by]'s, finished as a sign-off would leave it, after its visit's Red flags note.
+      String finishedMedical(
+        String by,
+        String status, [
+        Map<String, Object?> answers = const {'care.plan': 'Demo: rest and fluids'},
+      ]) {
+        final visit = visitOf(patientId: patient, by: by);
+        server.finishNote(server.seed(entityNote, noteValue(visit, testRedFlags, const {'flags.any': 'no'}), by: by));
+        final note = server.seed(entityNote, noteValue(visit, testMedical, answers), by: by);
+        server.finishNote(note, status: status);
+        if (status == 'signed') {
+          server.records[note]!
+            ..signoffId = uuid()
+            ..attestation = server.credentialOf(by) == 'attending' ? 'not_needed' : 'waiting';
+        }
+        return note;
+      }
+
+      test('a finished note’s answers are corrected together: each written as corrected, the row keeps old and new, and the note shows the new', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient, by: dana), testNote, const {
+            'care.plan': 'Demo: rest',
+            'vitals.pulse': 80,
+          }),
+          by: dana,
+        );
+        server.finishNote(note);
+        const reason = 'Demo: pulse taken twice, second reading';
+        final fix = correction(dana, note, [
+          answer('care.plan', 'Demo: rest and fluids'),
+          answer('vitals.pulse', 88),
+          // An answer the note did not hold is corrected in as well.
+          answer('care.followup', 'Demo: clinic on Tuesday', 0),
+        ], reason: reason);
+        final receipt = await send(dana, [fix]);
+        expect(receipt, [corrected(fix, 'corrected', 'completed', 'not_needed')]);
+        final fields = server.records[note]!.fields;
+        expect(
+          [
+            for (final f in ['data.care.plan', 'data.vitals.pulse', 'data.care.followup'])
+              [fields[f]!.value, fields[f]!.version],
+          ],
+          [
+            ['Demo: rest and fluids', 2],
+            [88, 2],
+            ['Demo: clinic on Tuesday', 1],
+          ],
+        );
+        final rows = [
+          for (final h in server.history)
+            if (h['changeId'] == fix['changeId']) h,
+        ];
+        expect(
+          [
+            for (final h in rows) [h['field'], h['version'], h['value'], h['previous'], h['kind'], h['by']],
+          ],
+          [
+            ['data.care.plan', 2, 'Demo: rest and fluids', 'Demo: rest', 'corrected', dana],
+            ['data.vitals.pulse', 2, 88, 80, 'corrected', dana],
+            ['data.care.followup', 1, 'Demo: clinic on Tuesday', null, 'corrected', dana],
+          ],
+        );
+        final row = server.records[fix['recordId']]!;
+        expect(row.attributes, {
+          'noteId': note,
+          'changes': [
+            {'field': 'data.care.plan', 'oldValue': 'Demo: rest', 'newValue': 'Demo: rest and fluids'},
+            {'field': 'data.vitals.pulse', 'oldValue': 80, 'newValue': 88},
+            {'field': 'data.care.followup', 'oldValue': null, 'newValue': 'Demo: clinic on Tuesday'},
+          ],
+          'outcome': 'corrected',
+          'reason': reason,
+          'requestedByPatient': false,
+          'correctorCredential': 'none',
+          'claimedCredential': 'none',
+          'correctedAt': now.toIso8601String(),
+          'clockVerified': true,
+        });
+        expect(server.correctionHistory[fix['recordId']], {for (final h in rows) h['field']: h['id']});
+        // Sent again, it answers from its receipt and writes nothing more.
+        expect(await send(dana, [fix]), receipt);
+        expect(fields['data.care.plan']!.version, 2);
+      });
+
+      test('the corrector’s credential decides what is left of a signature: each row of the table in 3.6', () async {
+        // An attending's own note: unchanged, signed, and the same signature.
+        final own = finishedMedical(alex, 'signed');
+        final ownSignature = server.records[own]!.signoffId;
+        // A resident's note waits for attestation, and waits again after a correction.
+        final waits = finishedMedical(blair, 'signed');
+        // A resident's note an attending attested: it waits again, and the attester is told.
+        final attested = finishedMedical(blair, 'signed');
+        server.attest(attested, by: admin);
+        // A student's note an attending co-signed: back to waiting for a co-signer, and the co-signer is told.
+        final cosigned = finishedMedical(casey, 'completed');
+        server.cosign(cosigned, by: admin);
+        // A student's note waiting for a co-signer: unchanged.
+        final pending = finishedMedical(casey, 'completed');
+        // An attested note its attending corrects: still attested, since the attending signs it.
+        final kept = finishedMedical(alex, 'signed');
+        server.attest(kept, by: admin);
+        server.notices.clear();
+
+        List<Map<String, Object?>> fix(String user, List<String> notes) => [
+          for (final n in notes) correction(user, n, [answer('care.plan', 'Demo: fluids and rest')]),
+        ];
+        final alexs = fix(alex, [own, kept]);
+        final blairs = fix(blair, [waits, attested]);
+        final caseys = fix(casey, [cosigned, pending]);
+        expect(await send(alex, alexs), [
+          corrected(alexs[0], 'corrected', 'signed', 'not_needed'),
+          corrected(alexs[1], 'corrected', 'signed', 'attested'),
+        ]);
+        expect(await send(blair, blairs), [for (final c in blairs) corrected(c, 'corrected', 'signed', 'waiting')]);
+        expect(await send(casey, caseys), [
+          for (final c in caseys) corrected(c, 'corrected', 'completed', 'not_needed'),
+        ]);
+        expect(server.records[own]!.signoffId, ownSignature);
+        expect(
+          [
+            for (final n in [own, waits, attested, cosigned, pending, kept]) server.records[n]!.attestation,
+          ],
+          ['not_needed', 'waiting', 'waiting', 'not_needed', 'not_needed', 'attested'],
+        );
+        final student = server.records[cosigned]!;
+        expect([student.fields['status']!.value, student.signoffId, student.everSigned], ['completed', null, isTrue]);
+        // The status moved only where the signature went, and its history says so.
+        expect(
+          [
+            for (final h in server.history)
+              if (h['changeId'] == caseys[0]['changeId']) [h['field'], h['kind'], h['value'], h['previous']],
+          ],
+          [
+            ['data.care.plan', 'corrected', 'Demo: fluids and rest', 'Demo: rest and fluids'],
+            ['status', 'set', 'completed', 'signed'],
+          ],
+        );
+        // "A note you signed was corrected. It needs your review again."
+        expect(noticesOn(attested), ['$admin note_corrected $entityNote']);
+        expect(noticesOn(cosigned), ['$admin note_corrected $entityNote']);
+        for (final n in [own, waits, pending, kept]) {
+          expect(noticesOn(n), isEmpty);
+        }
+      });
+
+      test(
+        'the corrector’s credential is found as a signature’s is: corrected Monday, promoted Tuesday, synced Wednesday',
+        () async {
+          final note = finishedMedical(blair, 'signed');
+          server.attest(note, by: admin);
+          final fix = correction(blair, note, [answer('care.plan', 'Demo: fluids')]);
+          server.changeCredential(blair, 'attending', at: now.add(const Duration(minutes: 1)));
+          expect(await send(blair, [fix]), [corrected(fix, 'corrected', 'signed', 'waiting')]);
+          expect(
+            server.records[fix['recordId']]!.attributes,
+            allOf(containsPair('correctorCredential', 'resident'), containsPair('claimedCredential', 'resident')),
+          );
+        },
+      );
+
+      test('1. whoever does not act as the author is told, and nothing changes: before the Medical gate', () async {
+        final note = finishedMedical(alex, 'signed');
+        final before = server.records[note]!.fields['data.care.plan']!;
+        final fromBlair = correction(blair, note, [answer('care.plan', 'Demo: other plan')]);
+        // Dana may not chart a Medical note; not being its author answers first, and nothing is held.
+        final fromDana = correction(dana, note, [answer('care.plan', 'Demo: other plan')]);
+        expect(await send(blair, [fromBlair]), [corrected(fromBlair, 'not_author', 'signed', 'not_needed')]);
+        expect(await send(dana, [fromDana]), [corrected(fromDana, 'not_author', 'signed', 'not_needed')]);
+        expect(server.records[note]!.fields['data.care.plan'], same(before));
+        expect(server.records[fromBlair['recordId']]!.attributes['changes'], [
+          {'field': 'data.care.plan', 'oldValue': 'Demo: rest and fluids', 'newValue': 'Demo: other plan'},
+        ]);
+        expect(noticesOn(note), ['$blair change_not_applied $entityNote', '$dana change_not_applied $entityNote']);
+      });
+
+      test(
+        '3. the Medical gate holds a correction from someone who may no longer chart one; an admin’s accept applies it',
+        () async {
+          server.credentials[blair] = 'np';
+          final note = finishedMedical(blair, 'signed');
+          server.changeCredential(blair, 'chw');
+          final fix = correction(blair, note, [answer('care.plan', 'Demo: fluids')]);
+          expect(await send(blair, [fix]), [heldOnly(fix)]);
+          expect(server.records[fix['recordId']], isNull);
+          expect(server.acceptHeld(fix['changeId']! as String, by: admin)['status'], 'accepted');
+          // Recorded under the credential Blair holds now, which cannot sign: the note waits for a co-signer.
+          expect(
+            server.records[fix['recordId']]!.attributes,
+            allOf(containsPair('outcome', 'corrected'), containsPair('correctorCredential', 'chw')),
+          );
+          expect([server.records[note]!.fields['status']!.value, server.records[note]!.signoffId], ['completed', null]);
+          expect(
+            [
+              for (final h in server.history)
+                if (h['changeId'] == fix['changeId']) [h['field'], h['kind'], h['by'], h['approvedBy']],
+            ],
+            [
+              ['data.care.plan', 'corrected', blair, admin],
+              ['status', 'set', blair, admin],
+            ],
+          );
+        },
+      );
+
+      test('4. a declined amendment request is stored and the note is unchanged; only a request is declined', () async {
+        final note = finishedMedical(alex, 'signed');
+        final declined = correction(
+          alex,
+          note,
+          [answer('care.plan', 'Demo: what the patient asked for')],
+          requestedByPatient: true,
+          declined: true,
+          reason: 'Demo: the plan was recorded as given',
+        );
+        final notARequest = correction(alex, note, [answer('care.plan', 'Demo: other')], declined: true);
+        final accepted = correction(alex, note, [
+          answer('care.plan', 'Demo: as the patient asked'),
+        ], requestedByPatient: true);
+        final answers = await send(alex, [declined, notARequest, accepted]);
+        expect(answers[0], corrected(declined, 'declined', 'signed', 'not_needed'));
+        expect(answers[1], refusedAt('declined'));
+        expect(answers[2], corrected(accepted, 'corrected', 'signed', 'not_needed'));
+        expect(server.records[declined['recordId']]!.attributes, containsPair('requestedByPatient', true));
+        expect([
+          for (final h in server.history)
+            if (h['changeId'] == declined['changeId']) h,
+        ], isEmpty);
+      });
+
+      test('5. each new value is one the note type takes, named by its field; checked before the version', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(by: dana), testNote, const {'vitals.pulse': 80}),
+          by: dana,
+        );
+        server.finishNote(note);
+        final changes = [
+          correction(dana, note, [answer('care.plan', 'Demo: fine', 0), answer('vitals.pulse', 400)]),
+          correction(dana, note, [answer('nope.here', 'Demo: x', 0)]),
+          // A version the person did not see, and a value the type refuses: the value answers.
+          correction(dana, note, [answer('vitals.pulse', 'fast', 7)]),
+        ];
+        expect(await send(dana, changes), [
+          refusedWith(const {'problem': 'out_of_range', 'field': 'data.vitals.pulse'}),
+          refusedWith(const {'problem': 'unknown_path', 'field': 'data.nope.here'}),
+          refusedWith(const {'problem': 'wrong_type', 'field': 'data.vitals.pulse'}),
+        ]);
+        for (final c in changes) {
+          expect(server.records[c['recordId']], isNull);
+        }
+        expect(server.records[note]!.fields['data.vitals.pulse']!.value, 80);
+      });
+
+      test(
+        '6 and 7. an answer that moved since is field_changed: Correct again is taken, Leave it is no change',
+        () async {
+          final note = server.seed(
+            entityNote,
+            noteValue(visitOf(by: dana), testNote, const {'vitals.pulse': 80, 'care.plan': 'Demo: rest'}),
+            by: dana,
+          );
+          server.finishNote(note);
+          // Two phones correct the same answer from what each saw: the first is taken.
+          final first = correction(dana, note, [answer('vitals.pulse', 88)]);
+          final second = correction(dana, note, [answer('vitals.pulse', 92), answer('care.plan', 'Demo: fluids')]);
+          final third = correction(dana, note, [answer('vitals.pulse', 84)]);
+          expect(await send(dana, [first, second, third]), [
+            corrected(first, 'corrected', 'completed', 'not_needed'),
+            refusedWith(const {'problem': 'field_changed', 'field': 'data.vitals.pulse'}),
+            refusedWith(const {'problem': 'field_changed', 'field': 'data.vitals.pulse'}),
+          ]);
+          expect(server.records[second['recordId']], isNull);
+          // Correct again: the same record, with the version now seen. Leave it: the value the note holds.
+          final correctAgain = correction(
+            dana,
+            note,
+            [answer('vitals.pulse', 92, 2), answer('care.plan', 'Demo: fluids')],
+            recordId: second['recordId']! as String,
+            supersedes: second['changeId']! as String,
+          );
+          final leaveIt = correction(
+            dana,
+            note,
+            [answer('vitals.pulse', 92, 3)],
+            recordId: third['recordId']! as String,
+            supersedes: third['changeId']! as String,
+          );
+          expect(await send(dana, [correctAgain]), [corrected(correctAgain, 'corrected', 'completed', 'not_needed')]);
+          expect(await send(dana, [leaveIt]), [corrected(leaveIt, 'no_change', 'completed', 'not_needed')]);
+          expect([
+            for (final h in server.history)
+              if (h['changeId'] == leaveIt['changeId']) h,
+          ], isEmpty);
+          expect(server.records[leaveIt['recordId']]!.attributes['changes'], [
+            {'field': 'data.vitals.pulse', 'oldValue': 92, 'newValue': 92},
+          ]);
+          expect(
+            [server.receipts[second['changeId']]!.resolved, server.receipts[third['changeId']]!.resolved],
+            [true, true],
+          );
+          // The same value at a version the person did not see is still field_changed: step 6 comes first.
+          final stale = correction(dana, note, [answer('vitals.pulse', 92, 2)]);
+          expect(await send(dana, [stale]), [
+            refusedWith(const {'problem': 'field_changed', 'field': 'data.vitals.pulse'}),
+          ]);
+        },
+      );
+
+      test(
+        '8. one answer opens another: corrected alone it fails the finish check, together with the other it is taken',
+        () async {
+          // "EMS activated" Yes makes the time required, as the API's test-only EMS type does.
+          final ems = {
+            ...testNoteTypes[1],
+            'key': 'test_ems',
+            'sections': [
+              {
+                'id': 'ems',
+                'title': 'EMS',
+                'fields': [
+                  {
+                    'id': 'activated',
+                    'kind': 'choice',
+                    'label': 'EMS activated?',
+                    'many': false,
+                    'options': [
+                      {'code': 'no', 'label': 'No'},
+                      {'code': 'yes', 'label': 'Yes'},
+                    ],
+                  },
+                  {
+                    'id': 'called',
+                    'kind': 'text',
+                    'label': 'Called at',
+                    'lines': 'one',
+                    'maxLength': 200,
+                    'required': true,
+                    'showWhen': {'field': 'ems.activated', 'is': 'yes'},
+                  },
+                ],
+              },
+            ],
+          };
+          server.noteTypes[('test_ems', 1)] = ems;
+          final visit = visitOf(patientId: patient);
+          server.finishNote(
+            server.seed(entityNote, noteValue(visit, testRedFlags, const {'flags.any': 'no'}), by: alex),
+          );
+          final note = server.seed(
+            entityNote,
+            noteValue(visit, (key: 'test_ems', version: 1), const {'ems.activated': 'no'}),
+            by: alex,
+          );
+          server.finishNote(note, status: 'signed');
+          final alone = correction(alex, note, [answer('ems.activated', 'yes')]);
+          final together = correction(alex, note, [
+            answer('ems.activated', 'yes'),
+            answer('ems.called', 'Demo: 14:20', 0),
+          ]);
+          expect(await send(alex, [alone, together]), [
+            refusedWith(const {'problem': 'incomplete'}),
+            corrected(together, 'corrected', 'signed', 'not_needed'),
+          ]);
+          expect(server.records[alone['recordId']], isNull);
+          expect(server.records[note]!.fields['data.ems.called']!.value, 'Demo: 14:20');
+        },
+      );
+
+      test(
+        '2. a note reopened since is edited as a draft, by the draft rule; a declined request still changes nothing',
+        () async {
+          final note = finishedMedical(casey, 'completed', const {'care.plan': 'Demo: rest', 'vitals.pulse': 80});
+          final reopen = setOn(entityNote, note, 'status', 'draft', 1);
+          expect(await send(casey, [reopen]), [taken(reopen, 2)]);
+          // Someone else's edit to the draft since the person looked.
+          server.serverEdit(note, 'data.care.plan', 'Demo: rest and fluids', by: alex);
+          final changes = [
+            correction(casey, note, [answer('vitals.pulse', 84), answer('care.allergies', 'Demo: none known', 3)]),
+            // The plan the person saw has changed since: never overwritten silently.
+            correction(casey, note, [answer('care.plan', 'Demo: fluids')]),
+            correction(casey, note, [answer('vitals.pulse', 90, 2)], requestedByPatient: true, declined: true),
+            // A draft's answers are checked against its type, as any set of them is.
+            correction(casey, note, [answer('vitals.pulse', 999, 2)]),
+          ];
+          expect(await send(casey, changes), [
+            corrected(changes[0], 'draft_edit', 'draft', 'not_needed'),
+            refusedWith(const {'problem': 'field_changed', 'field': 'data.care.plan'}),
+            corrected(changes[2], 'declined', 'draft', 'not_needed'),
+            refusedWith(const {'problem': 'out_of_range', 'field': 'data.vitals.pulse'}),
+          ]);
+          final fields = server.records[note]!.fields;
+          expect(
+            [
+              for (final f in ['care.plan', 'vitals.pulse', 'care.allergies']) fields['data.$f']!.value,
+            ],
+            ['Demo: rest and fluids', 84, 'Demo: none known'],
+          );
+          // The person saw the pulse; the allergies were blank, so they fill.
+          expect(
+            [
+              for (final h in server.history)
+                if (h['changeId'] == changes[0]['changeId']) [h['field'], h['kind']],
+            ],
+            [
+              ['data.vitals.pulse', 'set'],
+              ['data.care.allergies', 'filled_blank'],
+            ],
+          );
+        },
+      );
+
+      test('a draft edit to a Medical note is held by the gate as any set of it is', () async {
+        server.credentials[blair] = 'pa';
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(patientId: patient, by: blair), testMedical, const {'care.plan': 'Demo: rest'}),
+          by: blair,
+        );
+        server.changeCredential(blair, 'none');
+        final fix = correction(blair, note, [answer('care.plan', 'Demo: fluids')]);
+        expect(await send(blair, [fix]), [heldOnly(fix)]);
+        expect(server.records[note]!.fields['data.care.plan']!.value, 'Demo: rest');
+      });
+
+      test('a correction can hide an answer, which stays in the note and counts again once shown', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(by: dana), testNote, const {'more.detail': 'Demo: walks with a cane'}),
+          by: dana,
+        );
+        server.finishNote(note);
+        final hide = correction(dana, note, [answer('more.none', true, 0)]);
+        expect(await send(dana, [hide]), [corrected(hide, 'corrected', 'completed', 'not_needed')]);
+        Map<String, Object?> data() => {
+          for (final MapEntry(:key, :value) in server.records[note]!.fields.entries)
+            if (key.startsWith('data.')) key.substring(5): value.value,
+        };
+        final definition = NoteTypeDef.fromJson(testNoteTypes.first);
+        expect(data(), {'more.detail': 'Demo: walks with a cane', 'more.none': true});
+        expect(effectiveAnswers(definition, data()), {'more.none': true});
+        final show = correction(dana, note, [answer('more.none', null)]);
+        expect(await send(dana, [show]), [corrected(show, 'corrected', 'completed', 'not_needed')]);
+        expect(effectiveAnswers(definition, data()), containsPair('more.detail', 'Demo: walks with a cane'));
+      });
+
+      test(
+        'a phase 2 note with no version has no type to check a correction by: definition_error, and the queue goes on',
+        () async {
+          final note = server.seed(
+            entityNote,
+            noteValue(visitOf(by: dana), testNote, const {'care.plan': 'Demo: dress daily'}),
+            by: dana,
+          );
+          server.finishNote(note);
+          server.records[note]!.attributes['noteTypeVersion'] = null;
+          final stuck = correction(dana, note, [answer('care.plan', 'Demo: soak first')]);
+          final other = server.seed(
+            entityNote,
+            noteValue(visitOf(by: dana), testNote, const {'care.plan': 'Demo: rest'}),
+            by: dana,
+          );
+          server.finishNote(other);
+          final next = correction(dana, other, [answer('care.plan', 'Demo: fluids')]);
+          expect(await send(dana, [stuck, next]), [
+            refused('definition_error'),
+            corrected(next, 'corrected', 'completed', 'not_needed'),
+          ]);
+        },
+      );
+    });
+
+    // Rule 11: services/api/test/sync-referrals.test.ts. Casey and Dana are community health workers
+    // (referrals.create, no encounters.chart); Blair is Billing/Data, who makes no referral.
+    group('referrals (lifecycle 4.7)', () {
+      late String patientA;
+      late String patientB;
+      // Merged into A: one person, two records.
+      late String patientC;
+      setUp(() {
+        patientA = server.seedPatient(preferredName: 'Demo Ash');
+        patientB = server.seedPatient(preferredName: 'Demo Birch');
+        patientC = server.seedPatient(preferredName: 'Demo Ash two');
+        server.merge(patientC, patientA);
+        server.permissions
+          ..[casey] = FakeSyncServer.chw
+          ..[dana] = FakeSyncServer.chw
+          ..[blair] = const {'patients.view', 'billing.view_codes', 'inventory.view'};
+      });
+      Map<String, Object?> referral(
+        String patientId, {
+        String referredOn = '2026-10-20',
+        String details = 'Demo: dental clinic on Main St',
+        String? encounterId,
+      }) => change(entityReferral, 'create', {
+        'patientId': patientId,
+        'referredOn': referredOn,
+        'details': details,
+        'encounterId': encounterId,
+      });
+      Map<String, Object?> mark(String referralId, [String reason = 'Demo: made for the wrong person']) =>
+          setOn(entityReferral, referralId, 'enteredInError', {'reason': reason}, 0);
+      Matcher staleBecause(String problem) => allOf(
+        containsPair('status', 'rejected'),
+        containsPair('reason', 'stale_reference'),
+        containsPair('details', {'problem': problem}),
+      );
+
+      test(
+        'is made by anyone who may make one, a community health worker included, and logged without its details',
+        () async {
+          final made = referral(patientA);
+          final answer = await send(casey, [made]);
+          expect(answer, [taken(made, 1)]);
+          final row = server.records[made['recordId']]!;
+          expect([row.status, row.author, row.patientId], ['active', casey, patientA]);
+          expect(row.attributes, {
+            'patientId': patientA,
+            'referredOn': '2026-10-20',
+            'details': 'Demo: dental clinic on Main St',
+            'encounterId': null,
+            'recordedAt': now.toIso8601String(),
+            'clockVerified': true,
+          });
+          // Sent again, it answers from its receipt.
+          expect(await send(casey, [made]), answer);
+          // Billing/Data holds no referrals.create: held for a Program Admin, nothing stored.
+          final fromBlair = referral(patientA);
+          expect(await send(blair, [fromBlair]), [heldOnly(fromBlair)]);
+          expect(server.records[fromBlair['recordId']], isNull);
+        },
+      );
+
+      test('is dated no more than a day after the server’s date (referral_in_future)', () async {
+        // The server's clock reads 2026-10-22.
+        final changes = [
+          referral(patientA, referredOn: '2026-10-23'),
+          referral(patientA, referredOn: '2026-10-24'),
+          referral(patientA, referredOn: '2025-01-31'),
+          referral(patientA, referredOn: '2026-02-30'),
+          referral(patientA, referredOn: '22 Oct 2026'),
+        ];
+        final answers = await send(casey, changes);
+        expect(answers.sublist(0, 3), [taken(changes[0], 1), refused('referral_in_future'), taken(changes[2], 1)]);
+        for (final a in answers.sublist(3)) {
+          expect(a, refusedAt('referredOn'));
+        }
+        expect(server.records[changes[1]['recordId']], isNull);
+      });
+
+      test('names a visit of its patient’s merged group, or none; a visit of someone else is refused, and sent without it is taken', () async {
+        final ofA = visitOf(patientId: patientA);
+        final ofB = visitOf(patientId: patientB);
+        final ofC = visitOf(patientId: patientC);
+        final nobody = visitOf();
+        final changes = [
+          referral(patientA, encounterId: ofA),
+          referral(patientA, encounterId: ofB),
+          // One person, two records: either names the other's visit.
+          referral(patientA, encounterId: ofC),
+          referral(patientC, encounterId: ofA),
+          // A visit with no patient names nobody else.
+          referral(patientB, encounterId: nobody),
+          referral(patientA, encounterId: uuid()),
+          referral(uuid()),
+        ];
+        expect(
+          [
+            ...await send(alex, changes.sublist(0, 3)),
+            ...await send(casey, changes.sublist(3, 5)),
+            ...await send(alex, changes.sublist(5)),
+          ],
+          [
+            taken(changes[0], 1),
+            staleBecause('encounter_other_patient'),
+            taken(changes[2], 1),
+            taken(changes[3], 1),
+            taken(changes[4], 1),
+            staleBecause('encounter_missing'),
+            staleBecause('patient_missing'),
+          ],
+        );
+        expect(server.records[changes[1]['recordId']], isNull);
+        // Send without the visit: the same record, with no visit, settles the refusal.
+        final without = change(
+          entityReferral,
+          'create',
+          {...changes[1]['value']! as Map<String, Object?>, 'encounterId': null},
+          recordId: changes[1]['recordId']! as String,
+          more: {'supersedes': changes[1]['changeId']},
+        );
+        expect(await send(alex, [without]), [taken(without, 1)]);
+        expect(server.receipts[changes[1]['changeId']]!.resolved, isTrue);
+      });
+
+      test('is entered in error once, by its author or by anyone who charts; anyone else is held for review', () async {
+        final caseys = referral(patientA);
+        final danas = referral(patientA);
+        final others = referral(patientA);
+        await send(casey, [caseys]);
+        await send(dana, [danas, others]);
+        const reason = 'Demo: made for the wrong person';
+        // Casey takes back her own; Alex charts, and takes back Dana's.
+        final byAuthor = mark(caseys['recordId']! as String, reason);
+        final byClinician = mark(danas['recordId']! as String);
+        expect(await send(casey, [byAuthor]), [taken(byAuthor, 1)]);
+        expect(await send(alex, [byClinician]), [taken(byClinician, 1)]);
+        final row = server.records[caseys['recordId']]!;
+        expect(
+          [row.status, row.fields['enteredInError']!.value, row.fields['enteredInError']!.by],
+          [
+            'entered_in_error',
+            {'reason': reason},
+            casey,
+          ],
+        );
+        expect(
+          [
+            for (final h in historyOf(caseys['recordId']! as String, 'enteredInError')) [h.$1, h.$2, h.$3],
+          ],
+          [
+            [
+              'entered_in_error',
+              {'reason': reason},
+              '1',
+            ],
+          ],
+        );
+        // Set once: a second mark is kept in history, and the first stands.
+        final second = mark(caseys['recordId']! as String, 'Demo: second thoughts');
+        expect(await send(alex, [second]), [
+          {
+            ...taken(second, 1),
+            'server': {
+              'value': {'reason': reason},
+              'version': 1,
+              'changedBy': casey,
+              'changedAt': now.toIso8601String(),
+            },
+            'details': {'outcome': 'history_only'},
+          },
+        ]);
+        // Casey did not make Dana's other referral and charts nothing: held for a Program Admin.
+        final notHers = mark(others['recordId']! as String);
+        expect(await send(casey, [notHers]), [heldOnly(notHers)]);
+        expect(server.records[others['recordId']]!.status, 'active');
+        expect(server.acceptHeld(notHers['changeId']! as String, by: admin)['status'], 'accepted');
+        expect(server.records[others['recordId']]!.status, 'entered_in_error');
+        // A mark never conflicts, so there is nothing to resolve.
+        final resolved = setOn(
+          entityReferral,
+          caseys['recordId']! as String,
+          'enteredInError',
+          const {'reason': 'Demo: keep mine'},
+          1,
+          more: const {'resolution': 'replace'},
+        );
+        expect(await send(casey, [resolved]), [refused('nothing_to_resolve')]);
+      });
+
+      test('changes only by its mark, and its value is checked before anything is read', () async {
+        final made = referral(patientA);
+        await send(casey, [made]);
+        final value = made['value']! as Map<String, Object?>;
+        Map<String, Object?> bad(Map<String, Object?> v) => change(entityReferral, 'create', {...value, ...v});
+        final changes = [
+          setOn(entityReferral, made['recordId']! as String, 'details', 'Demo: another clinic', 0),
+          bad({'details': 'Demo: trailing space '}),
+          bad({'details': 'D' * 2001}),
+          bad({'details': ''}),
+          bad({'status': 'completed'}),
+          change(entityReferral, 'create', {...value}..remove('encounterId')),
+          mark(made['recordId']! as String, 'No'),
+          setOn(entityReferral, made['recordId']! as String, 'enteredInError', null, 0),
+        ];
+        final answered = await send(casey, changes);
+        expect(answered.first, refused('unknown_field'));
+        expect(
+          [
+            for (final a in answered.sublist(1))
+              ((a['details']! as Map)['problems']! as List).map((p) => (p as Map)['path']).toList(),
+          ],
+          [
+            ['details'],
+            ['details'],
+            ['details'],
+            [''],
+            ['encounterId'],
+            ['reason'],
+            [''],
+          ],
+        );
+        expect(server.records[made['recordId']]!.status, 'active');
+        final longest = bad({'details': 'D' * 2000});
+        expect(await send(casey, [longest]), [taken(longest, 1)]);
+      });
+    });
+
+    // Rule 15: services/api/test/sync-encounters.test.ts, 'offline reads of a visit (lifecycle 4.8, 10.1)'.
+    test(
+      'the EMS handoff shown and the notes to finish are reads a phone logs offline, each naming its patients',
+      () async {
+        final p = server.seedPatient();
+        final visit = visitOf(patientId: p);
+        final others = [uuid(), uuid()];
+        final shown = change(entityAudit, 'append', {
+          'action': 'ems_handoff.shown',
+          'entity': 'encounter',
+          'entityId': visit,
+          'patientId': p,
+        });
+        final listed = change(entityAudit, 'append', {
+          'action': 'notes_to_finish.viewed',
+          'patientIds': [p, ...others],
+          'resultCount': 3,
+        });
+        // The export is the online route's (5.7): a phone never logs it.
+        final exported = change(entityAudit, 'append', {
+          'action': 'ems_handoff.exported',
+          'entity': 'encounter',
+          'entityId': visit,
+          'patientId': p,
+        });
+        expect(await send(alex, [shown, listed, exported]), [taken(shown, 1), taken(listed, 1), refusedAt('action')]);
+        expect(
+          [
+            for (final a in server.audit)
+              [a['action'], a['entityId'], a['patientId'], a['patientIds'], a['resultCount'], a['userId']],
+          ],
+          [
+            ['ems_handoff.shown', visit, p, null, null, alex],
+            [
+              'notes_to_finish.viewed',
+              null,
+              null,
+              [p, ...others],
+              3,
+              alex,
+            ],
+          ],
+        );
+      },
+    );
+
+    // services/api/test/sync-encounters.test.ts, 'a problem made at a visit (lifecycle 8.3, 4.7)'.
+    test('is marked as made at a visit, and names a visit of its patient’s merged group or none', () async {
+      final p = server.seedPatient(preferredName: 'Demo Rowan');
+      final other = server.seedPatient(preferredName: 'Demo Sage');
+      // One person, two records: a visit of either is a visit of the person.
+      final twin = server.seedPatient(preferredName: 'Demo Rowan two');
+      server.merge(twin, p);
+      final [ofP, ofOther, ofTwin] = [visitOf(patientId: p), visitOf(patientId: other), visitOf(patientId: twin)];
+      final nobody = visitOf();
+      Map<String, Object?> problem([Object? encounterId = #none]) => change(entityProblem, 'create', {
+        'patientId': p,
+        'title': 'Demo: cellulitis, left shin',
+        'status': 'new',
+        if (encounterId != #none) 'encounterId': encounterId,
+      });
+      final changes = [problem(ofP), problem(), problem(null), problem(ofOther), problem(ofTwin), problem(nobody)];
+      final answers = await send(alex, changes);
+      expect(
+        [
+          for (final r in answers)
+            [r['status'], r['reason'], (r['details'] as Map<String, Object?>?)?['problem'], r['quarantined']],
+        ],
+        [
+          ['accepted', null, null, null],
+          ['accepted', null, null, null],
+          ['accepted', null, null, null],
+          ['rejected', 'stale_reference', 'encounter_other_patient', null],
+          ['accepted', null, null, null],
+          ['accepted', null, null, null],
+        ],
+      );
+      expect(
+        [
+          for (final c in changes)
+            [
+              server.records[c['recordId']]?.attributes['source'],
+              server.records[c['recordId']]?.attributes['createdEncounterId'],
+            ],
+        ],
+        [
+          ['encounter', ofP],
+          ['manual', null],
+          ['manual', null],
+          [null, null],
+          ['encounter', ofTwin],
+          ['encounter', nobody],
+        ],
+      );
+      // Send without the visit (8.4): the same record with no visit settles the refusal.
+      final without = change(
+        entityProblem,
+        'create',
+        {...changes[3]['value']! as Map<String, Object?>, 'encounterId': null},
+        recordId: changes[3]['recordId']! as String,
+        more: {'supersedes': changes[3]['changeId']},
+      );
+      expect(await send(alex, [without]), [taken(without, 1)]);
+      expect(server.records[without['recordId']]!.attributes['source'], 'manual');
+      final chart = await as(alex).getPatient(patientId: p);
+      expect(
+        [
+          for (final r in chart.problems!)
+            if (r.id == changes[0]['recordId']) [r.attributes['source'], r.attributes['createdEncounterId']],
+        ],
+        [
+          ['encounter', ofP],
+        ],
+      );
     });
 
     test('the encounter’s status follows its notes', () async {
