@@ -338,6 +338,39 @@ describe('the plans of the pieces', () => {
     },
   );
 
+  // The vitals' ranges are placeholders for the clinical team (inventory A10), but a lower limit
+  // above a reading that is taken on the street would leave the one vital that matters out of the
+  // EMS handoff, or have a value typed that was never measured: an opioid overdose before
+  // naloxone, a night of hypothermia. The quick form's vitals map onto General's, with its ranges.
+  const READINGS: Record<string, number[]> = {
+    'vitals.rr': [0, 2, 60],
+    'vitals.spo2': [44, 70, 100],
+    'vitals.hr': [18, 30, 220],
+    'vitals.temp': [59, 68, 108.5],
+    'vitals.bp.systolic': [50, 260],
+    'vitals.bp.diastolic': [25, 150],
+  };
+  it.each(['general-1', 'quick-1'])('%s takes the vitals measured in an overdose or hypothermia', (name) => {
+    const at = (path: string) => (name === 'quick-1' ? path.replace(/^vitals\./, 'general.') : path);
+    const numbers = new Map(shapeOf(name).fields.map((field) => [field.path, field]));
+    const general = new Map(shapeOf('general-1').fields.map((field) => [field.path, field]));
+    for (const [path, readings] of Object.entries(READINGS)) {
+      const field = numbers.get(at(path));
+      if (field === undefined && name === 'quick-1') continue;
+      for (const reading of readings) {
+        expect(reading, `${at(path)}: min`).toBeGreaterThanOrEqual(field?.min as number);
+        expect(reading, `${at(path)}: max`).toBeLessThanOrEqual(field?.max as number);
+      }
+      const { min, max, decimals, unit } = general.get(path) ?? ({} as Partial<ShapeField>);
+      expect({ min, max, decimals, unit }, at(path)).toEqual({
+        min: field?.min,
+        max: field?.max,
+        decimals: field?.decimals,
+        unit: field?.unit,
+      });
+    }
+  });
+
   it.each(Object.keys(PLANNED))('%s names only shared lists that are files of lists/', (name) => {
     const lists = filesIn('lists');
     for (const field of shapeOf(name).fields) {
