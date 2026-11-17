@@ -501,21 +501,20 @@ void main() {
       final p = phone(alex);
       final visit = chartVisit(p);
       await p.engine.syncAll();
-      // The note is gone from the server for a while: a stand-in for anything a later fix gets past
-      // (a finished note keeps a late change in history now, lifecycle 4.4).
-      final away = server.records.remove(visit.note)!;
-      p.store.setField(visit.note, 'data.care.plan', 'rest');
+      // A pulse the note type refuses (it takes 0 to 300), and a fix mistyped again: both refused.
+      p.store.setField(visit.note, 'data.vitals.pulse', 400);
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
-      p.store.fixRejected(first.changeId, 'rest and fluids');
+      expect(first.reason, 'validation');
+      p.store.fixRejected(first.changeId, 1040);
       await p.engine.syncAll(force: true);
       final fix = p.store.needsAttention().single;
-      expect(fix.supersedes, first.changeId);
+      expect([fix.supersedes, fix.reason], [first.changeId, 'validation']);
 
-      server.records[visit.note] = away;
-      p.store.fixRejected(fix.changeId, 'rest, fluids and a recheck');
+      p.store.fixRejected(fix.changeId, 104);
       await p.engine.syncAll(force: true);
       expect(p.store.outbox(), isEmpty);
+      expect(server.records[visit.note]!.fields['data.vitals.pulse']!.value, 104);
       expect(
         [
           for (final e in [first, fix]) server.receipts[e.changeId]!.resolved,
@@ -528,14 +527,14 @@ void main() {
       final p = phone(alex);
       final visit = chartVisit(p);
       await p.engine.syncAll();
-      final away = server.records.remove(visit.note)!;
-      p.store.setField(visit.note, 'data.care.plan', 'rest');
+      // A pulse the note type refuses (it takes 0 to 300).
+      p.store.setField(visit.note, 'data.vitals.pulse', 400);
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
-      // Back again, and a teammate writes the plan meanwhile, so the fix meets their value.
-      server.records[visit.note] = away;
-      server.serverEdit(visit.note, 'data.care.plan', 'clinic Friday', by: blair);
-      p.store.fixRejected(first.changeId, 'rest and fluids');
+      expect(first.reason, 'validation');
+      // A teammate writes the pulse meanwhile, so the fix meets their value.
+      server.serverEdit(visit.note, 'data.vitals.pulse', 100, by: blair);
+      p.store.fixRejected(first.changeId, 104);
       await p.engine.syncAll(force: true);
       final shown = p.store.needsAttention().single;
       expect(shown.state, ChangeState.conflict);
@@ -543,7 +542,7 @@ void main() {
       p.store.resolveConflict(shown.changeId, keepMine: true);
       await p.engine.syncAll(force: true);
       expect(p.store.outbox(), isEmpty);
-      expect(server.records[visit.note]!.fields['data.care.plan']!.value, 'rest and fluids');
+      expect(server.records[visit.note]!.fields['data.vitals.pulse']!.value, 104);
       expect(
         [
           for (final e in [first, shown]) server.receipts[e.changeId]!.resolved,
