@@ -76,7 +76,7 @@ Names used:
 packages/forms/
   definitions/
     lists/<name>.json                  shared option lists (wound_type, side, pulse_scale, ...)
-    modules/<name>/v<N>.json           a block of sections included by note types (one per exam system)
+    modules/<name>/v<N>.json           a block of sections included by note types (one per exam piece)
     note-types/<key>/v<N>.json         one note type, one version
     spec/<piece>.txt                   the lines of SPEC a definition was transcribed from
     spec/<piece>.diff.json             the differences from SPEC made on purpose, each with its reason
@@ -594,6 +594,11 @@ As built:
   `spec`; as soon as one does, all three of the piece's files must exist (`spec.missing_text`,
   `spec.missing_diff`, `shape.missing_file`). The `.txt` keeps blank lines, so a line number can
   be found again; a line that holds `[left out]` is skipped whole and still counts as a line.
+- **A section names one piece**, so a repeating section whose parts SPEC writes in two places is
+  one piece. From wave B on, Wound care (SPEC 63 to 119, the piece `wound`) and MSK (SPEC 912 to
+  1068, `exam-msk`) are each one: each wound holds its own treatment (inventory A26), and each
+  MSK entry the parts of its region (6.3). That makes 35 pieces: 13 for the note types and 22 for
+  the exam (`forms-inventory.md` section 8, `forms-inventory-focused-exam.md` section 7).
 - **The diff file has exactly four keys**, all of them there even when a list is empty: `piece`
   (its name), `notOptions`, `added` and `differences` (each `{ line, what, why }`, exactly those
   keys, `line` a line of the `.txt` counted from 1, `what` and `why` not empty). Entries are
@@ -679,7 +684,11 @@ what lets a transcription card be level S.
   `{ "code": …, "label": … }`. A code crossed with its label, invented, typed twice, moved to
   another field or put out of order is found. `{ "list": … }` and `{ "pickedIn": … }` stay as
   written. `flags` names, for each key an option carries beside its code and label, the codes
-  that carry it.
+  that carry it. As built since wave B, an entry may also be `{ code, label }` where the rule
+  makes the code, to pin the label: the lines spell some words two ways (quick-2's Referral Yes
+  and No, its Delivery YES and NO), the rule makes one code of both, and the spec check reads only
+  the set of words, so a swap of the two rows' labels would pass. The definition's label is then
+  held to the pinned one.
 - **Sections and fields are compared in order**: `shape.missing_section`, `shape.extra_section`,
   `shape.section_order`, `shape.section_differs`, `shape.missing_field`, `shape.extra_field`,
   `shape.field_order` (within its section) and `shape.field_differs`, whose path ends in the key
@@ -690,7 +699,9 @@ what lets a transcription card be level S.
   piece whose file is not yet written is not looked for, so pieces can land before their
   definitions.
 - **Shared lists have no shape.** A person reads each list's codes, order, flags and count
-  against the lines in the unit's review.
+  against the lines in the unit's review. As built (unit F6), the definitions test
+  (`packages/forms/test/definitions.test.ts`) also pins each list's codes, labels, order and
+  flags, and holds every list to a use (4.4).
 
 **The lock, as built.** `definitions.lock.json` is a flat object from a path under
 `definitions/` to the SHA-256 of the file's content (its canonical JSON; a piece's `.txt` as
@@ -769,6 +780,15 @@ shape file: the lock freezes it once released, so a list that must change is a n
 new name, and a person reads its codes, order, flags and count against the lines when the unit
 is reviewed.
 
+As built (unit F6) there are 17: the ten above, `surface`, `side_rlm` (Skin's), and `yes_no`,
+`lung_findings`, `range_of_motion`, `capillary_refill` and `special_test_result`, which the
+inventories' section 5 call the same everywhere. Labels are as SPEC writes them; where the code
+rule makes no valid code (`0`, `1+`) the list gives one (`zero`, `one_plus`). `needs` has no icons
+yet (10.1 #17). **A list no plan uses is removed**, as `yes_no_unsure` was: the definitions test
+holds every list to a use, named by the plan of some piece as a field's options, a grid's rows or
+a region's side or surface, and pins each list's codes, labels, order and flags, so a change to
+what one-tap Normal records fails a test.
+
 ## 5. The inventory, and the decisions that shape it
 
 The inventories are the work-list. This section holds only the decisions that are not plain
@@ -820,6 +840,9 @@ So they are one note type, `red_flags_disposition`, with `auto: 'medical'`:
   `required` while EMS activated is Yes.
 - Disposition is choose-many with `excludes` pairs (PRD main 102). Inventory A21 lists the pairs
   built by default.
+- **Follow-up is asked here only**, for every Medical note type. As planned in wave B, the Quick
+  encounter's own follow-up lines (SPEC 328 to 332) are not typed (6.4): asked twice, the two could
+  disagree. Phase 7's follow-up task reads this note's.
 
 ### 6.3 The Focused Exam
 
@@ -848,6 +871,45 @@ a one-tap Normal" (PRD main 414).
   `collapsed` like a group, at no cost in path parts; motor strength is a number whose `normal`
   is 5, what one-tap Normal fills (default 28); Skin's side list has Midline (default 24), so a
   region's `side` names any shared list.
+
+As planned in wave B (unit F6; the plans are the shape files under `definitions/spec/`):
+
+- **One module per exam piece**, 21 in all: HEENT four (`exam_heent_eyes`, `_ears`, `_nose`,
+  `_mouth`), Cardiovascular two, Neurologic two, and one for every other system. A module is
+  named after its piece, with underscores, at version 1. Each holds one section, except Skin (the
+  overall skin, and Skin finding, which repeats, at most 20) and MSK (below). Every section shows
+  only while its system is picked, and offers Normal exactly where something in it has a normal
+  to fill: Skin finding does not, since no option of a finding is normal. Normal stays per
+  section, so HEENT has four (default 11).
+- **The picker** has the 16 systems' codes (the focused-exam inventory's section 2 ids), in
+  SPEC's picker order, and Other, which opens `exam.other_findings`, a text of up to 2,000
+  characters. GU, breast and rectal carry `sensitiveExam`.
+- **General includes the modules** after its `exam` section and before `problems`, version 1 of
+  each, in the order of the focused-exam inventory's section 7, and **no include carries
+  `showWhen`**: the condition is on each module section, and the resolver would join a second,
+  equal one to it. The shape files cannot hold an include, so the plan of General's sections is
+  `GENERAL_PLAN` in `packages/forms/test/definitions.test.ts`, which holds the General file to it
+  once the file exists.
+- **MSK is one piece and one module, `exam_msk`**, so that it can be one repeating section: its
+  section `msk` has one entry per region examined, at most 10 (10.1 #19), each titled Region
+  {n}. The region is choose-one, so another region is another entry. Every part after it shows
+  once `./region` is filled; Side (the shared list `side`) shows for every region but Head / Neck
+  and Back (default 4); the shoulder tests show for `./region` is the shoulder. Gait belongs to the
+  whole person, so it is one answer for the exam, in a second section of the module, `msk_gait`,
+  shown while MSK is picked: a condition outside the repeating section cannot name `msk.region`
+  (`validate.path_into_repeat`). One-tap Normal in an entry does nothing until its region is
+  picked (default 29 asks).
+- **One-tap Normal leaves an optional part alone**: it fills nothing in a group or grid marked
+  `collapsed`, even once it is opened and partly charted, since only the clinician says it was
+  examined (10.1 #25). The reflex table is collapsed. Cardiovascular's and Peripheral vascular's
+  pulse sites are two grids each: Pulses, the sites a routine exam palpates (Radial, DP and PT),
+  which Normal fills with 2+ (default 28), and a collapsed More pulse sites, which it does not.
+- **One-tap Normal never hides an answer that counts**: a normal that would hide a finding
+  already charted, a detail under a screen that is not intact for example, is not filled (7.1).
+  It also never answers a field that opens a hand-off (6.7).
+- **`range_of_motion`'s Unable is exclusive**, as is every Unable option of a choose-many field
+  (tympanic membrane, neurologic gait and coordination, MSK gait): neither normal nor abnormal, it
+  clears the rest. The shoulder tests' normal is Not performed (10.1 #18).
 
 ### 6.4 The Quick encounter
 
@@ -903,6 +965,15 @@ As built (`expandQuick`, unit F1, 7.1):
   left out as `wrong_type` without asking `checkAnswer`, which cannot see a unit: a 2 stored in
   inches would pass it as 2 cm. The validator holds the newest quick version to the unit
   (`maps_to_mismatch`); an older one is not.
+- **The quick fields' targets are planned** in the differences of `spec/quick-1.diff.json` and
+  `spec/quick-2.diff.json`: chief concern, HPI and the vitals into General, the wound's type,
+  location, measurements, drainage and dressing into Wound care (the dressing into
+  `wound.treatment.dressing`, inside the wound), the needs into Social needs. F6-general-assemble
+  adds each `mapsTo`, to the definition and to the two shape files, once every target note type
+  exists: with them earlier, the quick card's export would fail with `unknown_note_type`.
+- **The quick form asks no follow-up of its own**: a quick encounter is a Medical note, so its
+  follow-up is the Red flags and disposition note's (6.2). Its lines' follow-up text box and date
+  are declared left out in `spec/quick-2.diff.json`.
 
 ### 6.5 Sexual and reproductive branching
 
@@ -911,6 +982,12 @@ Current pregnancy details ... appear only once a pregnancy is confirmed. The Pre
 question sits at the top of the Pregnancy section, with Positive or Negative and no Not done
 option" (PRD main 417). All of it is `showWhen` and field order. Nothing in the renderer is
 special to this note type.
+
+As planned in wave B, Current pregnancy shows when the test is Positive or when a flag beside
+the test, "Known pregnancy, no test today", is set (an `any` condition), so a pregnancy known
+before the visit is charted without a test being recorded that was not done. The flag is not in
+the lines: a departure for the clinical team (inventory A44; 10.1 #24). The estimated due date
+may be in the past, as an overdue pregnancy's is.
 
 ### 6.6 Sensitive exams
 
@@ -928,7 +1005,7 @@ special to this note type.
   code marked `sensitiveExam` (2.2, `validate.condition_reads_restricted`): what it showed would
   tell a reader without the key what was found. The same holds for a `treatmentRecord` section.
 
-As built in wave B (unit F1):
+As built in wave B (units F1 and F6):
 
 - **What a sensitive exam leaves out is more than its sections and picker codes.** For a reader
   without the key `visibleAnswers` also takes out every answer in a grid row whose option is
@@ -943,6 +1020,11 @@ As built in wave B (unit F1):
 - **No field in a sensitive exam or a treatment record is marked `handoff`**
   (`validate.handoff_restricted`): the handoff goes to EMS. The handoff's field lines are laid
   out from the answers less what a sensitive exam put there, as its recap lines are.
+- **In the plans**, GU's, Breast's and Rectal's sections carry `sensitiveExam`, each with its
+  three workflow fields and nothing else `required` or `noNormal`. In GU, Exam performed opens the
+  external exam and the findings text, and general findings and CVA can be charted without it
+  (default 35); in Breast and Rectal every finding waits for it, so consent is required
+  whenever a finding is charted (10.1 #21).
 
 ### 6.7 Nothing charted twice
 
@@ -951,6 +1033,9 @@ in the diabetic foot exam" (PRD main 416). In the Skin and Diabetic foot section
 field with `action: 'open_note_type'` and `noteType: 'wound_care'` shows when one of those
 findings is picked. It opens
 the encounter's Wound care draft, or creates one. The Skin finding itself stores only its type.
+In the plans no field that such an action's condition reads has a normal option, so one-tap
+Normal never answers one: in the foot exam it would write "Wound present? No" beside an ulcer
+already ticked, and hide the hand-off (10.1 #29). Skin offers the action for Ulcer or Abscess.
 
 Skin findings also ask "Same lesion as documented before?" (PRD main 416). In phase 4 the answer
 is a choice (Yes, No, Unknown) stored with the finding. Linking it to the earlier finding waits
@@ -1275,7 +1360,7 @@ the rest of the visit page.
 
 | # | Question | Default built | Who decides |
 |---|---|---|---|
-| 1 | The 60 or so ambiguities in SPEC (choose-one or choose-many for 79 button rows, what Other does, which fields are required, vitals units and ranges, and the rest) | The default written beside each in the inventories' ambiguity sections | Brooke and Mercy |
+| 1 | The 60 or so ambiguities in SPEC (choose-one or choose-many for 79 button rows, what Other does, which fields are required, vitals units and ranges, and the rest) | The default written beside each in the inventories' ambiguity sections. Where a plan departs from it, or the inventories give none, the piece's diff file says so, marked PLAN-OPEN under this row; those to read first have rows of their own (14 to 32) | Brooke and Mercy |
 | 2 | Is Harm reduction Medical? (PRD main 447) | Yes | Brooke and Mercy |
 | 3 | The body map | A list of regions by front and back, with side and surface. The codes are those behind the quick form's region list (SPEC 299). | The team |
 | 4 | Where red flags and disposition are asked | Once per Medical encounter, in their own short note (6.2) | Brooke and Mercy |
@@ -1288,12 +1373,32 @@ the rest of the visit page.
 | 11 | Which timeline filter each note type belongs to | The mapping in section 5 | Brooke and Mercy |
 | 12 | What Expand does with a Quick encounter draft written on an older released version | It reads the draft's own version, writes each answer only where the newest full version takes it (`checkAnswer`), and lists for the person the answers it left out (6.4) | Brooke and Mercy |
 | 13 | What the visit read shows of an answer a correction took away | An answer the correction cleared, or hid while changing it, shows no value and its old one struck through (7.1). An entry a correction removed, and an answer it hid without changing, are not marked: the read model sees only the answers that count now | Brooke and Mercy |
+| 14 | The unit of temperature (inventory A10 asks for a °C switch) | Degrees F only. A number's second unit is a factor (`altUnit.perUnit`), and °C to °F is not | Brooke and Mercy |
+| 15 | When Wound care's infection details open (inventory A31: by themselves for Possible, Yes and Urgent) | A group that stays closed until tapped: the format has no condition for a group's opening. Urgent shows "Go to Red flags and disposition" | Brooke and Mercy |
+| 16 | The time of a set of vitals (inventory A13: each set has its own) | The time its entry was added (`entryAt`); no time field | Brooke and Mercy |
+| 17 | The Social needs icons (PRD main 419: design-system icons, not emoji) | None in version 1: no set of icon names exists yet. The lock freezes the `needs` list once released, so icons added later make a new list under a new name | The team, before the lists are released |
+| 18 | What one-tap Normal records for the shoulder tests | Not performed, the inventory's normal for the region-specific tests: Normal never records a test as negative | Brooke and Mercy |
+| 19 | The placeholder ranges and repeat maxima | The vitals take what can be measured: respiratory rate, SpO₂, heart rate and both blood pressure numbers from 0, temperature from 50 °F, so an overdose or hypothermia is charted as measured. Wound length and width 0.1 to 100 cm, depth 0 to 30; typical cycle 1 to 90 days, duration 1 to 30; gravida 1 to 30, para 0 to 30; naloxone 1 to 20 doses; an estimated due date may be past. At most 10 sets of vitals, problems, wounds, tests and MSK regions in one note | Brooke and Mercy |
+| 20 | How many Skin findings one note holds | 20, the format's most (2.4); Wound care holds 10 wounds | Brooke and Mercy |
+| 21 | What Exam performed opens in Breast and Rectal (default 35 answers it for GU only) | Every finding, so consent is required whenever a finding of either exam is charted (6.6) | Brooke and Mercy |
+| 22 | Is Social needs' housing status the chart's living situation? (inventory A37) | No: the note keeps the lines' six (Unsheltered, Shelter, Transitional, Permanent, Doubled-up, Unknown) with PRD main 111's changes, Couch surfing for Doubled-up and an Other, apart from the chart's ten; only Unsheltered, Couch surfing, Unknown and Other are shared | Brooke and Mercy |
+| 23 | Findings that cannot be held together, beyond the inventory's (default 17) | Excluded pairs: Well appearing against Ill and Toxic appearing, Alert, Drowsy and Somnolent against one another, and Agitated against Calm, in General appearance; Alert, Somnolent and Obtunded in Neurologic mental status; Warm against Cool, Dry against Moist and Diaphoretic, on the skin; Calm against Agitated, Rapid against Slow speech, in Psychiatric observation. Warm stays beside Edema in Peripheral vascular and beside Asymmetric in the foot exam, excluding only Cool | Brooke and Mercy |
+| 24 | Does a pregnancy known before the visit open Current pregnancy? (inventory A44) | Yes: a flag beside the pregnancy test, "Known pregnancy, no test today", opens it as a Positive test does, so no one records a test that was not done. The flag is not in the lines (6.5) | Brooke and Mercy |
+| 25 | What one-tap Normal fills in an optional part, and which pulse sites are routine | Nothing in a group or grid marked `collapsed`, even once it is opened. The reflex table is collapsed, and Cardiovascular's and Peripheral vascular's Pulses hold Radial, DP and PT, which Normal fills, with the other sites in a collapsed More pulse sites (6.3). A departure from focused-exam default 28 for the reflexes and those sites | Brooke and Mercy |
+| 26 | Rows that are choose-one though their answers may go together (inventory A1) | Contraception method, wound type (and the quick form's twin) and a wound's follow-up stay choose-one: a patient using two methods records one, an abscess with cellulitis is one type, and a follow-up is a time or a place | Brooke and Mercy |
+| 27 | The regions of the body region list | The eight of the quick form (SPEC 299): Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands. No Feet, Face or Groin, though the foot exam hands a foot wound to Wound care. The lock freezes the list once released | Brooke and Mercy, before the lists are released |
+| 28 | May range of motion be full and painful? | No: Full is exclusive, so it clears Painful, Limited and Unable, and Unable clears the others | Brooke and Mercy |
+| 29 | Does one-tap Normal answer the foot exam's Wound present? (default 29 sets it to No) | No: no answer that opens a hand-off is filled by Normal, so it never writes No beside a wound already charted (6.7) | Brooke and Mercy |
+| 30 | When a lymph node's size is asked | Once its row has any finding, so the lines' example ("Inguinal: 2 cm, tender, mobile") can be charted | Brooke and Mercy |
+| 31 | Where Breast records a clock position and a side | Inside the Mass group, shown while Mass is picked: one mass per exam, and no side for tenderness, a nodule or another finding | Brooke and Mercy |
+| 32 | May coordination be Abnormal beside both normal findings? | Yes: Unable clears the others, but a blocked pair cannot refuse three codes held together | Brooke and Mercy |
 
 ### 10.2 Questions that need a person and have no default
 
 1. **The MSK test list for each region but the shoulder** (PRD main 414).
 2. **The result options for Testing History** (PRD main 103 adds "a date and result per test";
-   no list exists).
+   no list exists). Until the clinical team gives one, the plan offers Positive, Negative,
+   Pending and Unknown (inventory A34).
 3. **The content of the full safety assessment and the mental status exam.** SPEC has the two
    buttons and no fields (SPEC 164 to 166). Each ships as one text box until the clinical team
    supplies the lists.
@@ -1331,10 +1436,12 @@ the rest of the visit page.
 4. **One answer per change.** One-tap Normal on a large system writes 10 to 20 changes. That is
    how phase 2 works, and its sync batches them, but a visit with every system charted is a few
    hundred changes. The live job should include one.
-5. **A definition is 256 KiB at most** and the General note type with sixteen modules is the
-   largest. If it passes the limit, split the exam into a note type of its own. The number of
-   answers a note can hold is bounded by the server's `MAX_NOTE_FIELDS`, and the export prints it
-   for each note type (2.4), so a form that comes near it is seen before a visit does.
+5. **A definition is 256 KiB at most** and the General note type with its 21 exam modules is the
+   largest: about 50 KiB resolved when wave B tried its plans. If it passes the limit, split the
+   exam into a note type of its own. The number of answers a note can hold is bounded by the
+   server's `MAX_NOTE_FIELDS`, and the export prints it for each note type (2.4), so a form that
+   comes near it is seen before a visit does. As planned, a General note holds at most about 740,
+   with MSK at 10 regions and Skin at 20 findings; raising either maximum raises it.
 
 ## 11. Units
 
