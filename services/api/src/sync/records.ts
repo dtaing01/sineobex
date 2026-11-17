@@ -548,6 +548,27 @@ export async function createReceivedAt(
   return row?.at ?? record.createdAt;
 }
 
+/**
+ * Whether the sign-off an addendum or a correction names is one of its note, or with no note, of a
+ * note of its visit (the coordinator's decision on review finding REC-3): otherwise it is refused
+ * as a missing parent is (stale_reference note_signoff_missing), never applied. The sign-off exists:
+ * apply.ts checked it as the create's parent.
+ */
+export async function signoffOfOther(
+  tx: Tx,
+  signoffId: string | null,
+  noteId: string | null,
+  encounterId: string | null,
+): Promise<Outcome | null> {
+  if (signoffId === null) return null;
+  const [row] = await tx<{ noteId: string; encounterId: string }[]>`
+    select s.note_id, n.encounter_id from sineobex.note_signoffs s
+    join sineobex.encounter_notes n on n.team_id = s.team_id and n.id = s.note_id
+    where s.id = ${signoffId}`;
+  const ours = row && (noteId !== null ? row.noteId === noteId : row.encounterId === encounterId);
+  return ours ? null : rejected('stale_reference', { problem: 'note_signoff_missing' });
+}
+
 /** The change being applied, with what applying it needs. */
 export interface ChangeContext {
   tx: Tx;

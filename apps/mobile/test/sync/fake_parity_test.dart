@@ -2683,6 +2683,67 @@ void main() {
       });
     });
 
+    group('what an addendum and a correction name (lifecycle 4.7)', () {
+      Matcher stale(String problem) => allOf(
+        containsPair('status', 'rejected'),
+        containsPair('reason', 'stale_reference'),
+        containsPair('details', {'problem': problem}),
+      );
+
+      test('names a sign-off of its own note, or with no note of a note of its visit: any other is refused as a missing one is', () async {
+        final patient = server.seedPatient();
+        final visit = visitOf(patientId: patient);
+        final other = visitOf(patientId: patient);
+        final draft = noteOn(visit);
+        final done = noteOn(visit);
+        final ours = server.cosign(done, by: alex);
+        final theirs = server.cosign(noteOn(other), by: alex);
+        Map<String, Object?> naming(String? noteId, String signoffId) => change(entityAddendum, 'create', {
+          'encounterId': visit,
+          'noteId': noteId,
+          'text': 'Demo: called back',
+          'signoffId': signoffId,
+        });
+        final changes = [naming(draft, ours), naming(null, theirs), naming(done, ours), naming(null, ours)];
+        final answers = await send(alex, changes);
+        expect(answers.sublist(0, 2), [stale('note_signoff_missing'), stale('note_signoff_missing')]);
+        expect([for (final r in answers.sublist(2)) r['status']], ['accepted', 'accepted']);
+        expect([server.records[changes[0]['recordId']], server.records[changes[1]['recordId']]], [null, null]);
+      });
+
+      test(
+        'names a sign-off of its own note: another note’s is refused as a missing one is, and the draft is not edited',
+        () async {
+          final visit = visitOf(patientId: server.seedPatient());
+          final draft = server.seed(
+            entityNote,
+            noteValue(visit, testNote, const {'care.plan': 'Demo: before'}),
+            by: alex,
+          );
+          final done = server.seed(entityNote, noteValue(visit, testNote, const {'care.plan': 'Demo: done'}), by: alex);
+          final signed = server.cosign(done, by: alex);
+          Map<String, Object?> correcting(String noteId, String newValue) => change(entityCorrection, 'create', {
+            'noteId': noteId,
+            'changes': [
+              {'field': 'data.care.plan', 'newValue': newValue, 'baseVersion': 1},
+            ],
+            'reason': 'Demo: the wrong field was picked',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': 'attending',
+            'signoffId': signed,
+          });
+          final wrong = correcting(draft, 'Demo: after');
+          final right = correcting(done, 'Demo: done today');
+          final answers = await send(alex, [wrong, right]);
+          expect(answers.first, stale('note_signoff_missing'));
+          expect(answers.last['details'], containsPair('outcome', 'corrected'));
+          expect(server.records[wrong['recordId']], isNull);
+          expect(server.records[draft]!.fields['data.care.plan']!.value, 'Demo: before');
+        },
+      );
+    });
+
     // Rule 10: services/api/test/sync-corrections.test.ts, 'corrections (lifecycle 3.6, 4.7)'. Dana
     // holds no credential, Alex is an attending, Blair a resident, Casey a student; the co-signer and
     // attester is the admin, an attending.

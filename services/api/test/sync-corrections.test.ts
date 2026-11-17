@@ -314,6 +314,29 @@ describe('phase 4 sync: addenda and corrections', () => {
       expect(refusal!.resolvedByChange).toBe(fixed.changeId);
     });
 
+    it('names a sign-off of its own note, or with no note of a note of its visit: any other is refused as a missing one is', async () => {
+      const visit = await visitOf(dana, patientId);
+      const other = await visitOf(dana, patientId);
+      const draft = await noteOn(dana, visit, TEST_NOTE_TYPE, {});
+      const done = await noteOn(dana, visit, TEST_NOTE_TYPE, {});
+      const elsewhere = await noteOn(dana, other, TEST_NOTE_TYPE, {});
+      const ours = await finishNote(dana, done, 'complete', 'completed');
+      const theirs = await finishNote(dana, elsewhere, 'complete', 'completed');
+      const changes = [
+        await addendum(dana, visit, draft.noteId, { signoffId: ours.recordId }),
+        await addendum(dana, visit, null, { signoffId: theirs.recordId }),
+        await addendum(dana, visit, done.noteId, { signoffId: ours.recordId }),
+        await addendum(dana, visit, null, { signoffId: ours.recordId }),
+      ];
+      const answers = await dana.send(...changes);
+      expect(answers.slice(0, 2)).toEqual([
+        rejectedAs(changes[0]!, 'stale_reference', { problem: 'note_signoff_missing' }),
+        rejectedAs(changes[1]!, 'stale_reference', { problem: 'note_signoff_missing' }),
+      ]);
+      expect(answers.slice(2).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+      for (const c of changes.slice(0, 2)) expect(await addendumRow(c.recordId)).toBeUndefined();
+    });
+
     it('waits behind its sign-off: an addendum naming a held sign-off is held with it; one without encounters.chart is held', async () => {
       const ash = await who('ash@example.com', 'Ash (demo)', 'np');
       const visit = await visitOf(ash, patientId);
@@ -1096,6 +1119,26 @@ describe('phase 4 sync: addenda and corrections', () => {
       expect(effectiveAnswers(TEST_NOTE_TYPE, shown)).toMatchObject({
         'more.detail': 'Demo: walks with a cane',
       });
+    });
+
+    it('names a sign-off of its own note: another note’s is refused as a missing one is, and the draft is not edited', async () => {
+      const visit = await visitOf(dev, patientId);
+      const draft = await noteOn(dev, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: before' });
+      const done = await noteOn(dev, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: done' });
+      const signed = await finishNote(dev, done, 'complete', 'completed');
+      const wrong = await correction(dev, draft, [answer('care.plan', 'Demo: after')], {
+        signoffId: signed.recordId,
+      });
+      const right = await correction(dev, done, [answer('care.plan', 'Demo: done today')], {
+        signoffId: signed.recordId,
+      });
+      const [refused, taken] = await dev.send(wrong, right);
+      expect(refused).toEqual(rejectedAs(wrong, 'stale_reference', { problem: 'note_signoff_missing' }));
+      expect(taken!.details).toMatchObject({ outcome: 'corrected' });
+      expect(await correctionRow(wrong.recordId)).toBeUndefined();
+      const [row] = await h.scratch.owner<{ data: Record<string, unknown> }[]>`
+        select data from sineobex.encounter_notes where id = ${draft.noteId}`;
+      expect(row!.data).toEqual({ 'care.plan': 'Demo: before' });
     });
 
     it('needs encounters.chart, names a note the team holds, and waits behind its sign-off', async () => {

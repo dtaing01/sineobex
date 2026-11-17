@@ -4,6 +4,7 @@ import { correctionEffect, type Attestation } from '../../encounters/rules.ts';
 import { signedUnder, type SignedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
 import {
+  signoffOfOther,
   createReceivedAt,
   appendHistory,
   byDefinition,
@@ -150,6 +151,8 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
   // a record ID already taken is found first.
   const taken = await tx`select 1 from sineobex.note_corrections where id = ${c.recordId}`;
   if (taken.length > 0) return invalid('record_exists');
+  const other = await signoffOfOther(tx, v.signoffId, v.noteId, null);
+  if (other) return other;
 
   const note = (await noteRules.load(tx, v.noteId, true))!;
   const under = await correctorOf(ctx, v, note);

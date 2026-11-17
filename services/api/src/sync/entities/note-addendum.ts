@@ -1,7 +1,15 @@
 import type { z } from '@hono/zod-openapi';
 import { signedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
-import { createReceivedAt, receivedAtOf, rejected, storeCreate, when, type EntityRules } from '../records.ts';
+import {
+  createReceivedAt,
+  receivedAtOf,
+  rejected,
+  signoffOfOther,
+  storeCreate,
+  when,
+  type EntityRules,
+} from '../records.ts';
 import { loadEncounter } from './encounter.ts';
 import { noteRules } from './note.ts';
 import { NoteAddendumCreate, valueParents } from './values.ts';
@@ -56,6 +64,8 @@ export const noteAddendumRules: EntityRules<Value> = {
         return rejected('stale_reference', { problem: 'encounter_note_missing' });
       }
     }
+    const other = await signoffOfOther(tx, v.signoffId, v.noteId, visit.id);
+    if (other) return other;
     const author = await loadSigner(tx, actor.teamId, actor.authorId);
     // A push and an admin's accept both come from a member of the team, removed or not.
     if (!author) throw new Error('an addendum from someone who was never a member of the team');

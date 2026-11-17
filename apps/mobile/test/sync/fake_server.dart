@@ -826,6 +826,8 @@ class FakeSyncServer {
         if (noteId != null && records[noteId]!.attributes['encounterId'] != visit.id) {
           return _rejected('stale_reference', {'problem': 'encounter_note_missing'});
         }
+        final other = _signoffOfOther(v['signoffId'] as String?, noteId, visit.id);
+        if (other != null) return other;
         authorCredential = _signedUnderFor(actor, c, notBefore: visit.storedAt ?? visit.createdAt).credential;
       // A visit of the referral's patient's merged group, or none (referral.ts).
       case entityReferral:
@@ -2001,6 +2003,15 @@ class FakeSyncServer {
 
   /// A patient's record names a visit of someone else (records.ts visitOfOtherPatient): one whose
   /// patient is outside [patientId]'s merged group. A visit that names no patient names nobody else.
+  /// The sign-off an addendum or a correction names is one of its note, or with no note, of a note of
+  /// its visit (records.ts signoffOfOther); otherwise refused as a missing parent is.
+  Map<String, Object?>? _signoffOfOther(String? signoffId, String? noteId, String? encounterId) {
+    if (signoffId == null) return null;
+    final ofNote = records[signoffId]?.attributes['noteId'] as String?;
+    final ours = noteId != null ? ofNote == noteId : records[ofNote]?.attributes['encounterId'] == encounterId;
+    return ours ? null : _rejected('stale_reference', {'problem': 'note_signoff_missing'});
+  }
+
   bool _visitOfOtherPatient(String patientId, String encounterId) {
     final seen = records[encounterId]!.fields['patientId']?.value as String?;
     return seen != null && canonicalOf(seen) != canonicalOf(patientId);
@@ -2015,6 +2026,8 @@ class FakeSyncServer {
   Map<String, Object?> _correction(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final recordId = c['recordId']! as String;
     if (records.containsKey(recordId)) return _invalid('record_exists');
+    final other = _signoffOfOther(v['signoffId'] as String?, v['noteId']! as String, null);
+    if (other != null) return other;
     final note = records[v['noteId']]!;
     final under = _signedUnderFor(
       actor,
