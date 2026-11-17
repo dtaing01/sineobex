@@ -811,6 +811,74 @@ describe('phase 4 sync: sign-offs', () => {
     const nowIso = () => new Date().toISOString();
     const timed = (time: string) => ({ deviceTime: time, correctedTime: time });
 
+    it('a signature’s time is the clock-corrected one; the phone’s own time is kept beside it', async () => {
+      const lou = await clinician('lou@example.com', 'Lou (demo)', 'attending');
+      const { flags, note } = await chartedVisit(lou);
+      expect((await lou.send(await signoff(lou, flags, 'sign'))).map((r) => r.status)).toEqual(['accepted']);
+      // The phone's clock runs three hours slow; its last measured offset corrects it.
+      const corrected = nowIso();
+      const device = new Date(Date.parse(corrected) - 3 * 3600_000).toISOString();
+      const sign = await signoff(lou, note, 'sign', { deviceTime: device, correctedTime: corrected });
+      expect(await lou.send(sign)).toEqual([applied(sign, 'signed', 'signed', 'not_needed')]);
+      expect(await signoffRow(sign.recordId)).toMatchObject({
+        signedAt: new Date(corrected),
+        signedDeviceTime: new Date(device),
+        signerCredential: 'attending',
+        clockVerified: true,
+      });
+      expect(await noteRow(note.noteId)).toMatchObject({
+        completedAt: new Date(corrected),
+        firstSignedAt: new Date(corrected),
+      });
+    });
+
+    it('a note whose create was held is believed from when the server received the create, not when an admin accepted it', async () => {
+      const pia = await clinician('pia@example.com', 'Pia (demo)', 'attending');
+      const visit = await visitOf(pia);
+      const flags = await noteOn(pia, visit, TEST_RED_FLAGS, { 'flags.any': 'no' });
+      expect((await pia.send(await signoff(pia, flags, 'sign'))).map((r) => r.status)).toEqual(['accepted']);
+      // Her credential is lowered while her phone is offline; her Medical note's create is held.
+      await setCredential(pia.membershipId, 'none');
+      const answers = { 'care.plan': 'Demo: rest' };
+      const create = await pia.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: visit.encounterId, ...TEST_MEDICAL, data: answers },
+      });
+      expect((await pia.send(create)).map((r) => r.reason)).toEqual(['permission']);
+      await new Promise((r) => setTimeout(r, 20));
+      // She signs it offline while she holds none; then an admin restores her.
+      const held: Held = {
+        ...visit,
+        noteId: create.recordId,
+        type: TYPES.get(TEST_MEDICAL.noteTypeKey)!,
+        answers,
+      };
+      const sign = await signoff(pia, held, 'sign', timed(nowIso()));
+      await new Promise((r) => setTimeout(r, 20));
+      await setCredential(pia.membershipId, 'attending');
+      await new Promise((r) => setTimeout(r, 20));
+      // The sign-off waits with its note, and an admin accepts both.
+      expect((await pia.send(sign)).map((r) => r.reason)).toEqual(['awaiting_review']);
+      for (const c of [create, sign]) {
+        const [item] = await h.scratch.owner<{ id: string }[]>`
+          select id from sineobex.quarantine_items where change_id = ${c.changeId}`;
+        const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision: 'accept', reason: 'Demo: checked with Pia' },
+        });
+        expect(decided.status).toBe(200);
+      }
+      // Signed after the server had the note, so the time is believed: she held none, which signs nothing.
+      expect(await signoffRow(sign.recordId)).toMatchObject({
+        effect: 'saved_unsigned',
+        signerCredential: 'none',
+        clockVerified: true,
+      });
+    });
+
     it('signed Monday, promoted Tuesday, synced Wednesday: the signature keeps the credential it was signed under', async () => {
       const kai = await clinician('kai@example.com', 'Kai (demo)', 'resident');
       // Monday: the drafts reach the server, then Kai completes them offline.

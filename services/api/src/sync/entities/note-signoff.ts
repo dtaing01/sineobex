@@ -6,6 +6,7 @@ import { signoffEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { signedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
 import {
+  createReceivedAt,
   appendHistory,
   byDefinition,
   DefinitionError,
@@ -161,7 +162,7 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
     signedAt: signedAt.toISOString(),
     receivedAt: receivedAt.toISOString(),
     clockVerified: c.clockVerified,
-    notBefore: note.createdAt.toISOString(),
+    notBefore: (await createReceivedAt(tx, 'encounter_note', note)).toISOString(),
     claimed: v.claimedCredential,
   });
 

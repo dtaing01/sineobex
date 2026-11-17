@@ -2434,6 +2434,57 @@ void main() {
           }
         });
 
+        test('a signature’s time is the clock-corrected one; the phone’s own time is kept beside it', () async {
+          final charted = chartedVisit(alex);
+          expect((await send(alex, [signoff(alex, charted.flags, 'sign')])).single['status'], 'accepted');
+          // The phone's clock runs three hours slow; its last measured offset corrects it.
+          final corrected = now.toIso8601String();
+          final device = now.subtract(const Duration(hours: 3)).toIso8601String();
+          final sign = signoff(alex, charted.note, 'sign')
+            ..['deviceTime'] = device
+            ..['correctedTime'] = corrected;
+          expect(await send(alex, [sign]), [applied(sign, 'signed', 'signed', 'not_needed')]);
+          final row = server.records[sign['recordId']]!;
+          expect([row.attributes['signedAt'], row.attributes['signerCredential']], [corrected, 'attending']);
+          expect(server.records[charted.note.noteId]!.completedAt, corrected);
+        });
+
+        test('a note whose create was held is believed from when the server received the create, not when an admin accepted it', () async {
+          final visit = visitOf(patientId: patient);
+          server.finishNote(noteHeld(visit, testRedFlags, const {'flags.any': 'no'}).noteId);
+          // Alex's credential is lowered while the phone is offline; the Medical note's create is held.
+          server.changeCredential(alex, 'none', at: now.subtract(const Duration(minutes: 40)));
+          const answers = {'care.plan': 'Demo: rest'};
+          final create = change(entityNote, 'create', noteValue(visit, testMedical, answers));
+          expect((await send(alex, [create])).single['reason'], 'permission');
+          // Received half an hour before the admin's accept, which this server's fixed clock dates now.
+          server.heldAt[create['changeId']! as String] = now.subtract(const Duration(minutes: 30));
+          // Signed offline while holding none; then an admin restores the credential.
+          final held = (
+            noteId: create['recordId']! as String,
+            encounterId: visit,
+            patientId: patient as String?,
+            summary: null as String?,
+            type: testMedical,
+            answers: answers,
+          );
+          final sign = signoff(
+            alex,
+            held,
+            'sign',
+            claimed: 'attending',
+            at: now.subtract(const Duration(minutes: 20)).toIso8601String(),
+          );
+          server.changeCredential(alex, 'attending', at: now.subtract(const Duration(minutes: 10)));
+          // The sign-off waits with its note, and an admin accepts both.
+          expect((await send(alex, [sign])).single['reason'], 'awaiting_review');
+          expect(server.acceptHeld(create['changeId']! as String)['status'], 'accepted');
+          expect(server.acceptHeld(sign['changeId']! as String)['status'], 'accepted');
+          // Signed after the server had the note, so the time is believed: none signs nothing.
+          final row = server.records[sign['recordId']]!;
+          expect([row.status, row.attributes['signerCredential']], ['saved_unsigned', 'none']);
+        });
+
         test(
           'signed Monday, promoted Tuesday, synced Wednesday: the signature keeps the credential it was signed under',
           () async {

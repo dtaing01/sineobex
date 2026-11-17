@@ -896,7 +896,9 @@ class FakeSyncServer {
         for (final MapEntry(:key, :value) in initial.entries) key: FakeField(value, 1, actor.userId, at, changeId),
       },
     );
-    record.storedAt = now().toUtc();
+    // When the server received the create (records.ts createReceivedAt): when its push held it, if an
+    // admin's accept made it later.
+    record.storedAt = heldAt[c['changeId']] ?? now().toUtc();
     for (final MapEntry(:key, :value) in initial.entries) {
       _history(record, key, 1, value, null, 'created', actor, c);
     }

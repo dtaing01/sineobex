@@ -532,6 +532,22 @@ export async function receivedAtOf(tx: Tx, changeId: string): Promise<Date> {
   return row!.at;
 }
 
+/**
+ * When the server received a record's create (lifecycle 3.5, notBefore): when its push held it for
+ * review, if it was held and an admin's accept made the row later, else when the row was made
+ * (review finding NOT-2).
+ */
+export async function createReceivedAt(
+  tx: Tx,
+  entity: AnyRecordEntityName,
+  record: Pick<StoredRecord, 'id' | 'createdAt'>,
+): Promise<Date> {
+  const [row] = await tx<{ at: Date | null }[]>`
+    select min(received_at) as at from sineobex.quarantine_items
+    where entity = ${entity} and record_id = ${record.id} and op = 'create' and status = 'accepted'`;
+  return row?.at ?? record.createdAt;
+}
+
 /** The change being applied, with what applying it needs. */
 export interface ChangeContext {
   tx: Tx;

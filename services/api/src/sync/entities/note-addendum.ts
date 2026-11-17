@@ -1,7 +1,7 @@
 import type { z } from '@hono/zod-openapi';
 import { signedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
-import { receivedAtOf, rejected, storeCreate, when, type EntityRules } from '../records.ts';
+import { createReceivedAt, receivedAtOf, rejected, storeCreate, when, type EntityRules } from '../records.ts';
 import { loadEncounter } from './encounter.ts';
 import { noteRules } from './note.ts';
 import { NoteAddendumCreate, valueParents } from './values.ts';
@@ -66,7 +66,7 @@ export const noteAddendumRules: EntityRules<Value> = {
       signedAt: writtenAt.toISOString(),
       receivedAt: (await receivedAtOf(tx, c.changeId)).toISOString(),
       clockVerified: c.clockVerified,
-      notBefore: visit.createdAt.toISOString(),
+      notBefore: (await createReceivedAt(tx, 'encounter', visit)).toISOString(),
       claimed: null,
     });
     return storeCreate(ctx, 'note_addendum', {

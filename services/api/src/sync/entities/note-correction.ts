@@ -4,6 +4,7 @@ import { correctionEffect, type Attestation } from '../../encounters/rules.ts';
 import { signedUnder, type SignedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
 import {
+  createReceivedAt,
   appendHistory,
   byDefinition,
   DefinitionError,
@@ -263,7 +264,7 @@ async function correctorOf(
     signedAt: at.toISOString(),
     receivedAt: (await receivedAtOf(tx, c.changeId)).toISOString(),
     clockVerified: c.clockVerified,
-    notBefore: note.createdAt.toISOString(),
+    notBefore: (await createReceivedAt(tx, 'encounter_note', note)).toISOString(),
     claimed: v.claimedCredential,
   });
   return { ...under, name: corrector.displayName };
