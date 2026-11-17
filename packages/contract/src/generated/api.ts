@@ -1043,7 +1043,7 @@ export interface components {
             reason: string;
         };
         /** @enum {string} */
-        ChangeEntity: "encounter" | "encounter_note" | "audit" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link";
+        ChangeEntity: "encounter" | "encounter_note" | "audit" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
         ChangeRole: {
             /** @description Why, in a few words. Logged. */
             reason: string;
@@ -1870,7 +1870,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link";
+        RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
         RecordRef: {
             entity: components["schemas"]["RecordEntity"];
             /** Format: uuid */

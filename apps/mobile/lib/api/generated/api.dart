@@ -102,6 +102,10 @@ enum ChangeEntity {
   problem('problem'),
   problemNote('problem_note'),
   idLink('id_link'),
+  noteSignoff('note_signoff'),
+  noteAddendum('note_addendum'),
+  noteCorrection('note_correction'),
+  referral('referral'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');
@@ -872,6 +876,10 @@ enum RecordEntity {
   problem('problem'),
   problemNote('problem_note'),
   idLink('id_link'),
+  noteSignoff('note_signoff'),
+  noteAddendum('note_addendum'),
+  noteCorrection('note_correction'),
+  referral('referral'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');

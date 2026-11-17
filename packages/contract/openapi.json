@@ -387,7 +387,11 @@
           "patient_consent",
           "problem",
           "problem_note",
-          "id_link"
+          "id_link",
+          "note_signoff",
+          "note_addendum",
+          "note_correction",
+          "referral"
         ],
         "type": "string"
       },
@@ -3358,7 +3362,11 @@
           "patient_consent",
           "problem",
           "problem_note",
-          "id_link"
+          "id_link",
+          "note_signoff",
+          "note_addendum",
+          "note_correction",
+          "referral"
         ],
         "type": "string"
       },
