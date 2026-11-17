@@ -1,0 +1,503 @@
+{
+  "key": "general_primary_care",
+  "version": 1,
+  "title": "General / primary care",
+  "kinds": ["medical"],
+  "group": "clinical",
+  "sensitivity": "none",
+  "sections": [
+    {
+      "id": "reason",
+      "title": "Reason for encounter",
+      "spec": "general-1",
+      "fields": [
+        {
+          "id": "reasons",
+          "kind": "choice",
+          "many": true,
+          "label": "Reason for encounter",
+          "options": [
+            {
+              "code": "new_concern",
+              "label": "New concern"
+            },
+            {
+              "code": "follow_up",
+              "label": "Follow-up"
+            },
+            {
+              "code": "chronic_care",
+              "label": "Chronic care"
+            },
+            {
+              "code": "medication",
+              "label": "Medication"
+            },
+            {
+              "code": "general_check_in",
+              "label": "General check-in"
+            },
+            {
+              "code": "acute_care",
+              "label": "Acute Care"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "concern",
+          "kind": "text",
+          "label": "Chief concern",
+          "lines": "many",
+          "maxLength": 2000,
+          "handoff": true
+        }
+      ]
+    },
+    {
+      "id": "hpi",
+      "title": "History of present illness",
+      "spec": "general-1",
+      "fields": [
+        {
+          "id": "narrative",
+          "kind": "text",
+          "label": "History of present illness",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    },
+    {
+      "id": "preventive",
+      "title": "Preventative care",
+      "spec": "general-1",
+      "fields": [
+        {
+          "id": "vaccines",
+          "kind": "choice",
+          "many": true,
+          "label": "Vaccines",
+          "options": [
+            {
+              "code": "flu",
+              "label": "Flu"
+            },
+            {
+              "code": "covid",
+              "label": "COVID"
+            },
+            {
+              "code": "tdap",
+              "label": "Tdap"
+            },
+            {
+              "code": "hep_a",
+              "label": "Hep A"
+            },
+            {
+              "code": "hep_b",
+              "label": "Hep B"
+            },
+            {
+              "code": "pneumococcal",
+              "label": "Pneumococcal"
+            },
+            {
+              "code": "hpv",
+              "label": "HPV"
+            },
+            {
+              "code": "shingles",
+              "label": "Shingles"
+            }
+          ]
+        },
+        {
+          "id": "vaccine_status",
+          "kind": "grid",
+          "label": "Status for each vaccine",
+          "rows": {
+            "pickedIn": "preventive.vaccines"
+          },
+          "cell": {
+            "id": "status",
+            "kind": "choice",
+            "many": false,
+            "label": "Status",
+            "options": [
+              {
+                "code": "up_to_date",
+                "label": "Up-to-date"
+              },
+              {
+                "code": "given_today",
+                "label": "Given today"
+              },
+              {
+                "code": "offered",
+                "label": "Offered"
+              },
+              {
+                "code": "declined",
+                "label": "Declined"
+              },
+              {
+                "code": "due",
+                "label": "Due"
+              },
+              {
+                "code": "unknown",
+                "label": "Unknown"
+              }
+            ]
+          }
+        },
+        {
+          "id": "screening",
+          "kind": "choice",
+          "many": true,
+          "label": "Screening",
+          "options": [
+            {
+              "code": "hiv",
+              "label": "HIV"
+            },
+            {
+              "code": "hep_c",
+              "label": "Hep C"
+            },
+            {
+              "code": "sti",
+              "label": "STI"
+            },
+            {
+              "code": "tb",
+              "label": "TB"
+            },
+            {
+              "code": "diabetes",
+              "label": "Diabetes"
+            },
+            {
+              "code": "bp",
+              "label": "BP"
+            },
+            {
+              "code": "cancer",
+              "label": "Cancer"
+            },
+            {
+              "code": "pregnancy",
+              "label": "Pregnancy"
+            }
+          ]
+        },
+        {
+          "id": "screening_action",
+          "kind": "grid",
+          "label": "Action for each screening",
+          "rows": {
+            "pickedIn": "preventive.screening"
+          },
+          "cell": {
+            "id": "action",
+            "kind": "choice",
+            "many": true,
+            "label": "Action",
+            "options": [
+              {
+                "code": "performed",
+                "label": "Performed"
+              },
+              {
+                "code": "ordered",
+                "label": "Ordered"
+              },
+              {
+                "code": "referred",
+                "label": "Referred"
+              },
+              {
+                "code": "education",
+                "label": "Education"
+              },
+              {
+                "code": "declined",
+                "label": "Declined"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "vitals",
+      "title": "Vitals",
+      "spec": "general-1",
+      "repeat": {
+        "max": 10,
+        "itemTitle": "Vitals {n}"
+      },
+      "fields": [
+        {
+          "id": "bp",
+          "kind": "group",
+          "label": "Blood pressure",
+          "layout": "row",
+          "fields": [
+            {
+              "id": "systolic",
+              "kind": "number",
+              "label": "Systolic",
+              "min": 0,
+              "max": 300,
+              "decimals": 0,
+              "unit": "mmHg",
+              "handoff": true
+            },
+            {
+              "id": "diastolic",
+              "kind": "number",
+              "label": "Diastolic",
+              "min": 0,
+              "max": 200,
+              "decimals": 0,
+              "unit": "mmHg",
+              "handoff": true
+            }
+          ]
+        },
+        {
+          "id": "hr",
+          "kind": "number",
+          "label": "Heart rate",
+          "min": 0,
+          "max": 300,
+          "decimals": 0,
+          "unit": "bpm",
+          "handoff": true
+        },
+        {
+          "id": "spo2",
+          "kind": "number",
+          "label": "SpO₂",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "unit": "%",
+          "handoff": true
+        },
+        {
+          "id": "rr",
+          "kind": "number",
+          "label": "Respiratory rate",
+          "min": 0,
+          "max": 80,
+          "decimals": 0,
+          "unit": "breaths/min",
+          "handoff": true
+        },
+        {
+          "id": "temp",
+          "kind": "number",
+          "label": "Temperature",
+          "min": 50,
+          "max": 115,
+          "decimals": 1,
+          "unit": "°F",
+          "handoff": true
+        },
+        {
+          "id": "pain",
+          "kind": "number",
+          "label": "Pain",
+          "min": 0,
+          "max": 10,
+          "decimals": 0,
+          "display": "outOf",
+          "handoff": true
+        }
+      ]
+    },
+    {
+      "id": "exam",
+      "title": "Focused exam",
+      "spec": "exam-picker",
+      "fields": [
+        {
+          "id": "systems",
+          "kind": "choice",
+          "many": true,
+          "label": "What did you examine?",
+          "options": [
+            {
+              "code": "general_appearance",
+              "label": "General"
+            },
+            {
+              "code": "heent",
+              "label": "HEENT"
+            },
+            {
+              "code": "cardiovascular",
+              "label": "Cardiac"
+            },
+            {
+              "code": "pulmonary",
+              "label": "Pulmonary"
+            },
+            {
+              "code": "abdominal",
+              "label": "Abdomen"
+            },
+            {
+              "code": "msk",
+              "label": "MSK"
+            },
+            {
+              "code": "neurologic",
+              "label": "Neuro"
+            },
+            {
+              "code": "skin",
+              "label": "Skin"
+            },
+            {
+              "code": "peripheral_vascular",
+              "label": "Peripheral Vascular"
+            },
+            {
+              "code": "diabetic_foot",
+              "label": "Foot"
+            },
+            {
+              "code": "gu",
+              "label": "GU",
+              "sensitiveExam": true
+            },
+            {
+              "code": "psych_observation",
+              "label": "Psych"
+            },
+            {
+              "code": "lymphatic",
+              "label": "Lymph"
+            },
+            {
+              "code": "neck_thyroid",
+              "label": "Neck / Thyroid"
+            },
+            {
+              "code": "breast",
+              "label": "Breast",
+              "sensitiveExam": true
+            },
+            {
+              "code": "rectal",
+              "label": "Rectal",
+              "sensitiveExam": true
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "other_findings",
+          "kind": "text",
+          "label": "Other exam findings",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": {
+            "field": "exam.systems",
+            "is": "other"
+          }
+        }
+      ]
+    },
+    {
+      "id": "problems",
+      "title": "Assessment",
+      "spec": "general-2",
+      "repeat": {
+        "max": 10,
+        "itemTitle": "Problem {n}"
+      },
+      "fields": [
+        {
+          "id": "diagnosis",
+          "kind": "problem",
+          "label": "Diagnosis or problem"
+        },
+        {
+          "id": "status",
+          "kind": "choice",
+          "many": false,
+          "label": "Status",
+          "options": [
+            {
+              "code": "new",
+              "label": "New"
+            },
+            {
+              "code": "chronic",
+              "label": "Chronic"
+            },
+            {
+              "code": "improving",
+              "label": "Improving"
+            },
+            {
+              "code": "worse",
+              "label": "Worse"
+            }
+          ]
+        },
+        {
+          "id": "interventions",
+          "kind": "choice",
+          "many": true,
+          "label": "Intervention",
+          "options": [
+            {
+              "code": "education",
+              "label": "Education"
+            },
+            {
+              "code": "medication",
+              "label": "Medication"
+            },
+            {
+              "code": "testing",
+              "label": "Testing"
+            },
+            {
+              "code": "referral",
+              "label": "Referral"
+            },
+            {
+              "code": "supplies",
+              "label": "Supplies"
+            },
+            {
+              "code": "procedure",
+              "label": "Procedure"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
