@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:sineobex_field/app_providers.dart';
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/config/env.dart';
 import 'package:sineobex_field/design/tokens.dart';
+import 'package:sineobex_field/forms/definition_store.dart';
 import 'package:sineobex_field/features/lock/lock_screens.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/problems.dart' show ProblemCodes;
@@ -17,6 +19,7 @@ import 'package:sineobex_field/security/secure_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
 
 import '../auth/fakes.dart';
+import '../forms/forms_fake.dart';
 import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 
@@ -47,7 +50,7 @@ class AppHarness {
       session: session,
       databaseDirectory: () async => dir.path,
       deviceStore: store,
-      teamApi: (teamId) => SineobexApi(server.transportFor(demoUser().userId, teamId)),
+      teamApi: (teamId) => SineobexApi(forms.transportFor(teamId, server.transportFor(demoUser().userId, teamId))),
       deviceApi: SineobexApi(server.transportFor('', '')),
       boot: boot,
       platform: RegisterDevicePlatform.android,
@@ -58,7 +61,14 @@ class AppHarness {
       // As the app wires it (app_providers.dart), with a clipboard the test reads.
       refreshers: (team) =>
           PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
+      // As the app wires it too, with the presets read straight from the file: an asset bundle
+      // decodes a large file on another isolate, which a widget test's fake clock never waits for.
+      definitions: DefinitionStore(directory: () async => '${dir.path}/forms', presets: () async => bundledPresets),
     );
+    // Each team lists the bundled presets, as the API does once it has installed them (forms 3.2).
+    for (final t in user.teams) {
+      forms.teams[t.id] = [...bundledPresets.cast<Version>()];
+    }
     addTearDown(dispose);
   }
 
@@ -98,6 +108,13 @@ class AppHarness {
   DateTime wall = DateTime.utc(2026, 10, 20, 15);
   Duration serverAhead = Duration.zero;
   late final server = FakeSyncServer(now: () => wall.add(serverAhead));
+
+  /// The forms routes, in front of [server].
+  final forms = FakeFormsServer();
+
+  /// The app's bundled presets (`assets/forms/presets.json`).
+  static final List<Object?> bundledPresets =
+      jsonDecode(File('assets/forms/presets.json').readAsStringSync()) as List<Object?>;
   late final SessionController session;
   late final SyncController sync;
 

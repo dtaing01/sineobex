@@ -391,11 +391,16 @@ class SyncController extends ChangeNotifier implements LocalData {
 
   /// Waits for the database the current session opened, and for the unlock's sweep of teams no
   /// longer in the profile (tests use this).
+  ///
+  /// Not for the sign-in's fetch of note types ([definitionsFetched]): that starts in the zone
+  /// that unlocked, a widget test's fake clock, and a wait on it from another zone never ends.
   Future<void> ready() async {
     await _opening;
     await _sweeping;
-    await _signInFetch;
   }
+
+  /// Waits for the last sign-in's fetch of every team's note types (tests use this).
+  Future<void> definitionsFetched() async => _signInFetch;
 
   /// Bumped by every open and close: an open that a newer one or a close overtook while it
   /// waited stops, so no second connection (with the key) or timer outlives the lock.

@@ -10,6 +10,7 @@ import 'api/transport.dart';
 import 'auth/auth_provider.dart';
 import 'auth/session_controller.dart';
 import 'config/env.dart';
+import 'forms/definition_store.dart';
 import 'patients/patient_providers.dart' show patientRefreshers;
 import 'security/key_vault.dart';
 import 'security/secure_store.dart';
@@ -117,6 +118,21 @@ Future<String> databaseDirectory({Future<Directory> Function() base = getApplica
   return dir;
 }
 
+/// The teams' note type definitions (phase 4 forms 3.4): plain files in a folder inside the
+/// databases' folder, so backups leave them out as they do the databases, and the bundled presets.
+DefinitionStore appDefinitionStore({Future<String> Function() databases = databaseDirectory}) {
+  Future<String>? folder;
+  return DefinitionStore(
+    // Asked once: each call of [databaseDirectory] goes through the platform's backup exclusion,
+    // and the store asks for its folder on every read. A failure is asked again next time.
+    directory: () => folder ??= databases().then((dir) => p.join(dir, 'forms')).catchError((Object e) {
+      folder = null;
+      throw e;
+    }),
+    presets: DefinitionStore.bundledPresets,
+  );
+}
+
 const appVersion = String.fromEnvironment('SINEOBEX_APP_VERSION', defaultValue: '0.2.0');
 
 final Provider<SyncController> syncControllerProvider = Provider<SyncController>((ref) {
@@ -139,6 +155,7 @@ final Provider<SyncController> syncControllerProvider = Provider<SyncController>
     // must work on a phone that never downloaded a chart with a card, so the card address comes
     // from the sign-in's /v1/me.
     refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: linkBase.value),
+    definitions: appDefinitionStore(),
   );
   ref.onDispose(controller.dispose);
   return controller;

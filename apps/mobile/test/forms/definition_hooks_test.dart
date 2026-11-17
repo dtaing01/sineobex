@@ -85,6 +85,7 @@ void main() {
 
   Future<void> idle() async {
     await sync.ready();
+    await sync.definitionsFetched();
     for (var i = 0; i < 400 && sync.snapshot.syncing; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
