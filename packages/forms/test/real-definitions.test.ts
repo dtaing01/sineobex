@@ -67,6 +67,16 @@ describe('one-tap Normal on the real definitions', () => {
     expect(strength.map(([, value]) => value)).toEqual(sides.map(() => 5));
     expect(strength.map(([path]) => (/right/.test(path) ? 'right' : 'left')).sort()).toEqual(sides);
   });
+  // SEN-2: Normal never writes intact skin beside a wound the clinician has said is there.
+  it('leaves the foot’s Inspection empty beside Wound present? Yes', () => {
+    const after = afterNormal(
+      general,
+      'diabetic_foot',
+      exam(['diabetic_foot'], { 'diabetic_foot.wound': 'yes' }),
+    );
+    expect(after['diabetic_foot.wound']).toBe('yes');
+    expect(after['diabetic_foot.inspection']).toBeUndefined();
+  });
 });
 
 describe('findings a clinician charts together on the real definitions', () => {

@@ -44,8 +44,8 @@
     },
     {
       "line": 73,
-      "what": "Wound Present? is choose-one: Yes (added) or No. One-tap Normal leaves it unanswered: it fills only what is empty, and would write No beside an ulcer, fissure, blister or necrosis already ticked in Inspection, which hides the hand-off. While it is Yes, an action, Chart in Wound care, opens the encounter's Wound care note (open_note_type wound_care), and the wound is charted there.",
-      "why": "PRD main 416; forms 6.7; PLAN-OPEN (forms 10.1 #1): a departure from focused-exam inventory default 29, which has Normal fill every field with a normal finding"
+      "what": "Wound Present? is choose-one: Yes (added) or No. One-tap Normal leaves it unanswered: it fills only what is empty, and would write No beside an ulcer, fissure, blister or necrosis already ticked in Inspection, which hides the hand-off. While it is Yes, an action, Chart in Wound care, opens the encounter's Wound care note (open_note_type wound_care), and the wound is charted there. Wound present? is not asked while Inspection holds Intact skin, so the two never stand together: Normal fills Intact skin only where it would hide no answer, so it leaves Inspection empty beside Wound present? Yes.",
+      "why": "PRD main 416; forms 6.7, 7.1 (Normal never hides an answer that counts); PLAN-OPEN (forms 10.1 #1, #29): a departure from focused-exam inventory default 29, which has Normal fill every field with a normal finding"
     },
     {
       "line": 79,

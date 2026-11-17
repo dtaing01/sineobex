@@ -81,7 +81,8 @@
       "kind": "choice",
       "many": false,
       "label": "Wound present?",
-      "options": ["yes", "no"]
+      "options": ["yes", "no"],
+      "showWhen": { "not": { "field": "diabetic_foot.inspection", "is": "intact_skin" } }
     },
     {
       "path": "diabetic_foot.wound_care",

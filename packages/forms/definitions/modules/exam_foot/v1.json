@@ -93,7 +93,8 @@
           "options": [
             { "code": "yes", "label": "Yes" },
             { "code": "no", "label": "No" }
-          ]
+          ],
+          "showWhen": { "not": { "field": "diabetic_foot.inspection", "is": "intact_skin" } }
         },
         {
           "id": "wound_care",
