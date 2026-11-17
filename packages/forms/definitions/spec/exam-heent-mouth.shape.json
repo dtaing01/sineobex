@@ -1,0 +1,62 @@
+{
+  "piece": "exam-heent-mouth",
+  "file": "modules/exam_heent_mouth/v1.json",
+  "sections": [
+    {
+      "id": "mouth",
+      "title": "Mouth / throat",
+      "showWhen": { "field": "exam.systems", "is": "heent" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "mouth.mucosa",
+      "kind": "choice",
+      "many": true,
+      "label": "Oral mucosa",
+      "options": ["moist", "dry", "pale", "lesions", "ulcers", "thrush", "bleeding"],
+      "excludes": [["moist", "dry"]],
+      "flags": { "normal": ["moist"] }
+    },
+    {
+      "path": "mouth.dentition",
+      "kind": "choice",
+      "many": true,
+      "label": "Dentition",
+      "options": [
+        "normal",
+        "poor_dentition",
+        "dental_caries",
+        "broken_teeth",
+        "dental_abscess",
+        "tooth_pain",
+        "missing_teeth"
+      ],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "mouth.pharynx",
+      "kind": "choice",
+      "many": true,
+      "label": "Pharynx",
+      "options": [
+        "clear",
+        "erythematous",
+        "exudate",
+        "tonsillar_enlargement",
+        "ulceration",
+        "postnasal_drainage"
+      ],
+      "flags": { "exclusive": ["clear"], "normal": ["clear"] }
+    },
+    {
+      "path": "mouth.airway",
+      "kind": "choice",
+      "many": true,
+      "label": "Airway",
+      "options": ["patent", "swelling", "difficulty_managing_secretions"],
+      "flags": { "exclusive": ["patent"], "normal": ["patent"] }
+    }
+  ]
+}

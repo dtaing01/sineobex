@@ -1,0 +1,114 @@
+{
+  "piece": "exam-msk-2",
+  "file": "modules/exam_msk_2/v1.json",
+  "sections": [
+    {
+      "id": "msk_function",
+      "title": "Musculoskeletal: strength, neurovascular, gait and tests",
+      "showWhen": {
+        "all": [
+          { "field": "exam.systems", "is": "msk" },
+          { "field": "msk.region", "filled": true }
+        ]
+      },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "msk_function.strength",
+      "kind": "grid",
+      "label": "Strength",
+      "rows": { "pickedIn": "msk.region" },
+      "sides": true
+    },
+    {
+      "path": "msk_function.strength.score",
+      "kind": "number",
+      "label": "Strength",
+      "min": 0,
+      "max": 5,
+      "decimals": 0,
+      "display": "outOf",
+      "normal": 5
+    },
+    { "path": "msk_function.tone", "kind": "grid", "label": "Tone", "rows": { "pickedIn": "msk.region" } },
+    {
+      "path": "msk_function.tone.tone",
+      "kind": "choice",
+      "many": false,
+      "label": "Tone",
+      "options": ["hypertonic", "hypotonic", "isotonic"]
+    },
+    {
+      "path": "msk_function.sensation",
+      "kind": "grid",
+      "label": "Sensation",
+      "rows": { "pickedIn": "msk.region" }
+    },
+    {
+      "path": "msk_function.sensation.sensation",
+      "kind": "choice",
+      "many": true,
+      "label": "Sensation",
+      "options": ["intact", "decreased", "numbness", "tingling"],
+      "flags": { "exclusive": ["intact"], "normal": ["intact"] }
+    },
+    {
+      "path": "msk_function.pulses",
+      "kind": "grid",
+      "label": "Pulses",
+      "rows": { "pickedIn": "msk.region" }
+    },
+    {
+      "path": "msk_function.pulses.pulses",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulses",
+      "options": ["intact", "decreased", "absent"],
+      "flags": { "normal": ["intact"] }
+    },
+    {
+      "path": "msk_function.capillary_refill",
+      "kind": "grid",
+      "label": "Capillary refill",
+      "rows": { "pickedIn": "msk.region" }
+    },
+    {
+      "path": "msk_function.capillary_refill.refill",
+      "kind": "choice",
+      "many": false,
+      "label": "Capillary refill",
+      "options": { "list": "capillary_refill" }
+    },
+    { "path": "msk_function.gait", "kind": "grid", "label": "Gait", "rows": { "pickedIn": "msk.region" } },
+    {
+      "path": "msk_function.gait.gait",
+      "kind": "choice",
+      "many": true,
+      "label": "Gait",
+      "options": ["normal", "antalgic", "unsteady", "ataxic", "unable_to_assess"],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"], "unable": ["unable_to_assess"] }
+    },
+    {
+      "path": "msk_function.shoulder_tests",
+      "kind": "grid",
+      "label": "Shoulder tests",
+      "showWhen": { "field": "msk.region", "is": "shoulder" },
+      "rows": [
+        { "code": "neer", "label": "Neer's" },
+        "hawkins",
+        "empty_can",
+        "external_rotation",
+        "cross_body_adduction"
+      ]
+    },
+    {
+      "path": "msk_function.shoulder_tests.result",
+      "kind": "choice",
+      "many": false,
+      "label": "Result",
+      "options": { "list": "special_test_result" }
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "piece": "exam-cv-rhythm",
+  "file": "modules/exam_cv_rhythm/v1.json",
+  "sections": [
+    {
+      "id": "heart",
+      "title": "Heart rate, rhythm and sounds",
+      "showWhen": { "field": "exam.systems", "is": "cardiovascular" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "heart.rate",
+      "kind": "choice",
+      "many": false,
+      "label": "Rate",
+      "options": ["normal", "tachycardic", "bradycardic"],
+      "flags": { "normal": ["normal"] }
+    },
+    {
+      "path": "heart.rhythm",
+      "kind": "choice",
+      "many": false,
+      "label": "Rhythm",
+      "options": ["regular", "irregular"],
+      "flags": { "normal": ["regular"] }
+    },
+    {
+      "path": "heart.sounds",
+      "kind": "choice",
+      "many": true,
+      "label": "Heart sounds",
+      "options": ["normal_s1_s2", "murmur", "rub", "gallop", "other"],
+      "flags": { "exclusive": ["normal_s1_s2"], "normal": ["normal_s1_s2"], "other": ["other"] }
+    },
+    {
+      "path": "heart.murmur",
+      "kind": "group",
+      "label": "Murmur",
+      "layout": "stack",
+      "showWhen": { "field": "heart.sounds", "is": "murmur" }
+    },
+    {
+      "path": "heart.murmur.location",
+      "kind": "choice",
+      "many": true,
+      "label": "Location",
+      "options": ["aortic", "pulmonic", "tricuspid", "mitral", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "heart.murmur.character",
+      "kind": "choice",
+      "many": false,
+      "label": "Character",
+      "options": ["systolic", "diastolic", "continuous"]
+    },
+    {
+      "path": "heart.murmur.intensity",
+      "kind": "number",
+      "label": "Intensity",
+      "min": 1,
+      "max": 6,
+      "decimals": 0,
+      "display": "outOf"
+    },
+    {
+      "path": "heart.murmur.radiation",
+      "kind": "choice",
+      "many": true,
+      "label": "Radiation",
+      "options": ["none", "carotids", "axilla", "back", "other"],
+      "flags": { "exclusive": ["none"], "other": ["other"] }
+    }
+  ]
+}

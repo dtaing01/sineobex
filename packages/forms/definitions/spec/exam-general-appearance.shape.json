@@ -1,0 +1,68 @@
+{
+  "piece": "exam-general-appearance",
+  "file": "modules/exam_general_appearance/v1.json",
+  "sections": [
+    {
+      "id": "general_appearance",
+      "title": "General appearance",
+      "showWhen": { "field": "exam.systems", "is": "general_appearance" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "general_appearance.status",
+      "kind": "choice",
+      "many": true,
+      "label": "Quick status",
+      "options": [
+        "well_appearing",
+        "no_acute_distress",
+        "mild_distress",
+        "moderate_distress",
+        "severe_distress",
+        "ill_appearing",
+        "toxic_appearing",
+        "frail",
+        "cachectic",
+        "diaphoretic",
+        "pale",
+        "cyanotic",
+        "other"
+      ],
+      "excludes": [
+        ["no_acute_distress", "mild_distress"],
+        ["no_acute_distress", "moderate_distress"],
+        ["no_acute_distress", "severe_distress"],
+        ["mild_distress", "moderate_distress"],
+        ["mild_distress", "severe_distress"],
+        ["moderate_distress", "severe_distress"],
+        ["well_appearing", "ill_appearing"],
+        ["well_appearing", "toxic_appearing"]
+      ],
+      "flags": { "normal": ["well_appearing", "no_acute_distress"], "other": ["other"] }
+    },
+    {
+      "path": "general_appearance.behavior",
+      "kind": "choice",
+      "many": true,
+      "label": "Mental / behavioral appearance",
+      "options": ["alert", "drowsy", "somnolent", "agitated", "calm", "cooperative", "uncooperative"],
+      "excludes": [
+        ["alert", "drowsy"],
+        ["alert", "somnolent"],
+        ["drowsy", "somnolent"],
+        ["agitated", "calm"],
+        ["cooperative", "uncooperative"]
+      ],
+      "flags": { "normal": ["alert", "calm", "cooperative"] }
+    },
+    {
+      "path": "general_appearance.additional",
+      "kind": "text",
+      "label": "Additional findings",
+      "lines": "many",
+      "maxLength": 2000
+    }
+  ]
+}

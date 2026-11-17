@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { listFile, noteTypeFile, SURFACE_LIST } from '../src/resolve.ts';
+import { listFile, moduleFile, noteTypeFile, SURFACE_LIST } from '../src/resolve.ts';
 import { checkFile } from '../src/schema.ts';
 import { codeOf, readShape, type Shape, type ShapeField, type ShapeOption } from '../src/shape-check.ts';
 import { LEFT_OUT, readDiff, readPieces, specWords, type Diff } from '../src/spec-check.ts';
@@ -128,14 +128,89 @@ const NOTE_PIECES: Record<string, string> = {
   'quick-2': 'note-types/quick_encounter/v1.json',
 };
 
-describe('the plans of the note type pieces', () => {
+const GENERAL = 'note-types/general_primary_care/v1.json';
+
+/**
+ * The exam pieces whose plans are written (forms-inventory-focused-exam.md section 7, in its
+ * order). Each is one module, named as the piece with underscores, which the General note type
+ * includes (forms 6.3); the exam picker is a section of General itself.
+ */
+const EXAM_PIECES = [
+  'exam-general-appearance',
+  'exam-heent-eyes',
+  'exam-heent-ears',
+  'exam-heent-nose',
+  'exam-heent-mouth',
+  'exam-cv-rhythm',
+  'exam-cv-perfusion',
+  'exam-pulmonary',
+  'exam-abdominal',
+  'exam-msk-1',
+  'exam-msk-2',
+];
+const examModule = (piece: string): string => moduleFile(piece.replaceAll('-', '_'), 1);
+
+/**
+ * The exam picker's codes, one per system: the ids of the focused-exam inventory, section 2
+ * (default 10). Each exam section shows when its system is picked (forms 6.3).
+ */
+const EXAM_SYSTEMS = [
+  'general_appearance',
+  'heent',
+  'cardiovascular',
+  'pulmonary',
+  'abdominal',
+  'msk',
+  'neurologic',
+  'skin',
+  'gu',
+  'lymphatic',
+  'peripheral_vascular',
+  'breast',
+  'rectal',
+  'psych_observation',
+  'diabetic_foot',
+  'neck_thyroid',
+];
+const PICKER = 'exam.systems';
+
+/** Every planned piece and the definition file it is typed into. */
+const PLANNED: Record<string, string> = {
+  ...NOTE_PIECES,
+  ...Object.fromEntries(EXAM_PIECES.map((piece) => [piece, examModule(piece)])),
+};
+/** The note type whose answers a piece's fields become: a module's are General's, which includes it. */
+const noteTypeOf = (piece: string): string => NOTE_PIECES[piece] ?? GENERAL;
+
+const isListRef = (value: unknown): value is { list: string } =>
+  value !== null && typeof value === 'object' && 'list' in value;
+
+const listOf = (name: string): OptionList => JSON.parse(read(listFile(name))) as OptionList;
+
+/** A choice's codes, and those that carry a flag, whether the options are written out or a shared list. */
+function optionsOf(field: ShapeField | undefined): { codes: string[]; flagged: (flag: string) => string[] } {
+  const options = field?.options;
+  if (isListRef(options)) {
+    const list = listOf(options.list).options;
+    return {
+      codes: list.map((option) => option.code),
+      flagged: (flag) =>
+        list.filter((option) => (option as Record<string, unknown>)[flag] === true).map((o) => o.code),
+    };
+  }
+  const codes = Array.isArray(options)
+    ? options.map((o: ShapeOption) => (typeof o === 'string' ? o : o.code))
+    : [];
+  const flags = (field?.flags ?? {}) as Record<string, unknown>;
+  return { codes, flagged: (flag) => (Array.isArray(flags[flag]) ? (flags[flag] as string[]) : []) };
+}
+
+describe('the plans of the pieces', () => {
   const { pieces } = readPieces(specTexts());
   const shapeOf = (name: string) => pieces[name]?.shape as Shape;
   const diffOf = (name: string) => pieces[name]?.diff as Diff;
-  const listCodes = (name: string): string[] =>
-    (JSON.parse(read(listFile(name))) as OptionList).options.map((option) => option.code);
 
-  it.each(Object.entries(NOTE_PIECES))('%s has its shape and diff files, for %s', (name, file) => {
+  it.each(Object.entries(PLANNED))('%s has its shape and diff files, for %s', (name, file) => {
     expect(pieces[name]?.shape, `${name}.shape.json`).toBeDefined();
     expect(pieces[name]?.diff, `${name}.diff.json`).toBeDefined();
     expect(shapeOf(name).file).toBe(file);
@@ -158,7 +233,7 @@ describe('the plans of the note type pieces', () => {
 
   // What the spec check finds of a diff file without a definition: a declaration that nothing in
   // the lines needs (spec.not_option_unused, spec.added_in_piece).
-  it.each(Object.keys(NOTE_PIECES))(
+  it.each(Object.keys(PLANNED))(
     '%s declares only words its lines hold, and adds only words they lack',
     (name) => {
       const words = new Set(specWords(pieces[name]?.text ?? '').words.map((word) => word.text));
@@ -168,7 +243,7 @@ describe('the plans of the note type pieces', () => {
     },
   );
 
-  it.each(Object.keys(NOTE_PIECES))('%s names only shared lists that are files of lists/', (name) => {
+  it.each(Object.keys(PLANNED))('%s names only shared lists that are files of lists/', (name) => {
     const lists = filesIn('lists');
     for (const field of shapeOf(name).fields) {
       for (const key of ['options', 'rows'])
@@ -179,31 +254,45 @@ describe('the plans of the note type pieces', () => {
   });
 
   // The validator finds a condition that names no answer or no code once a definition is typed;
-  // in a plan the same slip would be copied into the definition first.
-  it.each([...new Set(Object.values(NOTE_PIECES))])(
-    'every condition and picked row in the plans of %s names a field of that file and its codes',
+  // in a plan the same slip would be copied into the definition first. A module's fields are
+  // answers of the note type that includes it, so its conditions are read among General's.
+  it.each([...new Set(Object.keys(PLANNED).map(noteTypeOf))])(
+    'every condition and picked row in the plans of %s names a field of that note type and its codes',
     (file) => {
-      const names = Object.keys(NOTE_PIECES).filter((name) => NOTE_PIECES[name] === file);
+      const names = Object.keys(PLANNED).filter((name) => noteTypeOf(name) === file);
       const fields = new Map(names.flatMap((name) => shapeOf(name).fields.map((f) => [f.path, f] as const)));
-      const codesOf = (field: ShapeField | undefined): string[] | undefined => {
-        const options = field?.options;
-        if (isListRef(options)) return listCodes(options.list);
-        if (Array.isArray(options))
-          return options.map((o: ShapeOption) => (typeof o === 'string' ? o : o.code));
+      // The picker is the piece exam-picker's; until its plan is written, its codes are these.
+      if (file === GENERAL && !fields.has(PICKER))
+        fields.set(PICKER, { path: PICKER, kind: 'choice', many: true, options: EXAM_SYSTEMS });
+      const parent = (path: string) => path.slice(0, path.lastIndexOf('.'));
+      /** The answer a condition names, as a field of the plan: the field of a side or of a grid's row. */
+      const fieldAt = (path: string): ShapeField | undefined => {
+        const field = fields.get(path);
+        if (field) return field;
+        const [above, last] = [fields.get(parent(path)), path.slice(path.lastIndexOf('.') + 1)];
+        if (above?.sides === true && (last === 'right' || last === 'left')) return above;
         return undefined;
       };
-      /** A condition's field from where it is written: `./x` is a field of the same section. */
-      const target = (path: string, from: string) =>
-        path.startsWith('./') ? `${from.split('.')[0]}.${path.slice(2)}` : path;
+      /**
+       * A condition's field from where it is written: `./x` is a field of the same entry, or,
+       * inside the cell of a grid, of the same row (forms 2.2). A shape names a cell's fields
+       * after the cell's own id, where the answers have the row's code.
+       */
+      const target = (path: string, from: string) => {
+        if (!path.startsWith('./')) return path;
+        for (let at = parent(from); at.includes('.'); at = parent(at))
+          if (fields.get(parent(at))?.kind === 'grid') return `${at}.${path.slice(2)}`;
+        return `${from.split('.')[0]}.${path.slice(2)}`;
+      };
       const check = (condition: Condition, from: string) => {
         if ('all' in condition) return condition.all.forEach((c) => check(c, from));
         if ('any' in condition) return condition.any.forEach((c) => check(c, from));
         if ('not' in condition) return check(condition.not, from);
-        const field = fields.get(target(condition.field, from));
+        const field = fieldAt(target(condition.field, from));
         expect(field, `${from}: ${condition.field}`).toBeDefined();
         if ('is' in condition)
           for (const code of [condition.is].flat())
-            expect(codesOf(field), `${from}: ${condition.field} is ${code}`).toContain(code);
+            expect(optionsOf(field).codes, `${from}: ${condition.field} is ${code}`).toContain(code);
       };
       for (const name of names) {
         for (const section of shapeOf(name).sections)
@@ -218,8 +307,62 @@ describe('the plans of the note type pieces', () => {
   );
 });
 
-const isListRef = (value: unknown): value is { list: string } =>
-  value !== null && typeof value === 'object' && 'list' in value;
+describe('the plans of the exam pieces', () => {
+  const { pieces } = readPieces(specTexts());
+  const shapeOf = (name: string) => pieces[name]?.shape as Shape;
+
+  it.each(EXAM_PIECES)('%s is a module of its own, which has no header', (name) => {
+    expect(shapeOf(name).file).toBe(examModule(name));
+    expect(shapeOf(name).header).toBeUndefined();
+    expect(shapeOf(name).outside).toBeUndefined();
+  });
+
+  // forms 6.3: only the systems picked open, and each offers one-tap Normal.
+  it.each(EXAM_PIECES)(
+    '%s shows each section only when its system is picked, and offers one-tap Normal',
+    (name) => {
+      const systems = shapeOf(name).sections.map((section) => {
+        expect(section.normal, section.id).toBe(true);
+        const showWhen = section.showWhen as Condition | undefined;
+        const conditions = showWhen && 'all' in showWhen ? showWhen.all : [showWhen];
+        const picked = conditions.find((c) => c !== undefined && 'field' in c && c.field === PICKER);
+        expect(picked, `${section.id}: shows when its system is picked`).toBeDefined();
+        return (picked as { is: string }).is;
+      });
+      expect(EXAM_SYSTEMS).toContain(systems[0]);
+      expect(new Set(systems).size, 'one system per piece').toBe(1);
+    },
+  );
+
+  it('give each section of the General note type an id of its own', () => {
+    const names = Object.keys(PLANNED).filter((name) => noteTypeOf(name) === GENERAL);
+    const ids = names.flatMap((name) => shapeOf(name).sections.map((section) => section.id));
+    expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+  });
+
+  // One-tap Normal writes every normal option of a field at once (forms 6.3): a choose-one field
+  // holds one, an exclusive option clears the rest, and a blocked pair cannot be held together.
+  it.each(EXAM_PIECES)('%s: what one-tap Normal fills in each field can be held together', (name) => {
+    for (const field of shapeOf(name).fields) {
+      if (field.kind !== 'choice') continue;
+      const { flagged } = optionsOf(field);
+      const normal = flagged('normal');
+      if (field.many !== true)
+        expect(normal.length, `${field.path}: one normal option`).toBeLessThanOrEqual(1);
+      else if (normal.length > 1) {
+        expect(
+          normal.filter((code) => flagged('exclusive').includes(code)),
+          field.path,
+        ).toEqual([]);
+        const excludes = (field.excludes ?? []) as [string, string][];
+        expect(
+          excludes.filter(([a, b]) => normal.includes(a) && normal.includes(b)),
+          field.path,
+        ).toEqual([]);
+      }
+    }
+  });
+});
 
 /**
  * The shared lists (forms 4.4): those it names, Skin's side list, and the lists the inventories'

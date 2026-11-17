@@ -1,0 +1,32 @@
+{
+  "piece": "exam-general-appearance",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_general_appearance, that the General note type includes: its section General appearance shows only while General appearance (exam.systems is general_appearance) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "Quick status is choose-many. Normal fills Well appearing and No acute distress, so neither is exclusive. No acute distress, Mild distress, Moderate distress and Severe distress exclude one another; Well appearing excludes Ill appearing and Toxic appearing. Other asks for a short text.",
+      "why": "focused-exam inventory 3.1 (distress levels exclude each other), default 13, 17, 26, 31; PLAN-OPEN (forms 10.1 #1): the pairs beyond the distress levels are this plan's reading of default 17"
+    },
+    {
+      "line": 31,
+      "what": "Mental / behavioral appearance is choose-many. Normal fills Alert, Calm and Cooperative. Alert, Drowsy and Somnolent exclude one another; Agitated excludes Calm; Cooperative excludes Uncooperative.",
+      "why": "focused-exam inventory 3.1, default 13, 17, 26; PLAN-OPEN (forms 10.1 #1): the pairs beyond Cooperative and Uncooperative are this plan's reading of default 17"
+    },
+    {
+      "line": 49,
+      "what": "Additional findings is a text box. Normal leaves it empty.",
+      "why": "focused-exam inventory 3.1; PRD main 412"
+    },
+    {
+      "line": 51,
+      "what": "The UI note is not typed: choose-many is in the shape, and nothing is required.",
+      "why": "focused-exam inventory construct 39, default 53"
+    }
+  ]
+}
