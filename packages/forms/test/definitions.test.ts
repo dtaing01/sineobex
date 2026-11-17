@@ -529,9 +529,9 @@ describe('the note types of several pieces', () => {
 /**
  * The labels of the options whose word a piece's lines write in more than one way. quick-2 gives
  * Referral `[ Yes ] [ No ]` (its line 7) and Delivery `[ YES ] [ NO ]` (line 14): both codes are
- * yes and no, so the shape check, which compares codes, and the spec check, which compares the
- * set of words, would pass the two rows' labels swapped. The labels are held here, the test below
- * finds every such field in the plans, and the file is held to them once it exists.
+ * yes and no, and the spec check compares only the set of words, so the two rows' labels could be
+ * swapped unseen. The plan pins each such label beside its code, `{ "code", "label" }`, and the
+ * shape check holds the definition to it; the pins are held here to the lines.
  */
 const LABELS: Record<string, Record<string, string[]>> = {
   'quick-2': { 'social.referral': ['Yes', 'No'], 'medication.delivery': ['YES', 'NO'] },
@@ -540,72 +540,54 @@ const LABELS: Record<string, Record<string, string[]>> = {
 describe('the options a piece’s lines spell in more than one way', () => {
   const { pieces } = readPieces(specTexts());
   const shapeOf = (name: string) => pieces[name]?.shape as Shape;
-
-  /** The codes written out in a field's options or rows, each of which some spelling of the lines gives. */
-  const spelt = (name: string): Record<string, string[]> => {
-    const diff = pieces[name]?.diff as Diff;
-    const notOptions = new Set(diff.notOptions);
-    const words = [
-      ...specWords(pieces[name]?.text ?? '')
-        .words.map((word) => word.text)
-        .filter((word) => !notOptions.has(word)),
-      ...diff.added,
-    ];
-    const found: Record<string, string[]> = {};
-    for (const field of shapeOf(name).fields)
-      for (const key of ['options', 'rows'] as const) {
+  /** Each written-out option list of a piece's plan, by the field's path. */
+  const lists = (name: string): [string, ShapeOption[]][] =>
+    shapeOf(name).fields.flatMap((field) =>
+      (['options', 'rows'] as const).flatMap((key) => {
         const options = field[key];
-        if (!Array.isArray(options)) continue;
-        for (const option of options as ShapeOption[]) {
+        return Array.isArray(options)
+          ? [[field.path, options as ShapeOption[]] as [string, ShapeOption[]]]
+          : [];
+      }),
+    );
+
+  it('are pinned with their labels: no option written as its code alone has two spellings', () => {
+    const unpinned: string[] = [];
+    for (const name of Object.keys(PIECES)) {
+      const diff = pieces[name]?.diff as Diff;
+      const notOptions = new Set(diff.notOptions);
+      const words = [
+        ...specWords(pieces[name]?.text ?? '')
+          .words.map((word) => word.text)
+          .filter((word) => !notOptions.has(word)),
+        ...diff.added,
+      ];
+      for (const [path, options] of lists(name))
+        for (const option of options) {
           if (typeof option !== 'string') continue;
           const spellings = new Set(words.filter((word) => codeOf(word) === option));
-          if (spellings.size > 1) found[field.path] = [...(found[field.path] ?? []), option];
+          if (spellings.size > 1) unpinned.push(`${name} ${path} ${option}: ${[...spellings].join(', ')}`);
         }
-      }
-    return found;
-  };
+    }
+    expect(unpinned).toEqual([]);
+  });
 
-  it('are exactly the fields LABELS gives, each label a word of the piece for the code in order', () => {
-    const ambiguous = Object.fromEntries(
-      Object.keys(PIECES)
-        .map((name) => [name, spelt(name)] as const)
-        .filter(([, fields]) => Object.keys(fields).length > 0),
-    );
-    expect(Object.fromEntries(Object.entries(ambiguous).map(([n, f]) => [n, Object.keys(f).sort()]))).toEqual(
-      Object.fromEntries(Object.entries(LABELS).map(([n, f]) => [n, Object.keys(f).sort()])),
-    );
+  it('are pinned as the lines give them, each row’s labels on one line of the piece, in its order', () => {
+    const pins: Record<string, Record<string, string[]>> = {};
+    for (const name of Object.keys(PIECES))
+      for (const [path, options] of lists(name))
+        if (options.some((o) => typeof o !== 'string' && o.code === codeOf(o.label)))
+          (pins[name] ??= {})[path] = options.map((o) => (typeof o === 'string' ? o : o.label));
+    expect(pins).toEqual(LABELS);
     for (const [name, fields] of Object.entries(LABELS)) {
       const words = specWords(pieces[name]?.text ?? '').words;
       for (const [path, labels] of Object.entries(fields)) {
-        const { codes } = optionsOf(shapeOf(name).fields.find((field) => field.path === path));
-        expect(labels.map(codeOf), `${name} ${path}`).toEqual(codes);
-        // Each row's labels are the words of one line of the piece, in its order.
         const lines = labels.map((label) => words.filter((w) => w.text === label).map((w) => w.line));
         expect(
           lines[0]!.some((line) => lines.every((at) => at.includes(line))),
           `${name} ${path}: ${labels.join(', ')} on one line`,
         ).toBe(true);
       }
-    }
-  });
-
-  it.each(Object.keys(LABELS))('%s’s file shows the labels the lines give', (name) => {
-    const file = shapeOf(name).file;
-    if (!existsSync(`${root}${file}`)) return;
-    const written = JSON.parse(read(file)) as NoteType;
-    for (const [path, labels] of Object.entries(LABELS[name]!)) {
-      const [id, ...rest] = path.split('.');
-      const section = written.sections.find((s) => !('include' in s) && s.id === id);
-      let fields = section && !('include' in section) ? section.fields : [];
-      let field: Record<string, unknown> | undefined;
-      for (const part of rest) {
-        field = (fields as Record<string, unknown>[]).find((f) => f.id === part);
-        fields = ((field?.fields as unknown[]) ?? []) as typeof fields;
-      }
-      const options = (field?.options ?? []) as { label: string }[];
-      expect(Array.isArray(options) ? options.map((o) => o.label) : options, `${file} ${path}`).toEqual(
-        labels,
-      );
     }
   });
 });

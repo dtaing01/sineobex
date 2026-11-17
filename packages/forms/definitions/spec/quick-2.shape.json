@@ -30,7 +30,10 @@
       "kind": "choice",
       "many": false,
       "label": "Referral",
-      "options": ["yes", "no"]
+      "options": [
+        { "code": "yes", "label": "Yes" },
+        { "code": "no", "label": "No" }
+      ]
     },
     {
       "path": "social.referral_details",
@@ -52,7 +55,10 @@
       "kind": "choice",
       "many": false,
       "label": "Delivery",
-      "options": ["yes", "no"]
+      "options": [
+        { "code": "yes", "label": "YES" },
+        { "code": "no", "label": "NO" }
+      ]
     },
     {
       "path": "medication.instructions",
