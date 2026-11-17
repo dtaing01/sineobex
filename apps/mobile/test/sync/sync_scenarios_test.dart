@@ -6,6 +6,7 @@ import 'package:sineobex_field/sync/sync_engine.dart';
 
 import 'fake_server.dart';
 import 'phone_harness.dart';
+import 'test_note_types.dart';
 import 'uplink.dart';
 
 /// Phase 2 done-when: charting in airplane mode, killing the app mid-sync, reconnecting on a slow
@@ -57,7 +58,11 @@ void main() {
   /// A note with 20 long free-text fields, about 40 KB each: 22 changes, about 800 KB.
   String chartLongNote(TestPhone p) {
     final encounter = p.store.createEncounter(kind: 'medical');
-    final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'wound_care');
+    final note = p.store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+    );
     for (var i = 0; i < 20; i++) {
       p.store.setField(note, 'data.narrative_$i', 'Demo narrative $i ${'x' * 40000}');
     }
@@ -67,9 +72,14 @@ void main() {
   /// One visit charted on [p]: an encounter, a note with vitals, an edit, and a chart view.
   ({String encounter, String note}) chartVisit(TestPhone p) {
     final encounter = p.store.createEncounter(kind: 'medical', location: {'lat': 42.33, 'lng': -83.05});
-    final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
-    p.store.setField(note, 'data.pulse', 96);
-    p.store.setField(note, 'data.temp_c', 38.4);
+    final note = p.store.createNote(
+      encounterId: encounter,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.temp_c': 38.2},
+    );
+    p.store.setField(note, 'data.vitals.pulse', 96);
+    p.store.setField(note, 'data.vitals.temp_c', 38.4);
     p.store.appendAudit('patient.viewed', entity: 'patient', entityId: encounter);
     return (encounter: encounter, note: note);
   }
@@ -87,7 +97,10 @@ void main() {
       p.store.closeRecord(visit.note);
       p.store.closeRecord(visit.encounter);
       // Closed but unconfirmed: nothing is purged.
-      expect(p.store.record(visit.note)!.fields.keys, containsAll(['data.temp_c', 'data.pulse', 'status']));
+      expect(
+        p.store.record(visit.note)!.fields.keys,
+        containsAll(['data.vitals.temp_c', 'data.vitals.pulse', 'status']),
+      );
 
       server.offline = false;
       p.advance(const Duration(minutes: 20));
@@ -99,9 +112,9 @@ void main() {
       expect(p.store.record(visit.note), isNull);
       expect(p.store.record(visit.encounter), isNull);
       final onServer = server.records[visit.note]!.fields;
-      expect(onServer['data.temp_c']!.value, 38.4);
-      expect(onServer['data.temp_c']!.version, 2);
-      expect(onServer['data.pulse']!.value, 96);
+      expect(onServer['data.vitals.temp_c']!.value, 38.4);
+      expect(onServer['data.vitals.temp_c']!.version, 2);
+      expect(onServer['data.vitals.pulse']!.value, 96);
       expect(server.audit.single['action'], 'patient.viewed');
     });
 
@@ -110,7 +123,7 @@ void main() {
       final visit = chartVisit(p);
       await p.engine.syncAll();
       expect(p.store.outbox(), isEmpty);
-      expect(p.store.record(visit.note)!.fields['data.temp_c']!.value, 38.4);
+      expect(p.store.record(visit.note)!.fields['data.vitals.temp_c']!.value, 38.4);
       p.store.closeRecord(visit.note);
       expect(p.store.record(visit.note), isNull);
     });
@@ -132,19 +145,19 @@ void main() {
       expect(p.store.outbox(), isEmpty);
       // Applied once: one audit entry, versions as if sent once.
       expect(server.audit, hasLength(1));
-      expect(server.records[visit.note]!.fields['data.temp_c']!.version, 2);
+      expect(server.records[visit.note]!.fields['data.vitals.temp_c']!.version, 2);
     });
 
     test('changes made after a restart continue the sequence and keep building on unconfirmed ones', () async {
       final p = phone(alex);
       final visit = chartVisit(p);
       await p.restart();
-      p.store.setField(visit.note, 'data.temp_c', 38.9);
+      p.store.setField(visit.note, 'data.vitals.temp_c', 38.9);
       final seqs = p.store.outbox().map((e) => e.seq).toList();
       expect(seqs, List<int>.generate(seqs.length, (i) => i + 1));
       await p.engine.syncAll();
       expect(p.store.outbox(), isEmpty);
-      expect(server.records[visit.note]!.fields['data.temp_c']!.value, 38.9);
+      expect(server.records[visit.note]!.fields['data.vitals.temp_c']!.value, 38.9);
     });
 
     test('a server failure mid-batch leaves the rest unconfirmed, in order, for the next try', () async {
@@ -289,7 +302,7 @@ void main() {
       expect(p.clock.status.state, ClockState.off);
       expect(p.clock.status.offset!.inMinutes, 7);
       expect(() => p.store.createEncounter(kind: 'medical'), throwsA(isA<ChartingPaused>()));
-      expect(() => p.store.setField(visit.note, 'data.pulse', 100), throwsA(isA<ChartingPaused>()));
+      expect(() => p.store.setField(visit.note, 'data.vitals.pulse', 100), throwsA(isA<ChartingPaused>()));
       // Logging and syncing are unaffected.
       p.store.appendAudit('note.viewed', entity: 'encounter_note', entityId: visit.note);
       expect(await p.engine.syncAll(force: true), isA<SyncDone>());
@@ -298,7 +311,7 @@ void main() {
       // The person turns on automatic time and taps Check again.
       p.wall = p.wall.add(const Duration(minutes: 7));
       expect((await p.clock.check()).state, ClockState.verified);
-      p.store.setField(visit.note, 'data.pulse', 100);
+      p.store.setField(visit.note, 'data.vitals.pulse', 100);
     });
 
     test('the check works offline: the clock changed after the last sync is caught by uptime', () async {
@@ -350,34 +363,34 @@ void main() {
       // Blair opens Alex's draft. Then Alex adds a blank plan and changes the temperature, while
       // Blair, out of signal, edits the temperature, the plan and the allergies.
       expect(await b.engine.openServerRecord(entityNote, visit.note), isTrue);
-      expect(b.store.record(visit.note)!.fields['data.temp_c']!.value, 38.4);
-      a.store.setField(visit.note, 'data.plan', '');
-      a.store.setField(visit.note, 'data.temp_c', 38.6);
+      expect(b.store.record(visit.note)!.fields['data.vitals.temp_c']!.value, 38.4);
+      a.store.setField(visit.note, 'data.care.plan', '');
+      a.store.setField(visit.note, 'data.vitals.temp_c', 38.6);
       await a.engine.syncAll();
-      b.store.setField(visit.note, 'data.temp_c', 39.0);
-      b.store.setField(visit.note, 'data.plan', 'recheck Friday');
-      b.store.setField(visit.note, 'data.allergies', 'penicillin');
+      b.store.setField(visit.note, 'data.vitals.temp_c', 39.0);
+      b.store.setField(visit.note, 'data.care.plan', 'recheck Friday');
+      b.store.setField(visit.note, 'data.care.allergies', 'penicillin');
 
       final res = await b.engine.syncAll();
       expect((res as SyncDone).conflicts, 1);
       // Blank on the server: filled in. New field: merged. Same field, different value: shown.
       final shown = b.store.needsAttention().single;
-      expect(shown.field, 'data.temp_c');
+      expect(shown.field, 'data.vitals.temp_c');
       expect([shown.value, shown.server!.value, shown.server!.changedBy], [39.0, 38.6, alex]);
-      expect(server.records[visit.note]!.fields['data.plan']!.value, 'recheck Friday');
-      expect(server.records[visit.note]!.fields['data.allergies']!.value, 'penicillin');
+      expect(server.records[visit.note]!.fields['data.care.plan']!.value, 'recheck Friday');
+      expect(server.records[visit.note]!.fields['data.care.allergies']!.value, 'penicillin');
       expect(server.history.where((h) => h['kind'] == 'filled_blank'), hasLength(1));
 
       b.store.resolveConflict(shown.changeId, keepMine: true);
       await b.engine.syncAll(force: true);
       expect(b.store.needsAttention(), isEmpty);
       expect(b.store.outbox(), isEmpty);
-      expect(server.records[visit.note]!.fields['data.temp_c']!.value, 39.0);
+      expect(server.records[visit.note]!.fields['data.vitals.temp_c']!.value, 39.0);
       expect(server.history.last, containsPair('kind', 'replaced_after_review'));
 
       // Alex's phone takes Blair's value at its next sync, since Alex has no edit waiting.
       await a.engine.syncAll(force: true);
-      expect(a.store.record(visit.note)!.fields['data.temp_c']!.value, 39.0);
+      expect(a.store.record(visit.note)!.fields['data.vitals.temp_c']!.value, 39.0);
     });
 
     test('keeping the other person’s value keeps mine in history and shows theirs here', () async {
@@ -386,16 +399,16 @@ void main() {
       final visit = chartVisit(a);
       await a.engine.syncAll();
       await b.engine.openServerRecord(entityNote, visit.note);
-      b.store.setField(visit.note, 'data.temp_c', 39.0);
-      a.store.setField(visit.note, 'data.temp_c', 38.6);
+      b.store.setField(visit.note, 'data.vitals.temp_c', 39.0);
+      a.store.setField(visit.note, 'data.vitals.temp_c', 38.6);
       await a.engine.syncAll();
       await b.engine.syncAll();
       final shown = b.store.needsAttention().single;
       b.store.resolveConflict(shown.changeId, keepMine: false);
       await b.engine.syncAll(force: true);
       expect(b.store.outbox(), isEmpty);
-      expect(b.store.record(visit.note)!.fields['data.temp_c']!.value, 38.6);
-      expect(server.records[visit.note]!.fields['data.temp_c']!.value, 38.6);
+      expect(b.store.record(visit.note)!.fields['data.vitals.temp_c']!.value, 38.6);
+      expect(server.records[visit.note]!.fields['data.vitals.temp_c']!.value, 38.6);
       expect(server.history.last, containsPair('kind', 'kept_both'));
       expect(server.history.last, containsPair('value', 39.0));
     });
@@ -412,10 +425,14 @@ void main() {
       await a.engine.syncAll();
       expect(await a.engine.openServerRecord(entityEncounter, encounter), isTrue);
       server.offline = true;
-      final note = a.store.createNote(encounterId: encounter, noteTypeKey: 'vitals');
+      final note = a.store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+      );
       final other = a.store.createEncounter(kind: 'non_medical');
       a.advance(const Duration(hours: 25));
-      a.store.setField(note, 'data.temp_c', 38.2);
+      a.store.setField(note, 'data.vitals.temp_c', 38.2);
       a.store.closeRecord(other);
       expect(a.clock.status.state, ClockState.verified);
       expect(a.store.record(encounter)!.fields['patientId']!.value, patient);
@@ -442,8 +459,12 @@ void main() {
       // The server doesn't have the encounter this note points to (it was never synced from here).
       p.store.closeRecord(encounter);
       server.records.clear();
-      final note = p.store.createNote(encounterId: '11111111-1111-4111-8111-111111111111', noteTypeKey: 'vitals');
-      p.store.setField(note, 'data.temp_c', 38.0);
+      final note = p.store.createNote(
+        encounterId: '11111111-1111-4111-8111-111111111111',
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+      );
+      p.store.setField(note, 'data.vitals.temp_c', 38.0);
       await p.engine.syncAll();
       // The create and the edit sent with it are both rejected; the edit needs no fix of its own.
       final attention = p.store.needsAttention();
@@ -453,10 +474,14 @@ void main() {
       ]);
       final rejected = attention.first;
 
-      p.store.fixRejected(rejected.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+      p.store.fixRejected(rejected.changeId, {
+        'encounterId': encounter,
+        'noteTypeKey': testNote.key,
+        'noteTypeVersion': testNote.version,
+      });
       await p.engine.syncAll(force: true);
       expect(p.store.outbox(), isEmpty);
-      expect(server.records[note]!.fields['data.temp_c']!.value, 38.0);
+      expect(server.records[note]!.fields['data.vitals.temp_c']!.value, 38.0);
       expect(server.receipts[rejected.changeId]!.resolved, isTrue);
       expect(server.receipts[attention.last.changeId]!.resolved, isTrue);
       expect(p.store.needsAttention(), isEmpty);
@@ -470,7 +495,7 @@ void main() {
       await p.engine.syncAll();
       // The note is signed on the server for a while: a stand-in for anything a later fix gets past.
       server.serverEdit(visit.note, 'status', 'signed', by: blair);
-      p.store.setField(visit.note, 'data.plan', 'rest');
+      p.store.setField(visit.note, 'data.care.plan', 'rest');
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
       p.store.fixRejected(first.changeId, 'rest and fluids');
@@ -495,12 +520,12 @@ void main() {
       final visit = chartVisit(p);
       await p.engine.syncAll();
       server.serverEdit(visit.note, 'status', 'signed', by: blair);
-      p.store.setField(visit.note, 'data.plan', 'rest');
+      p.store.setField(visit.note, 'data.care.plan', 'rest');
       await p.engine.syncAll(force: true);
       final first = p.store.needsAttention().single;
       // Unsigned again, and a teammate writes the plan meanwhile, so the fix meets their value.
       server.serverEdit(visit.note, 'status', 'draft', by: blair);
-      server.serverEdit(visit.note, 'data.plan', 'clinic Friday', by: blair);
+      server.serverEdit(visit.note, 'data.care.plan', 'clinic Friday', by: blair);
       p.store.fixRejected(first.changeId, 'rest and fluids');
       await p.engine.syncAll(force: true);
       final shown = p.store.needsAttention().single;
@@ -509,7 +534,7 @@ void main() {
       p.store.resolveConflict(shown.changeId, keepMine: true);
       await p.engine.syncAll(force: true);
       expect(p.store.outbox(), isEmpty);
-      expect(server.records[visit.note]!.fields['data.plan']!.value, 'rest and fluids');
+      expect(server.records[visit.note]!.fields['data.care.plan']!.value, 'rest and fluids');
       expect(
         [
           for (final e in [first, shown]) server.receipts[e.changeId]!.resolved,
@@ -543,7 +568,12 @@ void main() {
       // A Program Admin gives the role back, and the visit goes on.
       server.permissions.remove(alex);
       p.store.setField(encounter, 'location', {'lat': 42.33, 'lng': -83.05});
-      p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.2});
+      p.store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'vitals.temp_c': 38.2},
+      );
       final second = await p.engine.syncAll() as SyncDone;
       expect([second.sent, second.confirmed, second.rejected], [2, 2, 0]);
       expect(p.store.needsAttention(), isEmpty);
@@ -592,7 +622,12 @@ void main() {
     test('fixing a refused encounter sends it first; its note follows in the same sync and is confirmed', () async {
       final p = phone(alex);
       final encounter = p.store.createEncounter(kind: 'medical');
-      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'temp_c': 38.1});
+      final note = p.store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'vitals.temp_c': 38.1},
+      );
       final create = p.store.outbox().first;
       server.malformed.add(create.changeId);
       await p.engine.syncAll();
@@ -608,7 +643,11 @@ void main() {
       // Review finding: 98 edits of an 11 KB narrative made one 1.1 MB push, refused every time.
       final p = phone(alex);
       final encounter = p.store.createEncounter(kind: 'medical');
-      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals');
+      final note = p.store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+      );
       for (var i = 0; i < 98; i++) {
         p.store.setField(note, 'data.narrative', 'Demo narrative $i ${'x' * 11000}');
       }
@@ -623,11 +662,15 @@ void main() {
       final p = phone(alex);
       final encounter = p.store.createEncounter(kind: 'medical');
       await p.engine.syncAll();
-      final note = p.store.createNote(encounterId: '11111111-1111-4111-8111-111111111111', noteTypeKey: 'vitals');
+      final note = p.store.createNote(
+        encounterId: '11111111-1111-4111-8111-111111111111',
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+      );
       final history = 'Demo history ${'h' * 40000}';
       final plan = 'Demo plan ${'p' * 30000}';
-      p.store.setField(note, 'data.history', history);
-      p.store.setField(note, 'data.plan', plan);
+      p.store.setField(note, 'data.care.history', history);
+      p.store.setField(note, 'data.care.plan', plan);
       await p.engine.syncAll(force: true);
       final attention = p.store.needsAttention();
       expect(attention.map((e) => [e.op, e.reason]), [
@@ -636,12 +679,16 @@ void main() {
         ['set', 'stale_reference'],
       ]);
 
-      p.store.fixRejected(attention.first.changeId, {'encounterId': encounter, 'noteTypeKey': 'vitals'});
+      p.store.fixRejected(attention.first.changeId, {
+        'encounterId': encounter,
+        'noteTypeKey': testNote.key,
+        'noteTypeVersion': testNote.version,
+      });
       final done = await p.engine.syncAll(force: true) as SyncDone;
       expect([done.confirmed, done.rejected], [2, 0]);
       expect(p.store.outbox(), isEmpty);
       final onServer = server.records[note]!.fields;
-      expect([onServer['data.history']!.value, onServer['data.plan']!.value], [history, plan]);
+      expect([onServer['data.care.history']!.value, onServer['data.care.plan']!.value], [history, plan]);
       expect(attention.every((e) => server.receipts[e.changeId]!.resolved), isTrue);
     });
 
@@ -664,10 +711,15 @@ void main() {
     test('a full disk while recording an answer fails the sync without the value in any message', () async {
       final p = phone(alex);
       final encounter = p.store.createEncounter(kind: 'medical');
-      final note = p.store.createNote(encounterId: encounter, noteTypeKey: 'vitals', data: {'plan': 'rest'});
+      final note = p.store.createNote(
+        encounterId: encounter,
+        noteTypeKey: testNote.key,
+        noteTypeVersion: testNote.version,
+        data: {'care.plan': 'rest'},
+      );
       await p.engine.syncAll();
-      server.serverEdit(note, 'data.plan', 'Demo teammate plan ${'y' * 30000}', by: blair);
-      p.store.setField(note, 'data.plan', 'fluids');
+      server.serverEdit(note, 'data.care.plan', 'Demo teammate plan ${'y' * 30000}', by: blair);
+      p.store.setField(note, 'data.care.plan', 'fluids');
       final pages = p.db.db.select('PRAGMA page_count').first.values.first! as int;
       p.db.db.execute('PRAGMA max_page_count = $pages');
       final outcome = await p.engine.syncAll(force: true);
