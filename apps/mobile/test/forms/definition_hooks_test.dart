@@ -132,13 +132,21 @@ void main() {
   });
 
   test('a sign-in again on a phone that holds the vault fetches too', () async {
+    // Two teams, so no team opens by itself and only the sign-in's fetch can bring the lists back.
+    teams = 2;
+    sync.dispose();
+    launch();
+    await session.start();
     await signIn();
+    await session.selectTeam('team-0');
+    await idle();
     await session.lock();
     await session.signOut(keepUnsynced: true);
-    final before = forms.listRequests;
+    expect(await listed('team-0'), isNull);
     await signIn();
-    expect(forms.listRequests, greaterThan(before));
+    expect(sync.store, isNull);
     expect(await listed('team-0'), ['checks_demo', 'demo_visit']);
+    expect(await listed('team-1'), ['checks_demo', 'demo_wound']);
   });
 
   test('at each sync the open team’s list is asked; a fetch that fails changes nothing and stops no sync', () async {

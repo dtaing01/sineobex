@@ -142,6 +142,17 @@ void main() {
     expect(await store.team(userId, teamId), isNull);
   });
 
+  test('a list on its way when the person is forgotten writes nothing back either', () async {
+    server.teams[teamId] = [checks, visit];
+    server.holds['/v1/forms/note-types'] = Completer<void>();
+    final run = sync.refresh(userId, teamId, api).then<Object?>((_) => null, onError: (Object e) => e);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await store.forgetUser(userId);
+    server.holds.values.single.complete();
+    expect(await run, isA<StateError>());
+    expect(dir.listSync(recursive: true).whereType<File>(), isEmpty);
+  });
+
   test('a version a note holds but the list no longer names is downloaded and checked', () async {
     server.teams[teamId] = [checks, quick1, quick2];
     expect((await sync.fetchVersion(userId, teamId, 'demo_quick', 1, api)).version, 1);
