@@ -17,6 +17,9 @@
     "Legs",
     "Lower Body",
     "Hands",
+    "Feet",
+    "Face",
+    "Groin",
     "Right",
     "Left",
     "Bilateral",
@@ -48,8 +51,8 @@
     },
     {
       "line": 23,
-      "what": "Location: Select body region is a region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added), with a side from the shared list side (Right, Left, Bilateral, added), shown only while a finding other than Intact is picked. Normal leaves it empty.",
-      "why": "PRD main 410, 414; focused-exam inventory default 37; PLAN-OPEN (forms 10.1 #1): the side of a sensory finding is this plan's, the line gives none"
+      "what": "Location: Select body region is a region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added, then Feet, Face and Groin (added: not in the quick form's lines)), with a side from the shared list side (Right, Left, Bilateral, added), shown only while a finding other than Intact is picked. Normal leaves it empty.",
+      "why": "PRD main 410, 414; focused-exam inventory default 37; PLAN-OPEN (forms 10.1 #1): the side of a sensory finding is this plan's, the line gives none; PRD main 410 (the full module's body map), 416 (a wound found in the diabetic foot exam hands off to Wound care); PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
     },
     {
       "line": 25,

@@ -984,6 +984,9 @@ const LIST_PINS: Record<string, string[]> = {
     'legs=Legs',
     'lower_body=Lower Body',
     'hands=Hands',
+    'feet=Feet',
+    'face=Face',
+    'groin=Groin',
   ],
   capillary_refill: [
     'less_than_2_seconds=Less than 2 seconds +normal',

@@ -8,6 +8,9 @@
     { "code": "arms", "label": "Arms" },
     { "code": "legs", "label": "Legs" },
     { "code": "lower_body", "label": "Lower Body" },
-    { "code": "hands", "label": "Hands" }
+    { "code": "hands", "label": "Hands" },
+    { "code": "feet", "label": "Feet" },
+    { "code": "face", "label": "Face" },
+    { "code": "groin", "label": "Groin" }
   ]
 }

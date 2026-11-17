@@ -18,6 +18,9 @@
     "Legs",
     "Lower Body",
     "Hands",
+    "Feet",
+    "Face",
+    "Groin",
     "Right",
     "Left",
     "Midline",
@@ -55,8 +58,8 @@
     },
     {
       "line": 29,
-      "what": "Location is one region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added), with a side from Skin's list side_rlm (Right, Left, added, and Midline, added) and a surface from the shared list surface (Anterior, Posterior, added). The bullets Body map, Side and Surface are its three parts.",
-      "why": "PRD main 410; forms 4.4, 6.3; focused-exam inventory default 24, 38"
+      "what": "Location is one region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added, then Feet, Face and Groin (added: not in the quick form's lines)), with a side from Skin's list side_rlm (Right, Left, added, and Midline, added) and a surface from the shared list surface (Anterior, Posterior, added). The bullets Body map, Side and Surface are its three parts.",
+      "why": "PRD main 410; forms 4.4, 6.3; focused-exam inventory default 24, 38; PRD main 410 (the full module's body map), 416 (a wound found in the diabetic foot exam hands off to Wound care); PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
     },
     {
       "line": 37,

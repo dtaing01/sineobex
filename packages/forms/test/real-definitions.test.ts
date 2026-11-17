@@ -149,6 +149,15 @@ describe('what hands off to another note on the real definitions', () => {
       expect(counted.sort()).toEqual([`skin_findings.${ENTRY}.entryAt`, `skin_findings.${ENTRY}.type`]);
     },
   );
+  // TYP-2: the foot exam hands a foot wound to Wound care (PRD main 416), which must then be able to
+  // say where it is; the quick form draws on the same list (PRD main 410).
+  it.each([
+    ['wound_care', `wound.${ENTRY}.location.region`],
+    ['quick_encounter', 'wound.location.region'],
+  ])('lets %s place a wound on the feet, the face or the groin', (key, path) => {
+    for (const region of ['feet', 'face', 'groin'])
+      expect(checkAnswer(definition(key), path, region), region).toBeNull();
+  });
   it('charts them for a finding that stays in Skin', () => {
     expect(finding(['rash'])[`skin_findings.${ENTRY}.size.length`]).toBe(2);
   });

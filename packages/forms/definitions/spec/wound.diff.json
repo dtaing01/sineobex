@@ -24,6 +24,9 @@
     "Legs",
     "Lower Body",
     "Hands",
+    "Feet",
+    "Face",
+    "Groin",
     "Right",
     "Left",
     "Bilateral",
@@ -47,8 +50,8 @@
     },
     {
       "line": 8,
-      "what": "Location is a body region: a region of the shared list body_region (the eight of the quick form: Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added), a side of the shared list side (Right, Left, Bilateral, added) and a surface (Anterior, Posterior, added).",
-      "why": "inventory A27; PRD main 103, 410; forms 4.4"
+      "what": "Location is a body region: a region of the shared list body_region (the eight of the quick form: Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added, then Feet, Face and Groin (added: not in the quick form's lines)), a side of the shared list side (Right, Left, Bilateral, added) and a surface (Anterior, Posterior, added).",
+      "why": "inventory A27; PRD main 103, 410; forms 4.4; PRD main 410 (the full module's body map), 416 (a wound found in the diabetic foot exam hands off to Wound care); PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
     },
     {
       "line": 10,

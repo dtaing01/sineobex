@@ -1,7 +1,7 @@
 {
   "piece": "quick-1",
   "notOptions": ["Text box", "BP | HR | Temperature", "numbers", "in. / cm.", "Up to 5"],
-  "added": ["Cellulitis", "Other", "Right", "Left", "Bilateral"],
+  "added": ["Cellulitis", "Other", "Right", "Left", "Bilateral", "Feet", "Face", "Groin"],
   "differences": [
     {
       "line": 1,
@@ -40,8 +40,8 @@
     },
     {
       "line": 17,
-      "what": "A body region from the shared list body_region, with a side of the shared list side (Right, Left, Bilateral, added). Expand maps it to wound_care:wound.location.",
-      "why": "PRD main 103, 410; inventory A58; forms 6.4"
+      "what": "A body region from the shared list body_region: the eight buttons of the line, then Feet, Face and Groin (added), as the full module offers them, with a side of the shared list side (Right, Left, Bilateral, added). Expand maps it to wound_care:wound.location.",
+      "why": "PRD main 103, 410; inventory A58; forms 6.4; PRD main 410 (one master list), 416; PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
     },
     {
       "line": 19,
