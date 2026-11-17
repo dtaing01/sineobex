@@ -143,8 +143,11 @@ describe('phase 4 sync: encounters and notes', () => {
     });
 
     it('every test team holds both, at the hash of the file’s definition', async () => {
+      // A new team also holds the released presets; this test is about the two test-only types.
+      const keys = TEST_NOTE_TYPES.map((d) => d.key);
       const held = await h.scratch.owner<{ key: string; version: number; hash: string }[]>`
-        select key, version, hash from sineobex.note_type_versions where team_id = ${t.teamId} order by key desc`;
+        select key, version, hash from sineobex.note_type_versions
+        where team_id = ${t.teamId} and key = any(${keys}) order by key desc`;
       expect(held).toEqual(
         await Promise.all(
           TEST_NOTE_TYPES.map(async (d) => ({
