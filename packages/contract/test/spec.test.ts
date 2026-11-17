@@ -66,6 +66,11 @@ describe('openapi.json', () => {
 describe('openapi.json, patient data in requests and refusals', () => {
   // Besides UUIDs and enums, a query string may carry a field name or a numeric history cursor.
   const ALLOWED_PATTERNS = ['^[a-z][a-zA-Z]{0,40}$', '^\\d{1,19}$'];
+  // A note type's key and version name a form, never a patient (forms 3.3). They are the only path
+  // parameters that are not IDs, and only with exactly these patterns.
+  const FORM_PATH_PATTERNS: Record<string, Record<string, string>> = {
+    '/v1/forms/note-types/{key}/{version}': { key: '^[a-z][a-z0-9_]{1,60}$', version: '^[1-9][0-9]{0,8}$' },
+  };
 
   it('takes no name, birth date or search text outside a POST body', async () => {
     const spec = await loadSpec();
@@ -76,7 +81,8 @@ describe('openapi.json, patient data in requests and refusals', () => {
           const s = p.schema ?? {};
           const uuid = s.format === 'uuid';
           const query = uuid || Array.isArray(s.enum) || ALLOWED_PATTERNS.includes(s.pattern ?? '');
-          const ok = p.in === 'path' ? uuid : p.in === 'query' && query;
+          const formPart = s.pattern !== undefined && FORM_PATH_PATTERNS[path]?.[p.name] === s.pattern;
+          const ok = p.in === 'path' ? uuid || formPart : p.in === 'query' && query;
           if (!ok) bad.push(`${method.toUpperCase()} ${path} ${p.in} ${p.name}`);
         }
       }
