@@ -1751,6 +1751,56 @@
       }
     },
     {
+      "name": "an encounter summary with a space at its end",
+      "entity": "encounter",
+      "op": "set",
+      "field": "summary",
+      "value": "Demo: cough and fever ",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "an empty encounter summary",
+      "entity": "encounter",
+      "op": "set",
+      "field": "summary",
+      "value": "",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a place typed by hand with a space at its start",
+      "entity": "encounter",
+      "op": "create",
+      "value": {
+        "kind": "non_medical",
+        "locationText": " Demo: south parking lot"
+      },
+      "expect": {
+        "paths": [
+          "locationText"
+        ]
+      }
+    },
+    {
+      "name": "a place typed by hand of 201 characters",
+      "entity": "encounter",
+      "op": "set",
+      "field": "locationText",
+      "value": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
       "name": "a complete that claims a credential",
       "entity": "note_signoff",
       "op": "create",
@@ -2043,6 +2093,25 @@
       "expect": {
         "paths": [
           "reason"
+        ]
+      }
+    },
+    {
+      "name": "a correction that changes nothing",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [],
+        "reason": "Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "changes"
         ]
       }
     },
