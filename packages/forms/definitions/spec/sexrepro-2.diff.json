@@ -15,8 +15,8 @@
     },
     {
       "line": 6,
-      "what": "A date in the future.",
-      "why": "inventory construct 16"
+      "what": "A date, past or future: a pregnancy that runs past its due date keeps a due date in the past.",
+      "why": "inventory construct 16; PLAN-OPEN (forms 10.1 #1): the date's range"
     },
     {
       "line": 8,

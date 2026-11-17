@@ -414,6 +414,26 @@ describe('the plans of the pieces', () => {
     }
   });
 
+  // A date's range is what the phone's picker lets through (past and future both take today).
+  // A due date is past once a pregnancy runs over, so it takes any date.
+  const DATE_RANGES: Record<string, string> = {
+    'sexrepro-1 lmp.date': 'past',
+    'sexrepro-2 pregnant.due_date': 'any',
+    'sexrepro-3 testing.date': 'past',
+    'red-flags follow_up.date': 'future',
+    'quick-2 follow_up.date': 'future',
+  };
+  it('give each date the range its answers can fall in', () => {
+    const ranges = Object.fromEntries(
+      Object.keys(PLANNED).flatMap((name) =>
+        shapeOf(name)
+          .fields.filter((field) => field.kind === 'date')
+          .map((field) => [`${name} ${field.path}`, field.range]),
+      ),
+    );
+    expect(ranges).toEqual(DATE_RANGES);
+  });
+
   it.each(Object.keys(PLANNED))('%s names only shared lists that are files of lists/', (name) => {
     const lists = filesIn('lists');
     for (const field of shapeOf(name).fields) {
