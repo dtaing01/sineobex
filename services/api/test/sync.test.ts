@@ -18,6 +18,7 @@ import {
   secondTeam,
   setRole,
   setupTeam,
+  TEST_MEDICAL,
   TEST_NOTE,
   type Team,
 } from './sync-fixtures.ts';
@@ -680,7 +681,26 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     });
 
     it('a signed note refuses changes', async () => {
-      const { noteId } = await syncedDraft({ 'care.plan': 'dress daily' });
+      // A Medical note, by someone whose credential charts Medical (lifecycle 4.2).
+      const doc = await addMember(
+        h,
+        t,
+        'dana.signs@example.com',
+        'Dana (demo)',
+        'healthcare_staff',
+        'attending',
+      );
+      const phone = await FakePhone.create();
+      await register(h, phone, doc.token, t.teamId);
+      const encounter = await phone.change({ entity: 'encounter', op: 'create', value: { kind: 'medical' } });
+      const note = await phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: encounter.recordId, ...TEST_MEDICAL, data: { 'care.plan': 'dress daily' } },
+      });
+      const made = await push(h, phone, doc.token, t.teamId, [encounter, note]);
+      expect(results(made.body).map((x) => x.status)).toEqual(['accepted', 'accepted']);
+      const noteId = note.recordId;
       // Signed as the database requires since 0018 and 0019: the sign-off row first, then the note.
       const signoffId = randomUUID();
       await h.scratch.owner`
@@ -694,7 +714,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         set medical = true, status = 'signed', completed_at = now(), completed_by = author_user_id,
             first_signed_at = now(), signoff_id = ${signoffId}
         where id = ${noteId}`;
-      const change = await phoneA.change({
+      const change = await phone.change({
         entity: 'encounter_note',
         recordId: noteId,
         op: 'set',
@@ -702,7 +722,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         value: 'x',
         baseVersion: 1,
       });
-      const r = await push(h, phoneA, t.aToken, t.teamId, [change]);
+      const r = await push(h, phone, doc.token, t.teamId, [change]);
       expect(results(r.body)[0]).toMatchObject({ status: 'rejected', reason: 'record_locked' });
     });
 

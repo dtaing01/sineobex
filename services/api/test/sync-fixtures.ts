@@ -9,6 +9,7 @@ import {
   type ResolvedNoteType,
 } from '@sineobex/forms';
 import { expect } from 'vitest';
+import type { Credential } from '../src/auth/permissions.ts';
 import { canonicalJson, valueHash } from '../src/sync/canonical.ts';
 import type { ChangeEntity } from '../src/sync/schemas.ts';
 import type { Harness } from './harness.ts';
@@ -219,6 +220,24 @@ export async function setRole(
   expect(r.status).toBe(200);
 }
 
+/**
+ * Made-up fields each credential needs (REQUIRED_FIELDS of auth/permissions.ts). The NPI passes the
+ * check digit and is the one the shared vectors use.
+ */
+export const CREDENTIAL_FIELDS: Record<Credential, Record<string, string>> = {
+  attending: { npi: '1234567893', licenseNumber: 'DEMO-0001', licenseState: 'MI' },
+  resident: {
+    npi: '1234567893',
+    program: 'Demo Internal Medicine',
+    supervisingAttending: 'Jordan Lee (demo)',
+  },
+  np: { npi: '1234567893', licenseNumber: 'DEMO-0002', licenseState: 'MI' },
+  pa: { npi: '1234567893', licenseNumber: 'DEMO-0003', licenseState: 'MI' },
+  student: { school: 'Demo School of Medicine', supervisingPhysician: 'Jordan Lee (demo)' },
+  chw: {},
+  none: {},
+};
+
 /** A member the team's admin invited, who accepted the acknowledgements. */
 export async function addMember(
   h: Harness,
@@ -226,7 +245,7 @@ export async function addMember(
   email: string,
   displayName: string,
   role = 'healthcare_staff',
-  credential = 'none',
+  credential: Credential = 'none',
 ) {
   const roles = await call(h, '/v1/team/roles', { token: team.adminToken, teamId: team.teamId });
   const roleId = (roles.body as unknown as { key: string; id: string }[]).find((r) => r.key === role)!.id;
@@ -234,7 +253,7 @@ export async function addMember(
     method: 'POST',
     token: team.adminToken,
     teamId: team.teamId,
-    json: { email, displayName, roleId, credential },
+    json: { email, displayName, roleId, credential, credentialFields: CREDENTIAL_FIELDS[credential] },
   });
   expect(r.status).toBe(201);
   const id = await userId(h, email);

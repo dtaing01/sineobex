@@ -14,14 +14,17 @@ import {
 import { valueParents } from './values.ts';
 
 /**
- * Encounters (phase 2, module 4). Unchanged but for the patient they name, which must now be a
- * patient of the team (phase 3 design 2.3, migration 0013): checked as a parent of the create and
- * of a `set patientId`, so the foreign key never answers first, and with the team lock taken
- * first, because the insert's foreign key check takes FOR KEY SHARE on the patient row (D32).
+ * Encounters (phase 2, module 4). The patient they name must be a patient of the team (phase 3
+ * design 2.3, migration 0013): checked as a parent of the create and of a `set patientId`, so the
+ * foreign key never answers first.
  *
- * Every set takes the team lock first too. A `set patientId` holds it while it locks the encounter
- * row; any other set locks that row and then waits for the same lock at its audit event, so taking
- * it later would deadlock the two (review finding S3).
+ * Every change takes the team lock first (phase 4 lifecycle 4.2), as every note change does. A
+ * create naming a patient needs it before its foreign key check takes FOR KEY SHARE on the patient
+ * row (D32). A `set patientId` holds it while it locks the encounter row; any other set locks that
+ * row and then waits for the same lock at its audit event, so taking it later would deadlock the
+ * two (review finding S3). And a visit's status is worked out from its notes by the trigger of
+ * migration 0018: with one lock per team, its changes and its notes' apply one after the other, so
+ * no rule reads a half-applied sibling.
  */
 
 type Value = z.infer<typeof EncounterCreate>;
@@ -44,15 +47,11 @@ interface EncounterRow {
   updatedAt: Date;
 }
 
-/** Whether a value names a patient (read as sent, before it is checked). */
-const namesPatient = (v: unknown) => typeof v === 'string';
-
 export const encounterRules: EntityRules<Value> = {
   entity: 'encounter',
   auditPrefix: 'encounter',
   permission: () => 'encounters.chart',
-  takesTeamLock: (c) =>
-    c.op === 'create' ? namesPatient((c.value as { patientId?: unknown } | null)?.patientId) : c.op === 'set',
+  takesTeamLock: () => true,
   create: EncounterCreate,
   parents: (v) => valueParents('encounter', 'create', undefined, v),
   parentsOfSet: (field, v) => valueParents('encounter', 'set', field, v),
