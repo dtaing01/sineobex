@@ -7,6 +7,7 @@ import { consentRules } from './consent.ts';
 import { encounterRules } from './encounter.ts';
 import { idLinkRules } from './id-link.ts';
 import { noteAddendumRules } from './note-addendum.ts';
+import { noteCorrectionRules } from './note-correction.ts';
 import { noteSignoffRules } from './note-signoff.ts';
 import { noteRules } from './note.ts';
 import { patientRules } from './patient.ts';
@@ -31,6 +32,7 @@ export const RULES: Readonly<Record<AnyRecordEntityName, EntityRules>> = {
   id_link: idLinkRules as EntityRules,
   note_signoff: noteSignoffRules as EntityRules,
   note_addendum: noteAddendumRules as EntityRules,
+  note_correction: noteCorrectionRules as EntityRules,
 };
 
 /** The rules of a change's entity; null for an activity log entry, which is no record. */

@@ -2,11 +2,12 @@ import { z } from '@hono/zod-openapi';
 import { CREDENTIALS } from '../../auth/permissions.ts';
 import { recognisableCreate } from '../../patients/recognisable.ts';
 import { Uuid } from '../../routes/schemas.ts';
-import type { AnyRecordEntityName, PatientEntityName } from '../schemas.ts';
+import { AnswerField, JsonValue } from '../records.ts';
+import { MAX_VERSION, type AnyRecordEntityName, type PatientEntityName } from '../schemas.ts';
 
 /**
- * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs and
- * addenda (lifecycle 4.6, 4.7). Not OpenAPI components:
+ * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs,
+ * addenda and corrections (lifecycle 4.6, 4.7). Not OpenAPI components:
  * values travel as `value: unknown`, as EncounterCreate does. The phone mirrors these in
  * lib/sync/entities.dart, and packages/contract/test-vectors/sync-values.json pins both, and the
  * phone's fake server, to each other.
@@ -293,6 +294,46 @@ export const NoteAddendumCreate = z
   })
   .strict();
 
+/** Answers one correction changes together (lifecycle 4.7; the database's note_correction_changes_ok). */
+export const MAX_CORRECTION_CHANGES = 10;
+
+/**
+ * A correction of a finished note (lifecycle 3.6, 4.7): one reason, and one to ten answers changed
+ * together, since one answer can open another. Each names the version of the answer the person
+ * was looking at. A patient's amendment request is the same value; declining one changes nothing,
+ * and only a request is declined. `signoffId`, as on an addendum, is the phone's own sign-off of
+ * the note while it waits to be confirmed. Its time is the change's.
+ */
+export const NoteCorrectionCreate = z
+  .object({
+    noteId: Uuid,
+    changes: z
+      .array(
+        z
+          .object({
+            field: AnswerField,
+            newValue: JsonValue,
+            baseVersion: z.number().int().min(0).max(MAX_VERSION),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_CORRECTION_CHANGES)
+      .refine((changes) => new Set(changes.map((c) => c.field)).size === changes.length, {
+        message: 'field_repeated',
+      }),
+    reason: Trimmed(3, 500),
+    requestedByPatient: z.boolean(),
+    declined: z.boolean(),
+    claimedCredential: z.enum(CREDENTIALS).nullable(),
+    signoffId: Uuid.nullable(),
+  })
+  .strict()
+  .refine((v) => !v.declined || v.requestedByPatient, {
+    path: ['declined'],
+    message: 'declined_needs_request',
+  });
+
 /** Alias removal, allergy or problem entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
 
@@ -472,6 +513,10 @@ export function valueParents(
       break;
     case 'note_addendum':
       add('encounter', v.encounterId);
+      add('encounter_note', v.noteId);
+      add('note_signoff', v.signoffId);
+      break;
+    case 'note_correction':
       add('encounter_note', v.noteId);
       add('note_signoff', v.signoffId);
       break;
