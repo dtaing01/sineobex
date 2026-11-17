@@ -7,6 +7,7 @@ import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
 import 'package:sineobex_field/forms/finish.dart';
+import 'package:sineobex_field/forms/handoff.dart';
 import 'package:sineobex_field/forms/normal.dart';
 import 'package:sineobex_field/forms/read_model.dart';
 import 'package:sineobex_field/forms/recap.dart';
@@ -22,7 +23,7 @@ typedef Case = Map<String, Object?>;
 
 /// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
 /// the last one empties it.
-const notWrittenYet = {'handoffLines', 'expandQuick'};
+const notWrittenYet = {'expandQuick'};
 
 /// The inputs each function reads from a case, beside name, definition, why and expected; the
 /// optional ones end in '?'. A case with any other key would be run without what it meant to give.
@@ -120,6 +121,18 @@ void main() {
     'visibleAnswers': (definition, c) =>
         visibleAnswers(definition, answersOf(c), readerOf(c['reader']! as Map<String, Object?>)),
     'suggestions': (definition, c) => suggestions(definition, answersOf(c)),
+    // A handoff reads every note of a visit: `notes` names each one's definition, and the case's own
+    // `definition` is the first's.
+    'handoffLines': (_, c) {
+      final notes = (c['notes']! as List<Object?>).cast<Case>();
+      return [
+        for (final line in handoffLines(
+          [for (final n in notes) definitions[n['definition']! as String]!],
+          [for (final n in notes) n['answers'] as Map<String, Object?>?],
+        ))
+          line.toJson(),
+      ];
+    },
   };
 
   group('the case reader', () {
