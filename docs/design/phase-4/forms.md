@@ -185,7 +185,7 @@ type Field = Common & (
   | { kind: 'flag'; clears?: string[] }                     // a tick; while set, these sibling fields do not count and are disabled
   | { kind: 'date'; range: 'past' | 'future' | 'any' }
   | { kind: 'time' }
-  | { kind: 'duration' }                                    // weeks and days, stored as days
+  | { kind: 'duration'; max?: number }                      // weeks and days, stored as days; max in whole days, 1 to 36,525
   | { kind: 'group'; layout: 'stack' | 'row'; collapsed?: true; fields: Field[] }   // collapsed: closed until tapped
   | { kind: 'grid'; rows: Option[] | { list: string } | { pickedIn: string }; cell: Field;
       collapsed?: true }                                    // one cell per row; see 2.3
@@ -329,7 +329,7 @@ Added in wave B's review, each so that the interpreter can rely on it (7.1):
 | `flag` | `true` | the field's path | "Unable to measure", "Approximate" |
 | `date` | `YYYY-MM-DD` | the field's path | dates |
 | `time` | `HH:MM` | the field's path | "Time EMS called" |
-| `duration` | a whole number of days, at most 36,525 (a hundred years) | the field's path | weeks and days |
+| `duration` | a whole number of days, at most the field's `max` (whole days, 1 to 36,525), or without one 36,525 (a hundred years) | the field's path | weeks and days |
 | `group` | nothing itself | its children add a path part | the vitals row, blood pressure as two numbers, a heading with several fields |
 | `grid` | one cell value per row | the field's path, then the row's code. The cell's own ID is not a path part, unless the cell is a `group`: then its children's IDs follow the row's code. With `rows: { pickedIn }`, a row whose option is no longer picked does not count. | pulses by site, reflexes, a status for each vaccine picked, findings for each node group picked |
 | `region` | codes | the field's path, then `region` (a code from its options), `side` (a code from the shared list it names: `side` has Bilateral, `side_rl` does not, Skin's has Midline), `surface` (a code from the shared list `surface`: Anterior or Posterior) | the body map |
@@ -1479,7 +1479,7 @@ Each function, as built:
   `unknown_option`); for a choose-many, a list of its codes with none twice, in the definition's
   order (2.3; another order is `wrong_type`); for a number, a value inside its range whose
   shortest decimal form has no more decimals than the field's (more is `out_of_range`, as
-  `validate.number_range_empty` reads a range); for a duration, whole days from 0 to 36,525; for
+  `validate.number_range_empty` reads a range); for a duration, whole days from 0 to its `max`, or 36,525 without one (more is `out_of_range`, as for a number); for
   a date, a real `YYYY-MM-DD`, its range not checked, having no clock (2.2); for a time, `HH:MM`
   from `00:00` to `23:59`; for a text, no more characters than its `maxLength`, 200 for an Other
   text and 300 for a problem label (phase 3's limit for a code's text), counted as code points
@@ -1873,7 +1873,7 @@ the rest of the visit page.
 | 16 | The time of a set of vitals (inventory A13: each set has its own) | The time its entry was added (`entryAt`); no time field | Brooke and Mercy |
 | 17 | The Social needs icons (PRD main 419: design-system icons, not emoji) | None in version 1: no set of icon names exists yet. The lock freezes the `needs` list once released, so icons added later make a new list under a new name | The team, before the lists are released |
 | 18 | What one-tap Normal records for the shoulder tests | Not performed, the inventory's normal for the region-specific tests: Normal never records a test as negative | Brooke and Mercy |
-| 19 | The placeholder ranges and repeat maxima | The vitals take what can be measured: respiratory rate, SpO₂, heart rate and both blood pressure numbers from 0, temperature from 50 °F, so an overdose or hypothermia is charted as measured. Wound length and width 0.1 to 100 cm, depth 0 to 30; typical cycle 1 to 90 days, duration 1 to 30; gravida 1 to 30, para 0 to 30; naloxone 1 to 20 doses; an estimated due date may be past. At most 10 sets of vitals, problems, wounds, tests and MSK regions in one note. Gestational age has no bound yet: a duration takes up to 36,525 days, and the format gives a duration no most; 0 to 45 weeks is proposed once it can | Brooke and Mercy; gestational age's before the release, which freezes it |
+| 19 | The placeholder ranges and repeat maxima | The vitals take what can be measured: respiratory rate, SpO₂, heart rate and both blood pressure numbers from 0, temperature from 50 °F, so an overdose or hypothermia is charted as measured. Wound length and width 0.1 to 100 cm, depth 0 to 30; typical cycle 1 to 90 days, duration 1 to 30; gravida 1 to 30, para 0 to 30; naloxone 1 to 20 doses; an estimated due date may be past. At most 10 sets of vitals, problems, wounds, tests and MSK regions in one note. Gestational age 0 to 45 weeks (`max` 315 days), so a slip such as 400 weeks for 40 is refused | Brooke and Mercy |
 | 20 | How many Skin findings one note holds | 20, the format's most (2.4); Wound care holds 10 wounds | Brooke and Mercy |
 | 21 | What Exam performed opens in Breast and Rectal (default 35 answers it for GU only) | Every finding, so consent is required whenever a finding of either exam is charted (6.6) | Brooke and Mercy |
 | 22 | Is Social needs' housing status the chart's living situation? (inventory A37) | No: the note keeps the lines' six (Unsheltered, Shelter, Transitional, Permanent, Doubled-up, Unknown) with PRD main 111's changes, Couch surfing for Doubled-up and an Other, apart from the chart's ten; only Unsheltered, Couch surfing, Unknown and Other are shared | Brooke and Mercy |

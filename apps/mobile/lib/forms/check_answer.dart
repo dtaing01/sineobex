@@ -27,9 +27,6 @@ enum AnswerProblem {
 /// A problem label is copied from the problem code list: phase 3's limit for a code's display text.
 const maxProblemLabel = 300;
 
-/// The longest duration, in days: a hundred years.
-const maxDurationDays = 36525;
-
 final _date = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 final _time = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
@@ -60,6 +57,8 @@ AnswerProblem? checkAnswer(NoteTypeDef definition, String path, Object? value) {
         return AnswerProblem.outOfRange;
       }
       return null;
+    case DurationHolds(:final max):
+      return _checkDuration(value, max);
     case DateHolds():
       // The range (past, future) is the picker's: there is no clock here, and an answer made in range
       // must still be taken when it syncs days later.
@@ -69,7 +68,6 @@ AnswerProblem? checkAnswer(NoteTypeDef definition, String path, Object? value) {
       return switch (kind) {
         // A tick and a removal store true; each is undone by clearing it.
         SimpleKind.flag || SimpleKind.entryRemoved => value == true ? null : AnswerProblem.wrongType,
-        SimpleKind.duration => _checkDuration(value),
         SimpleKind.time => value is String && _time.hasMatch(value) ? null : AnswerProblem.wrongType,
         // ICD-10-CM by its shape only, as phase 3 checks it, so a code-set update never refuses an answer.
         SimpleKind.problemCode => value is String && icd10cmCode.hasMatch(value) ? null : AnswerProblem.wrongType,
@@ -113,12 +111,12 @@ AnswerProblem? _checkText(Object value, int maxLength) {
   return length > maxLength ? AnswerProblem.tooLong : null;
 }
 
-AnswerProblem? _checkDuration(Object value) {
+AnswerProblem? _checkDuration(Object value, int max) {
   // A whole number of days. JSON may write one as 3.0, which is the number 3.
   if (value is! num || (value is double && (!value.isFinite || value != value.truncateToDouble()))) {
     return AnswerProblem.wrongType;
   }
-  return value < 0 || value > maxDurationDays ? AnswerProblem.outOfRange : null;
+  return value < 0 || value > max ? AnswerProblem.outOfRange : null;
 }
 
 AnswerProblem? _checkEntryAt(Object value) {

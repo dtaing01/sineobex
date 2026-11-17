@@ -7,7 +7,7 @@
  * Pure, and loaded by the API: nothing here may import a package.
  */
 import type { ResolvedField, ResolvedNoteType, ResolvedSection } from './resolve.ts';
-import { PATH_PART } from './types.ts';
+import { MAX_DURATION_DAYS, PATH_PART } from './types.ts';
 import type { Option } from './types.ts';
 
 /** A fault at a place in the resolved definition, before it is traced to its file. */
@@ -62,7 +62,8 @@ export type Holds =
   | { type: 'text'; maxLength: number }
   | { type: 'number'; min: number; max: number; decimals: number; unit?: string }
   | { type: 'date'; range: 'past' | 'future' | 'any' }
-  | { type: 'flag' | 'time' | 'duration' | 'problemCode' | 'problemLabel' };
+  | { type: 'duration'; max: number }
+  | { type: 'flag' | 'time' | 'problemCode' | 'problemLabel' };
 
 /** One path a note on this definition can have an answer at (2.3). */
 export type Leaf = {
@@ -266,9 +267,10 @@ function storePaths(
       });
     case 'date':
       return store(base, { type: 'date', range: field.range });
+    case 'duration':
+      return store(base, { type: 'duration', max: field.max ?? MAX_DURATION_DAYS });
     case 'flag':
     case 'time':
-    case 'duration':
       return store(base, { type: field.kind });
     case 'group':
       for (const child of node.children)

@@ -4,6 +4,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import schema from '../schema/definition.schema.json' with { type: 'json' };
+import { MAX_DURATION_DAYS } from '../src/interp/check-answer.ts';
 import { checkFile, FILE_KINDS, type FileKind } from '../src/schema.ts';
 import {
   KEY,
@@ -527,6 +528,22 @@ brokenField('a text length that is not a whole number', 'text', (f) => (f.maxLen
   `${F}.maxLength`,
   WRONG_TYPE,
 ]);
+
+// duration: its most is whole days, from one to a hundred years (2.3)
+fittingField('a duration of at most a day', 'duration', (f) => (f.max = 1));
+fittingField('a duration of at most a hundred years', 'duration', (f) => (f.max = MAX_DURATION_DAYS));
+brokenField('a duration whose most is no time', 'duration', (f) => (f.max = 0), [`${F}.max`, LIMIT]);
+brokenField(
+  'a duration whose most is past a hundred years',
+  'duration',
+  (f) => (f.max = MAX_DURATION_DAYS + 1),
+  [`${F}.max`, LIMIT],
+);
+brokenField('a duration whose most is part of a day', 'duration', (f) => (f.max = 1.5), [
+  `${F}.max`,
+  WRONG_TYPE,
+]);
+brokenField('a duration with a least', 'duration', (f) => (f.min = 1), [`${F}.min`, UNKNOWN_KEY]);
 
 // number
 brokenField('a minimum that is not a number', 'number', (f) => (f.min = '0'), [`${F}.min`, WRONG_TYPE]);
@@ -1231,6 +1248,7 @@ describe('the types and the schema', () => {
     expect(defs.mapsTo.pattern).toBe(`${KEY.source.slice(0, -1)}:${part}(\\.${part}){0,3}$`);
     expect(defs.textField.properties.maxLength.maximum).toBe(MAX_TEXT_LENGTH);
     expect(defs.repeat.properties.max.maximum).toBe(MAX_REPEAT);
+    expect(defs.durationField.properties.max.maximum).toBe(MAX_DURATION_DAYS);
   });
 
   // A definition's paths become the paths of answers, which the API checks at every sync

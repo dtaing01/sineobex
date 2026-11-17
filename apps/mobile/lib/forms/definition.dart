@@ -248,7 +248,7 @@ sealed class FieldDef {
       'flag' => FlagDef._(c, clears: r.has('clears') ? r.strings('clears') : const []),
       'date' => DateDef._(c, range: r.string('range')),
       'time' => TimeDef._(c),
-      'duration' => DurationDef._(c),
+      'duration' => DurationDef._(c, max: r.has('max') ? r.integer('max') : null),
       'group' => GroupDef._(
         c,
         layout: r.string('layout'),
@@ -387,7 +387,10 @@ class TimeDef extends FieldDef {
 
 /// Weeks and days, stored as days.
 class DurationDef extends FieldDef {
-  DurationDef._(super.c);
+  DurationDef._(super.c, {this.max});
+
+  /// The most it takes, in whole days, 1 to 36,525; without one a hundred years.
+  final int? max;
   @override
   String get kind => 'duration';
 }

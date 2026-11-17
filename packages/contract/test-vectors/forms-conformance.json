@@ -942,7 +942,7 @@
           "title": "Demo shelter search",
           "showWhen": { "any": [{ "not": { "field": "housing.status", "is": "housed" } }, { "field": "housing.needs", "is": "food" }] },
           "fields": [
-            { "id": "tried", "kind": "duration", "label": "Demo time looking" },
+            { "id": "tried", "kind": "duration", "label": "Demo time looking", "max": 365 },
             { "id": "place", "kind": "text", "label": "Demo shelter tried", "lines": "one", "maxLength": 60 }
           ]
         }
@@ -1591,6 +1591,9 @@
       {"name": "duration: a hundred years of days, the most", "definition": "psych", "path": "treatment.length", "value": 36525, "why": "forms.md 2.3 line 298: a whole number of days; the bound keeps every duration a small whole number both interpreters read alike (review finding INT-5)", "expected": null},
       {"name": "duration: a day more than a hundred years", "definition": "psych", "path": "treatment.length", "value": 36526, "why": "review finding INT-5: above the bound is no duration", "expected": "out_of_range"},
       {"name": "duration: a whole number past what a phone holds exactly", "definition": "psych", "path": "treatment.length", "value": 9007199254740992, "why": "review finding INT-5: 2^53, which the phone's storableProblem refuses; out of range, not taken by one interpreter and refused by the other", "expected": "out_of_range"},
+      {"name": "duration: at its own most", "definition": "social", "path": "shelter.tried", "value": 365, "why": "forms.md 2.3: a duration may give a most, whole days from 1 to 36,525", "expected": null},
+      {"name": "duration: a day past its own most is out of range, as a number past its max is", "definition": "social", "path": "shelter.tried", "value": 366, "why": "forms.md 2.3 (review finding TYP-10): a duration's max is checked as a number's is, with the same problem", "expected": "out_of_range"},
+      {"name": "duration: part of a day past its own most is its shape first", "definition": "social", "path": "shelter.tried", "value": 365.5, "why": "forms.md 2.3: a duration is whole days, checked before its most", "expected": "wrong_type"},
       {"name": "duration: a negative number of days", "definition": "wound", "path": "wounds.e1a2b3c4.healing", "value": -1, "why": "forms.md 2.3 line 298: a whole number of days; below zero is no duration", "expected": "out_of_range"},
       {"name": "duration: half a day", "definition": "wound", "path": "wounds.e1a2b3c4.healing", "value": 1.5, "why": "forms.md 2.3 line 298: a whole number of days", "expected": "wrong_type"},
       {"name": "duration: half a day below zero is its shape first", "definition": "wound", "path": "wounds.e1a2b3c4.healing", "value": -1.5, "why": "the order of checks in the note: the shape, then the range", "expected": "wrong_type"},

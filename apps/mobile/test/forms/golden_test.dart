@@ -37,12 +37,12 @@ const goldenNewEntry = (id: 'e0000002', at: '2000-01-02T00:00:00Z');
 /// What `every` puts in an answer that is neither a code nor a flag: golden.ts's FILLED.
 const _filled = <SimpleKind, Object>{
   SimpleKind.time: '12:00',
-  SimpleKind.duration: 10,
   SimpleKind.problemCode: 'F11.20',
   SimpleKind.problemLabel: 'Demo problem',
 };
 const _filledText = 'Demo';
 const _filledDate = '2000-01-01';
+const _filledDuration = 10;
 
 /// The note, visit and patient a case's content hash is worked out for: GOLDEN_NOTE.
 const _note = (
@@ -191,6 +191,7 @@ Object? _filledAt(Holds holds) => switch (holds) {
   TextHolds(:final maxLength) => _filledText.substring(0, min(_filledText.length, maxLength)),
   NumberHolds(min: final low) => low,
   DateHolds() => _filledDate,
+  DurationHolds() => _filledDuration,
   SimpleHolds(:final kind) => _filled[kind],
 };
 

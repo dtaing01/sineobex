@@ -18,6 +18,11 @@ export const OPTION_CODE = /^[a-z][a-z0-9_]{0,40}$/;
 /** The limits of 2.4. The schema holds the first two; the third needs the resolved definition. */
 export const MAX_TEXT_LENGTH = 4000;
 export const MAX_REPEAT = 20;
+/**
+ * The longest duration, in days, and the most a duration's `max` may be: a hundred years. Without
+ * one a duration could be a number the phone cannot hold exactly, taken here and refused there.
+ */
+export const MAX_DURATION_DAYS = 36_525;
 export const MAX_DEFINITION_BYTES = 256 * 1024;
 
 /** definitions/note-types/<key>/v<N>.json: one note type, one version. Never edited once released. */
@@ -148,8 +153,11 @@ export type DateField = Common & { kind: 'date'; range: 'past' | 'future' | 'any
 
 export type TimeField = Common & { kind: 'time' };
 
-/** Weeks and days, stored as days. */
-export type DurationField = Common & { kind: 'duration' };
+/**
+ * Weeks and days, stored as days. `max`: the most it takes, in whole days, 1 to 36,525; without one
+ * a hundred years (MAX_DURATION_DAYS).
+ */
+export type DurationField = Common & { kind: 'duration'; max?: number };
 
 /** Stores nothing itself: its children add a path part. `collapsed`: closed until tapped. */
 export type GroupField = Common & {

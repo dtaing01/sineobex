@@ -54,7 +54,16 @@ class DateHolds extends Holds {
 
 /// The answers that need nothing more than their kind to be checked. An entry's own answers
 /// ([entryAt], [entryRemoved]) are never a field's: field_at.dart gives them for an entry's path.
-enum SimpleKind { flag, time, duration, problemCode, problemLabel, entryAt, entryRemoved }
+enum SimpleKind { flag, time, problemCode, problemLabel, entryAt, entryRemoved }
+
+/// The longest duration, in days, and the most a duration's `max` may be: a hundred years.
+const maxDurationDays = 36525;
+
+/// Whole days, from 0 to [max].
+class DurationHolds extends Holds {
+  const DurationHolds(this.max);
+  final int max;
+}
 
 class SimpleHolds extends Holds {
   const SimpleHolds(this.kind);
@@ -266,7 +275,7 @@ void _storePaths(
     case TimeDef():
       store(base, const SimpleHolds(SimpleKind.time));
     case DurationDef():
-      store(base, const SimpleHolds(SimpleKind.duration));
+      store(base, DurationHolds(field.max ?? maxDurationDays));
     case GroupDef():
       for (final child in node.children) {
         _storePaths(model, child, [...base, child.field.id], waiting, row: row, sided: sided);

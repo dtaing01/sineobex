@@ -214,6 +214,15 @@ describe('what a later phase reads on the real definitions', () => {
     },
   );
 
+  // TYP-10: a gestational age has a most, 45 weeks (forms 10.1 #19), so 400 weeks typed for 40 is
+  // refused rather than charted.
+  it('takes a gestational age up to 45 weeks and refuses one past it', () => {
+    const d = definition('sexual_reproductive');
+    expect(checkAnswer(d, 'pregnant.gestational_age', 45 * 7)).toBeNull();
+    expect(checkAnswer(d, 'pregnant.gestational_age', 45 * 7 + 1)).toBe('out_of_range');
+    expect(checkAnswer(d, 'pregnant.gestational_age', 400 * 7)).toBe('out_of_range');
+  });
+
   // TYP-4: "Known pregnancy, no test today" (forms 10.1 #24) means no test today is recorded.
   it('holds no pregnancy test today beside a pregnancy known without one', () => {
     const after = effectiveAnswers(definition('sexual_reproductive'), {

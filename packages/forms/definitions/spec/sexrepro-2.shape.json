@@ -14,7 +14,7 @@
     }
   ],
   "fields": [
-    { "path": "pregnant.gestational_age", "kind": "duration", "label": "Gestational age" },
+    { "path": "pregnant.gestational_age", "kind": "duration", "label": "Gestational age", "max": 315 },
     { "path": "pregnant.due_date", "kind": "date", "label": "Estimated due date", "range": "any" },
     { "path": "pregnant.gravida", "kind": "number", "label": "Gravida", "min": 1, "max": 30, "decimals": 0 },
     { "path": "pregnant.para", "kind": "number", "label": "Para", "min": 0, "max": 30, "decimals": 0 },

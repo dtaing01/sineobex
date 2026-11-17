@@ -244,7 +244,7 @@ String displayValue(Holds holds, Object? value, FieldDef? field) {
       return unit == null ? number : '$number $unit';
     case SimpleHolds(kind: SimpleKind.flag):
       return 'Yes';
-    case SimpleHolds(kind: SimpleKind.duration):
+    case DurationHolds():
       return _duration((value! as num).toInt());
     default:
       return value! as String;

@@ -323,7 +323,8 @@
         {
           "id": "gestational_age",
           "kind": "duration",
-          "label": "Gestational age"
+          "label": "Gestational age",
+          "max": 315
         },
         {
           "id": "due_date",

@@ -2540,7 +2540,7 @@
     {
       "key": "demo_social",
       "version": 1,
-      "hash": "e19fc7901290f25f9354be2371c5da56c84287165bb29034c6704fe8e9412a3f",
+      "hash": "0e913967d950edd8dcf90553be248ca31136f925c4236f08c5f143cb0df36bd6",
       "definition": {
         "key": "demo_social",
         "version": 1,
@@ -2620,7 +2620,8 @@
               {
                 "id": "tried",
                 "kind": "duration",
-                "label": "Demo time looking"
+                "label": "Demo time looking",
+                "max": 365
               },
               {
                 "id": "place",
@@ -6542,7 +6543,7 @@
     {
       "key": "demo_social",
       "version": 1,
-      "hash": "e19fc7901290f25f9354be2371c5da56c84287165bb29034c6704fe8e9412a3f",
+      "hash": "0e913967d950edd8dcf90553be248ca31136f925c4236f08c5f143cb0df36bd6",
       "cases": [
         {
           "name": "blank",
