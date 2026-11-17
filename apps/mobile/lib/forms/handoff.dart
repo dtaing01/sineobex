@@ -53,7 +53,7 @@ class HandoffLine {
 /// that count of every field marked `handoff` (with everything in it), less what a sensitive exam
 /// put there, note by note in the order given, each laid out and written as the read model writes
 /// it, its labels joined by ', ', an entry's title first in a repeating section; then each note's
-/// recap (recapLines), in the same order of notes. The patient's name, age and allergies come from
+/// recap (recapLines), less every `treatmentRecord` section, in the same order of notes. The patient's name, age and allergies come from
 /// the chart, not from here.
 List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> answersByNote) {
   if (definitions.length != answersByNote.length) {
@@ -82,15 +82,11 @@ List<HandoffLine> handoffLines(List<NoteTypeDef> definitions, List<Answers?> ans
       }
     }
     for (final RecapLine(:section, :text) in recapLines(definition, answers)) {
-      recaps.add(
-        HandoffLine(
-          kind: HandoffKind.recap,
-          note: note,
-          section: section,
-          label: definition.sections.firstWhere((s) => s.id == section).title,
-          value: text,
-        ),
-      );
+      final SectionDef(:title, :treatmentRecord) = definition.sections.firstWhere((s) => s.id == section);
+      // EMS may not read a treatment record (validate.handoff_restricted), whoever shows the
+      // summary: a reader who may see the section would otherwise hand it over in its recap.
+      if (treatmentRecord) continue;
+      recaps.add(HandoffLine(kind: HandoffKind.recap, note: note, section: section, label: title, value: text));
     }
   }
   return [...fields, ...recaps];

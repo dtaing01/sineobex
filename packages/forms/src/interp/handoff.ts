@@ -34,8 +34,9 @@ export type HandoffLine = {
  * PLAN-OPEN: the content of the summary (forms.md 10.1 #6). The default built: first the answers
  * that count of every field marked `handoff` (with everything in it), less what a sensitive exam
  * put there, note by note in the order given, each laid out and written as the read model writes
- * it, its labels joined by ', ', an entry's title first in a repeating section; then each note's recap (recapLines), in the same
- * order of notes. The patient's name, age and allergies come from the chart, not from here.
+ * it, its labels joined by ', ', an entry's title first in a repeating section; then each note's
+ * recap (recapLines), less every `treatmentRecord` section, in the same order of notes. The
+ * patient's name, age and allergies come from the chart, not from here.
  */
 export function handoffLines(
   definitions: readonly ResolvedNoteType[],
@@ -62,14 +63,13 @@ export function handoffLines(
       for (const entry of entries ?? [])
         for (const item of entry.items) line(section.id, [entry.title, ...item.labels], item.value!);
     }
-    for (const { section, text } of recapLines(definition, answers))
-      recaps.push({
-        kind: 'recap',
-        note,
-        section,
-        label: definition.sections.find((s) => s.id === section)!.title,
-        value: text,
-      });
+    for (const { section, text } of recapLines(definition, answers)) {
+      const { title, treatmentRecord } = definition.sections.find((s) => s.id === section)!;
+      // EMS may not read a treatment record (validate.handoff_restricted), whoever shows the
+      // summary: a reader who may see the section would otherwise hand it over in its recap.
+      if (treatmentRecord) continue;
+      recaps.push({ kind: 'recap', note, section, label: title, value: text });
+    }
   });
   return [...fields, ...recaps];
 }
