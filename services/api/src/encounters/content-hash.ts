@@ -33,10 +33,11 @@ export function noteContent(i: NoteContentInput) {
     v: 1,
     noteId: i.noteId,
     encounterId: i.encounterId,
-    patientId: i.patientId,
+    // ?? null: canonical JSON drops an undefined key, and the phone always writes both keys.
+    patientId: i.patientId ?? null,
     noteTypeKey: i.definition.key,
     noteTypeVersion: i.definition.version,
-    summary: i.summary,
+    summary: i.summary ?? null,
     answers: effectiveAnswers(i.definition, i.answers),
   };
 }

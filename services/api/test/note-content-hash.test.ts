@@ -100,6 +100,24 @@ describe('note content hash', () => {
     expect(new Set(apart).size).toBe(apart.length);
   });
 
+  // Vectors cannot hold undefined, so this rule lives here. A later unit builds the input from a
+  // stored record, where a summary never set reads as undefined; canonical JSON drops an undefined
+  // key, while the phone always writes "summary":null, and every Complete would then be refused.
+  it('hashes a missing patient or summary as null, as the phone writes it', async () => {
+    const c = cases[0]!;
+    const stored: Record<string, unknown> = {};
+    const missing = {
+      ...inputOf(c),
+      patientId: stored.patientId as string | null,
+      summary: stored.summary as string | null,
+    };
+    const nulls = { ...inputOf(c), patientId: null, summary: null };
+    expect(canonicalJson(noteContent(missing))).toBe(canonicalJson(noteContent(nulls)));
+    expect(canonicalJson(noteContent(missing))).toContain('"patientId":null');
+    expect(canonicalJson(noteContent(missing))).toContain('"summary":null');
+    expect(await noteContentHash(missing)).toBe(await noteContentHash(nulls));
+  });
+
   for (const c of cases) {
     it(c.name, async () => {
       // The answers that count are the forms interpreter's: a case whose effective answers it does
