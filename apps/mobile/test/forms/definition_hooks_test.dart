@@ -294,6 +294,49 @@ void main() {
     expect(filesFor('team-1'), isTrue);
   });
 
+  test('a sign-in’s fetch stops at a sign-out part way: nothing more is asked or written back', () async {
+    teams = 2;
+    sync.dispose();
+    launch();
+    await session.start();
+    final hold = forms.holds[FakeFormsServer.listPath] = Completer<void>();
+    await session.signIn('clinician@example.com', validPassword);
+    await session.verifyCode(validCode);
+    await session.setPin(pin);
+    await sync.ready();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(forms.listRequests, 1, reason: 'the first team’s list is on its way');
+    await session.signOut();
+    hold.complete();
+    await sync.definitionsFetched();
+    expect(forms.listRequests, 1, reason: 'the second team is not asked for');
+    expect(filesFor('team-0'), isFalse);
+    expect(filesFor('team-1'), isFalse);
+  });
+
+  test('a sign-in again while the last one’s fetch is on its way keeps lists of its own', () async {
+    teams = 2;
+    sync.dispose();
+    launch();
+    await session.start();
+    final hold = forms.holds[FakeFormsServer.listPath] = Completer<void>();
+    await session.signIn('clinician@example.com', validPassword);
+    await session.verifyCode(validCode);
+    await session.setPin(pin);
+    await sync.ready();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await session.signOut();
+    final again = signIn();
+    for (var i = 0; i < 200 && session.state is! Unlocked; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    hold.complete();
+    await again;
+    expect(await listed('team-0'), ['checks_demo', 'demo_visit']);
+    expect(await listed('team-1'), ['checks_demo', 'demo_wound']);
+  });
+
   test('a version fetched for a note the list no longer names reaches the screens', () async {
     final container = ProviderContainer(overrides: [syncControllerProvider.overrideWithValue(sync)]);
     addTearDown(container.dispose);

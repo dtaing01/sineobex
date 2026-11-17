@@ -40,28 +40,34 @@ class DefinitionSync {
 
   final DefinitionStore store;
 
-  /// Fetches in progress, by person and team: a sync's fetch and a sign-in's for the same team
-  /// share one.
+  /// Fetches in progress, by person, team and [DefinitionStore.generation]: a sync's fetch and a
+  /// sign-in's for the same team share one, but a fetch begun before the team's files were deleted
+  /// is shared by nothing begun after (it can keep nothing).
   final _running = <String, Future<void>>{};
 
   /// Throws what stopped it ([DefinitionRefused], an API or network error, or a [StateError] when
-  /// the person was forgotten meanwhile); nothing it didn't finish is kept.
-  Future<void> refresh(String userId, String teamId, FormsApi api) async {
-    final id = '$userId\n$teamId';
-    await (_running[id] ??= _once(id, userId, teamId, api));
+  /// the team's files were deleted meanwhile); nothing it didn't finish is kept.
+  ///
+  /// [generation] is the store's for the team when the caller began, when that was before this
+  /// call (a sign-in's fetch of every team, one after another): a sign-out since then asks nothing
+  /// more, so a later person's token never fetches for this one.
+  Future<void> refresh(String userId, String teamId, FormsApi api, {int? generation}) async {
+    final began = generation ?? store.generation(userId, teamId);
+    if (began != store.generation(userId, teamId)) throw StateError('Deleted since this fetch began.');
+    final id = '$userId\n$teamId\n$began';
+    await (_running[id] ??= _once(id, userId, teamId, api, began));
   }
 
-  Future<void> _once(String id, String userId, String teamId, FormsApi api) async {
+  Future<void> _once(String id, String userId, String teamId, FormsApi api, int generation) async {
     try {
-      await _refresh(userId, teamId, api);
+      await _refresh(userId, teamId, api, generation);
     } finally {
       // Not remove(), which hands back this run's own future for nothing to wait on.
       _running.removeWhere((key, _) => key == id);
     }
   }
 
-  Future<void> _refresh(String userId, String teamId, FormsApi api) async {
-    final generation = store.generation(userId, teamId);
+  Future<void> _refresh(String userId, String teamId, FormsApi api, int generation) async {
     final listed = await api.list();
     DefinitionRefused? refused;
     for (final v in listed) {

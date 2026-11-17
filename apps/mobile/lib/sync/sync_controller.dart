@@ -776,14 +776,27 @@ class SyncController extends ChangeNotifier implements LocalData {
   /// team first opened offline still offers its note types (forms 3.4). The open team's also
   /// comes with its refreshers; a fetch already running for a team is shared. A team that fails
   /// keeps what it had, and the next sync in that team tries again.
+  ///
+  /// The fetch belongs to this sign-in: each team's generation is taken before the first request,
+  /// and the fetch stops once the person is no longer the one unlocked. A sign-out part way (with
+  /// the next person's token in [teamApi]) then asks for nothing more and writes nothing back.
   @override
   Future<void> afterSignIn(LocalUser user) async {
     final definitionSync = _definitionSync;
-    if (definitionSync == null) return;
+    final definitions = this.definitions;
+    if (definitionSync == null || definitions == null) return;
+    final generations = {for (final team in user.teams) team.id: definitions.generation(user.userId, team.id)};
     final run = _signInFetch = () async {
       for (final team in user.teams) {
+        final now = session.state;
+        if (now is! Unlocked || now.user.userId != user.userId) return;
         try {
-          await definitionSync.refresh(user.userId, team.id, FormsApi(teamApi(team.id)));
+          await definitionSync.refresh(
+            user.userId,
+            team.id,
+            FormsApi(teamApi(team.id)),
+            generation: generations[team.id],
+          );
         } on Object {
           // Offline, refused or signed out meanwhile: nothing was kept that didn't check out.
         }

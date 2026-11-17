@@ -164,6 +164,28 @@ void main() {
     expect(dir.listSync(recursive: true).whereType<File>(), isEmpty);
   });
 
+  test('a fetch handed a generation from before a sign-out asks nothing and keeps nothing', () async {
+    server.teams[teamId] = [checks, visit];
+    final began = store.generation(userId, teamId);
+    await store.forgetUser(userId);
+    await expectLater(sync.refresh(userId, teamId, api, generation: began), throwsStateError);
+    expect(server.requests, isEmpty);
+    expect(await store.team(userId, teamId), isNull);
+  });
+
+  test('a fetch begun after a sign-out is not joined to one begun before it, which keeps nothing', () async {
+    server.teams[teamId] = [checks, visit];
+    final hold = server.holds['/v1/forms/note-types'] = Completer<void>();
+    final before = sync.refresh(userId, teamId, api).then<Object?>((_) => null, onError: (Object e) => e);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await store.forgetUser(userId);
+    final after = sync.refresh(userId, teamId, api);
+    hold.complete();
+    expect(await before, isA<StateError>());
+    await after;
+    expect(await listed(), ['checks_demo v1', 'demo_visit v1']);
+  });
+
   test('a version a note holds but the list no longer names is downloaded and checked', () async {
     server.teams[teamId] = [checks, quick1, quick2];
     expect((await sync.fetchVersion(userId, teamId, 'demo_quick', 1, api)).version, 1);
