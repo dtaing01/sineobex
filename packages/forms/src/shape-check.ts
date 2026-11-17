@@ -12,6 +12,9 @@
  * A code is the recipe's rule applied to its label (`codeOf`); where the planner gives a code the
  * rule would not make, the shape file gives the code and the label together. So a code crossed
  * with its label, invented, typed twice, moved to another field or put out of order is found.
+ * Where the lines spell one word in two ways ("Yes" and "YES"), the rule makes one code of both,
+ * and the shape file pins the label beside the code all the same: then the definition's label is
+ * held to it too.
  *
  * Pure: the export reads the files of definitions/spec and hands them over (`readPieces`).
  */
@@ -37,8 +40,8 @@ export type ShapeField = { path: string; kind: string } & Record<string, unknown
 
 /**
  * An option in a shape file: its code, which must be the recipe's rule applied to the option's
- * label; or, where the rule gives no valid code or the planner gives another, the code and the
- * label it is given for.
+ * label; or, where the rule gives no valid code, the planner gives another or the planner pins the
+ * label, the code and the label it is given for.
  */
 export type ShapeOption = string | { code: string; label: string };
 
@@ -75,11 +78,11 @@ export type Shape = {
 /**
  * The shape of the sections of a file that name the piece: what its shape file has to say. `path`
  * is the file's path under definitions/. The first piece a note type names carries its header and
- * the sections that name no piece.
+ * the sections that name no piece. Given the piece's plan, the labels it pins are kept.
  */
-export function shapeOf(piece: string, file: NoteType | Module, path: string): Shape {
+export function shapeOf(piece: string, file: NoteType | Module, path: string, plan?: Shape): Shape {
   const byPiece = sectionsByPiece(file);
-  const { shape } = placedShape(piece, byPiece.get(piece) ?? []);
+  const { shape } = placedShape(piece, byPiece.get(piece) ?? [], plan);
   const first = [...byPiece.keys()][0] === piece;
   const outside = file.sections.flatMap((s) => ('include' in s || s.spec ? [] : [s.id]));
   return {
@@ -101,13 +104,26 @@ function headerOf(file: NoteType): Record<string, unknown> {
 /** A definition file's path under definitions/, as a shape file names it. */
 const DEFINITION_FILE = /^(note-types|modules)\/[a-z][a-z0-9_]{1,60}\/v[1-9][0-9]*\.json$/;
 
-/** A shape, and where in the file each of its sections (by id) and fields (by path) is written. */
+/**
+ * A shape, and where in the file each of its sections (by id) and fields (by path) is written. An
+ * option is its code where the rule makes it from the label, unless `plan` pins its label.
+ */
 function placedShape(
   piece: string,
   sections: { section: Section; at: string }[],
+  plan?: Shape,
 ): { shape: Shape; places: Map<string, string> } {
   const shape: Shape = { piece, file: '', sections: [], fields: [] };
   const places = new Map<string, string>();
+  /** The codes whose label the plan pins, by the field's path and the key that lists them. */
+  const pinned = new Set<string>();
+  for (const field of plan?.fields ?? [])
+    for (const key of ['options', 'rows']) {
+      const options = field[key];
+      if (Array.isArray(options))
+        for (const option of options as ShapeOption[])
+          if (typeof option !== 'string') pinned.add(`${field.path} ${key} ${option.code}`);
+    }
   const add = (field: Field, path: string, at: string) => {
     const { id: _id, fields, cell, ...keys } = field as Field & { fields?: Field[]; cell?: Field };
     const entry: ShapeField = { path, ...keys };
@@ -115,7 +131,7 @@ function placedShape(
       const options = entry[key];
       if (!Array.isArray(options)) continue;
       entry[key] = (options as Option[]).map(({ code, label }): ShapeOption =>
-        code === codeOf(label) ? code : { code, label },
+        code === codeOf(label) && !pinned.has(`${path} ${key} ${code}`) ? code : { code, label },
       );
       const flags = flagsOf(options);
       if (Object.keys(flags).length > 0) entry.flags = flags;
@@ -246,7 +262,7 @@ export function readShape(piece: string, shape: unknown): Shape | FileProblem[] 
           if (!fits)
             bad(
               `${at}.${key}[${i}]`,
-              'must be an option’s code, or { "code", "label" } where the code is not the rule’s',
+              'must be an option’s code, or { "code", "label" } where the code is not the rule’s or the label is pinned',
             );
         });
       }
@@ -300,7 +316,7 @@ export function checkShapes(pieces: Pieces, files: DefinitionFiles): FileProblem
     for (const [name, sections] of sectionsByPiece(content)) {
       const expected = readPiece(name, { file, path: `${sections[0]!.at}.spec` });
       if (!expected) continue;
-      const { shape, places } = placedShape(name, sections);
+      const { shape, places } = placedShape(name, sections, expected);
       for (const found of compare(expected, shape, places))
         problems.push({ file, path: found.path, rule: `shape.${found.rule}`, message: found.message });
     }

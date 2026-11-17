@@ -325,6 +325,26 @@ describe('the codes of the options', () => {
     shape(tree).fields[0].options[0] = { code: 'o1', label: 'Offered' };
     expect(found(tree)).toEqual([]);
   });
+  // A word the lines spell in two ways (Yes and YES) makes one code, and the spec check reads only
+  // the set of words: the shape file pins the label beside the code, and the definition is held to both.
+  it('a label the planner pins beside a code the rule makes', () => {
+    const tree = example();
+    shape(tree).fields[4].options[0] = { code: 'yes', label: 'Yes' };
+    expect(found(tree)).toEqual([]);
+    field(tree, 1, 'receiving').options[0].label = 'YES';
+    expect(found(tree)).toEqual(sorted([[NOTE, `${at(1, 'receiving')}.options`, 'shape.field_differs']]));
+  });
+  it('a label the shape file does not pin is left to the spec check', () => {
+    const tree = example();
+    field(tree, 1, 'receiving').options[0].label = 'YES';
+    expect(found(tree)).toEqual([]);
+  });
+  it('a shape worked out from a definition keeps the labels its plan pins', () => {
+    const tree = example();
+    shape(tree).fields[4].options[0] = { code: 'yes', label: 'Yes' };
+    expect(shapeOf(PIECE, note(tree), NOTE, shape(tree))).toEqual(shape(tree));
+    expect(shapeOf(PIECE, note(tree), NOTE).fields[4]!.options).toEqual(['yes', 'no', 'unknown']);
+  });
   it('the rule: lower case, each run of other characters one _, none at the ends', () => {
     expect(codeOf('Already has')).toBe('already_has');
     expect(codeOf('Safer-use supplies')).toBe('safer_use_supplies');
