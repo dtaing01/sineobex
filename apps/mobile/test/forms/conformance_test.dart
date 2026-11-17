@@ -8,6 +8,8 @@ import 'package:sineobex_field/forms/effective.dart';
 import 'package:sineobex_field/forms/field_at.dart';
 import 'package:sineobex_field/forms/finish.dart';
 import 'package:sineobex_field/forms/normal.dart';
+import 'package:sineobex_field/forms/read_model.dart';
+import 'package:sineobex_field/forms/recap.dart';
 
 /// The interpreter's answers are data (phase 4 design, forms 7.2): they live in
 /// packages/contract/test-vectors/forms-conformance.json, and packages/forms/test/conformance.test.ts
@@ -18,7 +20,7 @@ typedef Case = Map<String, Object?>;
 
 /// The functions of forms 7.1 the phone does not have yet. Each job of unit F2 shortens the list;
 /// the last one empties it.
-const notWrittenYet = {'recapLines', 'readModel', 'visibleAnswers', 'handoffLines', 'suggestions', 'expandQuick'};
+const notWrittenYet = {'visibleAnswers', 'handoffLines', 'suggestions', 'expandQuick'};
 
 /// The inputs each function reads from a case, beside name, definition, why and expected; the
 /// optional ones end in '?'. A case with any other key would be run without what it meant to give.
@@ -94,6 +96,10 @@ void main() {
     'finishCheck': (definition, c) => [for (final p in finishCheck(definition, answersOf(c))) p.toJson()],
     'normalAnswers': (definition, c) =>
         normalAnswers(definition, c['section']! as String, answersOf(c), c['entry'] as String?),
+    'recapLines': (definition, c) => [for (final line in recapLines(definition, answersOf(c))) line.toJson()],
+    'readModel': (definition, c) => readModel(definition, answersOf(c), [
+      for (final row in (c['corrections']! as List<Object?>).cast<Map<String, Object?>>()) NoteCorrection.fromJson(row),
+    ]).toJson(),
   };
 
   group('the case reader', () {
