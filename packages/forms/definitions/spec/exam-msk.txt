@@ -81,3 +81,77 @@
       &#32;&#32;&#32;&#32;•   Painful
 
       &#32;&#32;&#32;&#32;•   Unable
+
+      E. Strength
+
+      Scale: 0–5
+
+      &#32;&#32;&#32;&#32;•   Right: \_\_\_\_\_ / 5
+
+      &#32;&#32;&#32;&#32;•   Left: \_\_\_\_\_ / 5
+
+      F. Neurovascular
+
+      Sensation
+
+      &#32;&#32;&#32;&#32;•   Intact
+
+      &#32;&#32;&#32;&#32;•   Decreased
+
+      &#32;&#32;&#32;&#32;•   Numbness
+
+      &#32;&#32;&#32;&#32;•   Tingling
+
+      Pulses
+
+      &#32;&#32;&#32;&#32;•   Intact
+
+      &#32;&#32;&#32;&#32;•   Decreased
+
+      &#32;&#32;&#32;&#32;•   Absent
+
+      Capillary Refill
+
+      &#32;&#32;&#32;&#32;•   Less than 2 seconds
+
+      &#32;&#32;&#32;&#32;•   Greater than 2 seconds
+
+      G. Gait
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Antalgic
+
+      &#32;&#32;&#32;&#32;•   Unsteady
+
+      &#32;&#32;&#32;&#32;•   Ataxic
+
+      &#32;&#32;&#32;&#32;•   Unable to assess
+
+      H. Region-Specific Tests
+
+      Dynamically display common tests based on the selected body region.
+
+      Example: Shoulder
+
+      &#32;&#32;&#32;&#32;•   Neer's
+
+      &#32;&#32;&#32;&#32;•   Hawkins
+
+      &#32;&#32;&#32;&#32;•   Empty can
+
+      &#32;&#32;&#32;&#32;•   External rotation
+
+      &#32;&#32;&#32;&#32;•   Cross-body adduction
+
+      For each test, select one:
+
+      &#32;&#32;&#32;&#32;•   Not performed
+
+      &#32;&#32;&#32;&#32;•   Negative
+
+      &#32;&#32;&#32;&#32;•   Positive
+
+      &#32;&#32;&#32;&#32;•   Unable
+
+      Additional regions: Apply the same structure to the knee, hip, ankle, wrist, and other regions as appropriate.

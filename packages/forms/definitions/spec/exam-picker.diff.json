@@ -30,7 +30,7 @@
     },
     {
       "line": 43,
-      "what": "After the picker come the 22 exam modules, one include each, in the order of the focused-exam inventory's section 7 (version 1 of exam_general_appearance, exam_heent_eyes, exam_heent_ears, exam_heent_nose, exam_heent_mouth, exam_cv_rhythm, exam_cv_perfusion, exam_pulmonary, exam_abdominal, exam_msk_1, exam_msk_2, exam_neuro_1, exam_neuro_2, exam_skin, exam_gu, exam_lymphatic, exam_peripheral_vascular, exam_breast, exam_rectal, exam_psychiatric, exam_foot, exam_neck). An include has no showWhen of its own: each section of a module already shows only while its system is picked, and the resolver would join a second, equal condition to each.",
+      "what": "After the picker come the 21 exam modules, one include each, in the order of the focused-exam inventory's section 7 (version 1 of exam_general_appearance, exam_heent_eyes, exam_heent_ears, exam_heent_nose, exam_heent_mouth, exam_cv_rhythm, exam_cv_perfusion, exam_pulmonary, exam_abdominal, exam_msk, exam_neuro_1, exam_neuro_2, exam_skin, exam_gu, exam_lymphatic, exam_peripheral_vascular, exam_breast, exam_rectal, exam_psychiatric, exam_foot, exam_neck). An include has no showWhen of its own: each section of a module already shows only while its system is picked, and the resolver would join a second, equal condition to each.",
       "why": "forms 6.3; focused-exam inventory section 7"
     },
     {

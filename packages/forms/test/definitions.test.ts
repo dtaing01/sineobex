@@ -25,9 +25,11 @@ const filesIn = (folder: string): string[] => readdirSync(`${root}${folder}`).so
 const read = (path: string): string => readFileSync(`${root}${path}`, 'utf8');
 
 /**
- * The 37 pieces and the lines of the field specification each one holds: forms-inventory.md
+ * The 35 pieces and the lines of the field specification each one holds: forms-inventory.md
  * section 8 for the note types, forms-inventory-focused-exam.md section 7, in its order, for the
- * exam. A piece of two ranges holds the first, then the second.
+ * exam, but that Wound care (SPEC 63 to 119) and MSK (SPEC 912 to 1068) are each one piece, so that
+ * each is one repeating section with all its parts in the entry (inventory A26; focused-exam
+ * default 16). A piece of two ranges holds the first, then the second.
  */
 const PIECES: Record<string, [number, number][]> = {
   'general-1': [[5, 28]],
@@ -55,8 +57,7 @@ const PIECES: Record<string, [number, number][]> = {
   'exam-cv-perfusion': [[670, 732]],
   'exam-pulmonary': [[734, 820]],
   'exam-abdominal': [[822, 910]],
-  'exam-msk-1': [[912, 994]],
-  'exam-msk-2': [[996, 1068]],
+  'exam-msk': [[912, 1068]],
   'exam-neuro-1': [[1070, 1150]],
   'exam-neuro-2': [[1152, 1222]],
   'exam-skin': [[1224, 1330]],
@@ -83,7 +84,7 @@ const specTexts = (): Record<string, string> =>
 describe('the pieces of the field specification', () => {
   const { pieces, problems } = readPieces(specTexts());
 
-  it('are read with no problem, and are exactly the 37 of the inventories', () => {
+  it('are read with no problem, and are exactly the 35 planned', () => {
     expect(problems).toEqual([]);
     expect(Object.keys(pieces).sort()).toEqual(Object.keys(PIECES).sort());
     for (const [name, piece] of Object.entries(pieces)) expect(piece.text, name).toBeDefined();
@@ -165,7 +166,7 @@ const REQUIRED_NOTE_FIELDS = ['red_flags.emergency', 'red_flags.ems_time'];
 /**
  * The exam pieces that are modules (forms-inventory-focused-exam.md section 7, in its order). Each
  * is one module, named as the piece with underscores, which the General note type includes
- * (forms 6.3); the exam picker, the 23rd piece, is a section of General itself.
+ * (forms 6.3); the exam picker, the 22nd piece, is a section of General itself.
  */
 const EXAM_PIECES = [
   'exam-general-appearance',
@@ -177,8 +178,7 @@ const EXAM_PIECES = [
   'exam-cv-perfusion',
   'exam-pulmonary',
   'exam-abdominal',
-  'exam-msk-1',
-  'exam-msk-2',
+  'exam-msk',
   'exam-neuro-1',
   'exam-neuro-2',
   'exam-skin',
@@ -531,6 +531,36 @@ describe('the plans of the exam pieces', () => {
         expect(optionsOf(field).flagged('normal'), `${action.path}: ${path}`).toEqual([]);
       }
     }
+  });
+
+  // forms 6.3 and focused-exam default 16: MSK is one entry per region examined, each with the
+  // parts that follow the region, Side for every region but Head / Neck and Back (default 4) and
+  // the shoulder's tests for the shoulder; a person's gait is one answer for the exam.
+  it('exam-msk is one entry for each region, and gait once for the exam', () => {
+    const shape = shapeOf('exam-msk');
+    expect(shape.sections.map((section) => [section.id, section.repeat !== undefined])).toEqual([
+      ['msk', true],
+      ['msk_gait', false],
+    ]);
+    const fields = new Map(shape.fields.map((field) => [field.path, field]));
+    expect(fields.get('msk.region')?.many).toBe(false);
+    const regions = optionsOf(fields.get('msk.region')).codes;
+    expect(regions).toEqual(expect.arrayContaining(['head_neck', 'back', 'shoulder']));
+    const showsFor = (path: string) => {
+      const showWhen = fields.get(path)?.showWhen as { field: string; is?: string | string[] } | undefined;
+      expect(showWhen?.field, path).toBe('./region');
+      return [showWhen?.is ?? regions].flat();
+    };
+    expect([...showsFor('msk.side')].sort()).toEqual(
+      regions.filter((code) => code !== 'head_neck' && code !== 'back').sort(),
+    );
+    expect(showsFor('msk.shoulder_tests')).toEqual(['shoulder']);
+    expect(
+      shape.fields.filter((field) => field.path.startsWith('msk_gait.')).map((field) => field.path),
+    ).toEqual(['msk_gait.gait']);
+    // No part of an entry is a grid over regions: an entry is one region.
+    for (const field of shape.fields)
+      expect((field.rows as { pickedIn?: string } | undefined)?.pickedIn, field.path).toBeUndefined();
   });
 
   it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
