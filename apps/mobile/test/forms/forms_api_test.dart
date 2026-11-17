@@ -210,4 +210,37 @@ void main() {
     server.offline = true;
     await expectLater(refresher.refresh(RefreshReason.afterSync), throwsA(isA<NetworkException>()));
   });
+
+  test('the refresher also fetches each version the team’s notes name that the phone doesn’t hold', () async {
+    server.teams[teamId] = [checks, quick1, quick2];
+    final refresher = DefinitionRefresher(
+      sync,
+      api,
+      userId: userId,
+      teamId: teamId,
+      held: () => [(key: 'demo_quick', version: 1), (key: 'demo_quick', version: 2), (key: 'checks_demo', version: 1)],
+    );
+    await refresher.refresh(RefreshReason.opened);
+    expect(await listed(), ['checks_demo v1', 'demo_quick v2']);
+    expect((await store.definition(userId, teamId, 'demo_quick', 1))?.version, 1);
+    expect(server.versionRequests, ['demo_quick/2', 'demo_quick/1'], reason: 'nothing held is asked for again');
+    await refresher.refresh(RefreshReason.afterSync);
+    expect(server.versionRequests, hasLength(2));
+  });
+
+  test('a held version is still fetched when the list fails, or another held one does', () async {
+    server.teams[teamId] = [checks, visit, quick1, quick2];
+    server.answers['demo_visit/1'] = {...visit, 'definition': edited(visit, 'Demo: altered')['definition']};
+    final refresher = DefinitionRefresher(
+      sync,
+      api,
+      userId: userId,
+      teamId: teamId,
+      // The server holds no demo_wound for this team: that one fails.
+      held: () => [(key: 'demo_wound', version: 1), (key: 'demo_quick', version: 1)],
+    );
+    await expectLater(refresher.refresh(RefreshReason.opened), throwsA(isA<Exception>()));
+    expect(await store.team(userId, teamId), isNull, reason: 'the list was refused');
+    expect((await store.definition(userId, teamId, 'demo_quick', 1))?.version, 1);
+  });
 }

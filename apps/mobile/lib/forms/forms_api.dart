@@ -97,27 +97,68 @@ class DefinitionSync {
   /// no list entry to check it against, the answer is kept only when its definition has the hash
   /// the server gives it, names that key and version, and the phone can read it.
   Future<NoteTypeDef> fetchVersion(String userId, String teamId, String key, int version, FormsApi api) async {
+    final generation = store.generation(userId, teamId);
     final held = await store.definition(userId, teamId, key, version);
     if (held != null) return held;
-    final generation = store.generation(userId, teamId);
     final answer = await api.version(key, version);
     final asked = ListedVersion(key: key, version: version, hash: answer.listed.hash);
     return store.keep(userId, teamId, asked, answer.definition, generation: generation);
   }
+
+  /// [fetchVersion] for each of [versions], the ones the team's notes on the phone name, while
+  /// there is signal: after "Log out anyway" deleted the definitions, a sign-in again brings back
+  /// only what the list names, and a draft on an older version must still open offline later
+  /// (forms 3.4). Every version is tried; the first failure is thrown at the end.
+  Future<void> fetchHeld(String userId, String teamId, Iterable<NoteTypeVersion> versions, FormsApi api) async {
+    Object? failed;
+    StackTrace? trace;
+    for (final v in versions.toSet()) {
+      try {
+        await fetchVersion(userId, teamId, v.key, v.version, api);
+      } on Object catch (e, s) {
+        failed ??= e;
+        trace ??= s;
+      }
+    }
+    if (failed != null) Error.throwWithStackTrace(failed, trace!);
+  }
 }
+
+/// A key and version a note on the phone is written on.
+typedef NoteTypeVersion = ({String key, int version});
 
 /// Fetches the open team's note types whenever the sync engine runs its refreshers: at open,
 /// after each sync that reached the server, on the controller's timer and on pull to refresh. A
 /// failure is the engine's to swallow (it never becomes the sync's outcome) and the next run's to
 /// retry.
+///
+/// The list first, then each version the team's notes name that the phone doesn't hold
+/// ([DefinitionSync.fetchHeld]), so the first open after a sign-in again, which is online, brings
+/// back what an old draft needs.
 class DefinitionRefresher implements AfterSyncRefresher {
-  DefinitionRefresher(this.sync, this.api, {required this.userId, required this.teamId});
+  DefinitionRefresher(this.sync, this.api, {required this.userId, required this.teamId, this.held});
 
   final DefinitionSync sync;
   final FormsApi api;
   final String userId;
   final String teamId;
 
+  /// The versions the team's notes on the phone name; none when null.
+  final Iterable<NoteTypeVersion> Function()? held;
+
   @override
-  Future<void> refresh(RefreshReason reason) => sync.refresh(userId, teamId, api);
+  Future<void> refresh(RefreshReason reason) async {
+    Object? failed;
+    StackTrace? trace;
+    try {
+      await sync.refresh(userId, teamId, api);
+    } on Object catch (e, s) {
+      // The held versions are still fetched: they don't wait on the list.
+      failed = e;
+      trace = s;
+    }
+    final versions = held?.call();
+    if (versions != null) await sync.fetchHeld(userId, teamId, versions, api);
+    if (failed != null) Error.throwWithStackTrace(failed, trace!);
+  }
 }

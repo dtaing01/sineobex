@@ -106,6 +106,7 @@ class SyncController extends ChangeNotifier implements LocalData {
     DateTime Function()? now,
     this.monotonic,
     this.definitions,
+    this.heldNoteTypes,
   }) : _now = now ?? DateTime.now,
        _definitionSync = definitions == null ? null : DefinitionSync(definitions) {
     session.addListener(_onSession);
@@ -142,6 +143,12 @@ class SyncController extends ChangeNotifier implements LocalData {
   /// The teams' note type definitions (phase 4 forms 3.4): fetched after sign-in and at each sync,
   /// deleted with the team's data. None when null.
   final DefinitionStore? definitions;
+
+  /// The note type versions the open team's notes name (the phone domain layer's query). Each one
+  /// the phone doesn't hold is fetched with the team's list, so a draft on a version the list no
+  /// longer names still opens offline after "Log out anyway" and a sign-in again (forms 3.4).
+  /// None when null.
+  final Iterable<NoteTypeVersion> Function(LocalStore store)? heldNoteTypes;
   final DefinitionSync? _definitionSync;
   Future<void>? _signInFetch;
 
@@ -474,8 +481,15 @@ class SyncController extends ChangeNotifier implements LocalData {
     final definitionSync = _definitionSync;
     if (definitionSync != null) {
       // First: a note type list is small, and a slow index download shouldn't hold it up.
+      final held = heldNoteTypes;
       _engine!.refreshers.add(
-        DefinitionRefresher(definitionSync, FormsApi(_engine!.api), userId: userId, teamId: teamId),
+        DefinitionRefresher(
+          definitionSync,
+          FormsApi(_engine!.api),
+          userId: userId,
+          teamId: teamId,
+          held: held == null ? null : () => held(store),
+        ),
       );
     }
     _engine!.refreshers.addAll(refreshers?.call(team) ?? const []);

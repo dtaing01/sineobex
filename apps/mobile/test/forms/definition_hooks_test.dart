@@ -38,9 +38,14 @@ void main() {
   late SyncController sync;
   var teams = 1;
 
+  /// What the phone domain layer's query answers: the versions the open team's notes name.
+  var held = const <NoteTypeVersion>[];
+
   final checks = sampleVersion('checks_demo', 1);
   final visit = sampleVersion('demo_visit', 1);
   final wound = sampleVersion('demo_wound', 1);
+  final quick1 = sampleVersion('demo_quick', 1);
+  final quick2 = sampleVersion('demo_quick', 2);
 
   void launch() {
     final user = demoUser(teams: teams);
@@ -65,12 +70,14 @@ void main() {
       now: () => DateTime.utc(2026, 10, 20, 15),
       monotonic: () => boot.elapsed,
       definitions: definitions,
+      heldNoteTypes: (_) => held,
     );
   }
 
   setUp(() async {
     dir = Directory.systemTemp.createTempSync('definition_hooks');
     teams = 1;
+    held = const [];
     server = FakeSyncServer(now: () => DateTime.utc(2026, 10, 20, 15));
     forms = FakeFormsServer()
       ..teams['team-0'] = [checks, visit]
@@ -347,6 +354,26 @@ void main() {
     forms.teams['team-0'] = [checks, visit, wound];
     await DefinitionSync(definitions).fetchVersion(userId, 'team-0', 'demo_wound', 1, FormsApi(sync.engine!.api));
     expect((await container.read(noteTypeDefinitionProvider(at).future))?.key, 'demo_wound');
+  });
+
+  test('after “Log out anyway”, the first open online brings back the version a draft is on', () async {
+    forms.teams['team-0'] = [checks, quick1];
+    await signIn();
+    expect(await definitions.definition(userId, 'team-0', 'demo_quick', 1), isNotNull);
+    // A draft on v1 stays unsynced; the team moves on to v2; the person logs out anyway.
+    held = [(key: 'demo_quick', version: 1)];
+    server.offline = true;
+    sync.store!.createEncounter(kind: 'medical');
+    forms.teams['team-0'] = [checks, quick1, quick2];
+    await session.signOut(keepUnsynced: true);
+    expect(await definitions.definition(userId, 'team-0', 'demo_quick', 1), isNull);
+    // Back at base, online, the person signs in again; the list names v2 only.
+    server.offline = false;
+    await signIn();
+    expect((await definitions.team(userId, 'team-0'))!.startable('demo_quick', 2), isNotNull);
+    // Then out in the field, offline: the draft's version is on the phone.
+    forms.offline = true;
+    expect((await definitions.definition(userId, 'team-0', 'demo_quick', 1))?.version, 1);
   });
 
   test('the screens get the open team’s note types, and null where it has no list', () async {
