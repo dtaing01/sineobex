@@ -10,6 +10,7 @@ import {
 } from '@sineobex/forms';
 import { expect } from 'vitest';
 import type { Credential } from '../src/auth/permissions.ts';
+import { noteContentHash } from '../src/encounters/content-hash.ts';
 import { canonicalJson, valueHash } from '../src/sync/canonical.ts';
 import type { ChangeEntity } from '../src/sync/schemas.ts';
 import type { Harness } from './harness.ts';
@@ -422,4 +423,128 @@ export async function createProblem(
         ${authorId})`;
   }
   return id;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Charting through sync (phase 4): a visit, a note, its sign-off
+// ------------------------------------------------------------------------------------------------
+
+export type Change = Awaited<ReturnType<FakePhone['change']>>;
+
+/** A member with a credential, a phone registered to them, and a push from that phone. */
+export async function clinician(
+  h: Harness,
+  team: { teamId: string; adminToken: string },
+  email: string,
+  displayName: string,
+  credential: Credential,
+  role = 'healthcare_staff',
+) {
+  const member = await addMember(h, team, email, displayName, role, credential);
+  const phone = await FakePhone.create();
+  await register(h, phone, member.token, team.teamId);
+  const send = async (...changes: Change[]) =>
+    results((await push(h, phone, member.token, team.teamId, changes)).body);
+  return { ...member, displayName, credential, phone, send };
+}
+export type Clinician = Awaited<ReturnType<typeof clinician>>;
+
+/** An admin moves a member to another credential, as the members page does. */
+export async function setCredential(
+  h: Harness,
+  team: { teamId: string; adminToken: string },
+  membershipId: string,
+  credential: Credential,
+) {
+  const r = await call(h, `/v1/team/members/${membershipId}/credential`, {
+    method: 'PUT',
+    token: team.adminToken,
+    teamId: team.teamId,
+    json: { credential, credentialFields: CREDENTIAL_FIELDS[credential], reason: 'Demo: credential review' },
+  });
+  expect(r.status).toBe(200);
+}
+
+export interface Visit {
+  encounterId: string;
+  patientId: string | null;
+  summary: string | null;
+}
+
+/** A visit on the chart, made through sync. A Medical note needs one that names a patient (lifecycle 4.4). */
+export async function visitOf(c: Clinician, patientId: string | null): Promise<Visit> {
+  const create = await c.phone.change({
+    entity: 'encounter',
+    op: 'create',
+    value: { kind: 'medical', ...(patientId ? { patientId } : {}) },
+  });
+  expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+  return { encounterId: create.recordId, patientId, summary: null };
+}
+
+/** A note as its phone holds it: enough to hash it the way the phone does (lifecycle 4.5). */
+export interface HeldNote extends Visit {
+  noteId: string;
+  type: ResolvedNoteType;
+  answers: Record<string, unknown>;
+}
+
+/** A draft note of [type] on the visit, made through sync with these answers. */
+export async function noteOn(
+  c: Clinician,
+  visit: Visit,
+  type: ResolvedNoteType,
+  answers: Record<string, unknown>,
+): Promise<HeldNote> {
+  const create = await c.phone.change({
+    entity: 'encounter_note',
+    op: 'create',
+    value: {
+      encounterId: visit.encounterId,
+      noteTypeKey: type.key,
+      noteTypeVersion: type.version,
+      data: answers,
+    },
+  });
+  expect((await c.send(create)).map((r) => r.status)).toEqual(['accepted']);
+  return { ...visit, noteId: create.recordId, type, answers };
+}
+
+/** The hash a phone sends with a sign-off: over what it holds, as the summary screen drew it. */
+export const heldHash = (n: HeldNote) =>
+  noteContentHash({
+    noteId: n.noteId,
+    encounterId: n.encounterId,
+    patientId: n.patientId,
+    summary: n.summary,
+    definition: n.type,
+    answers: n.answers,
+  });
+
+/** A sign-off as the phone makes one (lifecycle 4.6); a `sign` claims the credential its profile shows. */
+export async function signoffOf(
+  c: Clinician,
+  n: HeldNote,
+  act: 'complete' | 'sign',
+  change: { deviceTime?: string; correctedTime?: string; clockVerified?: boolean } = {},
+) {
+  return c.phone.change({
+    entity: 'note_signoff',
+    op: 'create',
+    value: {
+      noteId: n.noteId,
+      act,
+      contentHash: await heldHash(n),
+      claimedCredential: act === 'sign' ? c.credential : null,
+      statementVersion: act === 'sign' ? 'sign-2026-11' : 'complete-2026-11',
+    },
+    ...change,
+  });
+}
+
+/** Completes or signs the note through sync, and checks the effect the server answered. */
+export async function finishNote(c: Clinician, n: HeldNote, act: 'complete' | 'sign', effect: string) {
+  const signoff = await signoffOf(c, n, act);
+  expect((await c.send(signoff)).map((r) => r.details?.effect)).toEqual([effect]);
+  return signoff;
 }

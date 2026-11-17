@@ -5,8 +5,8 @@ import { Uuid } from '../../routes/schemas.ts';
 import type { AnyRecordEntityName, PatientEntityName } from '../schemas.ts';
 
 /**
- * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs
- * (lifecycle 4.6). Not OpenAPI components:
+ * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs and
+ * addenda (lifecycle 4.6, 4.7). Not OpenAPI components:
  * values travel as `value: unknown`, as EncounterCreate does. The phone mirrors these in
  * lib/sync/entities.dart, and packages/contract/test-vectors/sync-values.json pins both, and the
  * phone's fake server, to each other.
@@ -278,6 +278,21 @@ export const NoteSignoffCreate = z
     message: 'complete_claims_nothing',
   });
 
+/**
+ * An addendum (lifecycle 4.7): a dated entry by its author below a note of the visit, or below the
+ * visit itself when it names no note. `signoffId` is the phone's own sign-off of that note while it
+ * waits to be confirmed, named as a parent so the addendum waits behind it (PRD main 564). Its time
+ * is the change's.
+ */
+export const NoteAddendumCreate = z
+  .object({
+    encounterId: Uuid,
+    noteId: Uuid.nullable(),
+    text: Trimmed(1, 4000),
+    signoffId: Uuid.nullable(),
+  })
+  .strict();
+
 /** Alias removal, allergy or problem entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
 
@@ -454,6 +469,11 @@ export function valueParents(
       break;
     case 'note_signoff':
       add('encounter_note', v.noteId);
+      break;
+    case 'note_addendum':
+      add('encounter', v.encounterId);
+      add('encounter_note', v.noteId);
+      add('note_signoff', v.signoffId);
       break;
     case 'patient':
       break;

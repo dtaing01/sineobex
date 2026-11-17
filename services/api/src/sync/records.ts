@@ -84,10 +84,18 @@ export function jsonProblem(value: unknown, depth = 0): string | null {
   return 'not JSON';
 }
 
-const JsonValue = z.unknown().superRefine((v, ctx) => {
+/** A value Postgres can store; a missing one (undefined) is refused, so a key that must hold a value does. */
+export const JsonValue = z.unknown().superRefine((v, ctx) => {
   const p = jsonProblem(v);
   if (p) ctx.addIssue({ code: 'custom', message: p });
 });
+
+/** A note's answer named as a field, `data.<path>`, as a set names it and a correction lists it. */
+export const AnswerField = z
+  .string()
+  .refine((f) => f.startsWith('data.') && DATA_PATH.test(f.slice('data.'.length)), {
+    message: 'not_an_answer',
+  });
 
 const EncounterKind = z.enum(['medical', 'non_medical']);
 
@@ -128,7 +136,10 @@ export const NoteCreate = z
   })
   .strict();
 
-/** Draft and Complete are set by sync; Signed comes only through signing (phase 4). */
+/**
+ * A note's status from a phone: `draft` is the reopen (lifecycle 4.4); `completed`, an old build's
+ * Complete, is kept in history, since a note is finished only by a sign-off (4.6).
+ */
 const Status = z.enum(['draft', 'completed']);
 
 /**
@@ -198,14 +209,6 @@ export function fieldState(record: StoredRecord, field: string): FieldStateValue
   };
 }
 
-/**
- * A signed note takes no more changes (phase 4 adds addenda). An encounter is never locked whole:
- * once a note of it is finished, its envelope keeps a late change in history instead (lifecycle 4.3).
- */
-export function isLocked(record: StoredRecord): boolean {
-  return record.entity === 'encounter_note' && record.status === 'signed';
-}
-
 export function snapshot(record: StoredRecord): RecordSnapshotValue {
   const fields: Record<string, FieldStateValue> = {};
   const names = new Set([...Object.keys(record.values), ...Object.keys(record.fieldVersions)]);
@@ -267,7 +270,9 @@ export type HistoryKind =
   | 'confirmed'
   | 'redirected'
   | 'cleared_by_allergy'
-  | 'entered_in_error';
+  | 'entered_in_error'
+  /** An answer of a finished note, written by a correction (lifecycle 4.7). */
+  | 'corrected';
 
 export interface HistoryEntry {
   teamId: string;
@@ -286,14 +291,17 @@ export interface HistoryEntry {
   reviewId?: string | null;
 }
 
-export async function appendHistory(tx: Tx, e: HistoryEntry): Promise<void> {
-  await tx`
+/** Appends one history row and returns its ID (a bigint, as text), which a correction's row names. */
+export async function appendHistory(tx: Tx, e: HistoryEntry): Promise<string> {
+  const [row] = await tx<{ id: string }[]>`
     insert into sineobex.field_history
       (team_id, entity, record_id, field, version, value, previous_value, kind, changed_by,
        approved_by, change_id, device_id, device_time, review_id)
     values (${e.teamId}, ${e.entity}, ${e.recordId}, ${e.field}, ${e.version}, ${jsonb(tx, e.value)},
             ${e.previousValue === undefined ? null : jsonb(tx, e.previousValue)}, ${e.kind}, ${e.changedBy},
-            ${e.approvedBy}, ${e.changeId}, ${e.deviceId}, ${e.deviceTime}, ${e.reviewId ?? null})`;
+            ${e.approvedBy}, ${e.changeId}, ${e.deviceId}, ${e.deviceTime}, ${e.reviewId ?? null})
+    returning id::text as id`;
+  return row!.id;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -396,6 +404,30 @@ export const rejected = (reason: RejectReasonName, details?: Record<string, unkn
 /** A validation rejection naming the rule it broke (`details.problem`), never a value. */
 export const invalid = (problem: string, more?: Record<string, unknown>) =>
   rejected('validation', { problem, ...more });
+
+/** A notice with no text, to one person, about a record (lifecycle 4.10). */
+export async function notify(
+  ctx: ChangeContext,
+  userId: string,
+  kind: string,
+  entity: AnyRecordEntityName,
+  recordId: string,
+): Promise<void> {
+  await ctx.tx`
+    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
+    values (${ctx.actor.teamId}, ${userId}, ${kind}, ${entity}, ${recordId})`;
+}
+
+/**
+ * When the server first received a change: when its push held it for review, if it was held (an
+ * admin's accept applies it later), else now. signedUnder believes a time a phone stamped no more
+ * than five minutes after this (lifecycle 3.5).
+ */
+export async function receivedAtOf(tx: Tx, changeId: string): Promise<Date> {
+  const [row] = await tx<{ at: Date }[]>`
+    select coalesce((select received_at from sineobex.quarantine_items where change_id = ${changeId}), now()) as at`;
+  return row!.at;
+}
 
 /** The change being applied, with what applying it needs. */
 export interface ChangeContext {

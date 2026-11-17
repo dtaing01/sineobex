@@ -48,7 +48,7 @@ export const PATIENT_ENTITIES = [
  * Phase 4's records of a note's life (lifecycle 4.1): each a create that never changes. Their values
  * are checked by the schemas in entities/values.ts, as the patient-side records' are.
  */
-export const NOTE_LIFE_ENTITIES = ['note_signoff'] as const;
+export const NOTE_LIFE_ENTITIES = ['note_signoff', 'note_addendum'] as const;
 
 export const ChangeEntity = z
   .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES])
