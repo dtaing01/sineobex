@@ -644,6 +644,14 @@ describe('the plans of the exam pieces', () => {
     }
   });
 
+  // Focused-exam defaults 38 and 39: the clock position is the mass's one location, and a mass
+  // stays on one side (24), so both are asked in the Mass group and not for every finding.
+  it('exam-breast asks a mass’s clock position and side inside the Mass group', () => {
+    const paths = shapeOf('exam-breast').fields.map((field) => field.path);
+    expect(paths).toEqual(expect.arrayContaining(['breast.mass.location', 'breast.mass.side']));
+    expect(paths.filter((path) => path === 'breast.location' || path === 'breast.side')).toEqual([]);
+  });
+
   it('exam-picker is the section exam of General: one choose-many with a code for each system', () => {
     const shape = shapeOf(PICKER_PIECE);
     expect(shape.header).toBeUndefined();

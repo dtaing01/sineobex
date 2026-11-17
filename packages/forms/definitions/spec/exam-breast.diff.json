@@ -42,13 +42,13 @@
     },
     {
       "line": 23,
-      "what": "Location: Breast clock / body map is a choose-one, Location (clock position): 1 o’clock to 12 o’clock and Central, all added, with the codes clock_1 to clock_12 given (the rule makes none that starts with a letter). There is no drawing.",
+      "what": "Location: Breast clock / body map is a choose-one, Location (clock position), in the Mass group (line 43): 1 o’clock to 12 o’clock and Central, all added, with the codes clock_1 to clock_12 given (the rule makes none that starts with a letter). There is no drawing. It is the mass’s location, so it is asked only while Mass is picked.",
       "why": "focused-exam inventory default 38, 54; recipe step 5"
     },
     {
       "line": 25,
-      "what": "Side is choose-one from the shared list side_rl: Right, Left. A palpation finding stays on one side.",
-      "why": "focused-exam inventory default 14, 24"
+      "what": "Side is choose-one from the shared list side_rl: Right, Left, in the Mass group (line 43): a mass stays on one side, so it is asked only while Mass is picked. Tenderness, a nodule or another finding is not given a side; a second mass cannot be charted apart from the first.",
+      "why": "focused-exam inventory default 14, 24, 38, 39; PLAN-OPEN (forms 10.1 #1): one mass per exam, no side for the other findings"
     },
     {
       "line": 31,

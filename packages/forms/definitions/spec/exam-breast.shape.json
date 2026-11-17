@@ -59,7 +59,23 @@
       }
     },
     {
-      "path": "breast.location",
+      "path": "breast.finding",
+      "kind": "choice",
+      "many": true,
+      "label": "Finding",
+      "options": ["no_mass", "mass", "tenderness", "nodule", "other"],
+      "showWhen": { "field": "breast.performed", "filled": true },
+      "flags": { "exclusive": ["no_mass"], "normal": ["no_mass"], "other": ["other"] }
+    },
+    {
+      "path": "breast.mass",
+      "kind": "group",
+      "label": "Mass",
+      "layout": "stack",
+      "showWhen": { "field": "breast.finding", "is": "mass" }
+    },
+    {
+      "path": "breast.mass.location",
       "kind": "choice",
       "many": false,
       "label": "Location (clock position)",
@@ -77,32 +93,14 @@
         { "code": "clock_11", "label": "11 o’clock" },
         { "code": "clock_12", "label": "12 o’clock" },
         "central"
-      ],
-      "showWhen": { "field": "breast.performed", "filled": true }
+      ]
     },
     {
-      "path": "breast.side",
+      "path": "breast.mass.side",
       "kind": "choice",
       "many": false,
       "label": "Side",
-      "options": { "list": "side_rl" },
-      "showWhen": { "field": "breast.performed", "filled": true }
-    },
-    {
-      "path": "breast.finding",
-      "kind": "choice",
-      "many": true,
-      "label": "Finding",
-      "options": ["no_mass", "mass", "tenderness", "nodule", "other"],
-      "showWhen": { "field": "breast.performed", "filled": true },
-      "flags": { "exclusive": ["no_mass"], "normal": ["no_mass"], "other": ["other"] }
-    },
-    {
-      "path": "breast.mass",
-      "kind": "group",
-      "label": "Mass",
-      "layout": "stack",
-      "showWhen": { "field": "breast.finding", "is": "mass" }
+      "options": { "list": "side_rl" }
     },
     {
       "path": "breast.mass.size",
