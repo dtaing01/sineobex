@@ -51,6 +51,11 @@
       "line": 79,
       "what": "The workflow requirement is the action at line 73; the line is not typed.",
       "why": "PRD main 416; forms 6.7"
+    },
+    {
+      "line": 5,
+      "what": "Notes, a text box at the end of the section (not in the lines), is the free text default 25 gives Inspection and Temperature, which have no side: which foot a callus or deformity is on, and which foot is warmer when Temperature is Asymmetric.",
+      "why": "PRD main 414 (left and right are recorded where it matters); focused-exam inventory default 25 (one list plus free text); PLAN-OPEN (forms 10.1 #1): a side for these findings, for the clinical team"
     }
   ]
 }

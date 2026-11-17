@@ -105,6 +105,7 @@
       "label": "CN XII",
       "options": ["tongue_midline", "deviation"],
       "flags": { "normal": ["tongue_midline"] }
-    }
+    },
+    { "path": "neuro.notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
   ]
 }

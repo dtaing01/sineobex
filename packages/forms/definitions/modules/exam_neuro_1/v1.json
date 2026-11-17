@@ -140,7 +140,8 @@
               ]
             }
           ]
-        }
+        },
+        { "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
       ]
     }
   ]

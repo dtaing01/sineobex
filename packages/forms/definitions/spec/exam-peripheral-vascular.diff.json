@@ -47,6 +47,11 @@
       "line": 73,
       "what": "Temperature change (Oct 19) stays an option and, while picked, shows a choose-one, Temperature change: Warm or Cool.",
       "why": "PRD main 103; focused-exam inventory default 5"
+    },
+    {
+      "line": 35,
+      "what": "Notes, a text box at the end of the section (not in the lines), is the free text default 25 gives Extremity findings, which have no side: which limb has the edema, cyanosis or other finding.",
+      "why": "PRD main 414 (left and right are recorded where it matters); focused-exam inventory default 25 (one list plus free text); PLAN-OPEN (forms 10.1 #1): a side for these findings, for the clinical team"
     }
   ]
 }

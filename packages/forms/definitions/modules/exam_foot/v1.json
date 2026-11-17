@@ -103,7 +103,8 @@
           "action": "open_note_type",
           "noteType": "wound_care",
           "showWhen": { "field": "diabetic_foot.wound", "is": "yes" }
-        }
+        },
+        { "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
       ]
     }
   ]

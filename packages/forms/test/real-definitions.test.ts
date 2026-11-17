@@ -132,6 +132,14 @@ describe('findings a clinician charts together on the real definitions', () => {
   });
 });
 
+// SEN-5: PRD main 414 records left and right where it matters, and focused-exam default 25 gives
+// the findings with no side a free text: which foot, which limb, which side of the face.
+describe('the side of a finding the choices cannot give, on the real definitions', () => {
+  it.each(['neuro.notes', 'diabetic_foot.notes', 'peripheral_vascular.notes'])('%s takes a note', (path) => {
+    expect(checkAnswer(general, path, 'Demo: on the left')).toBeNull();
+  });
+});
+
 describe('what hands off to another note on the real definitions', () => {
   // SEN-4: open skin hands off to Wound care "so nothing is charted twice" (PRD main 416, forms
   // 6.7): a Skin finding of Ulcer or Abscess keeps its location and type, and its measurements,

@@ -104,7 +104,8 @@
             { "code": "cool", "label": "Cool" }
           ],
           "showWhen": { "field": "peripheral_vascular.symptoms", "is": "temperature_change" }
-        }
+        },
+        { "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
       ]
     }
   ]

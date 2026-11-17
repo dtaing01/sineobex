@@ -86,6 +86,13 @@
       "label": "Temperature change",
       "options": ["warm", "cool"],
       "showWhen": { "field": "peripheral_vascular.symptoms", "is": "temperature_change" }
+    },
+    {
+      "path": "peripheral_vascular.notes",
+      "kind": "text",
+      "label": "Notes",
+      "lines": "many",
+      "maxLength": 2000
     }
   ]
 }
