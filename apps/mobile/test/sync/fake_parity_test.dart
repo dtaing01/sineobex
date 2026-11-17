@@ -3099,6 +3099,20 @@ void main() {
         }
       });
 
+      test('the corrector is never told of their own correction, even when it undoes their attestation', () async {
+        // Dana attests Blair's note, which is then assigned to Dana (3.8). Dana, now a resident,
+        // corrects it: the note waits for attestation again, and its attester is Dana (REC-8).
+        server.credentials[dana] = 'attending';
+        final note = finishedMedical(blair, 'signed');
+        server.attest(note, by: dana);
+        server.records[note]!.assignedTo = dana;
+        server.credentials[dana] = 'resident';
+        server.notices.clear();
+        final fix = correction(dana, note, [answer('care.plan', 'Demo: fluids and rest')]);
+        expect(await send(dana, [fix]), [corrected(fix, 'corrected', 'signed', 'waiting')]);
+        expect(noticesOn(note), isEmpty);
+      });
+
       test(
         'the corrector’s credential is found as a signature’s is: corrected Monday, promoted Tuesday, synced Wednesday',
         () async {

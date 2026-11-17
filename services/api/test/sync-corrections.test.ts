@@ -783,6 +783,21 @@ describe('phase 4 sync: addenda and corrections', () => {
       });
     });
 
+    it('the corrector is never told of their own correction, even when it undoes their attestation', async () => {
+      // Quin attests Ren's note, which is then assigned to Quin (3.8). Quin, now a resident, corrects
+      // it: the note waits for attestation again, and its attester is Quin (review finding REC-8).
+      const quin = await who('quin@example.com', 'Quin (demo)', 'attending');
+      const note = await finishedMedical(ren, 'sign', 'signed');
+      await attest(note, quin);
+      await h.scratch
+        .owner`update sineobex.encounter_notes set assigned_user_id = ${quin.id} where id = ${note.noteId}`;
+      await setCredential(h, t, quin.membershipId, 'resident');
+      const since = new Date();
+      const fix = await correction(quin, note, [answer('care.plan', 'Demo: fluids and rest')]);
+      expect(await quin.send(fix)).toEqual([taken(fix, 'corrected', 'signed', 'waiting')]);
+      expect(await noticesOn(note.noteId, since)).toEqual([]);
+    });
+
     it('the corrector’s credential is found as a signature’s is: corrected Monday, promoted Tuesday, synced Wednesday', async () => {
       const kai = await who('kai@example.com', 'Kai (demo)', 'resident');
       const note = await finishedMedical(kai, 'sign', 'signed');
