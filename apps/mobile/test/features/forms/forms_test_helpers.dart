@@ -25,22 +25,25 @@ export '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, ru
 /// from a bundled note type, one widget on a screen in each run (three themes, 200% text, 320
 /// wide), the answers a form would hand a field, and the checks every widget must pass.
 
-/// A field read from its JSON, as a definition's only field.
-FieldDef fieldOf(Map<String, Object?> json) => NoteTypeDef.fromJson({
+/// A made-up note type with these sections, each read from its JSON.
+NoteTypeDef definitionOf(List<Map<String, Object?>> sections) => NoteTypeDef.fromJson({
   'key': 'demo_form',
   'version': 1,
   'title': 'Demo form',
   'kinds': ['medical'],
   'group': 'clinical',
   'sensitivity': 'none',
-  'sections': [
-    {
-      'id': 'demo',
-      'title': 'Demo',
-      'fields': [json],
-    },
-  ],
-}).sections.single.fields.single;
+  'sections': sections,
+});
+
+/// A field read from its JSON, as a definition's only field.
+FieldDef fieldOf(Map<String, Object?> json) => definitionOf([
+  {
+    'id': 'demo',
+    'title': 'Demo',
+    'fields': [json],
+  },
+]).sections.single.fields.single;
 
 final _presets = [
   for (final p in jsonDecode(File('assets/forms/presets.json').readAsStringSync()) as List<Object?>)
