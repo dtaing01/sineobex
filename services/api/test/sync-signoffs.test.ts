@@ -11,6 +11,7 @@ import {
   call,
   CREDENTIAL_FIELDS,
   FakePhone,
+  handOver,
   installNoteTypes,
   push,
   register,
@@ -1096,6 +1097,60 @@ describe('phase 4 sync: sign-offs', () => {
         approvedBy: t.adminId,
       });
       expect(await noteRow(charted.note.noteId)).toMatchObject({ status: 'completed', signoffId: null });
+    });
+
+    it('a removed signer’s sign-off, handed over, applies on accept under the membership as it is now', async () => {
+      // Rio signs offline as a resident, and is removed from the team before the phone syncs
+      // (4.6, "From a removed person"; review finding NOT-11).
+      const rio = await clinician('rio@example.com', 'Rio (demo)', 'resident');
+      const charted = await chartedVisit(rio);
+      const flags = await signoff(rio, charted.flags, 'sign');
+      expect((await rio.send(flags)).map((r) => r.details?.effect)).toEqual(['signed']);
+      const sign = await signoff(rio, charted.note, 'sign', timed(nowIso()));
+      const removed = await call(h, `/v1/team/members/${rio.membershipId}/remove`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { reason: 'Left the program' },
+      });
+      expect(removed.status).toBe(200);
+      expect((await handOver(h, rio.phone, [sign])).status).toBe(200);
+      expect(await signoffRow(sign.recordId)).toBeUndefined();
+
+      const [item] = await h.scratch.owner<{ id: string; receivedAt: Date }[]>`
+        select id, received_at as "receivedAt" from sineobex.quarantine_items where change_id = ${sign.changeId}`;
+      const mark = await auditMark(h);
+      const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Demo: Rio signed it before leaving' },
+      });
+      expect(decided.status).toBe(200);
+      expect(await signoffRow(sign.recordId)).toMatchObject({
+        effect: 'signed',
+        signerUserId: rio.id,
+        signerCredential: 'resident',
+        needsAttestation: true,
+        approvedBy: t.adminId,
+        receivedAt: item!.receivedAt,
+      });
+      expect(await noteRow(charted.note.noteId)).toMatchObject({
+        status: 'signed',
+        attestation: 'waiting',
+        completedBy: rio.id,
+        signoffId: sign.recordId,
+      });
+      const [event] = await expectAudit(h, 'note.signed', { after: mark, count: 1 });
+      expect(event).toMatchObject({
+        actorUserId: t.adminId,
+        details: {
+          onBehalfOf: rio.id,
+          signoffId: sign.recordId,
+          credential: 'resident',
+          needsAttestation: true,
+        },
+      });
     });
   });
 
