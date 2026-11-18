@@ -616,6 +616,30 @@ void main() {
       expect(signoffs(p), hasLength(1));
     });
 
+    test('the summary draws each note’s recap from the read that hashed it (review LCM-7)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      final drawn = (await r.openComplete(visit))!;
+      final shown = drawn.notes.single.recap;
+      expect(shown, isNotEmpty);
+      expect(
+        [for (final l in shown) (l.section, l.text)],
+        [for (final l in (await r.openNote(n))!.recap) (l.section, l.text)],
+      );
+      // A teammate's change reaches the phone between the reads: the plan still shows what it hashed,
+      // and Complete refuses rather than sign the new content.
+      server.serverEdit(n, 'data.vitals.pulse', 90, by: blair);
+      await sync(p);
+      expect([for (final l in drawn.notes.single.recap) l.text], [for (final l in shown) l.text]);
+      expect([for (final l in (await r.openNote(n))!.recap) l.text].join(), contains('90'));
+      expect([for (final l in shown) l.text].join(), contains('88'));
+      expect(() => r.complete(drawn), refused(CompleteStop.noteChanged, message: 'This note changed. Read it again.'));
+    });
+
     test('a note gone from the phone since the summary was drawn: “This note changed.” (review LCM-5)', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

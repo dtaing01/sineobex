@@ -3473,7 +3473,9 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
    each answer that someone else changed since the person last had the note open: "{name}
    changed Dressing applied." The screen works out each note's hash as it draws it and hands
    those hashes to Complete, which stops if a note has changed since: "This note changed. Read
-   it again." (4.8).
+   it again." (4.8). As built, the plan (`openComplete`) gives each note's recap with its hash,
+   from one read, and the summary draws that recap: two reads with a sync between them would show
+   one version and sign another (review LCM-7).
 2. **Assessment**: a text box of up to 4,000 characters (the encounter's `summary`), with a
    counter that speaks at 90% and at the limit, as phase 3's note counter does. Once the visit
    has a finished note the assessment is locked (3.1): it is shown with who wrote it, and the

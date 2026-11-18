@@ -101,12 +101,18 @@ class NoteToComplete {
     required this.shownHash,
     required this.act,
     required this.settlesOnly,
+    this.recap = const [],
   });
   final String noteId;
   final NoteTypeDef definition;
 
   /// The content hash of what the summary showed (lifecycle 4.5), sent with the sign-off.
   final String shownHash;
+
+  /// The note's recap lines, worked out in the same read as [shownHash] (lifecycle 9.6 item 1): the
+  /// summary draws these, not a recap read before or after, so the person signs what they were
+  /// shown. A sync between two reads would otherwise show one note and sign another (review LCM-7).
+  final List<RecapLine> recap;
   final SignoffAct act;
 
   /// Its sign-off is the fix of a refused one and changes nothing: the note was finished since, or
@@ -185,8 +191,9 @@ extension EncounterCompletion on EncounterRepository {
   /// of the visit's notes loaded first; null when the phone holds no such visit. [redFlagsFinished]:
   /// the visit read (online) shows a finished Red flags note this phone does not hold.
   ///
-  /// The summary draws it with the visit's read (`openVisit`, which logs what it shows); this names
-  /// no answer, and logs nothing of its own. Throws [ChartingPaused] while the store is frozen.
+  /// The summary draws it with the visit's read (`openVisit`, which logs what it shows), each note's
+  /// recap from [NoteToComplete.recap], which this read worked out with its hash; it logs nothing of
+  /// its own. Throws [ChartingPaused] while the store is frozen.
   Future<CompletePlan?> openComplete(String encounterId, {bool redFlagsFinished = false}) async {
     _guardFrozen();
     await definitions.loadAll(EncounterRepository._versions(_Held.scan(store, encounterId: encounterId).notes));
@@ -279,6 +286,7 @@ extension EncounterCompletion on EncounterRepository {
           shownHash: store.contentHashOf(n.rec.id, n.definition),
           act: isMedicalType(n.definition) && user.can.sign ? SignoffAct.sign : SignoffAct.complete,
           settlesOnly: n.settlesOnly,
+          recap: _recapOf(n.rec, n.definition),
         ),
     ];
     final stops = <CompleteBlock>[
@@ -406,6 +414,24 @@ extension EncounterCompletion on EncounterRepository {
     store.setField(encounterId, 'summary', next);
     onChanged?.call();
     return true;
+  }
+
+  /// The recap of [note] as its author reads it, from what the phone holds now; none when the
+  /// interpreter can't lay it out.
+  List<RecapLine> _recapOf(LocalRecord note, NoteTypeDef definition) {
+    try {
+      final read = _interpret(
+        definition,
+        EncounterRepository._answersOf(note),
+        user.reader(actsAsAuthor: true),
+        const [],
+      );
+      return read is _Readable ? read.recap : const [];
+      // A definition the interpreter can't run is one the phone can't lay the note out by.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// What stops [n] now that did not when the summary drew it, asked before the store, whose
