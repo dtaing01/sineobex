@@ -1234,7 +1234,7 @@ the person is told. That leaves seven problems, each with the store call that se
 
 | `details.problem` | Raised by | The worker's fix, and how it is settled |
 |---|---|---|
-| `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again. `finishNotes` sends the same sign-off record again (4.8). |
+| `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again. `finishNotes` sends the same sign-off record again (4.8), even for a note finished or removed since, which it then leaves as it is (3.4). |
 | `incomplete` | a sign-off on a note that fails the finish check; a correction that would leave the note failing it | Fill in what is missing and complete, or correct, again. The same record is sent again. |
 | `red_flags_first` | a sign-off of a Medical note on a visit with no finished Red flags note | Complete again: the Red flags note goes first (4.6). |
 | `field_changed` | a correction whose answer changed since the person looked | Look again. **Correct again** sends the same correction record with the value and version now seen; **Leave it** sends it with the answer's current value, which the server stores as no change. |
@@ -1249,6 +1249,7 @@ What is accepted with no effect, in place of a refusal:
 | A `set` of a note's `status` to `completed` (an old build) | Kept in history, problem `use_signoff` |
 | A `set` of `kind` to `non_medical` on a Medical visit; a `set` of `patientId` to nothing | Kept in history, problems `kind_cannot_go_back`, `patient_cannot_be_removed` |
 | A sign-off, a reopen or a correction from someone who does not act as the note's author | Stored with no effect, problem `not_author`; the sender gets a notice |
+| A sign-off of an empty draft (added with the phone's store) | Stored with no effect, reason `empty`; it settles an earlier refused sign-off of the note (3.4) |
 | `sign` on a Non-Medical note | Treated as `complete` |
 | A correction to a note that is a draft | Applied as an edit to the draft, by the draft rule |
 
@@ -1310,6 +1311,7 @@ As built (unit L1, with wave D's review):
   | an answer of a finished note | kept, `note_finished` | the sender, and the acting author when that is someone else (4.4) |
   | a reopen from someone who does not act as the author | kept, `not_author`, when the acting author's own reopen would have applied; otherwise a late change, `note_finished` | the sender alone, `change_not_applied`; a late change as the row above |
   | a sign-off from someone who does not act as the author | effect `none`, reason `not_author` | the sender alone, `change_not_applied` |
+  | a sign-off of an empty draft | effect `none`, reason `empty` (3.4) | nobody |
   | a correction from someone who does not act as the author | outcome `not_author` | the sender alone, `change_not_applied` |
   | `sign` on a Non-Medical note | effect `completed`, as `signoffEffect` treats it as `complete` | nobody |
   | a correction to a note that is a draft | outcome `draft_edit`, by the draft rule (4.7) | nobody |
@@ -1317,6 +1319,10 @@ As built (unit L1, with wave D's review):
   `not_author` answers before the Medical gate for all three (review finding RD-8): a non-author
   whose credential was lowered is stored with no effect, and nothing waits for an admin who could
   only make it no effect. A note the sender may not read at all is held before either (6.4).
+
+  The phone sends none of the first three rows. It never sets a note's status to `completed`, and
+  it refuses a visit's kind set back from Medical and its patient removed, writing nothing (4.8):
+  the server keeps both in history and tells nobody, so the person would believe them made.
 - **Held for a Program Admin, never refused**: the Medical gate and the gate of a section that
   needs a capability (4.2), a set of an answer the sender may not see (4.4), and any change of a
   note the sender may not read at all (6.4). Each answers `rejected('permission')`, which a push
@@ -1779,9 +1785,9 @@ What the server does, in the change's transaction, under the team lock:
    and from `signedUnder` (3.5) `canSign` and `needsAttestation`.
 3. Call `signoffEffect`. The sync code holds no rule of its own: it writes what the function says.
 4. **Refuse**: `rejected('validation', { problem })`. Nothing is written but the stored rejection.
-5. **Effect `none`** (the note is already finished, or the sender does not act as its author):
-   insert the `note_signoffs` row with `effect: 'none'`. The receipt's details carry the reason
-   and `hashMatches`.
+5. **Effect `none`** (the note is already finished, the sender does not act as its author, or the
+   note is an empty draft, 3.4): insert the `note_signoffs` row with `effect: 'none'`. The
+   receipt's details carry the reason and `hashMatches`.
 6. **Any other effect**: insert the `note_signoffs` row; update the note in one statement:
    `data` (the answers that count, 4.5), `status`, `completed_at`, `completed_by`, and when
    signed `first_signed_at`, `signoff_id` and `attestation`; write a `field_history` row for
@@ -1804,8 +1810,9 @@ the refusal of a Medical note on a visit with no patient (4.4).
 (phase 2). A second sign-off for a note that is already finished is effect `none`.
 
 **After a refusal.** The phone sends the same sign-off record again with the new hash (a create
-that supersedes the refused one, `apps/mobile/lib/sync/local_store.dart:1328-1345`). The server
-applies it as a fresh sign-off.
+that supersedes the refused one, made by `finishNotes`, 4.8). The server applies it as a fresh
+sign-off; for a note finished since, or an empty draft, it stores it with effect `none`, which
+settles the refusal all the same (3.4).
 
 **From a removed person.** Their changes are held for a Program Admin
 (`services/api/src/sync/apply.ts:403-443`). When the admin accepts a held sign-off it applies as
@@ -1847,31 +1854,41 @@ review):
   is what billing and the queues read.
 - **The receipt.** Any effect but `none`: `accepted`, `serverVersion` 1,
   `details: { effect, status, attestation, hashMatches }`, where `hashMatches` is always true.
-  Effect `none`: `details: { effect: 'none', reason, status, attestation }`, the note's state now,
-  so the phone settles every receipt the same way, and `hashMatches` **only to whoever acts as the
-  author** (review findings RD-2, NOT-6): sent to anyone else it would check any guess of what the
+  Effect `none`: `details: { effect: 'none', reason, status, attestation }`, the reason
+  `already_finished`, `not_author` or `empty` (an empty draft: `noteIsEmpty` of the answers the
+  note holds, 3.4), the note's state now, so the phone settles every receipt the same way, and
+  `hashMatches` **only to whoever acts as the author** (review findings RD-2, NOT-6): sent to anyone else it would check any guess of what the
   note holds, a hidden answer included. For `already_finished` it compares with the hash of the
   sign-off that finished the note, not with the note as it is now (NOT-7): the row by
   `completed_by` at `completed_at` with an effect other than `none`, the latest received on a tie,
   else the note's own hash. A co-signature (L2) must leave `completed_at` and `completed_by` as
-  they are for this to keep naming the signature that finished it.
+  they are for this to keep naming the signature that finished it. The contract's description of
+  `SyncResult.details` names a sign-off's keys and the three reasons.
 - **Notices and the audit event**: `note_saved_unsigned` to the signer, `change_not_applied` to a
   sender who does not act as the author, both on entity `encounter_note` and the note; one event
   on the note, with `signoffId` in its details (10.1).
 - **A held sign-off that will not reach the chart** (review finding NOT-12, as the coordinator
   decided). Its phone let go of it when it was held (4.8), so nothing else would tell the worker
   that the note is still a draft. When a Program Admin rejects it, or their accept is refused
-  because the note no longer matches it (`content_changed`), its sender gets `change_not_applied`
-  on the note (`signoffNotApplied`, `services/api/src/sync/review.ts`), unless one they have not
-  read yet names the note already. A refused accept runs in a savepoint that is rolled back, so the
-  item stays pending and the chart is untouched; it answers 409 `cannot_apply` with
-  `details.problem`, and is logged as `quarantine.accept_refused` on the note with its patient
-  (10.1). Any other refused accept tells nobody, and its reviewer rejects it, which then does. Only
-  a sign-off of a note on the chart tells anyone: a held change of another kind, rejected, tells
-  nobody. A refusal at accept time is not stored as a rejection of the change: the item is still
-  the reviewer's to decide. The phone's half is the store's (L3's store cards, wave E): the notice
-  on a note it shows as "Sent for review" clears that note's `localEffect`, so it is a draft to
-  complete again, fetched again if it had left the phone (4.8, 9.13).
+  because the note no longer matches it (`content_changed`), its sender gets `signoff_not_applied`
+  on entity `note_signoff`, naming the held sign-off (`signoffNotApplied`,
+  `services/api/src/sync/review.ts`), once per sign-off, whether or not they have read an earlier
+  one: a refused accept and the reject that follows tell them once, and a second held Complete of
+  the same note, a sign-off of its own, is told on its own. A kind of its own means no phone needs
+  state of its own to word it (review findings SRC-1, SRC-2 and SRC-5, as the coordinator
+  decided). As first built it was `change_not_applied` on the note, written unless an unread one
+  named the note already: a second held Complete rejected before the phone's read of the first
+  notice reached the server told nobody, and the note stayed "Sent for review" for good, which the
+  live job now pins against the real API (`apps/mobile/test/sync/live_api_test.dart`, "each held
+  Complete is told on its own: rejected twice before the first notice’s read arrives"). A refused
+  accept runs in a savepoint that is rolled back, so the item stays pending and the chart is
+  untouched; it answers 409 `cannot_apply` with `details.problem`, and is logged as
+  `quarantine.accept_refused` on the note with its patient (10.1). Any other refused accept tells
+  nobody, and its reviewer rejects it, which then does. Only a sign-off of a note on the chart
+  tells anyone: a held change of another kind, rejected, tells nobody. A refusal at accept time is
+  not stored as a rejection of the change: the item is still the reviewer's to decide. The phone's
+  half is the store's (4.8): the notice settles only the held sign-off it names, so its note is a
+  draft to complete again, fetched again if it had left the phone (9.13).
 
 ### 4.7 Addenda, corrections and referrals
 
@@ -2147,7 +2164,7 @@ the API test that holds the same rule, in `services/api/test/sync-{encounters,si
 | 4 | `_create`, through `_definition` | A `noteTypeVersion` past the largest a change may name is refused by the fake itself until the registry bounds it (FAK-1) |
 | 5 | `_lateChange`, `_lateKept` | |
 | 6 | `_noteStatusSet` | A reopen from someone who does not act as the author is answered before the gate (4.1) |
-| 7 | `_signoff`, `_finishedRedFlags`, `_isRedFlags`, `_finishingHash` | Every `signoffEffect` case of `note-lifecycle.json` goes through a real sign-off, its note type, credential, Red flags note and hash built from the case |
+| 7 | `_signoff`, `_finishedRedFlags`, `_isRedFlags`, `_finishingHash` | Every `signoffEffect` case of `note-lifecycle.json` goes through a real sign-off, its note type, credential, Red flags note and hash built from the case, an empty draft's on a note with no answers. Since the phone's store `_signoff` passes `emptyDraft` (`noteIsEmpty`), and a case holds that an empty draft's sign-off settles the refusal of an earlier one (3.4) |
 | 8 | `_contentHash`, `_finishNote` | Every case of `note-content-hash.json`: the wrong hash is refused, the vector's is taken, and the note keeps exactly `effective` |
 | 9 | `_create`'s addendum case, `_signoffOfOther` | |
 | 10 | `_correction`, `_writeAnswers`, `_reviewersUndone` | Each step in the order of 4.7 as built |
@@ -2184,7 +2201,8 @@ version moves too.
 - **Test hooks** stand in for what the fake has no route for: `finishNote` sets a note's state
   directly; `cosign()` and `attest()` stand in for L2's online routes, as the API tests' inserts
   do; `acceptHeld` is an admin's accept and `rejectHeld` their reject. Both tell the sender of a
-  held sign-off that will not reach the chart as the API does (`_signoffNotApplied`, 4.6), and a
+  held sign-off that will not reach the chart as the API does (`_signoffNotApplied`, 4.6:
+  `signoff_not_applied` naming the sign-off, once per sign-off, read or not), and a
   handed-over change that was rejected answers its retry with `decision: 'rejected'`, as
   `push.ts` does.
 
@@ -2202,7 +2220,9 @@ of them in three ways:
 
 - **A notice** (`user_notices`) on the next sync. New notice kinds, none with any text:
   `note_cosigned`, `note_attested`, `note_assigned`, `note_saved_unsigned`, `late_change_kept`,
-  `change_not_applied`, `note_corrected` (to a co-signer or attester whose note was corrected).
+  `change_not_applied`, `signoff_not_applied` (a held sign-off that will not reach the chart,
+  added with the phone's store), `note_corrected` (to a co-signer or attester whose note was
+  corrected).
 - **The record refresh**, for a note the phone still holds open: the snapshot's new attributes
   (4.4) show its state. The refresh covers open records only
   (`apps/mobile/lib/sync/sync_engine.dart:497-517`).
@@ -2219,7 +2239,8 @@ retry, answered from its receipt, tells nobody again.
 |---|---|---|
 | `late_change_kept` | the sender, and the acting author when that is someone else | a change to a finished note kept in history (4.4) |
 | `late_change_kept`, on entity `encounter` | the sender, and whoever acts as the author of each finished note of the visit | a change to the patient, the place or the summary kept in history (4.3) |
-| `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1); a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`, unless a notice they have not read names the note already (4.6) |
+| `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1) |
+| `signoff_not_applied`, on entity `note_signoff` and the held sign-off | its sender | a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`; once per sign-off, whether or not an earlier notice was read (4.6). Until the phone's store it was `change_not_applied` on the note, unless an unread one named the note |
 | `note_saved_unsigned` | the signer | a sign-off saved unsigned (4.6) |
 | `note_corrected` | the co-signer whose co-signature a correction clears; every attester of the current signature when an attested note is no longer attested; never the corrector | a correction applied (4.7) |
 | `conflict_resolved` (phase 2) | the note's author, when the value kept was someone else's | an answer of `keep_server` that saw the current value, a finished note's included (4.3) |
@@ -2228,7 +2249,10 @@ retry, answered from its receipt, tells nobody again.
 `note_cosigned` and `note_attested` name the visit (entity `encounter`), once per visit however
 many of its notes the act covered (5.3, 5.4). A change
 kept with `use_signoff`, `kind_cannot_go_back` or `patient_cannot_be_removed` sends none: the
-receipt's `details.problem` tells the phone. An addendum tells nobody.
+receipt's `details.problem` tells the phone, which sends none of the three (4.1, 4.8). An addendum
+tells nobody, nor does a sign-off of an empty draft (3.4). One notice is the phone's own, made from
+a receipt and never sent by the server: `finished_differently`, for a sign-off that found its note
+finished over other content (3.4, 4.8, 9.13).
 
 The record refresh reads the note's new attributes (4.4). In every copy but the acting author's
 copy of a draft, a note's `version` and `updatedAt` are those of the latest field it shows, so
@@ -3312,7 +3336,7 @@ there is one, in the row's patient column. None holds a value, a reason's text o
 | `note.reopened` | A reopen that applied, written as any set is: `field`, `kind`, `version` |
 | `note.completed` | `signoffId`, `act`, `effect`, `clockVerified`, on the note |
 | `note.signed`, `note.saved_unsigned` | The same, plus `credential`, `needsAttestation`, and `claimedCredential` when it differs |
-| `note.signoff_repeated` | `signoffId`, `reason`, `hashMatches`. The event keeps `hashMatches` for every sender, though the receipt gives it only to the acting author (4.6) |
+| `note.signoff_repeated` | `signoffId`, `reason` (`already_finished`, `not_author`, or since the phone's store `empty`, 3.4), `hashMatches`. The event keeps `hashMatches` for every sender, though the receipt gives it only to the acting author (4.6) |
 | `note.corrected`, `note.amendment_declined` | One per correction, whatever its outcome: `note.amendment_declined` for `declined`, `note.corrected` for the rest, `not_author`, `no_change` and `draft_edit` included. `correctionId`, `fields` (every field the correction names, a list, since it holds up to ten), `outcome`, `requestedByPatient`, `credential`, `claimedCredential` when it differs, `statusAfter`, `attestationAfter`, `clockVerified`, on the note. A draft edit writes no `note.updated` for each answer |
 | `addendum.added` | `encounterId`, `noteId`, on the addendum |
 | `referral.created` | `encounterId`, on the referral |
