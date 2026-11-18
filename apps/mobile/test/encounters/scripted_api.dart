@@ -32,7 +32,7 @@ class ScriptedApi implements ApiTransport {
 /// Someone a read names, as `UserRef`.
 Map<String, Object?> userRef(String userId, String name) => {'userId': userId, 'displayName': name};
 
-/// A note of a visit read (`VisitNote`), its trail empty unless given.
+/// A note of a visit read (`VisitNote`), its trail and recap lines empty unless given.
 Map<String, Object?> visitNoteJson({
   required String noteId,
   required Map<String, Object?> author,
@@ -46,6 +46,7 @@ Map<String, Object?> visitNoteJson({
   String? completedAt = '2026-10-19T16:00:00.000Z',
   String? contentHash,
   List<Map<String, Object?>> sections = const [],
+  List<Map<String, Object?>> recap = const [],
   List<Map<String, Object?>> signoffs = const [],
   List<Map<String, Object?>> addenda = const [],
   List<Map<String, Object?>> corrections = const [],
@@ -63,6 +64,7 @@ Map<String, Object?> visitNoteJson({
   'completedAt': completedAt,
   'contentHash': ?contentHash,
   'read': {'sections': sections},
+  'recap': recap,
   'signoffs': signoffs,
   'addenda': addenda,
   'corrections': corrections,
