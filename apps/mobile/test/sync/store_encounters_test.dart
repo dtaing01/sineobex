@@ -1922,6 +1922,69 @@ void main() {
     );
 
     test(
+      'while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes',
+      () async {
+        // D106's third cost (lifecycle 4.4, 4.8): until the review decides, the server's draft, and the
+        // author's own sync read of it, still hold an answer Complete dropped from the phone's copy.
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+        final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+        complete(p, [finishing(p, flags, testRedFlags)]);
+        const details = ['Demo: slept outside', 'Demo: slept by the river'];
+        final notes = [
+          for (final d in details)
+            note(p, visit, testMedical, {'care.plan': 'Demo: rest and fluids', 'more.detail': d}),
+        ];
+        await sync(p);
+        // "Nothing more" hides the detail: an answer that does not count.
+        for (final n in notes) {
+          p.store.setField(n, 'data.more.none', true);
+        }
+        await sync(p);
+        const counting = {'care.plan': 'Demo: rest and fluids', 'more.none': true};
+        server.changeCredential(alex, 'chw');
+        final shown = [for (final n in notes) finishing(p, n, testMedical)];
+        complete(p, shown);
+        final held = [for (final n in notes) signoffs(p).singleWhere((s) => (s.value! as Map)['noteId'] == n)];
+        for (final n in notes) {
+          expect(answersOf(p, n), counting);
+        }
+        await sync(p);
+        await sync(p);
+        for (final (i, n) in notes.indexed) {
+          expect(p.store.sentForReview(n), isTrue);
+          expect(answersOf(p, n), {...counting, 'more.detail': details[i]});
+          expect(effectiveAnswers(definition(testMedical), answersOf(p, n)), counting);
+          expect(p.store.contentHashOf(n, definition(testMedical)), shown[i].shownHash);
+        }
+
+        // Accepted: the server drops the detail into its history as it finishes the note. As built, the
+        // refresh leaves it here, where lifecycle 4.8 expected it taken away (an open question): a
+        // finished note's read gives only the answers that count, so the phone keeps the detail at the
+        // version it had. Nothing shown changes.
+        server.acceptHeld(held[0].changeId);
+        await sync(p);
+        expect(p.store.noteState(notes[0]), state(NoteStatus.completed));
+        final dropped = server.records[notes[0]]!.fields['data.more.detail']!;
+        expect([dropped.value, dropped.version], [null, 2]);
+        expect(answersOf(p, notes[0]), {...counting, 'more.detail': details[0]});
+        expect(p.store.record(notes[0])!.fields['data.more.detail']!.serverVersion, 1);
+        expect(effectiveAnswers(definition(testMedical), answersOf(p, notes[0])), counting);
+        // Rejected, and told: the draft is the server's, the detail with it.
+        server.rejectHeld(held[1].changeId);
+        await ServerNotices(p.store, p.engine.api).sync();
+        await sync(p);
+        expect(p.store.noteState(notes[1]), state(NoteStatus.draft));
+        expect(answersOf(p, notes[1]), {...counting, 'more.detail': details[1]});
+        expect(answersOf(p, notes[1]), {
+          for (final MapEntry(:key, :value) in server.records[notes[1]]!.fields.entries)
+            if (key.startsWith('data.') && value.value != null) key.substring('data.'.length): value.value,
+        });
+      },
+    );
+
+    test(
       'a held receipt lost and its notice fetched before the retry: the retried receipt settles it at once',
       () async {
         // Review finding SRC-3: the receipt sent again set the held record after its notice had come,
