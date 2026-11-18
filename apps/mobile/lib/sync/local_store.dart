@@ -877,8 +877,30 @@ class LocalStore {
 
   /// The server's rules that would refuse a set the person can see coming (hard-stop mirrors):
   /// clearing the last name or description of someone, changing a recorded legal name or birth
-  /// (an admin's correction), and moving a problem's status back.
+  /// (an admin's correction), and moving a problem's status back. And two a visit's server only keeps
+  /// in history, telling nobody, so the person would believe them made (lifecycle 3.10, 4.3): its
+  /// kind back from Medical, and its patient removed.
   void _checkSetRules(LocalRecord rec, String field, Object? value) {
+    if (rec.entity == entityEncounter) {
+      final cur = rec.fields[field]?.value;
+      if (field == 'kind' && cur == 'medical' && value != 'medical') {
+        throw const LocalValidationError('A medical visit stays medical.', problem: 'kind_cannot_go_back');
+      }
+      // A visit whose own create was refused has no patient on the server: what its fix carries is
+      // the person's to choose (fixRejected).
+      if (field == 'patientId' &&
+          value == null &&
+          !isBlankValue(cur) &&
+          _count("SELECT count(*) AS n FROM outbox WHERE record_id = ? AND op = 'create' AND state = 'rejected'", [
+                rec.id,
+              ]) ==
+              0) {
+        throw const LocalValidationError(
+          'A visit keeps its patient. Change the patient instead.',
+          problem: 'patient_cannot_be_removed',
+        );
+      }
+    }
     if (rec.entity == entityPatient) {
       final values = {for (final MapEntry(:key, :value) in rec.fields.entries) key: value.value};
       if (isRecognisableField(field) && !recognisableAfter(values, field, value)) {

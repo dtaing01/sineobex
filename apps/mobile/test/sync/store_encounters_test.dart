@@ -170,6 +170,32 @@ void main() {
       expect([p.store.record(visit)!.status, b.store.record(visit)!.status], ['draft', 'draft']);
     });
 
+    test('a visit’s kind never goes back from Medical, and its patient is never removed: refused here', () async {
+      // The coordinator's decision: the server keeps either change in history with no notice, so the
+      // person would believe it made.
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      await sync(p);
+      final before = p.store.outbox().length;
+      Matcher problem(String code) => throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', code));
+      expect(() => p.store.setField(visit, 'kind', 'non_medical'), problem('kind_cannot_go_back'));
+      expect(() => p.store.setField(visit, 'patientId', null), problem('patient_cannot_be_removed'));
+      expect(p.store.outbox(), hasLength(before));
+      expect(
+        [p.store.record(visit)!.fields['kind']!.value, p.store.record(visit)!.fields['patientId']!.value],
+        ['medical', patient],
+      );
+      // A Non-Medical visit still goes to Medical, and one with no patient is given one.
+      final other = p.store.createEncounter(kind: 'non_medical');
+      p.store
+        ..setField(other, 'kind', 'medical')
+        ..setField(other, 'patientId', patient);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(late(), isEmpty);
+    });
+
     test('a refused visit create is fixed with the place typed by hand the person has now', () async {
       final p = phone(alex);
       final visit = p.store.createEncounter(kind: 'non_medical', locationText: 'Demo: east underpass');
