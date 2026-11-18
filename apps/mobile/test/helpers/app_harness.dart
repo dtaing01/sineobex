@@ -10,6 +10,7 @@ import 'package:sineobex_field/app_providers.dart';
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/config/env.dart';
 import 'package:sineobex_field/design/tokens.dart';
+import 'package:sineobex_field/encounters/encounter_services.dart';
 import 'package:sineobex_field/forms/definition_store.dart';
 import 'package:sineobex_field/features/lock/lock_screens.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
@@ -58,9 +59,23 @@ class AppHarness {
       autoSync: false,
       now: () => wall,
       monotonic: () => boot.elapsed,
-      // As the app wires it (app_providers.dart), with a clipboard the test reads.
-      refreshers: (team) =>
-          PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
+      // As the app wires it (app_providers.dart `appRefreshers`), with a clipboard the test reads:
+      // the patient services, then the encounter services for the person the session unlocked.
+      refreshers: (team) => [
+        ...PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
+        ...encounterRefreshers(
+          team,
+          person: switch (session.state) {
+            Unlocked(:final user) => user,
+            _ => null,
+          },
+          definitionStore: sync.definitions,
+          openServerRecord: switch (sync.engine) {
+            final engine? when identical(engine.store, team.store) => engine.openServerRecord,
+            _ => null,
+          },
+        ),
+      ],
       // As the app wires it too, with the presets read straight from the file: an asset bundle
       // decodes a large file on another isolate, which a widget test's fake clock never waits for.
       definitions: DefinitionStore(directory: () async => '${dir.path}/forms', presets: () async => bundledPresets),
@@ -94,6 +109,9 @@ class AppHarness {
 
   /// The open team's patient services.
   PatientServices get patients => PatientServices.of(sync.store!)!;
+
+  /// The open team's encounter services.
+  EncounterServices get encounters => EncounterServices.of(sync.store!)!;
 
   final AppConfig config;
   final Duration idle;
