@@ -84,7 +84,13 @@ added their entity to `ChangeEntity` and `RecordEntity`; wave D's review, a held
 `sync-concurrency.test.ts` and `sync-patients.test.ts`. L1-note-create built D79 in F3-routes'
 `services/api/src/forms/definitions.ts`. L3-registry, L3-fake-encounter and L3-fake-rest changed
 the phase 2 phone tests that the new rules refused (`local_store_test.dart`,
-`sync_flow_test.dart`, `sync_scenarios_test.dart`).
+`sync_flow_test.dart`, `sync_scenarios_test.dart`). In wave E, L2's review had L2 edit files of
+L0, L1 and L3: `api/encounters/rules.ts` (a comment on `cosignEffect`: neither a co-sign nor an
+attestation waits for the Red flags note), `api/sync/review.ts` (the sync read calls
+`encounters/read.ts`'s rules and keeps no copy of its own), and `phone-test/sync/fake_server.dart`
+with `fake_parity_test.dart` and `fake_reads_test.dart` (the same three read rules on the fake: a
+correction asked of every state its note has held, a visit's status from the notes shown, no
+sign-off's hash over a withheld summary).
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -310,20 +316,20 @@ already charted, which findings can be held together, and what counts once a fin
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| L2-tests | X | `api-test/encounters-{read,timeline,cosign,queues,attest,assign,incomplete,counts}.test.ts` (the attest test pins that an attestation names the note's current signature: the database's key cannot see a sign-off's effect) | L1 |
-| L2-read-visit | T | `routes/encounters.ts`, `encounters/read.ts`, `api/app.ts` (the register line) | L2-tests, F1-read-corrections |
-| L2-timeline | R | `api/patients/charts.ts`, `projection.ts`, `schemas.ts` (`timeline`, `recentVisits`) | L2-read-visit |
+| L2-tests | X | `api-test/encounters-{read,timeline,cosign,queues,attest,assign,incomplete,counts}.test.ts` (the attest test pins that an attestation names the note's current signature: the database's key cannot see a sign-off's effect). As built also `api-test/encounters-fixtures.ts`, the helpers they share: a team of readers, a visit charted through sync, the team-lock check, and a test-only Medical note type with a sensitive exam, which stays out of the shared vectors since the phone does not need it. After the review its `finish` sends a visit's sign-offs one after another, so the Red flags note's goes first (lifecycle 11.2) | L1 |
+| L2-read-visit | T | `routes/encounters.ts`, `encounters/read.ts`, `api/app.ts` (the register line). As built also `api/patients/schemas.ts` (`VisitRead`, `VisitNote`, the views of what hangs off a note, the read model). After the review `read.ts` holds the only copy of each read rule, which the sync read (`api/sync/review.ts`), the timeline, the lists of notes not complete and the queues call (lifecycle 5.1) | L2-tests, F1-read-corrections |
+| L2-timeline | R | `api/patients/charts.ts`, `schemas.ts` (`timeline`, `recentVisits`, both optional). As built with L2-timeline-more in one change: `encounters/timeline.ts` builds both, and `projection.ts` did not change (lifecycle 5.2) | L2-read-visit |
 | L2-timeline-more | T | `routes/encounters.ts`, `encounters/timeline.ts` | L2-timeline |
-| L2-cosign | T | `routes/encounters.ts`, `encounters/cosign.ts` | L2-read-visit |
-| L2-queues | T | `routes/encounters.ts`, `encounters/queues.ts` | L2-read-visit |
-| L2-attest | T | `routes/encounters.ts`, `encounters/attest.ts` | L2-queues |
+| L2-cosign | T | `routes/encounters.ts`, `encounters/cosign.ts`. As built it also holds what co-sign and attest share (the body, the checks of every note named and left out, the refusals, the caller read again under the team lock) and `actNote`, which the queues ask | L2-read-visit |
+| L2-queues | T | `routes/encounters.ts`, `encounters/queues.ts`. After the review it exports `queueRows`, the rows without the audit event, which L2-counts counts | L2-cosign, L2-attest (as built: `canAct` is their rules) |
+| L2-attest | T | `routes/encounters.ts`, `encounters/attest.ts` | L2-cosign (as built: it runs on co-sign's `secondAct`, and was built before L2-queues) |
 | L2-assign | T | `routes/encounters.ts`, `encounters/assign.ts` | L2-read-visit |
 | L2-incomplete | T | `routes/encounters.ts`, `encounters/incomplete.ts` | L2-read-visit |
-| L2-counts | T | `routes/encounters.ts`, `encounters/counts.ts` | L2-incomplete, L2-queues |
-| L2-handoff-pdf | R | `routes/encounters.ts`, `encounters/handoff.ts`, `api-test/encounters-handoff.test.ts` (adds a PDF library; the lockfile changes) | L2-read-visit, F1-handoff |
+| L2-counts | T | `routes/encounters.ts`, `encounters/counts.ts`. After the review the queues' numbers are the length of `queues.ts`'s `queueRows` (lifecycle 5.6) | L2-incomplete, L2-queues |
+| L2-handoff-pdf | R | `routes/encounters.ts`, `encounters/handoff.ts`, `api-test/encounters-handoff.test.ts` (adds a PDF library: `services/api/package.json` and the lockfile change). After the review the file is headed with the patient from their chart, marks each note's state, prints its times in the reader's time zone, and holds what EMS may be sent whoever exports it (lifecycle 5.7) | L2-read-visit, F1-handoff |
 | L2-permissions | R | `api-test/permissions.test.ts` | the route cards above |
-| L2-contract | S | The generated contract | L2-permissions |
-| L2-seed | S | `db/seed/demo-encounters.ts`, `db/seed/seed.ts` | L1, F6-release |
+| L2-contract | S | The generated contract. As built regenerated with each route card, not once after L2-permissions. After the review also `packages/contract/scripts/dart.ts` and `packages/contract/test/dart.test.ts`: an operation whose success answer is not JSON is left out of the Dart client, with a comment, so the phone never decodes the handoff's PDF as JSON (lifecycle 5.7) | each route card, then L2-permissions |
+| L2-seed | S | `db/seed/demo-encounters.ts`, `db/seed/seed.ts`. As built also `db/test/demo-encounters.test.ts`, which holds every seeded row to the API's own functions, imported by the test alone (lifecycle 10.2) | L1, F6-release |
 
 ### L3 The phone's sync layer (lifecycle 4.8, 4.9). Every card is level X
 
