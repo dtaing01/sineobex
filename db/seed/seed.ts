@@ -7,10 +7,11 @@ import {
 } from '@sineobex/forms';
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
+import { seedDemoEncounters } from './demo-encounters.ts';
 import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
 
 /**
- * Loads made-up teams, staff, patients, routes and bags for the preview.
+ * Loads made-up teams, staff, patients, visits, routes and bags for the preview.
  *
  * Every person here is invented. Staff names carry "(demo)", emails use example.com, birth dates
  * are synthetic, and nothing is copied from a real record. The seed refuses to run against any
@@ -168,6 +169,11 @@ export async function seed(
       const { installed } = await installPresets(tx, teamId, { presets: options.presets });
       log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
     }
+
+    // Visits need the note types above, and staff whose credentials sign them: the preview has
+    // none (people are invited there), so it gets no visit.
+    const { visits, skipped } = await seedDemoEncounters(tx, DEMO_TEAM_ID);
+    log(skipped ? `  no demo visits: ${skipped}` : `  ${visits} made-up visit(s)`);
   });
 }
 
