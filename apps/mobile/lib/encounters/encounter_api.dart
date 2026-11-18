@@ -541,7 +541,8 @@ VisitView visitFromRead(
   required NoteTypeDef? Function(String key, int version) definitionOf,
 }) {
   final kind = read.kind == wire.EncounterKind.medical ? VisitKind.medical : VisitKind.nonMedical;
-  final notes = [for (final n in read.notes) _noteFromRead(n, read.encounterId, user, definitionOf)];
+  // The Red flags note last, as on the phone's own read (forms 6.2); the server gives them as made.
+  final notes = redFlagsLast([for (final n in read.notes) _noteFromRead(n, read.encounterId, user, definitionOf)]);
   return VisitView(
     encounterId: read.encounterId,
     source: source,

@@ -23,6 +23,7 @@ import 'visibility.dart';
 
 part 'complete.dart';
 part 'note_actions.dart';
+part 'red_flags.dart';
 part 'timeline.dart';
 
 /// Visits and notes on the phone (phase 4 design, lifecycle 3, 4.8, 9): what the screens read and
@@ -85,7 +86,7 @@ class EncounterRepository {
         if (!summaryHidden)
           for (final a in held.ordered(held.addendaOf(null))) _addendum(a, held, shown),
       ];
-      final notes = [for (final rec in held.ordered(held.notes)) ?_note(rec, held, shown)];
+      final notes = redFlagsLast([for (final rec in held.ordered(held.notes)) ?_note(rec, held, shown)]);
       final create = held.createOf(visit.id);
       final view = VisitView(
         encounterId: visit.id,
@@ -223,34 +224,56 @@ class EncounterRepository {
   /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1).
   /// [another] makes a second note of the type all the same (4.4).
   ///
+  /// [redFlags] is the team's Red flags note type ([redFlagsTypeOf]). With a Medical note of the
+  /// person's own, new or opened, the app adds their own Red flags note, in the same transaction as
+  /// a new note, unless the visit has a finished one or one of theirs (forms 6.2,
+  /// [RedFlagsNote.addRedFlagsNote]). Opening a teammate's draft to help with it adds none. Without
+  /// [redFlags] none is added, and Complete stops at hard stop 5 until the summary adds it.
+  ///
   /// Throws, writing nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
   /// [startEncounter]; for a Medical note, `not_offered` in a Non-Medical visit (switch it first,
   /// 3.10) and `medical_note_needs_patient` in a visit with no patient, as the server refuses it.
   ///
   /// PLAN-OPEN: may a note be added to a visit whose other notes are finished (lifecycle 12.1 #3)?
   /// Yes: it is its own note, with its own author and time.
-  Future<NoteAdded> addNote(String encounterId, NoteTypeDef type, {bool another = false}) async {
+  Future<NoteAdded> addNote(String encounterId, NoteTypeDef type, {bool another = false, NoteTypeDef? redFlags}) async {
     _guardFrozen();
     final medical = isMedicalType(type);
     _mayChart(medical: medical);
     final visit = _visit(encounterId);
-    if (medical) {
-      if (VisitKind.fromCode(visit.fields['kind']?.value) != VisitKind.medical) {
-        throw const LocalValidationError(
-          'Switch this visit to Medical to add a clinical note.',
-          problem: 'not_offered',
-        );
-      }
-      if (visit.fields['patientId']?.value == null) throw _needsPatient;
-    }
+    if (medical) _medicalNoteAllowed(visit);
+    // The Red flags note itself, asked for by hand, brings no second one.
+    final flags = medical && redFlags != null && !_isRedFlags(type) ? redFlags : null;
     if (!another) {
       final open = await _draftToOpen(encounterId, type.key);
-      if (open != null) return (noteId: open, existing: true);
+      if (open != null) {
+        if (flags != null && _actsAsAuthor(_noteRecord(open))) {
+          await RedFlagsNote(this).addRedFlagsNote(encounterId, flags);
+        }
+        return (noteId: open, existing: true);
+      }
     }
+    final withFlags = flags != null && await _needsRedFlags(encounterId, flags);
     _guardFrozen();
-    final id = store.createNote(encounterId: encounterId, noteTypeKey: type.key, noteTypeVersion: type.version);
+    final id = store.transaction(() {
+      final id = store.createNote(encounterId: encounterId, noteTypeKey: type.key, noteTypeVersion: type.version);
+      if (withFlags) {
+        store.createNote(encounterId: encounterId, noteTypeKey: flags.key, noteTypeVersion: flags.version);
+      }
+      return id;
+    });
     onChanged?.call();
     return (noteId: id, existing: false);
+  }
+
+  /// What the server needs of a visit before it takes a Medical note (4.2, 3.10): a Medical visit
+  /// with a patient. Throws `not_offered` or `medical_note_needs_patient` otherwise.
+  void _medicalNoteAllowed(LocalRecord visit) {
+    _mayChart(medical: true);
+    if (VisitKind.fromCode(visit.fields['kind']?.value) != VisitKind.medical) {
+      throw const LocalValidationError('Switch this visit to Medical to add a clinical note.', problem: 'not_offered');
+    }
+    if (visit.fields['patientId']?.value == null) throw _needsPatient;
   }
 
   /// The draft of the type [key] in the visit that [addNote] opens, if there is one.
