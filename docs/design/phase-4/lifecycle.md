@@ -1677,6 +1677,17 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
   offline after it was kept in history too. The contract's description names it, and both sync
   reads hold it (`sync-reads.test.ts`, `fake_reads_test.dart`: "a note’s snapshot shows its
   state: attestation, who acts as its author, when it was finished and the signature it names").
+- **`createdAt` and `actingAuthorName`** joined them for the phone's domain layer (D108, the
+  coordinator's decision). `createdAt` is when the server made the note
+  (`encounter_notes.created_at`; an admin's accept, for a create held for review), never the
+  phone's time: the visit read gives a visit's notes in that order, then by ID (5.1), and the phone
+  keeps a record's attributes, not the snapshot's own `createdAt`, so it orders the notes it holds
+  the same way. `actingAuthorName` is the display name now of whoever acts as the author
+  (`users.display_name`, where the visit read's `UserRef` takes it from; the assignee's once a note
+  is assigned, 3.8): a note keeps no name of its own. The phone shows it where a teammate's note is
+  listed (9.4) and where their draft waits for them (9.6). Both are in every copy of the note a
+  reader is shown, a teammate's included, and in none they are not (6.4). The contract's
+  description names them.
 
 ### 4.5 The content hash
 
@@ -1915,6 +1926,13 @@ review):
   half is the store's (4.8): the notice settles only the held sign-off it names, so its note is a
   draft to complete again, fetched again by the note the notice names if it had left the phone
   (9.13).
+- **The snapshot** in the sync read: the signer's ID as the record's `authorUserId`, and in its
+  attributes `noteId`, `act`, `effect`, `contentHash` (to whom 6.4's rule 4 gives it), `signerName`
+  and `signerCredential`, `claimedCredential`, `needsAttestation`, `statementVersion`, `signedAt`
+  and `clockVerified`. `signerName` (D108) is the name stored with the row (`signer_name`, 0019),
+  the one they signed under, as an addendum's `authorName` is: a signature keeps the name and the
+  credential it was made under, whatever the person is called later. A co-signature (5.3) is read
+  the same way. The NPI and the credential's other fields stay with the billing export.
 
 ### 4.7 Addenda, corrections and referrals
 
@@ -2041,6 +2059,12 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
 - **The corrector's credential** is `signedUnder`'s, with the claim, at the correction's time,
   `notBefore` from the note's create as for a sign-off. A correction carries no statement version
   (12.1 #24).
+- **The snapshots** name their person as stored with the row, as they were then (0019): an
+  addendum its author (`authorName`, `authorCredential`, since L1), and a correction its corrector
+  (`correctorName`, D108, beside `correctorCredential`), the person's ID being the record's
+  `authorUserId`. A correction's other attributes are `noteId`, `changes` (each field with its old
+  and new value, so it goes only to whoever may read both, 6.4), `outcome`, `reason`,
+  `requestedByPatient`, `claimedCredential`, `correctedAt` and `clockVerified`.
 - **`note_corrected`** goes to the co-signer whose co-signature the correction clears, and to
   every attester of the current signature when an attested note is no longer attested: each once,
   never the corrector (pinned with a corrector who had attested the note, review finding REC-8).
@@ -2669,10 +2693,19 @@ As built (unit L2, with its review; `services/api/src/encounters/read.ts`, `getE
   referrals, allergies, problems and problems' notes made at the visit, whichever chart they are
   on, each as the chart shows it to the reader (a problem and its notes need the problem list's
   keys, a sensitive one `patients.view_sensitive`; 9.7, D91). Each note (`VisitNote`) also has
-  `title`, `group` and `completedAt`. A correction (`CorrectionView`) names its `fields`, not its
-  values, which `read` holds; an attestation's own hash is never sent. Each sign-off, addendum
-  and correction names its person and credential as stored with it, and each attestation its
-  attending.
+  `title`, `group`, `completedAt` and `recap`. A correction (`CorrectionView`) names its
+  `fields`, not its values, which `read` holds; an attestation's own hash is never sent. Each
+  sign-off, addendum and correction names its person and credential as stored with it, and each
+  attestation its attending.
+- **The recap** (8.1; D108, the coordinator's decision): each note's `recap` is the forms
+  part's `recapLines` over `seen`, the answers that count that the reader may see, the same answers
+  its `read` is laid out from. Whoever acts as the author gets the lines of every answer that
+  counts; anyone else none of a section, a treatment record, a diagnosis or any answer
+  `visibleAnswers` keeps from them; a sensitive exam is in no line for anyone (6.4 rules 2, 3 and
+  8). A diagnosis left out takes its entry with it, so the entries after it are numbered as if it
+  had never been there. The phone shows it for a visit read from here or from a cached chart's
+  recent visits (5.2), having no answers of its own to work it out from (9.7). It is worked out at
+  each read, never stored (2.6), from the answers as corrected: `read` shows the corrections.
 - **Left out**, besides what 6.4 hides: an empty draft (3.1), and a phase 2 note with no
   version, which has no definition to lay it out by (the sync read sends that one whole). The
   visit's `status` is worked out from the notes shown (`statusShown`: `encounterStatus` over
@@ -2740,7 +2773,9 @@ As built (unit L2, with its review; `services/api/src/encounters/timeline.ts`):
   (7) sorts them itself.
 - **`recentVisits`** are the newest three visits of the timeline (`RECENT_VISITS`, PLAN-OPEN
   12.1 #17), each read and logged by the visit read for the same reader (5.1), with `source`
-  `chart` on `GET /v1/patients/{patientId}` and `cache` on `POST /v1/patients/charts`.
+  `chart` on `GET /v1/patients/{patientId}` and `cache` on `POST /v1/patients/charts`. So each of
+  their notes carries its recap as that reader may see it (D108), which the phone shows from its
+  cached chart offline (8.1, 9.7).
 - **Earlier visits** (`getPatientTimeline`) needs `patients.view` and answers `{ encounters }`:
   the next 50 after the visit named, by start and then ID, so a visit at the same time as the
   last one shown is not skipped; without `before`, the first page. A merged ID answers its group.
@@ -3186,7 +3221,9 @@ Rules:
   correction is there when its note is and no change it holds is hidden from the reader in its old
   value or its new, so its values go only to whoever may read every answer it changes, and a
   correction is missing rather than stripped, since its field alone names the hidden answer; a
-  referral is read whole. Each record returned is logged: `encounter.viewed` for a visit,
+  referral is read whole. A note names who acts as its author, a sign-off its signer and a
+  correction its corrector (D108; 4.4, 4.6, 4.7), so a name goes only with a record the reader is
+  shown. Each record returned is logged: `encounter.viewed` for a visit,
   `note.viewed` for a note and for a sign-off, an addendum or a correction, `patient.viewed` for a
   referral (10.1).
 - **Rule 2 in the sync read** is 5.1's note: a note the reader may not read, or whose definition
@@ -3215,6 +3252,9 @@ Rules:
   Program Admin whose credential charts nothing reads no treatment record, and cannot accept a
   held change to one: a teammate with a clinical credential and the queue's key does.
 - **Rule 4** is the sign-off hash rule of 5.1.
+- **Rules 2, 3 and 8 in the visit read's recap** (D108): a note's `recap` is `recapLines` over the
+  answers `visibleAnswers` keeps for the reader, the read model's own, so nothing the reader may
+  not see is in a line, and nothing from a sensitive exam is in one for anyone (5.1).
 - **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set of an answer that
   could hold something the sender may not see, read from the definition and their keys alone, never
   from what the note holds (4.4; review finding RD-10); any change
@@ -3728,6 +3768,14 @@ As built for the online routes (unit L2, with its review):
   preview gets no visits, having no seeded staff to sign them; and no demo student is added, so the
   queues and Notes to finish start empty.
 
+Staff names in the sync read (D108): a note's snapshot names who acts as its author, a sign-off's
+its signer and a correction's its corrector (4.4, 4.6, 4.7), beside the IDs they already carried,
+as an addendum's named its author. They are staff, not patients, and the PHI guard and the rules on
+logs hold as before: they go only with a record the reader is shown (6.4), no audit event or
+rejection holds one (events name people by ID, 10.1), and on the phone they live with the record's
+attributes in the encrypted database, never in preferences. A note's recap lines (5.1) are answers,
+so they go only in the bodies of the visit read and the chart, never in a URL, a title or a log.
+
 As built for the phone's store (unit L3, 4.8): what it keeps of a sign-off held for review is IDs
 only, in the encrypted database's `kv` table (`held_signoff.<noteId>`, `held_note.<signoffId>`);
 what Complete expects of a note (`localEffect`) is in the note's record; and its notices,
@@ -3788,6 +3836,8 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | The lock follows the effect; the envelope lock reads `hasFinishedNote`; the reopen, with `everSigned`; who acts as the author; settling is never locked | 3.1, 3.6, 3.8, 4.8 | `apps/mobile/test/sync/store_encounters_test.dart`, group "the lock follows the effect (lifecycle 4.8)" |
 | A visit as the server keeps it on the phone; its kind set back from Medical and its patient removed, refused here | 4.3, 4.8 | `apps/mobile/test/sync/store_encounters_test.dart`, group "the visit as the server keeps it (lifecycle 4.3)"; `apps/mobile/test/sync/local_store_test.dart` ("a fixed encounter create keeps fields cleared since, and the caller’s corrections win") |
 | A visit's `hasFinishedNote` and a note's `everSigned` in the sync read | 4.3, 4.4 | `services/api/test/sync-reads.test.ts` and `apps/mobile/test/sync/fake_reads_test.dart` ("a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it", "a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names"); the visit's attribute keys in `sync-encounters.test.ts` and `fake_parity_test.dart` |
+| A note's `createdAt`, when the server made it, in the visit read's order; who acts as a note's author named by their name now, a sign-off's signer and a correction's corrector by theirs then; no name with a record the reader is not shown (D108) | 4.4, 4.6, 4.7, 6.4 | `services/api/test/sync-reads.test.ts` and `apps/mobile/test/sync/fake_reads_test.dart` ("a note’s snapshot says when the server made it, the order the visit read gives a visit’s notes in", "a note names who acts as its author by their name now; a sign-off its signer and a correction its corrector by theirs then; none goes to a reader the record is not shown", and the attributes of "a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names"); a sign-off's and a correction's whole attributes in `fake_parity_test.dart` |
+| Each note's recap in the visit read and the chart's recent visits, the cached chart's included, over what the reader may see; nothing from a sensitive exam, for anyone (D108) | 5.1, 5.2, 6.4, 8.1 | `services/api/test/encounters-read.test.ts` ("each note carries its recap over what the reader may see: a section, a treatment record or a diagnosis hidden from them is in no line"); `encounters-timeline.test.ts` ("the last three visits in full, each as the visit read answers it") |
 | A sign-off, an addendum and a correction are filed under their patient, and move with the visit's | 4.8 | `apps/mobile/test/sync/store_encounters_test.dart`, group "the patient of a new record (lifecycle 4.8)" |
 | Receipts settle the effect; Sent for review; the held sign-off's notice settles only that sign-off; `finished_differently`; the refresh takes a note's attributes | 4.6, 4.8, 4.10, 9.13 | `apps/mobile/test/sync/store_encounters_test.dart`, group "receipts settle the effect (lifecycle 4.6, 4.8)"; the sentences in `apps/mobile/test/features/sync_labels_test.dart` ("the notices of a note’s life are worded by their kind alone (lifecycle 3.4, 9.13)") |
 | The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
