@@ -3517,6 +3517,48 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
   to open it." Adding an addendum or a correction to a visit that is not on the phone needs a
   connection first: the phone fetches the notes it will change through the sync read.
 
+As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/close_sweep.dart` and
+`encounter_services.dart`, with its review):
+
+- **The sweep** (`CloseSweep`) is a refresher, each sweep one store transaction, and does nothing
+  while the store is frozen. It closes a finished note once its sign-off is settled (no
+  `localEffect`) and nothing about it waits in the outbox, to send, refused or in conflict: a
+  change to it, or a sign-off, an addendum or a correction naming it (`parentsOf`). It closes a
+  draft, a teammate's opened to help included (one a killed app left open), and a visit with no
+  note, once nobody has changed it for 7 days and nothing of it waits (12.1 #4); and a visit once
+  every note of it on the phone is closed and nothing about it waits. It leaves open a note sent
+  for review, and what a screen shows (`showing`, which the screens add to and take from; a
+  visit's notes with it). In a Medical visit it keeps every finished note while a note of that
+  visit stays a draft on the phone (above; review finding LCM-2): with no definitions, it cannot
+  tell which is the Red flags note. A Non-Medical visit's finished note goes.
+- **How it counts the 7 days.** The store keeps no time of a record's last change, so the sweep
+  keeps its own, in the store's key-value table (`encounters.close_sweep.seen`): for each open draft
+  and visit a fingerprint, a hash of its status and of each field's version and waiting change,
+  never a value, and when a sweep first saw it so. A change of the person's own and a teammate's
+  brought in by a refresh both change it. The 7 days run from the first sweep that sees a record
+  as it is now, so the first sweep after an update gives every draft 7 more days, which only keeps
+  it longer, and an unreadable record is counted from now. Only a verified clock counts (review
+  finding LCM-6): the sweep takes the clock check's corrected time, none while the check has no
+  reference (a phone restarted offline, whose own clock could be days off); then nothing is
+  released for its age, no time is recorded and what was seen before is kept, while finished notes
+  still close.
+- **The services** (`EncounterServices`) are made once for each team database the app opens, by
+  the sync controller's refresher factory (`appRefreshers`, `apps/mobile/lib/app_providers.dart`),
+  beside phase 3's patient services, as the shared app test harness makes them too: one repository,
+  with the engine's `openServerRecord`; the online calls; notes to finish; referrals; the records
+  made at a visit; the notes' definitions, from the phone's files or fetched with signal; and one
+  sweep. Their refreshers read the team's note type list (its titles), then sweep, so the sweep
+  runs at the opening and after every sync. The person is the session's unlocked profile in that
+  team, with its credential and display name, and the permission keys the controller opened the
+  team with; a profile that is not the team's person gets no credential and no name, so nothing is
+  offered the server would refuse. A role or credential changed on the server reaches them at the
+  next opening or unlock, as phase 3's patient services do (D100). The screens find them by
+  `EncounterServices.of(store)` or `encounterServicesProvider`.
+- **Reading a visit that has left the phone** is `EncounterApi.openVisit` (9.7 as built).
+- **Open, the server's** (review finding LCM-2): offline, a Medical visit whose notes have all left
+  the phone cannot know of its finished Red flags note; the visit's snapshot saying it has one would
+  let hard stop 5, and the Red flags note added with a Medical note, read it there.
+
 ### 8.3 Problems made or changed in an encounter
 
 Phase 3 left two hooks (1.1, 1.2): `problems.source` and the `encounterId` of a status.
