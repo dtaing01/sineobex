@@ -2275,6 +2275,11 @@ export interface components {
             items?: components["schemas"]["ReadItem"][];
             title: string;
         };
+        /** @description The automatic recap of one section with an answer (lifecycle 8.1) */
+        RecapLine: {
+            section: string;
+            text: string;
+        };
         /** @enum {string} */
         RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
         RecordRef: {
@@ -2702,6 +2707,8 @@ export interface components {
             noteTypeKey: string;
             noteTypeVersion: number;
             read: components["schemas"]["ReadModel"];
+            /** @description One line per section with an answer, in the definition’s order, over what the reader may see of the note; nothing from a sensitive exam, for any reader */
+            recap: components["schemas"]["RecapLine"][];
             signoffs: components["schemas"]["SignoffView"][];
             status: components["schemas"]["NoteStatus"];
             title: string;

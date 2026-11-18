@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readModel, visibleAnswers, type ResolvedNoteType } from '@sineobex/forms';
+import { readModel, recapLines, visibleAnswers, type ResolvedNoteType } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Credential, Permission } from '../src/auth/permissions.ts';
 import { noteReader } from '../src/sync/records.ts';
@@ -55,6 +55,7 @@ interface Note {
   author: { userId: string; displayName: string };
   actingAuthor: { userId: string; displayName: string };
   read: ReturnType<typeof readModel>;
+  recap: ReturnType<typeof recapLines>;
   signoffs: ({ id: string; contentHash?: string } & Record<string, unknown>)[];
   addenda: { id: string }[];
   corrections: { id: string }[];
@@ -191,6 +192,11 @@ describe('phase 4: read a visit online', () => {
   async function readFor(userId: string, n: HeldNote, type: ResolvedNoteType) {
     const seen = visibleAnswers(type, answersOf.get(n.noteId)!, await readerOf(userId));
     return readModel(type, seen!, []);
+  }
+  /** The recap of a note (forms 7.1) over what [userId] may see of it, as its read model is laid out. */
+  async function recapFor(userId: string, n: HeldNote, type: ResolvedNoteType, actsAsAuthor = false) {
+    const seen = visibleAnswers(type, answersOf.get(n.noteId)!, await readerOf(userId, actsAsAuthor));
+    return recapLines(type, seen!);
   }
 
   it('needs patients.view: a role without it is refused, and the refusal is logged', async () => {
@@ -336,6 +342,76 @@ describe('phase 4: read a visit online', () => {
     expect(noteIn(r.body, social)!.read).toEqual(await readFor(w.kim.id, social, TEST_NOTE_TYPE));
     expect(noteIn(r.body, social)).not.toHaveProperty('contentHash');
     expectNoneOf(r.body, [SUMMARY, 'Demo: called the clinic back', 'Demo: rest and fluids', 'Demo: swab']);
+  });
+
+  it('each note carries its recap over what the reader may see: a section, a treatment record or a diagnosis hidden from them is in no line', async () => {
+    // The phone shows the recap of a visit read from the server or the cached chart (lifecycle 8.1,
+    // 9.7; D108), and has no answers of its own to work it out from.
+    const types = new Map<string, ResolvedNoteType>([
+      [flags.noteId, TEST_RED_FLAGS_TYPE],
+      [plain.noteId, TEST_MEDICAL_TYPE],
+      [exam.noteId, TEST_MEDICAL_EXAM_TYPE],
+      [talk.noteId, TEST_SENSITIVE_TYPE],
+      [social.noteId, TEST_NOTE_TYPE],
+    ]);
+    const held = new Map([flags, plain, exam, talk, social].map((n) => [n.noteId, n]));
+    const readers = [
+      { who: w.vic, author: false },
+      { who: w.ana, author: false },
+      { who: w.bea, author: false },
+      { who: w.kim, author: false },
+      { who: w.rae, author: true },
+    ];
+    for (const { who, author } of readers) {
+      const r = await readAs(who.token);
+      expect(r.status).toBe(200);
+      for (const n of r.body.notes) {
+        const type = types.get(n.noteId)!;
+        // Sol wrote the social note: Rae reads it as anyone else does.
+        const acts = author && n.noteId !== social.noteId;
+        expect(n.recap, `${who.id} ${n.noteTypeKey}`).toEqual(
+          await recapFor(who.id, held.get(n.noteId)!, type, acts),
+        );
+      }
+    }
+
+    // Vic sees every answer of any note: the treatment record and the sensitive diagnosis are in
+    // the exam note's recap. No sensitive exam's finding is, for any reader (6.4 rule 3).
+    const everything = noteIn((await readAs(w.vic.token)).body, exam)!.recap;
+    expect(everything).toEqual([
+      { section: 'general', text: 'Notes: Demo: walked over from the shelter' },
+      { section: 'moud', text: 'Dose: Demo: 8 mg' },
+      { section: 'systems', text: 'Systems examined: Heart' },
+      {
+        section: 'dx',
+        text: 'Diagnosis 1: Diagnosis: Demo: opioid use (F11.20). Diagnosis 2: Diagnosis: Demo: sore throat (J02.9)',
+      },
+    ]);
+    // Bea may not read a treatment record or a sensitive diagnosis: neither is in a line, and the
+    // diagnosis left is numbered as if the other had never been there.
+    const bea = (await readAs(w.bea.token)).body;
+    expect(noteIn(bea, exam)!.recap).toEqual([
+      { section: 'general', text: 'Notes: Demo: walked over from the shelter' },
+      { section: 'systems', text: 'Systems examined: Heart' },
+      { section: 'dx', text: 'Diagnosis 1: Diagnosis: Demo: sore throat (J02.9)' },
+    ]);
+    expectNoneOf(
+      bea.notes.map((n) => n.recap),
+      ['Demo: 8 mg', 'Demo: opioid use', 'F11.20', 'Demo: no lesions seen', 'Demo: talked about sleep'],
+    );
+    // Ana may not see the sensitive exam: no line of it, as for everyone.
+    const anas = noteIn((await readAs(w.ana.token)).body, exam)!.recap;
+    expect(anas.map((l) => l.section)).not.toContain('exam');
+    expectNoneOf(anas, ['Demo: no lesions seen', 'GU']);
+    // The corrected answer, as the note holds it now.
+    expect(noteIn(bea, plain)!.recap).toEqual([
+      { section: 'vitals', text: 'Pulse: 88' },
+      { section: 'care', text: 'Plan: Demo: rest, fluids and a follow-up' },
+    ]);
+    // The community health worker reads the social note alone, and its recap alone.
+    expect((await readAs(w.kim.token)).body.notes.map((n) => n.recap)).toEqual([
+      [{ section: 'care', text: 'Plan: Demo: housing list' }],
+    ]);
   });
 
   it('whoever acts as the author reads their notes whole, with every hash', async () => {

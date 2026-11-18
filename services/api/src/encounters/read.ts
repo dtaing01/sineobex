@@ -1,6 +1,7 @@
 import {
   effectiveAnswers,
   readModel,
+  recapLines,
   visibleAnswers,
   type NoteCorrection,
   type NoteReader,
@@ -430,6 +431,9 @@ export async function visitAsRead(
       author: user(note.authorUserId),
       actingAuthor: user(actingAuthor(note)),
       read: byDefinition(() => readModel(type, seen, shownCorrections.map(asNoteCorrection))),
+      // Over what the reader sees, as the read model is: the phone shows the recap of a visit read
+      // here or from the cached chart, and holds no answers to work it out from (lifecycle 8.1, D108).
+      recap: byDefinition(() => recapLines(type, seen)),
       signoffs: shownSignoffs.map((s) => ({
         id: s.id,
         act: s.act,

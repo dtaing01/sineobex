@@ -4886,6 +4886,27 @@ class ReadSection {
       };
 }
 
+/// The automatic recap of one section with an answer (lifecycle 8.1)
+class RecapLine {
+  const RecapLine({
+    required this.section,
+    required this.text,
+  });
+
+  final String section;
+  final String text;
+
+  factory RecapLine.fromJson(Map<String, dynamic> json) => RecapLine(
+        section: json['section'] as String,
+        text: json['text'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'section': section,
+        'text': text,
+      };
+}
+
 class RecordRef {
   const RecordRef({
     required this.entity,
@@ -6184,6 +6205,7 @@ class VisitNote {
     required this.noteTypeKey,
     required this.noteTypeVersion,
     required this.read,
+    required this.recap,
     required this.signoffs,
     required this.status,
     required this.title,
@@ -6203,6 +6225,8 @@ class VisitNote {
   final String noteTypeKey;
   final int noteTypeVersion;
   final ReadModel read;
+  /// One line per section with an answer, in the definition’s order, over what the reader may see of the note; nothing from a sensitive exam, for any reader
+  final List<RecapLine> recap;
   final List<SignoffView> signoffs;
   final NoteStatus status;
   final String title;
@@ -6221,6 +6245,7 @@ class VisitNote {
         noteTypeKey: json['noteTypeKey'] as String,
         noteTypeVersion: (json['noteTypeVersion'] as num).toInt(),
         read: ReadModel.fromJson(json['read'] as Map<String, dynamic>),
+        recap: (json['recap'] as List<dynamic>).map((e) => RecapLine.fromJson(e as Map<String, dynamic>)).toList(),
         signoffs: (json['signoffs'] as List<dynamic>).map((e) => SignoffView.fromJson(e as Map<String, dynamic>)).toList(),
         status: NoteStatus.fromJson(json['status'] as String),
         title: json['title'] as String,
@@ -6240,6 +6265,7 @@ class VisitNote {
         'noteTypeKey': noteTypeKey,
         'noteTypeVersion': noteTypeVersion,
         'read': read.toJson(),
+        'recap': recap.map((e) => e.toJson()).toList(),
         'signoffs': signoffs.map((e) => e.toJson()).toList(),
         'status': status.toJson(),
         'title': title,

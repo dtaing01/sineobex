@@ -4001,6 +4001,22 @@
         ],
         "type": "object"
       },
+      "RecapLine": {
+        "description": "The automatic recap of one section with an answer (lifecycle 8.1)",
+        "properties": {
+          "section": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "text"
+        ],
+        "type": "object"
+      },
       "RecordEntity": {
         "enum": [
           "encounter",
@@ -5371,6 +5387,13 @@
           "read": {
             "$ref": "#/components/schemas/ReadModel"
           },
+          "recap": {
+            "description": "One line per section with an answer, in the definition’s order, over what the reader may see of the note; nothing from a sensitive exam, for any reader",
+            "items": {
+              "$ref": "#/components/schemas/RecapLine"
+            },
+            "type": "array"
+          },
           "signoffs": {
             "items": {
               "$ref": "#/components/schemas/SignoffView"
@@ -5396,6 +5419,7 @@
           "author",
           "actingAuthor",
           "read",
+          "recap",
           "signoffs",
           "addenda",
           "corrections",

@@ -46,7 +46,11 @@ interface TimelineVisit {
 interface Chart {
   canonicalId: string;
   timeline: { encounters: TimelineVisit[]; referrals: { id: string }[] };
-  recentVisits: { encounterId: string; notes: { noteId: string }[]; summary?: string }[];
+  recentVisits: {
+    encounterId: string;
+    notes: { noteId: string; recap: { section: string; text: string }[] }[];
+    summary?: string;
+  }[];
 }
 
 const HOUR = 3600_000;
@@ -182,6 +186,24 @@ describe('phase 4: the timeline and recent visits', () => {
       expect(kim.recentVisits[0]!.notes.map((n) => n.noteId)).toEqual([social.noteId]);
       expect(kim.recentVisits[0]).not.toHaveProperty('summary');
       expectNoneOf(kim.recentVisits, ['Demo: rest and fluids', 'Demo: no lesions seen']);
+      // Each note with its recap as the reader may see it, which the phone shows offline from the
+      // cached chart (lifecycle 8.1, 9.7; D108); a sensitive exam's finding in no line, for anyone.
+      expect(kim.recentVisits[0]!.notes.map((n) => n.recap)).toEqual([
+        [{ section: 'care', text: 'Plan: Demo: housing list' }],
+      ]);
+      const recaps = c.recentVisits[0]!.notes.map((n) => n.recap);
+      expect(recaps).toContainEqual([
+        { section: 'vitals', text: 'Pulse: 88' },
+        { section: 'care', text: 'Plan: Demo: rest and fluids' },
+      ]);
+      expectNoneOf(recaps, ['Demo: no lesions seen']);
+      const cached = await post(w, w.kim.token, '/v1/patients/charts', {
+        patientIds: [w.patientId],
+        reason: 'opened',
+      });
+      expect(cached.status).toBe(200);
+      const [kimCache] = (cached.body as Json).charts as Chart[];
+      expect(kimCache!.recentVisits[0]).toEqual(kim.recentVisits[0]);
     });
 
     it('the recent visits shown are logged as the visit read logs them', async () => {

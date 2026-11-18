@@ -383,6 +383,9 @@ export const ReadSection = z
   })
   .openapi('ReadSection', { description: 'A section with items, or a repeating one with entries' });
 export const ReadModel = z.object({ sections: z.array(ReadSection) }).openapi('ReadModel');
+export const RecapLine = z
+  .object({ section: z.string(), text: z.string() })
+  .openapi('RecapLine', { description: 'The automatic recap of one section with an answer (lifecycle 8.1)' });
 
 export const SignoffView = z
   .object({
@@ -452,6 +455,10 @@ export const VisitNote = z
     author: UserRef,
     actingAuthor: UserRef,
     read: ReadModel,
+    recap: z.array(RecapLine).openapi({
+      description:
+        'One line per section with an answer, in the definition’s order, over what the reader may see of the note; nothing from a sensitive exam, for any reader',
+    }),
     signoffs: z.array(SignoffView),
     addenda: z.array(AddendumView),
     corrections: z.array(CorrectionView),
