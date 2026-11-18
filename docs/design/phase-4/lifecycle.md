@@ -2497,8 +2497,15 @@ Rules:
   list's keys, and a sensitive one, or one whose create is still held, `patients.view_sensitive`;
   everything else `patients.view`. An item the reviewer may not read is listed with `field` and
   `value` null and `hidden: true` (`QuarantineItem` in the contract), and opening the queue still
-  logs it with its patient. Open: a reviewer who cannot read a held value can still accept it, as
-  before; the portal's queue page does not yet show such an item as held with nothing of it.
+  logs it with its patient. Only a reviewer who may read a held change accepts it, by the same
+  rules (`decideQuarantine`; RD-3, as the coordinator decided): anyone else's accept is refused
+  with 403 `change_hidden`, logged as `access.denied`, and nothing is applied; they may reject it
+  or leave it for someone who can read it. A change of a record whose create is itself held reads
+  as hidden until that record is decided, so its accept answers `waiting_on_record` first. The
+  portal's queue page shows such an item as held, with nothing of what it holds, and offers
+  Reject alone (`apps/portal/src/lib/quarantine.ts`, `apps/portal/e2e/phones.spec.ts`). So a
+  Program Admin whose credential charts nothing reads no treatment record, and cannot accept a
+  held change to one: a teammate with a clinical credential and the queue's key does.
 - **Rule 4** is the sign-off hash rule of 5.1.
 - **Rule 5 as built.** Held for a Program Admin, with no `server` value: a set of an answer that
   could hold something the sender may not see, read from the definition and their keys alone, never

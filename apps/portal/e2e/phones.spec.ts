@@ -1,6 +1,6 @@
 import { createHash, randomUUID, webcrypto } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { expectAccessible, MFA_CODE, PASSWORD, signIn } from './helpers';
+import { customRole, expectAccessible, MFA_CODE, PASSWORD, setRole as moveTo, signIn } from './helpers';
 
 // Phase 2 admin screens with real data: phones register and sync against the API the portal
 // uses, as the seeded demo staff (made-up people).
@@ -323,6 +323,49 @@ test('a change to a record still waiting for review says so, and is decided afte
   }
   await expect(page.getByText('Nothing from Casey Nguyen (demo) is waiting for review.')).toBeVisible();
   expect(await pushLocation()).toMatchObject({ status: 'accepted', hash: location.valueHash });
+});
+
+test('a record the reviewer may not read is held with nothing of it shown, and can only be rejected', async ({
+  page,
+}) => {
+  // Sam reviews the queue and reads no visit (review finding RD-3); Jordan's role can't chart for a
+  // moment, so Jordan's visit is held.
+  const reviewer = await customRole('Quarantine review only', ['quarantine.review']);
+  await moveTo('logistics@example.com', reviewer);
+  try {
+    await setRole('clinician@example.com', 'billing_data');
+    let jordan;
+    try {
+      jordan = await phoneSync('clinician@example.com', { changes: [createEncounter('non_medical')] });
+    } finally {
+      await setRole('clinician@example.com', 'healthcare_staff');
+    }
+    expect((jordan.body.results as unknown[])[0]).toMatchObject({ reason: 'permission', quarantined: true });
+
+    await signIn(page, 'logistics@example.com');
+    await page.goto('/team/quarantine');
+    await page.getByLabel('Person').selectOption({ label: 'Jordan Lee (demo)' });
+    await page.getByRole('button', { name: 'Show', exact: true }).click();
+    await expect(page).toHaveURL(/\?status=pending&person=[0-9a-f-]{36}$/);
+    const item = page.getByRole('region', { name: '1. New encounter from Jordan Lee (demo)' });
+    await expect(item).toContainText('Held. Your role can’t read what it holds.');
+    await expect(item).not.toContainText('non_medical');
+    const decide = item.getByRole('form');
+    await expect(decide.getByRole('radio')).toHaveCount(0);
+    await expect(decide).toContainText('You can’t accept a record you can’t read.');
+    await expectAccessible(page, '/team/quarantine (a record the reviewer may not read)');
+
+    await decide.getByRole('textbox', { name: 'Reason' }).fill('Not mine to read; Jordan charts it again');
+    await decide.getByRole('button', { name: 'Reject' }).click();
+    await expect(page).toHaveURL(/\?person=[0-9a-f-]{36}&decided=rejected$/);
+    await expect(page.getByRole('status')).toContainText('Rejected.');
+    await expect(page.getByText('Nothing from Jordan Lee (demo) is waiting for review.')).toBeVisible();
+    await expectAccessible(page, '/team/quarantine (a record the reviewer may not read, rejected)', {
+      inPlace: true,
+    });
+  } finally {
+    await setRole('logistics@example.com', 'logistics');
+  }
 });
 
 test('staff without the permissions never see these screens, and typed URLs are refused', async ({

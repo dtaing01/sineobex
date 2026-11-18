@@ -4,13 +4,8 @@ import Link from 'next/link';
 import { decideQuarantine } from '@/app/actions/devices';
 import { ActionForm, ChoiceField, SubmitButton, TextField } from '@/components/ActionForm';
 import { api, unwrap } from '@/lib/api';
-import {
-  formatDateTime,
-  quarantineValue,
-  syncEntityLabel,
-  syncEntityNoun,
-  syncFieldLabel,
-} from '@/lib/labels';
+import { formatDateTime, syncEntityLabel, syncEntityNoun, syncFieldLabel } from '@/lib/labels';
+import { quarantineView } from '@/lib/quarantine';
 
 export const metadata: Metadata = { title: 'Quarantine' };
 
@@ -146,59 +141,88 @@ export default async function QuarantinePage({
       )}
       {/* Numbered on the page: one person's records often read alike, and each section and form
           needs a name of its own to be told apart. */}
-      {queue.items.map((item, i) => (
-        <section key={item.id} aria-labelledby={`q-${item.id}`} className="px-panel">
-          <h2 id={`q-${item.id}`} className="px-h2">
-            {i + 1}. {what(item)} from {item.user.displayName}
-          </h2>
-          <dl className="px-facts">
-            <dt>Why it is here</dt>
-            <dd>{REASON[item.reason]}</dd>
-            <dt>Made on the phone</dt>
-            <dd>{formatDateTime(item.deviceTime)}</dd>
-            <dt>Received</dt>
-            <dd>{formatDateTime(item.receivedAt)}</dd>
-            <dt>Value</dt>
-            <dd>
-              <pre className="px-value">{quarantineValue(item.value)}</pre>
-            </dd>
-            {item.decidedBy && (
-              <>
-                <dt>Decided</dt>
-                <dd>
-                  {item.status === 'accepted' ? 'Accepted' : 'Rejected'} by {item.decidedBy.displayName}
-                  {item.decidedAt ? `, ${formatDateTime(item.decidedAt)}` : ''}: {item.decisionReason}
-                </dd>
-              </>
+      {queue.items.map((item, i) => {
+        const view = quarantineView(item);
+        return (
+          <section key={item.id} aria-labelledby={`q-${item.id}`} className="px-panel">
+            <h2 id={`q-${item.id}`} className="px-h2">
+              {i + 1}. {what(item)} from {item.user.displayName}
+            </h2>
+            <dl className="px-facts">
+              <dt>Why it is here</dt>
+              <dd>{REASON[item.reason]}</dd>
+              <dt>Made on the phone</dt>
+              <dd>{formatDateTime(item.deviceTime)}</dd>
+              <dt>Received</dt>
+              <dd>{formatDateTime(item.receivedAt)}</dd>
+              <dt>Value</dt>
+              <dd>
+                {/* A record the reviewer may not read is held all the same, with nothing of it shown. */}
+                {view.value === null ? (
+                  'Held. Your role can’t read what it holds.'
+                ) : (
+                  <pre className="px-value">{view.value}</pre>
+                )}
+              </dd>
+              {item.decidedBy && (
+                <>
+                  <dt>Decided</dt>
+                  <dd>
+                    {item.status === 'accepted' ? 'Accepted' : 'Rejected'} by {item.decidedBy.displayName}
+                    {item.decidedAt ? `, ${formatDateTime(item.decidedAt)}` : ''}: {item.decisionReason}
+                  </dd>
+                </>
+              )}
+            </dl>
+            {view.decisions.length > 0 && (
+              <ActionForm
+                id={`decide-${item.id}`}
+                action={decideQuarantine}
+                label={`Decide on ${i + 1}. ${what(item)}`}
+              >
+                <input type="hidden" name="itemId" value={item.id} />
+                {/* After the decision the admin comes back to the same person and page. */}
+                {person && <input type="hidden" name="person" value={person} />}
+                {after && <input type="hidden" name="after" value={after} />}
+                {after && <input type="hidden" name="page" value={page} />}
+                {view.decisions.includes('accept') ? (
+                  <ChoiceField
+                    name="decision"
+                    legend="Decision"
+                    options={[
+                      {
+                        value: 'accept',
+                        label: 'Accept onto the chart',
+                        hint: 'It can’t be taken off again.',
+                      },
+                      {
+                        value: 'reject',
+                        label: 'Reject',
+                        hint: 'It stays here, with your reason, for good.',
+                      },
+                    ]}
+                  />
+                ) : (
+                  <>
+                    {/* Only someone who can read it may put it on a chart (the API refuses an accept). */}
+                    <input type="hidden" name="decision" value="reject" />
+                    <p className="sx-help">
+                      You can’t accept a record you can’t read. Reject it, or leave it for someone who can
+                      read it. A rejected record stays here, with your reason, for good.
+                    </p>
+                  </>
+                )}
+                <TextField name="reason" label="Reason" hint="Logged with your decision" required />
+                <div className="px-actions">
+                  <SubmitButton>
+                    {view.decisions.includes('accept') ? 'Record decision' : 'Reject'}
+                  </SubmitButton>
+                </div>
+              </ActionForm>
             )}
-          </dl>
-          {item.status === 'pending' && (
-            <ActionForm
-              id={`decide-${item.id}`}
-              action={decideQuarantine}
-              label={`Decide on ${i + 1}. ${what(item)}`}
-            >
-              <input type="hidden" name="itemId" value={item.id} />
-              {/* After the decision the admin comes back to the same person and page. */}
-              {person && <input type="hidden" name="person" value={person} />}
-              {after && <input type="hidden" name="after" value={after} />}
-              {after && <input type="hidden" name="page" value={page} />}
-              <ChoiceField
-                name="decision"
-                legend="Decision"
-                options={[
-                  { value: 'accept', label: 'Accept onto the chart', hint: 'It can’t be taken off again.' },
-                  { value: 'reject', label: 'Reject', hint: 'It stays here, with your reason, for good.' },
-                ]}
-              />
-              <TextField name="reason" label="Reason" hint="Logged with your decision" required />
-              <div className="px-actions">
-                <SubmitButton>Record decision</SubmitButton>
-              </div>
-            </ActionForm>
-          )}
-        </section>
-      ))}
+          </section>
+        );
+      })}
       {(page > 1 || queue.nextAfterId) && (
         <nav aria-label="Quarantine pages" className="px-tabs px-pager">
           <ul>

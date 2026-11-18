@@ -1279,6 +1279,74 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(JSON.stringify(await queue(quinn))).not.toMatch(/exam|rash|care|rest/);
     });
 
+    it('only a reviewer who may read a held change may accept it; anyone else may reject it or leave it', async () => {
+      const r = await call(h, '/v1/team/roles', {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: {
+          name: 'Accepting reviewer',
+          permissions: ['patients.view', 'encounters.chart', 'quarantine.review'],
+        },
+      });
+      expect(r.status).toBe(201);
+      // An attending who reads every note but no sensitive exam (review finding RD-3).
+      const ava = await clinician(h, t, 'ava@example.com', 'Ava (demo)', 'attending', r.body.key as string);
+      const hugo = await clinician(h, t, 'hugo@example.com', 'Hugo (demo)', 'none');
+      const n = await noteOn(ana, await visitOf(ana, patientId), TEST_RESTRICTED_TYPE, ANSWERS);
+      const setOf = (path: string, value: unknown) =>
+        hugo.phone.change({
+          entity: 'encounter_note',
+          recordId: n.noteId,
+          op: 'set',
+          field: `data.${path}`,
+          value,
+          baseVersion: 1,
+        });
+      // Held by the sensitive set check, and by the gate of a section that needs an ordering credential.
+      const sent = [
+        await setOf('exam.findings', 'Demo: a small rash'),
+        await setOf('meds.given', 'Demo: one tablet'),
+      ];
+      expect((await hugo.send(...sent)).map((x) => x.reason)).toEqual(['permission', 'permission']);
+      const items = await h.scratch.owner<{ id: string; changeId: string }[]>`
+        select id, change_id as "changeId" from sineobex.quarantine_items where user_id = ${hugo.id}`;
+      const [exam, meds] = sent.map((c) => items.find((i) => i.changeId === c.changeId)!.id);
+      const decide = (itemId: string, decision: 'accept' | 'reject') =>
+        call(h, `/v1/team/quarantine/${itemId}/decision`, {
+          method: 'POST',
+          token: ava.token,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Hugo' },
+        });
+      const statusOf = async (itemId: string) =>
+        (
+          await h.scratch.owner<{ status: string }[]>`
+          select status from sineobex.quarantine_items where id = ${itemId}`
+        )[0]!.status;
+
+      // The exam she may not read: refused with a code of its own, nothing applied, and logged.
+      const mark = await auditMark(h);
+      const refused = await decide(exam!, 'accept');
+      expect(refused.status).toBe(403);
+      expect(refused.body.error?.code).toBe('change_hidden');
+      expect(JSON.stringify(refused.body)).not.toContain('rash');
+      expect((await noteRow(n.noteId)).data).toMatchObject({ 'exam.findings': ANSWERS['exam.findings'] });
+      expect(await statusOf(exam!)).toBe('pending');
+      const denied = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied[0]).toMatchObject({
+        actorUserId: ava.id,
+        details: { reason: 'change_hidden', itemId: exam },
+      });
+      // What she may read, she accepts.
+      expect((await decide(meds!, 'accept')).status).toBe(200);
+      expect((await noteRow(n.noteId)).data).toMatchObject({ 'meds.given': 'Demo: one tablet' });
+      // What she may not read, she may still reject.
+      expect((await decide(exam!, 'reject')).status).toBe(200);
+      expect(await statusOf(exam!)).toBe('rejected');
+      expect((await noteRow(n.noteId)).data).toMatchObject({ 'exam.findings': ANSWERS['exam.findings'] });
+    });
+
     it('a Medical visit’s own addendum and its summary go only to a reviewer who reads its Medical notes, as in the sync read', async () => {
       const role = async (name: string, permissions: string[]) => {
         const r = await call(h, '/v1/team/roles', {

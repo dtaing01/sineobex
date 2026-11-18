@@ -296,11 +296,18 @@ async function shownValue(r: Pick<QuarantineRow, 'entity' | 'op' | 'value'>): Pr
   return typeof token === 'string' ? { ...rest, tokenRef: await idLinkTokenRef(token) } : rest;
 }
 
+const waitingOnRecord = () =>
+  conflict(
+    'waiting_on_record',
+    'This belongs to a record that is also waiting for review. Decide on that record first.',
+  );
+
 /**
  * Accept applies the change to the chart under the usual rules, as the person who made it and
  * approved by the admin; if it would overwrite a different value, nothing is applied and the admin
  * is told, and a late change to a finished note is kept in its history as a push of it would be.
- * Reject keeps the item, with the reason, forever.
+ * Only a reviewer who may read the change accepts it (403 `change_hidden`). Reject keeps the item,
+ * with the reason, forever.
  */
 export async function decideQuarantine(
   scope: TeamScope,
@@ -350,6 +357,15 @@ export async function decideQuarantine(
         ...(typeof d.correctedTime === 'string' ? { correctedTime: d.correctedTime } : {}),
         clockVerified: d.clockVerified === true,
       };
+      // Only a reviewer who may read the change may put it on the chart, by the queue's rules, which
+      // are the sync read's (review finding RD-3): anyone else may reject it, or leave it for someone
+      // who can read it. Asked before anything else answers of the record. A change of a record whose
+      // create is itself held reads as hidden until that record is decided, and waits on it.
+      if ((await shownChange(tx, scope, item)) === null) {
+        if (await heldCreate(tx, { teamId: scope.team.teamId, authorId: item.userId }, change))
+          throw waitingOnRecord();
+        return 'hidden' as const;
+      }
       // Someone else's change under this ID, in this team or in another (which this one can't
       // see), would collide with this one's receipt.
       const owner = { teamId: scope.team.teamId, userId: item.userId, deviceId: item.deviceId };
@@ -380,12 +396,8 @@ export async function decideQuarantine(
       const result = await applyInSavepoint(tx, audit, actor, change, item.valueHash);
       if (result.status !== 'accepted') {
         // Throwing rolls back the attempt, so the item stays pending and the chart is untouched.
-        if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change))) {
-          throw conflict(
-            'waiting_on_record',
-            'This belongs to a record that is also waiting for review. Decide on that record first.',
-          );
-        }
+        if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change)))
+          throw waitingOnRecord();
         throw conflict(
           'cannot_apply',
           result.reason === 'stale_reference'
@@ -413,6 +425,15 @@ export async function decideQuarantine(
       audit({ action: 'access.denied', details: { reason: 'own_quarantined_change', itemId } }),
     );
     throw forbidden('Someone else on the team must review your own records.', 'own_change');
+  }
+  if (outcome === 'hidden') {
+    await scope.tx((_, audit) =>
+      audit({ action: 'access.denied', details: { reason: 'change_hidden', itemId } }),
+    );
+    throw forbidden(
+      'Your role can’t read this record, so you can’t accept it onto the chart. You can reject it, or leave it for someone who can read it.',
+      'change_hidden',
+    );
   }
   return { ok: true as const };
 }

@@ -4006,7 +4006,7 @@ class QuarantineItem {
   final DateTime deviceTime;
   final String entity;
   final String? field;
-  /// The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds
+  /// The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds. Their accept answers 403 change_hidden; they may reject it
   final bool? hidden;
   final String id;
   final String op;

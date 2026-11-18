@@ -304,7 +304,7 @@ export const QuarantineItem = z
     value: z.unknown(),
     hidden: z.literal(true).optional().openapi({
       description:
-        'The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds',
+        'The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds. Their accept answers 403 change_hidden; they may reject it',
     }),
     deviceTime: DateTime,
     reason: QuarantineReason.openapi({

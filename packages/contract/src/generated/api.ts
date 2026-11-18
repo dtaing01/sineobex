@@ -1828,7 +1828,7 @@ export interface components {
             entity: string;
             field: string | null;
             /**
-             * @description The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds
+             * @description The reviewer may not read this change (lifecycle 6.4): field and value are null, and nothing names what it holds. Their accept answers 403 change_hidden; they may reject it
              * @enum {boolean}
              */
             hidden?: true;
