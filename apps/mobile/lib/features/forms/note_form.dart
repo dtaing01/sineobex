@@ -341,11 +341,12 @@ class _Drawing {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          // Remove goes under the title where the two don't fit side by side (large text).
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: ExcludeSemantics(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-              ),
+              ExcludeSemantics(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
               if (widget.enabled)
                 Semantics(
                   button: true,

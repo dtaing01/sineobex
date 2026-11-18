@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/design/tokens.dart';
 import 'package:sineobex_field/features/forms/note_form.dart';
 import 'package:sineobex_field/forms/check_answer.dart';
 
@@ -40,6 +42,21 @@ void main() {
     // Each entry's fields are named by its title for a screen reader.
     expect(find.bySemanticsLabel('Wound 1'), findsOneWidget);
   });
+
+  // Past 200%: iOS's accessibility text sizes go further.
+  for (final Run run in [
+    (theme: FieldTheme.day, scale: 3.0, narrow: false),
+    (theme: FieldTheme.day, scale: 3.0, narrow: true),
+  ]) {
+    testWidgets('at 300% text an entry’s title and Remove fit${run.narrow ? ', 320 wide' : ''}', (tester) async {
+      await pumpForm(tester, wound, run: run, values: {'wound.$a.entryAt': '2026-11-17T10:00:00Z'});
+      expect(tester.takeException(), isNull);
+      expect(find.text('Remove'), findsOneWidget);
+      for (final r in tester.allRenderObjects.whereType<RenderFlex>()) {
+        expect(r.toStringShort(), isNot(contains('OVERFLOWING')));
+      }
+    });
+  }
 
   testWidgets('Add writes the new entry’s entryAt, at a new ID, and the entry shows', (tester) async {
     final answers = await pumpForm(
