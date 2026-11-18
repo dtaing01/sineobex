@@ -966,6 +966,52 @@ log (a written answer within 60 days, the patient's statement of disagreement) i
 **A note already in a billing export**: "the correction flags it for Billing/Data to review"
 (PRD main 462). Phase 10 builds the flag from the correction's time (2.6).
 
+As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/note_actions.dart`,
+with its review). The visit screen asks `mayReopen`, `mayAddAddendum`, `mayAddVisitAddendum` and
+`mayCorrect` what to offer (9.7). Each action refuses, writing nothing, what the server would
+refuse, or hold for a Program Admin where the person could never fix it, and waits while the store
+is frozen or the clock check fails (3.11):
+
+- **Reopen** (`reopen`) is the store's `reopenNote`, with the definition of the note's own version
+  (4.8). It asks first whether the note was sent for review ("This note was sent to a Program Admin
+  for review. It can’t be changed until they decide."), and refuses a role that doesn't chart and,
+  for a Medical note, a credential that doesn't chart Medical: a reopen from a credential lowered
+  since would be held (4.2).
+- **An addendum** (`addAddendum`) is 1 to 4,000 characters once trimmed, below a note or below the
+  visit itself. While a sign-off this phone made of the note (for the visit's own, of any note of
+  the visit) waits to send, or waits refused in Needs attention, the addendum names it and waits
+  behind it (4.7). It is refused `cannot_read` on a note the person may not read, which the server
+  would hold (6.4), and so, offline, on a teammate's note whose definition the phone lacks. It is
+  taken on a draft, as the server takes it; the screens offer it on a finished note only.
+- **A correction** (`correct`) changes one to ten answers of a note finished as the phone knows it
+  and not sent for review, by whoever acts as its author. Refused here: a draft (`draft`: a draft
+  changes in the form, and the server would apply the correction as a draft edit the person never
+  saw); an answer of a section that needs an ordering credential the person lacks (`read_only`, 6.4
+  rule 5); what `checkAnswer` refuses; `no_change` when every answer already holds its new value,
+  an answer that does being left out of the correction; `incomplete` when the note would then miss
+  a required answer (4.7, step 8); and a reason outside 3 to 500 characters. A declined request is
+  not asked `checkAnswer`, `no_change` or `incomplete`, as the server takes it (4.7, step 4 before
+  step 5). The correction claims the saved profile's credential (3.5) and names a waiting sign-off
+  of the note, as an addendum does.
+- **A note or a visit not on the phone** is opened from the server first (`openServerRecord`, 4.8,
+  8.2); offline the action says "This note isn’t on this phone. Connect, then try again.".
+- **The correction's `baseVersion`** for each answer is the version the person read, the one the
+  server will hold once this phone's own waiting changes are applied: a confirmed answer's server
+  version; otherwise a count, the note's create writing each of its answers at version 1 and each
+  set waiting here adding one, but a Keep theirs choice (`keep_server`), which the server takes at
+  the version it holds (review finding LCM-3). An answer never written is at 0. The phone's copy
+  alone gave 0 for a note whose create had not been sent, which the server refused `field_changed`.
+  A set waiting here whose value is the one the server holds already is still counted, which the
+  phone cannot see, and that correction is refused `field_changed`: the store giving the version a
+  correction saw would end the count (open, the store's).
+- **Open, the server's** (review finding LCM-1). Complete takes an answer that does not count off
+  the phone (4.8), and the server holds it blank at a version the phone never learns. A correction
+  that brings such an answer back is refused `field_changed` whatever version it sends, correcting
+  again cannot settle it, and while it waits in Needs attention hard stop 2 stops every later
+  Complete of the visit. The fix belongs to step 6 of the correction on the server
+  (`note-correction.ts`, the test server with a parity case): an answer whose value is blank, never
+  shown to the reader, does not count as moved, as the draft edit fills a blank (1.2).
+
 ### 3.7 Co-sign and attest
 
 Both are done by a second person, and both are online only (5.3, 5.4). The reason is in the
@@ -3684,6 +3730,53 @@ the switch on, a second choice appears: **Make the change** or **Record that it 
 
 Offline reads are logged on the phone in the same local transaction (`encounter.viewed`,
 `note.viewed`, 1.2), and refused if they cannot be logged.
+
+As built (the phone's domain layer, unit L4, `encounter_repository.dart` and `encounter_api.dart`,
+with its review):
+
+- **Where a visit is read from.** `EncounterApi.openVisit` reads the phone's own copy
+  (`EncounterRepository.openVisit`), else the chart's cached recent visit (`recentVisit`), else the
+  server's read (`readVisit`, shown from memory: the phone keeps nothing of it); offline the last
+  says "This visit isn’t on this phone. Connect to open it.". It reads a cached recent visit before
+  the server even with signal, where the first paragraph reads `recentVisits` offline (open, the
+  coordinator's to confirm): the cache is fetched again each time the chart opens online, and
+  Co-sign and Attest read the visit online first (5 as built), so nothing is signed from it.
+- **One read model** (`VisitView`, `NoteView`) whatever the source: `visitFromRead` turns the
+  server's read, or a cached recent visit, into the read model the phone's own read gives, with the
+  server's laid-out note (`read`), each note's recap lines (`VisitNote.recap`, D108), the Red flags
+  note last (forms 6.2), and no answers: a draft the person may change opens from the phone's copy,
+  as the form. A note whose definition the phone can't load keeps its read model.
+- **Who and when** (D108). A visit's notes come in the order the server made them (`createdAt`,
+  compared as text to the microsecond, never through milliseconds, then by ID as text, as the visit
+  read orders them), then those made here and not confirmed yet, in the order made. A sign-off, an
+  addendum and a correction go by when it was made (`signedAt`, `writtenAt`, `correctedAt`), then
+  those confirmed with no time known by ID, then those waiting here. The server asks
+  `hiddenCorrections` of corrections in the order it applied them, the phone in the order they were
+  made: that changes only the states the undo chain passes through, and each correction's own are
+  asked either way, so the review found no case where a reader is shown something different. Whoever
+  acts as a note's author, a sign-off's signer, a correction's corrector and an addendum's author
+  are named by the name the record carries (`actingAuthorName`, `signerName`, `correctorName`,
+  `authorName`), else by the phone's name hook, else, for a record of the reader's own (one made
+  here carries no name until a refresh), by their own display name; the screen words a name still
+  unknown "a teammate". The original author of an assigned note is not named, and a clinician
+  renamed since signing may show under both names in one visit (D108).
+- **What each reader sees** of the phone's own copy is 6.4's, as the sync read gave it: a note the
+  reader may not read is left out with all that hangs off it; a reader of no Medical notes gets no
+  Medical note, and of a Medical visit neither the assessment nor the visit's own addenda; a
+  correction is shown whole or not at all (`hiddenCorrections`, a Dart copy of the server's, 5.1);
+  whoever acts as the author of a draft gets every answer stored, those a condition hides included;
+  an empty draft is not listed, but opens for its own author (the form of a note just added). A
+  note whose definition the phone lacks is listed for whoever acts as its author, with its state and
+  nothing of its answers, and left out for everyone else, as the server leaves out a note it cannot
+  lay out. A reader without `patients.view` is not refused on the phone: the sync read that filled
+  the phone needs only `encounters.chart` (6.1). Nothing is read while the store is frozen, and a
+  read never waits for the clock check. Each read is logged as 10.1's table for the phone says.
+- **The records made at the visit** come in two shapes (the coordinator's decision): for a visit
+  the phone holds, `VisitRecords.madeAt` (8.4 as built); for a server read or a cached recent visit,
+  the server's snapshots (`VisitView.records`). The visit screen (L5) draws both, and words "on
+  another chart now" for a record whose visit has moved to someone else (8.4).
+- **The actions**: reopen, addenda and corrections as 3.6 as built; Co-sign and Attest as 5 as
+  built, on a visit read from the server.
 
 ### 9.8 The EMS handoff
 
