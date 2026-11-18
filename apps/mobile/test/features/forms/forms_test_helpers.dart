@@ -23,6 +23,7 @@ import '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, ru
 import '../../helpers/app_harness.dart' show expectGuidelines;
 
 export '../patients/patient_kit.dart' show Run, expectPrivateFields, runName, runs;
+export '../../helpers/app_harness.dart' show expectGuidelines;
 
 /// What the tests of the form's widgets share (forms 8.3): a field from a made-up definition or
 /// from a bundled note type, one widget on a screen in each run (three themes, 200% text, 320
@@ -296,9 +297,16 @@ Future<void> toggleSection(WidgetTester tester, String id) async {
 SemanticsNode controlNamed(WidgetTester tester, Pattern label) =>
     tester.getSemantics(find.bySemanticsLabel(label).last);
 
-/// Runs [body] once for each run, as one test each.
-void forEachRun(String description, Future<void> Function(WidgetTester tester, Run run) body) {
-  for (final run in runs) {
+/// Phase 3's runs, and 200% text on a 320-wide phone in Day and Night: the form's worst cases for
+/// layout, where the smoke test, a picker and a dialog are drawn.
+final formRuns = <Run>[
+  ...runs,
+  for (final theme in [FieldTheme.day, FieldTheme.night]) (theme: theme, scale: 2.0, narrow: true),
+];
+
+/// Runs [body] once for each run ([over], or [runs]), as one test each.
+void forEachRun(String description, Future<void> Function(WidgetTester tester, Run run) body, {List<Run>? over}) {
+  for (final run in over ?? runs) {
     testWidgets('$description (${runName(run)})', (tester) async {
       final handle = tester.ensureSemantics();
       await body(tester, run);

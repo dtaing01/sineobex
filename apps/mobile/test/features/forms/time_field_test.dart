@@ -41,6 +41,15 @@ void main() {
     await expectFieldOk(tester);
   });
 
+  forEachRun('the dial passes the guidelines and fits', over: formRuns, (tester, run) async {
+    await open(tester, run: run);
+    await tester.tap(find.text('Choose a time'));
+    await tester.pumpAndSettle();
+    expect(find.text('Time EMS called'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectGuidelines(tester);
+  });
+
   testWidgets('a picked time is stored as HH:MM on the 24-hour clock, from the dial only', (tester) async {
     final handle = tester.ensureSemantics();
     final changes = await open(tester);

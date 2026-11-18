@@ -129,6 +129,19 @@ void main() {
     expect(find.text('Test 1'), findsNothing);
   });
 
+  forEachRun('the question Remove asks passes the checks every field passes', over: formRuns, (tester, run) async {
+    await pumpForm(
+      tester,
+      demo,
+      run: run,
+      values: {'tests.$a.entryAt': '2026-11-17T10:00:00Z', 'tests.$a.result': 'Demo: negative'},
+    );
+    await tester.tap(find.bySemanticsLabel('Remove Test 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove Test 1?'), findsOneWidget);
+    await expectFieldOk(tester);
+  });
+
   testWidgets('Remove on an entry with answers asks first', (tester) async {
     final handle = tester.ensureSemantics();
     final answers = await pumpForm(

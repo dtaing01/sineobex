@@ -14,7 +14,7 @@ import 'package:sineobex_field/forms/read_model.dart';
 import 'forms_test_helpers.dart';
 
 /// Every bundled note type, drawn whole (forms 8.3): every section opened, with every field
-/// showing, in the three themes, at 200% text and at 320 wide, with no overflow, no control
+/// showing, in the three themes, at 200% text, at 320 wide and at both together, with no overflow, no control
 /// without a label, and the guideline matchers. Nothing here names a note type or a field: the
 /// answers that open each conditional field are worked out from the definition's own conditions,
 /// so a new note type is covered the moment it is in assets/forms/presets.json.
@@ -48,7 +48,7 @@ void main() {
       }
     });
 
-    for (final run in runs) {
+    for (final run in formRuns) {
       testWidgets('${definition.key}: every section and field drawn (${runName(run)})', (tester) async {
         final handle = tester.ensureSemantics();
         // Each field as it opens (only what opens it answered), with an answer, and read-only.
@@ -184,15 +184,19 @@ class Target {
     final need = [...?solver.require(node, row)];
     final entry = node.section.section.repeat == null ? null : smokeEntry;
     final drawn = solver.drawnPath(node, row);
-    final prefix = node.field is ActionDef ? 'form.$drawn' : 'host.$drawn';
+    // A group and a grid are keyed by the form at their own path (and side), never a field's in
+    // them; an action by the form, and every other field by its host, at its path and below.
     final container = node.field is GroupDef || node.field is GridDef;
+    final prefix = node.field is ActionDef || container ? 'form.$drawn' : 'host.$drawn';
     final target = Target(
       name: node.at,
       section: node.section.section.id,
       shows: (reading) => reading.fieldCounts(node, row, entry),
       editable: node.field is ActionDef,
       drawnAs: (key) =>
-          container || key is ValueKey<String> && (key.value == prefix || key.value.startsWith('$prefix.')),
+          key is ValueKey<String> &&
+          (key.value == prefix ||
+              (container ? sideNames.any((side) => key.value == '$prefix.$side') : key.value.startsWith('$prefix.'))),
     );
     targets.add(target);
     needs.add((need, target));
