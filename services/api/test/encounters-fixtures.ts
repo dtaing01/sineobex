@@ -253,9 +253,15 @@ export async function chartedVisit(
   return { visit, flags, note };
 }
 
-/** Finishes notes through sync and checks the effect of each. */
+/**
+ * Finishes notes through sync and checks the effect of each. The sign-offs are built one after
+ * another: each takes the phone's next seq once its hash is ready, and the server applies them in
+ * seq order, so built together the Medical note's could go before the Red flags note's and be
+ * refused red_flags_first (review findings LPM-3, LAC-2).
+ */
 export async function finish(c: Clinician, ...steps: [HeldNote, 'complete' | 'sign', string][]) {
-  const signoffs = await Promise.all(steps.map(([n, act]) => signoffOf(c, n, act)));
+  const signoffs = [];
+  for (const [n, act] of steps) signoffs.push(await signoffOf(c, n, act));
   expect((await c.send(...signoffs)).map((r) => r.details?.effect)).toEqual(steps.map(([, , e]) => e));
   return signoffs;
 }
