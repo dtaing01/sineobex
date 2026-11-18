@@ -4204,6 +4204,22 @@ summary, a reason's text or an addendum's.
 | `access.denied` | A missing key: `permission`, `route`, from the team scope, or from co-sign and attest when the caller's role no longer charts once the team lock is theirs. A rule about the caller: `reason` and `route`, on entity `encounter` and the visit with its patient for co-sign and attest (with `noteIds`: `is_author`, `is_signer`, `cannot_sign`, `cannot_attest`, `cannot_see_all`) and for the handoff (`cannot_see_red_flags`); with no entity for the queues' `cannot_sign` and `cannot_attest`, and for a caller of co-sign or attest who is no longer an active member once the lock is theirs (`not_a_member`) |
 | Not logged | `reauth_required`, and every 409, 422 and 404. When a co-sign or an attest answers a 409 and a note it names was refused about the caller too, that refusal is logged (5.3). `GET /v1/me/counts` writes no event: it names no patient (5.6) |
 
+As built for the phone's reads (the domain layer, unit L4, with its review). Each read writes its
+events in the store transaction that reads it, with the closed list's keys (`AuditAppend`), so a
+read that can't be logged shows nothing, and nothing is read while the store is frozen. A screen
+that reads again passes the IDs it was shown (`shownBefore`), and only what a read adds is logged.
+`source` is `local` for a record made or worked on here and `cache` for a copy the server sent, as
+phase 3 logs a chart read offline. The events join the audit log at the next sync, with the rest of
+the phone's offline reads.
+
+| Action | As built |
+|---|---|
+| `encounter.viewed`, `note.viewed` (a visit or a note read from the phone's own copy, `EncounterRepository`) | One per record shown, with the visit's patient: the visit is `encounter.viewed`; a note, a sign-off, an addendum and a correction are `note.viewed`, on `encounter_note`, `note_signoff`, `note_addendum` and `note_correction`. A note opened on its own logs the note and what hangs off it, not the visit. A note whose definition the phone lacks is logged for whoever acts as its author, who is shown it listed. Not one per visit with `noteIds` |
+| The same, and `patient.viewed` (a chart's cached recent visit, `EncounterApi.recentVisit`) | As the server logs its read (5.1), each with source `cache`: the visit, its own addenda, each note and its sign-offs, addenda, corrections and attestations, with the visit's patient; each record made at the visit as `patient.viewed`, on its own entity and its own patient (`patientOfMadeAt`, 8.4 as built), never the visit's |
+| `patient.viewed` (the records made at a visit the phone holds, `VisitRecords.madeAt`; the Referrals sheet and a visit's referrals, `Referrals.openReferrals` and `madeAt`) | One per record shown, on its own entity and its own patient |
+| `notes_to_finish.viewed` | `patientIds`, each patient once and at most 50 an entry, so a longer list writes several, and `resultCount`, the rows the read adds; the server's rows are logged again (9.9 as built) |
+| Not logged | The profile's timeline and its referral rows, part of the chart's logged read (9.1 as built); Home's tile, numbers only; Complete's plan, drawn beside the visit's logged read (9.6 as built); a visit read from the server, which logged it. The phone writes no `access.denied`, which the closed list does not hold: a reader without `patients.view` is not refused the phone's own read of a visit (9.7 as built), and the records made at a visit show them nothing |
+
 ### 10.2 PHI rules, applied to this phase
 
 | Rule (`CLAUDE.md`) | How phase 4 keeps it |
