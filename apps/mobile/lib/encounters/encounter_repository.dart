@@ -718,7 +718,8 @@ class EncounterRepository {
   }
 
   /// The answers of [noteId] two people changed (lifecycle 9.5, forms 8.1), from the store's
-  /// conflicts, the latest of each answer as Needs attention shows it. A value the server holds at
+  /// conflicts, the latest of each answer as Needs attention shows it: the person's value is the one
+  /// **Use my value** sends (`myValue`), which after Keep theirs is not the answer the form shows. A value the server holds at
   /// an answer that could hold what [reader] may not see is left out for someone who does not act as
   /// the author (6.4, D92): Needs attention still has it.
   Map<String, AnswerConflict> _conflictsOf(String noteId, NoteTypeDef definition, NoteReader reader) {
@@ -730,6 +731,7 @@ class EncounterRepository {
             when id == noteId && field.startsWith(_data) && _seesAt(definition, field.substring(_data.length), reader))
           field.substring(_data.length): AnswerConflict(
             theirs: server.value,
+            mine: (value: store.myValue(e)),
             by: server.changedBy == null
                 ? ConflictBy.server
                 : server.changedBy == user.userId

@@ -291,7 +291,12 @@ class FieldHost extends StatelessWidget {
           for (final (i, s) in states.indexed)
             if (s.conflict case final conflict?) ...[
               const SizedBox(height: FieldSpace.s2),
-              _ConflictChoice(field: shownAs(i), mine: s.value, conflict: conflict, enabled: enabled),
+              _ConflictChoice(
+                field: shownAs(i),
+                mine: (conflict.mine ?? (value: s.value)).value,
+                conflict: conflict,
+                enabled: enabled,
+              ),
             ],
       ],
     );
@@ -301,7 +306,8 @@ class FieldHost extends StatelessWidget {
 /// A diagnosis written out from its parts' states ([problemParts]), as this phone holds it or, with
 /// [theirs], as the other side of each conflict holds it.
 String? _problemOf(List<AnswerState> parts, {required bool theirs}) {
-  String? at(int i) => switch (theirs ? (parts[i].conflict?.theirs ?? parts[i].value) : parts[i].value) {
+  final mine = [for (final p in parts) (p.conflict?.mine ?? (value: p.value)).value];
+  String? at(int i) => switch (theirs ? (parts[i].conflict?.theirs ?? parts[i].value) : mine[i]) {
     final String t when t.isNotEmpty => t,
     _ => null,
   };

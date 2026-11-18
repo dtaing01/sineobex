@@ -374,6 +374,25 @@ void main() {
       expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
     });
 
+    test('Keep theirs, then a new conflict: “Your value” is the value the choice carried, which Use my value '
+        'sends (review LFM-1)', () async {
+      final (:p, :r, :n, at: _) = await conflicted(blair);
+      await (await r.openNote(n))!.conflicts['vitals.pulse']!.onChoose!(false);
+      // Blair changes it again before the choice reaches the server: it comes back a conflict.
+      server.serverEdit(n, 'data.vitals.pulse', 94, by: blair);
+      await sync(p);
+      final view = (await r.openNote(n))!;
+      final c = view.conflicts['vitals.pulse']!;
+      // The field shows the value kept; the choice shows what this phone would send, as Needs
+      // attention does (the store's myValue).
+      expect([view.answers['vitals.pulse'], c.theirs, c.mine], [90, 94, (value: 92)]);
+      expect(p.store.myValue(p.store.needsAttention().single), 92);
+      await c.onChoose!(true);
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 92);
+    });
+
     test('no choice while the clock check fails; a choice made elsewhere first leaves this one out of date', () async {
       final (:p, :r, :n, at: _) = await conflicted(blair);
       server.offline = true;

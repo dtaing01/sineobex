@@ -56,6 +56,45 @@ void main() {
     await expectFieldOk(tester);
   });
 
+  testWidgets('“Your value” is the value the choice would send, when the domain layer gives one (review LFM-1)', (
+    tester,
+  ) async {
+    // After Keep theirs the field shows the value kept, while the person's own travels in the choice.
+    final answers = TestAnswers({'plan.follow_up': '2026-10-27'})
+      ..conflicts['plan.follow_up'] = AnswerConflict(
+        theirs: '2026-11-03',
+        mine: (value: '2026-11-10'),
+        by: ConflictBy.teammate,
+        onChoose: (_) async {},
+      );
+    await pumpField(tester, FieldHost(field: followUp, path: 'plan.follow_up', answers: answers));
+    expect(find.text('November 10, 2026'), findsOneWidget);
+    expect(find.text('November 3, 2026'), findsOneWidget);
+    // The field itself still shows what it holds.
+    expect(find.text('October 27, 2026'), findsOneWidget);
+  });
+
+  testWidgets('a diagnosis’s one choice shows the values the choices would send (review LFM-1)', (tester) async {
+    final diagnosis = presetField('general_primary_care', 'problems.diagnosis');
+    const at = 'problems.e0000001.diagnosis';
+    final answers = TestAnswers({'$at.code': 'S01.01XA', '$at.label': 'Demo scalp'})
+      ..conflicts['$at.code'] = AnswerConflict(
+        theirs: 'S00.03XA',
+        mine: (value: 'S01.21XA'),
+        by: ConflictBy.teammate,
+        onChoose: (_) async {},
+      )
+      ..conflicts['$at.label'] = AnswerConflict(
+        theirs: 'Demo nose',
+        mine: (value: 'Demo nose cut'),
+        by: ConflictBy.teammate,
+        onChoose: (_) async {},
+      );
+    await pumpField(tester, FieldHost(field: diagnosis, path: at, answers: answers));
+    expect(find.text('Demo nose cut (S01.21XA)'), findsOneWidget);
+    expect(find.text('Demo nose (S00.03XA)'), findsOneWidget);
+  });
+
   testWidgets('each kind of this card gets its own widget', (tester) async {
     final kinds = <Map<String, Object?>, Type>{
       {'id': 'a', 'kind': 'text', 'lines': 'one', 'maxLength': 200, 'label': 'Demo: a'}: NoteTextField,

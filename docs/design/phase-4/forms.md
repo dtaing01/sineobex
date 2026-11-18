@@ -1798,7 +1798,7 @@ As built (unit F5):
 | File | Is |
 |---|---|
 | `note_form.dart` | `NoteForm`, the shell: the sections as an accordion, each header with its recap line; the fields that show, each through the field host; groups, grids and actions, which the form lays out itself; the entries of a repeating section with Add and Remove; one-tap Normal for a section, an entry and a system |
-| `field_host.dart` | `FieldHost`: the widget for a field's kind, its label and help, and under each answer it shows "Waiting to send" and phase 2's conflict choice. Also the host's contract with the form (`FormAnswers`, `AnswerState`, `AnswerConflict`, `ConflictBy`), `answerPaths`, `otherTextPath` and `answerText` |
+| `field_host.dart` | `FieldHost`: the widget for a field's kind, its label and help, and under each answer it shows "Waiting to send" and phase 2's conflict choice. Also the host's contract with the form (`FormAnswers`, `AnswerState`, `AnswerConflict`, `ConflictBy`, from `lib/forms/answer_state.dart`, which it exports), `answerPaths`, `otherTextPath` and `answerText` |
 | `text_field.dart` | `NoteTextField`, and what the other widgets share: `TypingSaver` and `typingPause`, which save what is typed; `limitCodePoints`; and `ReadOnlyAnswer`, an answer that can't be changed |
 | `choice_field.dart` | `ChoiceField`: the chips, and the box of the Other text (`otherTextField`); `pickedCodes` |
 | `number_field.dart` | `NumberField`: the box, the second unit's switch, the stepper |
@@ -1825,8 +1825,11 @@ gives an `AnswerState`, and `change(path, value)` takes a change, `null` being t
 answer. A path is the answer's whole path, its entry part and side included. An `AnswerState` is the
 value as stored, whether it is `pending` (saved on this phone and not yet confirmed by the server)
 and, when two people changed it, an `AnswerConflict`: the value on the server (`theirs`), who holds
-it (`ConflictBy`: a teammate, the same person on another phone, or the server), when, and
-`onChoose(keepMine)`, which is null while charting is paused for the phone's clock. `NoteForm` is
+it (`ConflictBy`: a teammate, the same person on another phone, or the server), when, the value
+**Use my value** sends (`mine`, the store's `myValue`: after Keep theirs the field shows the value
+kept while the choice carries the person's own, review LFM-1), and `onChoose(keepMine)`, which is
+null while charting is paused for the phone's clock. The types live in `lib/forms/answer_state.dart`,
+which `field_host.dart` exports, so the domain layer imports no widget library. `NoteForm` is
 its own `FormAnswers`, made from what the screen gives it (below). A field host can also draw a
 group, a grid (given its picked `rows`) or an action (given `actions`) by itself, as its tests do;
 in a note form the form lays those out.

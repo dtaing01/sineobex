@@ -21,10 +21,16 @@ enum ConflictBy { teammate, youElsewhere, server }
 /// Two people changed one answer: the value on the server beside the one on this phone, until the
 /// person chooses (the draft rule, lifecycle 1.2; phase 2's choice, PRD main 100).
 class AnswerConflict {
-  const AnswerConflict({required this.theirs, required this.by, this.at, this.onChoose});
+  const AnswerConflict({required this.theirs, required this.by, this.mine, this.at, this.onChoose});
 
   /// The value on the server.
   final Object? theirs;
+
+  /// "Your value": what **Use my value** sends (the store's `myValue`, as Needs attention shows it),
+  /// a cleared answer being `(value: null)`. It differs from the answer the field shows once the
+  /// person kept theirs and the value moved on again: the field shows the value kept, and the choice
+  /// carries their own. Null: the answer the field shows.
+  final ({Object? value})? mine;
   final ConflictBy by;
   final DateTime? at;
 
