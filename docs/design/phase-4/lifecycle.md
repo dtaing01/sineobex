@@ -1762,7 +1762,9 @@ As built (unit L0, on the forms interpreter of units F1 and F2):
 - **Who calls them.** The sign-off (4.6) calls the TypeScript one since unit L1, over the
   answers the note holds and the visit's patient and summary. The phone's test server calls the
   Dart one for the same (4.9), and its parity cases send every case of `note-content-hash.json`
-  through a real sign-off. `finishNotes` (4.8) will call it on the phone, in L3's store cards.
+  through a real sign-off. On the phone, since L3's store cards, `contentHashOf` gives the summary
+  screen the hash it shows and `finishNotes` works it out again over what the phone holds, the
+  visit's patient and summary included (4.8).
 
 ### 4.6 The sign-off
 
@@ -2088,8 +2090,7 @@ calls `closeRecord` then (8.2). The purge itself does not change.
 **The clock.** `_guardFor` stops sign-offs, addenda and corrections while the clock check fails,
 and lets referrals through (3.11).
 
-As built (unit L3, card L3-registry, `apps/mobile/lib/sync/entities.dart`; the store cards come
-next):
+As built (unit L3, card L3-registry, `apps/mobile/lib/sync/entities.dart`):
 
 - **`encounter`**: its fields are `patientId`, `location`, `locationText` and `summary` (each text
   trimmed, 1 to 200 and 1 to 4,000 characters, or null) and `kind`, which has a rule of its own
@@ -2107,8 +2108,8 @@ next):
   addendum `written`, a referral `active`.
 - **The patient of a new record** is declared by `EntityRules.patientVia`: the problem for a
   problem note, the visit for a note and an addendum, the note for a sign-off and a correction; a
-  referral names its own (`patientOfCreate`). The store does not read it yet, so until L3's store
-  cards a sign-off, an addendum or a correction is kept with no patient on the phone.
+  referral names its own (`patientOfCreate`). The store reads it for every create since its own
+  cards (below).
 - **Values**: `referral_in_future` joins `valueProblem`; a date in a year below 100 is refused, as
   the API refuses it (review finding FAK-2); a correction's missing `newValue` is a problem of its
   own kind (`_present`), since the API's schema still runs its refinements then; the two audit
@@ -2117,11 +2118,227 @@ next):
   `entities_test.dart` reads it through the registry and `patient_rules_test.dart` through the
   fake. Still owed: the registry's bound on `noteTypeVersion`, the API's `MAX_VERSION` (review
   finding FAK-1), and its vector; the fake checks the bound itself until then.
-- **What the store still does as phase 2 left it**, for L3's store cards: `createEncounter`
-  writes `kind` as an attribute and `status` as a field, and takes no `locationText`;
-  `importServerRecord` takes an encounter's status from a `status` field the snapshot no longer
-  has, where it should read the record's status; `_fixRejected` does not carry `locationText`; and
-  `finishNotes`, the lock by effect and the receipts' settling are not built.
+- **What the store still did as phase 2 left it** (`createEncounter` wrote `kind` as an attribute
+  and `status` as a field; the refresh read a visit's status from a field the snapshot no longer
+  has; a visit's fixed create dropped the place typed by hand) went with the store's cards, below.
+
+As built (unit L3, cards L3-store-finish, L3-store-lock and L3-store-receipts, with their review;
+`apps/mobile/lib/sync/local_store.dart`, the notices' sentences in
+`apps/mobile/lib/features/sync/sync_labels.dart`, the tests in
+`apps/mobile/test/sync/store_encounters_test.dart`, run against the test server, 11.2). Each rule
+was taken out by a script to see its test fail.
+
+- **The visit as the server keeps it.** `createEncounter` takes `locationText`, checked as the
+  server checks it, and writes the registry's created fields (`patientId`, `location`,
+  `locationText`, `kind`) at version 0, pending its create: no attribute, no `status` field. The
+  phone never works out a visit's status: the refresh takes the snapshot's. The fix of a refused
+  visit create carries the place typed by hand, as it carries the patient and the location.
+- **Complete is `finishNotes(notes, signer:, definitionOf:, redFlagsFinished:)`.** One transaction
+  for the whole call: a note refused undoes the notes before it. It returns what the phone expects
+  of each note (`LocalEffect`), by note, in the order the sign-offs go, the Red flags note first
+  (found by its type's `auto`, as the server finds it). What the caller (L4) passes:
+  - for each note a **`NoteToFinish`**: its ID, the hash the summary screen showed
+    (`contentHashOf`, over the visit's patient and summary and the note's answers by the
+    definition of its own version, 4.5), the act and the statement version. The caller decides
+    the act (`complete` or `sign`, 3.3's table), since it words the button and the signing
+    sentence (3.5, 9.6); the store works out the effect by `signoffEffect`, so a `sign` on a
+    Non-Medical note shows as completed;
+  - a **`Signer`** from the saved profile: the credential a `sign` claims (`claimedCredential`,
+    sent on a `sign` only), with `canSign` and `needsAttestation`. The store holds no capability
+    table, and the receipt corrects what the server decides (`saved_unsigned`);
+  - **`definitionOf`**, a synchronous lookup by key and version, since the store holds no
+    definitions: the notes' own, and those of the visit's other notes, to find a finished Red flags
+    note among them;
+  - **`redFlagsFinished`**: the visit has a finished Red flags note the phone does not hold (the
+    visit read shows it). Otherwise a Red flags note counts as finished when it is the note
+    itself, another note of the same call, or a note on the phone finished as the phone knows it
+    (by the server's status, or by a sign-off made here that was not refused).
+- **What Complete refuses, writing nothing** (3.3): `ChartingPaused` while the clock check fails;
+  `NoteChanged`, naming the notes, when the hash of what the phone holds differs from the one shown
+  (a sync brought in a teammate's change after the screen was drawn); a `LocalValidationError`
+  `needs_attention` while anything about the visits or their notes waits in Needs attention, a
+  change to one of them or to a record that names one (`parentsOf`: a sign-off, an addendum, a
+  correction, a problem made at the visit), hard stop 2. A refused sign-off of a note being
+  completed now does not count: completing again is its fix. Without hard stop 2, Complete dropped
+  an answer whose refusal still waited, its fix conflicted with the person's own value, and the
+  sign-off covered a note without it (review finding SLK-4, the coordinator's decision). Then note
+  by note, through `signoffEffect`, with the hash matching and `finishCheck` as `finishOk`: the
+  server's problem, said at once rather than after a sync, for what it would refuse (`incomplete`,
+  `red_flags_first`) or store with no effect (`not_author`); `RecordLocked` for a note finished
+  already, here or on the server, with no refused sign-off to settle, and for one whose sign-off
+  waits to send, is held for review or is confirmed but not yet settled, so a note never has two
+  sign-offs in the outbox; `empty` for an empty draft with no refusal to settle, or `incomplete`
+  when its finish check fails (the person's own Red flags note, hard stop 5); and a sign-off the
+  registry refuses (a statement version of other characters), which would be refused however often
+  it was sent. A note given twice is an `ArgumentError`; a note, a definition or a
+  visit not on the phone a `StateError`. Hard stop 4 is the domain layer's.
+- **What Complete writes**, note by note. The answers that do not count leave the phone's copy
+  (their field rows), as they leave the server's when it finishes the note (4.5), so nothing done
+  here later, a correction, can bring back an answer the signer never saw; a change to one that is
+  not confirmed yet stays in the outbox, and the server drops it into history. Then the sign-off: a
+  new `note_signoff` create; or, for a note whose last sign-off was refused, its fix, the same
+  record ID with the new value and hash, superseding every refused sign-off of the note, so the
+  refusal is settled and what names it (an addendum) still does. The local record of the refused
+  sign-off is deleted and made again under the same ID, its patient worked out again. The note
+  keeps its `LocalEffect` (the effect, status and attestation expected, and the sign-off expected
+  to give them) in its record's attributes under `localEffect`, which no change sets, so no
+  schema change was needed; a note with one is finished as far as the phone is concerned.
+  Completing again marks read the `signoff_not_applied` notices of any sign-off of the note.
+  `createRecord`, `fixRejected` and `replaceRejected` refuse a `note_signoff` with an
+  `ArgumentError`, so a sign-off is made and fixed only here, its hash checked against what was
+  shown (review finding SFN-3).
+- **Every refused sign-off can be settled** (the coordinator's decision on review findings SFN-1
+  and SFN-7). When a note's last sign-off was refused and the note is finished since (on the
+  person's other phone, say) or is now an empty draft (Remove this note, 9.4), Complete sends that
+  sign-off's fix all the same, over the note as the phone holds it, and expects nothing of it: the
+  note keeps what it holds, gets no `localEffect` and is left out of the map returned. The server
+  stores the fix with effect `none` (`already_finished` or `empty`, 3.4), which settles the
+  refusal, and `hashMatches` says whether what was finished is what this phone saw
+  (`finished_differently`, below). Before, such a refusal waited in Needs attention for good, and
+  hard stop 2 then stopped every later Complete at the visit.
+- **What Complete dropped still reaches the server** (review finding SFN-5). When a note's own
+  create is refused after Complete and then fixed, `_fixNote` carries in the fixed create the
+  answers Complete dropped that an unresolved create or set of the note still holds
+  (`_droppedAtComplete`), without bringing them back to the phone's copy, so the server's sign-off
+  drops each into history as usual. With hard stop 2, a note's create can be refused with a Complete
+  waiting behind it only when the refusal comes after Complete. And the fix of a refused set whose
+  field has no row here (an answer an earlier Complete dropped) builds on the version the person
+  saw, the refused entry's `baseVersion` (SLK-4).
+- **The lock follows the effect** (`setField` throws `RecordLocked`, after the clock guard and
+  before any check of the value). A note is locked while it is finished as this phone knows it
+  (`_noteStatusHere`): the status its `localEffect` expects until a receipt settles that sign-off,
+  else the server's. Two things get through. The reopen, by `reopenNote`, not by a set, since
+  `reopenEffect` needs to know whether the note is Medical, which is its type's. And settling:
+  `fixRejected` and `resolveConflict` on a note finished since still go, and the server keeps them
+  in history; a lock there would leave a rejection that could never leave the phone. `createNote`
+  takes a note on any visit, its notes finished or not.
+- **The envelope lock reads the server** (review finding SLK-1, the coordinator's decision). A
+  visit's patient, place (`location`, `locationText`) and summary are locked when its snapshot says
+  `hasFinishedNote` (4.3) or a note of it on the phone is finished here (`envelopeLocked`). The
+  visit's status is not read: a visit is a draft while any of its notes that counts is a draft,
+  finished notes beside it or not, and the phone that signed may hold none of its finished notes
+  once they have left it (8.2). Two exceptions, as on the server: a patient given to a visit with
+  none, which takes nothing from what anyone signed, and the kind, which goes to Medical at any
+  time (3.10). A finished note the person may not read leaves `hasFinishedNote` false, so their
+  edit goes, and the server keeps it in history and tells them: they learn that the visit holds a
+  finished note, and nothing more, which is accepted. After every finished note of a visit is
+  reopened here, the envelope stays locked until a refresh brings `hasFinishedNote` false, and a
+  closed visit is not refreshed until it is opened again (review finding SLK-2, kept as built):
+  the phone may refuse for a while an edit the server would take, never send one it would keep in
+  history.
+- **`reopenNote(noteId, definition)`** sends the one change the lock lets through: a set of
+  `status` to `draft`, from the field's server version and following its pending change, when
+  `reopenEffect` says `apply`. The definition, of the note's own key and version, says whether the
+  note is Medical; the status is the one the phone knows; `everSigned` is the snapshot's (4.4), so
+  a note signed once is refused here as the server would keep it. It clears `localEffect`, and the
+  note is a draft at once and takes edits again. It returns `nothing` for a draft, writing nothing.
+  It throws, writing nothing: `RecordLocked` for what the server keeps as it is (signed, signed
+  once, or a Non-Medical note completed: an addendum or a correction is the way) and while the note
+  is sent for review (on the server the note is a draft, so the reopen would change nothing, and
+  the admin's accept would finish the note after it); `LocalValidationError` `not_author` for
+  someone else's note that its author could reopen; `ChartingPaused` while the clock check fails.
+- **A reopen while the note's sign-off waits to send** is allowed (the coordinator's decision):
+  the sign-off goes first, the server finishes the note and then reopens it, as the person did,
+  and Complete again waits for that sign-off's receipt (`RecordLocked`). Where the server keeps the
+  note finished after all, it is finished with what the person completed: when that sign-off is
+  held and later accepted (the reopen reached a draft and did nothing), or when the note's own
+  refused create is fixed (the fix folds the reopen in, and the sign-off goes after it; answers
+  changed after the reopen make the hash differ, and the person completes again).
+- **Who acts as the author** is the snapshot's `actingAuthorId`, else the note's author (3.8): an
+  assignment made online moves Complete and the reopen to the assignee at the refresh.
+- **Two visit changes are refused here** (the coordinator's decision): `setField` refuses, writing
+  nothing, a visit's kind set back from Medical (`LocalValidationError` `kind_cannot_go_back`) and
+  its patient removed (`patient_cannot_be_removed`). The server keeps both in history and tells
+  nobody, so the person would believe them made (4.1). Clearing the patient is still allowed while
+  the visit's own create is refused: the fixed create carries the person's choice.
+- **The patient of a new record** is found through `EntityRules.patientVia` for every create, so a
+  sign-off, an addendum and a correction keep their patient's chart while they wait, as a note
+  and a problem note already did. `_fileUnder` files the sign-offs, addenda and corrections hung
+  off a visit, records and waiting outbox entries, under the visit's patient as it stands here,
+  whenever that differs from where they are: after a set of the visit's `patientId`, a conflict's
+  choice of it, a receipt that kept the server's value, the fix of the visit's create, and the
+  visit's refresh. As first built (`_fileUnfiled`) it filed only records with no patient, and left
+  them under a patient filled here when the visit ended up with another (review finding SFN-4).
+  `importServerRecord` files a record that names no patient the same way. A note's own outbox
+  entries are not refiled: the open visit keeps their chart, as in phases 2 and 3. For an addendum
+  or a correction on a note the phone does not hold, the domain layer opens the note first
+  (`openServerRecord`), so it is filed under its patient; the store takes no patient hint (the
+  coordinator's decision).
+- **Receipts settle the effect inside the receipt's transaction.** `confirm` and `reject` call the
+  settling themselves (`_settleSignoff`, `_signoffRefused`), not as `onConfirmed` and `onRejected`
+  hooks, which run in savepoints that swallow their failures: a lost settle would leave a note
+  locked as finished with nothing to undo it. A confirmed sign-off: the note takes the status and
+  attestation the receipt gives, which are the server's decision whatever the phone expected (a
+  credential lowered meanwhile saves a signature unsigned), into its record's status, its status
+  field's value (the field's version left alone: a status never conflicts, and the refresh brings
+  it) and `attestation` in its attributes, the key the snapshot uses. The `localEffect` is cleared
+  only for the sign-off it names, and a reopen made after the sign-off and still waiting keeps the
+  note a draft. A receipt that gives no state leaves the note as the phone expected, locked, until
+  the refresh. A refused sign-off clears the `localEffect`: the note is a draft again, and the
+  refusal waits in Needs attention for Complete to fix. `noteState(noteId)` gives the status, the
+  attestation and whether the note is sent for review, as the phone shows them.
+- **A sign-off held for review** is confirmed with no details: the note keeps its `localEffect`,
+  stays locked, and is "Sent for review" (`sentForReview`). The store records it in its database's
+  `kv` table, IDs only: `held_signoff.<noteId>` names the held sign-off until a decision reaches the
+  phone, and `held_note.<signoffId>` names its note for good, so a later notice about a sign-off
+  settled here already is known. The record is kept by note because phase 2's `in_review` table
+  names no note, and the notice must work after the note has left the phone. The `in_review` rows
+  stay as phase 2 keeps them: a count of what was sent for review, never decided on the phone, in
+  which a held sign-off counts like any held change (the coordinator's decision). An admin's accept
+  is settled by the refresh (4.10), with no notice.
+- **`signoff_not_applied`** is the server's notice that a held sign-off will not reach the chart
+  (4.6), worded by its kind alone (9.13). It settles only the held sign-off it names: the one this
+  phone holds as sent for review loses its `localEffect`, and the note is a draft here again, to
+  read and complete again, fetched again first if it has left the phone (`openServerRecord`). A
+  notice about a sign-off settled here already (its note finished since) is stored read, never
+  shown, and its read reaches the server at the next contact. A notice about a sign-off this phone
+  knows nothing of (another phone's, or one from a database erased at a synced sign-out) is kept as
+  it came. A held receipt that comes after its notice (the first receipt was lost, and the notices
+  were fetched before the retry) is settled at once. `change_not_applied` always keeps its own
+  sentence. The coordinator's decision on review findings SRC-1 to SRC-5: as first built the phone
+  turned a `change_not_applied` on a note with a held sign-off into a local `signoff_not_applied`,
+  matched by note, which a second phone could not word and a late reject of an earlier held
+  sign-off could take for a later one.
+- **`finished_differently`** is a notice of the phone's own, made from a confirmed sign-off with
+  effect `none`, reason `already_finished` and `hashMatches` false: the note was finished over
+  other content, and the person opens it and reads what was finished (3.4, 9.13). A receipt with no
+  `hashMatches` (given only to whoever acts as the author, 4.6) tells nothing.
+- **The refresh takes a note's attributes** (4.10): the server's, `localEffect` kept, unless the
+  note's own create still waits. The `localEffect` stays while the server's copy is a draft or a
+  sign-off of the note still waits, and goes, with the held record, once the server's copy is
+  finished. An existing visit takes the server's attributes too, `hasFinishedNote` among them.
+- **What it costs, accepted.** A visit whose create is refused only after Complete, and then fixed
+  with a patient, costs a second Complete: the fixed create reaches the server ahead of the waiting
+  sign-off, whose hash had no patient, so the sign-off is refused `content_changed`. Refused before
+  Complete, hard stop 2 has the visit fixed first, and the sign-off covers the patient. Sending the
+  patient as a set after the sign-off would not fit the hold rule, which sends it in the same push
+  as the fixed create, ahead of the sign-off (review finding SFN-6). And an addendum sent in the
+  same push as its note's sign-off, when the sign-off is refused, is refused `stale_reference`, as
+  any child sent beside a refused parent is (phase 2's rule), and is fixed from Needs attention
+  (the coordinator's decision).
+- **Open.** Needs attention is to offer **Open the note** on a `signoff_not_applied` notice (9.13),
+  but the notice names a sign-off, and a held sign-off is not on the chart: the sync read loads a
+  sign-off from `note_signoffs` (`note-signoff.ts`), while the held value is in
+  `quarantine_items`, and the test server's held sign-off is not in its records either. So a phone
+  that knows nothing of the sign-off cannot find the note from the notice. For a sign-off this
+  phone made, its record names the note (`noteId`) while the record is here. The notice could also
+  name the note (a column), or the sync read could give a sender their own held sign-off: for the
+  coordinator. Also open: with
+  `empty` before the finish check, an empty Red flags note's sign-off sent beside Medical notes is
+  stored with no effect, and the Medical notes are refused `red_flags_first`, not the Red flags
+  note `incomplete`. The phone never sends it (it refuses it as `incomplete`); another client could.
+- **For the domain layer and the screens** (the card index's L4 and L5 rows): Complete passes each
+  note's act and statement version (3.3, 3.5), a `Signer` from the saved profile, a synchronous
+  `definitionOf`, and `redFlagsFinished` when the visit read shows a teammate's finished Red flags
+  note; draws the summary with `contentHashOf`; shows `NoteChanged` as "This note changed. Read it
+  again."; expects the map to leave out a note whose fix only settles a refusal, and expects
+  `needs_attention`, `empty` and `RecordLocked` (after a reopen, `RecordLocked` means the last
+  Complete must sync first); and checks `sentForReview` before `finishNotes` or `reopenNote`, to
+  say the note was sent for review rather than that it is finished. Remove this note, on a note
+  whose sign-off was refused, calls `finishNotes` for it once blanked, so the refusal settles at
+  the next sync. The close sweep (8.2) leaves open a note `sentForReview`, so the refresh settles
+  it and the notice finds it. The screens show "Waiting to send" while a note has a `localEffect`
+  and is not sent for review.
 
 ### 4.9 The phone's test server
 
@@ -3271,14 +3488,31 @@ As built on the server (unit L2), what the page has to work with; the page is un
 
 A sign-off that was held for a Program Admin shows on its note as "Sent for review" (4.8).
 
-And four notices, shown on Home as phase 2's notices are:
+And six notices, shown on Home as phase 2's notices are:
 
 | Notice | Sentence |
 |---|---|
 | `note_saved_unsigned` | "Your credential can’t sign this note type. It was saved unsigned for a co-signer." (the existing sentence, `services/api/src/sync/apply.ts:34`) |
 | `late_change_kept` | "The note was already finished. Your change was kept in its history. Add an addendum if it matters." |
-| `change_not_applied` | "Only the note’s author can do that. Nothing was changed." On a note the phone shows as "Sent for review" (4.6, a held sign-off that will not reach the chart): "Your Complete of this note wasn’t applied. Open it and complete it again." |
+| `change_not_applied` | "Only the note’s author can do that. Nothing was changed." |
+| `signoff_not_applied` (a held sign-off that will not reach the chart, 4.6) | "Your Complete of this note wasn’t applied. Open it and complete it again." With **Open the note** |
+| `finished_differently` (the phone's own, from a sign-off that found its note finished over other content, 3.4) | "This note was already finished with different content. Open it and read what was finished." With **Open the note** |
 | `note_corrected` | "A note you signed was corrected. It needs your review again." |
+
+As built (the phone's store, unit L3, with its review): `noticeLabel` in `sync_labels.dart` holds
+the sentences of `change_not_applied`, `signoff_not_applied` and `finished_differently`, each
+worded by its kind alone, with no state of the phone's, and `sync_labels_test.dart` holds each
+("the notices of a note’s life are worded by their kind alone (lifecycle 3.4, 9.13)"). The other
+notices' sentences, the problems' and the buttons come with the screens (L5). The design first
+gave `change_not_applied` a second sentence on a note shown as "Sent for review"; told apart by
+the phone's own record, it read "Only the note’s author can do that" on a second phone or after a
+sign-out had erased the database, so the server now sends the held sign-off's notice under a kind
+of its own (4.6, review finding SRC-2). `finished_differently` had no sentence in this design; its
+wording is the coordinator's. A `signoff_not_applied` notice names the sign-off, not the note
+(`ServerNotices.entityOf` gives `note_signoff`): for a sign-off this phone made, the note is the
+sign-off record's `noteId` while that record is here; for one it knows nothing of, how **Open the
+note** finds the note is open (4.8). The notice is filed under the patient of the sign-off's
+record when the phone holds it. `finished_differently` names the note.
 
 ### 9.14 Portal: the queues
 
@@ -3406,6 +3640,12 @@ As built for the online routes (unit L2, with its review):
   or notices, since seeding is no one's act, as phase 3's seed writes none for its patients; the
   preview gets no visits, having no seeded staff to sign them; and no demo student is added, so the
   queues and Notes to finish start empty.
+
+As built for the phone's store (unit L3, 4.8): what it keeps of a sign-off held for review is IDs
+only, in the encrypted database's `kv` table (`held_signoff.<noteId>`, `held_note.<signoffId>`);
+what Complete expects of a note (`localEffect`) is in the note's record; and its notices,
+`finished_differently` and the server's `signoff_not_applied` among them, hold a kind, IDs and at
+most a field's name, as phase 2's do. Nothing about a visit is written to preferences.
 
 ## 11. Tests
 
