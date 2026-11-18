@@ -1,8 +1,8 @@
 # Access policy: who sees what, and why
 
-This page states which role may see and do what with patient records, and the minimum-necessary reason for each (45 CFR §164.502(b), §164.514(d)). It describes what the software enforces as of phase 3 (patients), and what phase 4 (encounters, in build) enforces so far: the sync of visits, notes, signatures, addenda, corrections and referrals, marked "phase 4" below. It is evidence for the risk analysis and for procurement questionnaires, not a legal opinion; counsel confirms the items marked **People**.
+This page states which role may see and do what with patient records, and the minimum-necessary reason for each (45 CFR §164.502(b), §164.514(d)). It describes what the software enforces as of phase 3 (patients), and what phase 4 (encounters, in build) enforces so far: the sync of visits, notes, signatures, addenda, corrections and referrals, and the online routes that read a visit and a chart's timeline, co-sign and attest notes, list the notes that wait, assign a departed author's note and export the EMS handoff, marked "phase 4" below. It is evidence for the risk analysis and for procurement questionnaires, not a legal opinion; counsel confirms the items marked **People**.
 
-The rules are enforced in the API on every request (`services/api/src/auth/`), never only by hiding a screen. Row-level security in the database is the second line. Every refusal is written to the audit log. A request for a team the person is not an active member of, or for a suspended team, is refused before any of that team's data is touched, and logged in the platform chain, which only platform owners read, so no team's log carries what an outsider tried; the entry names the rule, the route's pattern and the team, never a patient (phase 4, `7f12515`). If the entry can't be written, the request fails.
+The rules are enforced in the API on every request (`services/api/src/auth/`), never only by hiding a screen. Row-level security in the database is the second line. Every refusal of access is written to the audit log. A request for a fresh sign-in, which admin actions and exports need, refuses no access and is not logged; nor is an answer about a record's state, input that can't be taken, or a record the team doesn't have. A request for a team the person is not an active member of, or for a suspended team, is refused before any of that team's data is touched, and logged in the platform chain, which only platform owners read, so no team's log carries what an outsider tried; the entry names the rule, the route's pattern and the team, never a patient (phase 4, `7f12515`). If the entry can't be written, the request fails.
 
 ## 1. Roles
 
@@ -21,6 +21,11 @@ Each team has four standard roles and may add custom roles built from the same f
 | Undo a merge; correct a legal name or date of birth (`patients.correct_identity`) | Yes | No | No | No | No |
 | Make a referral, and take back one's own (`referrals.create`; phase 4) | Yes | Yes | Yes | No | Yes |
 | Take back anyone's referral (`referrals.create` and `encounters.chart`; phase 4) | Yes | Yes | Yes | No | No |
+| Read a visit, a chart's timeline and its last three visits online (`patients.view`; phase 4) | Yes | Yes | Yes | Yes | Yes |
+| Co-sign a note that waits for a co-signer, and see that queue (`encounters.chart` and a credential that signs; phase 4) | With such a credential | With such a credential | With such a credential | No | No |
+| Attest a signed note, and see that queue (`encounters.chart` and the attending credential; phase 4) | As an attending | As an attending | As an attending | No | No |
+| See every draft of the team, and assign a departed author's note to another clinician (`team.manage_users`; assigning needs a recent sign-in; phase 4) | Yes | No | No | No | No |
+| Export a visit's EMS handoff as a PDF (`patients.view`, reading the visit's Red flags note, and a recent sign-in; phase 4) | Yes | Yes | Yes | Yes | No |
 
 The CHW preset is a custom role a team can create for community health workers: demographics, check-ins and referrals, no clinical notes.
 
@@ -54,7 +59,9 @@ Four actions answer with a chart's values, so each also requires `patients.view`
 | GU, breast and rectal exam findings (`patients.view_sensitive_exams`) | Yes | No | No | No | No |
 | A diagnosis on the sensitive list, picked in a note, with its entry or section (`patients.view_sensitive`) | Yes | Yes | Yes | No | No |
 
-Whoever acts as a note's author sees all of it, whatever their role: a clinician must be able to read what they wrote. Anything else a reader may not see is absent, not blanked: no value, no version, no mark of who changed it, and a note's version and time follow only what the reader is shown. A note the reader may not read is reported missing, with its signatures, addenda and corrections. A correction is missing when its old or new value would show something hidden. A signature's content hash goes only to the note's author, its signer, and a reader who holds every one of these keys and a clinical credential, since a hash could confirm a guess of a hidden answer. A change that would touch or reveal something its sender may not see is held for a Program Admin, and nothing of what the note holds is sent back. The review queue shows a held change's value only to a reviewer who may read it by the same rules; to anyone else the item says only that it is held.
+Whoever acts as a note's author sees all of it, whatever their role: a clinician must be able to read what they wrote. Anything else a reader may not see is absent, not blanked: no value, no version, no mark of who changed it, and a note's version and time follow only what the reader is shown. A note the reader may not read is reported missing, with its signatures, addenda and corrections. A correction is missing when its old or new value would show something hidden. A signature's content hash goes only to the note's author, its signer, and a reader who holds every one of these keys and a clinical credential, since a hash could confirm a guess of a hidden answer, and never to a reader from whom the visit's summary is withheld, since the hash covers it. A change that would touch or reveal something its sender may not see is held for a Program Admin, and nothing of what the note holds is sent back. The review queue shows a held change's value only to a reviewer who may read it by the same rules; to anyone else the item says only that it is held.
+
+**Notes online (phase 4).** Reading a visit, a chart's timeline and its last three visits needs only `patients.view`, as the rest of the chart does, so Billing/Data and the CHW preset read online visits that sync never sends them. Every note still goes through the same function, and every row of the table above but its first holds: Billing/Data reads Medical notes and no sensitive note type; the CHW preset reads Non-Medical notes only, and of a Medical visit neither its summary nor its own addenda. The timeline lists each note by its type and state only, and a visit's state is worked out from the notes the reader is shown, so it says nothing of one left out. The records made at a visit are shown as the chart shows them, so a role that sees no problem list sees no problem among them. The content hash a co-signature or an attestation needs goes, besides the readers above, to a reader who may co-sign or attest a note and sees all of it; such a reader learns from a missing hash that a note holds a part they may not see, which the queue of notes waiting for them already tells them. The queues list only notes the reader may read.
 
 ## 3. Minimum-necessary reasons
 
@@ -69,6 +76,10 @@ Whoever acts as a note's author sees all of it, whatever their role: a clinician
 **Substance use treatment records** stay behind `patients.view_sensitive` until counsel decides whether 42 CFR Part 2 applies. (**People.**) In a note (phase 4), the treatment part of a harm reduction note also needs a clinical credential, so Logistics, which holds `patients.view_sensitive` to build routes, does not read it without one.
 
 **GU, breast and rectal exam findings are read only with `patients.view_sensitive_exams`** (phase 4), which among the standard roles only the Program Admin holds, and by whoever acts as the note's author. The PRD says these exams "need an extra permission to view". A team whose attendings co-sign or attest such notes gives them a custom role with it. (**People:** counsel, Brooke and Mercy, lifecycle 12.1 #13.)
+
+**Anyone who may see a chart reads its visits** (phase 4). Reading a visit is reading the chart: a role that may see a chart reads what it may see of each visit, online and in a chart a phone keeps, by the same rules as everywhere else. Sync, which feeds editing, sends visits and notes only to a role that charts.
+
+**The EMS handoff holds only what any exporter may send** (phase 4). The file leaves the team with the medic who takes the patient. It names the patient by preferred name, with their age and allergies, which the medic needs, and never by the legal name or the birth date. It holds no note of a sensitive type, no sensitive exam finding, no substance use treatment record and no sensitive diagnosis, whoever exports it, so what reaches EMS does not depend on who sends it, and nobody sends a file holding what they may not see. Whoever may read the visit's Red flags note may export it, with a fresh sign-in, and every page says who exported it and when. (**People:** counsel and the team, lifecycle 12.1 #18; the clinical team and counsel, #27 and #29.)
 
 ## 4. Patient data on a phone
 
@@ -85,11 +96,15 @@ A lost phone is covered by the PIN, the encrypted database, the 7-day expiry and
 
 A note reaches a phone through the same read rules as everywhere else (section 2, phase 4): a teammate's note opened to help holds only the answers that person may see. Whoever acts as the author of a draft is sent all of it, so an answer a condition hides comes back when its field shows again.
 
+A full chart on a phone also carries its timeline and its last three visits, as the person could see them when the chart was fetched (phase 4). A change of their role or credential reaches these at the chart's next refresh; a phone offline keeps what it holds until it syncs, at most 24 hours, as for the rest of the chart.
+
 ## 5. What is logged
 
 Every search, duplicate check, chart view, history view, ID card read, queue view, merge, undo and correction is written to the audit log in the same database transaction as the action, with who, when and which patients were shown. A read that can't be logged is refused. Search text is never stored. Reads made offline are logged on the phone and join the audit log at the next sync. The audit log can be searched by patient, including records since merged into that patient.
 
 Phase 4 adds, so far: every signature, addendum, correction, declined amendment request, reopen, referral, and change kept in a finished note's history writes its event in the same transaction, naming the note or the patient and the fields, never an answer, a summary, an addendum's text, a reason's text or a referral's details. Each visit, note, signature, addendum, correction and referral a phone reads through sync is logged as a view of its visit, note or patient. A phone logs the EMS handoff it shows and its Notes to finish list offline.
+
+Phase 4's online routes log, each in its own transaction: each visit, note, signature, addendum, correction, attestation and record made at a visit that a visit read or a chart's recent visits show, as a view of its visit, note or patient; a chart's earlier visits, the co-sign and attestation queues, and the lists of notes not complete, each as one view naming the patients shown; each co-signature, attestation and assignment, never an assignment's reason; and each EMS handoff export, with its patient and the notes in the file. Home's counts name no patient and write no event. A refusal of access is logged with the reason's name.
 
 ## 6. Emergency access
 
@@ -101,3 +116,5 @@ If a team's Program Admins are unavailable, a platform owner appoints a replacem
 - Each customer team: its own access policy naming who holds each role. This page describes what the software enforces; the team's policy says who and why for its own staff.
 - A team can't keep the phone's patient list from a role that registers or charts patients. A team setting can add that later without a new permission.
 - The team (phase 4): whether a reviewer who may not read a held change may still accept it. Today they can, though the queue shows them nothing of it.
+- Counsel and the team (phase 4): who may export the EMS handoff; today, whoever may read the visit's Red flags note, Billing/Data included (lifecycle 12.1 #18).
+- The clinical team and counsel (phase 4): what of the patient the EMS handoff's header carries (today the preferred name, age and allergies), and whether any note of a sensitive type or sensitive exam finding should reach EMS (today none does; lifecycle 12.1 #27 and #29).
