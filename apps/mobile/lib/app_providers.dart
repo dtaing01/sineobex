@@ -10,6 +10,7 @@ import 'api/transport.dart';
 import 'auth/auth_provider.dart';
 import 'auth/session_controller.dart';
 import 'config/env.dart';
+import 'encounters/note_definitions.dart' show heldNoteTypes;
 import 'forms/definition_store.dart';
 import 'patients/patient_providers.dart' show patientRefreshers;
 import 'security/key_vault.dart';
@@ -156,6 +157,8 @@ final Provider<SyncController> syncControllerProvider = Provider<SyncController>
     // from the sign-in's /v1/me.
     refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: linkBase.value),
     definitions: appDefinitionStore(),
+    // A draft on a version the team's list no longer names still opens offline (forms 3.4).
+    heldNoteTypes: heldNoteTypes,
   );
   ref.onDispose(controller.dispose);
   return controller;
