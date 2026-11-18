@@ -2347,8 +2347,10 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   hash; after a reject and its notice the draft is the server's, those answers included. The design
   expected the accept's refresh to take them away again; as tested in wave F it does not: a
   finished note's read gives only the answers that count, so the phone keeps such an answer at the
-  version it had, while the server holds it null at the next. The store is unchanged, the test
-  pins it as built (11.2), and whether the phone should drop it is the coordinator's question.
+  version it had, while the server holds it null at the next. The coordinator's decision (Nov 18,
+  D107): a finished note on the phone holds only the answers its sync read carries, so the refresh
+  drops any other answer, unless a change of the person's own to it still waits. It is in build;
+  until it lands, the test pins the behaviour as built (11.2).
 - **For the domain layer and the screens** (the card index's L4 and L5 rows): Complete passes each
   note's act and statement version (3.3, 3.5), a `Signer` from the saved profile, a synchronous
   `definitionOf`, and `redFlagsFinished` when the visit read shows a teammate's finished Red flags
