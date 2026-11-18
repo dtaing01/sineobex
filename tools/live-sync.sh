@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the phone's sync scenarios (apps/mobile/test/sync/live_api_test.dart), then its patient
-# scenarios (apps/mobile/test/patients/live_patients_test.dart), against the real API on a freshly
-# seeded database. CI's "Phone sync against the real API" job and tools/ci-local.sh
+# scenarios (apps/mobile/test/patients/live_patients_test.dart), then its visits and notes through
+# the domain layer (apps/mobile/test/encounters/live_domain_test.dart), against the real API on a
+# freshly seeded database. CI's "Phone sync against the real API" job and tools/ci-local.sh
 # both run this. Needs: pnpm, Flutter, curl, and a superuser Postgres at $ADMIN_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
