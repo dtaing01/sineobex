@@ -5579,6 +5579,104 @@
         ]
       }
     },
+    "/v1/encounters/{encounterId}/attest": {
+      "post": {
+        "description": "Lifecycle 5.4. The same body as a co-sign: every note of the visit that waits for attestation and that the caller may act on, each with the contentHash of the visit read. Each attestation names the note’s current signature. A refusal names its notes in error.details.noteIds: 403 is_author, is_signer, cannot_attest or cannot_see_all (logged); 409 not_waiting or content_changed.",
+        "operationId": "attestEncounter",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "encounterId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteActInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteActResult"
+                }
+              }
+            },
+            "description": "Each note’s state now"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Attest the visit’s signed notes that wait for attestation, all or nothing",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
     "/v1/encounters/{encounterId}/cosign": {
       "post": {
         "description": "Lifecycle 5.3. The list holds every Medical note of the visit that waits for a co-signer and that the caller may act on, each with the contentHash of the visit read. A refusal names its notes in error.details.noteIds: 403 is_author, cannot_sign or cannot_see_all (logged); 409 not_waiting or content_changed, and the screen loads the visit again.",

@@ -6041,6 +6041,12 @@ class SineobexApi {
     return Role.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Attest the visit’s signed notes that wait for attestation, all or nothing
+  Future<NoteActResult> attestEncounter({required String encounterId, required NoteActInput body}) async {
+    final json = await _transport.send('POST', '/v1/encounters/${Uri.encodeComponent(encounterId)}/attest', body: body.toJson());
+    return NoteActResult.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Change a credential. Moving up takes effect only with the new credential's fields filled in.
   Future<ChangeMemberCredentialResponse> changeMemberCredential({required String membershipId, required ChangeCredential body}) async {
     final json = await _transport.send('PUT', '/v1/team/members/${Uri.encodeComponent(membershipId)}/credential', body: body.toJson());

@@ -56,6 +56,10 @@ describe('phase 4: attest', () => {
   });
   afterAll(() => h.close());
 
+  // The world is shared by every test here, so a person's notices are read for one visit at a time.
+  const noticesAbout = async (userId: string, kind: string, encounterId: string) =>
+    (await noticesOf(h, userId, kind)).filter((n) => n.recordId === encounterId);
+
   const unchanged = async (...notes: HeldNote[]) => {
     for (const n of notes) {
       expect(await noteRow(h, n.noteId)).toMatchObject({ status: 'signed', attestation: 'waiting' });
@@ -191,7 +195,7 @@ describe('phase 4: attest', () => {
       expect(refusal(r.body)).toEqual({ code: 'content_changed', noteIds: [read.noteId] });
       await unchanged(v.flags, v.note);
       expect((await eventsAfter(h, mark)).filter((e) => e.action === 'note.attested')).toEqual([]);
-      expect(await noticesOf(h, w.rae.id, 'note_attested')).toEqual([]);
+      expect(await noticesAbout(w.rae.id, 'note_attested', v.visit.encounterId)).toEqual([]);
     });
 
     it('a visit the team does not have is 404; a body that is not one is 422', async () => {
@@ -257,7 +261,7 @@ describe('phase 4: attest', () => {
         });
         expect(events[i]!.details).toEqual({ attestationId: rows[0]!.id, signoffId: signatures[i] });
       }
-      expect(await noticesOf(h, w.rae.id, 'note_attested')).toEqual([
+      expect(await noticesAbout(w.rae.id, 'note_attested', v.visit.encounterId)).toEqual([
         { entity: 'encounter', recordId: v.visit.encounterId },
       ]);
       await expectAuditClean(h, [...SECRETS, 'Ana (demo)', 'Rae (demo)'], mark);
