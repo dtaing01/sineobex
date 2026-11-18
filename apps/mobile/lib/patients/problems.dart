@@ -18,6 +18,12 @@ import 'generated/sensitive_codes.dart';
 /// Seeing problems needs `mayViewProblems`; adding, moving, notes and entered in error need
 /// `encounters.chart` (the server holds the change for review otherwise), and entered in error also
 /// the author or `patients.reverse_resolved`.
+///
+/// A problem added, moved, confirmed or noted inside an encounter names that visit (phase 4
+/// lifecycle 8.3): the screens pass its ID when opened from one, and null otherwise. The server
+/// marks a problem added at a visit as made at one, and refuses a visit of someone outside the
+/// patient's merged group as a stale reference (4.7, 8.4), which the phone refuses first for a
+/// visit it holds.
 
 /// One status change, as the history shows it.
 class ProblemEvent {
@@ -81,6 +87,8 @@ class ProblemView {
     required this.statusCheckedAt,
     required this.history,
     required this.notes,
+    required this.encounterId,
+    required this.atVisit,
   });
 
   final String id;
@@ -114,6 +122,13 @@ class ProblemView {
   final DateTime? statusCheckedAt;
   final List<ProblemEvent> history;
   final List<ProblemNote> notes;
+
+  /// The visit it was added at, whoever's chart that visit is on now (the visit lists it, 9.7).
+  final String? encounterId;
+
+  /// "at a visit" on this patient's chart: it names a visit, and that visit's patient is in the
+  /// chart's merged group as far as the phone knows (lifecycle 8.4).
+  final bool atVisit;
 
   /// Counts toward the bag check (phases 6–7) and is listed first.
   bool get open => status == 'new' || status == 'ongoing';
@@ -216,6 +231,8 @@ class Problems {
       }
     }
     final checked = a['statusCheckedAt'];
+    // A server copy says where it was made as the chart shows it; one made here, as it was created.
+    final madeAt = (a['createdEncounterId'] ?? a['encounterId']) as String?;
     return ProblemView(
       id: rec.id,
       patientId: rec.patientId ?? '',
@@ -249,6 +266,8 @@ class Problems {
             ),
       ]..sort((x, y) => y.at.compareTo(x.at)),
       notes: [...localNotes, ...serverNotes..sort((x, y) => y.writtenAt!.compareTo(x.writtenAt!))],
+      encounterId: madeAt,
+      atVisit: _atVisit(madeAt, rec.patientId ?? rec.id),
     );
   }
 
@@ -256,7 +275,8 @@ class Problems {
 
   /// **Add problem** (design 9.5): a title, an optional code, New or Ongoing (Resolved is not offered
   /// at creation), an optional onset date, and Sensitive (on for sensitive codes: the phone turns it
-  /// on, and the screen locks it). Returns the problem's ID.
+  /// on, and the screen locks it). [encounterId] is the visit it is added at (**Add to the problem
+  /// list** in a note, lifecycle 8.3). Returns the problem's ID.
   String add(
     String patientId, {
     required String title,
@@ -266,17 +286,21 @@ class Problems {
     String? onsetDate,
     String? recurrenceOf,
     String? resolvedInErrorOf,
+    String? encounterId,
   }) {
     if (status != 'new' && status != 'ongoing') {
       throw const LocalValidationError('Choose New or Ongoing.', paths: {'status'});
     }
+    final canonical = store.canonicalPatient(patientId);
+    _checkVisit(canonical, encounterId);
     return store.createRecord(entityProblem, {
-      'patientId': store.canonicalPatient(patientId),
+      'patientId': canonical,
       'title': title.trim(),
       if (code != null)
         'code': {'system': code.system, 'code': code.code, if (code.display != null) 'display': code.display!.trim()},
       'status': status,
       'sensitive': sensitive || (code != null && isSensitiveCode(code.code)),
+      'encounterId': ?encounterId,
       'onsetDate': ?onsetDate,
       'recurrenceOf': ?recurrenceOf,
       'resolvedInErrorOf': ?resolvedInErrorOf,
@@ -320,14 +344,15 @@ class Problems {
     if (t.isEmpty || t.length > 4000) {
       throw const LocalValidationError('A note is 1 to 4,000 characters.', paths: {'text'});
     }
+    _checkVisit(p.patientId ?? p.attributes['patientId']! as String, encounterId);
     return store.createRecord(entityProblemNote, {'problemId': problemId, 'text': t, 'encounterId': ?encounterId});
   }
 
   /// **Still has this?** on a Resolved problem (9.4): [cameBack] makes a new episode (New,
   /// `recurrenceOf`); otherwise it never went away and was marked Resolved by mistake (New,
   /// `resolvedInErrorOf`), which asks a Program Admin to reverse it. Care and the bag check carry on
-  /// at once either way. Returns the new problem's ID.
-  String stillHasThis(String problemId, {required bool cameBack}) {
+  /// at once either way. [encounterId]: asked inside an encounter. Returns the new problem's ID.
+  String stillHasThis(String problemId, {required bool cameBack, String? encounterId}) {
     final p = problem(problemId) ?? (throw StateError('no such problem'));
     return add(
       p.patientId,
@@ -337,6 +362,7 @@ class Problems {
       sensitive: p.sensitive,
       recurrenceOf: cameBack ? problemId : null,
       resolvedInErrorOf: cameBack ? null : problemId,
+      encounterId: encounterId,
     );
   }
 
@@ -358,6 +384,25 @@ class Problems {
     });
   }
 
+  /// A visit this phone holds of someone outside [patientId]'s merged group: the server would refuse
+  /// the record as a stale reference (records.ts visitOfOtherPatient). A visit with no patient names
+  /// nobody else; one the phone does not hold is the server's to check.
+  void _checkVisit(String patientId, String? encounterId) {
+    if (encounterId != null && !_atVisit(encounterId, patientId)) {
+      throw const LocalValidationError(
+        'That visit is someone else’s. Add this from their chart, or without the visit.',
+        problem: 'encounter_other_patient',
+        paths: {'encounterId'},
+      );
+    }
+  }
+
+  bool _atVisit(String? encounterId, String patientId) {
+    if (encounterId == null) return false;
+    final visitPatient = store.record(encounterId)?.fields['patientId']?.value;
+    return visitPatient is! String || patientGroup(store, patientId).contains(store.canonicalPatient(visitPatient));
+  }
+
   static String _reason(String reason) {
     final r = reason.trim();
     if (r.length < 3 || r.length > 300) {
@@ -366,6 +411,17 @@ class Problems {
     return r;
   }
 }
+
+/// The problem list's status for a diagnosis added from a note (**Add to the problem list**,
+/// lifecycle 8.3), from the status the note gives it: New, Chronic, Improving or Worse. PLAN-OPEN:
+/// how a note's four statuses map to the list's three (lifecycle 12.1 #16). New adds it as New and
+/// the other three as Ongoing; nothing in a note resolves a problem. Null when the note gives no
+/// status it maps: the person chooses New or Ongoing, as on Add problem.
+String? problemListStatus(String? noteStatus) => switch (noteStatus) {
+  'new' => 'new',
+  'chronic' || 'improving' || 'worse' => 'ongoing',
+  _ => null,
+};
 
 /// Sensitive by default (design 9.5): the code's first characters sort inside a listed range
 /// (services/api problem.ts isSensitiveCode).
