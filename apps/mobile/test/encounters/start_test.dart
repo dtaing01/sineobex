@@ -58,7 +58,12 @@ void main() {
   EncounterRepository repo(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) =>
       EncounterRepository(
         p.store,
-        user: EncounterUser(userId: p.userId, credential: credential, permissions: permissions),
+        user: EncounterUser(
+          userId: p.userId,
+          displayName: 'Demo Charter',
+          credential: credential,
+          permissions: permissions,
+        ),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
       );
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
+import '../../encounters/credentials.dart' show credentialText;
 import '../../forms/read_model.dart';
 import '../patients/patient_labels.dart' show longDate;
 import '../sync/sync_labels.dart' show timeOfDay;
@@ -149,16 +150,3 @@ String _when(BuildContext context, String at) {
   final t = DateTime.tryParse(at);
   return t == null ? at : '${longDate(t)} at ${timeOfDay(context, t)}';
 }
-
-/// A credential in words, as the portal words it (apps/portal/src/lib/labels.ts); null for one this
-/// app version doesn't know, which is then left out rather than shown as a code.
-String? credentialText(String code) => switch (code) {
-  'attending' => 'Attending physician',
-  'resident' => 'Resident',
-  'np' => 'Nurse practitioner',
-  'pa' => 'Physician assistant',
-  'student' => 'Student or volunteer',
-  'chw' => 'Community health worker',
-  'none' => 'No clinical credential',
-  _ => null,
-};

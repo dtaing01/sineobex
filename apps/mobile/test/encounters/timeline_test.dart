@@ -62,7 +62,12 @@ void main() {
 
   EncounterRepository repo(TestPhone p, {Set<String> permissions = staff}) => EncounterRepository(
     p.store,
-    user: EncounterUser(userId: p.userId, credential: 'attending', permissions: permissions),
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: 'attending',
+      permissions: permissions,
+    ),
     definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
   );
 
@@ -267,7 +272,7 @@ void main() {
       final online = EncounterApi(
         SineobexApi(api),
         p.store,
-        user: EncounterUser(userId: alex, credential: 'attending', permissions: staff),
+        user: EncounterUser(userId: alex, displayName: 'Demo Charter', credential: 'attending', permissions: staff),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
       );
       api.on(

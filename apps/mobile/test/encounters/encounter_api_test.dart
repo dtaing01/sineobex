@@ -67,7 +67,7 @@ void main() {
   };
   NoteDefinitions defs() => NoteDefinitions(held: (key, version) async => definitions[(key, version)]);
   EncounterUser person(String userId, {String credential = 'attending', Set<String> permissions = staff}) =>
-      EncounterUser(userId: userId, credential: credential, permissions: permissions);
+      EncounterUser(userId: userId, displayName: 'Demo Charter', credential: credential, permissions: permissions);
 
   EncounterApi online(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) => EncounterApi(
     SineobexApi(api),

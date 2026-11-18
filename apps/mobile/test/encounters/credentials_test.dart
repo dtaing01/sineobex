@@ -50,9 +50,37 @@ void main() {
     expect(capabilitiesOf('nurse'), credentialCapabilities['none']);
   });
 
+  test('a credential in words, as the portal words it; one the app does not know has none', () {
+    final labels = File('../portal/src/lib/labels.ts').readAsStringSync();
+    for (final (code, words) in [
+      ('attending', 'Attending physician'),
+      ('resident', 'Resident'),
+      ('np', 'Nurse practitioner'),
+      ('pa', 'Physician assistant'),
+      ('student', 'Student or volunteer'),
+      ('chw', 'Community health worker'),
+      ('none', 'No clinical credential'),
+    ]) {
+      expect(credentialText(code), words);
+      expect(labels, contains("$code: '$words'"), reason: code);
+    }
+    expect(credentialText('demo_new_credential'), isNull);
+  });
+
+  test('the person carries the name their saved profile shows', () {
+    final user = EncounterUser(
+      userId: 'u',
+      displayName: 'Demo Alex Rivera',
+      credential: 'resident',
+      permissions: const ['encounters.chart'],
+    );
+    expect(user.displayName, 'Demo Alex Rivera');
+  });
+
   test('the reader visibleAnswers is given is the person’s keys and credential now', () {
     final user = EncounterUser(
       userId: 'u',
+      displayName: 'Demo Charter',
       credential: 'student',
       permissions: const ['patients.view', 'encounters.chart', 'patients.view_sensitive'],
     );
@@ -67,12 +95,18 @@ void main() {
     expect(
       EncounterUser(
         userId: 'u',
+        displayName: 'Demo Charter',
         credential: 'none',
         permissions: const ['patients.view', 'billing.view_codes'],
       ).readsMedical,
       isTrue,
     );
-    final chw = EncounterUser(userId: 'u', credential: 'chw', permissions: FakeSyncServer.chw);
+    final chw = EncounterUser(
+      userId: 'u',
+      displayName: 'Demo Charter',
+      credential: 'chw',
+      permissions: FakeSyncServer.chw,
+    );
     expect([chw.readsMedical, chw.charts, chw.can.chartMedical], [false, false, false]);
   });
 }

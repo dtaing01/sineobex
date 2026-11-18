@@ -59,7 +59,12 @@ void main() {
   EncounterRepository repo(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) =>
       EncounterRepository(
         p.store,
-        user: EncounterUser(userId: p.userId, credential: credential, permissions: permissions),
+        user: EncounterUser(
+          userId: p.userId,
+          displayName: 'Demo Charter',
+          credential: credential,
+          permissions: permissions,
+        ),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
         openServerRecord: p.engine.openServerRecord,
       );
@@ -385,7 +390,7 @@ void main() {
       final view = visitFromRead(
         read,
         source: VisitSource.server,
-        user: EncounterUser(userId: alex, credential: 'attending', permissions: staff),
+        user: EncounterUser(userId: alex, displayName: 'Demo Charter', credential: 'attending', permissions: staff),
         definitionOf: (key, version) => definitions[(key, version)],
       );
       expect(

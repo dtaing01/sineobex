@@ -185,19 +185,7 @@ void main() {
       return model;
     }
 
-    for (final (code, words) in [
-      ('attending', 'Attending physician'),
-      ('resident', 'Resident'),
-      ('np', 'Nurse practitioner'),
-      ('pa', 'Physician assistant'),
-      ('student', 'Student or volunteer'),
-      ('chw', 'Community health worker'),
-      ('none', 'No clinical credential'),
-    ]) {
-      expect(credentialText(code), words);
-    }
-    expect(credentialText('demo_new_credential'), isNull);
-
+    // The words themselves are credentialText's (test/encounters/credentials_test.dart).
     await pumpField(tester, NoteReadView(model: corrected('demo_new_credential', '2026-11-02T10:00:00Z')));
     final t = DateTime.parse('2026-11-02T10:00:00Z').toLocal();
     expect(find.text('Changed by Demo Ito, ${longDate(t)} at ${timeOfDay(viewContext(tester), t)}'), findsOneWidget);

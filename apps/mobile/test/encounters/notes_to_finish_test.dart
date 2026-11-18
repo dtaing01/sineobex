@@ -55,7 +55,12 @@ void main() {
   final titles = {for (final d in definitions.values) d.key: d.title};
 
   NotesToFinish notes(TestPhone p, {Set<String> permissions = staff}) {
-    final user = EncounterUser(userId: p.userId, credential: 'attending', permissions: permissions);
+    final user = EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: 'attending',
+      permissions: permissions,
+    );
     return NotesToFinish(
       p.store,
       user: user,

@@ -84,7 +84,7 @@ void main() {
     for (final d in testNoteTypes) (d['key']! as String, d['version']! as int): NoteTypeDef.fromJson(d),
   };
   NoteTypeDef? typeOf(String key) => definitions.values.where((d) => d.key == key).firstOrNull;
-  final user = EncounterUser(userId: alex, credential: 'attending', permissions: staff);
+  final user = EncounterUser(userId: alex, displayName: 'Demo Charter', credential: 'attending', permissions: staff);
   NoteDefinitions defs() => NoteDefinitions(held: (key, version) async => definitions[(key, version)]);
 
   List<Map<String, Object?>> audits() => [

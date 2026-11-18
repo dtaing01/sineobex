@@ -67,7 +67,12 @@ void main() {
     NoteDefinitions? defs,
   }) => EncounterRepository(
     p.store,
-    user: EncounterUser(userId: p.userId, credential: credential, permissions: permissions),
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: credential,
+      permissions: permissions,
+    ),
     definitions: defs ?? lookup(),
   );
 
@@ -285,7 +290,12 @@ void main() {
     test('a teammate’s note shows what the server would show them, and no more once their role is lowered', () async {
       final (:patient, :visit, :n, :b) = await teammatesNote();
       final shown = noteIn((await repo(b).openVisit(visit))!, n);
-      final reader = EncounterUser(userId: blair, credential: 'attending', permissions: staff);
+      final reader = EncounterUser(
+        userId: blair,
+        displayName: 'Demo Charter',
+        credential: 'attending',
+        permissions: staff,
+      );
       expect(shown.actsAsAuthor, isFalse);
       expect(shown.answers, visibleAnswers(definition(testRestricted), restricted, reader.reader(actsAsAuthor: false)));
       expect(shown.answers.keys, isNot(contains('exam.findings')));

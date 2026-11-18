@@ -14,10 +14,13 @@ const signStatementVersion = 'sign-2026-11';
 /// the version names that.
 const completeStatementVersion = 'complete-2026-11';
 
-/// The signing sentence (lifecycle 3.5), shown above the button when a note will be signed:
-/// [name] as the saved profile has it, and [credential] in words.
-String signingSentence({required String name, required String credential}) =>
-    'By completing, you sign this note as $name, $credential.';
+/// The signing sentence (lifecycle 3.5), shown above the button when a note will be signed: the
+/// person's name as their saved profile has it, and their credential in words ([credentialText]).
+/// A credential this app doesn't know is left out rather than shown as a code; it signs nothing.
+String signingSentence(EncounterUser user) {
+  final credential = credentialText(user.credential);
+  return 'By completing, you sign this note as ${user.displayName}${credential == null ? '' : ', $credential'}.';
+}
 
 /// The Complete button, worded by what will happen (lifecycle 3.3).
 enum CompleteButton {
@@ -134,6 +137,7 @@ class CompletePlan {
     required this.teammateDrafts,
     required this.sentForReview,
     required this.redFlagsFinished,
+    this.signingSentence,
   });
   final String encounterId;
 
@@ -150,8 +154,12 @@ class CompletePlan {
 
   bool get canComplete => stops.isEmpty;
 
-  /// A note will be signed: the signing sentence shows ([signingSentence]).
-  bool get signs => notes.any((n) => !n.settlesOnly && n.medical && n.act == SignoffAct.sign);
+  /// A note will be signed: the signing sentence shows.
+  bool get signs => _signs(notes);
+
+  /// The sentence shown above the button when a note will be signed, naming the signer and their
+  /// credential (lifecycle 3.5); null when none will be.
+  final String? signingSentence;
 
   CompleteButton get button {
     final medical = notes.where((n) => !n.settlesOnly && n.medical);
@@ -159,6 +167,9 @@ class CompletePlan {
     return signs ? CompleteButton.completeAndSign : CompleteButton.completeAndSendForCosignature;
   }
 }
+
+bool _signs(Iterable<NoteToComplete> notes) =>
+    notes.any((n) => !n.settlesOnly && n.medical && n.act == SignoffAct.sign);
 
 /// Complete wrote nothing: [stops] say why, worded for the summary.
 class CompleteRefused implements Exception {
@@ -294,6 +305,7 @@ extension EncounterCompletion on EncounterRepository {
     return CompletePlan(
       encounterId: encounterId,
       notes: notes,
+      signingSentence: _signs(notes) ? signingSentence(user) : null,
       stops: [
         ...stops,
         if (notes.isEmpty && stops.isEmpty) const CompleteBlock(CompleteStop.nothingToComplete, _nothingToComplete),

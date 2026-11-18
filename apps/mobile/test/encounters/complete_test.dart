@@ -51,6 +51,7 @@ void main() {
       (d['key']! as String, d['version']! as int): NoteTypeDef.fromJson(d),
   };
   NoteTypeDef definition(TestNoteType t) => definitions[(t.key, t.version)]!;
+  String nameOf(String user) => 'Demo ${user == alex ? 'Alex' : 'Blair'} Rivera';
 
   EncounterRepository repo(
     TestPhone p, {
@@ -59,7 +60,12 @@ void main() {
     Set<TestNoteType> lacking = const {},
   }) => EncounterRepository(
     p.store,
-    user: EncounterUser(userId: p.userId, credential: credential, permissions: permissions),
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: nameOf(p.userId),
+      credential: credential,
+      permissions: permissions,
+    ),
     definitions: NoteDefinitions(
       held: (key, version) async => lacking.contains((key: key, version: version)) ? null : definitions[(key, version)],
     ),
@@ -178,11 +184,40 @@ void main() {
       expect([only.button, only.signs, only.notes.single.act], [CompleteButton.complete, false, SignoffAct.complete]);
     });
 
-    test('the signing sentence names the signer and their credential (lifecycle 3.5)', () {
+    test('the signing sentence names the signer as their saved profile does, and their credential (3.5)', () async {
       expect(
-        signingSentence(name: 'Demo Alex Rivera', credential: 'Resident'),
+        signingSentence(
+          EncounterUser(userId: alex, displayName: 'Demo Alex Rivera', credential: 'resident', permissions: staff),
+        ),
         'By completing, you sign this note as Demo Alex Rivera, Resident.',
       );
+      // A credential this app doesn't know is left out rather than shown as a code; it signs nothing.
+      expect(
+        signingSentence(
+          EncounterUser(userId: alex, displayName: 'Demo Alex Rivera', credential: 'demo_new', permissions: staff),
+        ),
+        'By completing, you sign this note as Demo Alex Rivera.',
+      );
+
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p, credential: 'np');
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await charted(r, visit, testRedFlags, {'flags.any': 'no'});
+      await charted(r, visit, testMedical, {'vitals.pulse': 96});
+      final plan = (await r.openComplete(visit))!;
+      expect(
+        [plan.signs, plan.signingSentence],
+        [true, 'By completing, you sign this note as ${nameOf(alex)}, Nurse practitioner.'],
+      );
+
+      final student = repo(phone(blair), credential: 'student');
+      final theirs = student.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await charted(student, theirs, testRedFlags, {'flags.any': 'no'});
+      await charted(student, theirs, testMedical, {'vitals.pulse': 96});
+      final cosigned = (await student.openComplete(theirs))!;
+      expect([cosigned.signs, cosigned.signingSentence], [false, isNull]);
     });
 
     test('a teammate’s draft stays a draft; with nothing of theirs to finish, Complete says so', () async {

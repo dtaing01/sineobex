@@ -52,7 +52,12 @@ void main() {
 
   EncounterRepository repo(TestPhone p) => EncounterRepository(
     p.store,
-    user: EncounterUser(userId: p.userId, credential: 'attending', permissions: FakeSyncServer.healthcareStaff),
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: 'attending',
+      permissions: FakeSyncServer.healthcareStaff,
+    ),
     definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
     openServerRecord: p.engine.openServerRecord,
   );

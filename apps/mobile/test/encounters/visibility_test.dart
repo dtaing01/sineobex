@@ -15,8 +15,12 @@ void main() {
   NoteTypeDef type(TestNoteType t) =>
       NoteTypeDef.fromJson(restrictedNoteTypes.firstWhere((d) => d['key'] == t.key && d['version'] == t.version));
 
-  NoteReader reader(String credential, Set<String> permissions, {bool author = false}) =>
-      EncounterUser(userId: 'u', credential: credential, permissions: permissions).reader(actsAsAuthor: author);
+  NoteReader reader(String credential, Set<String> permissions, {bool author = false}) => EncounterUser(
+    userId: 'u',
+    displayName: 'Demo Charter',
+    credential: credential,
+    permissions: permissions,
+  ).reader(actsAsAuthor: author);
 
   const staff = FakeSyncServer.healthcareStaff;
   final readers = <String, NoteReader>{

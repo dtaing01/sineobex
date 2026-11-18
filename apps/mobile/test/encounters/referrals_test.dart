@@ -42,7 +42,12 @@ void main() {
 
   Referrals referrals(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) => Referrals(
     p.store,
-    user: EncounterUser(userId: p.userId, credential: credential, permissions: permissions),
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: credential,
+      permissions: permissions,
+    ),
   );
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);

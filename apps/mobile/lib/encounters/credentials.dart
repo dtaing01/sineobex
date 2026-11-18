@@ -36,12 +36,34 @@ const credentialCapabilities = <String, CredentialCapabilities>{
 CredentialCapabilities capabilitiesOf(String credential) =>
     credentialCapabilities[credential] ?? credentialCapabilities['none']!;
 
+/// A credential in words, as the portal words it (apps/portal/src/lib/labels.ts); null for one this
+/// app version doesn't know, which is then left out rather than shown as a code. The read view and
+/// the signing sentence both word a credential with it.
+String? credentialText(String code) => switch (code) {
+  'attending' => 'Attending physician',
+  'resident' => 'Resident',
+  'np' => 'Nurse practitioner',
+  'pa' => 'Physician assistant',
+  'student' => 'Student or volunteer',
+  'chw' => 'Community health worker',
+  'none' => 'No clinical credential',
+  _ => null,
+};
+
 /// The person using the phone in the open team.
 class EncounterUser {
-  EncounterUser({required this.userId, required this.credential, required Iterable<String> permissions})
-    : permissions = Set.unmodifiable(permissions);
+  EncounterUser({
+    required this.userId,
+    required this.displayName,
+    required this.credential,
+    required Iterable<String> permissions,
+  }) : permissions = Set.unmodifiable(permissions);
 
   final String userId;
+
+  /// Their name as the saved profile has it (`LocalUser.displayName`, from `/v1/me`): the name the
+  /// signing sentence signs under (lifecycle 3.5).
+  final String displayName;
 
   /// The credential's code (`attending` ... `none`).
   final String credential;
