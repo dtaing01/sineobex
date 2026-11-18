@@ -633,6 +633,11 @@ export async function fetchCharts(scope: TeamScope, input: FetchChartsInput): Pr
         details: { source: 'cache', reason: input.reason },
       });
       await auditLinkViews(audit, projected, 'cache');
+      // The recent visits follow the reader's keys and credential as they are now. The projection
+      // key names neither view_sensitive_exams nor the credential, and is kept so: a cached chart's
+      // visits follow a change of either at the chart's next refresh, and a phone offline keeps what
+      // it holds until it syncs, at most 24 hours, as phase 3's charts do (the coordinator's decision
+      // on review finding LPM-8).
       charts.push({ ...projected, ...(await chartVisits(tx, scope, audit, id, 'cache')) });
     }
     return {
