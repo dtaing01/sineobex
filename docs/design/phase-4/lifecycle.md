@@ -2127,7 +2127,7 @@ As built (unit L3, cards L3-store-finish, L3-store-lock and L3-store-receipts, w
 `apps/mobile/lib/sync/local_store.dart`, the notices' sentences in
 `apps/mobile/lib/features/sync/sync_labels.dart`, the tests in
 `apps/mobile/test/sync/store_encounters_test.dart`, run against the test server, 11.2). Each rule
-was taken out by a script to see its test fail.
+was taken out by a script to see its test fail; 11.2 names the one check no test can show failing.
 
 - **The visit as the server keeps it.** `createEncounter` takes `locationText`, checked as the
   server checks it, and writes the registry's created fields (`patientId`, `location`,
@@ -2308,15 +2308,15 @@ was taken out by a script to see its test fail.
   note's own create still waits. The `localEffect` stays while the server's copy is a draft or a
   sign-off of the note still waits, and goes, with the held record, once the server's copy is
   finished. An existing visit takes the server's attributes too, `hasFinishedNote` among them.
-- **What it costs, accepted.** A visit whose create is refused only after Complete, and then fixed
-  with a patient, costs a second Complete: the fixed create reaches the server ahead of the waiting
+- **What it costs.** A visit whose create is refused only after Complete, and then fixed with a
+  patient, costs a second Complete: the fixed create reaches the server ahead of the waiting
   sign-off, whose hash had no patient, so the sign-off is refused `content_changed`. Refused before
   Complete, hard stop 2 has the visit fixed first, and the sign-off covers the patient. Sending the
   patient as a set after the sign-off would not fit the hold rule, which sends it in the same push
-  as the fixed create, ahead of the sign-off (review finding SFN-6). And an addendum sent in the
-  same push as its note's sign-off, when the sign-off is refused, is refused `stale_reference`, as
-  any child sent beside a refused parent is (phase 2's rule), and is fixed from Needs attention
-  (the coordinator's decision).
+  as the fixed create, ahead of the sign-off; so this records the cost, the review's other choice
+  (review finding SFN-6). And an addendum sent in the same push as its note's sign-off, when the
+  sign-off is refused, is refused `stale_reference`, as any child sent beside a refused parent is
+  (phase 2's rule), and is fixed from Needs attention (kept as built, the coordinator's decision).
 - **Open.** Needs attention is to offer **Open the note** on a `signoff_not_applied` notice (9.13),
   but the notice names a sign-off, and a held sign-off is not on the chart: the sync read loads a
   sign-off from `note_signoffs` (`note-signoff.ts`), while the held value is in
