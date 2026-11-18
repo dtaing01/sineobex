@@ -2538,11 +2538,14 @@ class LocalStore {
     }
     _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), r.id]);
     // The read of a finished note gives only its answers that count, as its reader may see them, and
-    // the phone's copy holds no more: an answer it leaves out the server holds null in its history, or
-    // keeps from this reader. Kept here (one Complete dropped, brought back by a refresh while its
-    // sign-off was held, or held by the author's other phone), a reopen could show it again, and a
-    // Complete over it would be refused. A change of the person's own to it that still waits in the outbox (pending, refused or
-    // in conflict, which a field's pending change always is) keeps it until its receipt.
+    // the phone's copy holds no more. Most answers it leaves out the server holds null in its history:
+    // kept here (one Complete dropped, brought back by a refresh while its sign-off was held, or held
+    // by the author's other phone), a reopen could show it again, and a Complete over it would be
+    // refused. But one a correction hid stays in the server's note (lifecycle 4.7), and one kept from
+    // this reader is left out too: they go as well, so a reopen that shows such an answer's field again
+    // shows it empty here, as on a phone that opened the note only after the correction (lifecycle
+    // 4.5). A change of the person's own to an answer that still waits in the outbox (pending, refused
+    // or in conflict, which a field's pending change always is) keeps it until its receipt.
     if (NoteStatus.values.asNameMap()[r.status] case final status? when status != NoteStatus.draft) {
       for (final name in here.fields.keys) {
         if (!name.startsWith('data.') || r.fields.containsKey(name)) continue;

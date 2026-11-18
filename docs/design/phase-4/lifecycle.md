@@ -1716,7 +1716,14 @@ noteContentHash = sha256Hex(canonicalJson({
   dropped does not outlive the finish on a phone that got it back from a refresh while the sign-off
   was held (D106), or on the author's other phone, which held the draft with it: kept there, a
   reopen could show it again, and a Complete over it would be refused `content_changed`, as the
-  server holds it null.
+  server holds it null. Not every answer the read leaves out is null on the server, though: one a
+  correction hid stays in the note (4.7), and one kept from the reader is left out too. As built,
+  the refresh drops those from the phone as well, so a reopen that shows such an answer's field
+  again shows it empty there, while the server's draft holds it and it counts again; the Complete
+  is then refused `content_changed`, and completing again after the refresh, which brings the
+  answer back, settles it. A phone that first opened the note after the correction never held the
+  answer, so it was the same there before D107. Whether to narrow the drop (to the read that first
+  finds the note finished) is an open question for the coordinator, from D107's review.
 - **Why the patient and the summary are in it.** They are on the summary screen where Complete
   is pressed (9.6). If a teammate attached the visit to another patient, or rewrote the summary,
   between what the signer saw and what the server holds, the signature must not land. The hashes
@@ -2535,9 +2542,10 @@ way), with no notice. The refresh of a visit the phone holds takes the server's 
 `hasFinishedNote` among them (4.3), which the envelope lock reads.
 
 Since D107, the refresh of a finished note also leaves the phone's copy with only the answers its
-read carries (4.5, 4.8): an answer the read leaves out, which the server holds null in its history
-or keeps from this reader, leaves the phone, unless a change of the person's own to it still waits,
-which keeps it until its receipt. A teammate's or the author's other phone's Complete thus reaches
+read carries (4.5, 4.8): an answer the read leaves out leaves the phone, unless a change of the
+person's own to it still waits, which keeps it until its receipt. The server holds most such
+answers null in its history; one it keeps from this reader, and one a correction hid, which stays
+in the server's note (4.7), leave the phone too (4.5 says what that costs at a reopen). A teammate's or the author's other phone's Complete thus reaches
 every phone that holds the note as what was finished, with nothing the finish dropped. And a
 `signoff_not_applied` notice is read on any phone once the person completes its note again there,
 by the note it names, and is filed under that note's patient on a phone that holds the note but not
