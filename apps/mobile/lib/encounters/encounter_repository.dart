@@ -571,6 +571,7 @@ class EncounterRepository {
       corrections: correctionItems,
       attestations: const [],
       notSynced: held.createOf(rec.id) != null,
+      title: definition.title,
     );
   }
 

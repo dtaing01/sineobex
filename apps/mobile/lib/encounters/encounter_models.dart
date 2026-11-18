@@ -3,6 +3,7 @@
 /// read from. Everything here was worked out for one reader; nothing they may not see is in it.
 library;
 
+import '../api/generated/api.dart' show RecordSnapshot;
 import '../forms/definition.dart';
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
@@ -209,6 +210,8 @@ class NoteView {
     required this.corrections,
     required this.attestations,
     required this.notSynced,
+    this.title,
+    this.contentHash,
   });
 
   final String noteId;
@@ -258,7 +261,8 @@ class NoteView {
   /// Answers changed here and not yet confirmed ("Waiting to send" under the field).
   final Set<String> pendingPaths;
 
-  /// The note laid out for reading, with the corrections the reader may see; null when [unreadable].
+  /// The note laid out for reading, with the corrections the reader may see; null when the phone laid
+  /// it out and [unreadable].
   final ReadModel? read;
 
   /// One line per section (lifecycle 8.1), nothing from a sensitive exam for anyone; empty when
@@ -274,6 +278,15 @@ class NoteView {
   /// Its create waits here.
   final bool notSynced;
 
+  /// Its note type's title: the definition's, or the server's where the phone lacks the definition.
+  final String? title;
+
+  /// The note as the server holds it (lifecycle 4.5), which co-sign and attest send back: only in the
+  /// server's read (5.1), and there only to a reader who acts as its author, sees every answer of any
+  /// note, or may co-sign or attest it and sees every answer of it that counts.
+  final String? contentHash;
+
+  /// The phone lacks its definition. A note the server read keeps its [read] all the same.
   bool get unreadable => definition == null;
 
   /// Medical, by its type; null when [unreadable].
@@ -314,6 +327,7 @@ class VisitView {
     required this.notes,
     required this.notSynced,
     required this.pendingFields,
+    this.records = const [],
   });
 
   final String encounterId;
@@ -356,9 +370,19 @@ class VisitView {
   /// Envelope fields changed here and not yet confirmed.
   final Set<String> pendingFields;
 
+  /// The records made at the visit (referrals, allergies, problems and problem notes, whichever chart
+  /// they are on, 9.7, D91), as the server's read gives them to the reader; none in the phone's own
+  /// read, whose referrals `Referrals.madeAt` lists.
+  final List<RecordSnapshot> records;
+
   bool get medical => kind == VisitKind.medical;
 
-  /// Every record the reader is shown: the visit, its addenda, its notes and what hangs off them. A
-  /// read logs each once; pass it back to log only what a later read adds.
-  Set<String> get shownIds => {encounterId, for (final a in addenda) a.id, for (final n in notes) ...n.shownIds};
+  /// Every record the reader is shown: the visit, its addenda, its notes and what hangs off them, and
+  /// the records made at it. A read logs each once; pass it back to log only what a later read adds.
+  Set<String> get shownIds => {
+    encounterId,
+    for (final a in addenda) a.id,
+    for (final n in notes) ...n.shownIds,
+    for (final r in records) r.id,
+  };
 }
