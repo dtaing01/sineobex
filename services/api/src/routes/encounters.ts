@@ -11,7 +11,7 @@ import {
 } from '../encounters/incomplete.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { homeCounts, HomeCounts } from '../encounters/counts.ts';
-import { exportHandoff, HANDOFF_FILE_NAME, isTimeZone } from '../encounters/handoff.ts';
+import { exportHandoff, HANDOFF_FILE_NAME, isTimeZone, TIME_ZONE_PATTERN } from '../encounters/handoff.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
@@ -193,6 +193,7 @@ const HandoffQuery = z.object({
   timeZone: z
     .string()
     .max(64)
+    .regex(TIME_ZONE_PATTERN)
     .refine(isTimeZone, { message: 'unknown_time_zone' })
     .optional()
     .openapi({

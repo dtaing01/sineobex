@@ -298,6 +298,14 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
       teamId: w.t.teamId,
     });
     expect(unknown.status).toBe(422);
+    // So is anything not shaped as a zone's name: the query string carries nothing a name could be.
+    for (const bad of ['Demo Rowan', '1970-11-02', 'America/Detroit/x/y']) {
+      const res = await h.request(
+        `/v1/encounters/${visit.encounterId}/ems-handoff?timeZone=${encodeURIComponent(bad)}`,
+        { token: w.vic.token, teamId: w.t.teamId },
+      );
+      expect(res.status, bad).toBe(422);
+    }
     expect(await eventsAfter(h, mark)).toEqual([]);
   });
 

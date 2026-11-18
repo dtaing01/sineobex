@@ -6083,6 +6083,7 @@
             "schema": {
               "description": "The reader’s IANA time zone (for example America/Detroit): the file’s times are printed in it, with its name. Without it, in UTC.",
               "maxLength": 64,
+              "pattern": "^[A-Za-z][A-Za-z0-9_+-]{0,40}(\\/[A-Za-z0-9_+-]{1,40}){0,2}$",
               "type": "string"
             }
           }

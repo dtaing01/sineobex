@@ -104,6 +104,13 @@ export function offersHandoff(type: ResolvedNoteType, answers: Answers): boolean
 }
 
 /**
+ * The shape of an IANA time zone's name (America/Detroit, America/Argentina/Buenos_Aires, Etc/GMT+5,
+ * UTC): letters, digits, `_`, `+` and `-`, in up to three parts. The query string carries the
+ * reader's, so the route takes nothing else there: no space, nothing a name or a search could be.
+ */
+export const TIME_ZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+-]{0,40}(\/[A-Za-z0-9_+-]{1,40}){0,2}$/;
+
+/**
  * Whether the runtime knows [zone] as an IANA time zone. The portal sends the reader's; the server
  * prints the file's times in it.
  */
