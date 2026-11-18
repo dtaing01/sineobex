@@ -1137,8 +1137,11 @@ class LocalStore {
   /// [redFlagsFinished]: the visit has a finished Red flags note this phone does not hold (the visit
   /// read says so).
   ///
-  /// Throws, writing nothing: [ChartingPaused] while the clock check fails (3.11); [RecordLocked]
-  /// for a note finished already, here or on the server, with no refused sign-off to settle;
+  /// Throws, writing nothing: [ChartingPaused] while the clock check fails (3.11); a
+  /// [LocalValidationError] `needs_attention` while anything about the visits or their notes waits in
+  /// Needs attention (3.3 hard stop 2: a refused sign-off of a note completed now is its fix, and does
+  /// not count); [RecordLocked] for a note finished already, here or on the server, with no refused
+  /// sign-off to settle;
   /// [LocalValidationError] with the server's problem for a sign-off it would refuse (`incomplete`,
   /// `red_flags_first`) or store with no effect (`not_author`, and `empty` for an empty draft with no
   /// refusal to settle: Complete skips those, 3.3), since a worker can't fix either once it is sent.
@@ -1160,6 +1163,7 @@ class LocalStore {
         if (s.note.hash != s.asked.shownHash) s.asked.noteId,
     ];
     if (changed.isNotEmpty) throw NoteChanged(changed);
+    _checkNothingWaits(shown.map((s) => s.note.encounterId).toSet(), {for (final n in notes) n.noteId});
     final ordered = [
       for (final s in shown)
         if (_isRedFlags(s.note.definition)) s,
@@ -1185,6 +1189,38 @@ class LocalStore {
       }
       return made;
     });
+  }
+
+  /// Hard stop 2 (lifecycle 3.3): nothing about [visits] or their notes waits in Needs attention, a
+  /// change to one of them or a record that names one (a sign-off, an addendum, a correction, a
+  /// problem made at the visit). A refused sign-off of a note of [completing] does not count:
+  /// completing again is its fix (3.4). Otherwise a refused answer would be dropped by Complete, and
+  /// the sign-off would cover a note without it (review finding SLK-4).
+  void _checkNothingWaits(Set<String> visits, Set<String> completing) {
+    final ids = {
+      ...visits,
+      for (final r in _db.select(
+        "SELECT id, json_extract(attributes_json, '\$.encounterId') AS visit FROM records WHERE entity = ?",
+        [entityNote],
+      ))
+        if (visits.contains(r['visit'])) r['id'] as String,
+    };
+    for (final e in needsAttention()) {
+      final value = e.value;
+      final ownRefusedSignoff =
+          e.entity == entitySignoff &&
+          e.op == 'create' &&
+          value is Map<String, Object?> &&
+          completing.contains(value['noteId']);
+      if (ownRefusedSignoff) continue;
+      if (ids.contains(e.recordId) ||
+          parentsOf(entity: e.entity, op: e.op, field: e.field, value: e.value).any((p) => ids.contains(p.id))) {
+        throw const LocalValidationError(
+          'Something about this visit waits in Needs attention. Fix it there first, then complete again.',
+          problem: 'needs_attention',
+        );
+      }
+    }
   }
 
   /// The content hash of [noteId] as this phone holds it (lifecycle 4.5): the visit's patient and
@@ -2007,7 +2043,9 @@ class LocalStore {
     _guardFor(x.entity);
     if (x.op == 'set') {
       _checkField(x.entity, x.field!, value);
-      final base = record(x.recordId)?.fields[x.field]?.serverVersion ?? 0;
+      // The version the field is at here, or with no row for it (an answer an earlier Complete left
+      // out of the phone's copy), the one the person saw when they made the refused change (SLK-4).
+      final base = record(x.recordId)?.fields[x.field]?.serverVersion ?? x.baseVersion;
       _tx(() {
         final fix = _append(
           entity: x.entity,

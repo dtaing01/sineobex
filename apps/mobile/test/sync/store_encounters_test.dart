@@ -425,8 +425,9 @@ void main() {
       await sync(p);
       final n = note(p, visit, testNote, {'vitals.pulse': 88});
       final create = p.store.outbox().single;
-      p.store.reject(create, reason: 'validation', details: {'problem': 'unknown_note_type'});
       final expected = complete(p, [finishing(p, n, testNote)])[n]!;
+      // Refused once Complete was made (a refusal waiting already stops Complete, 3.3 hard stop 2).
+      p.store.reject(create, reason: 'validation', details: {'problem': 'unknown_note_type'});
       expect(p.store.heldCount(), 1);
 
       p.store.fixRejected(create.changeId, {
@@ -689,6 +690,100 @@ void main() {
         );
       },
     );
+
+    test('Complete waits while anything about the visit or its notes waits in Needs attention', () async {
+      // Review finding SLK-4 (3.3 hard stop 2): Complete dropped the answer whose refusal waited, so
+      // its fix went with base version 0 and conflicted with the person's own value, and the sign-off
+      // covered a note without it.
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      p.store.setField(n, 'data.vitals.pulse', 'fast');
+      await sync(p);
+      final refused = p.store.needsAttention().single;
+      expect(refused.field, 'data.vitals.pulse');
+      final before = p.store.outbox().length;
+      Matcher waits() => throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'needs_attention'));
+      expect(() => complete(p, [finishing(p, n, testNote)]), waits());
+      // Another note of the same visit waits on it too.
+      final other = note(p, visit, testNote, {'care.plan': 'Demo: rest'});
+      expect(() => complete(p, [finishing(p, other, testNote)]), waits());
+      expect(p.store.outbox(), hasLength(before + 1));
+      expect([p.store.localEffect(n), p.store.localEffect(other)], [null, null]);
+      // Fixed, the visit's notes complete.
+      p.store.fixRejected(refused.changeId, 90);
+      await sync(p);
+      expect(p.store.needsAttention(), isEmpty);
+      complete(p, [finishing(p, n, testNote), finishing(p, other, testNote)]);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      expect(late(), isEmpty);
+    });
+
+    test('a refused sign-off of a note being completed does not hold Complete up; another of the visit does', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final a = note(p, visit, testNote, {'vitals.pulse': 88});
+      final b = note(p, visit, testNote, {'vitals.pulse': 70});
+      await sync(p);
+      server
+        ..serverEdit(a, 'data.care.plan', 'Demo: shelter tonight', by: blair)
+        ..serverEdit(b, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+      complete(p, [finishing(p, a, testNote), finishing(p, b, testNote)]);
+      await sync(p);
+      expect(p.store.needsAttention(), hasLength(2));
+      // b's refusal waits in Needs attention while a is completed alone.
+      expect(
+        () => complete(p, [finishing(p, a, testNote)]),
+        throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'needs_attention')),
+      );
+      complete(p, [finishing(p, a, testNote), finishing(p, b, testNote)]);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+    });
+
+    test('a visit whose create was refused is fixed before its notes are completed', () async {
+      // Review finding SFN-6: fixed with a patient after Complete, the visit reached the server ahead
+      // of the sign-off, whose hash had no patient, so it was refused.
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final create = p.store.outbox().single;
+      p.store.reject(create, reason: 'validation');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      expect(
+        () => complete(p, [finishing(p, n, testNote)]),
+        throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'needs_attention')),
+      );
+      p.store.fixRejected(create.changeId, {'kind': 'non_medical', 'patientId': patient});
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+    });
+
+    test('the fix of a refused answer whose row is gone builds on the version the person saw', () async {
+      // Review finding SLK-4: an earlier Complete could leave a refused answer with no row here; its
+      // fix read version 0 from the missing row and conflicted with the person's own value.
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      p.store.setField(n, 'data.vitals.pulse', 'fast');
+      await sync(p);
+      final refused = p.store.needsAttention().single;
+      expect(refused.baseVersion, 1);
+      p.store.database.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [n, 'data.vitals.pulse']);
+      p.store.fixRejected(refused.changeId, 90);
+      expect(p.store.sendable().single.baseVersion, 1);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
+    });
 
     test('Complete waits for the clock check, and writes nothing while it fails', () async {
       final p = phone(alex);
