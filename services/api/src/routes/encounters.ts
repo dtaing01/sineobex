@@ -3,6 +3,7 @@ import { createRoute } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
 import { attestVisit } from '../encounters/attest.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
+import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
 import { EncounterParam, PatientParam, TimelinePage, TimelineQuery, VisitRead } from '../patients/schemas.ts';
@@ -84,6 +85,37 @@ const attestRoute = createRoute({
   },
 });
 
+const queueRoute = (which: QueueName, path: string, operationId: string, act: string, credential: string) =>
+  createRoute({
+    method: 'get',
+    path,
+    operationId,
+    tags: ['encounters'],
+    summary: `The team’s visits with notes that wait for ${act}, oldest first`,
+    description:
+      `Lifecycle 5.4. Needs encounters.chart and a credential that ${credential}; else 403 ` +
+      `${which === 'cosign' ? 'cannot_sign' : 'cannot_attest'}, logged. One row per visit with its waiting notes, ` +
+      'each with canAct false when the caller may not act on it (an answer they may not see, or their own note). ' +
+      'A note the caller may not read is absent. Logged with the patients shown.',
+    security: [{ bearer: [] }],
+    responses: { 200: { description: 'The queue', ...json(SignatureQueue) }, ...errors(401, 403) },
+  });
+
+const cosignQueueRoute = queueRoute(
+  'cosign',
+  '/v1/team/cosign-queue',
+  'getCosignQueue',
+  'a co-signature',
+  'signs',
+);
+const attestationQueueRoute = queueRoute(
+  'attestation',
+  '/v1/team/attestation-queue',
+  'getAttestationQueue',
+  'attestation',
+  'attests',
+);
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -106,5 +138,15 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
     const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
     const { encounterId } = c.req.valid('param');
     return c.json(await attestVisit(scope, encounterId, c.req.valid('json'), c.req.routePath), 200);
+  });
+
+  app.openapi(cosignQueueRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
+    return c.json(await readQueue(scope, 'cosign', c.req.routePath), 200);
+  });
+
+  app.openapi(attestationQueueRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
+    return c.json(await readQueue(scope, 'attestation', c.req.routePath), 200);
   });
 }

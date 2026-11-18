@@ -4469,6 +4469,81 @@ class QuarantineReceiptResultsItem {
       };
 }
 
+class QueueNote {
+  const QueueNote({
+    required this.attestedBefore,
+    required this.author,
+    required this.canAct,
+    required this.completedAt,
+    required this.noteId,
+    required this.noteTypeKey,
+    required this.signedBefore,
+  });
+
+  /// Who attested it last, when a correction sent it back; null otherwise
+  final UserRef? attestedBefore;
+  final UserRef author;
+  /// False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed
+  final bool canAct;
+  final DateTime? completedAt;
+  final String noteId;
+  final String noteTypeKey;
+  /// Who signed it before, when a correction sent it back; null otherwise
+  final UserRef? signedBefore;
+
+  factory QueueNote.fromJson(Map<String, dynamic> json) => QueueNote(
+        attestedBefore: json['attestedBefore'] == null ? null : UserRef.fromJson(json['attestedBefore'] as Map<String, dynamic>),
+        author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
+        canAct: json['canAct'] as bool,
+        completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
+        noteId: json['noteId'] as String,
+        noteTypeKey: json['noteTypeKey'] as String,
+        signedBefore: json['signedBefore'] == null ? null : UserRef.fromJson(json['signedBefore'] as Map<String, dynamic>),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'attestedBefore': attestedBefore == null ? null : attestedBefore!.toJson(),
+        'author': author.toJson(),
+        'canAct': canAct,
+        'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
+        'noteId': noteId,
+        'noteTypeKey': noteTypeKey,
+        'signedBefore': signedBefore == null ? null : signedBefore!.toJson(),
+      };
+}
+
+class QueueVisit {
+  const QueueVisit({
+    required this.encounterId,
+    required this.notes,
+    required this.patientId,
+    required this.preferredName,
+    required this.startedAt,
+  });
+
+  final String encounterId;
+  final List<QueueNote> notes;
+  final String? patientId;
+  final String? preferredName;
+  final DateTime startedAt;
+
+  factory QueueVisit.fromJson(Map<String, dynamic> json) => QueueVisit(
+        encounterId: json['encounterId'] as String,
+        notes: (json['notes'] as List<dynamic>).map((e) => QueueNote.fromJson(e as Map<String, dynamic>)).toList(),
+        patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
+        startedAt: DateTime.parse(json['startedAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounterId': encounterId,
+        'notes': notes.map((e) => e.toJson()).toList(),
+        'patientId': patientId == null ? null : patientId!,
+        'preferredName': preferredName == null ? null : preferredName!,
+        'startedAt': startedAt.toUtc().toIso8601String(),
+      };
+}
+
 class ReadCorrection {
   const ReadCorrection({
     required this.at,
@@ -4931,6 +5006,22 @@ class ServerTime {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'epochMs': epochMs,
         'serverTime': serverTime.toUtc().toIso8601String(),
+      };
+}
+
+class SignatureQueue {
+  const SignatureQueue({
+    required this.rows,
+  });
+
+  final List<QueueVisit> rows;
+
+  factory SignatureQueue.fromJson(Map<String, dynamic> json) => SignatureQueue(
+        rows: (json['rows'] as List<dynamic>).map((e) => QueueVisit.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'rows': rows.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -6135,6 +6226,18 @@ class SineobexApi {
   Future<DuplicatePairSummary> flagDuplicate({required FlagDuplicate body}) async {
     final json = await _transport.send('POST', '/v1/team/duplicates', body: body.toJson());
     return DuplicatePairSummary.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The team’s visits with notes that wait for attestation, oldest first
+  Future<SignatureQueue> getAttestationQueue() async {
+    final json = await _transport.send('GET', '/v1/team/attestation-queue');
+    return SignatureQueue.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The team’s visits with notes that wait for a co-signature, oldest first
+  Future<SignatureQueue> getCosignQueue() async {
+    final json = await _transport.send('GET', '/v1/team/cosign-queue');
+    return SignatureQueue.fromJson(json as Map<String, dynamic>);
   }
 
   /// Both charts of a pair side by side, with what matched and earlier decisions

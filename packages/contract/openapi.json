@@ -3589,6 +3589,102 @@
         ],
         "type": "object"
       },
+      "QueueNote": {
+        "properties": {
+          "attestedBefore": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who attested it last, when a correction sent it back; null otherwise"
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "canAct": {
+            "description": "False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed",
+            "type": "boolean"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteTypeKey": {
+            "type": "string"
+          },
+          "signedBefore": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who signed it before, when a correction sent it back; null otherwise"
+          }
+        },
+        "required": [
+          "noteId",
+          "noteTypeKey",
+          "author",
+          "completedAt",
+          "signedBefore",
+          "attestedBefore",
+          "canAct"
+        ],
+        "type": "object"
+      },
+      "QueueVisit": {
+        "properties": {
+          "encounterId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/QueueNote"
+            },
+            "type": "array"
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preferredName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "encounterId",
+          "patientId",
+          "preferredName",
+          "startedAt",
+          "notes"
+        ],
+        "type": "object"
+      },
       "ReadCorrection": {
         "properties": {
           "at": {
@@ -4072,6 +4168,20 @@
         "required": [
           "serverTime",
           "epochMs"
+        ],
+        "type": "object"
+      },
+      "SignatureQueue": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/QueueVisit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
         ],
         "type": "object"
       },
@@ -7669,6 +7779,53 @@
         ]
       }
     },
+    "/v1/team/attestation-queue": {
+      "get": {
+        "description": "Lifecycle 5.4. Needs encounters.chart and a credential that attests; else 403 cannot_attest, logged. One row per visit with its waiting notes, each with canAct false when the caller may not act on it (an answer they may not see, or their own note). A note the caller may not read is absent. Logged with the patients shown.",
+        "operationId": "getAttestationQueue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignatureQueue"
+                }
+              }
+            },
+            "description": "The queue"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team’s visits with notes that wait for attestation, oldest first",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
     "/v1/team/audit/search": {
       "post": {
         "operationId": "searchAudit",
@@ -7778,6 +7935,53 @@
         "summary": "Recompute every hash in the team's audit chain",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/v1/team/cosign-queue": {
+      "get": {
+        "description": "Lifecycle 5.4. Needs encounters.chart and a credential that signs; else 403 cannot_sign, logged. One row per visit with its waiting notes, each with canAct false when the caller may not act on it (an answer they may not see, or their own note). A note the caller may not read is absent. Logged with the patients shown.",
+        "operationId": "getCosignQueue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignatureQueue"
+                }
+              }
+            },
+            "description": "The queue"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team’s visits with notes that wait for a co-signature, oldest first",
+        "tags": [
+          "encounters"
         ]
       }
     },

@@ -551,6 +551,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/team/attestation-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The team’s visits with notes that wait for attestation, oldest first
+         * @description Lifecycle 5.4. Needs encounters.chart and a credential that attests; else 403 cannot_attest, logged. One row per visit with its waiting notes, each with canAct false when the caller may not act on it (an answer they may not see, or their own note). A note the caller may not read is absent. Logged with the patients shown.
+         */
+        get: operations["getAttestationQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/team/audit/search": {
         parameters: {
             query?: never;
@@ -579,6 +599,26 @@ export interface paths {
         put?: never;
         /** Recompute every hash in the team's audit chain */
         post: operations["verifyAuditChain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/cosign-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The team’s visits with notes that wait for a co-signature, oldest first
+         * @description Lifecycle 5.4. Needs encounters.chart and a credential that signs; else 403 cannot_sign, logged. One row per visit with its waiting notes, each with canAct false when the caller may not act on it (an answer they may not see, or their own note). A note the caller may not read is absent. Logged with the patients shown.
+         */
+        get: operations["getCosignQueue"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2018,6 +2058,30 @@ export interface components {
                 status: "quarantined" | "recorded" | "rejected";
             }[];
         };
+        QueueNote: {
+            /** @description Who attested it last, when a correction sent it back; null otherwise */
+            attestedBefore: components["schemas"]["UserRef"] | null;
+            author: components["schemas"]["UserRef"];
+            /** @description False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed */
+            canAct: boolean;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: uuid */
+            noteId: string;
+            noteTypeKey: string;
+            /** @description Who signed it before, when a correction sent it back; null otherwise */
+            signedBefore: components["schemas"]["UserRef"] | null;
+        };
+        QueueVisit: {
+            /** Format: uuid */
+            encounterId: string;
+            notes: components["schemas"]["QueueNote"][];
+            /** Format: uuid */
+            patientId: string | null;
+            preferredName: string | null;
+            /** Format: date-time */
+            startedAt: string;
+        };
         ReadCorrection: {
             at: string;
             by: string;
@@ -2150,6 +2214,9 @@ export interface components {
             epochMs: number;
             /** Format: date-time */
             serverTime: string;
+        };
+        SignatureQueue: {
+            rows: components["schemas"]["QueueVisit"][];
         };
         SignedQuarantine: {
             payload: {
@@ -4318,6 +4385,44 @@ export interface operations {
             };
         };
     };
+    getAttestationQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignatureQueue"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     searchAudit: {
         parameters: {
             query?: never;
@@ -4385,6 +4490,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChainCheck"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCosignQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignatureQueue"];
                 };
             };
             /** @description Not signed in, or the session expired */

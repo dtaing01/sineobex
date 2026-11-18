@@ -46,6 +46,9 @@ interface QueueRow {
   notes: QueueNote[];
 }
 
+// A row shows its patient's preferred name (lifecycle 5.4); nothing a note holds is in the queue.
+const ANSWERS = SECRETS.filter((s) => s !== 'Demo Robin');
+
 const at = (h: Harness, hoursAgo: number) =>
   new Date(h.clock.now.getTime() - hoursAgo * 3600_000).toISOString();
 
@@ -166,7 +169,7 @@ describe('phase 4: the co-sign and attestation queues', () => {
       // Signed notes, a complete Non-Medical note and drafts wait for nobody.
       expect(rowOf(r.rows, signed)).toBeUndefined();
       expect(r.rows.flatMap((row) => row.notes).map((n) => n.noteId)).not.toContain(social.noteId);
-      expectNoneOf(r.body, SECRETS);
+      expectNoneOf(r.body, ANSWERS);
     });
 
     it('a note with an answer the caller may not see, or one they wrote, is listed with canAct false', async () => {
@@ -185,6 +188,18 @@ describe('phase 4: the co-sign and attestation queues', () => {
       expect(noteIn(rowOf(raes.rows, newest), newest.note)!.canAct).toBe(false);
       // Nothing of the hidden exam is in the queue.
       expectNoneOf(anas.body, ['Demo: no lesions seen', 'exam.findings']);
+    });
+
+    it('a note the caller may not read is absent, as on the timeline, and so is a visit left with none', async () => {
+      // Eli charts and signs, but without patients.view reads no Medical note (lifecycle 6.4 row 1).
+      for (const which of ['cosign', 'attestation'] as const) {
+        const mark = await auditMark(h);
+        const r = await queue(w.eli, which);
+        expect(r.status).toBe(200);
+        expect(r.rows).toEqual([]);
+        const [event] = await expectAudit(h, `${which}_queue.viewed`, { after: mark, count: 1 });
+        expect(event!.details).toEqual({ patientIds: [], resultCount: 0 });
+      }
     });
 
     it('a note back after a correction shows who signed it before', async () => {
@@ -274,7 +289,7 @@ describe('phase 4: the co-sign and attestation queues', () => {
       expect(noteIn(rowOf(r.rows, hidden), hidden.flags)!.canAct).toBe(true);
       const vics = await queue(w.vic, 'attestation');
       expect(noteIn(rowOf(vics.rows, hidden), hidden.note)!.canAct).toBe(true);
-      expectNoneOf(r.body, [...SECRETS, 'exam.findings']);
+      expectNoneOf(r.body, [...ANSWERS, 'exam.findings']);
     });
 
     it('a note attested, corrected and waiting again shows who attested it before', async () => {
