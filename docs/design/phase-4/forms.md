@@ -1825,7 +1825,7 @@ gives an `AnswerState`, and `change(path, value)` takes a change, `null` being t
 answer. A path is the answer's whole path, its entry part and side included. An `AnswerState` is the
 value as stored, whether it is `pending` (saved on this phone and not yet confirmed by the server)
 and, when two people changed it, an `AnswerConflict`: the value on the server (`theirs`), who holds
-it (`ConflictBy`: a teammate, the person on another phone, or the server), when, and
+it (`ConflictBy`: a teammate, the same person on another phone, or the server), when, and
 `onChoose(keepMine)`, which is null while charting is paused for the phone's clock. `NoteForm` is
 its own `FormAnswers`, made from what the screen gives it (below). A field host can also draw a
 group, a grid (given its picked `rows`) or an action (given `actions`) by itself, as its tests do;
@@ -2023,8 +2023,8 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
 - **A second unit** (`altUnit`) is a two-way switch under the box, the base unit picked each time
   the field is drawn (PLAN-OPEN, 10.1 #44). A value typed in the second unit, at any number of
   decimals, is converted and rounded to the field's decimals in the base unit, which is stored, and
-  "Saved as 5.1 cm." says so. Switching shows the same answer in the other unit, at one decimal
-  place more than the field keeps, and saves nothing. The range is said in the base unit.
+  "Saved as 5.1 cm." says so. Switching shows the same answer in the other unit, the second at one
+  decimal place more than the field keeps, and saves nothing. The range is said in the base unit.
 - **A stepper** (`display: stepper`) puts "One fewer" and "One more" either side of the box, each a
   button of at least 48 px read with the number. It starts at the least from an empty box, steps by
   one, and stops at each end of the range.
@@ -2048,9 +2048,9 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   and once picked, as the problem list marks it; only the code decides. Once picked it is read as
   the field's label with "label (code)", and Remove clears it. "Add to the problem list" (lifecycle
   8.3) is not part of the widget: card F7-problem-button adds it.
-- **A region** is three choose-ones of chips: the region (the field's options, in every released
-  note type the eleven of the shared list, in its order), then Side from the list the field names,
-  then Front or back where the field asks for its surface (10.1 #3).
+- **A region** is up to three choose-ones of chips: the region (the field's options, in every
+  released note type the eleven of the shared list, in its order); then Side, where the field names
+  a side list; then Front or back, where it asks for its surface (10.1 #3).
 - A grid reflows to one row per line at 320 px and at 200% text. It never scrolls sideways. As built
   every grid is one row per line, each row named by its label, which stands for the cell's; with
   sides, a Right and a Left block sit side by side only where both fit at 280 px each, scaled by the
@@ -2059,11 +2059,11 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   two on a phone, one at 320 px or at 200% text, four on a tablet.
 - **A disabled field** (a finished note, a frozen store, a field a set flag clears) is read-only and
   says so to a screen reader. A text, a number, a date, a time, a duration, a choice, a region and a
-  diagnosis are drawn as `ReadOnlyAnswer`: the value written as the read view writes it ("98.6 °F", "7 of 10",
-  "38 weeks 2 days", "Arms, Right, Anterior"), or a dash read as "Blank", in full contrast in a
-  sunken box, read as read-only and not enabled. A tick keeps its label and its help in full
-  contrast (review finding A11Y-4). A disabled Material control would fade its words to about 38%,
-  too faint to read.
+  diagnosis are drawn as `ReadOnlyAnswer`: the value written out ("98.6 °F", "7 of 10", "38 weeks 2
+  days", "Arms, Right, Anterior", a date in words, a time as the phone shows times), or a dash read
+  as "Blank", in full contrast in a sunken box, read as read-only and not enabled. A tick keeps its
+  label and its help in full contrast (review finding A11Y-4). A disabled Material control would
+  fade its words to about 38%, too faint to read.
 - **What a screen reader hears:** a field's label, then its help (review finding A11Y-5); a
   section's header as a heading; a group, a grid's row and each side by name; nothing twice. What
   the form says by itself is said once, not again at each keystroke: a refused pick, a number's or a
