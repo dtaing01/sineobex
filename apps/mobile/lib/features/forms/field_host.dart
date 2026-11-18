@@ -412,6 +412,8 @@ class _ConflictChoice extends StatelessWidget {
     final c = context.field;
     final text = Theme.of(context).textTheme;
     final choose = enabled ? conflict.onChoose : null;
+    // PLAN-OPEN: whether a conflict names the person who made the other change (forms 10.1 #52):
+    // no; phase 2's words, with the time and the two values side by side.
     final who = switch (conflict.by) {
       ConflictBy.teammate => 'A teammate',
       ConflictBy.youElsewhere => 'You, from another phone',

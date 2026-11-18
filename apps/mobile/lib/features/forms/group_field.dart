@@ -44,7 +44,8 @@ class GroupField extends StatefulWidget {
   final bool Function(FlagDef flag) ticked;
 
   /// Something in the group is answered: a collapsed group then opens with it showing, so what was
-  /// charted is never out of sight.
+  /// charted is never out of sight. PLAN-OPEN: whether a collapsed group or grid opens by itself
+  /// (forms 10.1 #50): only when it holds an answer; otherwise it stays closed until tapped.
   final bool filled;
 
   /// False: every field in it is read-only. A collapsed group still opens, to be read.

@@ -91,7 +91,7 @@ class NoteForm extends StatefulWidget {
 }
 
 class _NoteFormState extends State<NoteForm> implements FormAnswers {
-  // PLAN-OPEN: which section a form opens at. The first that shows, unless the screen names one;
+  // PLAN-OPEN: which section a form opens at (forms 10.1 #47). The first that shows, unless the screen names one;
   // one open at a time, so a long exam doesn't become one long page.
   late String? _open = widget.openSection;
   bool _chose = false;
@@ -215,6 +215,8 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
   @override
   Widget build(BuildContext context) {
     final reading = NoteReading(widget.definition, widget.answers);
+    // PLAN-OPEN: whether a section that `needs` a capability is drawn for a credential without it
+    // (forms 10.1 #53): no, even when it holds a teammate's answers.
     final shown = [
       for (final s in reading.model.sections)
         if (reading.sectionShows(s) && (s.section.needs == null || widget.capabilities.contains(s.section.needs))) s,
@@ -469,7 +471,8 @@ class _Drawing {
   }
 
   /// Something is stored in the field (in that row): a collapsed group or grid then opens with it
-  /// showing, so what was charted is never out of sight.
+  /// showing, so what was charted is never out of sight. PLAN-OPEN: whether a collapsed group or
+  /// grid opens by itself (forms 10.1 #50): only when it holds an answer.
   bool _holdsAny(FieldNode node, String? entry, String? row) => node.leaves.any(
     (leaf) => (row == null || leaf.row == row) && !isBlank(reading.stored(reading.pathOf(leaf, entry))),
   );
@@ -569,8 +572,9 @@ class _Section extends StatelessWidget {
                             Text(section.title, style: text.titleLarge),
                             if (line != null) ...[
                               const SizedBox(height: FieldSpace.s1),
-                              // PLAN-OPEN: how much of a long recap a closed header shows. Three
-                              // lines, then an ellipsis; a screen reader hears all of it.
+                              // PLAN-OPEN: how much of a long recap a closed header shows (forms
+                              // 10.1 #48). Three lines, then an ellipsis; a screen reader hears all
+                              // of it.
                               Text(
                                 line,
                                 maxLines: 3,

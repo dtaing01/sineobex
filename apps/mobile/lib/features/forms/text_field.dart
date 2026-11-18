@@ -11,7 +11,8 @@ import '../patients/patient_widgets.dart' show PhiField;
 
 /// How long typing pauses before what was typed is saved. Every save is a change to sync, with its
 /// own history row, so a keystroke is not one; leaving the box, Done and leaving the screen save at
-/// once. PLAN-OPEN: how long a pause in typing saves a typed answer (one second here).
+/// once. PLAN-OPEN: how long a pause in typing saves a typed answer (forms 10.1 #42): one second
+/// here.
 const typingPause = Duration(seconds: 1);
 
 /// Saves what is typed into a form's boxes (lifecycle 3.2: "saves as the author types"): after

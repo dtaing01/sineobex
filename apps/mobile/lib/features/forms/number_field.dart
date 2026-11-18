@@ -76,8 +76,8 @@ class _NumberFieldState extends State<NumberField> {
   num? _saved;
   String? _error;
 
-  /// Typing in the second unit. PLAN-OPEN: which unit a field with a second one opens in (the base
-  /// unit here, each time).
+  /// Typing in the second unit. PLAN-OPEN: which unit a field with a second one opens in (forms 10.1
+  /// #44): the base unit here, each time.
   bool _alt = false;
 
   NumberDef get _f => widget.field;
@@ -182,7 +182,8 @@ class _NumberFieldState extends State<NumberField> {
   }
 
   /// One more or one fewer of the box's number, kept inside the range. An empty box starts at the
-  /// least.
+  /// least. PLAN-OPEN: when a stepper's count is saved (forms 10.1 #45): when tapping pauses, as
+  /// typing does, not at each tap, so going from 1 to 4 is one change to sync, not three.
   void _step(int by) {
     final typed = _typed();
     final now = typed is _Value ? typed.value : null;

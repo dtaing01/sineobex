@@ -54,7 +54,9 @@ class GridField extends StatefulWidget {
   final List<OptionDef> rows;
   final GridCellBuilder cell;
 
-  /// Something in the grid is answered: a collapsed grid then opens with it showing.
+  /// Something in the grid is answered: a collapsed grid then opens with it showing. PLAN-OPEN:
+  /// whether a collapsed group or grid opens by itself (forms 10.1 #50): only when it holds an
+  /// answer.
   final bool filled;
 
   @override

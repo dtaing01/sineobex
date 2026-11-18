@@ -181,6 +181,8 @@ class _ChoiceFieldState extends State<ChoiceField> {
     // A picked chip's words on the accent, as the theme's selected label is.
     final chips = Theme.of(context).chipTheme;
     final style = on ? chips.secondaryLabelStyle : chips.labelStyle;
+    // PLAN-OPEN: how a choose-one answer is cleared (forms 10.1 #49): by tapping the picked chip
+    // again; a Clear button beside every choice would double the targets.
     // A picked choose-one chip clears the answer when tapped again, which a radio-like group
     // doesn't: said before it is done, as the tap's hint where the reader says one (Android), as the
     // chip's hint elsewhere (iOS), so it is said once.

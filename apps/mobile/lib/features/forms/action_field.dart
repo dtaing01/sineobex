@@ -50,6 +50,8 @@ class _ActionFieldState extends State<ActionField> {
   @override
   Widget build(BuildContext context) {
     final action = widget.onPressed;
+    // PLAN-OPEN: whether a finished note offers its actions (forms 10.1 #51): no; an action is drawn
+    // only on a form that can be changed, and only where the screen gives it something to do.
     if (action == null || !widget.enabled) return const SizedBox.shrink();
     final f = widget.field;
     final text = Theme.of(context).textTheme;

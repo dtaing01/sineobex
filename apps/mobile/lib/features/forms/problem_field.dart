@@ -44,9 +44,9 @@ String? problemText(ProblemAnswer value) => switch (value) {
 /// The field labels itself: the search box carries its label and help, and so does the diagnosis
 /// once picked.
 ///
-/// PLAN-OPEN: a diagnosis not on the phone's list (phase 3 lets a problem have no code). Until the
-/// team decides, only a code from the list can be picked: a typed label would carry no code, and
-/// so could never be marked or kept from a reader as sensitive.
+/// PLAN-OPEN: a diagnosis not on the phone's list (forms 10.1 #46; phase 3 lets a problem have no
+/// code). Until the team decides, only a code from the list can be picked: a typed label would
+/// carry no code, and so could never be marked or kept from a reader as sensitive.
 class ProblemField extends ConsumerStatefulWidget {
   const ProblemField({
     super.key,
