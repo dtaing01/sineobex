@@ -410,6 +410,35 @@ void main() {
       });
     });
 
+    test('opening their own Medical draft of the full type brings their Red flags note, if they have none '
+        '(review LFM-4)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      // Made before the app added the Red flags note with a Medical note: neither brought one.
+      final quick = p.store.createNote(
+        encounterId: visit,
+        noteTypeKey: 'quick_encounter',
+        noteTypeVersion: 1,
+        data: const {
+          'visit.parts': ['general'],
+          'general.concern': 'Demo: cough for a week',
+        },
+      );
+      final full = p.store.createNote(
+        encounterId: visit,
+        noteTypeKey: 'general_primary_care',
+        noteTypeVersion: 1,
+        data: const {'reason.concern': 'Demo: sore knee'},
+      );
+      expect(await r.ownRedFlagsNote(visit), isNull);
+      final done = await r.expand(quick, type('general_primary_care'));
+      expect([done.noteId, done.existing, done.written], [full, true, isEmpty]);
+      expect(await r.ownRedFlagsNote(visit), isNotNull);
+    });
+
     test('a part expanded again opens its note as it is; an empty draft of the type of theirs is filled', () async {
       final p = phone(alex);
       final patient = server.seedPatient();
