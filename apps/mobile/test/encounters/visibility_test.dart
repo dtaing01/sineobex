@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/credentials.dart';
 import 'package:sineobex_field/encounters/visibility.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/field_at.dart' show definitionModel;
 import 'package:sineobex_field/forms/visible.dart';
 
 import '../sync/fake_server.dart';
@@ -96,6 +97,102 @@ void main() {
     }
     // The cases reach both answers.
     expect(hidden, inInclusiveRange(20, 200));
+  });
+
+  group('an answer that could hold what the reader may not see (lifecycle 4.4, 6.4 rule 5, 9.5)', () {
+    /// Every path a note on [definition] can have an answer at, and every field's own path (a group
+    /// or a grid stores nothing there), each repeating section's in one entry with its own answers,
+    /// and one that names nothing.
+    List<String> pathsOf(NoteTypeDef definition) => [
+      for (final node in definitionModel(definition).nodes)
+        for (final parts in [?node.base, for (final leaf in node.leaves) leaf.parts])
+          node.section.section.repeat == null ? parts.join('.') : [parts.first, e1, ...parts.skip(1)].join('.'),
+      for (final section in definition.sections)
+        if (section.repeat != null) ...['${section.id}.$e1.entryAt', '${section.id}.$e1.entryRemoved'],
+      'nowhere.at.all',
+    ];
+
+    test('is the server’s rule, for every path of every test note type and every reader', () {
+      var held = 0, total = 0;
+      for (final json in [...testNoteTypes, redFlagsNoteType, ...restrictedNoteTypes]) {
+        final definition = NoteTypeDef.fromJson(json);
+        for (final path in pathsOf(definition)) {
+          for (final MapEntry(key: who, value: r) in readers.entries) {
+            final expected = FakeSyncServer.mayHoldHidden(definition, path, r);
+            total++;
+            if (expected) held++;
+            expect(mayHoldHidden(definition, path, r), expected, reason: '${definition.key} $path, $who');
+          }
+        }
+      }
+      // The cases reach both answers.
+      expect([held, total - held], everyElement(greaterThan(40)));
+    });
+
+    // services/api/test/sync-reads.test.ts, 'every place a sensitive exam’s mark can sit is held
+    // without the key, whatever the note holds: an option, its Other text, a region, a grid’s rows,
+    // an entry around one'; and fake_parity_test.dart's case of that name.
+    test('a sensitive exam’s mark is read-only wherever it can sit, for staff without the exam key', () {
+      final marked = type(testMarked);
+      const w = 'e0000003';
+      final ben = readers['an attending with the staff role']!;
+      final cases = <(String, bool)>[
+        ('look.systems', true),
+        ('look.systems_other', true),
+        ('look.skin.region', true),
+        ('look.rows.head', true),
+        ('look.rows.rectal', true),
+        ('wounds.$w.where', true),
+        ('wounds.$w.entryAt', true),
+        ('wounds.$w.size', false),
+        ('look.notes', false),
+      ];
+      for (final (path, expected) in cases) {
+        expect(mayHoldHidden(marked, path, ben), expected, reason: path);
+        // With the key, each is the draft rule's.
+        expect(mayHoldHidden(marked, path, readers['an admin who reads sensitive exams']!), isFalse, reason: path);
+      }
+      // Whoever acts as the author is never held by it.
+      expect(
+        mayHoldHidden(
+          marked,
+          'look.systems',
+          reader('none', const {'patients.view', 'encounters.chart'}, author: true),
+        ),
+        isFalse,
+      );
+      expect(
+        mayHoldHidden(marked, 'look.systems', reader('none', const {'patients.view', 'encounters.chart'})),
+        isTrue,
+      );
+    });
+
+    // sync-reads.test.ts, 'a set of an answer the sender may not see is held for review'.
+    test(
+      'a diagnosis takes its section with it without the sensitive key; a note one may not read is read-only whole',
+      () {
+        final restricted = type(testRestricted);
+        final plain = readers['a role that charts and reads nothing sensitive']!;
+        expect(
+          {
+            for (final path in ['general.notes', 'dx.$e1.note', 'dx.$e1.diagnosis.code', 'moud.dose', 'exam.findings'])
+              path: mayHoldHidden(restricted, path, plain),
+          },
+          {
+            'general.notes': false,
+            'dx.$e1.note': true,
+            'dx.$e1.diagnosis.code': true,
+            'moud.dose': true,
+            'exam.findings': true,
+          },
+        );
+        // A treatment record needs a credential that charts Medical beside the key.
+        expect(mayHoldHidden(restricted, 'moud.dose', readers['staff with no credential']!), isTrue);
+        expect(mayHoldHidden(restricted, 'moud.dose', readers['a student']!), isFalse);
+        expect(mayHoldHidden(type(testSensitive), 'talk.notes', plain), isTrue);
+        expect(mayHoldHidden(type(testSensitive), 'talk.notes', readers['staff with no credential']!), isFalse);
+      },
+    );
   });
 
   group('a correction is hidden whole when a value it names is hidden from the reader', () {

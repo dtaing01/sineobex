@@ -4,13 +4,17 @@
 /// `answerHidden` and services/api/src/encounters/read.ts `hiddenCorrections`. The phone applies it
 /// to what it holds, so a role lowered since the phone downloaded a note shows no more than the
 /// server would now.
+///
+/// And which answers someone may not change because they could hold what that person may not see
+/// (lifecycle 4.4, 6.4 rule 5, 9.5): records.ts `mayHoldHidden`, copied, so the phone never sends a
+/// set the server would hold for review.
 library;
 
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
 import '../forms/effective.dart';
 import '../forms/field_at.dart';
-import '../forms/paths.dart' show CodesHolds;
+import '../forms/paths.dart' show CodesHolds, FieldNode;
 import '../forms/visible.dart';
 import '../sync/canonical_json.dart';
 
@@ -127,4 +131,53 @@ Set<String> hiddenCorrections(
       }))
         c.id,
   };
+}
+
+/// Whether the answer at [path] could hold something [reader] may not see, read from the definition
+/// and the reader's keys alone, never from what the note holds (records.ts `mayHoldHidden`;
+/// lifecycle 4.4, 6.4 rule 5; review finding RD-10). The server holds every set of such an answer
+/// from someone who does not act as the author, whatever the note holds now: their phone holds the
+/// note as `visibleAnswers` gave it, so a set would drop what they were never sent (forms 8.1, F5's
+/// review BEH-4). So the form shows it to them read-only. It is:
+///
+///  - every answer of a note they may not read; a sensitive exam's section without
+///    `patients.view_sensitive_exams`; a treatment record without `patients.view_sensitive` and a
+///    credential that charts Medical;
+///  - without `patients.view_sensitive`, every answer of a section that holds a diagnosis, since a
+///    sensitive one takes its entry, or outside a repeating section its section, with it;
+///  - without `patients.view_sensitive_exams`, a field whose options, rows or regions carry the
+///    sensitive-exam mark, the Other text of such a field, and, in a repeating section that holds
+///    one, each entry's own answers.
+///
+/// Never for whoever acts as the author. A path that names nothing holds nothing. Throws what the
+/// interpreter throws.
+bool mayHoldHidden(NoteTypeDef type, String path, NoteReader reader) {
+  if (reader.actsAsAuthor) return false;
+  if (visibleAnswers(type, const {}, reader) == null) return true;
+  final target = fieldAt(type, path);
+  if (target == null) return false;
+  final section = target.section;
+  if (section.sensitiveExam && !reader.viewSensitiveExams) return true;
+  if (section.treatmentRecord && !(reader.viewSensitive && reader.chartsMedical)) return true;
+  final nodes = [
+    for (final n in definitionModel(type).nodes)
+      if (n.section.section == section) n,
+  ];
+  if (!reader.viewSensitive && nodes.any((n) => n.field is ProblemDef)) return true;
+  if (reader.viewSensitiveExams) return false;
+  if (target.points == Points.entry) return nodes.any(_marked);
+  final node = target.leaf?.node ?? nodes.where((n) => n.field == target.field).firstOrNull;
+  return [node, node?.grid].any((n) => n != null && _marked(n));
+}
+
+/// A field whose options, rows or regions carry the sensitive-exam mark: its own, or the picker's
+/// (records.ts `marked`).
+bool _marked(FieldNode node) {
+  final picked = node.picked?.holds;
+  final options = switch (node.field) {
+    ChoiceDef(:final options) || RegionDef(:final options) => options,
+    GridDef(:final rows) => rows ?? (picked is CodesHolds ? picked.options : const <OptionDef>[]),
+    _ => const <OptionDef>[],
+  };
+  return options.any((o) => o.sensitiveExam);
 }
