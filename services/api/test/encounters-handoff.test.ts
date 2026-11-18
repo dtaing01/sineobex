@@ -378,7 +378,9 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
     const res = await exportAs(await staleToken(h, 'vic@example.com'));
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('reauth_required');
-    await expectAudit(h, 'ems_handoff.exported', { after: mark, count: 0 });
+    // Nor is it logged: it asks for a fresh sign-in and refuses no access (the coordinator's
+    // decision on review finding LPM-2).
+    expect(await eventsAfter(h, mark)).toEqual([]);
   });
 
   it('a visit with no handoff is 404: EMS not activated, or no Red flags note at all', async () => {

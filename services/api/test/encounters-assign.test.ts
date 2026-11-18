@@ -79,12 +79,15 @@ describe('phase 4: assign a note', () => {
       await unassigned(v);
     });
 
-    it('needs a recent sign-in', async () => {
+    it('needs a recent sign-in, and its refusal is not logged', async () => {
       const { c, v } = await departed('resident');
       await gone(c);
+      const mark = await auditMark(h);
       const r = await assign(v.note.noteId, w.nia.id, await staleToken(h, 'admin@example.com'));
       expect(r.status).toBe(403);
       expect((r.body as Json).error?.code).toBe('reauth_required');
+      // It asks for a fresh sign-in and refuses no access (the coordinator's decision on LPM-2).
+      expect(await eventsAfter(h, mark)).toEqual([]);
       await unassigned(v);
     });
   });
