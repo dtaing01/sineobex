@@ -1596,8 +1596,10 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
   when the acting author's own would have applied, and a late change otherwise. The base version
   never matters.
 - **The snapshot's attributes** gain `attestation`, `actingAuthorId`, `completedAt` and
-  `signoffId`; the contract still describes a snapshot's attributes as set at creation (`schemas.ts`
-  `RecordSnapshot`), which these are not. What a reader is sent of a note is 6.4's.
+  `signoffId`. The contract (`schemas.ts` `RecordSnapshot`) says what is true of attributes now:
+  no change sets them, most are set at creation, and some follow what the server records later
+  (these four, a patient's `lastSeenAt`, a problem's status times, merge and reversal request).
+  What a reader is sent of a note is 6.4's.
 
 ### 4.5 The content hash
 

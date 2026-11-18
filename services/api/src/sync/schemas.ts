@@ -186,7 +186,10 @@ export const RecordSnapshot = z
     authorUserId: Uuid,
     createdAt: DateTime,
     updatedAt: DateTime,
-    attributes: z.record(z.string(), z.unknown()).openapi({ description: 'Set at creation, never changed' }),
+    attributes: z.record(z.string(), z.unknown()).openapi({
+      description:
+        'What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId, completedAt and signoffId (lifecycle 4.4)',
+    }),
     fields: z.record(z.string(), FieldState),
   })
   .openapi('RecordSnapshot');

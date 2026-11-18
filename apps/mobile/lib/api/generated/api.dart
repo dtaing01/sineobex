@@ -4165,7 +4165,7 @@ class RecordSnapshot {
     required this.version,
   });
 
-  /// Set at creation, never changed
+  /// What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId, completedAt and signoffId (lifecycle 4.4)
   final Map<String, Object?> attributes;
   final String authorUserId;
   final DateTime createdAt;
