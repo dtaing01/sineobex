@@ -333,6 +333,81 @@ void main() {
       },
     );
 
+    test('a recent visit logs each addendum and correction of its notes, and each record made at it on that '
+        'record’s own patient, the visit moved or not (review LRA-1, LRA-2)', () async {
+      final p = phone(alex);
+      final e = online(p);
+      const moved = 'e0000000-0000-4000-8000-0000000000bb';
+      const problem = 'c0000000-0000-4000-8000-000000000001';
+      const problemNote = 'c0000000-0000-4000-8000-000000000002';
+      const heldProblem = 'c0000000-0000-4000-8000-000000000003';
+      const heldProblemNote = 'c0000000-0000-4000-8000-000000000004';
+      const unknownProblemNote = 'c0000000-0000-4000-8000-000000000005';
+      const noteAddendum = '10000000-0000-4000-8000-000000000004';
+      // A problem of the first patient this phone holds, its note written at the visit.
+      p.store.importServerRecord(
+        const ServerRecord(
+          entity: 'problem',
+          id: heldProblem,
+          status: 'active',
+          authorUserId: blair,
+          attributes: {'patientId': patient, 'title': 'Demo: knee pain', 'code': null, 'sensitive': false},
+          fields: {},
+        ),
+        open: false,
+      );
+      Map<String, Object?> snapshot(String entity, String id, Map<String, Object?> attributes) => {
+        'entity': entity,
+        'id': id,
+        'status': 'active',
+        'authorUserId': blair,
+        'createdAt': '2026-10-19T16:00:00.000Z',
+        'updatedAt': '2026-10-19T16:00:00.000Z',
+        'version': 1,
+        'attributes': attributes,
+        'fields': <String, Object?>{},
+      };
+      Map<String, Object?> noteOn(String problemId) => {
+        'problemId': problemId,
+        'text': 'Demo: better',
+        'encounterId': visit,
+        'writtenAt': '2026-10-19T16:00:00.000Z',
+      };
+      // The visit was made for the first patient and moved to another since (8.4, D91): what was made
+      // at it stays on the first patient's chart, and a problem's note names no patient of its own.
+      final read = readOf()..['patientId'] = moved;
+      final note = (read['notes']! as List<Object?>).single! as Map<String, Object?>;
+      note['addenda'] = [
+        {
+          'id': noteAddendum,
+          'noteId': n1,
+          'author': blairRef,
+          'credential': 'student',
+          'text': 'Demo: dressing changed',
+          'writtenAt': '2026-10-19T17:30:00.000Z',
+          'clockVerified': true,
+        },
+      ];
+      read['records'] = [
+        snapshot('problem', problem, {'patientId': patient, 'title': 'Demo: cough', 'code': null, 'sensitive': false}),
+        snapshot('problem_note', problemNote, noteOn(problem)),
+        snapshot('problem_note', heldProblemNote, noteOn(heldProblem)),
+        snapshot('problem_note', unknownProblemNote, noteOn('c0000000-0000-4000-8000-000000000009')),
+      ];
+      api.offline = true;
+      await e.recentVisit(VisitRead.fromJson(read));
+      final logged = {
+        for (final a in audits(p)) a['entityId']: (a['action'], a['entity'], a['patientId'], a['source']),
+      };
+      expect(logged[noteAddendum], ('note.viewed', 'note_addendum', moved, 'cache'));
+      expect(logged[s2], ('note.viewed', 'note_correction', moved, 'cache'));
+      expect(logged[problem], ('patient.viewed', 'problem', patient, 'cache'));
+      expect(logged[problemNote], ('patient.viewed', 'problem_note', patient, 'cache'));
+      expect(logged[heldProblemNote], ('patient.viewed', 'problem_note', patient, 'cache'));
+      // Its problem neither listed nor held here: logged with no patient rather than the wrong one.
+      expect(logged[unknownProblemNote], ('patient.viewed', 'problem_note', null, 'cache'));
+    });
+
     test('what the server refuses becomes what the screen shows', () async {
       final p = phone(alex);
       final e = online(p);

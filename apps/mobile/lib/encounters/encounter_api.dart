@@ -485,7 +485,7 @@ class EncounterApi {
       }
     }
     for (final r in view.records) {
-      log('patient.viewed', r.entity.wire, r.id, r.attributes['patientId'] as String? ?? patient);
+      log('patient.viewed', r.entity.wire, r.id, patientOfMadeAt(r, view.records, store));
     }
   }
 
@@ -527,6 +527,21 @@ class EncounterApi {
       throw EncounterRequestFailed(problem, message, code: e.code, noteIds: noteIds);
     }
   }
+}
+
+/// The patient [record], one of the records made at a visit ([records], `VisitRead.records`), is on
+/// (lifecycle 8.4, D91), which can be another chart's than the visit's once the visit moved: its own
+/// `patientId`; for a problem's note, which names none, its problem's, from [records] or the phone's
+/// copy of the problem. Null when neither says: never the visit's patient, which may not be its own.
+String? patientOfMadeAt(wire.RecordSnapshot record, Iterable<wire.RecordSnapshot> records, LocalStore store) {
+  if (record.attributes['patientId'] case final String patientId) return patientId;
+  if (record.attributes['problemId'] case final String problemId) {
+    for (final r in records) {
+      if (r.id == problemId && r.attributes['patientId'] is String) return r.attributes['patientId']! as String;
+    }
+    return store.record(problemId)?.patientId;
+  }
+  return null;
 }
 
 /// The server's read of a visit (5.1) as the read model the screens draw: from [source] `server`,
