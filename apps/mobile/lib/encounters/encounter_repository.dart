@@ -4,7 +4,7 @@ import '../api/generated/api.dart' as wire;
 import '../api/transport.dart' show NetworkException;
 import '../forms/answer_state.dart' show AnswerConflict, ConflictBy;
 import '../forms/check_answer.dart';
-import '../forms/conditions.dart' show Answers;
+import '../forms/conditions.dart' show Answers, NoteReading;
 import '../forms/definition.dart';
 import '../forms/effective.dart' show effectiveAnswers;
 import '../forms/expand.dart' show expandQuick;

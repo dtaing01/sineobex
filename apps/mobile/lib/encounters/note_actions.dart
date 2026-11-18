@@ -115,11 +115,14 @@ extension NoteActions on EncounterRepository {
   /// changed together, by `data` path to the new value (null clears it), with a [reason] of 3 to
   /// 500 characters (trimmed). Each goes with the version of the answer the person was looking at
   /// (the phone's copy), so a correction made elsewhere first is refused `field_changed` rather than
-  /// overwritten. An answer that already holds its new value is not sent. [requestedByPatient] marks
-  /// a patient's amendment request; [declined] records that request as declined, the note unchanged.
-  /// The credential the saved profile shows is claimed, as for a signature (3.5). While a sign-off
-  /// this phone made of the note waits, the correction names it and waits behind it. A note that has
-  /// left the phone is opened from the server first. Returns its ID.
+  /// overwritten; one the phone holds no row of goes at 0 (Complete dropped it, or a correction hid
+  /// it: D107, D109). An answer that already holds its new value is not sent, nor one hidden before
+  /// the correction and after it, which changes nothing the note shows and which the server would not
+  /// write (4.7 step 7). [requestedByPatient] marks a patient's amendment request; [declined] records
+  /// that request as declined, the note unchanged. The credential the saved profile shows is claimed,
+  /// as for a signature (3.5). While a sign-off this phone made of the note waits, the correction
+  /// names it and waits behind it. A note that has left the phone is opened from the server first.
+  /// Returns its ID.
   ///
   /// PLAN-OPEN: how is a wrong free-text assessment fixed after Complete (lifecycle 12.1 #9)? By an
   /// addendum, not here: only a note's answers are corrected.
@@ -132,9 +135,10 @@ extension NoteActions on EncounterRepository {
   /// and `medical_credential`; `not_on_phone`; `not_author`; `sent_for_review`; `draft` for a note
   /// not finished (its answers are changed in the form); `read_only` for an answer the server would
   /// hold from them (a section that needs an ordering credential, 6.4 rule 5); the problem
-  /// `checkAnswer` names, with the path; `no_change` when every answer already says so; `incomplete`
-  /// when the note would then miss a required answer, with those paths; `reason`. An
-  /// [ArgumentError] for no change or more than ten, or [declined] without [requestedByPatient].
+  /// `checkAnswer` names, with the path; `no_change` when every answer already says so or stays
+  /// hidden; `incomplete` when the note would then miss a required answer, with those paths;
+  /// `reason`. An [ArgumentError] for no change or more than ten, or [declined] without
+  /// [requestedByPatient].
   Future<String> correct(
     String encounterId,
     String noteId, {
@@ -166,17 +170,23 @@ extension NoteActions on EncounterRepository {
     final stored = EncounterRepository._answersOf(rec);
     // A declined request leaves the note as it is, so the server takes what was asked for as it was
     // asked (4.7, step 4 before step 5).
-    final sent = declined
-        ? changes
-        : {
-            for (final MapEntry(key: path, :value) in changes.entries)
-              if (canonicalJson(stored[path]) != canonicalJson(value)) path: value,
-          };
+    var sent = changes;
     if (!declined) {
-      for (final MapEntry(key: path, :value) in sent.entries) {
+      final asked = {
+        for (final MapEntry(key: path, :value) in changes.entries)
+          if (canonicalJson(stored[path]) != canonicalJson(value)) path: value,
+      };
+      for (final MapEntry(key: path, :value) in asked.entries) {
         final problem = checkAnswer(definition, path, value);
         if (problem != null) throw LocalValidationError(_cantSave, problem: problem.code, paths: {path});
       }
+      // An answer hidden before the correction and after it changes nothing the note shows, and the
+      // server writes none (4.7 step 7).
+      final before = NoteReading(definition, stored), after = NoteReading(definition, {...stored, ...asked});
+      sent = {
+        for (final MapEntry(key: path, :value) in asked.entries)
+          if (before.counts(path) || after.counts(path)) path: value,
+      };
       if (sent.isEmpty) throw const LocalValidationError(_noChange, problem: 'no_change');
       // A correction never leaves a finished note without what it needs (4.7 step 8).
       final missing = finishCheck(definition, {...stored, ...sent});
@@ -204,6 +214,41 @@ extension NoteActions on EncounterRepository {
     }
     onChanged?.call();
     return id;
+  }
+
+  /// **Correct again** on a correction the server refused `field_changed` (4.1, 9.13): the same
+  /// record, its answers and reason as they were, sent again as the fix of the refusal (the store's
+  /// `fixRejected`), each answer at the version the person reads now, as [correct] reads it. An
+  /// answer the phone holds no row of is at 0: one Complete dropped or a correction hid, which a
+  /// finished note's read never sends (D107) and the server takes from 0 (D109). Needs attention
+  /// holds no version rule of its own.
+  ///
+  /// Throws, sending nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
+  /// [correct]. A [StateError] for a change that is not a refused correction, or a note not on the
+  /// phone (a refusal keeps its visit on the phone).
+  Future<void> correctAgain(String changeId) async {
+    _guardFrozen();
+    final refused = store.entry(changeId);
+    if (refused == null ||
+        refused.entity != entityCorrection ||
+        refused.op != 'create' ||
+        refused.state != ChangeState.rejected) {
+      throw StateError('not a refused correction');
+    }
+    final sent = refused.value! as Map<String, Object?>;
+    final noteId = sent['noteId']! as String;
+    final definition = await _definitionOf(_noteRecord(noteId));
+    _guardFrozen();
+    _mayChart(medical: isMedicalType(definition));
+    final rec = _noteRecord(noteId);
+    store.fixRejected(changeId, {
+      ...sent,
+      'changes': [
+        for (final c in (sent['changes']! as List<Object?>).cast<Map<String, Object?>>())
+          {...c, 'baseVersion': _versionSeen(rec, (c['field']! as String).substring(_data.length))},
+      ],
+    });
+    onChanged?.call();
   }
 
   /// Brings the visit [encounterId] and the note [noteId] onto the phone when it lacks them (4.8,
@@ -290,6 +335,6 @@ const _correctDraft = LocalValidationError(
 const _addendumEmpty = 'Write the addendum first.';
 const _addendumTooLong = 'An addendum can be up to 4,000 characters.';
 const _cantSave = 'This answer can’t be saved.';
-const _noChange = 'Nothing changed: each answer already says that.';
+const _noChange = 'Nothing changed: each answer already says that, or isn’t shown in the note.';
 const _wouldBeIncomplete = 'This change would leave the note missing something it needs.';
 const _reasonLength = 'Give a reason of 3 to 500 characters.';

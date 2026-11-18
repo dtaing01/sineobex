@@ -639,16 +639,13 @@ void main() {
       // The server as it is now. Correct again: the same record, each answer at the version now seen,
       // which for the answer Complete dropped is still none.
       server.stepSixBeforeD109 = false;
-      final held = p.store.record(flags)!.fields;
-      final sent = refusal.value! as Map<String, Object?>;
-      p.store.fixRejected(refusal.changeId, {
-        ...sent,
-        'changes': [
-          for (final c in (sent['changes']! as List<Object?>).cast<Map<String, Object?>>())
-            {...c, 'baseVersion': held[c['field']]?.serverVersion ?? 0},
-        ],
-      });
-      expect(((p.store.outbox().last.value! as Map)['changes'] as List).last, {
+      var changed = 0;
+      r.onChanged = () => changed++;
+      await r.correctAgain(refusal.changeId);
+      expect(changed, 1);
+      final fix = p.store.outbox().last;
+      expect([fix.recordId, fix.supersedes], [id, refusal.changeId]);
+      expect(((fix.value! as Map)['changes'] as List).last, {
         'field': 'data.red_flags.ems_activated',
         'newValue': 'no',
         'baseVersion': 0,
@@ -659,6 +656,210 @@ void main() {
       expect(serverAnswer(flags, 'red_flags.ems_activated'), 'no');
       final plan = (await r.openComplete(visit))!;
       expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    /// The released Red flags note answered as review F2 found it: an emergency, EMS not activated, a
+    /// transport; completed and synced. A correction to no emergency hides "EMS activated" and the
+    /// transport: the server keeps each at its version (4.7), and the note's read leaves them out, so
+    /// the phone holds no row of either (D107).
+    Future<(EncounterRepository, String, String)> hiddenAnswer(TestPhone p) async {
+      final released = NoteTypeDef.fromJson(releasedRedFlags);
+      server.noteTypes[(released.key, released.version)] = releasedRedFlags;
+      final r = repo(p, noteTypes: [...listed.where((d) => d.auto != 'medical'), released]);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final flags = (await r.addRedFlagsNote(visit))!;
+      await r.openNote(flags);
+      r.saveAnswer(flags, 'red_flags.emergency', 'yes');
+      r.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+      r.saveAnswer(flags, 'red_flags.transport', 'yes');
+      r.complete((await r.openComplete(visit))!);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      await r.correct(visit, flags, changes: {'red_flags.emergency': 'no'}, reason: 'Demo: misread');
+      await sync(p);
+      serverTookAll(p);
+      for (final path in ['red_flags.ems_activated', 'red_flags.transport']) {
+        final kept = server.records[flags]!.fields['data.$path']!;
+        expect([kept.value, kept.version], [path.endsWith('transport') ? 'yes' : 'no', 1]);
+        expect(p.store.record(flags)!.fields['data.$path'], isNull);
+      }
+      return (r, visit, flags);
+    }
+
+    test('an answer a correction hid, shown again by a later correction, is taken from no version, and the visit '
+        'completes again after (D109, review F2, probe B)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await hiddenAnswer(p);
+      server.offline = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'yes', 'red_flags.ems_time': '10:05'},
+        reason: 'Demo: misread again',
+      );
+      // The phone holds no version of the answer the first correction hid, and sends none.
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.red_flags.emergency',
+          'newValue': 'yes',
+          'baseVersion': server.records[flags]!.fields['data.red_flags.emergency']!.version,
+        },
+        {'field': 'data.red_flags.ems_activated', 'newValue': 'yes', 'baseVersion': 0},
+        {'field': 'data.red_flags.ems_time', 'newValue': '10:05', 'baseVersion': 0},
+      ]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.status, 'corrected');
+      expect(
+        [
+          for (final path in ['emergency', 'ems_activated', 'ems_time', 'transport'])
+            serverAnswer(flags, 'red_flags.$path'),
+        ],
+        ['yes', 'yes', '10:05', 'yes'],
+      );
+      // The old value is in the note's history, struck through; the phone holds what shows now.
+      expect(
+        [
+          for (final h in server.history)
+            if (h['recordId'] == flags && h['field'] == 'data.red_flags.ems_activated') [h['previous'], h['value']],
+        ],
+        [
+          [null, 'no'],
+          ['no', 'yes'],
+        ],
+      );
+      expect(
+        [
+          for (final path in ['ems_activated', 'transport'])
+            p.store.record(flags)!.fields['data.red_flags.$path']?.value,
+        ],
+        ['yes', 'yes'],
+      );
+      // Nothing about the visit waits: a later note of it completes.
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    test('a detail "Nothing more" hid, given again with it taken back, is taken from no version (review F2, '
+        'probe C)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'});
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      // "Nothing more" hides the detail. A change to the detail beside it is sent all the same: it showed
+      // before.
+      await r.correct(
+        visit,
+        n,
+        changes: {'more.none': true, 'more.detail': 'Demo: walks with a stick'},
+        reason: 'Demo: nothing more to say',
+      );
+      expect(
+        [for (final c in (createOf(p, entityCorrection).value! as Map)['changes'] as List) (c as Map)['field']],
+        ['data.more.none', 'data.more.detail'],
+      );
+      await sync(p);
+      serverTookAll(p);
+      expect(serverAnswer(n, 'more.detail'), 'Demo: walks with a stick');
+      expect(p.store.record(n)!.fields['data.more.detail'], isNull);
+
+      final id = await r.correct(
+        visit,
+        n,
+        changes: {'more.none': null, 'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: there was more',
+      );
+      expect(((createOf(p, entityCorrection).value! as Map)['changes'] as List).last, {
+        'field': 'data.more.detail',
+        'newValue': 'Demo: uses a walker',
+        'baseVersion': 0,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.attributes['changes'], [
+        {'field': 'data.more.none', 'oldValue': true, 'newValue': null},
+        {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a stick', 'newValue': 'Demo: uses a walker'},
+      ]);
+      final held = p.store.record(n)!.fields['data.more.detail']!;
+      expect([held.value, held.serverVersion], ['Demo: uses a walker', 3]);
+    });
+
+    test('Correct again sends the refused correction with the version now seen, after a correction made '
+        'elsewhere first', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88, 'care.plan': 'Demo: rest'}),
+      ]);
+      await sync(p);
+      // Alex corrects the pulse on another phone; this one still reads the first version.
+      server.serverEdit(n, 'data.vitals.pulse', 90, by: alex);
+      final id = await r.correct(
+        visit,
+        n,
+        changes: {'vitals.pulse': 86, 'care.plan': 'Demo: fluids'},
+        reason: 'Demo: counted twice',
+      );
+      await sync(p);
+      final refusal = p.store.needsAttention().single;
+      expect(refusal.details, {'problem': 'field_changed', 'field': 'data.vitals.pulse'});
+      // Only a refused correction is corrected again.
+      await r.addAddendum(visit, noteId: n, text: 'Demo: seen again');
+      for (final other in [createOf(p, entityAddendum).changeId, 'f0f00000-0000-4000-8000-0000000000ff']) {
+        await expectLater(r.correctAgain(other), throwsStateError);
+      }
+      p.store.freeze('Demo: handing over');
+      await expectLater(r.correctAgain(refusal.changeId), throwsA(isA<ChartingPaused>()));
+      p.store.unfreeze();
+
+      await r.correctAgain(refusal.changeId);
+      final seen = server.records[n]!.fields;
+      expect((p.store.outbox().last.value! as Map)['changes'], [
+        {'field': 'data.vitals.pulse', 'newValue': 86, 'baseVersion': seen['data.vitals.pulse']!.version},
+        {'field': 'data.care.plan', 'newValue': 'Demo: fluids', 'baseVersion': seen['data.care.plan']!.version},
+      ]);
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.receipts[refusal.changeId]!.resolved], ['corrected', true]);
+      expect([serverAnswer(n, 'vitals.pulse'), serverAnswer(n, 'care.plan')], [86, 'Demo: fluids']);
+    });
+
+    test('a change to an answer that stays hidden is left out: alone, it is refused as no change, and nothing '
+        'is sent (review F4, probe D)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      final before = p.store.outbox().length;
+      // "EMS activated" shows only in an emergency, which the note still says there wasn't.
+      await expectLater(
+        r.correct(visit, flags, changes: {'red_flags.ems_activated': 'yes'}, reason: 'Demo: misread'),
+        refused('no_change'),
+      );
+      expect(p.store.outbox(), hasLength(before));
+      // Beside an answer that shows, it is left out of what is sent.
+      await r.correct(
+        visit,
+        flags,
+        changes: {
+          'disposition.disposition': ['pcp'],
+          'red_flags.ems_activated': 'yes',
+        },
+        reason: 'Demo: misread',
+      );
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.disposition.disposition',
+          'newValue': ['pcp'],
+          'baseVersion': 0,
+        },
+      ]);
     });
   });
 
