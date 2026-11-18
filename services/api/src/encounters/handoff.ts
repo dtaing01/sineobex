@@ -40,7 +40,7 @@ import { noteIsEmpty } from './rules.ts';
  * name that names no patient.
  *
  * PLAN-OPEN: what of the patient does the handoff's header carry (forms 10.1 #6; for the clinical
- * team and counsel, to be added to lifecycle 12.1)? Their preferred name, their age in years and
+ * team and counsel, lifecycle 12.1 #27)? Their preferred name, their age in years and
  * their allergies, from the chart as the reader may see it, as the summary EMS is shown does; never
  * the legal name or the birth date.
  *
@@ -60,8 +60,8 @@ export const HANDOFF_FILE_NAME = 'ems-handoff.pdf';
  * same whoever sends it, and nobody sends one holding content they may not see.
  *
  * PLAN-OPEN: should any of it reach EMS: a behavioral health, harm reduction or sexual health note,
- * or a sensitive exam's findings (forms 10.1 #6; for the clinical team and counsel, to be added to
- * lifecycle 12.1)? Until they say, none does.
+ * or a sensitive exam's findings (forms 10.1 #6; for the clinical team and counsel, lifecycle 12.1
+ * #29)? Until they say, none does.
  */
 const EMS_READER: NoteReader = {
   actsAsAuthor: false,
@@ -319,7 +319,7 @@ const BOTTOM = 60;
 const SIZE = { title: 18, heading: 13, note: 11, text: 10, stamp: 8 };
 const LEADING = 1.35;
 
-// PLAN-OPEN: the time zone of the handoff's times (to be added to lifecycle 12.1). The reader's, as
+// PLAN-OPEN: the time zone of the handoff's times (lifecycle 12.1 #28). The reader's, as
 // the portal sends it; without one, UTC. A team's own time zone can come with routes (phase 7).
 
 /** [at]'s date and time in [zone], or in UTC; the zone named after it, so the file says which. */

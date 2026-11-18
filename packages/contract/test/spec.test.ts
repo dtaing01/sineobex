@@ -71,6 +71,13 @@ describe('openapi.json, patient data in requests and refusals', () => {
   const FORM_PATH_PATTERNS: Record<string, Record<string, string>> = {
     '/v1/forms/note-types/{key}/{version}': { key: '^[a-z][a-z0-9_]{1,60}$', version: '^[1-9][0-9]{0,8}$' },
   };
+  // The reader's time zone names a place, never a patient: the handoff prints its times in it
+  // (lifecycle 5.7). Only on that route's query, and only with exactly the API's pattern.
+  const QUERY_PATTERNS: Record<string, Record<string, string>> = {
+    '/v1/encounters/{encounterId}/ems-handoff': {
+      timeZone: '^[A-Za-z][A-Za-z0-9_+-]{0,40}(\\/[A-Za-z0-9_+-]{1,40}){0,2}$',
+    },
+  };
 
   it('takes no name, birth date or search text outside a POST body', async () => {
     const spec = await loadSpec();
@@ -80,7 +87,11 @@ describe('openapi.json, patient data in requests and refusals', () => {
         for (const p of op.parameters ?? []) {
           const s = p.schema ?? {};
           const uuid = s.format === 'uuid';
-          const query = uuid || Array.isArray(s.enum) || ALLOWED_PATTERNS.includes(s.pattern ?? '');
+          const query =
+            uuid ||
+            Array.isArray(s.enum) ||
+            ALLOWED_PATTERNS.includes(s.pattern ?? '') ||
+            (s.pattern !== undefined && QUERY_PATTERNS[path]?.[p.name] === s.pattern);
           const formPart = s.pattern !== undefined && FORM_PATH_PATTERNS[path]?.[p.name] === s.pattern;
           const ok = p.in === 'path' ? uuid || formPart : p.in === 'query' && query;
           if (!ok) bad.push(`${method.toUpperCase()} ${path} ${p.in} ${p.name}`);
