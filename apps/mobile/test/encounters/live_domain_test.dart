@@ -239,9 +239,15 @@ void main() {
     expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
     final note = (await a.api.readVisit(visit)).notes.singleWhere((n) => n.noteId == flags);
     expect(
-      [for (final c in note.corrections) (c.id, c.outcome, c.fields)],
       [
-        (id, 'corrected', ['data.red_flags.emergency', 'data.red_flags.ems_activated']),
+        for (final c in note.corrections) [c.id, c.outcome, c.fields],
+      ],
+      [
+        [
+          id,
+          'corrected',
+          ['data.red_flags.emergency', 'data.red_flags.ems_activated'],
+        ],
       ],
     );
   }, skip: skip);
