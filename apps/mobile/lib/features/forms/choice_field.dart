@@ -71,7 +71,7 @@ class _ChoiceFieldState extends State<ChoiceField> {
 
   /// The box of the Other text: a one-line text answer of at most 200 code points (2.3), keyed by
   /// the field so its box is `phi.form.<id>_other`.
-  late final TextDef? _otherText = _otherTextOf(widget.field);
+  late final TextDef? _otherText = otherTextField(widget.field);
 
   @override
   void didUpdateWidget(ChoiceField old) {
@@ -208,9 +208,9 @@ class _ChoiceFieldState extends State<ChoiceField> {
 bool _sameCodes(List<String> a, List<String> b) =>
     a.length == b.length && [for (var i = 0; i < a.length; i++) a[i] == b[i]].every((same) => same);
 
-/// The Other text of [field] as a text answer, so it is typed, limited, saved and read as one is.
-/// Null for a field without an Other option.
-TextDef? _otherTextOf(ChoiceDef field) {
+/// The Other text of [field] as a text answer, so it is typed, limited, saved, read and offered in
+/// a conflict as one is. Null for a field without an Other option.
+TextDef? otherTextField(ChoiceDef field) {
   final option = field.options.where((o) => o.other).firstOrNull;
   if (option == null) return null;
   // A definition's fields are read only from JSON; the Other text is written here as one.

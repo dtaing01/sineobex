@@ -183,14 +183,18 @@ class FieldHost extends StatelessWidget {
   Widget _answer(BuildContext context, FieldDef field, String fieldPath, String p) {
     final state = answers.at(p);
     final value = state.value;
-    // A region's and a diagnosis's answers are their parts; a group or a grid shows its fields' in
-    // each field.
+    // A region's and a diagnosis's answers are their parts; a choice's Other text is an answer of
+    // its own, shown and chosen as a text is; a group or a grid shows its fields' in each field.
+    final otherText = field is ChoiceDef ? otherTextField(field) : null;
     final shown = switch (field) {
       RegionDef() => [for (final part in regionParts) '$p.$part'],
       ProblemDef() => [for (final part in problemParts) '$p.$part'],
+      ChoiceDef() when otherText != null => [p, otherTextPath(fieldPath, p)],
       _ => [p],
     };
     final states = [for (final at in shown) answers.at(at)];
+    // Its Other text, the second answer of a choice, is written out as text.
+    FieldDef shownAs(int i) => i == 1 && otherText != null ? otherText : field;
     void change(Object? v) => answers.change(p, v);
     // Keyed by its path: a widget's typing never moves to another answer.
     final key = ValueKey('form.$p');
@@ -229,7 +233,7 @@ class FieldHost extends StatelessWidget {
         field: f,
         value: value,
         onChanged: change,
-        other: switch (answers.at(otherTextPath(fieldPath, p)).value) {
+        other: switch (states.length > 1 ? states[1].value : null) {
           final String text => text,
           _ => null,
         },
@@ -306,10 +310,10 @@ class FieldHost extends StatelessWidget {
             enabled: enabled,
           ),
         ] else
-          for (final s in states)
+          for (final (i, s) in states.indexed)
             if (s.conflict case final conflict?) ...[
               const SizedBox(height: FieldSpace.s2),
-              _ConflictChoice(field: field, mine: s.value, conflict: conflict, enabled: enabled),
+              _ConflictChoice(field: shownAs(i), mine: s.value, conflict: conflict, enabled: enabled),
             ],
       ],
     );

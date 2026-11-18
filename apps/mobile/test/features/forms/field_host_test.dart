@@ -255,6 +255,83 @@ void main() {
     expect(otherTextPath('lungs.heard', 'lungs.heard'), 'lungs.heard_other');
   });
 
+  group('a choice’s Other text is an answer of its own', () {
+    Map<String, Object?> pick({bool sides = false}) => {
+      'id': 'pick',
+      'kind': 'choice',
+      'many': false,
+      'sides': sides,
+      'label': 'Demo: pick',
+      'options': [
+        {'code': 'clear', 'label': 'Clear'},
+        {'code': 'other', 'label': 'Other', 'other': true},
+      ],
+    };
+
+    // Waiting to send and the choice of a conflict on the Other text, written as text: its two
+    // values side by side, and choosing reaches its own conflict.
+    Future<void> expectShown(WidgetTester tester, Widget host, TestAnswers answers, String at) async {
+      final chosen = <bool>[];
+      answers
+        ..pending.add(at)
+        ..conflicts[at] = AnswerConflict(
+          theirs: 'Demo: a squeak',
+          by: ConflictBy.teammate,
+          onChoose: (keepMine) async => chosen.add(keepMine),
+        );
+      await pumpField(tester, host);
+      expect(find.text('Waiting to send'), findsOneWidget);
+      expect(find.text('This field already had a different value. Choose which one to keep.'), findsOneWidget);
+      // In its box, and as this phone's value beside the teammate's.
+      expect(find.text('Demo: a whistle'), findsNWidgets(2));
+      expect(find.text('Demo: a squeak'), findsOneWidget);
+      await tester.ensureVisible(find.text('Keep theirs'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Keep theirs'));
+      await tester.pump();
+      expect(chosen, [false]);
+    }
+
+    testWidgets('shows its Waiting to send and its conflict, in a section', (tester) async {
+      final answers = TestAnswers({'sec.pick': 'other', 'sec.pick_other': 'Demo: a whistle'});
+      await expectShown(
+        tester,
+        FieldHost(field: fieldOf(pick()), path: 'sec.pick', answers: answers),
+        answers,
+        'sec.pick_other',
+      );
+    });
+
+    testWidgets('shows them on its own side', (tester) async {
+      final answers = TestAnswers({'sec.pick.left': 'other', 'sec.pick_other.left': 'Demo: a whistle'});
+      await expectShown(
+        tester,
+        FieldHost(field: fieldOf(pick(sides: true)), path: 'sec.pick', answers: answers),
+        answers,
+        'sec.pick_other.left',
+      );
+    });
+
+    testWidgets('shows them in a grid’s cell', (tester) async {
+      final grid = fieldOf({
+        'id': 'grid',
+        'kind': 'grid',
+        'label': 'Demo: grid',
+        'rows': [
+          {'code': 'a', 'label': 'Demo: row a'},
+        ],
+        'cell': pick(),
+      });
+      final answers = TestAnswers({'sec.grid.a': 'other', 'sec.grid.a_other': 'Demo: a whistle'});
+      await expectShown(
+        tester,
+        FieldHost(field: grid, path: 'sec.grid', answers: answers),
+        answers,
+        'sec.grid.a_other',
+      );
+    });
+  });
+
   testWidgets('a number labels itself, so its label is shown once', (tester) async {
     final temp = fieldOf({
       'id': 'temp',
