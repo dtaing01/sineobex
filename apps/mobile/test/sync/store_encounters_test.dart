@@ -451,6 +451,47 @@ void main() {
       );
     });
 
+    test(
+      'a Red flags note finished by an earlier Complete, not synced yet, lets the visit’s Medical notes be signed',
+      () async {
+        // Review finding SFN-2: nothing held that the Red flags note finished here counts.
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+        final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+        final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+        complete(p, [finishing(p, flags, testRedFlags, act: SignoffAct.sign)]);
+        complete(p, [finishing(p, n, testMedical, act: SignoffAct.sign)]);
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        expect(
+          [server.records[flags]!.fields['status']!.value, server.records[n]!.fields['status']!.value],
+          ['signed', 'signed'],
+        );
+      },
+    );
+
+    test('a sign-off the server would refuse whatever it is sent with is never made', () async {
+      // Review finding SFN-2: a value the registry refuses (a statement version of other characters)
+      // would be refused each time Complete sends it again.
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      final before = p.store.outbox().length;
+      final bad = NoteToFinish(
+        noteId: n,
+        shownHash: drawn(p, n, testNote),
+        act: SignoffAct.complete,
+        statementVersion: 'Complete, 2026!',
+      );
+      expect(
+        () => p.store.finishNotes([bad], signer: attending, definitionOf: definitionOf),
+        throwsA(isA<LocalValidationError>()),
+      );
+      expect(p.store.outbox(), hasLength(before));
+      expect(p.store.localEffect(n), isNull);
+    });
+
     test('a resident’s signature waits for attestation; a student’s note waits for a co-signer', () async {
       final p = phone(alex);
       final patient = server.seedPatient();
@@ -943,6 +984,51 @@ void main() {
       expect(server.records[n]!.fields['status']!.value, 'completed');
     });
 
+    test('an assignment the refresh brings moves who reopens and completes a note to the assignee', () async {
+      // Review findings SLK-3 and SRC-7: who acts as the author (actingAuthorId, lifecycle 3.8) had no
+      // test. Read as the note's author, the removed author's phone sent a reopen the server stores
+      // with no effect, and the assignee's refused a reopen and a Complete the server applies.
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96});
+      final draft = note(s, visit, testMedical, {'vitals.pulse': 90});
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      // Blair has left; a Program Admin hands her notes to Carol (5.5), and the refresh brings it.
+      for (final id in [n, draft]) {
+        server.records[id]!.assignedTo = carol;
+      }
+      await sync(s);
+      expect(
+        [s.store.record(n)!.attributes['actingAuthorId'], s.store.record(draft)!.attributes['actingAuthorId']],
+        [carol, carol],
+      );
+      Matcher notAuthor() => throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'not_author'));
+      final before = s.store.outbox().length;
+      expect(() => s.store.reopenNote(n, definition(testMedical)), notAuthor());
+      expect(() => complete(s, [finishing(s, draft, testMedical)], signer: student), notAuthor());
+      expect(s.store.outbox(), hasLength(before));
+
+      // Carol reopens the one and signs the other, and the server applies both.
+      final c = phone(carol);
+      expect(await c.engine.openServerRecord('encounter', visit), isTrue);
+      for (final id in [flags, n, draft]) {
+        expect(await c.engine.openServerRecord('encounter_note', id), isTrue);
+      }
+      expect(c.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      complete(c, [finishing(c, draft, testMedical, act: SignoffAct.sign)]);
+      await sync(c);
+      expect(c.store.outbox(), isEmpty);
+      expect(
+        [server.records[n]!.fields['status']!.value, server.records[draft]!.fields['status']!.value],
+        ['draft', 'signed'],
+      );
+      expect(late(), isEmpty);
+    });
+
     test('a note signed once and completed since is not reopened: the server keeps that in history', () async {
       // The coordinator's decision: everSigned joins a note's snapshot. A student's note co-signed and
       // then corrected by the student is completed again, never signed now, and was signed once
@@ -1286,6 +1372,46 @@ void main() {
       expect(p.store.record(n)!.status, 'completed');
       // "It was saved unsigned for a co-signer": the server's own notice says so.
       expect(server.notices.where((x) => x.kind == 'note_saved_unsigned' && x.recordId == n), hasLength(1));
+    });
+
+    test('the note takes the attestation the receipt gives, not the one the phone expected', () async {
+      // Review finding SRC-6: the phone's profile still says attending, and the credential was lowered
+      // to resident while it was offline. A resident's signature waits for attestation.
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      await sync(p);
+      server.changeCredential(alex, 'resident');
+      serverTime = serverTime.add(const Duration(minutes: 1));
+      p.advance(const Duration(minutes: 1));
+      final expected = complete(p, [finishing(p, flags, testRedFlags, act: SignoffAct.sign)])[flags]!;
+      expect([expected.status, expected.attestation], [NoteStatus.signed, Attestation.notNeeded]);
+      await push(p);
+      expect(p.store.noteState(flags), state(NoteStatus.signed, Attestation.waiting));
+      expect(p.store.record(flags)!.attributes['attestation'], 'waiting');
+    });
+
+    test('a sign-off stored with no effect, its receipt saying nothing of the hash, tells nothing to read', () async {
+      // Review finding SRC-7: hashMatches goes only to whoever acts as the author (4.6); with none, no
+      // notice says the note was finished differently.
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      complete(p, [finishing(p, n, testNote)]);
+      p.store.confirm(
+        signoffs(p).single,
+        serverVersion: 1,
+        details: const {
+          'effect': 'none',
+          'reason': 'already_finished',
+          'status': 'completed',
+          'attestation': 'not_needed',
+        },
+      );
+      expect(p.store.notices(), isEmpty);
+      expect(p.store.noteState(n), state(NoteStatus.completed));
     });
 
     test('a reopen made after the sign-off keeps the note a draft when the sign-off’s receipt comes', () async {
@@ -1728,6 +1854,8 @@ void main() {
       expect(() => p.store.createRecord(entityAddendum, addendum), throwsA(isA<ChartingPaused>()));
       expect(() => p.store.createRecord(entityCorrection, correction), throwsA(isA<ChartingPaused>()));
       expect(() => p.store.fixRejected(createOf(p, refused).changeId, addendum), throwsA(isA<ChartingPaused>()));
+      // A reopen is a change to a note (review findings SLK-5 and SRC-6): its time is the clock's too.
+      expect(() => p.store.reopenNote(n, definition(testNote)), throwsA(isA<ChartingPaused>()));
       expect(p.store.outbox(), hasLength(before));
       // A referral's date is the one the person types, so it is saved as ever.
       final referral = p.store.createRecord(entityReferral, {
