@@ -4,7 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/auth/auth_provider.dart';
+import 'package:sineobex_field/encounters/rules.dart';
+import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/patients/patient_providers.dart' show ServerNotices;
 import 'package:sineobex_field/sync/clock.dart';
+import 'package:sineobex_field/sync/entities.dart' show entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -291,6 +295,89 @@ void main() {
     expect([done.confirmed, done.rejected, done.unanswered], [1, 1, 0]);
     final refused = p.store.needsAttention().single;
     expect([refused.op, refused.reason, refused.details?['problem']], ['create', 'validation', 'out_of_range']);
+  }, skip: skip);
+
+  test('each held Complete is told on its own: rejected twice before the first notice’s read arrives', () async {
+    // Review finding SRC-1 against the real API: told by note, the second reject told nobody while
+    // the first notice was unread on the server, and the note stayed Sent for review for good.
+    final (p, _) = await phone('resident@example.com');
+    final (_, admin) = await phone('admin@example.com');
+    // A made-up patient of the demo team (db/seed/demo-patients.ts demoPatientId(1)).
+    const patient = '5eed0000-0000-4000-8000-000000000001';
+    final members = (await admin.send('GET', '/v1/team/members'))! as List<Object?>;
+    final me = members.cast<Map<String, Object?>>().singleWhere((m) => m['userId'] == p.userId);
+    Future<void> credential(String credential, Object? fields) => admin.send(
+      'PUT',
+      '/v1/team/members/${me['membershipId']}/credential',
+      body: {'credential': credential, 'credentialFields': fields, 'reason': 'Demo: credential review'},
+    );
+    final definition = NoteTypeDef.fromJson(testNoteTypes.singleWhere((d) => d['key'] == testMedical.key));
+    final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+    final n = p.store.createNote(
+      encounterId: visit,
+      noteTypeKey: testMedical.key,
+      noteTypeVersion: testMedical.version,
+      data: {'care.plan': 'Demo: rest and fluids'},
+    );
+    await p.engine.syncAll(force: true);
+    expect(p.store.outbox(), isEmpty);
+    // Lowered while the phone was offline: its saved profile still signs, and the Medical gate holds it.
+    await credential('chw', const <String, Object?>{});
+    try {
+      OutboxEntry completeHeld() {
+        p.store.finishNotes(
+          [
+            NoteToFinish(
+              noteId: n,
+              shownHash: p.store.contentHashOf(n, definition),
+              act: SignoffAct.sign,
+              statementVersion: 'sign-2026-11',
+            ),
+          ],
+          signer: const Signer(credential: 'resident', canSign: true, needsAttestation: true),
+          definitionOf: (key, version) => key == definition.key && version == definition.version ? definition : null,
+          redFlagsFinished: true,
+        );
+        return p.store.outbox().singleWhere((e) => e.entity == entitySignoff);
+      }
+
+      Future<void> reject(OutboxEntry held) async {
+        final page =
+            (await admin.send('GET', '/v1/team/quarantine', query: {'status': 'pending', 'userId': p.userId}))!
+                as Map<String, Object?>;
+        final item = (page['items']! as List<Object?>).cast<Map<String, Object?>>().singleWhere(
+          (i) => i['changeId'] == held.changeId,
+        );
+        await admin.send(
+          'POST',
+          '/v1/team/quarantine/${item['id']}/decision',
+          body: {'decision': 'reject', 'reason': 'Demo: not this one'},
+        );
+      }
+
+      final notices = ServerNotices(p.store, p.engine.api);
+      final first = completeHeld();
+      await p.engine.syncAll(force: true);
+      expect(p.store.sentForReview(n), isTrue);
+      await reject(first);
+      await notices.sync();
+      expect(p.store.noteState(n)!.status, NoteStatus.draft);
+      // Completed again and held again; rejected before the read of the first notice is sent.
+      final second = completeHeld();
+      expect(second.recordId, isNot(first.recordId));
+      await p.engine.syncAll(force: true);
+      expect(p.store.sentForReview(n), isTrue);
+      await reject(second);
+      await notices.sync();
+      expect(p.store.sentForReview(n), isFalse);
+      expect(p.store.noteState(n)!.status, NoteStatus.draft);
+      expect(
+        [for (final x in p.store.notices(unreadOnly: true)) (x.kind, x.recordId)],
+        [(noticeSignoffNotApplied, second.recordId)],
+      );
+    } finally {
+      await credential(me['credential']! as String, me['credentialFields']);
+    }
   }, skip: skip);
 
   test('a slow, flaky network: timeouts after commit and a damaged hash never confirm wrongly', () async {
