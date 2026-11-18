@@ -1793,42 +1793,338 @@ sample is written again, and the phone's test then says whether Dart agrees.
 
 ### 8.1 The pieces (all under `apps/mobile/lib/features/forms/`)
 
+As built (unit F5):
+
 | File | Is |
 |---|---|
-| `note_form.dart` | The shell: accordion sections, each header with its recap line; the Normal button on a section that offers it; entries of a repeating section with Add and Remove |
-| `field_host.dart` | Picks the widget for a field's kind; shows the label, help, the conflict choice of phase 2 when a field has one, and "Waiting to send" |
-| one file per kind: `choice_field.dart`, `text_field.dart`, `number_field.dart`, `flag_field.dart`, `date_field.dart`, `time_field.dart`, `duration_field.dart`, `group_field.dart`, `grid_field.dart`, `region_field.dart`, `problem_field.dart`, `photo_field.dart`, `action_field.dart`, `info_field.dart` | One widget each. Props: the field, its value, `onChanged`, `enabled`. No widget knows which note type it is in. |
-| `note_read_view.dart` | Draws a `readModel`: sections, labels, values; a corrected value with the old one struck through |
+| `note_form.dart` | `NoteForm`, the shell: the sections as an accordion, each header with its recap line; the fields that show, each through the field host; groups, grids and actions, which the form lays out itself; the entries of a repeating section with Add and Remove; one-tap Normal for a section, an entry and a system |
+| `field_host.dart` | `FieldHost`: the widget for a field's kind, its label and help, and under each answer it shows "Waiting to send" and phase 2's conflict choice. Also the host's contract with the form (`FormAnswers`, `AnswerState`, `AnswerConflict`, `ConflictBy`), `answerPaths`, `otherTextPath` and `answerText` |
+| `text_field.dart` | `NoteTextField`, and what the other widgets share: `TypingSaver` and `typingPause`, which save what is typed; `limitCodePoints`; and `ReadOnlyAnswer`, an answer that can't be changed |
+| `choice_field.dart` | `ChoiceField`: the chips, and the box of the Other text (`otherTextField`); `pickedCodes` |
+| `number_field.dart` | `NumberField`: the box, the second unit's switch, the stepper |
+| `flag_field.dart`, `date_field.dart`, `time_field.dart`, `duration_field.dart` | A tick; a date picked on the calendar; a time picked on the dial; weeks and days |
+| `group_field.dart` | `GroupField`, its two layouts (`FieldsInStack`, `FieldsInRow`), `clearedBy`, and `Collapsible`, the header of a collapsed group or grid |
+| `grid_field.dart` | `GridField`, with `gridRows`, `gridSides` and `cellPath` |
+| `region_field.dart` | `RegionField`: the region, the side and Front or back, each a choose-one of chips |
+| `problem_field.dart` | `ProblemField`: a search of phase 3's problem code list |
+| `action_field.dart` | `ActionField`, and `ActionHandler`, what the screen does for an action |
+| `photo_field.dart`, `info_field.dart` | The place of photos until phase 8, which says "Photos arrive in a later release."; guidance |
+| `note_read_view.dart` | `NoteReadView`, which draws a `readModel`, and `credentialText` |
 
-A widget calls `onChanged` with the value to store. `note_form.dart` passes it to the domain
-layer, which calls `checkAnswer` and then the store's `setField` (lifecycle 9.5). Nothing in
-`features/forms` touches the store.
+No widget knows which note type it is in, and nothing in `features/forms` touches the store. A
+widget calls back with the value to store; `note_form.dart` hands each change, one answer at a time,
+to the screen, whose domain layer calls `checkAnswer` and then the store's `setField` (lifecycle
+9.5). As planned, a widget is given its field, its value, a callback and `enabled`, except where a
+kind stores more than one answer, or none: a choice is also given its Other text and a callback for
+it; a region and a diagnosis take and give their parts together (`RegionAnswer`, `ProblemAnswer`);
+and a group and a grid take a builder that draws each of their fields, since they store nothing
+themselves.
+
+**The host's contract with the form.** The form gives each field host a `FormAnswers`: `at(path)`
+gives an `AnswerState`, and `change(path, value)` takes a change, `null` being the clear of an
+answer. A path is the answer's whole path, its entry part and side included. An `AnswerState` is the
+value as stored, whether it is `pending` (saved on this phone and not yet confirmed by the server)
+and, when two people changed it, an `AnswerConflict`: the value on the server (`theirs`), who holds
+it (`ConflictBy`: a teammate, the person on another phone, or the server), when, and
+`onChoose(keepMine)`, which is null while charting is paused for the phone's clock. `NoteForm` is
+its own `FormAnswers`, made from what the screen gives it (below). A field host can also draw a
+group, a grid (given its picked `rows`) or an action (given `actions`) by itself, as its tests do;
+in a note form the form lays those out.
+
+**The field host.**
+
+- It shows the label and the help above the widget, but for the kinds that show their own: a text, a
+  number, a tick, an action and a diagnosis label their own box or button, a collapsed group or grid
+  its header, and guidance is its label. The label it shows is kept from a screen reader, since each
+  control says it, and the help is heard after the field's controls (review finding A11Y-5).
+- A field with sides is answered at `<path>.right` and at `<path>.left` (`answerPaths`), each under
+  its side's name, a semantics container named Right or Left. A grid lays out its own sides.
+- Each answer's widget is keyed `form.<answer path>`, so what is typed never moves to another
+  answer.
+- Under the widget, "Waiting to send" shows while an answer it shows is pending, and phase 2's
+  choice for each of those answers that has a conflict. A region shows those of its three parts, and
+  a diagnosis those of its code and its label. A choice with an Other option shows those of its
+  Other text as well, whether or not Other is still picked, the text's values written as text: it is
+  an answer of its own, and a conflict on it must be answerable where it was charted (review finding
+  BEH-1).
+- A conflict on both a diagnosis's code and its label is one choice, written "label (code)", which
+  keeps both parts of one side, so a code is never kept with the other side's label. It can be
+  chosen only when each part's can.
+- The choice uses the words of phase 2's Needs attention screen: "This field already had a different
+  value. Choose which one to keep.", the two values side by side under "Your value" and "A
+  teammate", "You, from another phone" or "On the server", with the time, then "Use my value" and
+  "Keep theirs" (or "Keep the server’s"), and "Both values stay in the note’s history either way."
+  It names no teammate (PLAN-OPEN, 10.1 #52). While the person can't choose it says "You can choose
+  once the phone’s clock is right.", and on a read-only field its buttons do nothing. `answerText`
+  writes each value: "(blank)" for none, a date written out, anything else as the read view writes
+  it, and a value of the wrong type as stored.
+
+**What each kind writes, and where** (2.3; `null` clears an answer at any path, 7.1):
+
+| Kind | Writes | At | When |
+|---|---|---|---|
+| `choice`, one | its code; tapping the picked chip again writes `null` (PLAN-OPEN, 10.1 #49) | the field's path | at the tap |
+| `choice`, many | its codes in the definition's order, whatever order they were tapped in; `null` once the last is unpicked, never `[]`. An exclusive option clears the others when picked, and another clears it; a blocked pair is refused (8.2) | the field's path | at the tap |
+| the Other text | the text, trimmed, at most 200 code points; `null` for none. Its box opens under the chips while Other is picked, labelled with the option's label: "Say what “Other” is". Unpicking Other hides the box and leaves the text, which no longer counts: clearing it would be one more change to sync | `<field>_other`; with sides `<field>_other.right`; in a grid's cell `<grid>.<row>_other`, then the side | as typing pauses |
+| `text` | the text, trimmed, at most `maxLength` code points; a box of spaces writes `null` | the field's path | as typing pauses |
+| `number` | a number in the base unit at the field's decimals, a whole one as an integer; an empty box writes `null`. What can't be saved writes nothing, and the answer stays what it was (8.2) | the field's path | as typing pauses; a stepper when tapping pauses (PLAN-OPEN, 10.1 #45) |
+| `flag` | `true`; unticking writes `null`, never `false` | the field's path | at the tap |
+| `date` | `YYYY-MM-DD`, picked on the calendar; Clear writes `null` | the field's path | when picked |
+| `time` | `HH:MM` on the 24-hour clock, picked on the dial; Clear writes `null` | the field's path | when picked |
+| `duration` | the weeks and days typed, as whole days; two empty boxes write `null`. More than its most, or what isn't whole numbers, writes nothing, and a line says why at once. Days past six are shown as weeks the next time it is drawn | the field's path | as typing pauses; moving between its two boxes does not save |
+| `group`, `grid` | nothing themselves: each of their fields at its own path | a group's fields at `<group>.<id>`; a grid's cell at `<grid>.<row>`, then the side; a group cell's fields after the row | |
+| `region` | a code for each part, each part its own answer, cleared alone by tapping its picked chip | `<field>.region`, `<field>.side`, `<field>.surface` | at the tap |
+| `problem` | the code picked and its title as the label, cut to 300 code points, written together; Remove writes `null` to both. What was typed to search is never stored | `<field>.code`, `<field>.label` | when a match is picked |
+| `photo`, `action`, `info` | nothing | | |
+
+"As typing pauses" is one second with no keystroke (`typingPause`; PLAN-OPEN, 10.1 #42). Leaving the
+box, Done, and the box leaving the screen or turning read-only save at once, the last two in a
+microtask, so Save & Close while typing loses nothing. A value changed elsewhere, by a sync or a
+conflict's choice, replaces what a box shows unless the person is typing over it. A choice keeps
+what it last showed as picked, so two taps before the form is drawn again both count.
+
+**The form** (`NoteForm`):
+
+- **The accordion.** The sections that show, in the definition's order, one open at a time. Each
+  header (keyed `form.section.<id>`) is a heading and a button that says whether it is open (review
+  finding A11Y-8). Without `openSection` the first section that shows is open (PLAN-OPEN, 10.1 #47);
+  a new `openSection` opens that section and brings it into view. A closed header shows the
+  section's line from `recapLines`, cut at three lines on screen (PLAN-OPEN, 10.1 #48), and its
+  semantics value is the whole line; an open section shows its fields instead. The recap is worked
+  out as it is drawn and never stored, and nothing a sensitive exam recorded is in it, for anyone
+  (lifecycle 8.1).
+- **What is drawn.** The form reads the note as the interpreter does (`NoteReading`,
+  `conditions.dart`): the field host holds neither the definition nor that reading. A section or a
+  field whose condition does not hold is not drawn, and its stored answer is left alone, so it is
+  back if the field shows again (7.1). Inside a grid's cell `./` is read from the row, elsewhere
+  from the entry. A section that `needs` a capability is drawn only when the screen's `capabilities`
+  hold it, even when it holds a teammate's answers (PLAN-OPEN, 10.1 #53; 6.4).
+- **What a set flag clears.** While a set flag counts, the fields it clears are drawn read-only,
+  among a section's own fields and inside a group (2.3), and nothing is written to them. A flag that
+  is stored but does not count clears nothing, and a picker that does not count picks no grid row
+  (pinned after review finding BEH-3).
+- **Groups and grids** are laid out by the form, with their label and help above them unless
+  collapsed, and each of their fields drawn by a field host of its own, so each keeps its own
+  "Waiting to send" and conflict choice. A grid's rows are its own, or the options picked where its
+  picker counts, in the picker's order; with none picked it says "Each one picked above gets its own
+  line here." A collapsed group or grid that holds an answer opens with it showing (PLAN-OPEN,
+  10.1 #50), and a read-only one still opens, to be read. A grid's cell is drawn bare, its row's
+  label standing for the cell's (7.1).
+- **An action** is drawn only on a form that can be changed, and only where the screen's
+  `ActionHandler` gives it something to do; otherwise nothing is drawn, not even its label, so it
+  leaves no gap (PLAN-OPEN, 10.1 #51; #39). Its button carries the field's label, its help under it,
+  and while the future it starts runs a second tap does nothing, so one tap opens one note.
+- Every other field is a `FieldHost`, keyed `host.<path>`.
+
+**Entries.** Each entry of a repeating section is titled by its `itemTitle`, `{n}` being its place
+among the entries that are there, as the recap and the read view number them, and is a semantics
+container named by its title. Remove, read as "Remove Wound 1", writes the entry's `entryRemoved` as
+`true`. It asks first ("Remove Wound 1?", "Its answers will no longer count. They stay in the note’s
+history.") when the entry holds an answer, and removes an empty entry at once. Add ("Add wound")
+writes `<section>.<id>.entryAt`, the time in UTC, at an ID (`makeEntryId`: `e` and seven characters
+from `a-z0-9`) that no answer of the note uses, a removed entry's included. With no entry the
+section says "No wound added yet."; at its most, "A note holds at most 10. Remove one to add
+another." stands in for Add. An entry's title and Remove share a line where they fit, and Remove
+goes under the title at large text (review finding A11Y-6). A read-only form offers neither Add nor
+Remove.
+
+**One-tap Normal.** A section that offers it (`normal: true`) has "All normal" at the top of its
+fields, read as "All normal, " and the section's title; a repeating one has one in each entry, for
+that entry, read with the entry's title. A system examined over several sections has one more, above
+the first of them that is drawn (10.3 #7). Each runs `normalAnswers` and writes each answer it
+returns, one at a time (6.3), each section or entry seeing what was written before it. What it did
+is said under it, "12 answers filled as normal.", "1 answer filled as normal." or "Nothing left for
+Normal to fill.", as a live region where the platform reads them and as an announcement on iOS. A
+read-only form offers no Normal.
+
+**The read view** (`NoteReadView`) draws a read model and nothing else: what the reader may see was
+settled when the model was made, and it knows nothing of kinds. It is a column that does not scroll,
+which the visit screen places among the note's recap, sign-offs and addenda (lifecycle 9.7).
+
+- Each section's title, and in a repeating section each entry's title, is a heading. Each answer is
+  one read-only node (keyed `read.<path>`), read as its labels joined by ", ", then its value.
+  Values are written exactly as the read model writes them (a date as `YYYY-MM-DD`, a time as
+  `HH:MM`), so the phone and the portal match (8.4).
+- An answer a correction took away shows no value on screen, and a screen reader hears "No answer
+  now" before the old value.
+- Each correction, in the order given (keyed `read.<path>.correction.<i>`): the old value struck
+  through, read as "Replaced: " and the value, a blank old value shown as "(blank)" and read as
+  "Replaced: blank"; then "Changed by" with the name, the credential in words, and the date and time
+  in the phone's own time zone; then "Reason: " and the reason. `credentialText` words a credential
+  as the portal does, and leaves out one this app version doesn't know rather than show its code.
+- A note with no section says "Nothing was recorded in this note."
+- `itemAction` lets the screen put a widget under an answer: Correct, for the acting author.
+
+**What the screen owes the form** (units L4 and L5; lifecycle 9.5 to 9.7):
+
+- **The note's answers, drawn again after each change.** `answers` is the note's map as stored,
+  entry parts included, and `definition` the note's own version. `onChanged(path, value)` gets one
+  answer at a time: L4 checks it (`checkAnswer`) and saves it (`setField`), and the screen draws the
+  form again with the answers the store then holds, so what shows follows each answer. The widgets
+  never send what `checkAnswer` refuses for a blocked pair, an exclusive option, a range, decimals
+  or a length. The form keeps no copy of its own: until it is drawn again a choice shows what it
+  last sent and a box what was typed, but Normal works from the answers it was given, so a second
+  tap before the screen draws again writes the same values again, each one more change to sync.
+  Whether the form should keep a working copy is open (F5's review).
+- **A change after the form has gone.** A box saves what was typed as it leaves the screen, in a
+  microtask, so `onChanged` can come after the form is disposed (Save & Close while typing). The
+  screen must take it without the form on screen.
+- **What waits and what conflicts:** `pending`, the paths saved on this phone that the server has
+  not confirmed, and `conflicts`, an `AnswerConflict` for each path two people changed (lifecycle
+  9.5), its `onChoose` null while charting is paused for the clock (lifecycle 3.11).
+- **The capabilities:** `capabilities` holds `orderMedications` for a credential that may order, or
+  the Quick encounter's Medication section is not drawn (6.4).
+- **The action handlers:** an `ActionHandler` gives, for an action field at its path, what to do, or
+  null where it can't be done there. `open_note_type` gets one only where its note type can be
+  started in the visit, opening that note type's draft or making one (lifecycle 9.4; not a
+  Medical-only note type in a Non-Medical visit, 10.1 #39); `show_handoff` and `add_referral` where
+  the screen offers them (lifecycle 7, 9.8; cards F7-actions and F7-handoff).
+- **Where to open:** `openSection`, for the summary's jump to a section (lifecycle 9.6).
+- **The read view for a finished note** (lifecycle 9.7): `NoteReadView` given `readModel` of the
+  answers and the corrections the reader may see, with Correct under an answer through `itemAction`
+  for the acting author only. Sign-offs, attestations and addenda go below it. The form's
+  `enabled: false` draws every answer read-only, its sections still opening, for a note the person
+  may read but not change now.
+- `newEntryId` and `clock` make an entry's ID and its `entryAt`; they default to `makeEntryId` and
+  the phone's clock.
+- **Open from F5's review (BEH-4).** A teammate's phone holds someone else's draft as
+  `visibleAnswers` gives it (lifecycle 4.4), so a choose-many it writes holds only the codes its
+  reader may see: a teammate without `patients.view_sensitive_exams` who taps the exam picker sends
+  a list without the GU, breast or rectal code the note holds. The phone cannot put back what it was
+  never sent; what the server does with such a set is lifecycle 4.4's.
 
 ### 8.2 What every field widget must do
 
-The rules of `docs/plan/patterns/phone-screen.md`, plus:
+The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
 
-- A choice shows chips that wrap, each at least 48 px high, each a button with its label and its
-  selected state for a screen reader. Choose-many announces "selected" and "not selected".
+- **A choice** shows chips that wrap, each at least 48 px high and each one node for a screen
+  reader: a button with its label, a tap action, and its selected state from the selected flag,
+  never in the label, so "selected" or "not selected" is said once. Choose-one chips are a group of
+  which one is picked. A picked choose-one chip clears the answer when tapped again, and says so
+  first: "Double-tap to clear." as its hint on iOS, and "clear" as the hint of its tap elsewhere, so
+  TalkBack says "double-tap to clear" (review finding A11Y-7). A picked Other chip is read as
+  "Other, text box below"; the box is not focused by itself.
 - An exclusive option clears the others when picked, and is cleared when another is picked.
-- A blocked pair: picking the second shows one line under the field ("Sent to ED can't be picked
-  with Declined care") and does not select it. The line is a live region that speaks once.
-- A number field has a numeric keyboard, shows its unit, and says its range when the value is
-  out of it. With `altUnit` it has a two-way switch and stores the base unit.
-- A text field that can hold patient details turns suggestions and autocorrect off, as
-  `PhiField` does (`apps/mobile/lib/features/patients/patient_widgets.dart:24`).
-- A grid reflows to one row per line at 320 px and at 200% text. It never scrolls sideways.
-- A disabled field (a finished note, a frozen store) is read-only and says so to a screen reader.
+- **A blocked pair:** picking the second does not select it, and one line under the chips names the
+  first option held that it clashes with, in the released labels ("Declined can’t be picked with
+  ED."). It is said once: a live region where the platform reads them, an announcement on iOS. A
+  second tap on the same chip says nothing new, and the line goes at the next pick or clear. So the
+  widget never stores what `checkAnswer` refuses as `exclusive_with_others` or `excluded_pair`, and
+  its tests run `checkAnswer` on what it stores.
+- **A number** has a numeric keyboard, with a decimal point only where the field keeps decimals or
+  has a second unit and a sign only where its range goes below zero, and shows its unit, or "out of
+  10" for a score, after the box, read as its own node after it. A value that is not a number, has
+  more decimals than the field keeps, or is outside the range is not saved, and the answer stays
+  what it was; zeros at the end of the decimals are not counted, so 2.50 is 2.5 (review finding
+  BEH-2). The line that says why ("Type a number.", "Type a whole number.", "Type at most 1 decimal
+  place.", "It must be from 50 to 115 °F.") is a live region. It is set when the save would run, as
+  typing pauses, when the box is left or on Done, never at a keystroke, so typing 98.6 does not say
+  the range at its 9; it goes as soon as what is typed can be saved (review finding A11Y-1).
+- **A second unit** (`altUnit`) is a two-way switch under the box, the base unit picked each time
+  the field is drawn (PLAN-OPEN, 10.1 #44). A value typed in the second unit, at any number of
+  decimals, is converted and rounded to the field's decimals in the base unit, which is stored, and
+  "Saved as 5.1 cm." says so. Switching shows the same answer in the other unit, at one decimal
+  place more than the field keeps, and saves nothing. The range is said in the base unit.
+- **A stepper** (`display: stepper`) puts "One fewer" and "One more" either side of the box, each a
+  button of at least 48 px read with the number. It starts at the least from an empty box, steps by
+  one, and stops at each end of the range.
+- **A text field that can hold patient details** turns suggestions and autocorrect off, as
+  `PhiField` does (`apps/mobile/lib/features/patients/patient_widgets.dart:24`). Every box a form
+  types in is one, keyed `phi.form.<field id>`: a text, the Other text (`<id>_other`), a number, a
+  duration's weeks and days (`<id>.weeks`, `<id>.days`) and the diagnosis search. A text counts code
+  points, as the server does, and is cut at its `maxLength`; its own counter shows from 90%, and
+  says once that it is near the limit and once that it is at it, as phase 3's note counter does. A
+  date and a time are picked on the calendar and on the dial only: the pickers' typing modes are
+  text boxes without these settings, which the keyboard would learn from.
+- **A date** is a button read as the field's label and the date written out, or "no date", with
+  Clear beside it once there is one; a time is the same, in the phone's time format. The date picker
+  reaches a hundred years back and ten ahead, on the side of today the field's `range` allows
+  (PLAN-OPEN, 10.1 #43). `checkAnswer` has no clock, so a stored date outside the range now, a
+  follow-up that has passed, is still shown, and the picker opens on the nearest day it can show.
+- **A diagnosis** is a private search box carrying the field's label, which searches phase 3's
+  problem code list on the phone by word or by code, with or without its dot, and lists eight
+  matches at most, each a button read as its title and code. Only a code from that list can be
+  picked (PLAN-OPEN, 10.1 #46). A code on phase 3's sensitive list is marked Sensitive, on a match
+  and once picked, as the problem list marks it; only the code decides. Once picked it is read as
+  the field's label with "label (code)", and Remove clears it. "Add to the problem list" (lifecycle
+  8.3) is not part of the widget: card F7-problem-button adds it.
+- **A region** is three choose-ones of chips: the region (the field's options, in every released
+  note type the eleven of the shared list, in its order), then Side from the list the field names,
+  then Front or back where the field asks for its surface (10.1 #3).
+- A grid reflows to one row per line at 320 px and at 200% text. It never scrolls sideways. As built
+  every grid is one row per line, each row named by its label, which stands for the cell's; with
+  sides, a Right and a Left block sit side by side only where both fit at 280 px each, scaled by the
+  text size (on a tablet), and one under the other on a phone, at 320 px and at 200% text. A group
+  laid out as a row puts as many fields on a line as fit at 160 px each, scaled by the text size:
+  two on a phone, one at 320 px or at 200% text, four on a tablet.
+- **A disabled field** (a finished note, a frozen store, a field a set flag clears) is read-only and
+  says so to a screen reader. A text, a number, a date, a time, a duration, a choice, a region and a
+  diagnosis are drawn as `ReadOnlyAnswer`: the value written as the read view writes it ("98.6 °F", "7 of 10",
+  "38 weeks 2 days", "Arms, Right, Anterior"), or a dash read as "Blank", in full contrast in a
+  sunken box, read as read-only and not enabled. A tick keeps its label and its help in full
+  contrast (review finding A11Y-4). A disabled Material control would fade its words to about 38%,
+  too faint to read.
+- **What a screen reader hears:** a field's label, then its help (review finding A11Y-5); a
+  section's header as a heading; a group, a grid's row and each side by name; nothing twice. What
+  the form says by itself is said once, not again at each keystroke: a refused pick, a number's or a
+  duration's line, a text's limit and what Normal did.
+- **Every run:** each widget, the form and the read view pass in Day, Night run and High contrast,
+  at 200% text and on a 320 px phone, and the whole form at 200% text on a 320 px phone in Day and
+  Night run as well (8.3). At 300% text an entry's title and Remove still fit.
+- **Open (review finding A11Y-3): the date picker's calendar.** Its day cells are under 48 px wide,
+  47.7 on a 390 px phone and 37.7 on a 320 px one, where seven columns of 48 px would need 336 px.
+  So it fails the tap target check in every run, and no test opens it under the guidelines. A
+  private typed date beside the calendar, read back as phase 3's birth date is
+  (`apps/mobile/lib/design/widgets/birth_field.dart`), is the open question.
 
 ### 8.3 Tests without one test per form
 
-- **One widget test file per kind**: three themes with the guideline matchers, 200% text, 320 px,
-  labels and tap actions, the rules of 8.2 for that kind.
-- **One generated smoke test** (`apps/mobile/test/features/forms/presets_smoke_test.dart`): for
-  every bundled note type, open every section with every field visible, in three themes, at 200%
-  text and 320 px, and assert no overflow, no unlabelled control and the guideline matchers. A
-  new note type is covered the moment its file exists.
-- **The read view**: one test file, on the conformance definitions.
+As built, under `apps/mobile/test/features/forms/`. Every rule's test was run with its rule removed
+by a script, and failed.
+
+- **One widget test file per kind**, fourteen: each runs its main scenario in phase 3's five runs
+  (Day, Night run, High contrast, Day at 200% text, Day on a 320 px phone; `forEachRun`) and ends
+  with `expectFieldOk`: the four guideline matchers (Android's and iOS's tap target sizes, labelled
+  tap targets, text contrast); every text box private (`expectPrivateFields`); nothing that scrolls
+  sideways but a box's own line; no overflow; and the words of what can't be changed measured
+  directly (`expectReadOnlyReadable`), a read-only answer on its sunken box and a tick on the
+  surface and the ground, at 4.5:1 and 7:1 in High contrast, since the contrast matcher skips a node
+  that is not enabled (review finding A11Y-2). Then its labels and tap actions, and the rules of 8.2
+  for that kind.
+- **The test helper** (`forms_test_helpers.dart`): a field from a made-up definition or from a
+  bundled note type; `TestAnswers`, a `FormAnswers` in memory that draws a field again after each
+  change, as the form does; `pumpField` and `pumpForm`, on a 390 px phone or a 320 px one in a run's
+  theme and text size; `expectFieldOk`; and `formRuns`, the five runs and 200% text on a 320 px
+  phone in Day and in Night run, the form's worst case for layout (review finding A11Y-9).
+- **The field host** (`field_host_test.dart`): each kind gets its widget; each answer goes to its
+  own path, a side's, a grid cell's, a region's parts, a diagnosis's code and label, and the Other
+  text's, before the side; "Waiting to send" and the conflict choice, and the Other text's own in a
+  section, on a side and in a grid's cell; one choice for a diagnosis; the label heard before the
+  help.
+- **The form:** `note_form_test.dart` (the accordion and its headers, the recap, conditions,
+  `needs`, flags and pickers that count, groups, grids and picked rows, actions, a read-only form),
+  `note_form_entries_test.dart` (Add, Remove and the question it asks, in `formRuns`; the order and
+  numbers of entries; the most; 300% text) and `note_form_normal_test.dart` (a section's, an entry's
+  and a system's Normal, on the released General note too: HEENT's four sections, MSK's regions and
+  gait; what Normal says).
+- **The read view** (`note_read_view_test.dart`): every `readModel` case of
+  `packages/contract/test-vectors/forms-conformance.json` drawn, with each section, entry, item and
+  correction checked; old values struck through, in order, with who, when and why, in the five runs.
+- **One generated smoke test** (`presets_smoke_test.dart`): every note type in
+  `assets/forms/presets.json`, in the seven runs of `formRuns`. Each is drawn three ways, with only
+  the answers that open its fields, with every field that shows answered, and read-only; in each,
+  every section and every collapsed group and grid is opened, every field that shows is found by its
+  key (`host.<path>`, a group's, a grid's and an action's `form.<path>`, the Other text's
+  `phi.form.<id>_other`), and `expectFieldOk` passes. The read view of every answered note is drawn
+  in the same runs. It names no note type and no field: a small solver works the answers out from
+  each definition's conditions (`is`, `filled`, `any`, `all`, `not`, `./`, a picked row for each
+  grid of picked rows, an entry for each repeating section, Other picked to open its text), keeping
+  answers that clash in separate sets, and a plain test holds it to the definition: every section,
+  field and Other text shows in some set, and `checkAnswer` takes every value. A new note type is
+  covered the moment it is in the presets. A field is checked in its grid's first row and in a
+  repeating section's one entry, not in every row. It opens no date picker (8.2, A11Y-3); the time
+  dial and the question Remove asks pass the guideline matchers in `formRuns`, in their own files'
+  tests.
 
 ### 8.4 The portal
 
