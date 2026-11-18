@@ -1527,14 +1527,19 @@ class LocalStore {
       _db.execute('DELETE FROM records WHERE id = ?', [signoffId]);
       _insertCreated(rules, signoffId, value, fix);
     }
-    // Completing again answers "Your Complete of this note wasn’t applied" about any sign-off of it:
-    // read here, and on the server at the next contact (4.6).
+    // Completing again answers "Your Complete of this note wasn’t applied" about any Complete of it,
+    // whichever phone made it: read here, and on the server at the next contact (4.6, D107). A notice
+    // is found by the note it names (D104), which a phone that never held the sign-off knows it by,
+    // or by a sign-off of the note this phone holds or held. It settles nothing else: a held sign-off
+    // is settled by its own ID alone.
     _db.execute(
       'UPDATE local_notices SET read_at = ? WHERE kind = ? AND read_at IS NULL AND (record_id IN '
       '(SELECT substr(key, ${_heldNoteKvPrefix.length + 1}) FROM kv '
       "WHERE substr(key, 1, ${_heldNoteKvPrefix.length}) = '$_heldNoteKvPrefix' AND value = ?) "
-      "OR record_id IN (SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.noteId') = ?))",
-      [_nowMs, noticeSignoffNotApplied, rec.id, entitySignoff, rec.id],
+      "OR record_id IN (SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.noteId') = ?) "
+      'OR id IN (SELECT substr(key, ${_noticeNoteKvPrefix.length + 1}) FROM kv '
+      "WHERE substr(key, 1, ${_noticeNoteKvPrefix.length}) = '$_noticeNoteKvPrefix' AND value = ?))",
+      [_nowMs, noticeSignoffNotApplied, rec.id, entitySignoff, rec.id, rec.id],
     );
     _touch(rec.id);
     _workedOn(rec.id);

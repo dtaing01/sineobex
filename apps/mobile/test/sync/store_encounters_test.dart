@@ -1928,6 +1928,47 @@ void main() {
     );
 
     test(
+      'completing again reads the notice on a phone that never held the sign-off; another held stays Sent for review',
+      () async {
+        // D107: Completing again read a notice through the phone's own sign-offs alone, so a fresh
+        // database kept it in Needs attention after the person had done what it asked.
+        final (p: _, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+        // The same person completes the note on a second phone, the credential still lowered: held too.
+        final b = phone(alex);
+        expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await b.engine.openServerRecord('encounter_note', flags), isTrue);
+        final later = complete(b, [finishing(b, flags, testRedFlags)])[flags]!;
+        await sync(b);
+        expect(b.store.sentForReview(flags), isTrue);
+        server.rejectHeld(held.changeId);
+        final fresh = phone(alex);
+        final onB = ServerNotices(b.store, b.engine.api), onFresh = ServerNotices(fresh.store, fresh.engine.api);
+        await onB.sync();
+        await onFresh.sync();
+        final told = fresh.store.notices().single;
+        expect([told.recordId, told.noteId, told.readAt], [held.recordId, flags, isNull]);
+
+        // Opened by the note it names, and completed again: that answers it.
+        expect(await fresh.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await fresh.engine.openServerRecord('encounter_note', told.noteId!), isTrue);
+        expect(fresh.store.noteState(flags), state(NoteStatus.draft));
+        complete(fresh, [finishing(fresh, flags, testRedFlags)]);
+        expect(fresh.store.notices(unreadOnly: true), isEmpty);
+        await sync(fresh);
+        expect(fresh.store.sentForReview(flags), isTrue);
+        // The read reaches the server, and the second phone with it; it settles nothing there.
+        await onFresh.sync();
+        expect(server.notices.single.readAt, isNotNull);
+        await onB.sync();
+        await sync(b);
+        expect(b.store.notices().single.readAt, isNotNull);
+        expect(b.store.sentForReview(flags), isTrue);
+        expect(b.store.localEffect(flags)?.toJson(), later.toJson());
+        expect(b.store.noteState(flags), state(NoteStatus.completed, Attestation.notNeeded, true));
+      },
+    );
+
+    test(
       'while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes',
       () async {
         // D106's third cost (lifecycle 4.4, 4.8): until the review decides, the server's draft, and the
