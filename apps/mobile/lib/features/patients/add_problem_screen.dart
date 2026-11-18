@@ -9,7 +9,6 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
 import '../../design/widgets/status_chip.dart';
-import '../../patients/normalize.dart' show normalizeName;
 import '../../patients/patient_providers.dart';
 import '../../patients/problems.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
@@ -66,16 +65,9 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
   }
 
   /// A Resolved problem of this patient with the same code or the same title, words compared
-  /// loosely: the recurrence question (9.5).
-  ProblemView? _resolvedMatch() {
-    final title = normalizeName(_title.text);
-    for (final p in _s.problems.problemsOf(widget.patientId) ?? const <ProblemView>[]) {
-      if (p.status != 'resolved') continue;
-      if (_code != null && p.code?.code == _code!.code) return p;
-      if (title != null && normalizeName(p.title) == title) return p;
-    }
-    return null;
-  }
+  /// loosely: the recurrence question (9.5), by the rule Add to the problem list under a note's
+  /// diagnosis asks it by too.
+  ProblemView? _resolvedMatch() => _s.problems.resolvedMatch(widget.patientId, code: _code?.code, title: _title.text);
 
   void _choose(ProblemCode c) => setState(() {
     _code = c;
