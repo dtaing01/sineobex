@@ -13,7 +13,7 @@ The Security Rule requires an accurate and thorough assessment of risks to ePHI 
 | RDS PostgreSQL | Charts, audit log | KMS encryption, private subnets, backups | |
 | S3 (photos, documents) | Images, paperwork | KMS, block public access, TLS-only policy | |
 | S3 Object Lock | Audit chain anchors | Compliance mode retention | |
-| Field app | Charts a person opened (24 hours), unsynced work, the team's patient list for offline search (no legal names; field roles only; 7 days) | SQLCipher, keystore-held key, auto-lock, deletion at sign-out, remote wipe | |
+| Field app | Charts a person opened (24 hours, with their timeline and last three visits), unsynced work, a person's draft notes until finished (at most 7 days untouched), the team's patient list for offline search (no legal names; field roles only; 7 days) | SQLCipher, keystore-held key, auto-lock, deletion at sign-out, remote wipe | |
 | Portal | Nothing at rest | no-store, in-memory only | |
 | Identity provider | Names, emails of staff (not patients) | MFA | |
 
