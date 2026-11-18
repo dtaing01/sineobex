@@ -1,3 +1,4 @@
+import '../api/transport.dart' show NetworkException;
 import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
@@ -8,7 +9,8 @@ import '../forms/read_model.dart';
 import '../forms/recap.dart';
 import '../forms/visible.dart';
 import '../sync/canonical_json.dart';
-import '../sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff, parentsOf;
+import '../sync/entities.dart'
+    show credentials, entityAddendum, entityCorrection, entitySignoff, maxCorrectionChanges, parentsOf;
 import '../sync/local_store.dart';
 import 'credentials.dart';
 import 'encounter_models.dart';
@@ -17,6 +19,7 @@ import 'rules.dart';
 import 'visibility.dart';
 
 part 'complete.dart';
+part 'note_actions.dart';
 
 /// Visits and notes on the phone (phase 4 design, lifecycle 3, 4.8, 9): what the screens read and
 /// do, between them and the store. Every change goes through the store's public methods, which hold
@@ -447,6 +450,23 @@ class EncounterRepository {
     final definition = key is String && version is int ? await definitions.load(key, version) : null;
     if (definition == null) throw StateError('the definition of the note’s own version is not on this phone');
     return definition;
+  }
+
+  /// The definition of [note]'s own version, if [definitions] loaded it.
+  NoteTypeDef? _loadedDefinition(LocalRecord note) {
+    final key = note.attributes['noteTypeKey'], version = note.attributes['noteTypeVersion'];
+    return key is String && version is int ? definitions.loaded(key, version) : null;
+  }
+
+  /// A note someone else acts as the author of, which the person may see (6.4); one the phone can't lay out is not shown.
+  bool _seesNote(NoteTypeDef definition, Answers stored) {
+    try {
+      return visibleAnswers(definition, stored, user.reader(actsAsAuthor: false)) != null;
+      // A definition the interpreter can't run is one the phone can't lay the note out by.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Who acts as [note]'s author (lifecycle 3.8): the assignee the server's copy names, else its author.

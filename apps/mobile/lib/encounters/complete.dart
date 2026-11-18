@@ -212,8 +212,7 @@ extension EncounterCompletion on EncounterRepository {
     final noDefinition = <CompleteBlock>[];
     var redFlagsDone = redFlagsFinished;
     for (final rec in held.ordered(held.notes)) {
-      final key = rec.attributes['noteTypeKey'], version = rec.attributes['noteTypeVersion'];
-      final definition = key is String && version is int ? definitions.loaded(key, version) : null;
+      final definition = _loadedDefinition(rec);
       final state = store.noteState(rec.id)!;
       final draft = state.status == NoteStatus.draft;
       final stored = EncounterRepository._answersOf(rec);
@@ -436,17 +435,6 @@ extension EncounterCompletion on EncounterRepository {
       }
     }
     return false;
-  }
-
-  /// A teammate's draft the person may see (6.4); one the phone can't lay out is not shown.
-  bool _seesNote(NoteTypeDef definition, Answers stored) {
-    try {
-      return visibleAnswers(definition, stored, user.reader(actsAsAuthor: false)) != null;
-      // A definition the interpreter can't run is one the phone can't lay the note out by.
-      // ignore: avoid_catches_without_on_clauses
-    } catch (_) {
-      return false;
-    }
   }
 
   /// "Wound care: Exam, “Consent recorded” needs an answer." (9.6): the note, the section and the
