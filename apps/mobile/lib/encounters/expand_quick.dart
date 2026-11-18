@@ -58,7 +58,8 @@ class Expanded {
     this.finished = false,
   });
 
-  /// The full note, which the screen opens.
+  /// The full note, which the screen opens: from the visit read Expand was given, for a finished note
+  /// only that read shows ([finished]).
   final String noteId;
 
   /// The visit had a note of the type already, which opens as it is with nothing written into it: the
@@ -87,26 +88,43 @@ extension QuickExpand on EncounterRepository {
 
   /// Whether [expand] of [quickNoteId] into [full] would open a note already in the visit as it is,
   /// copying nothing (12.1 #30): a teammate's draft, one of the person's own that holds answers, or a
-  /// finished note they may see. The form then says so under Expand, rather than that the answers are
-  /// copied (review LFM-5). False when the phone holds no such quick note.
-  Future<bool> expandOpensAsItIs(String quickNoteId, NoteTypeDef full) async {
+  /// finished note they may see, on the phone or in [visitRead] as [expand] takes it. The form then
+  /// says so under Expand, rather than that the answers are copied (review LFM-5). False when the
+  /// phone holds no such quick note.
+  Future<bool> expandOpensAsItIs(String quickNoteId, NoteTypeDef full, {VisitView? visitRead}) async {
     _guardFrozen();
     final encounterId = store.record(quickNoteId)?.attributes['encounterId'];
     if (encounterId is! String) return false;
-    return (await _expandInto(encounterId, full.key))?.asItIs ?? false;
+    return (await _expandInto(encounterId, full.key, visitRead))?.asItIs ?? false;
   }
 
   /// The note of the type [key] already in the visit that Expand goes into, and whether it opens as
   /// it is; null when it makes a new one. The draft the note types list would open, as it is unless
-  /// it is the person's own and empty; else a finished note the person may see, read-only; else
-  /// that empty draft of theirs, filled.
-  Future<({String id, bool asItIs, bool finished})?> _expandInto(String encounterId, String key) async {
+  /// it is the person's own and empty; else a finished note the person may see, read-only, the
+  /// phone's or one only [visitRead] shows; else that empty draft of theirs, filled.
+  Future<({String id, bool asItIs, bool finished})?> _expandInto(
+    String encounterId,
+    String key,
+    VisitView? visitRead,
+  ) async {
     final open = await _draftToOpen(encounterId, key);
     final draft = open == null ? null : _noteRecord(open);
     if (draft != null && _opensAsItIs(draft)) return (id: draft.id, asItIs: true, finished: false);
-    final finished = await _finishedToOpen(encounterId, key);
+    final finished = await _finishedToOpen(encounterId, key) ?? _finishedInRead(encounterId, key, visitRead);
     if (finished != null) return (id: finished, asItIs: true, finished: true);
     return draft == null ? null : (id: draft.id, asItIs: false, finished: false);
+  }
+
+  /// The first finished note of the type [key] that [visitRead], the visit [encounterId] as the server
+  /// read it for the person, shows and the phone does not hold: a teammate's, or one of their own that
+  /// has left the phone (lifecycle 8.2). The read holds only what the person may see (5.1). One the
+  /// phone holds is the phone's to decide, as its copy is the one a refresh keeps current.
+  String? _finishedInRead(String encounterId, String key, VisitView? visitRead) {
+    if (visitRead?.encounterId != encounterId) return null;
+    for (final note in visitRead!.notes) {
+      if (note.noteTypeKey == key && note.finished && store.record(note.noteId) == null) return note.noteId;
+    }
+    return null;
   }
 
   /// A draft Expand opens as it is: a teammate's, or the person's own that holds answers.
@@ -134,8 +152,11 @@ extension QuickExpand on EncounterRepository {
   ///   of the type already. The draft the note types list would open ([addNote]'s rule) opens as it
   ///   is when it holds answers ([Expanded.existing]): Expand never writes over an answer. Else the
   ///   first finished note of the type the person may see opens read-only, nothing copied
-  ///   ([Expanded.finished]): an addendum or a correction adds to it. Else the person's own empty
-  ///   draft of the type is filled, by its own version, as a new note would be.
+  ///   ([Expanded.finished]): an addendum or a correction adds to it. It is the phone's, or else one
+  ///   that [visitRead] shows (the visit read online or from the cached chart, as the screen holds
+  ///   it; a teammate's note the phone was never sent), which the screen opens from that read. Else
+  ///   the person's own empty draft of the type is filled, by its own version, as a new note would
+  ///   be.
   /// - What is written is what the interpreter's `expandQuick` gives for the answers of the quick
   ///   note the person may see, each repeating section of the full note it writes into given a new
   ///   entry ([newEntryId], at [clock]'s time). What the full note's version doesn't take is left out
@@ -162,6 +183,7 @@ extension QuickExpand on EncounterRepository {
     String Function()? newEntryId,
     DateTime Function()? clock,
     bool redFlagsFinished = false,
+    VisitView? visitRead,
   }) async {
     _guardFrozen();
     final quickRec = _noteRecord(quickNoteId);
@@ -184,14 +206,13 @@ extension QuickExpand on EncounterRepository {
     if (seen == null) throw StateError('the person may not see this note');
     final flags = medical && !redFlagsFinished ? await _teamRedFlags() : null;
 
-    final open = await _expandInto(encounterId, full.key);
+    final open = await _expandInto(encounterId, full.key, visitRead);
     LocalRecord? into;
     if (open != null) {
-      final rec = _noteRecord(open.id);
       if (open.asItIs) {
         // A draft of their own opened to chart on brings their Red flags note; a finished note, read,
-        // brings none.
-        if (flags != null && !open.finished && _actsAsAuthor(rec)) {
+        // brings none, and may be one the phone does not hold.
+        if (flags != null && !open.finished && _actsAsAuthor(_noteRecord(open.id))) {
           await RedFlagsNote(this)._addRedFlagsNote(encounterId, flags);
         }
         return Expanded(
@@ -203,7 +224,7 @@ extension QuickExpand on EncounterRepository {
           notCopied: const [],
         );
       }
-      into = rec;
+      into = _noteRecord(open.id);
     }
     final target = into == null ? full : await _definitionOf(into);
 

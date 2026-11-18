@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/api/generated/api.dart' show VisitRead;
 import 'package:sineobex_field/encounters/credentials.dart';
+import 'package:sineobex_field/encounters/encounter_api.dart' show visitFromRead;
 import 'package:sineobex_field/encounters/encounter_models.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart';
 import 'package:sineobex_field/encounters/note_definitions.dart';
@@ -15,6 +17,7 @@ import 'package:sineobex_field/sync/sync_engine.dart';
 import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 import '../sync/test_note_types.dart';
+import 'scripted_api.dart' show userRef, visitJson, visitNoteJson;
 
 /// Expand on the Quick encounter (forms 6.4; card F7-expand): a part of a quick note made into its
 /// full note type in the same visit, each mapped answer written into it as an ordinary change, the
@@ -596,6 +599,73 @@ void main() {
       expect(answersOnServer(done.noteId)['reason.concern'], 'Demo: cough for a week');
     });
 
+    test('a finished note of the type that the visit read shows, and the phone doesn’t hold, opens from that '
+        'read and nothing is copied (12.1 #30)', () async {
+      final a = phone(alex);
+      final patient = server.seedPatient();
+      final ra = repo(a);
+      final visit = ra.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final social = (await ra.addNote(visit, type('social_needs'))).noteId;
+      await ra.openNote(social);
+      ra.saveAnswer(social, 'needs.needs', ['food']);
+      ra.complete((await ra.openComplete(visit))!);
+      await sync(a);
+      serverTookAll(a);
+
+      // Blair's phone brings the visit on to chart on it, not Alex's finished note.
+      final b = phone(blair);
+      final rb = repo(b);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      server.offline = true;
+      final quick = await quickNote(rb, visit, quickGeneral);
+      expect(b.store.record(social), isNull);
+      // The visit as the chart's cache read it, as the server answers it (5.1): Alex's note, completed.
+      VisitView readOf(String encounterId) => visitFromRead(
+        VisitRead.fromJson(
+          visitJson(
+            encounterId: encounterId,
+            patientId: patient,
+            notes: [
+              visitNoteJson(
+                noteId: social,
+                author: userRef(alex, 'Demo Alex'),
+                key: 'social_needs',
+                title: 'Social needs',
+                group: 'social',
+              ),
+            ],
+          ),
+        ),
+        source: VisitSource.chart,
+        user: rb.user,
+        definitionOf: (key, version) => definitions[(key, version)],
+      );
+      final read = readOf(visit);
+      expect(await rb.expandOpensAsItIs(quick, type('social_needs'), visitRead: read), isTrue);
+      // Another visit's read says nothing of this one.
+      expect(await rb.expandOpensAsItIs(quick, type('social_needs'), visitRead: readOf(patient)), isFalse);
+      final before = b.store.outbox().length;
+      final done = await rb.expand(quick, type('social_needs'), visitRead: read);
+      expect(
+        [done.noteId, done.existing, done.finished, done.written, done.leftOut, done.notCopied],
+        [social, true, true, isEmpty, isEmpty, isEmpty],
+      );
+      expect([b.store.outbox(), b.store.record(social)], [hasLength(before), isNull]);
+      server.offline = false;
+      await sync(b);
+      serverTookAll(b);
+      expect(
+        [
+          for (final r in server.records.values)
+            if (r.entity == entityNote && r.attributes['noteTypeKey'] == 'social_needs') r.id,
+        ],
+        [social],
+      );
+      expect(answersOnServer(social), {
+        'needs.needs': ['food'],
+      });
+    });
+
     test('a teammate’s finished note of the type that the person may not read is not opened: Expand makes '
         'a note of their own (forms 6.4, 12.1 #30)', () async {
       final a = phone(alex);
@@ -618,8 +688,30 @@ void main() {
       final quick = await quickNote(rb, visit, {
         'talk.notes': 'Demo: slept outside',
       }, key: quickTalkJson['key']! as String);
+      // The chart's cache, read while their role still read it, shows it too: the phone's copy decides.
+      final cached = visitFromRead(
+        VisitRead.fromJson(
+          visitJson(
+            encounterId: visit,
+            patientId: patient,
+            notes: [
+              visitNoteJson(
+                noteId: theirs,
+                author: userRef(alex, 'Demo Alex'),
+                key: testSensitive.key,
+                title: 'Test sensitive',
+                group: 'psych',
+              ),
+            ],
+          ),
+        ),
+        source: VisitSource.chart,
+        user: rb.user,
+        definitionOf: (key, version) => definitions[(key, version)],
+      );
       expect(await rb.expandOpensAsItIs(quick, type(testSensitive.key)), isFalse);
-      final done = await rb.expand(quick, type(testSensitive.key));
+      expect(await rb.expandOpensAsItIs(quick, type(testSensitive.key), visitRead: cached), isFalse);
+      final done = await rb.expand(quick, type(testSensitive.key), visitRead: cached);
       expect(
         [done.noteId == theirs, done.existing, done.finished, done.written],
         [

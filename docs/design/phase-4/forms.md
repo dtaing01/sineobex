@@ -1400,9 +1400,15 @@ As built on the phone (unit F7, `apps/mobile/lib/encounters/expand_quick.dart` a
   type, in the visit's order, that the person may see, their own or a teammate's, opens read-only
   and nothing is copied (`existing` and `finished`; the coordinator's decision of Nov 18): carrying
   the same answers into a second note would chart the wound or the vitals twice, and an addendum or
-  a correction adds to the finished one. Only then is the person's own empty draft filled, by its
-  own version, as a new note would be. `expandOpensAsItIs` tells the form beforehand, so the line
-  under the button says what a tap will do (review finding LFM-5).
+  a correction adds to the finished one. The phone's copy of a note decides for it, by the person's
+  role now; a finished note the phone does not hold (a teammate's it was never sent, or one of
+  theirs that has left the phone) is found in the visit read the screen passes, online or from the
+  cached chart (`visitRead`, the read it takes `redFlagsFinished` from), which holds only what the
+  person may see, and the screen opens it from that read. Only then is the person's own empty draft
+  filled, by its own version, as a new note would be; a draft of their own with answers opens before
+  an empty one (Add note's rule, lifecycle 3.3 as built). `expandOpensAsItIs` takes the same read
+  and tells the form beforehand, so the line under the button says what a tap will do (review
+  finding LFM-5).
 - **The control.** `NoteForm` takes an `ExpandHandler`, which gives each part its `ExpandOffer`s
   (the full type's title, what a tap does, and whether it opens a note already there). Each is a
   button, "Expand into {title}", heard as "Expand into {title}, from {part}", the visible words
