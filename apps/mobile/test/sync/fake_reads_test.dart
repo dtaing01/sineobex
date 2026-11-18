@@ -522,6 +522,8 @@ void main() {
         'completedAt': null,
         'signoffId': null,
       });
+      // Signed later; when it was made stays (review finding N2-R2).
+      server.now = () => now.add(const Duration(minutes: 5));
       final signoff = finish(flags, 'sign', by: res);
       final signed = await noteAs(res, flags);
       expect(signed.status, 'signed');
@@ -584,7 +586,71 @@ void main() {
       );
       // Dated the same for a reader shown less of it.
       expect((await noteAs(dee, first)).attributes['createdAt'], FakeSyncServer.isoMicros(now));
+
+      // A later change does not move it: the create's time, never the last change's (review finding
+      // N2-R2), as the visit read's order does not move.
+      server.now = () => later.add(const Duration(minutes: 5));
+      server.serverEdit(second, 'data.care.plan', 'Demo: water and socks', by: alex);
+      expect((await noteAs(alex, second)).attributes['createdAt'], FakeSyncServer.isoMicros(later));
     });
+
+    test(
+      'a note whose create was held says it was made when an admin accepted it, not when its push was held',
+      () async {
+        // Review finding N2-R2: an admin's accept makes the row, and the visit read orders the note by
+        // that (lifecycle 4.4), not by when the server received the create, which a signature is
+        // believed from (storedAt, 3.5).
+        final v = visit();
+        const held = 'f0000000-0000-4000-8000-0000000001c1';
+        const changeId = 'f0000000-0000-4000-8000-0000000001c2';
+        // Ben holds no credential that charts Medical: his Medical note's create is held for review.
+        await server.handle(ben, team, 'POST', '/v1/devices', {
+          'deviceId': 'dev-ben',
+          'platform': 'android',
+          'appVersion': 'test',
+          'publicKey': 'key-ben',
+        });
+        final value = {
+          'encounterId': v,
+          'noteTypeKey': testMedical.key,
+          'noteTypeVersion': testMedical.version,
+          'data': const {'care.plan': 'Demo: rest'},
+        };
+        final pushed = await server.handle(ben, team, 'POST', '/v1/sync/push', {
+          'deviceId': 'dev-ben',
+          'clock': {'deviceTime': now.toIso8601String()},
+          'unsynced': {'counts': <String, Object?>{}},
+          'changes': [
+            {
+              'changeId': changeId,
+              'seq': 1,
+              'entity': entityNote,
+              'recordId': held,
+              'op': 'create',
+              'value': value,
+              'valueHash': valueHash(value),
+              'baseVersion': 0,
+              'deviceTime': now.toIso8601String(),
+              'clockVerified': true,
+            },
+          ],
+        }) as Map<String, Object?>;
+        expect(((pushed['results']! as List<Object?>).single! as Map<String, Object?>)['reason'], 'permission');
+        // A teammate's note, made while it waits.
+        final meanwhile = now.add(const Duration(minutes: 1));
+        server.now = () => meanwhile;
+        final made = noteOn(v, testNote, const {'care.plan': 'Demo: water'});
+        final accepted = now.add(const Duration(minutes: 2));
+        server.now = () => accepted;
+        expect(server.acceptHeld(changeId)['status'], 'accepted');
+
+        final snapshots = (await read(alex, [(entityNote, held), (entityNote, made)])).records;
+        expect(
+          [for (final s in snapshots) (s.id, s.attributes['createdAt'])],
+          [(held, FakeSyncServer.isoMicros(accepted)), (made, FakeSyncServer.isoMicros(meanwhile))],
+        );
+      },
+    );
 
     test(
       'notes made within one millisecond keep the visit read’s order: a note’s createdAt is given to the microsecond',

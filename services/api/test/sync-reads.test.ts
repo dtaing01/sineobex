@@ -342,11 +342,12 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       const visit = await visitOf(res, patientId);
       const flags = await noteOn(res, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
       const draft = await noteAs(res, flags);
+      const { madeAt } = await noteRow(flags.noteId);
       expect(draft!.attributes).toEqual({
         encounterId: visit.encounterId,
         noteTypeKey: 'test_red_flags',
         noteTypeVersion: 1,
-        createdAt: (await noteRow(flags.noteId)).madeAt,
+        createdAt: madeAt,
         attestation: 'not_needed',
         actingAuthorId: res.id,
         actingAuthorName: 'Res (demo)',
@@ -358,6 +359,8 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       const signed = await noteAs(res, flags);
       expect(signed!.status).toBe('signed');
       expect(signed!.attributes).toMatchObject({
+        // Its sign-off changed the note later; when it was made stays (review finding N2-R2).
+        createdAt: madeAt,
         attestation: 'waiting',
         actingAuthorId: res.id,
         everSigned: true,
@@ -418,6 +421,73 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       });
       expect(visitRead.status).toBe(200);
       expect((visitRead.body.notes as { noteId: string }[]).map((n) => n.noteId)).toEqual(byServer);
+
+      // A later change does not move it: the create's time, never the last change's (review finding
+      // N2-R2), as the visit read's order does not move.
+      const madeSecond = (await noteRow(second.noteId)).madeAt;
+      await new Promise((r) => setTimeout(r, 5));
+      const edit = await ana.phone.change({
+        entity: 'encounter_note',
+        recordId: second.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: 'Demo: water and socks',
+        baseVersion: 1,
+      });
+      expect((await ana.send(edit)).map((r) => r.status)).toEqual(['accepted']);
+      const changed = await noteRow(second.noteId);
+      expect(changed.updatedAt.getTime()).toBeGreaterThan(changed.createdAt.getTime());
+      expect((await noteAs(ana, second))!.attributes.createdAt).toBe(madeSecond);
+    });
+
+    it('a note whose create was held says it was made when an admin accepted it, not when its push was held', async () => {
+      // Review finding N2-R2: an admin's accept makes the row, and the visit read orders the note by
+      // that (lifecycle 4.4), not by when the server received the create, which a signature is
+      // believed from (createReceivedAt, 3.5).
+      const visit = await visitOf(ana, patientId);
+      // Ben holds no credential that charts Medical: his Medical note's create is held for review.
+      const create = await ben.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: {
+          encounterId: visit.encounterId,
+          noteTypeKey: TEST_MEDICAL_TYPE.key,
+          noteTypeVersion: TEST_MEDICAL_TYPE.version,
+          data: { 'care.plan': 'Demo: rest' },
+        },
+      });
+      expect((await ben.send(create)).map((r) => r.reason)).toEqual(['permission']);
+      // A teammate's note, made while it waits.
+      const meanwhile = await noteOn(ana, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: water' });
+      const [item] = await h.scratch.owner<{ id: string; receivedAt: Date }[]>`
+        select id, received_at as "receivedAt" from sineobex.quarantine_items where change_id = ${create.changeId}`;
+      await new Promise((r) => setTimeout(r, 5));
+      const decided = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+        method: 'POST',
+        token: t.adminToken,
+        teamId: t.teamId,
+        json: { decision: 'accept', reason: 'Demo: checked with Ben' },
+      });
+      expect(decided.status).toBe(200);
+      const accepted = await noteRow(create.recordId);
+      expect(accepted.createdAt.getTime()).toBeGreaterThan(item!.receivedAt.getTime());
+
+      const snapshots = (await read(ana.token, [noteRef({ noteId: create.recordId }), noteRef(meanwhile)]))
+        .records;
+      expect(snapshots.map((s) => [s.id, s.attributes.createdAt])).toEqual([
+        [create.recordId, accepted.madeAt],
+        [meanwhile.noteId, (await noteRow(meanwhile.noteId)).madeAt],
+      ]);
+      // So the phone puts it after the note made while it waited, as the visit read does.
+      const visitRead = await call(h, `/v1/encounters/${visit.encounterId}`, {
+        token: ana.token,
+        teamId: t.teamId,
+      });
+      expect(visitRead.status).toBe(200);
+      expect((visitRead.body.notes as { noteId: string }[]).map((n) => n.noteId)).toEqual([
+        meanwhile.noteId,
+        create.recordId,
+      ]);
     });
 
     it('notes made within one millisecond keep the visit read’s order: a note’s createdAt is given to the microsecond', async () => {
