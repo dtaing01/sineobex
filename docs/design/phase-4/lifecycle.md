@@ -2103,9 +2103,11 @@ version moves too.
 **The fake's defaults:**
 
 - **Anyone the fake does not list** has the role Healthcare Staff and the credential `attending`
-  (`FakeSyncServer.defaultCredential`). The API's membership default is `none`, so a phone test
-  that never sets a credential passes the Medical gate on the fake and would be held by the API.
-  Open: default to `none`, as the API does, with each test that charts a Medical note setting one.
+  (`FakeSyncServer.defaultCredential`), kept as built (as the coordinator decided): the default
+  role is one that charts, so its credential is one that signs, and a test that needs a lower
+  credential sets one (`credentials`, `changeCredential`). The API's membership default is `none`,
+  so a phone test that never sets a credential passes the Medical gate on the fake where the API
+  would hold it; the parity cases of the gate set the credential they test.
 - **The CHW preset** holds `referrals.create` and `routes.view`, as `permissions.ts` does.
 - **People and credentials**: `credentials`, `changeCredential` (which records the credential
   replaced) and `removedUsers`; the credential's capabilities are a copy of `CAPABILITIES`.
@@ -3053,9 +3055,11 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 23 | What is a person shown when they complete a note without signing it, and which version is stored? | A `complete` carries a statement version as a `sign` does (`complete-2026-11` in the tests); its sentence is not written yet, and 3.5's table has none. The server stores the version the phone sends, any text of 1 to 40 characters from `a-z`, `0-9`, `_`, `.` and `-`, and checks it against no list (4.6) | Counsel |
 | 24 | Does a correction record the wording its corrector was shown? | No. A correction carries no statement version: its row's corrector, credential, time and reason stand as their signature on the change (3.6, 4.7) | Counsel |
 | 25 | Where do the records made at a visit go when the visit moves to another patient? | They stay with the first patient, still naming the visit; the visit screen lists them so the clinician can find each and enter it in error (4.3, 8.4, 9.7) | Brooke and Mercy |
+| 26 | Does the review queue name the rule that held a change? | No. A change held by a rule shows the reason `permission` alone: which rule held it (the Medical gate, a section's `needs`, the sensitive set check, a note the sender may not read) is not stored, and `sync.quarantined` names none (6.4, 10.1). Open for the portal's queues (L6) | The team |
 
-Rows 23 to 25 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
-the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`). Rows 23 and 24's are on
+Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
+the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
+(`services/api/src/sync/apply.ts`). Rows 23 and 24's are on
 `NoteSignoffCreate`'s `statementVersion` (`services/api/src/sync/entities/values.ts`) and on the
 correction's rules (`note-correction.ts`).
 

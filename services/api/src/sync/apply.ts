@@ -434,7 +434,12 @@ async function decide(
   return outcome;
 }
 
-/** Holds a change for a Program Admin to review, and tells the phone it may let go of it. */
+/**
+ * Holds a change for a Program Admin to review, and tells the phone it may let go of it.
+ * PLAN-OPEN: does the review queue name the rule that held a change (lifecycle 12.1 #26; plan
+ * section 6)? No: the reason is `permission` whichever rule held it, and nothing stored names the
+ * rule. A question for the portal's queues (L6).
+ */
 async function hold(
   tx: Tx,
   audit: AuditFn,
