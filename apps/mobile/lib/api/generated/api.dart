@@ -1301,6 +1301,28 @@ class AppointAdmin {
       };
 }
 
+class AssignInput {
+  const AssignInput({
+    required this.reason,
+    required this.toUserId,
+  });
+
+  /// Why, in a few words. Logged.
+  final String reason;
+  /// The clinician who will act as the note’s author
+  final String toUserId;
+
+  factory AssignInput.fromJson(Map<String, dynamic> json) => AssignInput(
+        reason: json['reason'] as String,
+        toUserId: json['toUserId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'reason': reason,
+        'toUserId': toUserId,
+      };
+}
+
 class AttestationView {
   const AttestationView({
     required this.attending,
@@ -3484,6 +3506,35 @@ class NoteActResultNotesItem {
         'attestation': attestation.toJson(),
         'noteId': noteId,
         'status': status.toJson(),
+      };
+}
+
+class NoteAssigned {
+  const NoteAssigned({
+    required this.assignmentId,
+    required this.fromUserId,
+    required this.noteId,
+    required this.toUserId,
+  });
+
+  final String assignmentId;
+  /// Who acted as the author until now
+  final String fromUserId;
+  final String noteId;
+  final String toUserId;
+
+  factory NoteAssigned.fromJson(Map<String, dynamic> json) => NoteAssigned(
+        assignmentId: json['assignmentId'] as String,
+        fromUserId: json['fromUserId'] as String,
+        noteId: json['noteId'] as String,
+        toUserId: json['toUserId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'assignmentId': assignmentId,
+        'fromUserId': fromUserId,
+        'noteId': noteId,
+        'toUserId': toUserId,
       };
 }
 
@@ -6130,6 +6181,12 @@ class SineobexApi {
   Future<Role> archiveRole({required String roleId}) async {
     final json = await _transport.send('POST', '/v1/team/roles/${Uri.encodeComponent(roleId)}/archive');
     return Role.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Put another clinician in the place of a note’s author who has left the team
+  Future<NoteAssigned> assignNote({required String noteId, required AssignInput body}) async {
+    final json = await _transport.send('POST', '/v1/notes/${Uri.encodeComponent(noteId)}/assign', body: body.toJson());
+    return NoteAssigned.fromJson(json as Map<String, dynamic>);
   }
 
   /// Attest the visit’s signed notes that wait for attestation, all or nothing

@@ -1,6 +1,6 @@
-import type { z } from '@hono/zod-openapi';
-import { createRoute } from '@hono/zod-openapi';
+import { createRoute, z } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
+import { AssignInput, assignNote, NoteAssigned } from '../encounters/assign.ts';
 import { attestVisit } from '../encounters/attest.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
@@ -9,7 +9,7 @@ import { earlierVisits } from '../encounters/timeline.ts';
 import { EncounterParam, PatientParam, TimelinePage, TimelineQuery, VisitRead } from '../patients/schemas.ts';
 import type { App } from '../app.ts';
 import type { Deps } from '../types.ts';
-import { errors } from './schemas.ts';
+import { errors, Uuid } from './schemas.ts';
 
 /**
  * Encounters online (phase 4 lifecycle 5): what works only with a connection. Each route checks its
@@ -116,6 +116,27 @@ const attestationQueueRoute = queueRoute(
   'attests',
 );
 
+const NoteParam = z.object({ noteId: Uuid });
+
+const assignRoute = createRoute({
+  method: 'post',
+  path: '/v1/notes/{noteId}/assign',
+  operationId: 'assignNote',
+  tags: ['encounters'],
+  summary: 'Put another clinician in the place of a note’s author who has left the team',
+  description:
+    'Lifecycle 3.8, 5.5. Needs team.manage_users and a recent sign-in. 409 author_active while whoever acts as the ' +
+    'author is an active member; 422 assignee_not_member, assignee_cannot_chart, credential_too_low (below the ' +
+    'rank the note was signed under, or for an unsigned note its author’s last credential) or cannot_see_all ' +
+    '(the note holds an answer the assignee’s role cannot see). The reason is stored, not logged.',
+  security: [{ bearer: [] }],
+  request: { params: NoteParam, body: { required: true, ...json(AssignInput) } },
+  responses: {
+    200: { description: 'The assignment', ...json(NoteAssigned) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -148,5 +169,10 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(attestationQueueRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
     return c.json(await readQueue(scope, 'attestation', c.req.routePath), 200);
+  });
+
+  app.openapi(assignRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['team.manage_users'], recentAuth: true });
+    return c.json(await assignNote(scope, c.req.valid('param').noteId, c.req.valid('json')), 200);
   });
 }

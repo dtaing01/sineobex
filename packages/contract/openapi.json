@@ -132,6 +132,27 @@
         ],
         "type": "object"
       },
+      "AssignInput": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words. Logged.",
+            "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          },
+          "toUserId": {
+            "description": "The clinician who will act as the note’s author",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "toUserId",
+          "reason"
+        ],
+        "type": "object"
+      },
       "AttestationView": {
         "properties": {
           "attending": {
@@ -2464,6 +2485,34 @@
         },
         "required": [
           "notes"
+        ],
+        "type": "object"
+      },
+      "NoteAssigned": {
+        "properties": {
+          "assignmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "fromUserId": {
+            "description": "Who acted as the author until now",
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "toUserId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignmentId",
+          "noteId",
+          "fromUserId",
+          "toUserId"
         ],
         "type": "object"
       },
@@ -6175,6 +6224,104 @@
         "summary": "Accept the Terms of Use or the confidentiality acknowledgement",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/v1/notes/{noteId}/assign": {
+      "post": {
+        "description": "Lifecycle 3.8, 5.5. Needs team.manage_users and a recent sign-in. 409 author_active while whoever acts as the author is an active member; 422 assignee_not_member, assignee_cannot_chart, credential_too_low (below the rank the note was signed under, or for an unsigned note its author’s last credential) or cannot_see_all (the note holds an answer the assignee’s role cannot see). The reason is stored, not logged.",
+        "operationId": "assignNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "noteId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteAssigned"
+                }
+              }
+            },
+            "description": "The assignment"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Put another clinician in the place of a note’s author who has left the team",
+        "tags": [
+          "encounters"
         ]
       }
     },

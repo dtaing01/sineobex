@@ -228,6 +228,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notes/{noteId}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put another clinician in the place of a note’s author who has left the team
+         * @description Lifecycle 3.8, 5.5. Needs team.manage_users and a recent sign-in. 409 author_active while whoever acts as the author is an active member; 422 assignee_not_member, assignee_cannot_chart, credential_too_low (below the rank the note was signed under, or for an unsigned note its author’s last credential) or cannot_see_all (the note holds an answer the assignee’s role cannot see). The reason is stored, not logged.
+         */
+        post: operations["assignNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/owner/teams": {
         parameters: {
             query?: never;
@@ -1093,6 +1113,15 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        AssignInput: {
+            /** @description Why, in a few words. Logged. */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description The clinician who will act as the note’s author
+             */
+            toUserId: string;
+        };
         AttestationView: {
             attending: components["schemas"]["UserRef"];
             /** Format: date-time */
@@ -1732,6 +1761,19 @@ export interface components {
                 noteId: string;
                 status: components["schemas"]["NoteStatus"];
             }[];
+        };
+        NoteAssigned: {
+            /** Format: uuid */
+            assignmentId: string;
+            /**
+             * Format: uuid
+             * @description Who acted as the author until now
+             */
+            fromUserId: string;
+            /** Format: uuid */
+            noteId: string;
+            /** Format: uuid */
+            toUserId: string;
         };
         /** @enum {string} */
         NoteAttestation: "not_needed" | "waiting" | "attested";
@@ -3193,6 +3235,77 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    assignNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignInput"];
+            };
+        };
+        responses: {
+            /** @description The assignment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteAssigned"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

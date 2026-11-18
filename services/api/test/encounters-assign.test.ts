@@ -152,6 +152,14 @@ describe('phase 4: assign a note', () => {
       expect((r.body as Json).error?.code).toBe('cannot_see_all');
       await unassigned(v);
       expect((await assign(v.note.noteId, w.vic.id)).status).toBe(200);
+
+      // An attending whose role charts but reads no Medical note (no patients.view) sees none of it.
+      const plain = await departed('attending');
+      await gone(plain.c);
+      const none = await assign(plain.v.note.noteId, w.eli.id);
+      expect(none.status).toBe(422);
+      expect((none.body as Json).error?.code).toBe('cannot_see_all');
+      await unassigned(plain.v);
     });
 
     it('a note the team does not have is 404; a reason too short or too long is 422', async () => {
@@ -169,21 +177,23 @@ describe('phase 4: assign a note', () => {
     it('a row, the note’s assignee, one event with no reason in it, and a notice to the assignee', async () => {
       const { c, v } = await departed('resident');
       await gone(c);
+      // Someone no earlier test assigned a note to, so the notice below is the only one they have.
+      const nell = await clinician(h, w.t, 'nell@example.com', 'Nell (demo)', 'np');
       const mark = await auditMark(h);
-      const r = await assign(v.note.noteId, w.nia.id);
+      const r = await assign(v.note.noteId, nell.id);
       expect(r.status).toBe(200);
       expect(await assignmentRows(h, v.note.noteId)).toEqual([
         expect.objectContaining({
           teamId: w.t.teamId,
           noteId: v.note.noteId,
           fromUserId: c.id,
-          toUserId: w.nia.id,
+          toUserId: nell.id,
           assignedBy: w.t.adminId,
           reason: REASON,
         }),
       ]);
       expect(await noteRow(h, v.note.noteId)).toMatchObject({
-        assignedUserId: w.nia.id,
+        assignedUserId: nell.id,
         authorUserId: c.id,
         status: 'draft',
       });
@@ -193,9 +203,9 @@ describe('phase 4: assign a note', () => {
         entityId: v.note.noteId,
         patientId: w.patientId,
       });
-      expect(event!.details).toEqual({ fromUserId: c.id, toUserId: w.nia.id });
+      expect(event!.details).toEqual({ fromUserId: c.id, toUserId: nell.id });
       expect((await eventsAfter(h, mark)).map((e) => e.action)).toEqual(['note.assigned']);
-      expect(await noticesOf(h, w.nia.id, 'note_assigned')).toEqual([
+      expect(await noticesOf(h, nell.id, 'note_assigned')).toEqual([
         { entity: 'encounter_note', recordId: v.note.noteId },
       ]);
       await expectAuditClean(h, [...SECRETS, REASON], mark);
