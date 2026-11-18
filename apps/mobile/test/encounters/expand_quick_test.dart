@@ -571,6 +571,57 @@ void main() {
       expect(answersOnServer(done.noteId)['reason.concern'], 'Demo: cough for a week');
     });
 
+    test('once a removed note’s fix has settled, Add note and Expand open the draft with answers made after it, '
+        'not the removed empty one (lifecycle 3.3, 12.1 #30)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final removed = (await r.addNote(visit, type('social_needs'))).noteId;
+      await r.openNote(removed);
+      r.saveAnswer(removed, 'needs.needs', ['food']);
+      await sync(p);
+      // A teammate's change the phone hasn't seen: the Complete is refused content_changed.
+      server.serverEdit(removed, 'data.needs.needs', ['food', 'housing'], by: blair);
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      expect(p.store.needsAttention(), hasLength(1));
+      server.offline = true;
+      await r.removeNote(removed);
+      final charted = await r.addNote(visit, type('social_needs'));
+      expect([charted.noteId == removed, charted.existing], [false, false]);
+      await r.openNote(charted.noteId);
+      r.saveAnswer(charted.noteId, 'needs.needs', ['housing']);
+      // Made after the removed note, on the phone and the server alike, so it comes after it in the
+      // visit's order.
+      serverTime = serverTime.add(const Duration(minutes: 10));
+      p.advance(const Duration(minutes: 10));
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[removed]!.status, answersOnServer(removed)], ['draft', isEmpty]);
+
+      // The removed note stays an empty draft of theirs: the one with answers opens before it.
+      server.offline = true;
+      expect(await r.addNote(visit, type('social_needs')), (noteId: charted.noteId, existing: true));
+      final quick = await quickNote(r, visit, quickGeneral);
+      expect(await r.expandOpensAsItIs(quick, type('social_needs')), isTrue);
+      final done = await r.expand(quick, type('social_needs'));
+      expect([done.noteId, done.existing, done.written], [charted.noteId, true, isEmpty]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(
+        [answersOnServer(removed), answersOnServer(charted.noteId)],
+        [
+          isEmpty,
+          {
+            'needs.needs': ['housing'],
+          },
+        ],
+      );
+    });
+
     test('answers the full note type doesn’t take are left out and listed; the rest are written', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

@@ -239,10 +239,11 @@ class EncounterRepository {
 
   /// A note of [type] in the visit (lifecycle 9.4): [type] is the definition the team's list gives
   /// for a new note, so the note is written on that version. If the visit already has a draft of
-  /// that type the person may change, that draft is opened instead: their own first, empty or not,
-  /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1). An
-  /// empty draft of their own whose refused sign-off's fix waits to send (a note removed, 3.3 as
-  /// built) is not opened. [another] makes a second note of the type all the same (4.4).
+  /// that type the person may change, that draft is opened instead: their own first, one with
+  /// answers before an empty one, then a teammate's they may see (an empty draft of a teammate's is
+  /// not there to them, 3.1). An empty draft of their own whose refused sign-off's fix waits to send
+  /// (a note removed, 3.3 as built) is not opened. [another] makes a second note of the type all the
+  /// same (4.4).
   ///
   /// With a Medical note of the person's own, new or opened, the app adds their own Red flags note
   /// on the team's type ([noteTypes]), in the same transaction as a new note, unless the visit has a
@@ -321,9 +322,12 @@ class EncounterRepository {
             !(settling.contains(rec.id) && noteIsEmpty(_answersOf(rec))))
           rec,
     ];
+    // Their own that holds answers before an empty one: a note removed stays an empty draft once its
+    // fix has settled, beside the one charted on since (3.3 as built).
     final own = [
-      for (final rec in drafts)
-        if (_actsAsAuthor(rec)) rec,
+      for (final empty in [false, true])
+        for (final rec in drafts)
+          if (_actsAsAuthor(rec) && noteIsEmpty(_answersOf(rec)) == empty) rec,
     ];
     for (final rec in [...own, ...drafts.where((r) => !own.contains(r))]) {
       final version = rec.attributes['noteTypeVersion'];
