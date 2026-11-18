@@ -20,7 +20,7 @@ import {
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean, mergeDirect } from './patient-fixtures.ts';
 import { clinician, noteOn, type Clinician, type HeldNote, type Json } from './sync-fixtures.ts';
 
 // GET /v1/team/cosign-queue and GET /v1/team/attestation-queue (lifecycle 3.7, 5.4, 6.4 rule 4):
@@ -313,5 +313,27 @@ describe('phase 4: the co-sign and attestation queues', () => {
       );
       await expectAuditClean(h, SECRETS, mark);
     });
+  });
+});
+
+describe('phase 4: a queue row of a merged patient', () => {
+  // Review finding LPM-7 (M41): no test held the name to the canonical chart's.
+  let h: Harness;
+  let w: World;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    w = await createWorld(h);
+  });
+  afterAll(() => h.close());
+
+  it('shows the preferred name of the chart the patient was merged into, as their chart does', async () => {
+    const merged = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Robin R' })).id;
+    const v = await waitingForCosign(w, w.sol, undefined, undefined, { patientId: merged });
+    await mergeDirect(h, w.t.teamId, merged, w.patientId, w.t.adminId);
+    const r = await get(w, w.ana.token, '/v1/team/cosign-queue');
+    expect(r.status).toBe(200);
+    const row = ((r.body as Json).rows as QueueRow[]).find((x) => x.encounterId === v.visit.encounterId);
+    expect(row).toMatchObject({ patientId: merged, preferredName: w.preferredName });
   });
 });

@@ -14,6 +14,8 @@ import {
   setCredential,
   staleToken,
   TEST_MEDICAL_EXAM_TYPE,
+  TEST_NOTE_TYPE,
+  visitAt,
   whileTeamLocked,
   WITH_EXAM,
   type ChartedVisit,
@@ -22,7 +24,7 @@ import {
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import type { Credential } from '../src/auth/permissions.ts';
-import { clinician, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
+import { clinician, noteOn, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
 
 // POST /v1/notes/{noteId}/assign (lifecycle 3.8, 5.5, PRD main 461): a Program Admin puts another
 // clinician in the place of a note's author who has left the team. team.manage_users and a recent
@@ -160,6 +162,23 @@ describe('phase 4: assign a note', () => {
       expect(none.status).toBe(422);
       expect((none.body as Json).error?.code).toBe('cannot_see_all');
       await unassigned(plain.v);
+    });
+
+    it('a Non-Medical note of a Medical visit, to a role that may not read the visit’s summary: 422 cannot_see_all', async () => {
+      // Review finding LPM-4 (M15): the note's hash covers the visit's summary, which Eli's role (it
+      // charts, without patients.view) may not read. The same note on a Non-Medical visit is his.
+      const n = ++count;
+      const c = await clinician(h, w.t, `left-${n}@example.com`, `Left ${n} (demo)`, 'attending');
+      const medical = await visitAt(c, w.patientId);
+      const inMedical = await noteOn(c, medical, TEST_NOTE_TYPE, { 'care.plan': 'Demo: socks and water' });
+      const social = await visitAt(c, w.patientId, { kind: 'non_medical' });
+      const inSocial = await noteOn(c, social, TEST_NOTE_TYPE, { 'care.plan': 'Demo: socks and water' });
+      await gone(c);
+      const r = await assign(inMedical.noteId, w.eli.id);
+      expect(r.status).toBe(422);
+      expect((r.body as Json).error?.code).toBe('cannot_see_all');
+      expect((await noteRow(h, inMedical.noteId)).assignedUserId).toBeNull();
+      expect((await assign(inSocial.noteId, w.eli.id)).status).toBe(200);
     });
 
     it('a note the team does not have is 404; a reason too short or too long is 422', async () => {

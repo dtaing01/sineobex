@@ -224,6 +224,11 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
     expect(await shown(w.bea)).toContain('Demo: chest pain since the morning');
   });
 
+  // Each note goes through visibleAnswers before handoffLines reads it (handoff.ts). No test here
+  // bites if that step is taken out (review finding LPM-7, M40): with today's definitions, what a
+  // reader's keys hide is a treatment record, a sensitive exam or a sensitive diagnosis with its
+  // entry, and handoffLines leaves each of those out for every reader (D82, forms 10.1 #6). The step
+  // stays, for a definition whose hidden content EMS could otherwise be sent.
   it('holds no sensitive exam, treatment record or sensitive diagnosis, for any reader, the author included', async () => {
     for (const c of [w.rae, w.vic, w.ana, w.bea]) {
       const text = pdfText(new Uint8Array(await (await exportAs(c.token)).arrayBuffer())).join(' ');
@@ -266,6 +271,17 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
     });
     expect((await eventsAfter(h, mark)).map((e) => e.action)).toEqual(['ems_handoff.exported']);
     await expectAuditClean(h, [...NEVER, ...Object.values(TALK), 'Demo: chest pain', w.preferredName], mark);
+  });
+
+  it('names no empty draft among the notes it read: it counts as not there', async () => {
+    // Review finding LPM-7 (M36).
+    const v = await visitAt(w.rae, w.patientId);
+    const flags = await noteOn(w.rae, v, RED_FLAGS as ResolvedNoteType, EMS);
+    await noteOn(w.rae, v, TEST_NOTE_TYPE, { 'care.plan': '' });
+    const mark = await auditMark(h);
+    expect((await exportAs(w.vic.token, v.encounterId)).status).toBe(200);
+    const [event] = await expectAudit(h, 'ems_handoff.exported', { after: mark, count: 1 });
+    expect(event!.details.noteIds).toEqual([flags.noteId]);
   });
 
   it('needs patients.view: a role without it is refused, and the refusal is logged', async () => {

@@ -317,6 +317,38 @@ describe('phase 4: a visit’s status, as the reader is shown it', () => {
     expect([await visitStatus(h, only), await visitStatus(h, mixed)]).toEqual(['completed', 'draft']);
   });
 
+  it('“Show earlier visits” goes on from the last visit shown, with a visit at the same time as it', async () => {
+    // Review finding LRD-6: the 50th and 51st visits start at the same time, so the page breaks
+    // between them by ID; a cursor by time alone would skip the 51st.
+    const kai = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Kai' })).id;
+    const fields = ['patientId', 'location', 'locationText', 'kind'];
+    const insert = async (id: string, startedAt: string) =>
+      h.scratch.owner`
+        insert into sineobex.encounters (id, team_id, patient_id, kind, author_user_id, started_at, field_versions,
+          field_meta)
+        values (${id}, ${w.t.teamId}, ${kai}, 'non_medical', ${w.ana.id}, ${startedAt},
+          ${h.scratch.owner.json(Object.fromEntries(fields.map((f) => [f, 1])))},
+          ${h.scratch.owner.json(Object.fromEntries(fields.map((f) => [f, { by: w.ana.id, at: startedAt, changeId: null }])))})`;
+    const newer = [];
+    for (let i = 0; i < 49; i++) {
+      const id = randomUUID();
+      await insert(id, new Date(Date.parse('2026-10-19T12:00:00Z') - i * HOUR).toISOString());
+      newer.push(id);
+    }
+    const tie = '2026-10-01T12:00:00.000Z';
+    const fiftieth = 'ffffffff-0000-4000-8000-000000000050';
+    const fiftyFirst = '00000000-0000-4000-8000-000000000051';
+    await insert(fiftieth, tie);
+    await insert(fiftyFirst, tie);
+    const first = (await get(w, w.ana.token, `/v1/patients/${kai}`)).body as unknown as Chart;
+    expect(first.timeline.encounters.map((e) => e.encounterId)).toEqual([...newer, fiftieth]);
+    const next = await get(w, w.ana.token, `/v1/patients/${kai}/timeline?before=${fiftieth}`);
+    expect(next.status).toBe(200);
+    expect(((next.body as Json).encounters as TimelineVisit[]).map((e) => e.encounterId)).toEqual([
+      fiftyFirst,
+    ]);
+  });
+
   it('says nothing of it in the sync read either', async () => {
     // Eli charts and holds no patients.view_sensitive: the sensitive note is not his to read.
     const statusFor = async (token: string) => {
