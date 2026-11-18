@@ -252,6 +252,74 @@ void main() {
     );
   }, skip: skip);
 
+  test('an answer a correction hid from the Red flags note, shown again by a later correction, is taken; one that '
+      'stays hidden is no change (D109, review F2 and F4)', () async {
+    final a = await phone('clinician@example.com');
+    final patient = await registered(a, 'Corh');
+    final visit = a.repo.startEncounter(kind: VisitKind.medical, patientId: patient);
+    await charted(a, visit, 'general_primary_care', {});
+    final flags = (await a.repo.ownRedFlagsNote(visit))!;
+    await a.repo.openNote(flags);
+    a.repo.saveAnswer(flags, 'red_flags.emergency', 'yes');
+    a.repo.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+    a.repo.saveAnswer(flags, 'red_flags.transport', 'yes');
+    await completed(a, visit, {flags}, act: SignoffAct.sign);
+    await a.sync();
+    // No emergency after all: "EMS activated" and the transport no longer show. The server keeps each
+    // at its version, and the note's read leaves them out, so the phone holds no version of either.
+    final hide = await a.repo.correct(visit, flags, changes: {'red_flags.emergency': 'no'}, reason: 'Demo: misread');
+    await a.sync();
+    expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
+    for (final path in ['red_flags.ems_activated', 'red_flags.transport']) {
+      expect(a.store.record(flags)!.fields['data.$path'], isNull, reason: path);
+    }
+    // While it stays hidden, a change to it changes nothing the note shows.
+    await expectLater(
+      a.repo.correct(visit, flags, changes: {'red_flags.ems_activated': 'yes'}, reason: 'Demo: misread'),
+      throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'no_change')),
+    );
+
+    final back = await a.repo.correct(
+      visit,
+      flags,
+      changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'yes', 'red_flags.ems_time': '10:05'},
+      reason: 'Demo: misread again',
+    );
+    final sent = (a.store.outbox().lastWhere((e) => e.recordId == back).value! as Map<String, Object?>)['changes'];
+    expect([for (final c in (sent! as List<Object?>).cast<Map<String, Object?>>()) c['baseVersion']].sublist(1), [
+      0,
+      0,
+    ]);
+    await a.sync();
+    expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
+    // The phone holds what shows again, the transport the first correction hid included.
+    expect(
+      [
+        for (final path in ['emergency', 'ems_activated', 'ems_time', 'transport'])
+          a.store.record(flags)!.fields['data.red_flags.$path']?.value,
+      ],
+      ['yes', 'yes', '10:05', 'yes'],
+    );
+    final note = (await a.api.readVisit(visit)).notes.singleWhere((n) => n.noteId == flags);
+    expect(
+      [
+        for (final c in note.corrections) [c.id, c.outcome, c.fields],
+      ],
+      [
+        [
+          hide,
+          'corrected',
+          ['data.red_flags.emergency'],
+        ],
+        [
+          back,
+          'corrected',
+          ['data.red_flags.emergency', 'data.red_flags.ems_activated', 'data.red_flags.ems_time'],
+        ],
+      ],
+    );
+  }, skip: skip);
+
   test('co-sign online: notes completed for a co-signer, read from the server and co-signed with their '
       'hashes; the same act again is refused as changed', () async {
     // The resident's phone still holds a student's profile (the credential changed since it last
