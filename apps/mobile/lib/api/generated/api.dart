@@ -2797,6 +2797,68 @@ class IdentityCorrection {
       };
 }
 
+class IncompleteNote {
+  const IncompleteNote({
+    required this.encounterId,
+    required this.noteId,
+    required this.noteTypeKey,
+    required this.overdue,
+    required this.patientId,
+    required this.startedAt,
+    required this.author,
+    required this.authorActive,
+  });
+
+  final String encounterId;
+  final String noteId;
+  final String noteTypeKey;
+  /// More than 24 hours since the visit started, or since the server received it when its start was not verified
+  final bool overdue;
+  final String? patientId;
+  final DateTime startedAt;
+  final Object? author;
+  /// The author is still an active member of the team
+  final bool authorActive;
+
+  factory IncompleteNote.fromJson(Map<String, dynamic> json) => IncompleteNote(
+        encounterId: json['encounterId'] as String,
+        noteId: json['noteId'] as String,
+        noteTypeKey: json['noteTypeKey'] as String,
+        overdue: json['overdue'] as bool,
+        patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        startedAt: DateTime.parse(json['startedAt'] as String),
+        author: json['author'],
+        authorActive: json['authorActive'] as bool,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounterId': encounterId,
+        'noteId': noteId,
+        'noteTypeKey': noteTypeKey,
+        'overdue': overdue,
+        'patientId': patientId == null ? null : patientId!,
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'author': author,
+        'authorActive': authorActive,
+      };
+}
+
+class IncompleteNotes {
+  const IncompleteNotes({
+    required this.notes,
+  });
+
+  final List<IncompleteNote> notes;
+
+  factory IncompleteNotes.fromJson(Map<String, dynamic> json) => IncompleteNotes(
+        notes: (json['notes'] as List<dynamic>).map((e) => IncompleteNote.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'notes': notes.map((e) => e.toJson()).toList(),
+      };
+}
+
 class IndexDuplicateHint {
   const IndexDuplicateHint({
     required this.status,
@@ -3538,6 +3600,43 @@ class NoteAssigned {
       };
 }
 
+class NoteToFinish {
+  const NoteToFinish({
+    required this.encounterId,
+    required this.noteId,
+    required this.noteTypeKey,
+    required this.overdue,
+    required this.patientId,
+    required this.startedAt,
+  });
+
+  final String encounterId;
+  final String noteId;
+  final String noteTypeKey;
+  /// More than 24 hours since the visit started, or since the server received it when its start was not verified
+  final bool overdue;
+  final String? patientId;
+  final DateTime startedAt;
+
+  factory NoteToFinish.fromJson(Map<String, dynamic> json) => NoteToFinish(
+        encounterId: json['encounterId'] as String,
+        noteId: json['noteId'] as String,
+        noteTypeKey: json['noteTypeKey'] as String,
+        overdue: json['overdue'] as bool,
+        patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        startedAt: DateTime.parse(json['startedAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounterId': encounterId,
+        'noteId': noteId,
+        'noteTypeKey': noteTypeKey,
+        'overdue': overdue,
+        'patientId': patientId == null ? null : patientId!,
+        'startedAt': startedAt.toUtc().toIso8601String(),
+      };
+}
+
 class NoteTypeDefinition {
   const NoteTypeDefinition({
     required this.definition,
@@ -3632,6 +3731,22 @@ class NoteTypeList {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'noteTypes': noteTypes.map((e) => e.toJson()).toList(),
+      };
+}
+
+class NotesToFinish {
+  const NotesToFinish({
+    required this.notes,
+  });
+
+  final List<NoteToFinish> notes;
+
+  factory NotesToFinish.fromJson(Map<String, dynamic> json) => NotesToFinish(
+        notes: (json['notes'] as List<dynamic>).map((e) => NoteToFinish.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'notes': notes.map((e) => e.toJson()).toList(),
       };
 }
 
@@ -6321,6 +6436,12 @@ class SineobexApi {
     return IdLinkState.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Every draft of the team, with its author, whether they are still a member, and whether it is overdue
+  Future<IncompleteNotes> getIncompleteNotes({String? author}) async {
+    final json = await _transport.send('GET', '/v1/team/incomplete-notes', query: <String, String>{if (author != null) 'author': (author).toString()}, );
+    return IncompleteNotes.fromJson(json as Map<String, dynamic>);
+  }
+
   /// The signed-in person, their teams, and what they still need to do before using one
   Future<Me> getMe() async {
     final json = await _transport.send('GET', '/v1/me');
@@ -6336,6 +6457,12 @@ class SineobexApi {
   Future<List<MembershipChange>> getMemberHistory({required String membershipId}) async {
     final json = await _transport.send('GET', '/v1/team/members/${Uri.encodeComponent(membershipId)}/history');
     return (json as List<dynamic>).map((e) => MembershipChange.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// The drafts the caller acts as the author of, with whether each is overdue
+  Future<NotesToFinish> getNotesToFinish() async {
+    final json = await _transport.send('GET', '/v1/me/notes-to-finish');
+    return NotesToFinish.fromJson(json as Map<String, dynamic>);
   }
 
   /// One version of a note type, resolved. It never changes, so it may be kept

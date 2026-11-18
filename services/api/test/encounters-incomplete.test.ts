@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  chartedVisit,
   createWorld,
   eventsAfter,
   expectNoneOf,
@@ -7,6 +8,7 @@ import {
   get,
   receivedAt,
   removeMember,
+  roleWith,
   SECRETS,
   TEST_NOTE_TYPE,
   visitAt,
@@ -14,7 +16,7 @@ import {
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
-import { clinician, noteOn, type Clinician, type HeldNote, type Json } from './sync-fixtures.ts';
+import { addMember, clinician, noteOn, type Clinician, type HeldNote, type Json } from './sync-fixtures.ts';
 
 // GET /v1/me/notes-to-finish and GET /v1/team/incomplete-notes (lifecycle 3.9, 5.6): draft notes
 // on the server, with whether each is overdue: more than 24 hours since its visit started, or since
@@ -224,6 +226,19 @@ describe('phase 4: notes that are not complete', () => {
       const lous = await list(w.t.adminToken, `/v1/team/incomplete-notes?author=${lou.id}`);
       expect(lous.notes.map((n) => n.noteId)).toContain(handed.noteId);
       expect((await list(w.t.adminToken, '/v1/team/incomplete-notes?author=Gil')).status).toBe(422);
+    });
+
+    it('leaves out a note the caller may not read, as the timeline does (lifecycle 6.4 rule 2)', async () => {
+      // A Medical draft, and an admin role that reads no Medical note (no patients.view).
+      const { note } = await chartedVisit(w, w.ana);
+      const role = await roleWith(h, w.t, 'Roster only', ['team.manage_users']);
+      const ros = await addMember(h, w.t, 'ros@example.com', 'Ros (demo)', role);
+      expect(byId((await list(w.t.adminToken, '/v1/team/incomplete-notes')).notes).has(note.noteId)).toBe(
+        true,
+      );
+      const rows = byId((await list(ros.token, '/v1/team/incomplete-notes')).notes);
+      expect(rows.has(note.noteId)).toBe(false);
+      expect(rows.has(teammates.noteId)).toBe(true);
     });
 
     it('is logged as a view of the patients it shows, with how many notes', async () => {

@@ -1759,6 +1759,50 @@
         ],
         "type": "object"
       },
+      "IncompleteNote": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoteToFinish"
+          },
+          {
+            "properties": {
+              "author": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UserRef"
+                  },
+                  {
+                    "description": "Whoever acts as the author: the assignee, when there is one"
+                  }
+                ]
+              },
+              "authorActive": {
+                "description": "The author is still an active member of the team",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "author",
+              "authorActive"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "IncompleteNotes": {
+        "properties": {
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/IncompleteNote"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes"
+        ],
+        "type": "object"
+      },
       "IndexDuplicateHint": {
         "properties": {
           "status": {
@@ -2532,6 +2576,45 @@
         ],
         "type": "string"
       },
+      "NoteToFinish": {
+        "properties": {
+          "encounterId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteTypeKey": {
+            "type": "string"
+          },
+          "overdue": {
+            "description": "More than 24 hours since the visit started, or since the server received it when its start was not verified",
+            "type": "boolean"
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "noteId",
+          "encounterId",
+          "patientId",
+          "noteTypeKey",
+          "startedAt",
+          "overdue"
+        ],
+        "type": "object"
+      },
       "NoteTypeDefinition": {
         "properties": {
           "definition": {
@@ -2641,6 +2724,20 @@
         },
         "required": [
           "noteTypes"
+        ],
+        "type": "object"
+      },
+      "NotesToFinish": {
+        "properties": {
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/NoteToFinish"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes"
         ],
         "type": "object"
       },
@@ -6227,6 +6324,53 @@
         ]
       }
     },
+    "/v1/me/notes-to-finish": {
+      "get": {
+        "description": "Lifecycle 3.9, 5.6. Needs encounters.chart. The server’s drafts only; the phone merges the ones it holds. Overdue is worked out when read: more than 24 hours since the visit started, or since the server received it when its start was not verified. An empty draft is not listed. Logged with the patients shown.",
+        "operationId": "getNotesToFinish",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesToFinish"
+                }
+              }
+            },
+            "description": "The drafts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The drafts the caller acts as the author of, with whether each is overdue",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
     "/v1/notes/{noteId}/assign": {
       "post": {
         "description": "Lifecycle 3.8, 5.5. Needs team.manage_users and a recent sign-in. 409 author_active while whoever acts as the author is an active member; 422 assignee_not_member, assignee_cannot_chart, credential_too_low (below the rank the note was signed under, or for an unsigned note its author’s last credential) or cannot_see_all (the note holds an answer the assignee’s role cannot see). The reason is stored, not logged.",
@@ -8788,6 +8932,76 @@
         "summary": "Keep the chart’s value or an alternate. Legal name and birth date need an admin and a comment.",
         "tags": [
           "patients"
+        ]
+      }
+    },
+    "/v1/team/incomplete-notes": {
+      "get": {
+        "description": "Lifecycle 3.9, 5.6. Needs team.manage_users. `author` (a user ID) keeps the drafts that person acts as the author of. A note the caller may not read and an empty draft are not listed. Logged with the patients shown.",
+        "operationId": "getIncompleteNotes",
+        "parameters": [
+          {
+            "description": "Only the drafts this person acts as the author of (the route lead’s view, phase 7)",
+            "in": "query",
+            "name": "author",
+            "required": false,
+            "schema": {
+              "description": "Only the drafts this person acts as the author of (the route lead’s view, phase 7)",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncompleteNotes"
+                }
+              }
+            },
+            "description": "The drafts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every draft of the team, with its author, whether they are still a member, and whether it is overdue",
+        "tags": [
+          "encounters"
         ]
       }
     },

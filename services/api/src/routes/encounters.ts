@@ -2,6 +2,13 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
 import { AssignInput, assignNote, NoteAssigned } from '../encounters/assign.ts';
 import { attestVisit } from '../encounters/attest.ts';
+import {
+  incompleteNotes,
+  IncompleteNotes,
+  IncompleteQuery,
+  notesToFinish,
+  NotesToFinish,
+} from '../encounters/incomplete.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
@@ -137,6 +144,35 @@ const assignRoute = createRoute({
   },
 });
 
+const notesToFinishRoute = createRoute({
+  method: 'get',
+  path: '/v1/me/notes-to-finish',
+  operationId: 'getNotesToFinish',
+  tags: ['encounters'],
+  summary: 'The drafts the caller acts as the author of, with whether each is overdue',
+  description:
+    'Lifecycle 3.9, 5.6. Needs encounters.chart. The server’s drafts only; the phone merges the ones it holds. ' +
+    'Overdue is worked out when read: more than 24 hours since the visit started, or since the server received it ' +
+    'when its start was not verified. An empty draft is not listed. Logged with the patients shown.',
+  security: [{ bearer: [] }],
+  responses: { 200: { description: 'The drafts', ...json(NotesToFinish) }, ...errors(401, 403) },
+});
+
+const incompleteNotesRoute = createRoute({
+  method: 'get',
+  path: '/v1/team/incomplete-notes',
+  operationId: 'getIncompleteNotes',
+  tags: ['encounters'],
+  summary:
+    'Every draft of the team, with its author, whether they are still a member, and whether it is overdue',
+  description:
+    'Lifecycle 3.9, 5.6. Needs team.manage_users. `author` (a user ID) keeps the drafts that person acts as the ' +
+    'author of. A note the caller may not read and an empty draft are not listed. Logged with the patients shown.',
+  security: [{ bearer: [] }],
+  request: { query: IncompleteQuery },
+  responses: { 200: { description: 'The drafts', ...json(IncompleteNotes) }, ...errors(401, 403, 422) },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -174,5 +210,15 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(assignRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['team.manage_users'], recentAuth: true });
     return c.json(await assignNote(scope, c.req.valid('param').noteId, c.req.valid('json')), 200);
+  });
+
+  app.openapi(notesToFinishRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
+    return c.json(await notesToFinish(scope), 200);
+  });
+
+  app.openapi(incompleteNotesRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['team.manage_users'] });
+    return c.json(await incompleteNotes(scope, c.req.valid('query').author), 200);
   });
 }

@@ -228,6 +228,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/notes-to-finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The drafts the caller acts as the author of, with whether each is overdue
+         * @description Lifecycle 3.9, 5.6. Needs encounters.chart. The server’s drafts only; the phone merges the ones it holds. Overdue is worked out when read: more than 24 hours since the visit started, or since the server received it when its start was not verified. An empty draft is not listed. Logged with the patients shown.
+         */
+        get: operations["getNotesToFinish"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notes/{noteId}/assign": {
         parameters: {
             query?: never;
@@ -762,6 +782,26 @@ export interface paths {
         put?: never;
         /** Keep the chart’s value or an alternate. Legal name and birth date need an admin and a comment. */
         post: operations["decideFieldReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/incomplete-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every draft of the team, with its author, whether they are still a member, and whether it is overdue
+         * @description Lifecycle 3.9, 5.6. Needs team.manage_users. `author` (a user ID) keeps the drafts that person acts as the author of. A note the caller may not read and an empty draft are not listed. Logged with the patients shown.
+         */
+        get: operations["getIncompleteNotes"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1563,6 +1603,14 @@ export interface components {
             /** @description Active links only, for patients.edit */
             url?: string;
         };
+        IncompleteNote: components["schemas"]["NoteToFinish"] & {
+            author: components["schemas"]["UserRef"] & unknown;
+            /** @description The author is still an active member of the team */
+            authorActive: boolean;
+        };
+        IncompleteNotes: {
+            notes: components["schemas"]["IncompleteNote"][];
+        };
         IndexDuplicateHint: {
             status: components["schemas"]["DuplicateHintStatus"];
         };
@@ -1779,6 +1827,22 @@ export interface components {
         NoteAttestation: "not_needed" | "waiting" | "attested";
         /** @enum {string} */
         NoteStatus: "draft" | "completed" | "signed";
+        NotesToFinish: {
+            notes: components["schemas"]["NoteToFinish"][];
+        };
+        NoteToFinish: {
+            /** Format: uuid */
+            encounterId: string;
+            /** Format: uuid */
+            noteId: string;
+            noteTypeKey: string;
+            /** @description More than 24 hours since the visit started, or since the server received it when its start was not verified */
+            overdue: boolean;
+            /** Format: uuid */
+            patientId: string | null;
+            /** Format: date-time */
+            startedAt: string;
+        };
         NoteTypeDefinition: {
             /** @description The resolved definition, in the format of @sineobex/forms */
             definition: {
@@ -3244,6 +3308,44 @@ export interface operations {
             };
             /** @description Validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getNotesToFinish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drafts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotesToFinish"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5117,6 +5219,56 @@ export interface operations {
             };
             /** @description Conflicts with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getIncompleteNotes: {
+        parameters: {
+            query?: {
+                /** @description Only the drafts this person acts as the author of (the route lead’s view, phase 7) */
+                author?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drafts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncompleteNotes"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
