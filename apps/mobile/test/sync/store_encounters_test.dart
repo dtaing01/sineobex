@@ -765,6 +765,37 @@ void main() {
       expect(server.records[n]!.fields['status']!.value, 'completed');
     });
 
+    test('a note signed once and completed since is not reopened: the server keeps that in history', () async {
+      // The coordinator's decision: everSigned joins a note's snapshot. A student's note co-signed and
+      // then corrected by the student is completed again, never signed now, and was signed once
+      // (lifecycle 3.6): the server keeps its reopen in history, and every edit made offline after it.
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96});
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      server.cosign(n, by: alex);
+      server.records[n]!
+        ..signoffId = null
+        ..attestation = 'not_needed';
+      server.finishNote(n, status: 'completed');
+      await sync(s);
+      expect(s.store.record(n)!.attributes['everSigned'], isTrue);
+      expect(s.store.noteState(n), (
+        status: NoteStatus.completed,
+        attestation: Attestation.notNeeded,
+        sentForReview: false,
+      ));
+      final before = s.store.outbox().length;
+      expect(() => s.store.reopenNote(n, definition(testMedical)), throwsA(isA<RecordLocked>()));
+      expect(s.store.outbox(), hasLength(before));
+      await sync(s);
+      expect(late(), isEmpty);
+    });
+
     test('a reopen made before the sign-off is sent goes after it; Complete again waits for that sign-off', () async {
       final s = phone(blair);
       server.credentials[blair] = 'student';

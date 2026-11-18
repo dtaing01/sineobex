@@ -335,6 +335,7 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         noteTypeVersion: 1,
         attestation: 'not_needed',
         actingAuthorId: res.id,
+        everSigned: false,
         completedAt: null,
         signoffId: null,
       });
@@ -344,9 +345,16 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(signed!.attributes).toMatchObject({
         attestation: 'waiting',
         actingAuthorId: res.id,
+        everSigned: true,
         completedAt: (await noteRow(flags.noteId)).completedAt!.toISOString(),
         signoffId: signoff.recordId,
       });
+      // Signed once and no longer (a student's correction of a co-signed note, 3.6): the phone must
+      // not offer the reopen the server keeps in history.
+      await h.scratch.owner`
+        update sineobex.encounter_notes set status = 'completed', signoff_id = null, attestation = 'not_needed'
+        where id = ${flags.noteId}`;
+      expect((await noteAs(res, flags))!.attributes).toMatchObject({ everSigned: true, signoffId: null });
       // Assigned by an admin once the author has left (3.8): the assignee acts as the author.
       await h.scratch
         .owner`update sineobex.encounter_notes set assigned_user_id = ${ana.id} where id = ${flags.noteId}`;

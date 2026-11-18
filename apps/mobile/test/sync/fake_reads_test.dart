@@ -515,6 +515,7 @@ void main() {
         'noteTypeVersion': 1,
         'attestation': 'not_needed',
         'actingAuthorId': res,
+        'everSigned': false,
         'completedAt': null,
         'signoffId': null,
       });
@@ -527,10 +528,21 @@ void main() {
         'noteTypeVersion': 1,
         'attestation': 'waiting',
         'actingAuthorId': res,
+        'everSigned': true,
         'completedAt': server.records[flags]!.completedAt,
         'signoffId': signoff,
       });
       expect(server.records[flags]!.completedAt, isNotNull);
+      // Signed once and no longer (a student's correction of a co-signed note, 3.6): the phone must
+      // not offer the reopen the server keeps in history.
+      server.records[flags]!
+        ..signoffId = null
+        ..attestation = 'not_needed';
+      server.finishNote(flags, status: 'completed');
+      expect(
+        (await noteAs(res, flags)).attributes,
+        allOf(containsPair('everSigned', true), containsPair('signoffId', null)),
+      );
       // Assigned by an admin once the author has left (3.8): the assignee acts as the author.
       server.records[flags]!.assignedTo = alex;
       expect((await noteAs(alex, flags)).attributes['actingAuthorId'], alex);

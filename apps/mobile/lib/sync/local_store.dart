@@ -1208,9 +1208,10 @@ class LocalStore {
   ///
   /// Returns [ReopenEffect.apply], or [ReopenEffect.nothing] for a draft, and then sends nothing.
   /// Throws, writing nothing: [ChartingPaused] while the clock check fails; [RecordLocked] for a
-  /// note the server keeps as it is (signed, or a Non-Medical note completed: an addendum or a
-  /// correction is the way) and for one [sentForReview]; [LocalValidationError] `not_author` for
-  /// someone else's note that its author could reopen, which the server would store with no effect.
+  /// note the server keeps as it is (signed or signed once, or a Non-Medical note completed: an
+  /// addendum or a correction is the way) and for one [sentForReview]; [LocalValidationError]
+  /// `not_author` for someone else's note that its author could reopen, which the server would store
+  /// with no effect.
   ReopenEffect reopenNote(String noteId, NoteTypeDef definition) {
     final rec = record(noteId);
     if (rec == null || rec.entity != entityNote) throw StateError('no such note');
@@ -1222,10 +1223,9 @@ class LocalStore {
     final status = _noteStatusHere(rec);
     ReopenEffect effect({required bool actsAsAuthor}) => reopenEffect(
       noteStatus: status,
-      // The sync read does not say whether a completed note was ever signed (a student's correction
-      // of a co-signed note leaves one so): its reopen goes, the server keeps it in history, and the
-      // receipt shows the note as the server holds it.
-      everSigned: false,
+      // The server's copy says whether a note completed now was signed once (a student's correction
+      // of a co-signed note leaves one so). A note made here and never refreshed was not.
+      everSigned: rec.attributes['everSigned'] == true,
       medicalNote: !definition.kinds.contains(NoteKind.nonMedical),
       actsAsAuthor: actsAsAuthor,
     );

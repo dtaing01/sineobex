@@ -181,6 +181,9 @@ export const noteRules: EntityRules<Value> = {
         noteTypeVersion: r.noteTypeVersion,
         attestation: r.attestation,
         actingAuthorId: r.assignedUserId ?? r.authorUserId,
+        // Signed once, signed now or not (a student's correction of a co-signed note, 3.6): its reopen
+        // is kept in history, so the phone does not offer one (reopenEffect).
+        everSigned: r.firstSignedAt !== null,
         completedAt: r.completedAt?.toISOString() ?? null,
         signoffId: r.signoffId,
       },

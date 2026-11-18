@@ -3444,6 +3444,7 @@ class FakeSyncServer {
       'noteTypeVersion': note.attributes['noteTypeVersion'],
       'attestation': note.attestation,
       'actingAuthorId': _actingAuthor(note),
+      'everSigned': note.everSigned,
       'completedAt': note.completedAt,
       'signoffId': note.signoffId,
     },
