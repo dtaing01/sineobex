@@ -381,10 +381,12 @@ void main() {
       'location': {'lat': 42.5, 'lng': -83.5},
     });
     final fix = store.sendable().single;
+    // The place typed by hand is carried as the patient and the location are (none was typed).
     expect(fix.value, {
       'kind': 'medical',
       'patientId': null,
       'location': {'lat': 42.5, 'lng': -83.5},
+      'locationText': null,
     });
     final fields = store.record(enc)!.fields;
     expect(

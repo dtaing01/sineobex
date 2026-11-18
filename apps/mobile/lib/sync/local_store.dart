@@ -558,17 +558,39 @@ class LocalStore {
   }
 
   /// A new encounter, open for charting. Returns its ID (made here, so no server round trip).
-  String createEncounter({required String kind, String? patientId, Map<String, Object?>? location}) {
+  ///
+  /// Its kind is a field, which a set moves to Medical; its status is not: the server works it out
+  /// from the visit's notes, and the phone takes it from the server's copy (lifecycle 4.3).
+  /// [locationText], the place typed by hand, is sent as it is, so it comes trimmed.
+  String createEncounter({
+    required String kind,
+    String? patientId,
+    Map<String, Object?>? location,
+    String? locationText,
+  }) {
     _guardCharting();
     if (kind != 'medical' && kind != 'non_medical') throw const LocalValidationError('Choose medical or non-medical.');
     if (patientId != null && !isUuid(patientId)) throw const LocalValidationError('Unknown patient.');
     _checkLocation(location);
+    if (locationText != null) _checkField(entityEncounter, 'locationText', locationText);
+    final rules = rulesFor(entityEncounter)!;
     final id = _newId();
     return _tx(() {
-      final value = <String, Object?>{'kind': kind, 'patientId': ?patientId, 'location': ?location};
+      final value = <String, Object?>{
+        'kind': kind,
+        'patientId': ?patientId,
+        'location': ?location,
+        'locationText': ?locationText,
+      };
       final changeId = _append(entity: entityEncounter, recordId: id, op: 'create', value: value, baseVersion: 0);
-      _insertRecord(id, entityEncounter, attributes: {'kind': kind}, origin: 'local');
-      for (final MapEntry(:key, :value) in {'patientId': patientId, 'location': location, 'status': 'draft'}.entries) {
+      _insertRecord(
+        id,
+        entityEncounter,
+        attributes: rules.attributes(value),
+        origin: 'local',
+        status: rules.initialStatus(value),
+      );
+      for (final MapEntry(:key, :value) in rules.createdFields(value).entries) {
         _putField(id, key, value, serverVersion: 0, pending: changeId);
       }
       return id;
@@ -1363,7 +1385,7 @@ class LocalStore {
     }
     // The person's current values of what the create carries; their corrections win.
     final carried = switch (x.entity) {
-      entityEncounter => const ['patientId', 'location'],
+      entityEncounter => const ['patientId', 'location', 'locationText'],
       entityPatient => patientFieldNames,
       _ => const <String>[],
     };
@@ -1373,8 +1395,9 @@ class LocalStore {
       ...created,
     };
     if (x.entity == entityEncounter) {
-      _checkField(entityEncounter, 'patientId', merged['patientId']);
-      _checkField(entityEncounter, 'location', merged['location']);
+      for (final name in carried) {
+        _checkField(entityEncounter, name, merged[name]);
+      }
     }
     _checkCreate(rules, merged);
     final inCreate = rules.createdFields(merged);
@@ -1692,6 +1715,11 @@ class LocalStore {
             r.id,
           ]);
         }
+        return;
+      }
+      if (r.entity == entityEncounter) {
+        // The server works a visit's status out from its notes (lifecycle 2.2); no change sets it.
+        _touch(r.id, status: r.status);
         return;
       }
       final status = _db.select("SELECT value_json FROM fields WHERE record_id = ? AND field = 'status'", [
