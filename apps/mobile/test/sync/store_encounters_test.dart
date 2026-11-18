@@ -3,7 +3,7 @@ import 'package:sineobex_field/encounters/content_hash.dart';
 import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entitySignoff;
+import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -11,14 +11,15 @@ import 'fake_server.dart';
 import 'phone_harness.dart';
 import 'test_note_types.dart';
 
-/// The phone's store in phase 4 (lifecycle 4.8): the visit as the server keeps it, and Complete
-/// (`finishNotes`). Each rule is checked against the phone's test server, which mirrors the API
-/// (lifecycle 4.9): where the answer is the server's, the test syncs and reads the store's state
-/// after the receipt.
+/// The phone's store in phase 4 (lifecycle 4.8): the visit as the server keeps it, Complete
+/// (`finishNotes`), and the lock that follows a note's effect. Each rule is checked against the
+/// phone's test server, which mirrors the API (lifecycle 4.9): where the answer is the server's, the
+/// test syncs and reads the store's state after the receipt.
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
   const blair = 'b0000000-0000-4000-8000-00000000000b';
+  const carol = 'c0000000-0000-4000-8000-00000000000c';
   final start = DateTime.utc(2026, 10, 20, 15);
 
   late DateTime serverTime;
@@ -98,6 +99,12 @@ void main() {
   ];
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);
+
+  /// What reached the server too late to apply: kept in its history, and who was told so.
+  List<Object> late() => [
+    ...server.history.where((h) => h['kind'] == 'kept_both'),
+    ...server.notices.where((n) => n.kind == 'late_change_kept' || n.kind == 'change_not_applied'),
+  ];
 
   group('the visit as the server keeps it (lifecycle 4.3)', () {
     test('a new visit holds its kind as a field beside the place typed by hand, and no status', () async {
@@ -523,6 +530,350 @@ void main() {
       expect(p.store.localEffect(social), isNull);
       expect(answersOf(p, social), answers);
       expect(() => complete(p, [finishing(p, social, testNote), finishing(p, social, testNote)]), throwsArgumentError);
+    });
+  });
+
+  group('the lock follows the effect (lifecycle 4.8)', () {
+    test('a note Complete finished is locked here at once, and stays locked once the server holds it', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      final other = note(p, visit, testNote, {'vitals.pulse': 70});
+      await sync(p);
+      complete(p, [finishing(p, n, testNote)]);
+      final before = p.store.outbox().length;
+      for (final (field, value) in [('data.vitals.pulse', 90), ('data.care.plan', 'Demo: rest'), ('status', 'draft')]) {
+        expect(() => p.store.setField(n, field, value), throwsA(isA<RecordLocked>()), reason: field);
+      }
+      expect(p.store.outbox(), hasLength(before));
+      expect(answersOf(p, n), {'vitals.pulse': 88});
+      // The visit's other note is a draft still.
+      p.store.setField(other, 'data.vitals.pulse', 72);
+
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(p.store.record(n)!.status, 'completed');
+      expect(() => p.store.setField(n, 'data.vitals.pulse', 90), throwsA(isA<RecordLocked>()));
+      expect(server.records[other]!.fields['data.vitals.pulse']!.value, 72);
+      // Nothing reached the server after the note was finished there.
+      expect(late(), isEmpty);
+    });
+
+    test('a note the server holds signed and attested is locked here; an addendum and a correction still go', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      await sync(p);
+      // Signed by its author and attested online (L2's routes, which the fake's hooks stand in for).
+      server
+        ..finishNote(n, status: 'signed')
+        ..attest(n, by: carol);
+      await sync(p);
+      expect(p.store.record(n)!.status, 'signed');
+      expect(() => p.store.setField(n, 'data.vitals.pulse', 98), throwsA(isA<RecordLocked>()));
+      // A teammate who opens it finds it locked too.
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+      expect(() => b.store.setField(n, 'data.vitals.pulse', 98), throwsA(isA<RecordLocked>()));
+      expect(b.store.outbox(), isEmpty);
+
+      final addendum = p.store.createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: the lab came back normal',
+        'signoffId': null,
+      });
+      final correction = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {
+            'field': 'data.vitals.pulse',
+            'newValue': 94,
+            'baseVersion': p.store.record(n)!.fields['data.vitals.pulse']!.serverVersion,
+          },
+        ],
+        'reason': 'Demo: misread the monitor',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': 'attending',
+        'signoffId': null,
+      });
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[addendum]!.attributes['noteId'], n);
+      expect(server.records[correction]!.status, 'corrected');
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 94);
+      expect(late(), isEmpty);
+    });
+
+    test('a note whose sign-off the server refused is a draft here again, to change and complete again', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      // A teammate's change reaches the server before the sign-off does.
+      server.serverEdit(n, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      expect(p.store.needsAttention().single.details?['problem'], 'content_changed');
+      p.store.setField(n, 'data.vitals.pulse', 86);
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(
+        [server.records[n]!.fields['status']!.value, server.records[n]!.fields['data.vitals.pulse']!.value],
+        ['completed', 86],
+      );
+      expect(late(), isEmpty);
+    });
+
+    test('what waits in Needs attention on a note finished since is still settled, into its history', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      // An answer the note type refuses, and one a teammate changed first.
+      p.store.setField(n, 'data.vitals.pulse', 'fast');
+      server.serverEdit(n, 'data.care.plan', 'Demo: teammate’s plan', by: blair);
+      p.store.setField(n, 'data.care.plan', 'Demo: my plan');
+      await sync(p);
+      final refused = p.store.needsAttention().singleWhere((e) => e.state == ChangeState.rejected);
+      final conflict = p.store.needsAttention().singleWhere((e) => e.state == ChangeState.conflict);
+      // Then the note is finished (on the person's other phone, say).
+      server.finishNote(n);
+      await sync(p);
+      expect(p.store.record(n)!.status, 'completed');
+      expect(() => p.store.setField(n, 'data.vitals.pulse', 90), throwsA(isA<RecordLocked>()));
+
+      p.store.fixRejected(refused.changeId, 90);
+      expect(p.store.resolveConflict(conflict.changeId, keepMine: true), isTrue);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      // The note is as it was finished; both values are in its history.
+      expect(answersOf(p, n), {'vitals.pulse': 88, 'care.plan': 'Demo: teammate’s plan'});
+      expect(
+        [
+          for (final h in server.history)
+            if (h['recordId'] == n && h['kind'] == 'kept_both') h['value'],
+        ],
+        [90, 'Demo: my plan'],
+      );
+    });
+
+    test(
+      'a visit’s patient, place and summary lock with its first finished note, not its kind or a blank patient',
+      () async {
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final other = server.seedPatient(preferredName: 'Demo Other');
+        final visit = p.store.createEncounter(kind: 'non_medical', locationText: 'Demo: east underpass');
+        final first = note(p, visit, testNote, {'vitals.pulse': 88});
+        final second = note(p, visit, testNote, {'vitals.pulse': 70});
+        // Open while every note is a draft.
+        p.store.setField(visit, 'summary', 'Demo: well');
+        await sync(p);
+        complete(p, [finishing(p, first, testNote)]);
+        final before = p.store.outbox().length;
+        for (final (field, value) in [
+          ('summary', 'Demo: changed afterwards'),
+          ('locationText', 'Demo: north lot'),
+          ('location', {'lat': 42.3, 'lng': -83.0}),
+        ]) {
+          expect(() => p.store.setField(visit, field, value), throwsA(isA<RecordLocked>()), reason: field);
+        }
+        expect(p.store.outbox(), hasLength(before));
+        // The other note is a draft still; the kind goes to Medical at any time; a visit with no
+        // patient is given one, which then locks with the rest.
+        p.store
+          ..setField(second, 'data.vitals.pulse', 72)
+          ..setField(visit, 'kind', 'medical')
+          ..setField(visit, 'patientId', patient);
+        expect(() => p.store.setField(visit, 'patientId', other), throwsA(isA<RecordLocked>()));
+
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        final held = server.records[visit]!.fields;
+        expect(
+          [
+            for (final f in ['summary', 'locationText', 'kind', 'patientId']) held[f]!.value,
+          ],
+          ['Demo: well', 'Demo: east underpass', 'medical', patient],
+        );
+        expect(server.records[first]!.fields['status']!.value, 'completed');
+        expect(server.records[second]!.fields['data.vitals.pulse']!.value, 72);
+        expect(late(), isEmpty);
+      },
+    );
+
+    test('a visit the server holds finished is locked here though its notes are not on the phone', () async {
+      final b = phone(blair);
+      final visit = b.store.createEncounter(kind: 'non_medical');
+      final n = note(b, visit, testNote, {'vitals.pulse': 70});
+      complete(b, [finishing(b, n, testNote)]);
+      await sync(b);
+      final p = phone(alex);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(p.store.record(visit)!.status, 'completed');
+      expect(() => p.store.setField(visit, 'summary', 'Demo: teammate’s view'), throwsA(isA<RecordLocked>()));
+      p.store.setField(visit, 'kind', 'medical');
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[visit]!.fields['kind']!.value, 'medical');
+      expect(late(), isEmpty);
+    });
+
+    test('a reopen gets through: a student’s note waiting for a co-signer goes back to draft for its author', () async {
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96});
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      expect(s.store.record(n)!.status, 'completed');
+      expect(() => s.store.setField(n, 'data.vitals.pulse', 98), throwsA(isA<RecordLocked>()));
+
+      expect(s.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      final reopen = s.store.outbox().single;
+      expect([reopen.op, reopen.field, reopen.value], ['set', 'status', 'draft']);
+      expect(s.store.localEffect(n), isNull);
+      expect(s.store.record(n)!.status, 'draft');
+      // A draft again: the author changes it.
+      s.store.setField(n, 'data.vitals.pulse', 98);
+      await sync(s);
+      expect(s.store.outbox(), isEmpty);
+      expect(
+        [server.records[n]!.fields['status']!.value, server.records[n]!.fields['data.vitals.pulse']!.value],
+        ['draft', 98],
+      );
+      expect(late(), isEmpty);
+
+      // Read again, it is completed again: a new sign-off.
+      complete(s, [finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      expect(s.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+    });
+
+    test('a reopen made before the sign-off is sent goes after it; Complete again waits for that sign-off', () async {
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96});
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      expect(s.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      s.store.setField(n, 'data.vitals.pulse', 99);
+      // Never two sign-offs of one note in the outbox.
+      expect(() => complete(s, [finishing(s, n, testMedical)], signer: student), throwsA(isA<RecordLocked>()));
+      await sync(s);
+      expect(s.store.outbox(), isEmpty);
+      // The server finished the note, then sent it back to draft, as the person did.
+      expect(
+        [
+          for (final h in server.history)
+            if (h['recordId'] == n && h['field'] == 'status') h['value'],
+        ],
+        ['draft', 'completed', 'draft'],
+      );
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 99);
+      expect(late(), isEmpty);
+      complete(s, [finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      expect(s.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+    });
+
+    test('a reopen the server would keep as it is never leaves the phone', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final signed = note(p, visit, testMedical, {'vitals.pulse': 96});
+      final social = note(p, visit, testNote, {'vitals.pulse': 80});
+      final draft = note(p, visit, testNote, {'vitals.pulse': 81});
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, signed, testMedical, act: SignoffAct.sign),
+        finishing(p, social, testNote),
+      ]);
+      final before = p.store.outbox().length;
+      void kept() {
+        expect(() => p.store.reopenNote(signed, definition(testMedical)), throwsA(isA<RecordLocked>()));
+        expect(() => p.store.reopenNote(social, definition(testNote)), throwsA(isA<RecordLocked>()));
+      }
+
+      // By the effect the phone expects, and then by the server's copy.
+      kept();
+      // A draft has nothing to reopen.
+      expect(p.store.reopenNote(draft, definition(testNote)), ReopenEffect.nothing);
+      expect(p.store.outbox(), hasLength(before));
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect([p.store.record(signed)!.status, p.store.record(social)!.status], ['signed', 'completed']);
+      kept();
+      // The server would keep each in history (lifecycle 4.4).
+      for (final id in [signed, social]) {
+        final held = server.records[id]!;
+        expect(
+          reopenEffect(
+            noteStatus: NoteStatus.values.byName(held.fields['status']!.value! as String),
+            everSigned: held.everSigned,
+            medicalNote: held.medical,
+            actsAsAuthor: true,
+          ),
+          ReopenEffect.keepInHistory,
+        );
+      }
+
+      // Someone else's note waiting for a co-signer is its author's to reopen.
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final visit2 = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags2 = note(s, visit2, testRedFlags, {'flags.any': 'no'});
+      final waiting = note(s, visit2, testMedical, {'vitals.pulse': 70});
+      complete(s, [finishing(s, flags2, testRedFlags), finishing(s, waiting, testMedical)], signer: student);
+      await sync(s);
+      expect(await p.engine.openServerRecord('encounter', visit2), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', waiting), isTrue);
+      expect(
+        () => p.store.reopenNote(waiting, definition(testMedical)),
+        throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'not_author')),
+      );
+      expect(p.store.outbox(), isEmpty);
+      expect(late(), isEmpty);
+    });
+
+    test('a note can be added to any visit, its notes finished or not', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, n, testMedical, act: SignoffAct.sign),
+      ]);
+      // Before the sign-offs are sent, and after the server holds the visit signed.
+      final early = note(p, visit, testNote, {'care.plan': 'Demo: food bank list'});
+      await sync(p);
+      expect(p.store.record(visit)!.status, 'draft');
+      expect(server.records[early]!.fields['status']!.value, 'draft');
+      server.finishNote(early);
+      await sync(p);
+      expect(p.store.record(visit)!.status, 'signed');
+      final added = note(p, visit, testNote, {'care.plan': 'Demo: shelter referral'});
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[added]!.fields['status']!.value, 'draft');
+      expect(server.records[visit]!.status, 'draft');
+      // It changes nothing that was finished: the visit's envelope stays locked.
+      expect(() => p.store.setField(visit, 'summary', 'Demo: later'), throwsA(isA<RecordLocked>()));
     });
   });
 }

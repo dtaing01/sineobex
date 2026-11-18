@@ -68,6 +68,9 @@ class LocalValidationError implements Exception {
   String toString() => 'LocalValidationError($message)';
 }
 
+/// The lock (lifecycle 4.8): what a finished note no longer lets anyone change, as the server
+/// keeps it, which the phone refuses rather than send a change the server would only keep in
+/// history. An addendum or a correction is the way.
 class RecordLocked implements Exception {
   const RecordLocked();
 }
@@ -672,6 +675,9 @@ class LocalStore {
 
   /// A note for one care type within an encounter. Data too large for one create follows it as
   /// edits (see [_splitData]).
+  ///
+  /// Any visit takes a new note, its notes finished or not: the note is the unit, and a teammate's
+  /// Social needs note after the clinician signed must not be lost (lifecycle 4.4).
   String createNote({
     required String encounterId,
     required String noteTypeKey,
@@ -684,8 +690,6 @@ class LocalStore {
     for (final key in data.keys) {
       if (!_dataFieldOk(key)) throw LocalValidationError('Unknown field $key.');
     }
-    final encounter = record(encounterId);
-    if (encounter != null && encounter.status == 'signed') throw const RecordLocked();
     final id = _newId();
     return _tx(() {
       final head = <String, Object?>{
@@ -837,9 +841,8 @@ class LocalStore {
     if (paths == null || field.length > maxFieldLength) throw LocalValidationError('Unknown field $field.');
     if (paths.isNotEmpty) {
       throw switch ((entity, field)) {
-        (_, 'status') when entity == entityEncounter || entity == entityNote => const LocalValidationError(
-          'Status must be draft or completed.',
-        ),
+        // A note is finished by its sign-off (finishNotes); a set of its status only sends it back.
+        (entityNote, 'status') => const LocalValidationError('A note is finished with Complete.'),
         (entityEncounter, 'patientId') => const LocalValidationError('Unknown patient.'),
         (entityEncounter, 'location') => const LocalValidationError('That location isn’t valid.'),
         _ => LocalValidationError('This value has a problem. Check it and save again.', paths: paths),
@@ -894,6 +897,9 @@ class LocalStore {
   /// A value equal to the field's is no change and is not sent, unless [observe]: a problem's
   /// status seen again ("Still ongoing", design 9.1) is an observation the server records, moving
   /// its version and check date (9.2). Only a status field is observed.
+  ///
+  /// Throws [RecordLocked] for what a finished note locks ([_locked]); a note goes back to draft by
+  /// [reopenNote].
   void setField(String recordId, String field, Object? value, {bool observe = false}) {
     final rec = record(recordId);
     if (rec == null) throw StateError('no such record');
@@ -901,7 +907,7 @@ class LocalStore {
       throw ArgumentError('only a status is observed: $field');
     }
     _guardFor(rec.entity);
-    if (rec.status == 'signed') throw const RecordLocked();
+    if (_locked(rec, field)) throw const RecordLocked();
     _checkField(rec.entity, field, value);
     final current = rec.fields[field];
     if (!observe && current != null && canonicalJson(current.value) == canonicalJson(value)) return;
@@ -928,6 +934,51 @@ class LocalStore {
       if (patientId != null) _extendOpened(patientId);
     });
   }
+
+  /// The patient, the place and the summary: what a signer vouched for with the notes (lifecycle 3.1).
+  static const _envelope = {'patientId', 'location', 'locationText', 'summary'};
+
+  /// Whether the lock stops a set of [field] on [rec] (lifecycle 4.8), as the server would keep it
+  /// in history: any field of a note finished as this phone knows it ([_noteStatusHere]), and the
+  /// envelope of a visit with a finished note. A visit with no patient is given one at any time,
+  /// since filling a blank takes nothing from what anyone signed, and its kind goes to Medical at
+  /// any time (3.10).
+  bool _locked(LocalRecord rec, String field) => switch (rec.entity) {
+    entityNote => _noteStatusHere(rec) != NoteStatus.draft,
+    entityEncounter =>
+      _envelope.contains(field) &&
+          !(field == 'patientId' && isBlankValue(rec.fields['patientId']?.value)) &&
+          _envelopeLockedHere(rec),
+    _ => false,
+  };
+
+  /// A note's status as this phone knows it: what its own sign-off is expected to make it
+  /// ([localEffect]) until the server refuses that sign-off, else the server's.
+  NoteStatus _noteStatusHere(LocalRecord note) {
+    final expected = LocalEffect.fromJson(note.attributes[_localEffectKey]);
+    if (expected != null && !_signoffsOf(note.id).any((e) => e.state == ChangeState.rejected)) {
+      return expected.status;
+    }
+    return NoteStatus.values.byName(note.status);
+  }
+
+  /// Whether [visit]'s envelope is locked (lifecycle 3.1): a note of it this phone holds is
+  /// finished, or the server's status of the visit says every note that counts is, those this phone
+  /// does not hold included. A teammate's finished note beside a draft is not known here; the server
+  /// keeps a change it locks in history, and its receipt shows the visit as it is.
+  bool _envelopeLockedHere(LocalRecord visit) =>
+      visit.status != 'draft' ||
+      envelopeLocked([
+        for (final r in _db.select(
+          "SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.encounterId') = ?",
+          [entityNote, visit.id],
+        ))
+          _noteStatusHere(record(r['id'] as String)!),
+      ]);
+
+  /// Whether this phone's user acts as [note]'s author (lifecycle 3.8): the clinician an admin
+  /// assigned it to after its author left, as the server's copy says, else its author.
+  bool _actsAsAuthor(LocalRecord note) => (note.attributes['actingAuthorId'] ?? note.authorUserId) == userId;
 
   /// A server copy the person edits is their work now: it follows the Save & Close purge rule,
   /// not the 24-hour expiry of read-only copies.
@@ -1076,6 +1127,87 @@ class LocalStore {
   /// null when it made none (lifecycle 4.8).
   LocalEffect? localEffect(String noteId) => LocalEffect.fromJson(record(noteId)?.attributes[_localEffectKey]);
 
+  /// Sends [noteId] back to draft (lifecycle 3.6, 4.4): a set of its `status` to `draft`, the one
+  /// change the lock lets through, when [reopenEffect] says the server will apply it: a Medical note
+  /// that waits for a co-signer and was never signed, reopened by whoever acts as its author. The
+  /// note is a draft here at once and takes edits again; what the phone expected its sign-off to do
+  /// is cleared. A sign-off of it still waiting goes first, so the server finishes the note and then
+  /// reopens it, as the person did; [finishNotes] completes it again once that sign-off is confirmed,
+  /// since it never leaves two in the outbox.
+  ///
+  /// [definition] is the note type's, of the note's own key and version: whether a note is Medical is
+  /// its type's (3.1).
+  ///
+  /// Returns [ReopenEffect.apply], or [ReopenEffect.nothing] for a draft, and then sends nothing.
+  /// Throws, writing nothing: [ChartingPaused] while the clock check fails; [RecordLocked] for a
+  /// note the server keeps as it is (signed, or a Non-Medical note completed: an addendum or a
+  /// correction is the way); [LocalValidationError] `not_author` for someone else's note that its
+  /// author could reopen, which the server would store with no effect.
+  ReopenEffect reopenNote(String noteId, NoteTypeDef definition) {
+    final rec = record(noteId);
+    if (rec == null || rec.entity != entityNote) throw StateError('no such note');
+    _ownDefinition(rec, definition);
+    _guardFor(entityNote);
+    final status = _noteStatusHere(rec);
+    ReopenEffect effect({required bool actsAsAuthor}) => reopenEffect(
+      noteStatus: status,
+      // The sync read does not say whether a completed note was ever signed (a student's correction
+      // of a co-signed note leaves one so): its reopen goes, the server keeps it in history, and the
+      // receipt shows the note as the server holds it.
+      everSigned: false,
+      medicalNote: !definition.kinds.contains(NoteKind.nonMedical),
+      actsAsAuthor: actsAsAuthor,
+    );
+    switch (effect(actsAsAuthor: _actsAsAuthor(rec))) {
+      case ReopenEffect.nothing:
+        return ReopenEffect.nothing;
+      case ReopenEffect.keepInHistory when effect(actsAsAuthor: true) == ReopenEffect.apply:
+        throw const LocalValidationError('Only the note’s author can reopen it.', problem: 'not_author');
+      case ReopenEffect.keepInHistory:
+        throw const RecordLocked();
+      case ReopenEffect.apply:
+        final current = rec.fields['status'];
+        _tx(() {
+          final changeId = _append(
+            entity: entityNote,
+            recordId: noteId,
+            op: 'set',
+            field: 'status',
+            value: NoteStatus.draft.name,
+            baseVersion: current?.serverVersion ?? 0,
+            follows: current?.pendingChange,
+          );
+          _putField(
+            noteId,
+            'status',
+            NoteStatus.draft.name,
+            serverVersion: current?.serverVersion ?? 0,
+            pending: changeId,
+          );
+          _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
+            jsonEncode({...rec.attributes}..remove(_localEffectKey)),
+            noteId,
+          ]);
+          _touch(noteId, status: NoteStatus.draft.name);
+          _workedOn(noteId);
+        });
+        return ReopenEffect.apply;
+    }
+  }
+
+  /// [definition], checked to be [note]'s own type and version: a note's content and whether it is
+  /// Medical are read by those (lifecycle 4.5).
+  static NoteTypeDef _ownDefinition(LocalRecord note, NoteTypeDef? definition) {
+    final version = note.attributes['noteTypeVersion'];
+    if (definition == null ||
+        definition.key != note.attributes['noteTypeKey'] ||
+        version is! num ||
+        definition.version != version.toInt()) {
+      throw StateError('the definition of the note’s own version is needed');
+    }
+    return definition;
+  }
+
   /// The Red flags and disposition note, which the app adds to a Medical visit by itself (forms 6.2):
   /// found by its type's `auto`, never by its key, as the server finds it.
   static bool _isRedFlags(NoteTypeDef definition) => definition.auto == 'medical';
@@ -1094,14 +1226,8 @@ class LocalStore {
   ) {
     final rec = record(noteId);
     if (rec == null || rec.entity != entityNote) throw StateError('no such note');
-    final version = rec.attributes['noteTypeVersion'];
-    // The hash names the type's key and version, so it is taken by the note's own (lifecycle 4.5).
-    if (definition == null ||
-        definition.key != rec.attributes['noteTypeKey'] ||
-        version is! num ||
-        definition.version != version.toInt()) {
-      throw StateError('the definition of the note’s own version is needed');
-    }
+    // The hash names the type's key and version, so it is taken by the note's own.
+    final own = _ownDefinition(rec, definition);
     final encounterId = rec.attributes['encounterId'];
     final visit = encounterId is String ? record(encounterId) : null;
     if (visit == null) throw StateError('the note’s visit is not on this phone');
@@ -1112,7 +1238,7 @@ class LocalStore {
     final patientId = visit.fields['patientId']?.value, summary = visit.fields['summary']?.value;
     return (
       rec: rec,
-      definition: definition,
+      definition: own,
       encounterId: visit.id,
       answers: answers,
       hash: noteContentHash(
@@ -1120,7 +1246,7 @@ class LocalStore {
         encounterId: visit.id,
         patientId: patientId is String ? patientId : null,
         summary: summary is String ? summary : null,
-        definition: definition,
+        definition: own,
         answers: answers,
       ),
     );
@@ -1145,7 +1271,7 @@ class LocalStore {
       noteStatus: NoteStatus.values.byName(rec.status),
       medicalNote: medical,
       act: asked.act,
-      actsAsAuthor: (rec.attributes['actingAuthorId'] ?? rec.authorUserId) == userId,
+      actsAsAuthor: _actsAsAuthor(rec),
       canSign: signer.canSign,
       needsAttestation: signer.needsAttestation,
       hashMatches: true,
@@ -1246,14 +1372,13 @@ class LocalStore {
     NoteTypeDef? Function(String key, int version) definitionOf,
   ) {
     for (final r in _db.select(
-      "SELECT id, status FROM records WHERE entity = ? AND id <> ? AND json_extract(attributes_json, '\$.encounterId') = ?",
+      "SELECT id FROM records WHERE entity = ? AND id <> ? AND json_extract(attributes_json, '\$.encounterId') = ?",
       [entityNote, noteId, encounterId],
     )) {
       final id = r['id'] as String;
       final definition = _definitionOfNote(id, definitionOf);
       if (definition == null || !_isRedFlags(definition)) continue;
-      if (r['status'] != 'draft') return true;
-      if (localEffect(id) != null && !_signoffsOf(id).any((e) => e.state == ChangeState.rejected)) return true;
+      if (_noteStatusHere(record(id)!) != NoteStatus.draft) return true;
     }
     return false;
   }
