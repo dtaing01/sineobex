@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../../forms/definition.dart';
 
 /// A tick (forms 2.2 `flag`: "Unable to measure", "Patient consented"). Ticked stores `true`;
@@ -23,7 +24,9 @@ class FlagField extends StatelessWidget {
     onChanged: enabled ? (ticked) => onChanged(ticked == true ? true : null) : null,
     // Styled here: a disabled tile dims its words, and a finished note's tick must stay readable.
     title: Text(field.label, style: Theme.of(context).textTheme.bodyLarge),
-    subtitle: field.help == null ? null : Text(field.help!),
+    subtitle: field.help == null
+        ? null
+        : Text(field.help!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.field.inkMuted)),
     controlAffinity: ListTileControlAffinity.leading,
     contentPadding: EdgeInsets.zero,
   );

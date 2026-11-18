@@ -59,6 +59,17 @@ void main() {
     expect(find.text('Demo: the date is a guess'), findsOneWidget);
   });
 
+  forEachRun('disabled, its help stays readable too', (tester, run) async {
+    final flag = fieldOf({'id': 'approx', 'kind': 'flag', 'label': 'Approximate', 'help': 'Demo: the date is a guess'});
+    await pumpField(
+      tester,
+      FlagField(field: flag as FlagDef, value: true, onChanged: (_) {}, enabled: false),
+      run: run,
+    );
+    expect(find.text('Demo: the date is a guess'), findsOneWidget);
+    await expectFieldOk(tester);
+  });
+
   testWidgets('disabled, it is read-only, says so, and stays readable', (tester) async {
     final handle = tester.ensureSemantics();
     final changes = await open(tester, value: true, enabled: false);
