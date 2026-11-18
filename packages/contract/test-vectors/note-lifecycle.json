@@ -4,158 +4,193 @@
     "signoffEffect": [
       {
         "name": "a Non-Medical draft is completed",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "a Medical draft sent as complete waits for a co-signer",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": false, "needsAttestation": true, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": false, "needsAttestation": true, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "complete on a Medical draft never signs, even from someone who can sign",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "an attending signs: signed, nothing held",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "signed", "statusAfter": "signed", "attestationAfter": "not_needed"}
       },
       {
         "name": "a resident, NP or PA signs: signed, waiting for attestation",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": true, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": true, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "signed", "statusAfter": "signed", "attestationAfter": "waiting"}
       },
       {
         "name": "sign from a credential that cannot sign is saved unsigned",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "saved_unsigned", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "saved unsigned waits for a co-signer, not for attestation",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": true, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": true, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "saved_unsigned", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "sign on a Non-Medical note is treated as complete",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "a Non-Medical note is never signed, whatever the credential",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": true, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": true, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "a Non-Medical note does not wait for the Red flags note",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"effect": "completed", "statusAfter": "completed", "attestationAfter": "not_needed"}
       },
       {
         "name": "sign: the hash does not match",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"refuse": "content_changed"}
       },
       {
         "name": "complete: the hash does not match",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"refuse": "content_changed"}
       },
       {
         "name": "a Non-Medical note whose hash does not match",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"refuse": "content_changed"}
       },
       {
         "name": "sign: the finish check fails",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": false, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": false, "redFlagsDone": true},
         "expected": {"refuse": "incomplete"}
       },
       {
         "name": "complete on a Non-Medical note: the finish check fails",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": false, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": false, "redFlagsDone": true},
         "expected": {"refuse": "incomplete"}
       },
       {
         "name": "sign on a Medical note before the Red flags note is finished",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"refuse": "red_flags_first"}
       },
       {
         "name": "complete on a Medical note before the Red flags note is finished",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"refuse": "red_flags_first"}
       },
       {
         "name": "the sender does not act as the author",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "not_author"}
       },
       {
         "name": "complete from someone who does not act as the author",
-        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "not_author"}
       },
       {
         "name": "a second sign-off of a completed note changes nothing",
-        "input": {"noteStatus": "completed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "completed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "already_finished"}
       },
       {
         "name": "a second sign-off of a signed note changes nothing",
-        "input": {"noteStatus": "signed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "signed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "already_finished"}
       },
       {
         "name": "complete on a completed Non-Medical note changes nothing",
-        "input": {"noteStatus": "completed", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "completed", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "already_finished"}
       },
       {
         "name": "order 1 before 2: a finished note answers already_finished to someone who is not its author",
-        "input": {"noteStatus": "completed", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "completed", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "already_finished"}
       },
       {
         "name": "order 1 before 3: a finished note is not checked against the hash",
-        "input": {"noteStatus": "signed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": false, "redFlagsDone": false},
+        "input": {"noteStatus": "signed", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": false, "redFlagsDone": false},
         "expected": {"effect": "none", "reason": "already_finished"}
       },
       {
         "name": "order 2 before 3: not the author, and the hash does not match",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": true, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": true, "redFlagsDone": true},
         "expected": {"effect": "none", "reason": "not_author"}
       },
       {
         "name": "order 2 before 5: not the author, on a visit with no Red flags note",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"effect": "none", "reason": "not_author"}
       },
       {
         "name": "order 3 before 4: the hash does not match and the finish check fails",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": false, "redFlagsDone": true},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": false, "redFlagsDone": true},
         "expected": {"refuse": "content_changed"}
       },
       {
         "name": "order 3 before 5: the hash does not match and the Red flags note is missing",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"refuse": "content_changed"}
       },
       {
         "name": "order 4 before 5: the finish check fails and the Red flags note is missing",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "finishOk": false, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": false, "redFlagsDone": false},
         "expected": {"refuse": "incomplete"}
       },
       {
         "name": "order 5 before 8: Red flags missing, from a credential that cannot sign",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "finishOk": true, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": false, "needsAttestation": false, "hashMatches": true, "emptyDraft": false, "finishOk": true, "redFlagsDone": false},
         "expected": {"refuse": "red_flags_first"}
       },
       {
         "name": "a draft with everything wrong answers the first check that applies",
-        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": false, "needsAttestation": false, "hashMatches": false, "finishOk": false, "redFlagsDone": false},
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": false, "canSign": false, "needsAttestation": false, "hashMatches": false, "emptyDraft": false, "finishOk": false, "redFlagsDone": false},
         "expected": {"effect": "none", "reason": "not_author"}
+      },
+      {
+        "name": "an empty draft completed changes nothing: it does not count, and there is nothing to fix",
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": true, "redFlagsDone": true},
+        "expected": {"effect": "none", "reason": "empty"}
+      },
+      {
+        "name": "an empty Medical draft signed changes nothing",
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": true, "redFlagsDone": true},
+        "expected": {"effect": "none", "reason": "empty"}
+      },
+      {
+        "name": "order empty before 4: an empty draft whose finish check fails is not refused",
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": false, "redFlagsDone": true},
+        "expected": {"effect": "none", "reason": "empty"}
+      },
+      {
+        "name": "order empty before 5: an empty Medical draft on a visit with no Red flags note is not refused",
+        "input": {"noteStatus": "draft", "medicalNote": true, "act": "sign", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": true, "redFlagsDone": false},
+        "expected": {"effect": "none", "reason": "empty"}
+      },
+      {
+        "name": "order 3 before empty: an empty draft whose hash does not match is refused",
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": false, "emptyDraft": true, "finishOk": true, "redFlagsDone": true},
+        "expected": {"refuse": "content_changed"}
+      },
+      {
+        "name": "order 2 before empty: an empty draft from someone who does not act as the author",
+        "input": {"noteStatus": "draft", "medicalNote": false, "act": "complete", "actsAsAuthor": false, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": true, "redFlagsDone": true},
+        "expected": {"effect": "none", "reason": "not_author"}
+      },
+      {
+        "name": "order 1 before empty: a finished note answers already_finished",
+        "input": {"noteStatus": "completed", "medicalNote": false, "act": "complete", "actsAsAuthor": true, "canSign": true, "needsAttestation": false, "hashMatches": true, "emptyDraft": true, "finishOk": true, "redFlagsDone": true},
+        "expected": {"effect": "none", "reason": "already_finished"}
       }
     ],
     "reopenEffect": [

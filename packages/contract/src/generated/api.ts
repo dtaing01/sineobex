@@ -2516,6 +2516,7 @@ export interface components {
         SyncResult: {
             /** Format: uuid */
             changeId: string;
+            /** @description What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count) */
             details?: {
                 [key: string]: unknown;
             };

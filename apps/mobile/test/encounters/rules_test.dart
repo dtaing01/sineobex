@@ -30,6 +30,7 @@ void main() {
         canSign: i['canSign']! as bool,
         needsAttestation: i['needsAttestation']! as bool,
         hashMatches: i['hashMatches']! as bool,
+        emptyDraft: i['emptyDraft']! as bool,
         finishOk: i['finishOk']! as bool,
         redFlagsDone: i['redFlagsDone']! as bool,
       );

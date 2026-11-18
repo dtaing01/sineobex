@@ -141,7 +141,10 @@ export const SyncResult = z
     }),
     reason: RejectReason.optional(),
     message: z.string().optional(),
-    details: z.record(z.string(), z.unknown()).optional(),
+    details: z.record(z.string(), z.unknown()).optional().openapi({
+      description:
+        'What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count)',
+    }),
     server: FieldState.optional().openapi({
       description: 'On conflict, or when the value was kept but not applied: the value the server holds',
     }),

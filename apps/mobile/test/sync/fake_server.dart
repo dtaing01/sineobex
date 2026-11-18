@@ -1879,7 +1879,8 @@ class FakeSyncServer {
 
   /// A sign-off (note-signoff.ts): the gate, then signoffEffect's inputs from the note as the server
   /// holds it, and what the function says. A refusal stores nothing, so the same record sent again
-  /// is applied fresh. Effect `none` stores the sign-off only; any other finishes the note.
+  /// is applied fresh. Effect `none` (finished, not the author's, or an empty draft) stores the
+  /// sign-off only; any other finishes the note.
   Map<String, Object?> _signoff(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final note = records[v['noteId']]!;
     // A non-author's sign-off changes nothing, whatever their credential: not_author first (note-signoff.ts).
@@ -1912,6 +1913,8 @@ class FakeSyncServer {
       canSign: under.canSign,
       needsAttestation: under.needsAttestation,
       hashMatches: hashMatches,
+      // The empty test the visit's status uses: an empty draft does not count.
+      emptyDraft: noteIsEmpty(answers),
       finishOk: finishOk,
       redFlagsDone: redFlagsDone,
     );

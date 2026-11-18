@@ -2,7 +2,7 @@ import type { z } from '@hono/zod-openapi';
 import { effectiveAnswers, finishCheck, type ResolvedNoteType } from '@sineobex/forms';
 import type { Tx } from '../../db/database.ts';
 import { noteContentHash } from '../../encounters/content-hash.ts';
-import { signoffEffect, type NoteStatus } from '../../encounters/rules.ts';
+import { noteIsEmpty, signoffEffect, type NoteStatus } from '../../encounters/rules.ts';
 import { signedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
 import {
@@ -33,8 +33,8 @@ import { NoteSignoffCreate, valueParents } from './values.ts';
  * team lock and in the change's transaction, and writes what it says. A refusal is the worker's to
  * fix (the note changed, it is missing something, the Red flags note goes first), so it is a stored
  * rejection and nothing else is written; the phone sends the same record again with the new hash.
- * A sign-off the note takes no more (it is finished, or the sender does not act as its author) is
- * stored with effect `none`. Otherwise the sign-off row is written first, then the note in one
+ * A sign-off the note takes no more (it is finished, the sender does not act as its author, or the
+ * draft is empty, which does not count) is stored with effect `none`. Otherwise the sign-off row is written first, then the note in one
  * statement, both from the one loaded note: the note's `signoff_id` names this row only when the
  * effect is `signed`, which the database's key cannot see (0019). A finished note holds only the
  * answers that count, which is what was hashed; each one dropped is in its history.
@@ -178,6 +178,8 @@ async function applySignoff(ctx: ChangeContext, v: Value): Promise<Outcome> {
     canSign: under.canSign,
     needsAttestation: under.needsAttestation,
     hashMatches,
+    // The empty test the visit's status uses (0018 note_is_empty): an empty draft does not count.
+    emptyDraft: noteIsEmpty(answers),
     finishOk,
     redFlagsDone,
   });

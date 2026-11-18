@@ -2341,7 +2341,8 @@ void main() {
       test('every case of signoffEffect in note-lifecycle.json, from the note as the server holds it', () async {
         final cases = ((vectors('note-lifecycle')['cases']! as Map<String, Object?>)['signoffEffect']! as List<Object?>)
             .cast<Map<String, Object?>>();
-        expect(cases.length, greaterThanOrEqualTo(31));
+        expect(cases.length, greaterThanOrEqualTo(38));
+        expect(cases.where((c) => (c['expected']! as Map<String, Object?>)['reason'] == 'empty'), hasLength(4));
         // Each test type with one required answer more, so the finish check can fail.
         TestNoteType withRequired(TestNoteType type) {
           final d = server.noteTypes[(type.key, type.version)]!;
@@ -2371,10 +2372,13 @@ void main() {
         }
 
         final types = {false: withRequired(testNote), true: withRequired(testMedical)};
+        final plainTypes = {false: testNote, true: testMedical};
         for (final c in cases) {
           final input = c['input']! as Map<String, Object?>;
           final expected = c['expected']! as Map<String, Object?>;
           final medical = input['medicalNote'] == true;
+          // An empty draft holds no answer: its finish check passes only on a type with none required.
+          final empty = input['emptyDraft'] == true;
           final signer = input['actsAsAuthor'] == true ? alex : blair;
           // The credential found at the signature: held then, raised to an attending since, so the
           // gate (which reads the credential now) lets every case through.
@@ -2388,10 +2392,12 @@ void main() {
           if (medical && input['redFlagsDone'] == true) {
             server.finishNote(noteHeld(visit, testRedFlags, const {'flags.any': 'no'}).noteId);
           }
-          final n = noteHeld(visit, types[medical]!, {
-            'care.plan': 'Demo: rest and fluids',
-            if (input['finishOk'] == true) 'must.answer': 'Demo: done',
-          });
+          final n = empty
+              ? noteHeld(visit, (input['finishOk'] == true ? plainTypes : types)[medical]!, const {})
+              : noteHeld(visit, types[medical]!, {
+                  'care.plan': 'Demo: rest and fluids',
+                  if (input['finishOk'] == true) 'must.answer': 'Demo: done',
+                });
           if (input['noteStatus'] != 'draft') server.finishNote(n.noteId, status: input['noteStatus']! as String);
           server.credentials[signer] = found;
           server.changeCredential(signer, 'attending', at: now.add(const Duration(minutes: 1)));
@@ -2658,8 +2664,9 @@ void main() {
 
       test('content_changed, incomplete and red_flags_first, each fixed by sending the same record again', () async {
         final visit = visitOf(patientId: patient);
-        // The Red flags note the app added, not answered yet.
-        final flags = noteHeld(visit, testRedFlags, const {});
+        // The Red flags note the app added, its red-flag question not answered yet. (Not empty: an
+        // empty draft's sign-off changes nothing, as below.)
+        final flags = noteHeld(visit, testRedFlags, const {'flags.note': 'Demo: asked, no answer yet'});
         final note = noteHeld(visit, testMedical, const {'care.plan': 'Demo: rest'});
         final noteFirst = signoff(alex, note, 'sign', hash: 'cd' * 32);
         final flagsFirst = signoff(alex, flags, 'sign');
@@ -2681,7 +2688,7 @@ void main() {
           patientId: patient,
           summary: null,
           type: testRedFlags,
-          answers: const <String, Object?>{'flags.any': 'no'},
+          answers: const <String, Object?>{'flags.note': 'Demo: asked, no answer yet', 'flags.any': 'no'},
         );
         final flagsFix = again(alex, answered, 'sign', flagsFirst);
         final noteFix = again(alex, note, 'sign', noteSecond);
@@ -2696,6 +2703,30 @@ void main() {
           ],
           [true, true, true],
         );
+      });
+
+      // sync-signoffs.test.ts, review finding SFN-7 as the coordinator decided.
+      test('an empty draft’s sign-off changes nothing, and so settles the refusal of an earlier one', () async {
+        final visit = visitOf(patientId: patient);
+        final note = noteHeld(visit, testMedical, const {'care.plan': 'Demo: rest'});
+        final first = signoff(alex, note, 'sign', hash: 'cd' * 32);
+        expect(await send(alex, [first]), [refused('content_changed')]);
+        final blank = setOn(entityNote, note.noteId, 'data.care.plan', null, 1);
+        final removed = (
+          noteId: note.noteId,
+          encounterId: visit,
+          patientId: patient,
+          summary: null,
+          type: testMedical,
+          answers: const <String, Object?>{'care.plan': null},
+        );
+        final fix = again(alex, removed, 'sign', first);
+        expect(await send(alex, [blank, fix]), [taken(blank, 2), noEffect(fix, 'empty', 'draft', 'not_needed', true)]);
+        expect(server.records[note.noteId]!.fields['status']!.value, 'draft');
+        expect(server.records[note.noteId]!.completedAt, isNull);
+        expect(server.records[fix['recordId']]!.status, 'none');
+        expect(noticesOn(note.noteId), isEmpty);
+        expect(server.receipts[first['changeId']]!.resolved, isTrue);
       });
 
       test('only a finished Red flags note of the visit counts, and a Non-Medical note never waits for one', () async {
@@ -2727,7 +2758,7 @@ void main() {
         final preview = noteHeld(visit, testNote, const {});
         server.records[preview.noteId]!.attributes['noteTypeVersion'] = null;
         final stuck = signoff(alex, preview, 'complete', hash: 'ef' * 32);
-        final next = signoff(alex, noteHeld(visit, testNote, const {}), 'complete');
+        final next = signoff(alex, noteHeld(visit, testNote, const {'care.plan': 'Demo: rest'}), 'complete');
         expect(await send(alex, [stuck, next]), [
           refused('definition_error'),
           applied(next, 'completed', 'completed', 'not_needed'),

@@ -36,7 +36,10 @@ enum SignoffRefusal {
 /// Why a sign-off was stored and changed nothing.
 enum SignoffUnchangedReason {
   alreadyFinished('already_finished'),
-  notAuthor('not_author');
+  notAuthor('not_author'),
+
+  /// The draft is empty: it does not count, and there is nothing to fix by completing it.
+  empty('empty');
 
   const SignoffUnchangedReason(this.code);
   final String code;
@@ -79,9 +82,12 @@ final class SignoffApplied extends SignoffEffect {
 
 /// What a `complete` or a `sign` does to a note (lifecycle 3.4). The first check that applies
 /// decides, so the order below is the rule: a finished note is never looked at again, and a note
-/// that changed since the person read it is refused before anything is said about its content.
+/// that changed since the person read it is refused before anything is said about its content. An
+/// empty draft does not count (3.1) and has nothing to fix by completing, so its sign-off changes
+/// nothing, which settles the refusal of an earlier one (Remove this note after a refused Complete).
 ///
-/// [redFlagsDone]: the visit has a finished Red flags note, or this note is one.
+/// [emptyDraft]: every answer of the draft is blank ([noteIsEmpty]). [redFlagsDone]: the visit has a
+/// finished Red flags note, or this note is one.
 SignoffEffect signoffEffect({
   required NoteStatus noteStatus,
   required bool medicalNote,
@@ -90,12 +96,14 @@ SignoffEffect signoffEffect({
   required bool canSign,
   required bool needsAttestation,
   required bool hashMatches,
+  required bool emptyDraft,
   required bool finishOk,
   required bool redFlagsDone,
 }) {
   if (noteStatus != NoteStatus.draft) return const SignoffUnchanged(SignoffUnchangedReason.alreadyFinished);
   if (!actsAsAuthor) return const SignoffUnchanged(SignoffUnchangedReason.notAuthor);
   if (!hashMatches) return const SignoffRefused(SignoffRefusal.contentChanged);
+  if (emptyDraft) return const SignoffUnchanged(SignoffUnchangedReason.empty);
   if (!finishOk) return const SignoffRefused(SignoffRefusal.incomplete);
   if (medicalNote && !redFlagsDone) return const SignoffRefused(SignoffRefusal.redFlagsFirst);
   // A Non-Medical note is never signed (lifecycle 3.1), so `sign` on one is a `complete`.

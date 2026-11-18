@@ -1105,15 +1105,21 @@ class LocalStore {
   /// refusal is settled and what waited behind it goes. Each note is then marked with the effect
   /// [signoffEffect] gives ([localEffect]).
   ///
+  /// Every refused sign-off can be settled this way: the fix of one whose note was finished since
+  /// (here or on another phone), or whose note is now an empty draft (Remove this note), is sent with
+  /// the note's hash as the phone holds it and changes nothing on the server, which settles the
+  /// refusal. Such a note keeps what it holds, is marked with no effect, and is not in the map.
+  ///
   /// [definitionOf] finds a note type's definition by key and version: the definitions of the notes
   /// finished, and of the visit's other notes, to find a finished Red flags note among them.
   /// [redFlagsFinished]: the visit has a finished Red flags note this phone does not hold (the visit
   /// read says so).
   ///
   /// Throws, writing nothing: [ChartingPaused] while the clock check fails (3.11); [RecordLocked]
-  /// for a note finished already, here or on the server; [LocalValidationError] with the server's
-  /// problem for a sign-off it would refuse (`incomplete`, `red_flags_first`) or store with no effect
-  /// (`not_author`), since a worker can't fix either once it is sent.
+  /// for a note finished already, here or on the server, with no refused sign-off to settle;
+  /// [LocalValidationError] with the server's problem for a sign-off it would refuse (`incomplete`,
+  /// `red_flags_first`) or store with no effect (`not_author`, and `empty` for an empty draft with no
+  /// refusal to settle: Complete skips those, 3.3), since a worker can't fix either once it is sent.
   Map<String, LocalEffect> finishNotes(
     List<NoteToFinish> notes, {
     required Signer signer,
@@ -1152,7 +1158,8 @@ class LocalStore {
             redFlagsFinished ||
             redFlagsWith.contains(note.encounterId) ||
             _redFlagsFinishedHere(note.encounterId, note.rec.id, definitionOf);
-        made[asked.noteId] = _finishNote(asked, note, signer, redFlagsDone);
+        final local = _finishNote(asked, note, signer, redFlagsDone);
+        if (local != null) made[asked.noteId] = local;
       }
       return made;
     });
@@ -1326,8 +1333,9 @@ class LocalStore {
     );
   }
 
-  /// One note of [finishNotes], inside its transaction.
-  LocalEffect _finishNote(
+  /// One note of [finishNotes], inside its transaction. Null when its sign-off is the fix of a
+  /// refused one that is expected to change nothing.
+  LocalEffect? _finishNote(
     NoteToFinish asked,
     ({LocalRecord rec, NoteTypeDef definition, String encounterId, Map<String, Object?> answers, String hash}) note,
     Signer signer,
@@ -1341,6 +1349,7 @@ class LocalStore {
       throw const RecordLocked();
     }
     final medical = !note.definition.kinds.contains(NoteKind.nonMedical);
+    final finishOk = finishCheck(note.definition, note.answers).isEmpty;
     final effect = signoffEffect(
       noteStatus: NoteStatus.values.byName(rec.status),
       medicalNote: medical,
@@ -1349,12 +1358,30 @@ class LocalStore {
       canSign: signer.canSign,
       needsAttestation: signer.needsAttestation,
       hashMatches: true,
-      finishOk: finishCheck(note.definition, note.answers).isEmpty,
+      emptyDraft: noteIsEmpty(note.answers),
+      finishOk: finishOk,
       redFlagsDone: medical && redFlagsDone(),
     );
+    // A refused sign-off is always settled by its fix (the coordinator's decision on review findings
+    // SFN-1 and SFN-7): of a note finished since, here or on another phone, or of one removed since
+    // (an empty draft), the server stores it with no effect, which settles the refusal; its receipt
+    // then shows the note as the server holds it, and says whether what was finished is what this
+    // phone saw (finished_differently).
+    final settlesOnly =
+        waiting.isNotEmpty &&
+        effect is SignoffUnchanged &&
+        (effect.reason == SignoffUnchangedReason.alreadyFinished || effect.reason == SignoffUnchangedReason.empty);
     final applied = switch (effect) {
       SignoffApplied() => effect,
+      SignoffUnchanged() when settlesOnly => null,
       SignoffUnchanged(reason: SignoffUnchangedReason.alreadyFinished) => throw const RecordLocked(),
+      // Complete skips an empty draft (3.3), but not the person's own Red flags note on a Medical
+      // visit, whose finish check asks for the red-flag answer (hard stop 5): what is missing is said
+      // first.
+      SignoffUnchanged(reason: SignoffUnchangedReason.empty) =>
+        throw finishOk
+            ? const LocalValidationError('This note is empty, so there is nothing to complete.', problem: 'empty')
+            : const LocalValidationError('This is missing something the note needs.', problem: 'incomplete'),
       SignoffUnchanged() => throw const LocalValidationError(
         'Only the note’s author can complete it.',
         problem: 'not_author',
@@ -1380,10 +1407,13 @@ class LocalStore {
     // The phone's copy holds what was signed, as the server's will (lifecycle 4.5), so nothing done
     // here later (a correction) can bring back an answer the signer never saw. A change to one that
     // is not confirmed yet still goes: the server drops it as it finishes the note, into history.
-    final counting = effectiveAnswers(note.definition, note.answers);
-    for (final path in note.answers.keys) {
-      if (!counting.containsKey(path)) {
-        _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [rec.id, 'data.$path']);
+    // A sign-off that finishes nothing leaves the note as it is.
+    if (applied != null) {
+      final counting = effectiveAnswers(note.definition, note.answers);
+      for (final path in note.answers.keys) {
+        if (!counting.containsKey(path)) {
+          _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [rec.id, 'data.$path']);
+        }
       }
     }
     final String signoffId;
@@ -1413,12 +1443,6 @@ class LocalStore {
       _db.execute('DELETE FROM records WHERE id = ?', [signoffId]);
       _insertCreated(rules, signoffId, value, fix);
     }
-    final local = LocalEffect(
-      effect: applied.effect,
-      status: applied.statusAfter,
-      attestation: applied.attestationAfter,
-      signoffId: signoffId,
-    );
     // Completing again answers "Your Complete of this note wasn’t applied" about any sign-off of it:
     // read here, and on the server at the next contact (4.6).
     _db.execute(
@@ -1428,12 +1452,19 @@ class LocalStore {
       "OR record_id IN (SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.noteId') = ?))",
       [_nowMs, noticeSignoffNotApplied, rec.id, entitySignoff, rec.id],
     );
+    _touch(rec.id);
+    _workedOn(rec.id);
+    if (applied == null) return null;
+    final local = LocalEffect(
+      effect: applied.effect,
+      status: applied.statusAfter,
+      attestation: applied.attestationAfter,
+      signoffId: signoffId,
+    );
     _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
       jsonEncode({...rec.attributes, _localEffectKey: local.toJson()}),
       rec.id,
     ]);
-    _touch(rec.id);
-    _workedOn(rec.id);
     return local;
   }
 

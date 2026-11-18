@@ -12,7 +12,7 @@ export const INCOMPLETE_AFTER_HOURS = 24;
 export type SignoffRefusal = 'content_changed' | 'incomplete' | 'red_flags_first';
 export type SignoffEffect =
   | { refuse: SignoffRefusal }
-  | { effect: 'none'; reason: 'already_finished' | 'not_author' }
+  | { effect: 'none'; reason: 'already_finished' | 'not_author' | 'empty' }
   | {
       effect: 'completed' | 'signed' | 'saved_unsigned';
       statusAfter: NoteStatus;
@@ -22,7 +22,9 @@ export type SignoffEffect =
 /**
  * What a `complete` or a `sign` does to a note (lifecycle 3.4). The first check that applies
  * decides, so the order below is the rule: a finished note is never looked at again, and a note
- * that changed since the person read it is refused before anything is said about its content.
+ * that changed since the person read it is refused before anything is said about its content. An
+ * empty draft does not count (3.1) and has nothing to fix by completing, so its sign-off changes
+ * nothing, which settles the refusal of an earlier one (Remove this note after a refused Complete).
  */
 export function signoffEffect(i: {
   noteStatus: NoteStatus;
@@ -32,6 +34,8 @@ export function signoffEffect(i: {
   canSign: boolean;
   needsAttestation: boolean;
   hashMatches: boolean;
+  /** Every answer of the draft is blank (noteIsEmpty). */
+  emptyDraft: boolean;
   finishOk: boolean;
   /** The visit has a finished Red flags note, or this note is one. */
   redFlagsDone: boolean;
@@ -39,6 +43,7 @@ export function signoffEffect(i: {
   if (i.noteStatus !== 'draft') return { effect: 'none', reason: 'already_finished' };
   if (!i.actsAsAuthor) return { effect: 'none', reason: 'not_author' };
   if (!i.hashMatches) return { refuse: 'content_changed' };
+  if (i.emptyDraft) return { effect: 'none', reason: 'empty' };
   if (!i.finishOk) return { refuse: 'incomplete' };
   if (i.medicalNote && !i.redFlagsDone) return { refuse: 'red_flags_first' };
   // A Non-Medical note is never signed (lifecycle 3.1), so `sign` on one is a `complete`.

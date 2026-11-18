@@ -457,6 +457,7 @@ describe('demo visits in the seed', () => {
         canSign: CAPABILITIES[signer.credential].sign,
         needsAttestation: s.needsAttestation,
         hashMatches: true,
+        emptyDraft: noteIsEmpty(answers),
         finishOk: finishCheck(definition, answers).length === 0,
         redFlagsDone,
       });

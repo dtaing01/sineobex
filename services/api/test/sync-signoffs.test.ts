@@ -791,8 +791,9 @@ describe('phase 4 sync: sign-offs', () => {
 
     it('content_changed, incomplete and red_flags_first, each fixed by sending the same record again', async () => {
       const visit = await visitOf(cy);
-      // The Red flags note the app added, not answered yet.
-      const flags = await noteOn(cy, visit, TEST_RED_FLAGS, {});
+      // The Red flags note the app added, its red-flag question not answered yet. (Not empty: an empty
+      // draft's sign-off changes nothing, as below.)
+      const flags = await noteOn(cy, visit, TEST_RED_FLAGS, { 'flags.note': 'Demo: asked, no answer yet' });
       const note = await noteOn(cy, visit, TEST_MEDICAL, { 'care.plan': 'Demo: rest' });
 
       const mark = await auditMark(h);
@@ -825,7 +826,7 @@ describe('phase 4 sync: sign-offs', () => {
         field: 'data.flags.any',
         value: 'no',
       });
-      const answered = { ...flags, answers: { 'flags.any': 'no' } };
+      const answered = { ...flags, answers: { ...flags.answers, 'flags.any': 'no' } };
       const flagsFix = await again(cy, answered, 'sign', flagsFirst);
       const noteFix = await again(cy, note, 'sign', noteSecond);
       expect(await cy.send(answer, flagsFix, noteFix)).toEqual([
@@ -837,6 +838,40 @@ describe('phase 4 sync: sign-offs', () => {
         select change_id from sineobex.sync_changes
         where record_id in ${h.scratch.owner([flagsFirst.recordId, noteFirst.recordId])}
           and status = 'rejected' and resolved_by_change is null`;
+      expect(open).toEqual([]);
+    });
+
+    it('an empty draft’s sign-off changes nothing, and so settles the refusal of an earlier one', async () => {
+      // Review finding SFN-7, as the coordinator decided: a refused sign-off of a note the person then
+      // removed (its answers blanked, lifecycle 9.4) is fixed by completing it again, which changes
+      // nothing, since an empty draft does not count (3.1). Asked before the finish check and the Red
+      // flags note: neither is the person's to fix on a note they removed.
+      const visit = await visitOf(cy);
+      const note = await noteOn(cy, visit, TEST_MEDICAL, { 'care.plan': 'Demo: rest' });
+      const first = await signoff(cy, note, 'sign', { hash: 'cd'.repeat(32) });
+      expect(await cy.send(first)).toEqual([refused(first, 'content_changed')]);
+      const blank = await cy.phone.change({
+        entity: 'encounter_note',
+        recordId: note.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: null,
+        baseVersion: 1,
+      });
+      const mark = await auditMark(h);
+      const fix = await again(cy, { ...note, answers: { 'care.plan': null } }, 'sign', first);
+      expect(await cy.send(blank, fix)).toEqual([
+        expect.objectContaining({ status: 'accepted' }),
+        noEffect(fix, 'empty', 'draft', 'not_needed', true),
+      ]);
+      expect(await noteRow(note.noteId)).toMatchObject({ status: 'draft', completedAt: null });
+      expect(await signoffRow(fix.recordId)).toMatchObject({ effect: 'none' });
+      expect(await noticesOn(note.noteId)).toEqual([]);
+      const [event] = await expectAudit(h, 'note.signoff_repeated', { after: mark, count: 1 });
+      expect(event).toMatchObject({ details: { reason: 'empty', hashMatches: true } });
+      const open = await h.scratch.owner`
+        select change_id from sineobex.sync_changes
+        where record_id = ${first.recordId} and status = 'rejected' and resolved_by_change is null`;
       expect(open).toEqual([]);
     });
 
@@ -1403,7 +1438,11 @@ describe('phase 4 sync: sign-offs', () => {
         values (${noteId}, ${t.teamId}, ${visit.encounterId}, 'wound_care', ${fay.id}, '{"plan": "Demo: dress daily"}')`;
       const preview: Held = { ...visit, noteId, type: TYPES.get('test_note')!, answers: {} };
       const stuck = await signoff(fay, preview, 'complete');
-      const next = await signoff(fay, await noteOn(fay, visit, TEST_NOTE, {}), 'complete');
+      const next = await signoff(
+        fay,
+        await noteOn(fay, visit, TEST_NOTE, { 'care.plan': 'Demo: rest' }),
+        'complete',
+      );
       expect(await fay.send(stuck, next)).toEqual([
         refused(stuck, 'definition_error'),
         applied(next, 'completed', 'completed', 'not_needed'),

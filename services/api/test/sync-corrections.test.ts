@@ -338,8 +338,9 @@ describe('phase 4 sync: addenda and corrections', () => {
       const visit = await visitOf(dana, patientId);
       const other = await visitOf(dana, patientId);
       const draft = await noteOn(dana, visit, TEST_NOTE_TYPE, {});
-      const done = await noteOn(dana, visit, TEST_NOTE_TYPE, {});
-      const elsewhere = await noteOn(dana, other, TEST_NOTE_TYPE, {});
+      // Answered: an empty draft's sign-off finishes nothing.
+      const done = await noteOn(dana, visit, TEST_NOTE_TYPE, { 'vitals.pulse': 70 });
+      const elsewhere = await noteOn(dana, other, TEST_NOTE_TYPE, { 'vitals.pulse': 72 });
       const ours = await finishNote(dana, done, 'complete', 'completed');
       const theirs = await finishNote(dana, elsewhere, 'complete', 'completed');
       const changes = [
@@ -1296,7 +1297,8 @@ describe('phase 4 sync: addenda and corrections', () => {
         values (${noteId}, ${t.teamId}, ${visit.encounterId}, 'wound_care', ${cora.id}, '{"plan": "Demo: dress daily"}',
           'completed', now(), ${cora.id})`;
       const stuck = await correction(cora, { noteId }, [answer('plan', 'Demo: dress twice daily')]);
-      const next = await noteOn(cora, visit, TEST_NOTE_TYPE, {});
+      // Answered: an empty draft's sign-off finishes nothing.
+      const next = await noteOn(cora, visit, TEST_NOTE_TYPE, { 'vitals.pulse': 70 });
       await finishNote(cora, next, 'complete', 'completed');
       const fix = await correction(cora, next, [answer('care.plan', 'Demo: rest', 0)]);
       expect(await cora.send(stuck, fix)).toEqual([

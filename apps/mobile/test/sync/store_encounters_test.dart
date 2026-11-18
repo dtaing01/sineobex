@@ -311,6 +311,88 @@ void main() {
       expect(server.records[addendum]!.attributes['noteId'], n);
     });
 
+    test(
+      'a refused sign-off of a note finished since is fixed all the same: the server stores it with no effect',
+      () async {
+        // Review finding SFN-1: the store refused Complete of a finished note, so a sign-off refused on
+        // one phone, for a note the same person then finished on another, waited in Needs attention for
+        // good. The coordinator's decision: its fix is sent anyway, and settles the refusal.
+        final a = phone(alex);
+        final visit = a.store.createEncounter(kind: 'non_medical');
+        final n = note(a, visit, testNote, {'vitals.pulse': 88});
+        await sync(a);
+        final b = phone(alex);
+        expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+        complete(a, [finishing(a, n, testNote)]);
+        b.store.setField(n, 'data.vitals.pulse', 90);
+        await sync(b);
+        await sync(a);
+        final refused = a.store.needsAttention().single;
+        expect([refused.entity, refused.details?['problem']], [entitySignoff, 'content_changed']);
+        complete(b, [finishing(b, n, testNote)]);
+        await sync(b);
+        await sync(a);
+        expect(a.store.noteState(n)!.status, NoteStatus.completed);
+
+        // Complete again: nothing is expected of it, and what is sent is the fix of the refused one.
+        expect(complete(a, [finishing(a, n, testNote)]), isEmpty);
+        expect(a.store.localEffect(n), isNull);
+        final fix = signoffs(a).single;
+        expect([fix.recordId, fix.supersedes, fix.state], [refused.recordId, refused.changeId, ChangeState.pending]);
+        await sync(a);
+        expect(a.store.outbox(), isEmpty);
+        expect(a.store.needsAttention(), isEmpty);
+        expect(server.records[fix.recordId]!.status, 'none');
+        expect(a.store.noteState(n)!.status, NoteStatus.completed);
+        // It saw what was finished, so there is nothing to read again.
+        expect(a.store.notices(), isEmpty);
+        // A note finished with no refusal waiting is not completed twice.
+        expect(() => complete(a, [finishing(a, n, testNote)]), throwsA(isA<RecordLocked>()));
+      },
+    );
+
+    test(
+      'a refused sign-off of a note then removed is settled by completing it: an empty draft changes nothing',
+      () async {
+        // Review finding SFN-7, as the coordinator decided (signoffEffect's `empty`): Remove this note
+        // blanks the answers (lifecycle 9.4), and the refusal is settled at the next sync.
+        final p = phone(alex);
+        final visit = p.store.createEncounter(kind: 'non_medical');
+        final n = note(p, visit, testNote, {'vitals.pulse': 88});
+        await sync(p);
+        server.serverEdit(n, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+        complete(p, [finishing(p, n, testNote)]);
+        await sync(p);
+        final refused = p.store.needsAttention().single;
+        expect(answersOf(p, n), {'vitals.pulse': 88, 'care.plan': 'Demo: shelter tonight'});
+        for (final field in ['data.vitals.pulse', 'data.care.plan']) {
+          p.store.setField(n, field, null);
+        }
+        expect(complete(p, [finishing(p, n, testNote)]), isEmpty);
+        expect(p.store.localEffect(n), isNull);
+        expect(signoffs(p).single.recordId, refused.recordId);
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        expect(p.store.needsAttention(), isEmpty);
+        expect(server.records[refused.recordId]!.status, 'none');
+        expect([server.records[n]!.fields['status']!.value, p.store.noteState(n)!.status], ['draft', NoteStatus.draft]);
+        expect(p.store.notices(), isEmpty);
+      },
+    );
+
+    test('an empty draft with no refusal to settle is not completed', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, const {});
+      final before = p.store.outbox().length;
+      expect(
+        () => complete(p, [finishing(p, n, testNote)]),
+        throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'empty')),
+      );
+      expect(p.store.outbox(), hasLength(before));
+    });
+
     test('a refused note fixed while its sign-off waits behind it is still finished here', () async {
       final p = phone(alex);
       final visit = p.store.createEncounter(kind: 'non_medical');
