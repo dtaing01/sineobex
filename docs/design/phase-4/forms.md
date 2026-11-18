@@ -2122,9 +2122,9 @@ by a script, and failed.
   answers that clash in separate sets, and a plain test holds it to the definition: every section,
   field and Other text shows in some set, and `checkAnswer` takes every value. A new note type is
   covered the moment it is in the presets. A field is checked in its grid's first row and in a
-  repeating section's one entry, not in every row. It opens no date picker (8.2, A11Y-3); the time
-  dial and the question Remove asks pass the guideline matchers in `formRuns`, in their own files'
-  tests.
+  repeating section's one entry, not in every row. No bundled field has help, so a field's help is
+  held by the widget tests alone. It opens no date picker (8.2, A11Y-3); the time dial and the
+  question Remove asks pass the guideline matchers in `formRuns`, in their own files' tests.
 
 ### 8.4 The portal
 
