@@ -405,6 +405,12 @@ export async function visitAsRead(
     const sees = (): boolean => byDefinition(() => sameValue(seen, effectiveAnswers(type, answers)));
     // The hash to co-sign or attest with: whoever may act on the note and sees all of it (lifecycle
     // 5.1, 5.3, 5.4), besides those who get every sign-off's. Never over a summary the reader may not read.
+    //
+    // Unlike D86's rule for the sign-offs' hashes, this one asks what the note holds: a reader who
+    // may co-sign or attest learns from a missing hash that the note holds content they may not
+    // see. The queue's canAct already tells them that (5.4 rule 4), and the online act needs the
+    // hash, so the coordinator kept it (review finding LRD-3). The sync read keeps D86: it sends no
+    // note's hash, and a sign-off's only by signoffHashShown.
     const hashShown = !hideMedical && (reader.actsAsAuthor || readsWhole(reader) || (mayAct && sees()));
     const attrs = note.attributes as {
       noteTypeKey: string;

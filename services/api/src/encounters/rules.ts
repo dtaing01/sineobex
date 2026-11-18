@@ -108,6 +108,10 @@ export type CosignRefusal =
 /**
  * One note of an online co-sign (lifecycle 5.3). The refusals are checked in the order listed.
  *
+ * Nothing here asks about the visit's Red flags note, and neither does attestEffect: the Red flags
+ * rule (red_flags_first) governs finishing a note, and a co-sign or an attestation adds a signature
+ * to content already finished (the coordinator's decision on review finding LAC-6).
+ *
  * PLAN-OPEN: may a resident, NP or PA co-sign a student's note, or only an attending (lifecycle
  * 12.1 #6)? Any credential that signs; the note then waits for attestation if that credential
  * needs it.

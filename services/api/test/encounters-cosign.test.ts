@@ -449,6 +449,27 @@ describe('phase 4: co-sign', () => {
       ]);
     });
 
+    it('does not wait for the visit’s Red flags note: one reopened to a draft leaves the other to be co-signed', async () => {
+      // The coordinator's decision on review finding LAC-6: the Red flags rule governs finishing a
+      // note (red_flags_first), and a co-sign adds a signature to content already finished.
+      const v = await waitingForCosign(w);
+      const flags = await noteRow(h, v.flags.noteId);
+      const reopen = await w.sol.phone.change({
+        entity: 'encounter_note',
+        op: 'set',
+        recordId: v.flags.noteId,
+        field: 'status',
+        value: 'draft',
+        baseVersion: flags.fieldVersions.status ?? 0,
+      });
+      expect((await w.sol.send(reopen)).map((r) => r.status)).toEqual(['accepted']);
+      expect((await noteRow(h, v.flags.noteId)).status).toBe('draft');
+      const r = await cosign(w, w.ana, v.visit.encounterId, [v.note]);
+      expect(r.status).toBe(200);
+      expect((await noteRow(h, v.note.noteId)).status).toBe('signed');
+      expect((await noteRow(h, v.flags.noteId)).status).toBe('draft');
+    });
+
     it('a note signed before, and back with a co-signer after a correction, keeps its first signature time', async () => {
       const v = await chartedVisit(w, w.rae);
       await finish(w.rae, [v.flags, 'sign', 'signed'], [v.note, 'sign', 'signed']);
