@@ -375,6 +375,8 @@ void main() {
         [for (final x in p.store.notices(unreadOnly: true)) (x.kind, x.recordId)],
         [(noticeSignoffNotApplied, second.recordId)],
       );
+      // Each names the note too, as the real API sends it (D104).
+      expect([for (final x in p.store.notices()) (x.recordId, x.noteId)], [(first.recordId, n), (second.recordId, n)]);
     } finally {
       await credential(me['credential']! as String, me['credentialFields']);
     }
