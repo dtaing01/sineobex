@@ -154,6 +154,7 @@ describe('phase 4: the timeline and recent visits', () => {
       });
       // The empty draft is not there; everything else is, for a reader who sees every note.
       expect(noteIds(e)).toEqual([flags, plain, exam, talk, social].map((n) => n.noteId).sort());
+      expect(noteIds(e)).not.toContain(empty.noteId);
       expect(c.timeline.referrals.map((r) => r.id)).toEqual([referralId]);
       // No answer is on the timeline, for any reader: least of all a sensitive exam's (PRD main 415).
       expectNoneOf(c.timeline, [...SECRETS, 'Demo: talked about sleep', 'Demo: housing list']);

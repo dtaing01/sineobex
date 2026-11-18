@@ -332,5 +332,31 @@ describe('phase 4: co-sign', () => {
       expect(run.rowLocks).toBe(0);
       expect(run.answer.status).toBe(200);
     });
+
+    it('the lock check catches a writer that locks a note before the team lock', async () => {
+      // The check above, and its copies in the attest and assign tests, would pass for a route that
+      // took no lock at all only if it never waited: this holds that it sees the wrong order.
+      const v = await waitingForCosign(w);
+      const writer = (noteFirst: boolean) => async () => {
+        const conn = await h.scratch.owner.reserve();
+        const note = () =>
+          conn`select id from sineobex.encounter_notes where id = ${v.note.noteId} for no key update`;
+        try {
+          await conn`begin`;
+          if (noteFirst) await note();
+          await conn`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${w.t.teamId}::uuid::text, 0))`;
+          if (!noteFirst) await note();
+          await conn`commit`;
+        } finally {
+          conn.release();
+        }
+      };
+      const wrong = await whileTeamLocked(h, w.t.teamId, writer(true));
+      expect(wrong.waited).toBe(true);
+      expect(wrong.rowLocks).toBeGreaterThan(0);
+      const right = await whileTeamLocked(h, w.t.teamId, writer(false));
+      expect(right.waited).toBe(true);
+      expect(right.rowLocks).toBe(0);
+    });
   });
 });
