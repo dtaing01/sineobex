@@ -166,6 +166,7 @@ level X.
 | `0019_note_signoffs.sql` | `note_signoffs`, `note_addenda`, `note_corrections` | X |
 | `0020_note_attestations.sql` | `note_attestations`, `note_assignments`; `patient_of_change` learns the new entities | X |
 | `0021_referrals.sql` | `referrals` | X |
+| `0022_notice_note.sql` | `user_notices.note_id`: the note a held sign-off's notice names (D104, wave F), with a composite key to `encounter_notes` on `(team_id, note_id)`; every other notice leaves it null | X |
 
 No migration touches `known_permissions()` or a role row (D37). No migration touches the audit
 tables. `field_history` needs no new kind: `set`, `kept_both` and `corrected` already exist
@@ -1875,7 +1876,9 @@ review):
   that the note is still a draft. When a Program Admin rejects it, or their accept is refused
   because the note no longer matches it (`content_changed`), its sender gets `signoff_not_applied`
   on entity `note_signoff`, naming the held sign-off (`signoffNotApplied`,
-  `services/api/src/sync/review.ts`), once per sign-off, whether or not they have read an earlier
+  `services/api/src/sync/review.ts`), and its note in `note_id` (D104, migration 0022), which the
+  notices' list gives as `noteId`: a held sign-off is in no sync read, so a phone that never held
+  it finds the note by that alone. Once per sign-off, whether or not they have read an earlier
   one: a refused accept and the reject that follows tell them once, and a second held Complete of
   the same note, a sign-off of its own, is told on its own. A kind of its own means no phone needs
   state of its own to word it (review findings SRC-1, SRC-2 and SRC-5, as the coordinator
@@ -1891,7 +1894,8 @@ review):
   tells anyone: a held change of another kind, rejected, tells nobody. A refusal at accept time is
   not stored as a rejection of the change: the item is still the reviewer's to decide. The phone's
   half is the store's (4.8): the notice settles only the held sign-off it names, so its note is a
-  draft to complete again, fetched again if it had left the phone (9.13).
+  draft to complete again, fetched again by the note the notice names if it had left the phone
+  (9.13).
 
 ### 4.7 Addenda, corrections and referrals
 
@@ -2294,7 +2298,7 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   notice about a sign-off settled here already (its note finished since) is stored read, never
   shown, and its read reaches the server at the next contact. A notice about a sign-off this phone
   knows nothing of (another phone's, or one from a database erased at a synced sign-out) is kept as
-  it came. A held receipt that comes after its notice (the first receipt was lost, and the notices
+  it came, with the note it names (below). A held receipt that comes after its notice (the first receipt was lost, and the notices
   were fetched before the retry) is settled at once. `change_not_applied` always keeps its own
   sentence. The coordinator's decision on review findings SRC-1 to SRC-5: as first built the phone
   turned a `change_not_applied` on a note with a held sign-off into a local `signoff_not_applied`,
@@ -2320,23 +2324,31 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
 - **Open the note on a `signoff_not_applied` notice** (9.13). The notice names a sign-off, and a
   held sign-off is not on the chart: the sync read loads a sign-off from `note_signoffs`
   (`note-signoff.ts`), while the held value is in `quarantine_items`, and the test server's held
-  sign-off is not in its records either. So a phone that knows nothing of the sign-off cannot
-  find the note from it. The coordinator's decision (Nov 18, D104): the notice also names the
-  note, in a new column of `user_notices` that `signoffNotApplied` fills from the note it already
-  reads; the notices' list gives it, the test server mirrors it, the phone keeps it with the
-  notice, and Needs attention opens that note. It is built first in wave F. Until then, for a
-  sign-off this phone made, its record names the note (`noteId`) while the record is here. The
-  other choice, giving a sender their own held sign-off in the sync read, would send values from
-  `quarantine_items`, which were never checked against a schema.
+  sign-off is not in its records either. So a phone that knows nothing of the sign-off could not
+  find the note from it. The coordinator's decision (Nov 18, D104), as built in wave F: the notice
+  also names the note, in `user_notices.note_id` (migration 0022), which `signoffNotApplied` fills
+  from the note it already reads and every other notice leaves null; the notices' list gives it as
+  `noteId`; the test server writes and returns it the same way; `ServerNotices` hands it to the
+  store, which keeps it with the notice (`LocalNotice.noteId`, in `kv` as
+  `notice_note.<local notice ID>`, so the database's schema did not change). A phone that never
+  held the sign-off, a second phone or one whose database a synced sign-out erased, opens the note
+  by it (`openServerRecord('encounter_note', noteId)`), as Needs attention will (L5). It settles
+  nothing: a held sign-off is still settled by its own ID alone, so the notice about one phone's
+  held Complete leaves a later Complete of the same note, held on another phone, "Sent for review".
+  The other choice, giving a sender their own held sign-off in the sync read, would send values
+  from `quarantine_items`, which were never checked against a schema.
 - **Accepted** (the coordinator's decision of Nov 18, D106). With `empty` before the finish check,
   an empty Red flags note's sign-off sent beside Medical notes is stored with no effect, and the
   Medical notes are refused `red_flags_first`, not the Red flags note `incomplete`. The phone never
   sends it (it refuses it as `incomplete`); another client could, and nothing is finished that
   should not be. And while a sign-off is held, the refresh brings back into the phone's copy the
   answers Complete dropped, since the server's draft, and the author's own sync read of it, still
-  hold them (4.4). They are in hidden fields or removed entries, so nothing shown changes; the
-  accept's refresh takes them away again, and after a reject the draft is the server's. A test
-  pins it in wave F.
+  hold them (4.4). They are in hidden fields or removed entries, so nothing shown changes, nor the
+  hash; after a reject and its notice the draft is the server's, those answers included. The design
+  expected the accept's refresh to take them away again; as tested in wave F it does not: a
+  finished note's read gives only the answers that count, so the phone keeps such an answer at the
+  version it had, while the server holds it null at the next. The store is unchanged, the test
+  pins it as built (11.2), and whether the phone should drop it is the coordinator's question.
 - **For the domain layer and the screens** (the card index's L4 and L5 rows): Complete passes each
   note's act and statement version (3.3, 3.5), a `Signer` from the saved profile, a synchronous
   `definitionOf`, and `redFlagsFinished` when the visit read shows a teammate's finished Red flags
@@ -2467,7 +2479,7 @@ retry, answered from its receipt, tells nobody again.
 | `late_change_kept` | the sender, and the acting author when that is someone else | a change to a finished note kept in history (4.4) |
 | `late_change_kept`, on entity `encounter` | the sender, and whoever acts as the author of each finished note of the visit | a change to the patient, the place or the summary kept in history (4.3) |
 | `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1) |
-| `signoff_not_applied`, on entity `note_signoff` and the held sign-off | its sender | a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`; once per sign-off, whether or not an earlier notice was read (4.6). Until the phone's store it was `change_not_applied` on the note, unless an unread one named the note |
+| `signoff_not_applied`, on entity `note_signoff` and the held sign-off, naming its note in `note_id` (the list's `noteId`, D104) | its sender | a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`; once per sign-off, whether or not an earlier notice was read (4.6). Until the phone's store it was `change_not_applied` on the note, unless an unread one named the note |
 | `note_saved_unsigned` | the signer | a sign-off saved unsigned (4.6) |
 | `note_corrected` | the co-signer whose co-signature a correction clears; every attester of the current signature when an attested note is no longer attested; never the corrector | a correction applied (4.7) |
 | `conflict_resolved` (phase 2) | the note's author, when the value kept was someone else's | an answer of `keep_server` that saw the current value, a finished note's included (4.3) |
@@ -3520,11 +3532,11 @@ gave `change_not_applied` a second sentence on a note shown as "Sent for review"
 the phone's own record, it read "Only the note’s author can do that" on a second phone or after a
 sign-out had erased the database, so the server now sends the held sign-off's notice under a kind
 of its own (4.6, review finding SRC-2). `finished_differently` had no sentence in this design; its
-wording is the coordinator's. A `signoff_not_applied` notice names the sign-off, not the note
-(`ServerNotices.entityOf` gives `note_signoff`): for a sign-off this phone made, the note is the
-sign-off record's `noteId` while that record is here; for one it knows nothing of, the notice will also name the note (D104,
-built first in wave F; 4.8). The notice is filed under the patient of the sign-off's
-record when the phone holds it. `finished_differently` names the note.
+wording is the coordinator's. A `signoff_not_applied` notice names the sign-off
+(`ServerNotices.entityOf` gives `note_signoff`) and its note (`LocalNotice.noteId`, D104, built in
+wave F; 4.8), so **Open the note** opens it on any phone, one that never held the sign-off
+included (`openServerRecord`). The notice is filed under the patient of the sign-off's record when
+the phone holds it. `finished_differently` names the note.
 
 ### 9.14 Portal: the queues
 
@@ -3657,7 +3669,9 @@ As built for the phone's store (unit L3, 4.8): what it keeps of a sign-off held 
 only, in the encrypted database's `kv` table (`held_signoff.<noteId>`, `held_note.<signoffId>`);
 what Complete expects of a note (`localEffect`) is in the note's record; and its notices,
 `finished_differently` and the server's `signoff_not_applied` among them, hold a kind, IDs and at
-most a field's name, as phase 2's do. Nothing about a visit is written to preferences.
+most a field's name, as phase 2's do. The note a held sign-off's notice names (D104) is an ID too,
+on the server (`user_notices.note_id`) and on the phone (`kv`, `notice_note.<local notice ID>`):
+never a name, nor anything derived from one (D40). Nothing about a visit is written to preferences.
 
 ## 11. Tests
 
@@ -3743,6 +3757,8 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | Sensitive content is absent, not blanked | 6.4 | `services/api/test/encounters-read.test.ts`; the timeline in `encounters-timeline.test.ts`, the queues in `encounters-queues.test.ts`, the handoff in `encounters-handoff.test.ts`; the sync read in `services/api/test/sync-reads.test.ts` ("the sync read of a note", "what hangs off a note, and referrals"), held on the fake by `apps/mobile/test/sync/fake_reads_test.dart` |
 | A change the sender may not see, or of a note they may not read, is held; a retry is answered as they may see the field; the review queue shows only what the reviewer may read, and only such a reviewer accepts it | 4.4, 6.4 | `sync-reads.test.ts` ("a set of an answer the sender may not see", "a retry is answered from its receipt", "the review queue"); the same groups in `apps/mobile/test/sync/fake_parity_test.dart`, but the queue, which the fake has no route for; the queue page in `apps/portal/src/lib/quarantine.test.ts` and `apps/portal/e2e/phones.spec.ts` |
 | A held sign-off that will not reach the chart tells its sender, once per sign-off | 4.6 | `sync-signoffs.test.ts` ("a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed", "each held sign-off is told once, whether or not an earlier notice was read"); the parity cases of those names; against the real API, `apps/mobile/test/sync/live_api_test.dart` ("each held Complete is told on its own: rejected twice before the first notice’s read arrives"); the phone's half in `apps/mobile/test/sync/store_encounters_test.dart` (group "receipts settle the effect (lifecycle 4.6, 4.8)") |
+| A held sign-off's notice names its note, and no other notice does; the phone keeps it with the notice, and settles nothing by it | 2.1, 4.6, 4.8, 4.10, 9.13 | `db/test/notice-note.test.ts` ("0022 the note a notice names": a note of the notice's own team only, by the key whatever the request may see; "0022 on a database that holds notices already"); `sync-signoffs.test.ts` ("a held sign-off’s notice names its note, rejected or refused on accept; no other notice names one", through the notices' list) and the parity case of that name; `store_encounters_test.dart` ("a phone that knows nothing of the sign-off keeps its notice with the note’s ID, as the sender’s own phone does", "the note a notice names settles nothing: the same note held again on another phone stays Sent for review"); against the real API, the live job's case about held Completes |
+| While a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes (D106) | 4.4, 4.8 | `store_encounters_test.dart` ("while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes"), which also pins, as built, that the accept's refresh leaves the answer on the phone (4.8, "Accepted"), and that after a reject the draft is the server's |
 | The values of the new records, the same on both sides | 4.6, 4.7, 4.8 | `packages/contract/test-vectors/sync-values.json` through `services/api/test/contract-vectors.test.ts`, `apps/mobile/test/patients/entities_test.dart` (the registry) and `apps/mobile/test/sync/patient_rules_test.dart` (the fake) |
 | A phone logs the EMS handoff shown and Notes to finish offline | 4.8, 10.1 | `sync-encounters.test.ts` ("offline reads of a visit"); parity case 15; `entities_test.dart` |
 | Every kind of record has a name on the phone and in the portal | 9.13 | `apps/mobile/test/features/sync_labels_test.dart`; the portal's `SYNC_ENTITY` is typed by the contract |
