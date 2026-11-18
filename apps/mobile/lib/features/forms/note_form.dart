@@ -27,7 +27,8 @@ import 'group_field.dart';
 /// back if the field shows again (forms 7.1: each clear would be a change to sync). A grid has a
 /// row for each option picked where its rows are picked. While a set flag counts, the fields it
 /// clears are read-only (2.3). A section that `needs` a capability is drawn only for a credential
-/// that has it (6.2: the Quick encounter's Medication).
+/// that has it (6.2: the Quick encounter's Medication). A part of a quick form has Expand at its top,
+/// where the screen offers one (6.4).
 ///
 /// Nothing here touches the store (8.1). The form takes the note's answers as stored and hands
 /// each change to [NoteForm.onChanged], one answer at a time; the domain layer checks it
@@ -43,6 +44,7 @@ class NoteForm extends StatefulWidget {
     this.conflicts = const {},
     this.capabilities = const {},
     this.actions,
+    this.expand,
     this.enabled = true,
     this.openSection,
     this.newEntryId = makeEntryId,
@@ -71,6 +73,10 @@ class NoteForm extends StatefulWidget {
 
   /// What the screen does for an action field; an action it gives nothing to do is not drawn.
   final ActionHandler? actions;
+
+  /// Expand on a part of a quick form (forms 6.4): what the screen offers on each section. A section
+  /// it offers nothing on draws no Expand.
+  final ExpandHandler? expand;
 
   /// False for a finished note or a frozen store: everything is read-only, and the sections still
   /// open to be read.
@@ -281,6 +287,22 @@ String makeEntryId([Random? random]) {
   return 'e${String.fromCharCodes([for (var i = 0; i < 7; i++) chars.codeUnitAt(r.nextInt(chars.length))])}';
 }
 
+/// Expand on a part of a quick form (forms 6.4): the full note type the part's answers are carried
+/// into, by its title, and what the screen does: makes or opens that note and takes the person to it.
+class ExpandOffer {
+  const ExpandOffer({required this.into, required this.onPressed});
+
+  /// The full note type's title: "Expand into General / primary care".
+  final String into;
+
+  /// While a future it returns runs, another tap does nothing: one tap makes one note.
+  final FutureOr<void> Function() onPressed;
+}
+
+/// What the screen offers on a section of a quick form: an Expand for each full note type the
+/// section's answers map into and that can be started in the visit, or none.
+typedef ExpandHandler = List<ExpandOffer> Function(SectionDef section);
+
 /// Draws a section's fields from the note as it is now read.
 class _Drawing {
   _Drawing(this.form, this.reading);
@@ -290,6 +312,23 @@ class _Drawing {
   NoteForm get widget => form.widget;
 
   Widget section(SectionNode s) {
+    // Expand (forms 6.4) is a step of charting, so a read-only form offers none.
+    final offers = widget.enabled ? widget.expand?.call(s.section) ?? const <ExpandOffer>[] : const <ExpandOffer>[];
+    final body = _body(s);
+    if (offers.isEmpty) return body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final offer in offers) ...[
+          _Expand(part: s.section.title, offer: offer),
+          const SizedBox(height: FieldSpace.s4),
+        ],
+        body,
+      ],
+    );
+  }
+
+  Widget _body(SectionNode s) {
     final repeat = s.section.repeat;
     if (repeat == null) {
       if (!s.section.normal || !widget.enabled) return fields(s, null);
@@ -649,6 +688,66 @@ class _SystemBand extends StatelessWidget {
       normal,
     ],
   );
+}
+
+/// One Expand at the top of a quick form's part: a button read as "Expand", the part's title and the
+/// note type it goes into, and under it what it does. The words wrap at large text and on a narrow
+/// phone.
+class _Expand extends StatefulWidget {
+  const _Expand({required this.part, required this.offer});
+  final String part;
+  final ExpandOffer offer;
+
+  @override
+  State<_Expand> createState() => _ExpandState();
+}
+
+class _ExpandState extends State<_Expand> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    final running = widget.offer.onPressed();
+    if (running is! Future<void>) return;
+    setState(() => _busy = true);
+    try {
+      await running;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final into = widget.offer.into;
+    void tap() => unawaited(_run());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Semantics(
+            button: true,
+            enabled: !_busy,
+            label: 'Expand ${widget.part} into $into',
+            onTap: _busy ? null : tap,
+            excludeSemantics: true,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : tap,
+              icon: const Icon(LucideIcons.maximize2),
+              label: Text('Expand into $into'),
+            ),
+          ),
+        ),
+        const SizedBox(height: FieldSpace.s1),
+        Text(
+          'Its answers are copied into a full note. This quick note keeps them.',
+          style: text.bodyMedium?.copyWith(color: context.field.inkMuted),
+        ),
+      ],
+    );
+  }
 }
 
 /// One-tap Normal for a section, an entry or a system, read as "All normal, " and its name, and what
