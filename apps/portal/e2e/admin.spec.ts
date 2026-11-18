@@ -8,6 +8,9 @@ test.describe.configure({ mode: 'serial' });
 test('done when: a Program Admin invites a user, upgrades a student to resident with fields and a reason, and both are in the audit log', async ({
   page,
 }) => {
+  // A sign-in with its code, five pages and six axe checks: about 17 s on an idle machine, and past
+  // the default 30 s once on one busy with other suites.
+  test.slow();
   const csp = watchCsp(page);
 
   // Sign in with password and authenticator code; a wrong code is refused accessibly.
