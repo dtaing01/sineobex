@@ -2734,6 +2734,39 @@ that needs a recent sign-in asks for it after the key. A credential is checked b
 rule (5.3, 5.4). Co-sign and attest read the caller's membership again once the team lock is
 theirs (5.3).
 
+As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/encounter_api.dart`,
+with its review): `EncounterApi` calls these routes, but the handoff's, through the generated
+client, as the person in the open team, and asks nothing while the store is frozen. Each answer
+becomes what a screen draws (a visit through `visitFromRead`, 9.7 as built) and each refusal an
+`EncounterRequestFailed`, with the sentence the screen shows, the server's code and the notes a
+co-sign's or an attest's refusal names. No signal gives each call's own sentence ("Connect to
+co-sign.", "This visit isn’t on this phone. Connect to open it."); a 401, or a 403
+`reauth_required`, "Sign in again to go on."; another 403 the rule's sentence, from the API's code
+where it names one (`is_author`, `is_signer`, `cannot_sign`, `cannot_attest`, `cannot_see_all`,
+`not_a_member`); a 404 "This visit can’t be found." or its like; a 409 `content_changed` or
+`not_waiting` "This visit changed. Read it again." (9.9); any other 400, 409 or 422, a fault of the
+app, "Something about this request was wrong. Load it again."; anything else "Something went wrong.
+Try again.". These sentences are this layer's where the design gives none.
+
+- **Co-sign and Attest** (5.3, 5.4; the coordinator's decision). `cosignPlan` and `attestPlan` ask
+  the server's own rules (`cosignEffect`, `attestEffect`, 3.12) of each waiting note as if its hash
+  matched, as a queue's `canAct` is asked: never a note the person wrote, completed or acts as the
+  author of; for Attest, never one whose current signature is theirs; nothing to a role that
+  doesn't chart or a credential that can't sign or attest. A waiting note the server's read gave
+  without a hash holds a part they can't open, and says so ("This note has a part you can’t open.
+  Ask a Program Admin."). They act only on a visit read from the server, with the hashes that read
+  gave: a plan from a visit read from the phone or from a chart's cache says `readOnline`, and the
+  screen reads the visit online first, so the hash sent is of what the server holds and the person
+  read (3.7). `secondAct` sends every note of the plan, all or nothing, and gives back what each
+  note is now.
+- **The rest**: the queues (`cosignQueue`, `attestationQueue`), earlier visits (`earlierVisits`)
+  and the person's drafts on the server (`notesToFinish`) are the routes' answers, logged by the
+  server. Home's tiles (`homeTiles`) never throw for want of signal or of an answer: Home shows the
+  phone's own numbers then (9.9 as built).
+- **Tests**: against scripted answers (`apps/mobile/test/encounters/scripted_api.dart`), the phone's
+  test server having none of these routes, and against the real API in
+  `apps/mobile/test/encounters/live_domain_test.dart`, which `tools/live-sync.sh` runs (11.2).
+
 ### 5.1 Read a visit
 
 Answer: the envelope (`kind`, `status`, `startedAt`, `clockVerified`, `locationText`, `summary`,
@@ -2900,6 +2933,20 @@ As built (unit L2, with its review; `services/api/src/encounters/timeline.ts`):
   refresh, and a phone offline keeps what it holds until it syncs, at most 24 hours, as phase 3's
   charts do (the coordinator's decision on review finding LPM-8; a comment at `fetchCharts` in
   `charts.ts` says so).
+
+As built on the phone (unit L4, card L4-chart-cache, `apps/mobile/lib/patients/chart_cache.dart`,
+with its review): `ChartMeta` keeps the chart answer's `timeline` and `recentVisits` in the patient
+record's `_chart` field and gives them back typed, with the timeline's referral snapshots
+(`referrals`). They live and die with the chart: purged with it, never sent to the server, replaced
+whole at each refresh, so an answer that carries neither leaves nothing of the last (D100), and
+kept as they are while the phone is offline. A copy opened from the index has none. They are read
+defensively (review finding LRA-4): what no longer reads by the contract the app was built with (a
+chart cached before D108 made a note's recap lines required) is treated as not cached, so the chart
+still opens offline: such a recent visit is left out and opens online, a timeline that no longer
+reads is none, and each referral is read on its own. The profile's timeline (9.1), a recent visit
+(9.7) and the Referrals sheet (9.10) read them from here. The referral snapshots stay in the cached
+timeline and are not taken onto the phone as records, but for one marked entered in error offline
+(7 as built).
 
 ### 5.3 Co-sign
 
@@ -3509,6 +3556,20 @@ once the store is frozen; every phone screen tested offline. Wording lives in
   main 725). Each note type belongs to one of them (forms 2.2); a referral row belongs to
   Referrals. Under the first 50 visits, **Show earlier visits** asks the server for more (5.2).
 
+As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/timeline.dart`, with its
+review): `openTimeline` merges the chart's cached timeline (5.2 as built) and the pages **Show
+earlier visits** fetched with the visits the phone holds of the merged group. A note the phone
+holds shows its state as the phone knows it, "Waiting to send" until confirmed, or "Sent for
+review"; a note the reader may not see, and an empty draft, are left out by the visit read's own
+rules, even when the cached chart still lists them (review finding LRA-5). A note only the chart
+lists is Medical by its type in the team's list, else by its visit's kind (3.10). A visit that comes
+again on the next page is listed once, and **Show earlier visits** is offered only after a full
+page of 50. The referral rows are the Referrals list's (7 as built). Newest first: a referral sorts
+at midnight UTC of its date, a visit before a referral of the same moment, then by ID; a visit made
+here whose time the phone has not learned yet comes first. The timeline logs nothing of its own: it
+is part of the chart's logged read, as phase 3's chart lists its problems; opening a visit from it
+is a visit read, which logs (9.7).
+
 ### 9.2 Start
 
 The tab bar gains **Start (+)** between Patients and the tabs to come (PRD main 743;
@@ -3804,6 +3865,29 @@ author and the date. A row opens the visit (9.7) with **Co-sign** or **Attest** 
 and the sentence of 3.5 above it. One tap signs or attests every waiting note of the visit that
 the person may act on. If a note changed since the visit was loaded, the screen says "This visit
 changed. Read it again." and loads it again.
+
+As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/notes_to_finish.dart` and
+`encounter_api.dart`, with its review):
+
+- **The list** (`NotesToFinish.open`) is the drafts on the phone the person acts as the author of,
+  each not empty and not finished here or sent for review: such a note waits for no one, though the
+  server lists it as a draft until it syncs. A draft is overdue a day after its visit started, by
+  the phone's corrected clock (3.9). Online, the server's list (5.6) adds the drafts that are not
+  on this phone, which open only with signal, and its word on overdue wins, since it knows when it
+  received a visit whose start the phone could not verify; for a note the phone holds, the phone's
+  copy wins otherwise. Oldest visit first. A row names the patient as the team's index or the chart
+  the phone holds names them, and the note type by the team's list.
+- **Its log**: `notes_to_finish.viewed`, with `patientIds` and `resultCount`, in the transaction
+  that reads the list, for the rows a read adds; at most 50 patients an entry, so a longer list
+  writes several, each with the whole count. The phone logs the server's rows again, though the
+  server logged its own read: a double log is safer than a missing one.
+- **The tile** (`NotesToFinish.count`, which `homeTiles` takes) names no patient and logs nothing.
+  Without the server's counts it is the phone's own. With them it is the server's count, plus the
+  phone's drafts the server can't have counted, less those it counted that are finished or emptied
+  here (the coordinator's decision): the exact merge would need the list, which logs patients. A
+  draft counts as one the server counts when it is a draft there with an answer written there.
+- **The co-sign and attestation tiles** show to a role that charts with a credential that signs, or
+  attests, with the server's numbers, and none offline (the table above).
 
 ### 9.10 Referrals (phone)
 
