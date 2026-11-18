@@ -290,10 +290,14 @@ String makeEntryId([Random? random]) {
 /// Expand on a part of a quick form (forms 6.4): the full note type the part's answers are carried
 /// into, by its title, and what the screen does: makes or opens that note and takes the person to it.
 class ExpandOffer {
-  const ExpandOffer({required this.into, required this.onPressed});
+  const ExpandOffer({required this.into, required this.onPressed, this.opensExisting = false});
 
   /// The full note type's title: "Expand into General / primary care".
   final String into;
+
+  /// Expand would open a draft of the type already in the visit as it is, copying nothing (12.1
+  /// #30; the domain layer's `expandOpensAsItIs`): the line under the button says so.
+  final bool opensExisting;
 
   /// While a future it returns runs, another tap does nothing: one tap makes one note.
   final FutureOr<void> Function() onPressed;
@@ -730,7 +734,8 @@ class _ExpandState extends State<_Expand> {
           child: Semantics(
             button: true,
             enabled: !_busy,
-            label: 'Expand ${widget.part} into $into',
+            // The words on the button first, then which part (WCAG 2.5.3, Label in Name).
+            label: 'Expand into $into, from ${widget.part}',
             onTap: _busy ? null : tap,
             excludeSemantics: true,
             child: OutlinedButton.icon(
@@ -742,7 +747,9 @@ class _ExpandState extends State<_Expand> {
         ),
         const SizedBox(height: FieldSpace.s1),
         Text(
-          'Its answers are copied into a full note. This quick note keeps them.',
+          widget.offer.opensExisting
+              ? 'Opens the $into note already in this visit. Nothing is copied.'
+              : 'Its answers are copied into a full note. This quick note keeps them.',
           style: text.bodyMedium?.copyWith(color: context.field.inkMuted),
         ),
       ],

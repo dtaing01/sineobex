@@ -18,7 +18,8 @@ void main() {
   final diagnosis = presetField('general_primary_care', 'problems.diagnosis') as ProblemDef;
   const path = 'problems.e0000001.diagnosis';
   const scalp = (code: 'S01.01XA', title: 'Laceration without foreign body of scalp, initial encounter');
-  const addLabel = 'Add ${'Laceration without foreign body of scalp, initial encounter'} to the problem list';
+  // The spoken name starts with the words on the button (WCAG 2.5.3, review LFM-2).
+  const addLabel = 'Add to the problem list: Laceration without foreign body of scalp, initial encounter';
 
   /// A picked diagnosis on its own, with [handler] as the screen's.
   Future<void> open(WidgetTester tester, {ProblemListHandler? handler, bool enabled = true, Run? run}) async {

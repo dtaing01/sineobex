@@ -230,7 +230,8 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
           container: true,
           button: true,
           enabled: !_adding,
-          label: 'Add $name to the problem list',
+          // The words on the button first, then the diagnosis (WCAG 2.5.3, Label in Name).
+          label: 'Add to the problem list: $name',
           onTap: _adding ? null : tap,
           excludeSemantics: true,
           child: OutlinedButton.icon(

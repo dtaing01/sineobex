@@ -45,7 +45,9 @@ void main() {
         if (section.id == 'wound') ExpandOffer(into: 'Wound care', onPressed: () => onPressed('wound_care')),
       ];
 
-  Finder expandOf(String part, String into) => find.bySemanticsLabel('Expand $part into $into');
+  // The spoken name starts with the words on the button, then says which part (WCAG 2.5.3, review
+  // LFM-2).
+  Finder expandOf(String part, String into) => find.bySemanticsLabel('Expand into $into, from $part');
 
   Future<void> tap(WidgetTester tester, Finder found) async {
     await tester.ensureVisible(found);
@@ -57,16 +59,33 @@ void main() {
   forEachRun('a part of a quick form offers Expand into its full note type, labelled', (tester, run) async {
     await open(tester, expand: offering((_) {}), run: run);
     expect(
-      controlNamed(tester, 'Expand General into General / primary care'),
+      controlNamed(tester, 'Expand into General / primary care, from General'),
       isSemantics(isButton: true, hasTapAction: true, hasEnabledState: true, isEnabled: true),
     );
     expect(find.text('Expand into General / primary care'), findsOneWidget);
     expect(find.text('Its answers are copied into a full note. This quick note keeps them.'), findsOneWidget);
     await expectFieldOk(tester);
     await toggleSection(tester, 'wound');
-    expect(controlNamed(tester, 'Expand Wound into Wound care'), isSemantics(isButton: true, hasTapAction: true));
+    expect(controlNamed(tester, 'Expand into Wound care, from Wound'), isSemantics(isButton: true, hasTapAction: true));
     await expectFieldOk(tester);
   }, over: formRuns);
+
+  testWidgets('when Expand would open a note already in the visit, the form says that instead (review LFM-5)', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      expand: (section) => [
+        if (section.id == 'general') ExpandOffer(into: 'General / primary care', opensExisting: true, onPressed: () {}),
+      ],
+    );
+    expect(
+      find.text('Opens the General / primary care note already in this visit. Nothing is copied.'),
+      findsOneWidget,
+    );
+    expect(find.text('Its answers are copied into a full note. This quick note keeps them.'), findsNothing);
+    await expectFieldOk(tester);
+  });
 
   testWidgets('a tap asks the screen once, and a second tap while it runs does nothing', (tester) async {
     final handle = tester.ensureSemantics();

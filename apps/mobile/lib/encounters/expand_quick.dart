@@ -81,6 +81,21 @@ extension QuickExpand on EncounterRepository {
   bool mayExpand(NoteView note) =>
       note.editable && note.definition != null && expandTargets(note.definition!).isNotEmpty;
 
+  /// Whether [expand] of [quickNoteId] into [full] would open a draft already in the visit as it is,
+  /// copying nothing (12.1 #30): a teammate's draft, or one of the person's own that holds answers.
+  /// The form then says so under Expand, rather than that the answers are copied (review LFM-5).
+  /// False when the phone holds no such quick note.
+  Future<bool> expandOpensAsItIs(String quickNoteId, NoteTypeDef full) async {
+    _guardFrozen();
+    final encounterId = store.record(quickNoteId)?.attributes['encounterId'];
+    if (encounterId is! String) return false;
+    final open = await _draftToOpen(encounterId, full.key);
+    return open != null && _opensAsItIs(_noteRecord(open));
+  }
+
+  /// A draft Expand opens as it is: a teammate's, or the person's own that holds answers.
+  bool _opensAsItIs(LocalRecord draft) => !_actsAsAuthor(draft) || !noteIsEmpty(EncounterRepository._answersOf(draft));
+
   /// **Expand** on a quick note (forms 6.4): the parts of [quickNoteId] that map into [full] (the
   /// team's listed version of that note type) carried into a full note of it in the same visit,
   /// every mapped answer written, the quick note keeping its own. Returns the full note to open.
@@ -138,7 +153,7 @@ extension QuickExpand on EncounterRepository {
     LocalRecord? into;
     if (open != null) {
       final rec = _noteRecord(open);
-      if (!_actsAsAuthor(rec) || !noteIsEmpty(EncounterRepository._answersOf(rec))) {
+      if (_opensAsItIs(rec)) {
         if (flags != null && _actsAsAuthor(rec)) await RedFlagsNote(this)._addRedFlagsNote(encounterId, flags);
         return Expanded(noteId: open, existing: true, written: const {}, leftOut: const [], notCopied: const []);
       }

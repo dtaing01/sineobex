@@ -446,8 +446,11 @@ void main() {
       final r = repo(p);
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
       final quick = await quickNote(r, visit, quickGeneral);
+      // Nothing of the type yet: Expand would copy (the form says so, review LFM-5).
+      expect(await r.expandOpensAsItIs(quick, type('social_needs')), isFalse);
       // An empty draft of theirs, added by mistake: Expand fills it rather than make a second.
       final empty = (await r.addNote(visit, type('social_needs'))).noteId;
+      expect(await r.expandOpensAsItIs(quick, type('social_needs')), isFalse);
       final first = await r.expand(quick, type('social_needs'));
       expect([first.noteId, first.existing], [empty, false]);
       expect(answersOf(p, empty), {
@@ -458,6 +461,7 @@ void main() {
       await r.openNote(empty);
       r.saveAnswer(empty, 'needs.needs', ['housing']);
       final before = p.store.outbox().length;
+      expect(await r.expandOpensAsItIs(quick, type('social_needs')), isTrue);
       final again = await r.expand(quick, type('social_needs'));
       expect([again.noteId, again.existing, again.written, again.leftOut], [empty, true, isEmpty, isEmpty]);
       expect(p.store.outbox(), hasLength(before));
