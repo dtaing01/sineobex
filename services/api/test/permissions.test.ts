@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   FIELD_PERMISSIONS,
   hasFieldAccess,
+  type Credential,
   isPermission,
   mayHoldTeamIndex,
   mayViewProblems,
@@ -52,7 +53,7 @@ describe('access rules over the existing permissions', () => {
   }
 });
 
-/** Every phase 3 route, a body it accepts, what it needs, and a role that lacks it. */
+/** A route, a body it accepts, what it needs, and a role that lacks it. */
 interface RouteCase {
   method: 'GET' | 'POST';
   path: string;
@@ -63,6 +64,8 @@ interface RouteCase {
   allowed: Permission[];
   /** Permissions that don't; the refusal is logged. */
   refused: Permission[];
+  /** The members' credentials, where the route asks for one too (phase 4); 'none' when left out. */
+  credential?: { allowed?: Credential; refused?: Credential };
   code?: string;
   logged: Record<string, unknown>;
 }
@@ -287,25 +290,26 @@ const ROUTES: RouteCase[] = [
   },
 ];
 
-describe('phase 3 routes', () => {
-  let h: Harness;
-  let teamId: string;
+/**
+ * For each route: a role without what it needs is refused with 403 and the refusal is logged as
+ * access.denied; a role with it gets past the check, refused nothing and logging no refusal.
+ */
+function checksEach(routes: readonly RouteCase[], context: () => { h: Harness; teamId: string }) {
+  const send = (r: RouteCase, token: string) => {
+    const { h, teamId } = context();
+    return h.request(r.path, {
+      method: r.method,
+      token,
+      teamId,
+      ...(r.body === undefined ? {} : { json: r.body }),
+    });
+  };
 
-  beforeAll(async () => {
-    h = await createHarness();
-    teamId = await createTeam(h);
-  });
-  afterAll(async () => {
-    await h.close();
-  });
-
-  const send = (r: RouteCase, token: string) =>
-    h.request(r.path, { method: r.method, token, teamId, ...(r.body === undefined ? {} : { json: r.body }) });
-
-  for (const r of ROUTES) {
+  for (const r of routes) {
     const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}') + (r.label ? ` (${r.label})` : '');
     it(`${r.method} ${route} refuses a role without what it needs, and logs it`, async () => {
-      const member = await memberWith(h, teamId, r.refused);
+      const { h, teamId } = context();
+      const member = await memberWith(h, teamId, r.refused, { credential: r.credential?.refused ?? 'none' });
       const mark = await auditMark(h);
       const res = await send(r, member.token);
       expect(res.status).toBe(403);
@@ -318,7 +322,8 @@ describe('phase 3 routes', () => {
     });
 
     it(`${r.method} ${route} lets a role with what it needs past the check`, async () => {
-      const member = await memberWith(h, teamId, r.allowed);
+      const { h, teamId } = context();
+      const member = await memberWith(h, teamId, r.allowed, { credential: r.credential?.allowed ?? 'none' });
       const mark = await auditMark(h);
       const res = await send(r, member.token);
       expect(res.status).not.toBe(403);
@@ -329,6 +334,21 @@ describe('phase 3 routes', () => {
       expect(denied).toHaveLength(0);
     });
   }
+}
+
+describe('phase 3 routes', () => {
+  let h: Harness;
+  let teamId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h);
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  checksEach(ROUTES, () => ({ h, teamId }));
 
   it('gives the team index to every field role and to no desk role', async () => {
     for (const c of vectors.cases) {
@@ -367,6 +387,183 @@ describe('phase 3 routes', () => {
     const res = await h.request('/v1/me', { token: member.token });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { idLinkBaseUrl: string }).idLinkBaseUrl).toBe('http://localhost:3100');
+  });
+});
+
+/**
+ * Phase 4's online routes (lifecycle 5, 6.1): each checks an existing key first, and the queues a
+ * credential that can do their act too. A role with what a route needs gets past the check: the
+ * IDs below are no record's, so it answers 404 or an empty list.
+ */
+const act = { notes: [{ noteId: id(), contentHash: 'a'.repeat(64) }], statementVersion: 'demo-2026-11' };
+
+const ENCOUNTER_ROUTES: RouteCase[] = [
+  {
+    method: 'GET',
+    path: `/v1/encounters/${id()}`,
+    allowed: ['patients.view'],
+    refused: ['encounters.chart'],
+    logged: { permission: 'patients.view' },
+  },
+  {
+    method: 'GET',
+    path: `/v1/patients/${id()}/timeline`,
+    allowed: ['patients.view'],
+    refused: ['encounters.chart', 'billing.view_codes'],
+    logged: { permission: 'patients.view' },
+  },
+  {
+    method: 'POST',
+    path: `/v1/encounters/${id()}/cosign`,
+    body: act,
+    allowed: ['encounters.chart'],
+    refused: ['patients.view', 'patients.view_sensitive', 'patients.view_sensitive_exams'],
+    credential: { allowed: 'attending', refused: 'attending' },
+    logged: { permission: 'encounters.chart' },
+  },
+  {
+    method: 'POST',
+    path: `/v1/encounters/${id()}/attest`,
+    body: act,
+    allowed: ['encounters.chart'],
+    refused: ['patients.view', 'patients.view_sensitive', 'patients.view_sensitive_exams'],
+    credential: { allowed: 'attending', refused: 'attending' },
+    logged: { permission: 'encounters.chart' },
+  },
+  {
+    method: 'GET',
+    path: '/v1/team/cosign-queue',
+    allowed: ['encounters.chart'],
+    refused: ['patients.view'],
+    credential: { allowed: 'attending', refused: 'attending' },
+    logged: { permission: 'encounters.chart' },
+  },
+  {
+    // The queue's credential: one that cannot co-sign is refused with the reason's name.
+    label: 'a credential that cannot sign',
+    method: 'GET',
+    path: '/v1/team/cosign-queue',
+    allowed: ['encounters.chart'],
+    refused: ['encounters.chart', 'patients.view'],
+    credential: { allowed: 'resident', refused: 'student' },
+    code: 'cannot_sign',
+    logged: { reason: 'cannot_sign' },
+  },
+  {
+    method: 'GET',
+    path: '/v1/team/attestation-queue',
+    allowed: ['encounters.chart'],
+    refused: ['patients.view'],
+    credential: { allowed: 'attending', refused: 'attending' },
+    logged: { permission: 'encounters.chart' },
+  },
+  {
+    // A resident signs, but only an attending attests (lifecycle 3.5).
+    label: 'a credential that cannot attest',
+    method: 'GET',
+    path: '/v1/team/attestation-queue',
+    allowed: ['encounters.chart'],
+    refused: ['encounters.chart', 'patients.view'],
+    credential: { allowed: 'attending', refused: 'resident' },
+    code: 'cannot_attest',
+    logged: { reason: 'cannot_attest' },
+  },
+  {
+    method: 'POST',
+    path: `/v1/notes/${id()}/assign`,
+    body: { toUserId: id(), reason },
+    allowed: ['team.manage_users'],
+    refused: ['encounters.chart', 'patients.view', 'quarantine.review'],
+    logged: { permission: 'team.manage_users' },
+  },
+  {
+    method: 'GET',
+    path: '/v1/me/notes-to-finish',
+    allowed: ['encounters.chart'],
+    refused: ['patients.view', 'team.manage_users'],
+    logged: { permission: 'encounters.chart' },
+  },
+  {
+    method: 'GET',
+    path: '/v1/team/incomplete-notes',
+    allowed: ['team.manage_users'],
+    refused: ['encounters.chart', 'patients.view'],
+    logged: { permission: 'team.manage_users' },
+  },
+  {
+    method: 'GET',
+    path: `/v1/encounters/${id()}/ems-handoff`,
+    allowed: ['patients.view'],
+    refused: ['encounters.chart', 'exports.billing'],
+    logged: { permission: 'patients.view' },
+  },
+];
+
+describe('phase 4 encounter routes', () => {
+  let h: Harness;
+  let teamId: string;
+  let otherTeamId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Encounters Team (demo)');
+    otherTeamId = await createTeam(h, 'Encounters Other Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  checksEach(ENCOUNTER_ROUTES, () => ({ h, teamId }));
+
+  const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
+
+  // Assigning a note and exporting a file are admin and export actions: a sign-in this recent
+  // (RECENT_AUTH_MINUTES), as every such route asks (PRD main 602).
+  for (const r of ENCOUNTER_ROUTES.filter(
+    (c) => c.path.includes('/assign') || c.path.endsWith('/ems-handoff'),
+  )) {
+    const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}');
+    it(`${r.method} ${route} needs a recent sign-in`, async () => {
+      const member = await memberWith(h, teamId, r.allowed);
+      const [user] = await h.scratch.owner<{ email: string }[]>`
+        select email from sineobex.users where id = ${member.userId}`;
+      const stale = await h.tokenFor(user!.email, {
+        authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+      });
+      const res = await h.request(r.path, {
+        method: r.method,
+        token: stale,
+        teamId,
+        ...(r.body === undefined ? {} : { json: r.body }),
+      });
+      expect(res.status).toBe(403);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(await code(res)).toBe('reauth_required');
+    });
+  }
+
+  it('GET /v1/me/counts lets every role past, one with no permission included, and refuses none', async () => {
+    const roles = [...vectors.cases, { name: 'no permission', permissions: [] }];
+    for (const c of roles) {
+      const member = await memberWith(h, teamId, c.permissions as Permission[]);
+      const mark = await auditMark(h);
+      const res = await h.request('/v1/me/counts', { token: member.token, teamId });
+      expect(res.status, c.name).toBe(200);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      const denied = await h.scratch.owner`
+        select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+      expect(denied, c.name).toHaveLength(0);
+    }
+  });
+
+  it('GET /v1/me/counts refuses a member of another team, and logs it', async () => {
+    const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+    const mark = await auditMark(h);
+    const res = await h.request('/v1/me/counts', { token: outsider.token, teamId });
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('not_a_member');
+    const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+    expect(denied!.details).toEqual({ rule: 'not_a_member', route: '/v1/me/counts', teamId });
   });
 });
 
