@@ -785,6 +785,32 @@ void main() {
       expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
     });
 
+    test('a sign-off is made and fixed only by Complete', () async {
+      // Review finding SFN-3: createRecord took a sign-off, with any hash and no effect expected, and
+      // the outbox held two sign-offs of one note.
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      server.serverEdit(n, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      final refused = p.store.needsAttention().single;
+      final value = <String, Object?>{
+        'noteId': n,
+        'act': 'complete',
+        'contentHash': 'f' * 64,
+        'claimedCredential': null,
+        'statementVersion': 'complete-2026-11',
+      };
+      final before = p.store.outbox().length;
+      expect(() => p.store.createRecord(entitySignoff, value), throwsArgumentError);
+      expect(() => p.store.fixRejected(refused.changeId, value), throwsArgumentError);
+      expect(() => p.store.replaceRejected(refused.changeId, entity: entitySignoff, value: value), throwsArgumentError);
+      expect(p.store.outbox(), hasLength(before));
+      expect(p.store.entry(refused.changeId)!.state, ChangeState.rejected);
+    });
+
     test('Complete waits for the clock check, and writes nothing while it fails', () async {
       final p = phone(alex);
       final visit = p.store.createEncounter(kind: 'non_medical');

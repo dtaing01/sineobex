@@ -741,10 +741,13 @@ class LocalStore {
   /// A new patient-side record made here: an intake, a street name, an allergy, a consent, a
   /// problem, a note on one, an ID link. [value] is the create exactly as it is sent and hashed
   /// (text already trimmed). It is checked as the server would, joins the patient's local work, and
-  /// keeps that patient's chart for 24 hours (design 2.9-10). Returns the record's ID.
+  /// keeps that patient's chart for 24 hours (design 2.9-10). Returns the record's ID. A sign-off is
+  /// not one: [finishNotes] makes it, and fixes it once refused (ArgumentError here, and in
+  /// [fixRejected] and [replaceRejected]).
   String createRecord(String entity, Map<String, Object?> value, {String? id}) {
     final rules = rulesFor(entity);
     if (rules == null || !rules.patientSide) throw ArgumentError('not a patient-side record: $entity');
+    _notASignoff(entity);
     if (id != null && !isUuid(id)) throw ArgumentError('record IDs are UUIDs');
     _guardFor(entity);
     _checkCreate(rules, value);
@@ -754,6 +757,13 @@ class LocalStore {
       _insertCreated(rules, recordId, value, changeId);
       return recordId;
     });
+  }
+
+  /// A sign-off is made and fixed only by [finishNotes] (review finding SFN-3): it checks the hash
+  /// against what the person was shown, never leaves two sign-offs of one note in the outbox, and
+  /// marks the note with what the phone expects of it.
+  static void _notASignoff(String entity) {
+    if (entity == entitySignoff) throw ArgumentError('a sign-off is made and fixed by finishNotes');
   }
 
   /// The local record a create makes, its fields as the create sets them, and its patient's scope.
@@ -2040,6 +2050,7 @@ class LocalStore {
   void fixRejected(String changeId, Object? value) {
     final x = entry(changeId);
     if (x == null || x.state != ChangeState.rejected) throw StateError('not a rejection');
+    _notASignoff(x.entity);
     _guardFor(x.entity);
     if (x.op == 'set') {
       _checkField(x.entity, x.field!, value);
@@ -2263,6 +2274,8 @@ class LocalStore {
     }
     final rules = rulesFor(entity);
     if (rules == null || !rules.patientSide) throw ArgumentError('not a patient-side record: $entity');
+    _notASignoff(entity);
+    _notASignoff(x.entity);
     // What names the refused record is made again naming the new one, so the new one must be the
     // same kind. A patient is fixed in place (fixRejected): an encounter's patient is a set.
     if (x.op == 'create' && (entity != x.entity || entity == entityPatient)) {
