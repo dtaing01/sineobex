@@ -6,6 +6,7 @@ import { noteReader } from '../src/sync/records.ts';
 import {
   attestDirect,
   correct,
+  cosign,
   createWorld,
   eventsAfter,
   expectNoneOf,
@@ -15,10 +16,12 @@ import {
   PLAN,
   roleWith,
   SECRETS,
+  setRole,
   TEST_MEDICAL_EXAM_TYPE,
   TEST_MEDICAL_TYPE,
   TEST_NOTE_TYPE,
   visitAt,
+  waitingForCosign,
   WITH_EXAM,
   type World,
 } from './encounters-fixtures.ts';
@@ -89,6 +92,8 @@ const EXAM_ANSWERS: Record<string, unknown> = {
   [`dx.${E2}.diagnosis.label`]: 'Demo: sore throat',
 };
 const SUMMARY = 'Demo: seen at the shelter, plan agreed';
+
+const noteIn = (r: VisitRead, n: { noteId: string }) => r.notes.find((x) => x.noteId === n.noteId);
 
 describe('phase 4: read a visit online', () => {
   let h: Harness;
@@ -174,7 +179,6 @@ describe('phase 4: read a visit online', () => {
     return { status: r.status, body: r.body as unknown as VisitRead & Json };
   };
   const ids = (xs: { id?: string; noteId?: string }[]) => xs.map((x) => (x.id ?? x.noteId)!).sort();
-  const noteIn = (r: VisitRead, n: { noteId: string }) => r.notes.find((x) => x.noteId === n.noteId);
 
   /** A person as visibleAnswers reads them: their role's keys and their credential now. */
   async function readerOf(userId: string, actsAsAuthor = false) {
@@ -685,5 +689,111 @@ describe('phase 4: a correction made while its entry held a sensitive diagnosis'
     const two = await second(exam, '00000000-0000-4000-8000-000000000002');
     expect((await w.rae.send(one, two)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
     await expectHidden(visit.encounterId, exam, [one.recordId, two.recordId]);
+  });
+});
+
+describe('phase 4: who is given a hash in the visit read', () => {
+  // Rules no test held before review findings LPM-4, LRD-5 and LRD-6: each test here fails when its
+  // rule is taken out of read.ts.
+  let h: Harness;
+  let w: World;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    w = await createWorld(h);
+  });
+  afterAll(() => h.close());
+
+  const readAs = async (token: string, encounterId: string) => {
+    const r = await get(w, token, `/v1/encounters/${encounterId}`);
+    expect(r.status).toBe(200);
+    return r.body as unknown as VisitRead;
+  };
+
+  /** A Medical visit with a summary, its two notes signed by [c]. */
+  async function signedVisit(c: Awaited<ReturnType<typeof clinician>>) {
+    const v = await visitAt(c, w.patientId);
+    const summary = await c.phone.change({
+      entity: 'encounter',
+      recordId: v.encounterId,
+      op: 'set',
+      field: 'summary',
+      value: SUMMARY,
+      baseVersion: 0,
+    });
+    expect((await c.send(summary)).map((r) => r.status)).toEqual(['accepted']);
+    const visit = { ...v, summary: SUMMARY };
+    const flags = await noteOn(c, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
+    const plain = await noteOn(c, visit, TEST_MEDICAL_TYPE, PLAN);
+    await finish(c, [flags, 'sign', 'signed'], [plain, 'sign', 'signed']);
+    return { visit, flags, plain };
+  }
+
+  it('an author whose role no longer reads the summary gets no hash over it: not the note’s, not a sign-off’s', async () => {
+    // LPM-4 (M02) and LRD-5: Ren signs a Medical visit, then is moved to the CHW preset.
+    const ren = await clinician(h, w.t, 'ren@example.com', 'Ren (demo)', 'resident');
+    const { visit, plain } = await signedVisit(ren);
+    const before = await readAs(ren.token, visit.encounterId);
+    expect(noteIn(before, plain)!.contentHash).toBe(await heldHashOf(plain));
+    await setRole(h, w.t, ren.membershipId, 'community_health_worker');
+    const r = await readAs(ren.token, visit.encounterId);
+    expect(r).not.toHaveProperty('summary');
+    expect(r.notes.length).toBeGreaterThan(0);
+    for (const n of r.notes) {
+      expect(n, n.noteTypeKey).not.toHaveProperty('contentHash');
+      for (const s of n.signoffs) expect(s, n.noteTypeKey).not.toHaveProperty('contentHash');
+    }
+  });
+
+  it('nor in the sync read, for an author whose role charts but no longer reads Medical notes', async () => {
+    const tam = await clinician(h, w.t, 'tam@example.com', 'Tam (demo)', 'resident');
+    const { visit } = await signedVisit(tam);
+    const ids = await h.scratch.owner<{ id: string }[]>`
+      select s.id from sineobex.note_signoffs s join sineobex.encounter_notes n on n.id = s.note_id
+      where n.encounter_id = ${visit.encounterId}`;
+    const hashed = async () => {
+      const r = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: tam.token,
+        teamId: w.t.teamId,
+        json: { records: ids.map((s) => ({ entity: 'note_signoff', id: s.id })) },
+      });
+      expect(r.status).toBe(200);
+      return (r.body.records as { attributes: Json }[]).map((x) => 'contentHash' in x.attributes);
+    };
+    expect(await hashed()).toEqual([true, true]);
+    await setRole(h, w.t, tam.membershipId, await roleWith(h, w.t, 'Charting alone', ['encounters.chart']));
+    expect(await hashed()).toEqual([false, false]);
+  });
+
+  it('a reader who may not chart gets no note hash, whatever their credential', async () => {
+    // LPM-4 (M47): Billing/Data's keys with an attending's credential read the plain note whole.
+    const role = await roleWith(h, w.t, 'Billing, credentialed', ['patients.view', 'billing.view_codes']);
+    const bob = await clinician(h, w.t, 'bob@example.com', 'Bob (demo)', 'attending', role);
+    const v = await waitingForCosign(w, w.sol);
+    const r = await readAs(bob.token, v.visit.encounterId);
+    const note = noteIn(r, v.note)!;
+    expect(note.read).toBeDefined();
+    expect(note).not.toHaveProperty('contentHash');
+    // An attending who charts does get it, for the same note.
+    expect(noteIn(await readAs(w.ana.token, v.visit.encounterId), v.note)!.contentHash).toBe(
+      await heldHashOf(v.note),
+    );
+  });
+
+  it('a co-signer who is neither the author nor sees every answer of any note gets their own sign-off’s hash only', async () => {
+    // LRD-6: Ana co-signs Sol's notes; Sol's own sign-offs carry no hash for her.
+    const v = await waitingForCosign(w, w.sol);
+    expect((await cosign(w, w.ana, v.visit.encounterId, [v.flags, v.note])).status).toBe(200);
+    const r = await readAs(w.ana.token, v.visit.encounterId);
+    const signoffs = noteIn(r, v.note)!.signoffs as unknown as {
+      act: string;
+      signer: { userId: string };
+      contentHash?: string;
+    }[];
+    expect(signoffs.map((s) => [s.act, s.signer.userId === w.ana.id, 'contentHash' in s])).toEqual([
+      ['sign', false, false],
+      ['cosign', true, true],
+    ]);
   });
 });

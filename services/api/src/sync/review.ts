@@ -2,7 +2,7 @@ import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobe
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { hiddenCorrections, type StoredCorrection } from '../encounters/read.ts';
+import { hiddenCorrections, signoffHashShown, type StoredCorrection } from '../encounters/read.ts';
 import { encounterStatus, noteIsEmpty, type NoteStatus } from '../encounters/rules.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
@@ -559,7 +559,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      * answers it changes is hidden from the reader, now or in any state the note has held, since its
      * old or new value would give it away (encounters/read.ts hiddenCorrections).
      * A sign-off's content hash goes only to whoever acts as the author, its signer, and a reader
-     * who sees every answer of any note (readsWhole).
+     * who sees every answer of any note (readsWhole), and never over a visit's summary withheld from
+     * the reader (encounters/read.ts signoffHashShown).
      */
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
@@ -573,11 +574,16 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         case 'encounter_note':
           return (await noteAsRead(record))?.note ?? null;
         case 'note_signoff': {
-          const read = await noteAsRead(await noteOf(record));
+          const note = await noteOf(record);
+          const read = await noteAsRead(note);
           if (!read) return null;
-          return read.reader.actsAsAuthor ||
-            record.authorUserId === scope.principal.userId ||
-            readsWhole(read.reader)
+          const visit = await RULES.encounter.load(tx, note!.attributes.encounterId as string, false);
+          return signoffHashShown(
+            read,
+            record.authorUserId,
+            scope.principal.userId,
+            !visit || medicalHidden(visit),
+          )
             ? record
             : withoutHash(record);
         }

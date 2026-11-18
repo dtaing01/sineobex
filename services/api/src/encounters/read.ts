@@ -175,9 +175,18 @@ export function hiddenCorrections(
   return hidden;
 }
 
-/** Whether a sign-off of a note the reader may read goes to them with its hash (6.4 rule 4, D86). */
-export const signoffHashShown = (read: NoteRead, signerUserId: string, userId: string) =>
-  read.reader.actsAsAuthor || signerUserId === userId || readsWhole(read.reader);
+/**
+ * Whether a sign-off of a note the reader may read goes to them with its hash (6.4 rule 4, D86): to
+ * whoever acts as the author, its signer and a reader who sees every answer of any note. Never when
+ * the visit's summary is withheld from the reader: the hash covers it, as the note's own does
+ * (review finding LRD-5). The sync read asks the same (sync/review.ts).
+ */
+export const signoffHashShown = (
+  read: Pick<NoteRead, 'reader'>,
+  signerUserId: string,
+  userId: string,
+  summaryHidden: boolean,
+) => !summaryHidden && (read.reader.actsAsAuthor || signerUserId === userId || readsWhole(read.reader));
 
 // ------------------------------------------------------------------------------------------------
 // GET /v1/encounters/{encounterId}
@@ -369,7 +378,7 @@ export async function visitAsRead(
         statementVersion: s.statementVersion,
         signedAt: s.signedAt.toISOString(),
         clockVerified: s.clockVerified,
-        ...(signoffHashShown(read, s.signerUserId, scope.principal.userId)
+        ...(signoffHashShown(read, s.signerUserId, scope.principal.userId, hideMedical)
           ? { contentHash: s.contentHash }
           : {}),
       })),

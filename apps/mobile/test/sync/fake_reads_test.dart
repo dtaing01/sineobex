@@ -699,6 +699,19 @@ void main() {
         expect((await hashes(sky)).first, signed.first);
       });
 
+      // encounters-read.test.ts, 'nor in the sync read, for an author whose role charts but no longer
+      // reads Medical notes' (review finding LRD-5): the hash covers the summary withheld from them.
+      test('no sign-off’s hash over a visit’s summary the reader may not read, their own included', () async {
+        final n = noteOn(visit(), testRestricted, const {'general.notes': 'Demo: walked over'});
+        final refs = [(entitySignoff, finish(n, 'complete'))];
+        Future<List<Object?>> hashes() async => [
+          for (final r in (await read(alex, refs)).records) r.attributes['contentHash'],
+        ];
+        expect(await hashes(), [isNotNull]);
+        server.permissions[alex] = {'encounters.chart'};
+        expect(await hashes(), [null]);
+      });
+
       test(
         'a correction is missing for a reader who may not see an answer it changes, in its old value or its new',
         () async {

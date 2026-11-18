@@ -3267,13 +3267,18 @@ class FakeSyncServer {
         return _noteAsRead(userId, perms, r)?.snapshot;
       // Its hash only to whoever acts as the author, its signer, and a reader who sees every answer of
       // any note (review.ts readsWhole): hashed again over what is shown, it would say what is hidden.
+      // Never over a visit's summary withheld from the reader, which it covers (read.ts
+      // signoffHashShown, LRD-5).
       case entitySignoff:
-        final read = _noteAsRead(userId, perms, records[r.attributes['noteId']]);
+        final note = records[r.attributes['noteId']];
+        final read = _noteAsRead(userId, perms, note);
         if (read == null) return null;
         final shown = _readSnapshot(r);
         final reader = read.reader;
         final whole = reader.readsMedical && reader.viewSensitive && reader.viewSensitiveExams && reader.chartsMedical;
-        if (reader.actsAsAuthor || r.author == userId || whole) return shown;
+        final visit = records[note!.attributes['encounterId']];
+        final summaryHidden = visit == null || _medicalHidden(perms, visit);
+        if (!summaryHidden && (reader.actsAsAuthor || r.author == userId || whole)) return shown;
         return {
           ...shown,
           'attributes': {...r.attributes}..remove('contentHash'),
