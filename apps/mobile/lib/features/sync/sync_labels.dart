@@ -97,6 +97,11 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   'id_link_conflict' => 'Two new cards were made for one patient. The newer one is the valid one.',
   'problem_reversal_decided' => 'A Program Admin answered your request about a problem marked Resolved by mistake.',
   'conflict_resolved' => 'Someone chose the other value for a change you made. Yours stays in the record’s history.',
+  // Phase 4 (lifecycle 9.13). The second sentence is the store's for a note it sent for review (4.6).
+  'change_not_applied' => 'Only the note’s author can do that. Nothing was changed.',
+  'signoff_not_applied' => 'Your Complete of this note wasn’t applied. Open it and complete it again.',
+  // Lifecycle 3.4 asks for this, and 9.13 has no sentence for it.
+  'finished_differently' => 'This note was already finished, and not as you saw it. Open it and read what was signed.',
   _ => 'Something changed after it synced.',
 };
 

@@ -401,6 +401,23 @@ const noticePossibleDuplicate = 'possible_duplicate';
 /// "Your note was saved on a problem someone marked entered in error."
 const noticeProblemRetracted = 'problem_retracted';
 
+/// The server's `change_not_applied` (lifecycle 4.10): "Only the note’s author can do that. Nothing
+/// was changed."
+const noticeChangeNotApplied = 'change_not_applied';
+
+/// A `change_not_applied` naming a note this phone sent for review (lifecycle 4.6, 9.13): a Program
+/// Admin rejected its held sign-off, or couldn't apply it to the note as it is now. "Your Complete of
+/// this note wasn’t applied. Open it and complete it again."
+const noticeSignoffNotApplied = 'signoff_not_applied';
+
+/// A sign-off that found its note already finished by a signature over other content (lifecycle
+/// 3.4): the person opens the note and reads what was signed.
+const noticeFinishedDifferently = 'finished_differently';
+
+/// Where the phone keeps, by note, the sign-off of it the server holds for review (IDs only), so the
+/// notice that it wasn't applied is known for what it is after the note left the phone (4.6).
+const _heldKvPrefix = 'held_signoff.';
+
 /// Read-only copies of server records expire after this (module 9 "Route cache").
 const serverCopyLifetime = Duration(hours: 24);
 
@@ -954,14 +971,9 @@ class LocalStore {
   };
 
   /// A note's status as this phone knows it: what its own sign-off is expected to make it
-  /// ([localEffect]) until the server refuses that sign-off, else the server's.
-  NoteStatus _noteStatusHere(LocalRecord note) {
-    final expected = LocalEffect.fromJson(note.attributes[_localEffectKey]);
-    if (expected != null && !_signoffsOf(note.id).any((e) => e.state == ChangeState.rejected)) {
-      return expected.status;
-    }
-    return NoteStatus.values.byName(note.status);
-  }
+  /// ([localEffect]) until a receipt settles that sign-off, else the server's.
+  NoteStatus _noteStatusHere(LocalRecord note) =>
+      LocalEffect.fromJson(note.attributes[_localEffectKey])?.status ?? NoteStatus.values.byName(note.status);
 
   /// Whether [visit]'s envelope is locked (lifecycle 3.1): a note of it this phone holds is
   /// finished, or the server's status of the visit says every note that counts is, those this phone
@@ -1146,6 +1158,37 @@ class LocalStore {
   /// null when it made none (lifecycle 4.8).
   LocalEffect? localEffect(String noteId) => LocalEffect.fromJson(record(noteId)?.attributes[_localEffectKey]);
 
+  /// Whether [noteId] is "Sent for review" (lifecycle 4.8, 9.13): the server holds the sign-off this
+  /// phone made of it for a Program Admin. The note stays as the person completed it, locked, until
+  /// the admin decides: accepted, the refresh finds it finished ([importServerRecord]); rejected, or
+  /// no longer matching the note, its notice makes it a draft to complete again ([addNotice]).
+  bool sentForReview(String noteId) {
+    final held = _heldSignoff(noteId);
+    return held != null && localEffect(noteId)?.signoffId == held;
+  }
+
+  /// The sign-off of [noteId] the server holds for review, until its review is settled here.
+  String? _heldSignoff(String noteId) => kv('$_heldKvPrefix$noteId');
+
+  void _heldSettled(String noteId) => _db.execute('DELETE FROM kv WHERE key = ?', ['$_heldKvPrefix$noteId']);
+
+  /// A note's state as this phone shows it (lifecycle 3.1, 4.8): what its own sign-off is expected
+  /// to make it until a receipt settles it, else the server's status and attestation as the last
+  /// receipt or refresh gave them. Null when [noteId] is no note here.
+  ({NoteStatus status, Attestation attestation, bool sentForReview})? noteState(String noteId) {
+    final rec = record(noteId);
+    if (rec == null || rec.entity != entityNote) return null;
+    final settled = rec.attributes['attestation'];
+    return (
+      status: _noteStatusHere(rec),
+      attestation:
+          localEffect(noteId)?.attestation ??
+          Attestation.values.where((a) => a.code == settled).firstOrNull ??
+          Attestation.notNeeded,
+      sentForReview: sentForReview(noteId),
+    );
+  }
+
   /// Sends [noteId] back to draft (lifecycle 3.6, 4.4): a set of its `status` to `draft`, the one
   /// change the lock lets through, when [reopenEffect] says the server will apply it: a Medical note
   /// that waits for a co-signer and was never signed, reopened by whoever acts as its author. The
@@ -1160,13 +1203,16 @@ class LocalStore {
   /// Returns [ReopenEffect.apply], or [ReopenEffect.nothing] for a draft, and then sends nothing.
   /// Throws, writing nothing: [ChartingPaused] while the clock check fails; [RecordLocked] for a
   /// note the server keeps as it is (signed, or a Non-Medical note completed: an addendum or a
-  /// correction is the way); [LocalValidationError] `not_author` for someone else's note that its
-  /// author could reopen, which the server would store with no effect.
+  /// correction is the way) and for one [sentForReview]; [LocalValidationError] `not_author` for
+  /// someone else's note that its author could reopen, which the server would store with no effect.
   ReopenEffect reopenNote(String noteId, NoteTypeDef definition) {
     final rec = record(noteId);
     if (rec == null || rec.entity != entityNote) throw StateError('no such note');
     _ownDefinition(rec, definition);
     _guardFor(entityNote);
+    // The server holds its sign-off for review and the note there is a draft: a reopen would change
+    // nothing, and the admin's accept would then finish the note after it.
+    if (sentForReview(noteId)) throw const RecordLocked();
     final status = _noteStatusHere(rec);
     ReopenEffect effect({required bool actsAsAuthor}) => reopenEffect(
       noteStatus: status,
@@ -1280,8 +1326,8 @@ class LocalStore {
   ) {
     final rec = note.rec;
     final waiting = _signoffsOf(rec.id);
-    // Never two sign-offs of one note: one waiting, or one the server holds whose receipt hasn't
-    // settled the note, finishes it here. Only a refused one is completed again.
+    // Never two sign-offs of one note: one waiting, or one the server holds for review, finishes it
+    // here. Only a refused one is completed again (its refusal cleared the effect).
     if (waiting.any((e) => e.state != ChangeState.rejected) || (waiting.isEmpty && localEffect(rec.id) != null)) {
       throw const RecordLocked();
     }
@@ -1364,6 +1410,13 @@ class LocalStore {
       attestation: applied.attestationAfter,
       signoffId: signoffId,
     );
+    // Completing again answers "Your Complete of this note wasn’t applied": read here, and on the
+    // server at the next contact, so a Complete not applied again is told again (4.6).
+    _db.execute('UPDATE local_notices SET read_at = ? WHERE kind = ? AND record_id = ? AND read_at IS NULL', [
+      _nowMs,
+      noticeSignoffNotApplied,
+      rec.id,
+    ]);
     _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
       jsonEncode({...rec.attributes, _localEffectKey: local.toJson()}),
       rec.id,
@@ -1638,6 +1691,7 @@ class LocalStore {
           );
         }
       }
+      if (e.entity == entitySignoff && e.op == 'create') _settleSignoff(e, details, inReview: inReview);
       if (details != null) _receiptDetails(e, details);
       _deleteSettled(e);
       if (inReview) {
@@ -1694,6 +1748,43 @@ class LocalStore {
     }
   }
 
+  /// What a sign-off's receipt settles here (lifecycle 4.6, 4.8). Held for review, its note keeps the
+  /// effect the phone expects and says "Sent for review" until a Program Admin decides. Otherwise the
+  /// note takes the status and attestation the receipt gives, which are the server's decision
+  /// whatever the phone expected (a credential lowered meanwhile saves a signature unsigned), and
+  /// what the phone expected is cleared. A sign-off that found the note finished by a signature over
+  /// other content tells the person to read what was signed (3.4).
+  void _settleSignoff(OutboxEntry e, Map<String, Object?>? details, {required bool inReview}) {
+    final value = e.value;
+    final noteId = value is Map<String, Object?> ? value['noteId'] : null;
+    if (noteId is! String) return;
+    if (inReview) {
+      setKv('$_heldKvPrefix$noteId', e.recordId);
+      return;
+    }
+    final note = record(noteId);
+    if (note == null) return;
+    final expected = LocalEffect.fromJson(note.attributes[_localEffectKey]);
+    final mine = expected?.signoffId == e.recordId ? expected : null;
+    // A receipt that doesn't give the note's state leaves it as the phone expected, locked rather
+    // than open, until the refresh shows it.
+    final status = NoteStatus.values.asNameMap()[details?['status']] ?? mine?.status;
+    final attestation =
+        Attestation.values.where((a) => a.code == details?['attestation']).firstOrNull ?? mine?.attestation;
+    final attributes = {...note.attributes, 'attestation': ?attestation?.code};
+    if (mine != null) attributes.remove(_localEffectKey);
+    _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), noteId]);
+    // A reopen made after this sign-off waits behind it: the note stays the draft the person made it.
+    final field = note.fields['status'];
+    if (status != null && field?.pendingChange == null) {
+      _putField(noteId, 'status', status.name, serverVersion: field?.serverVersion ?? 0);
+      _touch(noteId, status: status.name);
+    }
+    if (details?['effect'] == 'none' && details?['reason'] == 'already_finished' && details?['hashMatches'] == false) {
+      addNotice(noticeFinishedDifferently, patientId: e.patientId, recordId: noteId);
+    }
+  }
+
   /// Deletes every superseded entry this confirmed change covers, following the links both ways
   /// and through chains (a resolution that was itself superseded by a later one, a fix of a fix):
   /// their values are in [e], which the server now holds. Without following chains, the first
@@ -1730,6 +1821,7 @@ class LocalStore {
         [reason, message, details == null ? null : jsonEncode(details), e.changeId],
       );
       if (_db.updatedRows == 0) return;
+      if (e.entity == entitySignoff && e.op == 'create') _signoffRefused(e);
       for (final hook in onRejected) {
         // As in [confirm]: a failing hook loses only its own bookkeeping, never the rejection.
         try {
@@ -1740,6 +1832,19 @@ class LocalStore {
       }
     });
   }
+
+  /// A refused sign-off (lifecycle 3.4, 4.8): its note is no longer finished here but a draft, as the
+  /// server keeps it, and the refusal waits in Needs attention. Complete again is its fix.
+  void _signoffRefused(OutboxEntry e) {
+    final value = e.value;
+    final noteId = value is Map<String, Object?> ? value['noteId'] : null;
+    if (noteId is String && localEffect(noteId)?.signoffId == e.recordId) _clearEffect(noteId);
+  }
+
+  void _clearEffect(String noteId) => _db.execute(
+    "UPDATE records SET attributes_json = json_remove(attributes_json, '\$.$_localEffectKey') WHERE id = ?",
+    [noteId],
+  );
 
   /// The field holds a different value on the server. Both are shown side by side.
   void conflict(OutboxEntry e, ServerField server) {
@@ -2207,11 +2312,35 @@ class LocalStore {
         _fileUnfiled();
         return;
       }
+      if (r.entity == entityNote) _noteFromServer(r);
       final status = _db.select("SELECT value_json FROM fields WHERE record_id = ? AND field = 'status'", [
         r.id,
       ]).firstOrNull;
       if (status != null) _touch(r.id, status: jsonDecode(status['value_json'] as String) as String);
     });
+  }
+
+  /// A note's state as the server's copy shows it (lifecycle 4.4, 4.10): who acts as its author, its
+  /// attestation, the signature that signs it, unless its own create still waits here. What the
+  /// phone expects of its own sign-off stays until a receipt settles it, but one the server held for
+  /// review is settled once the server's copy is finished: a Program Admin accepted it, or the note
+  /// was finished another way. The note then shows as the server holds it.
+  void _noteFromServer(ServerRecord r) {
+    if (_count("SELECT count(*) AS n FROM outbox WHERE record_id = ? AND op = 'create' AND state <> 'superseded'", [
+          r.id,
+        ]) >
+        0) {
+      return;
+    }
+    final attributes = {...r.attributes};
+    final kept = record(r.id)!.attributes[_localEffectKey];
+    final expected = LocalEffect.fromJson(kept);
+    if (expected != null && (r.status == NoteStatus.draft.name || _signoffsOf(r.id).isNotEmpty)) {
+      attributes[_localEffectKey] = kept;
+    } else if (expected != null) {
+      _heldSettled(r.id);
+    }
+    _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), r.id]);
   }
 
   // ---- charts kept on the phone (section 7) ----
@@ -2336,14 +2465,31 @@ class LocalStore {
 
   // ---- notices ----
 
-  String addNotice(String kind, {String? patientId, String? recordId, String? field}) {
+  /// Keeps a notice for the person: kinds, fields and IDs only.
+  ///
+  /// A [noticeChangeNotApplied] naming a note whose sign-off the server held for review is that
+  /// sign-off not applied (lifecycle 4.6, D89): a Program Admin rejected it, or couldn't apply it to
+  /// the note as it is now. Nothing else would tell the worker, since the phone let the sign-off go
+  /// when it was held. The note is no longer finished here: what the phone expected is cleared, and
+  /// it is a draft again, to read and complete again (fetched again first if it left the phone). The
+  /// notice is kept as [noticeSignoffNotApplied], on the visit's patient.
+  String addNotice(String kind, {String? patientId, String? recordId, String? field}) => _tx(() {
+    var stored = kind;
+    var patient = patientId;
+    final held = kind == noticeChangeNotApplied && recordId != null ? _heldSignoff(recordId) : null;
+    if (held != null) {
+      stored = noticeSignoffNotApplied;
+      patient ??= _patientOfRecord(recordId);
+      _heldSettled(recordId!);
+      if (localEffect(recordId)?.signoffId == held) _clearEffect(recordId);
+    }
     final id = _newId();
     _db.execute(
       'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, kind, patientId, recordId, field, _nowMs],
+      [id, stored, patient, recordId, field, _nowMs],
     );
     return id;
-  }
+  });
 
   List<LocalNotice> notices({bool unreadOnly = false}) => [
     for (final r in _db.select(

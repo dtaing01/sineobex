@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/content_hash.dart';
 import 'package:sineobex_field/encounters/rules.dart';
+import 'package:sineobex_field/features/sync/sync_labels.dart' show noticeLabel;
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
+import 'package:sineobex_field/patients/patient_providers.dart' show ServerNotices;
 import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entityReferral, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -12,7 +14,8 @@ import 'phone_harness.dart';
 import 'test_note_types.dart';
 
 /// The phone's store in phase 4 (lifecycle 4.8): the visit as the server keeps it, Complete
-/// (`finishNotes`), the lock that follows a note's effect, and the patient of a new record. Each
+/// (`finishNotes`), the lock that follows a note's effect, the patient of a new record, and what a
+/// sign-off's receipt settles, a sign-off held for review and its notice among them (4.6). Each
 /// rule is checked against the phone's test server, which mirrors the API (lifecycle 4.9): where
 /// the answer is the server's, the test syncs and reads the store's state after the receipt.
 void main() {
@@ -1004,6 +1007,373 @@ void main() {
         expect(await p.engine.openServerRecord(entity, id), isTrue, reason: entity);
         expect(p.store.record(id)!.patientId, patient, reason: entity);
       }
+    });
+  });
+
+  group('receipts settle the effect (lifecycle 4.6, 4.8)', () {
+    ({NoteStatus status, Attestation attestation, bool sentForReview}) state(
+      NoteStatus status, [
+      Attestation attestation = Attestation.notNeeded,
+      bool sentForReview = false,
+    ]) => (status: status, attestation: attestation, sentForReview: sentForReview);
+
+    /// Only the push: what the receipt itself settles, before any refresh of the note.
+    Future<void> push(TestPhone p) async => expect(await p.engine.syncOnce(force: true), isA<SyncDone>());
+
+    test('a confirmed sign-off settles its note: the status and attestation the receipt gives', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      server.credentials[alex] = 'resident';
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, n, testMedical, act: SignoffAct.sign),
+      ], signer: resident);
+
+      await push(p);
+      expect(p.store.outbox(), isEmpty);
+      for (final id in [flags, n]) {
+        final rec = p.store.record(id)!;
+        expect(p.store.localEffect(id), isNull, reason: id);
+        expect(
+          [rec.status, rec.fields['status']!.value, rec.attributes['attestation']],
+          ['signed', 'signed', 'waiting'],
+        );
+        expect(p.store.noteState(id), state(NoteStatus.signed, Attestation.waiting));
+      }
+      // Settled, it is locked as the server holds it.
+      expect(() => p.store.setField(n, 'data.vitals.pulse', 98), throwsA(isA<RecordLocked>()));
+
+      // What happens to it online afterwards reaches the phone with the refresh of the note.
+      server.attest(n, by: carol);
+      await sync(p);
+      expect(p.store.noteState(n), state(NoteStatus.signed, Attestation.attested));
+      expect(p.store.noteState(flags), state(NoteStatus.signed, Attestation.waiting));
+    });
+
+    test('the server decided otherwise: its receipt corrects what the phone showed', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      await sync(p);
+      // The credential was lowered while the phone was offline; its saved profile still signs.
+      server.changeCredential(alex, 'student');
+      serverTime = serverTime.add(const Duration(minutes: 1));
+      p.advance(const Duration(minutes: 1));
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, n, testMedical, act: SignoffAct.sign),
+      ]);
+      expect(p.store.noteState(n), state(NoteStatus.signed));
+
+      await push(p);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      expect(p.store.localEffect(n), isNull);
+      expect(p.store.noteState(n), state(NoteStatus.completed));
+      expect(p.store.record(n)!.status, 'completed');
+      // "It was saved unsigned for a co-signer": the server's own notice says so.
+      expect(server.notices.where((x) => x.kind == 'note_saved_unsigned' && x.recordId == n), hasLength(1));
+    });
+
+    test('a reopen made after the sign-off keeps the note a draft when the sign-off’s receipt comes', () async {
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96});
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      expect(s.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      await push(s);
+      expect(s.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'draft');
+      expect([s.store.record(n)!.status, s.store.record(n)!.fields['status']!.value], ['draft', 'draft']);
+      expect(s.store.noteState(n), state(NoteStatus.draft));
+      expect(s.store.noteState(flags), state(NoteStatus.completed));
+    });
+
+    test(
+      'a sign-off stored with no effect: the note is as the server holds it; another hash says to read it',
+      () async {
+        final a = phone(alex);
+        final visit = a.store.createEncounter(kind: 'non_medical');
+        final same = note(a, visit, testNote, {'vitals.pulse': 70});
+        final changed = note(a, visit, testNote, {'vitals.pulse': 88});
+        await sync(a);
+        // The same person's second phone holds both notes as they were.
+        final b = phone(alex);
+        expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+        for (final id in [same, changed]) {
+          expect(await b.engine.openServerRecord('encounter_note', id), isTrue);
+        }
+        a.store.setField(changed, 'data.vitals.pulse', 90);
+        complete(a, [finishing(a, same, testNote), finishing(a, changed, testNote)]);
+        await sync(a);
+        // The second phone completes them too, from what it showed. Read again before its sign-offs
+        // go, the note is finished there already, and still waits for this phone's receipt here.
+        final expected = complete(b, [finishing(b, same, testNote), finishing(b, changed, testNote)]);
+        expect(await b.engine.openServerRecord('encounter_note', changed), isTrue);
+        expect(b.store.localEffect(changed)?.toJson(), expected[changed]!.toJson());
+        await push(b);
+        expect(b.store.outbox(), isEmpty);
+        for (final id in [same, changed]) {
+          expect(b.store.localEffect(id), isNull, reason: id);
+          expect(b.store.noteState(id), state(NoteStatus.completed), reason: id);
+        }
+        // Finished from what the other phone showed, not this one: the person reads what was finished.
+        final told = b.store.notices().single;
+        expect([told.kind, told.recordId], [noticeFinishedDifferently, changed]);
+        expect(
+          noticeLabel(told.kind, told.field),
+          'This note was already finished, and not as you saw it. Open it and read what was signed.',
+        );
+        expect(a.store.notices(), isEmpty);
+      },
+    );
+
+    test('a refused sign-off clears the effect: the note is a draft again, the refusal in Needs attention', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      server.serverEdit(n, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+      complete(p, [finishing(p, n, testNote)]);
+      expect(p.store.noteState(n), state(NoteStatus.completed));
+
+      await push(p);
+      expect(p.store.localEffect(n), isNull);
+      expect(p.store.noteState(n), state(NoteStatus.draft));
+      final refused = p.store.needsAttention().single;
+      expect([refused.entity, refused.details?['problem']], [entitySignoff, 'content_changed']);
+      // A draft here again: the person changes it, and Complete again is the refusal's fix.
+      p.store.setField(n, 'data.vitals.pulse', 86);
+      await sync(p);
+      complete(p, [finishing(p, n, testNote)]);
+      expect(p.store.entry(refused.changeId)!.state, ChangeState.superseded);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(p.store.noteState(n), state(NoteStatus.completed));
+    });
+
+    /// [alex]'s Red flags note, completed while their credential was lowered on the server (the
+    /// phone's profile didn't know): the Medical gate holds the sign-off for a Program Admin (4.2).
+    Future<({TestPhone p, String patient, String visit, String flags, OutboxEntry held, LocalEffect expected})>
+    heldForReview() async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      await sync(p);
+      server.changeCredential(alex, 'chw');
+      final expected = complete(p, [finishing(p, flags, testRedFlags)])[flags]!;
+      final held = signoffs(p).single;
+      await sync(p);
+      expect(server.held.containsKey(held.changeId), isTrue);
+      return (p: p, patient: patient, visit: visit, flags: flags, held: held, expected: expected);
+    }
+
+    test(
+      'a sign-off held for review keeps its effect: the note says Sent for review and stays as it was sent',
+      () async {
+        final (:p, patient: _, :visit, :flags, :held, :expected) = await heldForReview();
+        expect(p.store.outbox(), isEmpty);
+        expect(p.store.inReviewCount(), 1);
+        expect(p.store.localEffect(flags)?.toJson(), expected.toJson());
+        expect(p.store.sentForReview(flags), isTrue);
+        expect(p.store.noteState(flags), state(NoteStatus.completed, Attestation.notNeeded, true));
+        // The server's copy is a draft until a Program Admin decides.
+        expect(p.store.record(flags)!.status, 'draft');
+        expect(server.records[flags]!.fields['status']!.value, 'draft');
+
+        // Nothing changes it, finishes it again or sends it back meanwhile: what the admin applies is
+        // what the person completed.
+        expect(() => p.store.setField(flags, 'data.flags.any', 'yes'), throwsA(isA<RecordLocked>()));
+        expect(() => complete(p, [finishing(p, flags, testRedFlags)]), throwsA(isA<RecordLocked>()));
+        expect(() => p.store.reopenNote(flags, definition(testRedFlags)), throwsA(isA<RecordLocked>()));
+        expect(() => p.store.setField(visit, 'summary', 'Demo: later'), throwsA(isA<RecordLocked>()));
+        expect(p.store.outbox(), isEmpty);
+        await sync(p);
+        expect(p.store.sentForReview(flags), isTrue);
+      },
+    );
+
+    test('a held sign-off a Program Admin accepts: the next refresh finds the note finished and settles it', () async {
+      final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+      server.acceptHeld(held.changeId);
+      expect(server.records[flags]!.fields['status']!.value, 'completed');
+      await sync(p);
+      expect(p.store.localEffect(flags), isNull);
+      expect(p.store.sentForReview(flags), isFalse);
+      expect(p.store.noteState(flags), state(NoteStatus.completed));
+      expect(() => p.store.setField(flags, 'data.flags.any', 'yes'), throwsA(isA<RecordLocked>()));
+      expect(p.store.record(visit)!.status, 'completed');
+      // Settled: a later notice about the note is about something else.
+      final later = p.store.addNotice(noticeChangeNotApplied, recordId: flags);
+      expect(p.store.notices().singleWhere((n) => n.id == later).kind, noticeChangeNotApplied);
+    });
+
+    test('a held sign-off a Program Admin rejects: its notice makes the note a draft to complete again', () async {
+      final (:p, :patient, :visit, :flags, :held, expected: _) = await heldForReview();
+      final notices = ServerNotices(p.store, p.engine.api);
+      server.rejectHeld(held.changeId);
+      await notices.sync();
+      final told = p.store.notices().single;
+      expect([told.kind, told.recordId, told.patientId], [noticeSignoffNotApplied, flags, patient]);
+      expect(
+        noticeLabel(told.kind, told.field),
+        'Your Complete of this note wasn’t applied. Open it and complete it again.',
+      );
+      expect(p.store.localEffect(flags), isNull);
+      expect(p.store.sentForReview(flags), isFalse);
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+      // It is told once: a later notice about the note is about something else.
+      final later = p.store.addNotice(noticeChangeNotApplied, recordId: flags);
+      expect(p.store.notices().singleWhere((n) => n.id == later).kind, noticeChangeNotApplied);
+      p.store.markNoticeRead(later);
+
+      // A draft here: the person reads it, changes it and completes it again, which answers the notice.
+      server.changeCredential(alex, 'attending');
+      p.store.setField(flags, 'data.flags.any', 'yes');
+      complete(p, [finishing(p, flags, testRedFlags)]);
+      expect(p.store.notices(unreadOnly: true), isEmpty);
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[flags]!.fields['status']!.value, 'completed');
+      expect(p.store.noteState(flags), state(NoteStatus.completed));
+      expect(p.store.record(visit)!.status, 'completed');
+    });
+
+    test('held again and refused at the accept: the read notice lets the server tell the person again', () async {
+      final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
+      final notices = ServerNotices(p.store, p.engine.api);
+      server.rejectHeld(held.changeId);
+      await notices.sync();
+      // Completed again with the credential still lowered: held again.
+      complete(p, [finishing(p, flags, testRedFlags)]);
+      final again = signoffs(p).single;
+      expect(again.recordId, isNot(held.recordId));
+      await sync(p);
+      expect(p.store.sentForReview(flags), isTrue);
+      // The read made here reaches the server.
+      await notices.sync();
+      expect(server.notices.single.readAt, isNotNull);
+
+      // A teammate's change reaches the note first, so the accept is refused (content_changed).
+      server.serverEdit(flags, 'data.flags.any', 'yes', by: blair);
+      expect((server.acceptHeld(again.changeId)['details']! as Map<String, Object?>)['problem'], 'content_changed');
+      await notices.sync();
+      expect(
+        [for (final n in p.store.notices(unreadOnly: true)) (n.kind, n.recordId)],
+        [(noticeSignoffNotApplied, flags)],
+      );
+      expect(p.store.sentForReview(flags), isFalse);
+      // The next sync brings the teammate's answer to the draft.
+      await sync(p);
+      expect(answersOf(p, flags), {'flags.any': 'yes'});
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+    });
+
+    test('a note that left the phone while sent for review: its notice still says to complete it again', () async {
+      final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+      p.store
+        ..closeRecord(flags)
+        ..closeRecord(visit);
+      expect(p.store.record(flags), isNull);
+      server.rejectHeld(held.changeId);
+      await ServerNotices(p.store, p.engine.api).sync();
+      expect([p.store.notices().single.kind, p.store.notices().single.recordId], [noticeSignoffNotApplied, flags]);
+      // Fetched again, it is a draft to complete.
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', flags), isTrue);
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+    });
+
+    test('a change_not_applied about anything else says only the author can, and leaves the note as it is', () async {
+      final p = phone(alex);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      // A teammate corrects someone else's note: nothing changes, and they are told.
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+      b.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {
+            'field': 'data.vitals.pulse',
+            'newValue': 86,
+            'baseVersion': b.store.record(n)!.fields['data.vitals.pulse']!.serverVersion,
+          },
+        ],
+        'reason': 'Demo: counted twice',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+      await sync(b);
+      await ServerNotices(b.store, b.engine.api).sync();
+      final told = b.store.notices().single;
+      expect([told.kind, told.recordId], [noticeChangeNotApplied, n]);
+      expect(noticeLabel(told.kind, told.field), 'Only the note’s author can do that. Nothing was changed.');
+
+      // Nor does one undo a Complete that was not held for review.
+      final other = note(p, visit, testNote, {'vitals.pulse': 70});
+      final expected = complete(p, [finishing(p, other, testNote)])[other]!;
+      p.store.addNotice(noticeChangeNotApplied, recordId: other);
+      expect(p.store.notices().single.kind, noticeChangeNotApplied);
+      expect(p.store.localEffect(other)?.toJson(), expected.toJson());
+    });
+
+    test('while the clock check fails, sign-offs, addenda and corrections wait; a referral does not', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical', patientId: patient);
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      final addendum = <String, Object?>{
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: called back with results',
+        'signoffId': signoff,
+      };
+      final correction = <String, Object?>{
+        'noteId': n,
+        'changes': [
+          {'field': 'data.vitals.pulse', 'newValue': 86, 'baseVersion': 1},
+        ],
+        'reason': 'Demo: counted twice',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': signoff,
+      };
+      await sync(p);
+      final refused = p.store.createRecord(entityAddendum, addendum);
+      p.store.reject(createOf(p, refused), reason: 'validation');
+
+      p.wall = p.wall.add(const Duration(minutes: 10));
+      expect(p.clock.status.paused, isTrue);
+      final before = p.store.outbox().length;
+      expect(() => p.store.createRecord(entityAddendum, addendum), throwsA(isA<ChartingPaused>()));
+      expect(() => p.store.createRecord(entityCorrection, correction), throwsA(isA<ChartingPaused>()));
+      expect(() => p.store.fixRejected(createOf(p, refused).changeId, addendum), throwsA(isA<ChartingPaused>()));
+      expect(p.store.outbox(), hasLength(before));
+      // A referral's date is the one the person types, so it is saved as ever.
+      final referral = p.store.createRecord(entityReferral, {
+        'patientId': patient,
+        'referredOn': '2026-10-20',
+        'details': 'Demo: shelter intake',
+        'encounterId': visit,
+      });
+      expect(p.store.outbox(), hasLength(before + 1));
+      expect(createOf(p, referral).entity, entityReferral);
     });
   });
 }
