@@ -3443,6 +3443,35 @@ reporting are V2.
   anyone who charts (4.7). It stays in the list, struck through. Nothing is deleted.
 - **The portal** shows the same list on the patient page, read-only in phase 4.
 
+As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/referrals.dart`, with
+its review):
+
+- **The list** (`Referrals.openReferrals`, the sheet) is what the phone holds for the merged group,
+  and the chart's own snapshots (5.2 as built) it does not hold, of the group only (review finding
+  LRA-5): newest first by date, then by when recorded. Each referral shown is logged as
+  `patient.viewed` on entity `referral`, in the read's transaction, once (the coordinator's
+  decision), as the sync read and the visit read log one. The profile's timeline lists the same
+  referrals and logs none of its own (9.1 as built). `madeAt` lists the referrals made at a visit,
+  whoever's chart they are on, those of the charts the phone keeps included (9.7).
+- **Add referral** refuses, writing nothing: a role without `referrals.create`, which the server
+  would hold for a Program Admin; details empty or over 2,000 characters once trimmed; a date that
+  isn't real, or is more than a day ahead (the store's rule, by the corrected date); and a visit the
+  phone holds of someone outside the patient's merged group (`encounter_other_patient`, 4.7, 8.4),
+  a visit with no patient passing. The date is the calendar day the person picked. A referral never
+  waits for the clock (3.11).
+- **Entered in error** takes `referrals.create`, and the referral's author or anyone who charts
+  (4.7), once, with a reason of 3 to 300 characters. A referral the chart lists and the phone does
+  not hold is taken onto the phone in the same transaction, so it can be marked offline.
+- **"At a visit"** shows while the visit is the chart's group's as far as the phone knows (8.4 as
+  built). Who recorded a referral is named by the phone's name hook, or, for one of the reader's
+  own, by their display name (D108).
+- **The sentences are this layer's**, the design giving none: "Your role can’t make referrals.",
+  "Only the person who recorded this referral, or a clinician, can mark it entered in error.",
+  "Write the referral’s details, up to 2,000 characters.", "Choose a real date.", "A referral can’t
+  be dated in the future.", "That visit is someone else’s. Add the referral from their chart, or
+  without the visit.", "This referral is already marked entered in error." and "Give a short reason
+  (3 to 300 characters).".
+
 ## 8. The recap, the chart after Complete, and the problem list
 
 ### 8.1 The automatic recap
@@ -3508,6 +3537,41 @@ Phase 3 left two hooks (1.1, 1.2): `problems.source` and the `encounterId` of a 
   (New, Ongoing, Resolved). Default: New adds the problem as New; the other three add it as
   Ongoing; nothing in a note resolves a problem (PLAN-OPEN 12.1 #16).
 
+As built on the phone (units L4 and F7, with their review; `apps/mobile/lib/patients/problems.dart`
+and `patient_repository.dart`, `apps/mobile/lib/encounters/encounter_repository.dart`,
+`apps/mobile/lib/features/forms/problem_field.dart`):
+
+- **A problem, a problem's note and an allergy at a visit.** `Problems.add` and `stillHasThis` take
+  the visit's ID, as `move`, `confirmStatus` and `addNote` already did, so the server stores
+  `source = 'encounter'` and the visit; `PatientRepository.addAllergy` takes one too, for an allergy
+  recorded at a visit (9.7). Each refuses, writing nothing, a visit this phone holds of someone
+  outside the patient's merged group (`checkVisitOf`, `encounter_other_patient`: "That visit is
+  someone else’s. Add this from their chart, or without the visit."), as the server's
+  `visitOfOtherPatient` refuses it (4.7); a visit with no patient, or one of a record merged into
+  the patient, passes, and one the phone does not hold is the server's to check. A problem says
+  which visit it was made at (`ProblemView.encounterId`) and, on a chart, "at a visit" (8.4 as
+  built).
+- **Add to the problem list.** `problemListPlace` says what the form shows under a picked diagnosis:
+  nothing without a diagnosis, on a visit with no patient, or to a role that doesn't chart; "On the
+  problem list" when the patient's list, as the person may see it, holds an open problem with the
+  same code; else the button, with the list's status the note's own status maps to
+  (`problemListStatus`, 12.1 #16): none when the note gives no status, and the person then chooses
+  ("Add as New or Ongoing?"). `addToProblemList` adds the problem through `Problems.add`, naming the
+  visit: the diagnosis's label as its title, cut to 200 characters, and as the code's words, and
+  sensitive for a code on the sensitive list. The button is heard as "Add to the problem list:
+  {diagnosis}", its visible words first (review finding LFM-2).
+- **The same problem coming back** (the coordinator's decision). When the list holds the diagnosis
+  Resolved, by the same code or the same title read loosely (`Problems.resolvedMatch`, phase 3's
+  Add problem rule, which that screen now calls too), the form asks phase 3's question: "Is this
+  the same problem coming back?", "“{title}” is on the list as Resolved.", **No, a different
+  problem** and **Yes, it came back**, neither styled as the default. Yes adds it as a new episode
+  of that one (`recurrenceOf`), No as a different problem; until it is answered, the add is refused
+  (`same_problem_question`). "It never went away" (`resolvedInErrorOf`) stays on the problem screen.
+- **A sensitive problem** (the coordinator's decision): a reader without `patients.view_sensitive`
+  does not see one on the list, so they are offered the button for it and may add the same
+  sensitive problem twice, and are never asked about a sensitive Resolved one: telling them it is
+  there would disclose it.
+
 ### 8.4 The Needs attention fix for `encounter_missing`
 
 A problem, allergy or problem note that names a visit the team does not have is refused with
@@ -3530,6 +3594,33 @@ A visit that moves to another patient once records were made at it leaves them w
 patient (4.3, a default: 12.1 #25). Nothing on the phone or the server moves them, and no card
 asks about them: the visit screen lists the records made at the visit (9.7), so the clinician can
 find each one and enter it in error.
+
+As built on the phone (the domain layer, unit L4, with its review):
+
+- **"At a visit" on a chart** (`shownAtVisit`, `apps/mobile/lib/patients/problems.dart`), for a
+  problem and a referral: a visit the phone holds says whose it is now; one it does not hold counts
+  only when the chart's cached timeline (5.2) lists it among the group's visits, since it may have
+  moved to someone else since the record was made at it (review finding LRA-3). A record made at a
+  visit older than the timeline's first 50 loses the words until the phone holds the visit. The
+  refusal of a record at another patient's visit (8.3 as built) still leaves a visit the phone does
+  not hold to the server.
+- **The records made at a visit the phone holds** (`VisitRecords.madeAt`,
+  `apps/mobile/lib/encounters/visit_records.dart`): its referrals, problems, allergies and problems'
+  notes, in that order as 9.7 lists them, from what the phone holds and from the charts it keeps (a
+  chart's problem notes, its timeline's referrals), each kind in the order made as far as the phone
+  can tell. Each is shown as its chart shows it to the reader, as the server's `recordsMadeAt` asks
+  it (D91): nothing without `patients.view`; a problem, and a note on one, only with the problem
+  list's keys, a sensitive one only with `patients.view_sensitive`; a note whose problem the phone
+  does not hold is left out, since nothing then says whether it is sensitive. A problem entered in
+  error or merged into another entry is listed, as the server lists it. Each record says whether
+  its visit has moved since to someone outside its patient's group (`onAnotherChart`), and each is
+  logged as 10.1's table for the phone says.
+- **A visit read from the server or a chart's cache** gives its records as the server's snapshots
+  (`VisitView.records`, 9.7 as built). A problem's note names no patient, so the phone finds its
+  patient through its problem (`patientOfMadeAt`), among the visit's records or on the phone, and
+  never takes the visit's patient, which may not be its own (review finding LRA-1); one it cannot
+  find is logged with no patient. Open, the server's: the snapshot of a problem's note naming its
+  patient.
 
 ## 9. Screens
 
@@ -3894,6 +3985,10 @@ As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/notes_t
 A sheet from the profile or the summary screen: the past referrals (7), then **Add referral**: a
 date, today by default, and a details box of up to 2,000 characters. A row's menu has **Entered
 in error**, which asks for a reason.
+
+As built (unit L4): the sheet's list, **Add referral** and **Entered in error** are `Referrals`
+(7 as built), whose `mayAdd` and `mayEnterInError` say what the sheet offers and whose refusals
+are worded there; the sheet itself is L5's.
 
 ### 9.11 Portal: the visit page
 
