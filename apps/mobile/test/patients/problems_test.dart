@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason;
+import 'package:sineobex_field/patients/chart_cache.dart' show chartMetaField;
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/patient_repository.dart' show NewAllergy;
 import 'package:sineobex_field/patients/problems.dart';
@@ -197,8 +198,8 @@ void main() {
     );
   });
 
-  test('“at a visit” only while the visit this phone holds is the patient’s; one it does not hold is '
-      'taken at its word', () async {
+  test('“at a visit” only while the visit this phone holds is the patient’s; one it does not hold only '
+      'when the chart lists it as the group’s (review LRA-3)', () async {
     final p = await openedPatient();
     final other = server.seedPatient(preferredName: 'Demo Other');
     // Made at a visit this phone never held: the server checked it was the patient's then.
@@ -213,8 +214,42 @@ void main() {
     final here = problems().add(p, title: 'Demo: cellulitis', status: 'new', encounterId: visit);
     await phone.engine.syncAll(force: true);
     await services.charts.fetch([p], reason: FetchChartsReason.refresh);
-    expect([problems().problem(fromServer)!.encounterId, problems().problem(fromServer)!.atVisit], [elsewhere, true]);
+    // The visit may have moved to someone else since: with no timeline that lists it, it isn't said.
+    expect([problems().problem(fromServer)!.encounterId, problems().problem(fromServer)!.atVisit], [elsewhere, false]);
     expect(problems().problem(here)!.atVisit, isTrue);
+    // The chart's cached timeline lists the group's visits (5.2): one there is the patient's.
+    final meta = store().record(p)!.fields[chartMetaField]!.value! as Map<String, Object?>;
+    store().importServerRecord(
+      ServerRecord(
+        entity: entityPatient,
+        id: p,
+        status: 'active',
+        authorUserId: '',
+        attributes: const {},
+        fields: {
+          chartMetaField: ServerField(
+            value: {
+              ...meta,
+              'timeline': {
+                'encounters': [
+                  {
+                    'encounterId': elsewhere,
+                    'kind': 'medical',
+                    'notes': <Object?>[],
+                    'startedAt': '2026-10-15T15:00:00.000Z',
+                    'status': 'completed',
+                  },
+                ],
+                'referrals': <Object?>[],
+              },
+            },
+            version: 0,
+          ),
+        },
+      ),
+      open: false,
+    );
+    expect(problems().problem(fromServer)!.atVisit, isTrue);
 
     // The visit moved to someone else (12.1 #25): the problem stays with the patient, still naming
     // the visit, which no longer says it was theirs.

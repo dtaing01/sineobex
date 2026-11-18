@@ -8,6 +8,7 @@ library;
 
 import '../api/generated/api.dart' show RecordSnapshot;
 import '../patients/chart_cache.dart' show chartMetaOf, patientGroup;
+import '../patients/problems.dart' show shownAtVisit;
 import '../sync/entities.dart' show entityReferral;
 import '../sync/local_store.dart';
 import '../sync/sync_engine.dart' show serverRecordFrom;
@@ -103,13 +104,13 @@ class Referrals {
     for (final p in group) {
       for (final id in store.recordIdsOfPatient(p)) {
         final rec = store.record(id);
-        if (rec != null && rec.entity == entityReferral) held[id] = _held(rec, group);
+        if (rec != null && rec.entity == entityReferral) held[id] = _held(rec);
       }
     }
     for (final s in chart) {
       if (s.entity.wire != entityReferral || held.containsKey(s.id)) continue;
       if (!group.contains(s.attributes['patientId'])) continue;
-      held[s.id] = _fromChart(s, group);
+      held[s.id] = _fromChart(s);
     }
     return _newestFirst(held.values);
   }
@@ -131,13 +132,13 @@ class Referrals {
       if (rec == null) continue;
       if (rec.entity == entityPatient) charts.addAll(chartMetaOf(store, id)?.referrals ?? const []);
       if (rec.entity != entityReferral || rec.attributes['encounterId'] != encounterId) continue;
-      out[id] = _held(rec, patientGroup(store, rec.patientId ?? rec.attributes['patientId']! as String));
+      out[id] = _held(rec);
     }
     for (final s in charts) {
       if (s.entity.wire != entityReferral || s.attributes['encounterId'] != encounterId || out.containsKey(s.id)) {
         continue;
       }
-      out[s.id] = _fromChart(s, patientGroup(store, s.attributes['patientId']! as String));
+      out[s.id] = _fromChart(s);
     }
     return _newestFirst(out.values);
   }
@@ -203,9 +204,9 @@ class Referrals {
     if (rec != null && rec.entity != entityReferral) throw StateError('not a referral');
     final ReferralView shown;
     if (rec != null) {
-      shown = _held(rec, const {});
+      shown = _held(rec);
     } else if (copy != null) {
-      shown = _fromChart(copy, const {});
+      shown = _fromChart(copy);
     } else {
       throw StateError('no such referral on this phone');
     }
@@ -245,7 +246,7 @@ class Referrals {
     });
   }
 
-  ReferralView _held(LocalRecord rec, Set<String> group) {
+  ReferralView _held(LocalRecord rec) {
     final a = rec.attributes;
     final mark = rec.fields['enteredInError'];
     final create = _createOf(rec.id);
@@ -257,7 +258,7 @@ class Referrals {
       referredOn: a['referredOn'] as String? ?? '',
       details: a['details'] as String? ?? '',
       encounterId: encounterId,
-      atVisit: _atVisit(encounterId, group),
+      atVisit: _atVisit(encounterId, rec.patientId ?? a['patientId'] as String? ?? ''),
       recordedBy: PersonRef(authorId, name: user.nameFor(authorId, nameOf: nameOf)),
       recordedAt: _time(a['recordedAt']) ?? create?.correctedTime ?? create?.deviceTime,
       enteredInError: _reason(mark?.value),
@@ -270,7 +271,7 @@ class Referrals {
     );
   }
 
-  ReferralView _fromChart(RecordSnapshot s, Set<String> group) {
+  ReferralView _fromChart(RecordSnapshot s) {
     final a = s.attributes;
     final encounterId = a['encounterId'] as String?;
     return ReferralView(
@@ -279,7 +280,7 @@ class Referrals {
       referredOn: a['referredOn'] as String? ?? '',
       details: a['details'] as String? ?? '',
       encounterId: encounterId,
-      atVisit: _atVisit(encounterId, group),
+      atVisit: _atVisit(encounterId, a['patientId'] as String? ?? ''),
       recordedBy: PersonRef(s.authorUserId, name: user.nameFor(s.authorUserId, nameOf: nameOf)),
       recordedAt: _time(a['recordedAt']),
       enteredInError: _reason(s.fields['enteredInError']?.value),
@@ -288,13 +289,9 @@ class Referrals {
     );
   }
 
-  /// A visit this phone holds says whose it is now; one it does not hold is taken at its word, as the
-  /// server checked it was the patient's when the referral was made.
-  bool _atVisit(String? encounterId, Set<String> group) {
-    if (encounterId == null) return false;
-    final visitPatient = store.record(encounterId)?.fields['patientId']?.value;
-    return visitPatient is! String || group.contains(store.canonicalPatient(visitPatient));
-  }
+  /// "at a visit" on the chart of the referral's patient [patientId] (8.4, `shownAtVisit`).
+  bool _atVisit(String? encounterId, String patientId) =>
+      patientId.isNotEmpty && shownAtVisit(store, patientId, encounterId);
 
   OutboxEntry? _createOf(String recordId) => store
       .outbox()

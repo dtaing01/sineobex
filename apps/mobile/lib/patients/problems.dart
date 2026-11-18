@@ -400,7 +400,7 @@ class Problems {
 
   void _checkVisit(String patientId, String? encounterId) => checkVisitOf(store, patientId, encounterId);
 
-  bool _atVisit(String? encounterId, String patientId) => atVisitOf(store, patientId, encounterId);
+  bool _atVisit(String? encounterId, String patientId) => shownAtVisit(store, patientId, encounterId);
 
   static String _reason(String reason) {
     final r = reason.trim();
@@ -426,8 +426,19 @@ void checkVisitOf(LocalStore store, String patientId, String? encounterId) {
   }
 }
 
-/// "at a visit" on [patientId]'s chart (lifecycle 8.4): [encounterId] names a visit, and that visit's
-/// patient is in the chart's merged group as far as the phone knows.
+/// "at a visit" on [patientId]'s chart (lifecycle 8.4), said only when that visit's patient is in the
+/// chart's merged group: a visit the phone holds says whose it is now; one it does not hold counts
+/// when the chart's cached timeline lists it among the group's visits (5.2), since it may have moved
+/// to someone else since the record was made at it (review LRA-3).
+bool shownAtVisit(LocalStore store, String patientId, String? encounterId) {
+  if (encounterId == null) return false;
+  if (store.record(encounterId) != null) return atVisitOf(store, patientId, encounterId);
+  final visits = chartMetaOf(store, store.canonicalPatient(patientId))?.timeline?.encounters ?? const [];
+  return visits.any((v) => v.encounterId == encounterId);
+}
+
+/// Whether [encounterId] is no visit of someone outside [patientId]'s merged group as far as the
+/// phone knows: a visit it holds says whose it is now; one it does not hold is the server's to check.
 bool atVisitOf(LocalStore store, String patientId, String? encounterId) {
   if (encounterId == null) return false;
   final visitPatient = store.record(encounterId)?.fields['patientId']?.value;

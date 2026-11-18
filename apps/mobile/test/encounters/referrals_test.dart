@@ -4,7 +4,8 @@ import 'package:sineobex_field/api/generated/api.dart'
 import 'package:sineobex_field/encounters/credentials.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart';
 import 'package:sineobex_field/encounters/referrals.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityReferral;
+import 'package:sineobex_field/patients/chart_cache.dart' show chartMetaField;
+import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityPatient, entityReferral;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -179,6 +180,82 @@ void main() {
       expect(server.records[id]!.status, 'entered_in_error');
       // It stays in the list, struck through: nothing is deleted.
       expect(r.openReferrals(patient, chart: chart).single.enteredInError, 'Demo: entered on the wrong chart');
+    });
+  });
+
+  group('on whose chart, at which visit (lifecycle 8.4)', () {
+    /// [patient]'s chart as this phone cached it: its timeline lists [visits], the group's.
+    void cachedTimeline(TestPhone p, String patient, List<String> visits) => p.store.importServerRecord(
+      ServerRecord(
+        entity: entityPatient,
+        id: patient,
+        status: 'active',
+        authorUserId: '',
+        attributes: const {},
+        fields: {
+          chartMetaField: ServerField(
+            value: {
+              'partial': false,
+              'timeline': {
+                'encounters': [
+                  for (final v in visits)
+                    {
+                      'encounterId': v,
+                      'kind': 'non_medical',
+                      'notes': <Object?>[],
+                      'startedAt': '2026-10-15T15:00:00.000Z',
+                      'status': 'completed',
+                    },
+                ],
+                'referrals': <Object?>[],
+              },
+            },
+            version: 0,
+          ),
+        },
+      ),
+      open: false,
+    );
+
+    test('a visit the phone doesn’t hold is “a visit” of the chart only when the chart lists it as the '
+        'group’s (review LRA-3)', () async {
+      final p = phone(alex);
+      final a = server.seedPatient();
+      final b = server.seedPatient();
+      final kept = server.seed('encounter', {'kind': 'non_medical', 'patientId': a}, by: blair);
+      final moved = server.seed('encounter', {'kind': 'non_medical', 'patientId': a}, by: blair);
+      String referralAt(String visit) => server.seed(entityReferral, {
+        'patientId': a,
+        'referredOn': '2026-10-15',
+        'details': 'Demo: housing navigator',
+        'encounterId': visit,
+      }, by: blair);
+      final atKept = referralAt(kept);
+      final atMoved = referralAt(moved);
+      // The second visit's patient was corrected to someone else since (8.4, D91).
+      server.serverEdit(moved, 'patientId', b, by: blair);
+      final chart = [await snapshotOf(alex, atKept), await snapshotOf(alex, atMoved)];
+      cachedTimeline(p, a, [kept]);
+      final listed = {for (final r in referrals(p).openReferrals(a, chart: chart)) r.id: r.atVisit};
+      expect(listed, {atKept: true, atMoved: false});
+      expect([p.store.record(kept), p.store.record(moved)], [isNull, isNull]);
+    });
+
+    test('the chart lists only its group’s referrals (review LRA-5)', () async {
+      final p = phone(alex);
+      final a = server.seedPatient();
+      final other = server.seedPatient();
+      String referralOf(String patient) => server.seed(entityReferral, {
+        'patientId': patient,
+        'referredOn': '2026-10-15',
+        'details': 'Demo: dental clinic',
+        'encounterId': null,
+      }, by: blair);
+      final ours = referralOf(a);
+      // A chart cached before a merge was undone still lists the split-off patient's referral.
+      final theirs = referralOf(other);
+      final chart = [await snapshotOf(alex, ours), await snapshotOf(alex, theirs)];
+      expect([for (final r in referrals(p).openReferrals(a, chart: chart)) r.id], [ours]);
     });
   });
 
