@@ -75,8 +75,12 @@ const EXAM_ANSWERS = {
 
 const TALK = { 'talk.notes': 'Demo: talked about home' };
 
-/** What no handoff holds, for any reader: a sensitive exam, a treatment record, a sensitive diagnosis. */
-const NEVER = ['Demo: no lesions seen', 'Demo: 8 mg', 'F11', 'opioid'];
+/**
+ * What no handoff holds, for any reader: a sensitive exam, a treatment record, a sensitive diagnosis.
+ * Each holds a character no ID does: the audit check looks for them in details that list note IDs,
+ * and "F11" alone turned up inside a random UUID (review finding LPM-6).
+ */
+const NEVER = ['Demo: no lesions seen', 'Demo: 8 mg', 'F11.20', 'opioid'];
 
 // ------------------------------------------------------------------------------------------------
 // Reading a PDF back
@@ -240,6 +244,10 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
       expect(page).toContain('Exported by Ana (demo) on 2026-10-20 15:12 UTC');
       expect(page).toContain(`Page ${i + 1} of ${all.length}`);
     });
+  });
+
+  it('looks in the audit for no term a random ID could hold', () => {
+    for (const term of NEVER) expect(term, term).not.toMatch(/^[0-9a-f-]+$/i);
   });
 
   it('logs one ems_handoff.exported on the visit, with its patient and the notes read, and no answer', async () => {
