@@ -1802,7 +1802,7 @@ As built (unit F5):
 | `text_field.dart` | `NoteTextField`, and what the other widgets share: `TypingSaver` and `typingPause`, which save what is typed; `limitCodePoints`; and `ReadOnlyAnswer`, an answer that can't be changed |
 | `choice_field.dart` | `ChoiceField`: the chips, and the box of the Other text (`otherTextField`); `pickedCodes` |
 | `number_field.dart` | `NumberField`: the box, the second unit's switch, the stepper |
-| `flag_field.dart`, `date_field.dart`, `time_field.dart`, `duration_field.dart` | A tick; a date picked on the calendar; a time picked on the dial; weeks and days |
+| `flag_field.dart`, `date_field.dart`, `time_field.dart`, `duration_field.dart` | A tick; a date typed in three boxes or picked on the calendar; a time picked on the dial; weeks and days |
 | `group_field.dart` | `GroupField`, its two layouts (`FieldsInStack`, `FieldsInRow`), `clearedBy`, and `Collapsible`, the header of a collapsed group or grid |
 | `grid_field.dart` | `GridField`, with `gridRows`, `gridSides` and `cellPath` |
 | `region_field.dart` | `RegionField`: the region, the side and Front or back, each a choose-one of chips |
@@ -1869,7 +1869,7 @@ in a note form the form lays those out.
 | `text` | the text, trimmed, at most `maxLength` code points; a box of spaces writes `null` | the field's path | as typing pauses |
 | `number` | a number in the base unit at the field's decimals, a whole one as an integer; an empty box writes `null`. What can't be saved writes nothing, and the answer stays what it was (8.2) | the field's path | as typing pauses; a stepper when tapping pauses (PLAN-OPEN, 10.1 #45) |
 | `flag` | `true`; unticking writes `null`, never `false` | the field's path | at the tap |
-| `date` | `YYYY-MM-DD`, picked on the calendar; Clear writes `null` | the field's path | when picked |
+| `date` | `YYYY-MM-DD`, typed (month, day, year) or picked on the calendar; Clear, or emptying the three boxes, writes `null` | the field's path | when typing pauses or the boxes are left, as a number; when picked |
 | `time` | `HH:MM` on the 24-hour clock, picked on the dial; Clear writes `null` | the field's path | when picked |
 | `duration` | the weeks and days typed, as whole days; two empty boxes write `null`. More than its most, or what isn't whole numbers, writes nothing, and a line says why at once. Days past six are shown as weeks the next time it is drawn | the field's path | as typing pauses; moving between its two boxes does not save |
 | `group`, `grid` | nothing themselves: each of their fields at its own path | a group's fields at `<group>.<id>`; a grid's cell at `<grid>.<row>`, then the side; a group cell's fields after the row | |
@@ -2031,16 +2031,26 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
 - **A text field that can hold patient details** turns suggestions and autocorrect off, as
   `PhiField` does (`apps/mobile/lib/features/patients/patient_widgets.dart:24`). Every box a form
   types in is one, keyed `phi.form.<field id>`: a text, the Other text (`<id>_other`), a number, a
-  duration's weeks and days (`<id>.weeks`, `<id>.days`) and the diagnosis search. A text counts code
+  duration's weeks and days (`<id>.weeks`, `<id>.days`), a date's month, day and year
+  (`<id>.month`, `<id>.day`, `<id>.year`) and the diagnosis search. A text counts code
   points, as the server does, and is cut at its `maxLength`; its own counter shows from 90%, and
-  says once that it is near the limit and once that it is at it, as phase 3's note counter does. A
-  date and a time are picked on the calendar and on the dial only: the pickers' typing modes are
-  text boxes without these settings, which the keyboard would learn from.
-- **A date** is a button read as the field's label and the date written out, or "no date", with
-  Clear beside it once there is one; a time is the same, in the phone's time format. The date picker
-  reaches a hundred years back and ten ahead, on the side of today the field's `range` allows
-  (PLAN-OPEN, 10.1 #43). `checkAnswer` has no clock, so a stored date outside the range now, a
-  follow-up that has passed, is still shown, and the picker opens on the nearest day it can show.
+  says once that it is near the limit and once that it is at it, as phase 3's note counter does. The
+  calendar and the time dial have no typing mode: theirs are text boxes without these settings,
+  which the keyboard would learn from. A date is typed in its own three boxes instead.
+- **A date** is typed in three private boxes, Month, Day and Year, in one node named by the
+  field's label: month first and a four-digit year (PLAN-OPEN, 10.1 #54), side by side, or one
+  under another where they would not fit their labels (200% text). It is read as phase 3's birth
+  date is (`dob.dart`'s month names and days in a month) and saved as `YYYY-MM-DD` when typing
+  pauses or the boxes are left, as a number is. A date half typed says nothing until the boxes are
+  left; one that can't be saved (no such day, a month past 12, a short year, the wrong side of
+  today, beyond the picker's reach) leaves the answer as it was, and one line under the boxes says
+  why, once. A saved typed date is read back once, month spelled out ("Saved as March 7, 2027.").
+  Beside the boxes, a button read as the field's label and the date written out, or "no date",
+  opens the calendar, the second way in, with Clear beside it once there is one; a time is the same
+  button, in the phone's time format. Typed or picked, a date reaches a hundred years back and ten
+  ahead, on the side of today the field's `range` allows (PLAN-OPEN, 10.1 #43). `checkAnswer` has
+  no clock, so a stored date outside the range now, a follow-up that has passed, is still shown and
+  left alone until changed, and the picker opens on the nearest day it can show.
 - **A diagnosis** is a private search box carrying the field's label, which searches phase 3's
   problem code list on the phone by word or by code, with or without its dot, and lists eight
   matches at most, each a button read as its title and code. Only a code from that list can be
@@ -2071,11 +2081,13 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
 - **Every run:** each widget, the form and the read view pass in Day, Night run and High contrast,
   at 200% text and on a 320 px phone, and the whole form at 200% text on a 320 px phone in Day and
   Night run as well (8.3). At 300% text an entry's title and Remove still fit.
-- **Open (review finding A11Y-3): the date picker's calendar.** Its day cells are under 48 px wide,
-  47.7 on a 390 px phone and 37.7 on a 320 px one, where seven columns of 48 px would need 336 px.
-  So it fails the tap target check in every run, and no test opens it under the guidelines. A
-  private typed date beside the calendar, read back as phase 3's birth date is
-  (`apps/mobile/lib/design/widgets/birth_field.dart`), is the open question.
+- **The one exception (review finding A11Y-3): the calendar's day cells.** They are Material's,
+  seven to a row, under 48 px wide: 47.7 on a 390 px phone and 37.7 on a 320 px one, where seven
+  columns of 48 px would need 336 px. So the calendar fails Android's tap target check in every run,
+  and iOS's 44 px at 320 px. The typed date is the way in that meets every rule, in every run; the
+  calendar stays as a second way. `date_field_test.dart` opens the calendar in `formRuns` with the
+  guidelines on, holds its labels and contrast, and records which runs its cells can't meet, so a
+  Flutter change that fixes them shows.
 
 ### 8.3 Tests without one test per form
 
@@ -2123,8 +2135,9 @@ by a script, and failed.
   field and Other text shows in some set, and `checkAnswer` takes every value. A new note type is
   covered the moment it is in the presets. A field is checked in its grid's first row and in a
   repeating section's one entry, not in every row. No bundled field has help, so a field's help is
-  held by the widget tests alone. It opens no date picker (8.2, A11Y-3); the time dial and the
-  question Remove asks pass the guideline matchers in `formRuns`, in their own files' tests.
+  held by the widget tests alone. It opens no picker: the date's typed boxes, the time dial and the
+  question Remove asks pass the guideline matchers in `formRuns`, in their own files' tests, and the
+  calendar is opened there too, its day cells the one exception (8.2, A11Y-3).
 
 ### 8.4 The portal
 
@@ -2234,6 +2247,7 @@ the rest of the visit page.
 | 51 | Does a finished note offer its actions, Show handoff on a finished Red flags note for one? | No: an action is drawn only on a form that can be changed, and only where the screen gives it something to do (#39, 8.1). An action stores nothing, and a step that can't be taken is not offered. Whether the visit screen offers a finished note's handoff is the screen's (lifecycle 9.7, 9.8) | Brooke and Mercy |
 | 52 | Does a conflict on an answer name the person who made the other change? | No: phase 2's words, "A teammate", "You, from another phone" or "On the server", with the time, the two values side by side (8.1). Lifecycle 9.5 asks for both values and phase 2's choice; the summary's lines name who changed an answer since the person last had the note open (lifecycle 9.6) | The team |
 | 53 | Is a section that `needs` a capability drawn for a credential without it? | No, even when it holds a teammate's answers: such a section is "shown to, and changed by" a credential with the capability (2.2, 6.4), and the form draws it only for one (8.1). The read view of a finished note shows it to every reader, as `needs` hides nothing from a reader (lifecycle 6.4) | Brooke and Mercy |
+| 54 | How a date is typed | In three private boxes, month, day and year: month first, as the US pilot writes a date and as phase 3's birth date is read (phase 3 design 14.1 #20), and a four-digit year, since a two-digit one could fall either side of today on a field whose range is `any`. The calendar is the second way in: its day cells can't be 48 px on a 320 px phone (8.2, review finding A11Y-3). Day-month order follows phase 3's team setting when there is one | The team |
 
 ### 10.2 Questions that need a person and have no default
 

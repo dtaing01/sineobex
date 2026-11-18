@@ -261,6 +261,7 @@ Each is a single configuration point or code path, so changing it later is small
 | Does a finished note offer its actions? (phase 4, forms 10.1 #51) | No: an action is offered only on a form that can be changed | An action stores nothing, and a step that can't be taken is not offered. Brooke and Mercy decide |
 | Does a conflict on an answer name the person who made the other change? (phase 4, forms 10.1 #52) | No: phase 2's words, "A teammate", "You, from another phone" or "On the server" | Phase 2's choice names no one, and lifecycle 9.5 asks for the two values side by side. The team decides |
 | Is a section that needs a capability drawn for a credential without it? (phase 4, forms 10.1 #53) | No, even when it holds a teammate's answers; the read view shows it to every reader | The format shows such a section to, and lets it be changed by, a credential with the capability only. Brooke and Mercy decide |
+| How is a note's date typed? (phase 4, forms 10.1 #54) | In three private boxes, month, day and year, month first, with a four-digit year; the calendar is a second way in | Month first as phase 3 reads a birth date; a two-digit year could fall either side of today on a field whose range is any. The calendar's day cells can't be 48 px on a 320 px phone, so the typed date is the way that meets every accessibility rule. The team decides |
 
 ### Phases 4 to 12 (designed, not built)
 

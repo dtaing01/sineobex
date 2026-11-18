@@ -14,17 +14,23 @@
 | Phone | The Demo data only banner is announced by screen readers, not only drawn | same |
 | Phone | Each patient screen (Patients tab, New patient and Edit details, profile, ID card, problem, Add problem, field review, Needs attention) runs its main scenario in Day, Night run and High contrast with the guideline matchers, at 200% text with no overflow, and on a 320 px wide phone | `apps/mobile/test/features/patients/` |
 | Phone | Rows and chips that act as buttons carry a tap action for Switch Access and Voice Access; results and saved dates are announced once per search or change, never per keystroke | same |
-| Phone | Every widget of a note form, the form itself and the read view of a finished note pass the guideline matchers in Day, Night run and High contrast, at 200% text and on a 320 px wide phone, with no overflow and nothing that scrolls sideways. The smoke test draws every bundled note type whole (every section and collapsed part opened; as it opens, answered and read-only) in those runs and at 200% text on a 320 px wide phone in Day and Night run, as are the time dial and the question Remove asks; an entry's title and Remove fit at 300% text | `apps/mobile/test/features/forms/` |
+| Phone | Every widget of a note form, the form itself and the read view of a finished note pass the guideline matchers in Day, Night run and High contrast, at 200% text and on a 320 px wide phone, with no overflow and nothing that scrolls sideways. The smoke test draws every bundled note type whole (every section and collapsed part opened; as it opens, answered and read-only) in those runs and at 200% text on a 320 px wide phone in Day and Night run, as are a date's typed boxes, the time dial and the question Remove asks; an entry's title and Remove fit at 300% text. The one exception is the day cells of the date calendar, a second way in beside the typed date (Known gaps) | `apps/mobile/test/features/forms/` |
 | Phone | The words of what can't be changed, every answer of a read-only form and a disabled tick, are measured directly at 4.5:1 (7:1 in High contrast), since Flutter's contrast matcher skips a node that is not enabled | `apps/mobile/test/features/forms/forms_test_helpers.dart` |
-| Phone | Every box a note form types in is private (no suggestions, autocorrect or learned words), and a date or a time is picked, not typed. A refused pick, a number's range, a text's limit and what one-tap Normal did are said once, never per keystroke; a field's label is heard before its help; a section's header is a heading; a chip's state comes from its selected flag, and a picked choose-one chip says that a tap clears it | `apps/mobile/test/features/forms/` |
+| Phone | Every box a note form types in is private (no suggestions, autocorrect or learned words), a date is typed in three such boxes (or picked on the calendar) and a time picked on the dial. A refused date, a refused pick, a number's range, a text's limit and what one-tap Normal did are said once, never per keystroke; a field's label is heard before its help; a section's header is a heading; a chip's state comes from its selected flag, and a picked choose-one chip says that a tap clears it | `apps/mobile/test/features/forms/` |
 | Portal | Each patient page (search, profile, ID card panel, corrections, history, reviews, duplicates queue and pair, merges, problem reversals) passes axe in the three themes and reflows at 320 px; keyboard-only decisions; error summaries take focus | `apps/portal/e2e/{patients,corrections,id-card,duplicates,problems}.spec.ts` |
 
 ## Known gaps
 
-- **A note's date picker** (`docs/design/phase-4/forms.md` 8.2). Its calendar's day cells are
-  narrower than the 48 px the phone's checks hold every control to: 47.7 px on a 390 px wide phone
-  and 37.7 px on a 320 px one (WCAG 2.2's minimum is 24 px). No test opens it under the guideline
-  matchers. A typed date beside the calendar is an open question.
+- **The one exception: the day cells of a note's date calendar** (`docs/design/phase-4/forms.md`
+  8.2). The calendar is Material's, seven day columns to a row, and seven columns of 48 px need
+  336 px, more than a 320 px wide phone has: its cells are 47.7 px wide on a 390 px phone and
+  37.7 px on a 320 px one (WCAG 2.2's minimum is 24 px). They fail Android's 48 px check in every
+  run and iOS's 44 px at 320 px. The way that meets every rule is the typed date beside the
+  calendar: three private boxes, month, day and year, which pass every guideline in every run
+  (three themes, 200% text, 320 px, and 200% text at 320 px), and the calendar stays as a second
+  way. `apps/mobile/test/features/forms/date_field_test.dart` opens the calendar in every run with
+  the guidelines on, holds its labels and contrast, and records which runs its cells can't meet, so
+  a change to Material that fixes them shows.
 
 ## What automated checks cannot prove
 
