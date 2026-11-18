@@ -21,6 +21,47 @@
         ],
         "type": "object"
       },
+      "AddendumView": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "clockVerified": {
+            "type": "boolean"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "writtenAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "noteId",
+          "text",
+          "author",
+          "credential",
+          "writtenAt",
+          "clockVerified"
+        ],
+        "type": "object"
+      },
       "AllergyCategory": {
         "enum": [
           "drug",
@@ -88,6 +129,36 @@
         "required": [
           "email",
           "displayName"
+        ],
+        "type": "object"
+      },
+      "AttestationView": {
+        "properties": {
+          "attending": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "attestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "signoffId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "statementVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "signoffId",
+          "attending",
+          "statementVersion",
+          "attestedAt"
         ],
         "type": "object"
       },
@@ -490,6 +561,62 @@
           "method",
           "recordedAt",
           "recordedBy"
+        ],
+        "type": "object"
+      },
+      "CorrectionView": {
+        "description": "The values are in the read model, under the answers",
+        "properties": {
+          "clockVerified": {
+            "type": "boolean"
+          },
+          "correctedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "corrector": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "corrected",
+              "declined",
+              "no_change",
+              "draft_edit",
+              "not_author"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestedByPatient": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "outcome",
+          "fields",
+          "requestedByPatient",
+          "reason",
+          "corrector",
+          "credential",
+          "correctedAt",
+          "clockVerified"
         ],
         "type": "object"
       },
@@ -986,6 +1113,13 @@
           "keep_separate",
           "merged",
           "superseded"
+        ],
+        "type": "string"
+      },
+      "EncounterKind": {
+        "enum": [
+          "medical",
+          "non_medical"
         ],
         "type": "string"
       },
@@ -2263,6 +2397,22 @@
         ],
         "type": "object"
       },
+      "NoteAttestation": {
+        "enum": [
+          "not_needed",
+          "waiting",
+          "attested"
+        ],
+        "type": "string"
+      },
+      "NoteStatus": {
+        "enum": [
+          "draft",
+          "completed",
+          "signed"
+        ],
+        "type": "string"
+      },
       "NoteTypeDefinition": {
         "properties": {
           "definition": {
@@ -2662,6 +2812,13 @@
             "description": "Which projection made this copy",
             "type": "string"
           },
+          "recentVisits": {
+            "description": "The last three visits in full, read offline from the cache",
+            "items": {
+              "$ref": "#/components/schemas/VisitRead"
+            },
+            "type": "array"
+          },
           "redirectedFrom": {
             "description": "The merged ID that was asked for",
             "format": "uuid",
@@ -2672,6 +2829,9 @@
               "$ref": "#/components/schemas/FieldReviewView"
             },
             "type": "array"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/Timeline"
           }
         },
         "required": [
@@ -3359,6 +3519,137 @@
         ],
         "type": "object"
       },
+      "ReadCorrection": {
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "old": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "old",
+          "by",
+          "credential",
+          "at",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReadEntry": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadItem"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ReadItem": {
+        "properties": {
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/ReadCorrection"
+            },
+            "type": "array"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "value": {
+            "description": "Null for an answer a correction took away",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "labels",
+          "value",
+          "corrections"
+        ],
+        "type": "object"
+      },
+      "ReadModel": {
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ReadSection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sections"
+        ],
+        "type": "object"
+      },
+      "ReadSection": {
+        "description": "A section with items, or a repeating one with entries",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ReadEntry"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadItem"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
       "RecordEntity": {
         "enum": [
           "encounter",
@@ -3832,6 +4123,78 @@
         ],
         "type": "object"
       },
+      "SignoffView": {
+        "properties": {
+          "act": {
+            "enum": [
+              "complete",
+              "sign",
+              "cosign"
+            ],
+            "type": "string"
+          },
+          "claimedCredential": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Credential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clockVerified": {
+            "type": "boolean"
+          },
+          "contentHash": {
+            "description": "Only to whoever acts as the note’s author, its signer, and a reader who sees every answer of any note",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          },
+          "effect": {
+            "enum": [
+              "signed",
+              "completed",
+              "saved_unsigned",
+              "none"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "needsAttestation": {
+            "type": "boolean"
+          },
+          "signedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "signer": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "statementVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "act",
+          "effect",
+          "signer",
+          "credential",
+          "claimedCredential",
+          "needsAttestation",
+          "statementVersion",
+          "signedAt",
+          "clockVerified"
+        ],
+        "type": "object"
+      },
       "Surface": {
         "description": "Where the result is shown. On the phone no result carries a legal name.",
         "enum": [
@@ -4275,6 +4638,101 @@
         ],
         "type": "object"
       },
+      "Timeline": {
+        "description": "On the chart and the phone’s cache; absent where a chart is shown beside a decision",
+        "properties": {
+          "encounters": {
+            "description": "Newest first, the first 50",
+            "items": {
+              "$ref": "#/components/schemas/TimelineVisit"
+            },
+            "type": "array"
+          },
+          "referrals": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "encounters",
+          "referrals"
+        ],
+        "type": "object"
+      },
+      "TimelineGroup": {
+        "description": "The note type’s timeline filter (forms 2.2)",
+        "enum": [
+          "clinical",
+          "psych",
+          "social",
+          "outreach",
+          "harm_reduction",
+          "wound"
+        ],
+        "type": "string"
+      },
+      "TimelineNote": {
+        "properties": {
+          "attestation": {
+            "$ref": "#/components/schemas/NoteAttestation"
+          },
+          "group": {
+            "$ref": "#/components/schemas/TimelineGroup"
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteTypeKey": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NoteStatus"
+          }
+        },
+        "required": [
+          "noteId",
+          "noteTypeKey",
+          "group",
+          "status",
+          "attestation"
+        ],
+        "type": "object"
+      },
+      "TimelineVisit": {
+        "properties": {
+          "encounterId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EncounterKind"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineNote"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NoteStatus"
+          }
+        },
+        "required": [
+          "encounterId",
+          "startedAt",
+          "kind",
+          "status",
+          "notes"
+        ],
+        "type": "object"
+      },
       "UndoMerge": {
         "properties": {
           "comment": {
@@ -4472,6 +4930,170 @@
         "required": [
           "userId",
           "displayName"
+        ],
+        "type": "object"
+      },
+      "VisitNote": {
+        "properties": {
+          "actingAuthor": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "addenda": {
+            "items": {
+              "$ref": "#/components/schemas/AddendumView"
+            },
+            "type": "array"
+          },
+          "attestation": {
+            "$ref": "#/components/schemas/NoteAttestation"
+          },
+          "attestations": {
+            "items": {
+              "$ref": "#/components/schemas/AttestationView"
+            },
+            "type": "array"
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contentHash": {
+            "description": "The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionView"
+            },
+            "type": "array"
+          },
+          "group": {
+            "$ref": "#/components/schemas/TimelineGroup"
+          },
+          "noteId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "noteTypeKey": {
+            "type": "string"
+          },
+          "noteTypeVersion": {
+            "type": "integer"
+          },
+          "read": {
+            "$ref": "#/components/schemas/ReadModel"
+          },
+          "signoffs": {
+            "items": {
+              "$ref": "#/components/schemas/SignoffView"
+            },
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NoteStatus"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "noteId",
+          "noteTypeKey",
+          "noteTypeVersion",
+          "title",
+          "group",
+          "status",
+          "attestation",
+          "completedAt",
+          "author",
+          "actingAuthor",
+          "read",
+          "signoffs",
+          "addenda",
+          "corrections",
+          "attestations"
+        ],
+        "type": "object"
+      },
+      "VisitRead": {
+        "properties": {
+          "addenda": {
+            "description": "The visit’s own, naming no note",
+            "items": {
+              "$ref": "#/components/schemas/AddendumView"
+            },
+            "type": "array"
+          },
+          "clockVerified": {
+            "type": "boolean"
+          },
+          "encounterId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EncounterKind"
+          },
+          "locationText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "The notes the reader may see; no empty draft",
+            "items": {
+              "$ref": "#/components/schemas/VisitNote"
+            },
+            "type": "array"
+          },
+          "patientId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "records": {
+            "description": "Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them",
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NoteStatus"
+          },
+          "summary": {
+            "description": "Absent for a Medical visit to a reader of no Medical notes",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "encounterId",
+          "patientId",
+          "kind",
+          "status",
+          "startedAt",
+          "clockVerified",
+          "locationText",
+          "addenda",
+          "notes",
+          "records"
         ],
         "type": "object"
       },
@@ -4791,6 +5413,84 @@
         "summary": "Report that this phone deleted its data and key for the team",
         "tags": [
           "devices"
+        ]
+      }
+    },
+    "/v1/encounters/{encounterId}": {
+      "get": {
+        "description": "Built on the sync read’s rules (lifecycle 5.1, 6.4): what the reader may not see is absent, never blanked. Every record returned is logged.",
+        "operationId": "getEncounter",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "encounterId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitRead"
+                }
+              }
+            },
+            "description": "The visit"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A visit as the reader may see it: its notes laid out for reading, and what hangs off them",
+        "tags": [
+          "encounters"
         ]
       }
     },

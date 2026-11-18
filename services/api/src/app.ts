@@ -7,6 +7,7 @@ import { ApiError, type ErrorBody } from './lib/errors.ts';
 import { registerAuditRoutes } from './routes/audit-log.ts';
 import { registerDeviceRoutes } from './routes/devices.ts';
 import { registerDuplicateRoutes } from './routes/duplicates.ts';
+import { registerEncounterRoutes } from './routes/encounters.ts';
 import { IMMUTABLE_NO_PHI, registerFormRoutes } from './routes/forms.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import { registerMemberRoutes } from './routes/members.ts';
@@ -111,6 +112,7 @@ export function createApp(deps: Deps): App {
   registerDuplicateRoutes(app, deps);
   registerDeviceRoutes(app, deps);
   registerFormRoutes(app, deps);
+  registerEncounterRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {
     app.doc31('/openapi.json', openApiInfo);

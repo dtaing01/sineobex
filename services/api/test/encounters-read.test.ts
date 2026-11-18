@@ -22,8 +22,9 @@ import {
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import {
+  call,
   noteOn,
   secondTeam,
   TEST_RED_FLAGS_TYPE,
@@ -66,6 +67,7 @@ interface VisitRead {
   summary?: string | null;
   addenda: { id: string }[];
   notes: Note[];
+  records: { entity: string; id: string; attributes: Record<string, unknown> }[];
 }
 
 const E1 = 'e0000001';
@@ -141,7 +143,7 @@ describe('phase 4: read a visit online', () => {
       [exam, 'sign', 'signed'],
       [talk, 'complete', 'completed'],
     );
-    await finish(sol, [social, 'complete', 'completed']);
+    signoffs.push(...(await finish(sol, [social, 'complete', 'completed'])));
     noteAddendum = await rae.phone.change({
       entity: 'note_addendum',
       op: 'create',
@@ -338,6 +340,10 @@ describe('phase 4: read a visit online', () => {
     expect(ids(e.corrections)).toEqual([examFix.recordId]);
     for (const n of [flags, plain, exam])
       for (const s of noteIn(r.body, n)!.signoffs) expect(s.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    // A student signs nothing and attests nothing, but completes their own note with its hash.
+    const student = await readAs(w.sol.token);
+    expect(noteIn(student.body, social)!.contentHash).toBe(await heldHashOf(social));
+    expect(noteIn(student.body, plain)).not.toHaveProperty('contentHash');
   });
 
   it('a note whose definition the server cannot read is absent for every reader', async () => {
@@ -362,7 +368,7 @@ describe('phase 4: read a visit online', () => {
       [
         line('encounter.viewed', 'encounter', visit.encounterId),
         ...[flags, plain, exam, talk, social].map((n) => line('note.viewed', 'encounter_note', n.noteId)),
-        ...signoffs.slice(0, 3).map((s) => line('note.viewed', 'note_signoff', s.recordId)),
+        ...signoffs.map((s) => line('note.viewed', 'note_signoff', s.recordId)),
         line('note.viewed', 'note_addendum', ownAddendum.recordId),
         line('note.viewed', 'note_addendum', noteAddendum.recordId),
         // The exam's correction is not returned to her, so it is not logged.
@@ -380,7 +386,194 @@ describe('phase 4: read a visit online', () => {
       [
         line('encounter.viewed', 'encounter', visit.encounterId),
         line('note.viewed', 'encounter_note', social.noteId),
+        line('note.viewed', 'note_signoff', signoffs.at(-1)!.recordId),
       ].sort(),
     );
+  });
+
+  describe('the records made at the visit (lifecycle 9.7, D91)', () => {
+    let at: { encounterId: string };
+    let moved: { encounterId: string };
+    let other: string;
+    const made: Record<string, string> = {};
+
+    beforeAll(async () => {
+      const { ana } = w;
+      at = await visitAt(ana, w.patientId, { kind: 'non_medical' });
+      const send = async (...changes: Change[]) =>
+        expect((await ana.send(...changes)).map((r) => r.status)).toEqual(changes.map(() => 'accepted'));
+      const change = (entity: Change['entity'], value: Record<string, unknown>) =>
+        ana.phone.change({ entity, op: 'create', value });
+      const referral = await change('referral', {
+        patientId: w.patientId,
+        referredOn: '2026-10-20',
+        details: 'Demo: dental clinic on Main St',
+        encounterId: at.encounterId,
+      });
+      const allergy = await change('patient_allergy', {
+        patientId: w.patientId,
+        substance: 'Demo: latex',
+        encounterId: at.encounterId,
+      });
+      const problem = await change('problem', {
+        patientId: w.patientId,
+        title: 'Demo: cough',
+        status: 'new',
+        encounterId: at.encounterId,
+      });
+      const hidden = await change('problem', {
+        patientId: w.patientId,
+        title: 'Demo: opioid use',
+        code: { system: 'icd10cm', code: 'F11.20' },
+        status: 'new',
+        encounterId: at.encounterId,
+      });
+      await send(referral, allergy, problem, hidden);
+      const problemNote = await change('problem_note', {
+        problemId: problem.recordId,
+        text: 'Demo: better today',
+        encounterId: at.encounterId,
+      });
+      const hiddenNote = await change('problem_note', {
+        problemId: hidden.recordId,
+        text: 'Demo: started treatment',
+        encounterId: at.encounterId,
+      });
+      await send(problemNote, hiddenNote);
+      Object.assign(made, {
+        hiddenNote: hiddenNote.recordId,
+        referral: referral.recordId,
+        allergy: allergy.recordId,
+        problem: problem.recordId,
+        hidden: hidden.recordId,
+        problemNote: problemNote.recordId,
+      });
+
+      // A visit moved to another patient leaves its referral with the first (12.1 #25).
+      other = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Wren' })).id;
+      moved = await visitAt(ana, w.patientId, { kind: 'non_medical' });
+      const left = await change('referral', {
+        patientId: w.patientId,
+        referredOn: '2026-10-21',
+        details: 'Demo: eye clinic',
+        encounterId: moved.encounterId,
+      });
+      await send(left);
+      made.left = left.recordId;
+      await send(
+        await ana.phone.change({
+          entity: 'encounter',
+          recordId: moved.encounterId,
+          op: 'set',
+          field: 'patientId',
+          value: other,
+          baseVersion: 1,
+        }),
+      );
+    });
+
+    const byEntity = (r: VisitRead) => r.records.map((x) => `${x.entity} ${x.id}`).sort();
+    const line = (entity: string, id: string) => `${entity} ${id}`;
+
+    it('lists them, whichever chart they are on, as the chart would show them to the reader', async () => {
+      const all = [
+        line('referral', made.referral!),
+        line('patient_allergy', made.allergy!),
+        line('problem', made.problem!),
+        line('problem', made.hidden!),
+        line('problem_note', made.problemNote!),
+        line('problem_note', made.hiddenNote!),
+      ].sort();
+      const ana = await readAs(w.ana.token, at.encounterId);
+      expect(ana.status).toBe(200);
+      expect(byEntity(ana.body)).toEqual(all);
+      expect(ana.body.records.find((x) => x.id === made.referral)!.attributes).toMatchObject({
+        patientId: w.patientId,
+        encounterId: at.encounterId,
+      });
+      // Billing/Data reads problems but no sensitive one; the CHW preset reads no problem at all.
+      const bea = await readAs(w.bea.token, at.encounterId);
+      expect(byEntity(bea.body)).toEqual(
+        all.filter(
+          (x) => x !== line('problem', made.hidden!) && x !== line('problem_note', made.hiddenNote!),
+        ),
+      );
+      expectNoneOf(bea.body, ['Demo: opioid use', 'F11.20', 'Demo: started treatment']);
+      const kim = await readAs(w.kim.token, at.encounterId);
+      expect(byEntity(kim.body)).toEqual(
+        [line('referral', made.referral!), line('patient_allergy', made.allergy!)].sort(),
+      );
+      expectNoneOf(kim.body, ['Demo: cough', 'Demo: better today']);
+
+      // The moved visit is on the other patient now; its referral stays on the first chart.
+      const left = await readAs(w.ana.token, moved.encounterId);
+      expect(left.body.patientId).toBe(other);
+      expect(byEntity(left.body)).toEqual([line('referral', made.left!)]);
+    });
+
+    it('logs each one shown as a read of its patient’s record', async () => {
+      const mark = await auditMark(h);
+      await readAs(w.kim.token, moved.encounterId);
+      const events = await eventsAfter(h, mark);
+      expect(events.map((e) => [e.action, e.entity, e.entityId, e.patientId])).toEqual(
+        expect.arrayContaining([
+          ['encounter.viewed', 'encounter', moved.encounterId, other],
+          ['patient.viewed', 'referral', made.left, w.patientId],
+        ]),
+      );
+      expect(events).toHaveLength(2);
+      await expectAuditClean(h, ['Demo: eye clinic'], mark);
+    });
+  });
+
+  it('shows of each note, and of what hangs off it, exactly what the sync read gives the same reader', async () => {
+    const sql = h.scratch.owner;
+    const refs = [
+      ...(
+        await sql<
+          { id: string }[]
+        >`select id from sineobex.encounter_notes where encounter_id = ${visit.encounterId}`
+      ).map((r) => ({ entity: 'encounter_note', id: r.id })),
+      ...(
+        await sql<{ id: string }[]>`
+          select s.id from sineobex.note_signoffs s join sineobex.encounter_notes n on n.id = s.note_id
+          where n.encounter_id = ${visit.encounterId}`
+      ).map((r) => ({ entity: 'note_signoff', id: r.id })),
+      ...(
+        await sql<
+          { id: string }[]
+        >`select id from sineobex.note_addenda where encounter_id = ${visit.encounterId}`
+      ).map((r) => ({ entity: 'note_addendum', id: r.id })),
+      ...(
+        await sql<{ id: string }[]>`
+          select c.id from sineobex.note_corrections c join sineobex.encounter_notes n on n.id = c.note_id
+          where n.encounter_id = ${visit.encounterId}`
+      ).map((r) => ({ entity: 'note_correction', id: r.id })),
+    ];
+    // The sync read needs encounters.chart: every reader here holds it.
+    for (const reader of [w.vic, w.ana, w.rae, w.sol, w.nia]) {
+      const synced = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: reader.token,
+        teamId: w.t.teamId,
+        json: { records: refs },
+      });
+      expect(synced.status).toBe(200);
+      const fromSync = (synced.body.records as { entity: string; id: string; attributes: Json }[]).map(
+        (r) =>
+          `${r.entity} ${r.id}${r.entity === 'note_signoff' && 'contentHash' in r.attributes ? ' hash' : ''}`,
+      );
+      const read = (await readAs(reader.token)).body;
+      const fromRead = [
+        ...read.addenda.map((a) => `note_addendum ${a.id}`),
+        ...read.notes.flatMap((n) => [
+          `encounter_note ${n.noteId}`,
+          ...n.signoffs.map((s) => `note_signoff ${s.id}${'contentHash' in s ? ' hash' : ''}`),
+          ...n.addenda.map((a) => `note_addendum ${a.id}`),
+          ...n.corrections.map((c) => `note_correction ${c.id}`),
+        ]),
+      ];
+      expect(fromRead.sort(), reader.displayName).toEqual(fromSync.sort());
+    }
   });
 });

@@ -204,6 +204,25 @@ enum ConsentViewMethod {
   String toJson() => wire;
 }
 
+enum CorrectionViewOutcome {
+  corrected('corrected'),
+  declined('declined'),
+  noChange('no_change'),
+  draftEdit('draft_edit'),
+  notAuthor('not_author'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const CorrectionViewOutcome(this.wire);
+  final String wire;
+
+  static CorrectionViewOutcome fromJson(String value) =>
+      CorrectionViewOutcome.values.firstWhere((e) => e.wire == value, orElse: () => CorrectionViewOutcome.unknown);
+
+  String toJson() => wire;
+}
+
 enum Credential {
   attending('attending'),
   resident('resident'),
@@ -377,6 +396,22 @@ enum DuplicateStatus {
 
   static DuplicateStatus fromJson(String value) =>
       DuplicateStatus.values.firstWhere((e) => e.wire == value, orElse: () => DuplicateStatus.unknown);
+
+  String toJson() => wire;
+}
+
+enum EncounterKind {
+  medical('medical'),
+  nonMedical('non_medical'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const EncounterKind(this.wire);
+  final String wire;
+
+  static EncounterKind fromJson(String value) =>
+      EncounterKind.values.firstWhere((e) => e.wire == value, orElse: () => EncounterKind.unknown);
 
   String toJson() => wire;
 }
@@ -693,6 +728,40 @@ enum MyTeamTeamStatus {
   String toJson() => wire;
 }
 
+enum NoteAttestation {
+  notNeeded('not_needed'),
+  waiting('waiting'),
+  attested('attested'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteAttestation(this.wire);
+  final String wire;
+
+  static NoteAttestation fromJson(String value) =>
+      NoteAttestation.values.firstWhere((e) => e.wire == value, orElse: () => NoteAttestation.unknown);
+
+  String toJson() => wire;
+}
+
+enum NoteStatus {
+  draft('draft'),
+  completed('completed'),
+  signed('signed'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteStatus(this.wire);
+  final String wire;
+
+  static NoteStatus fromJson(String value) =>
+      NoteStatus.values.firstWhere((e) => e.wire == value, orElse: () => NoteStatus.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteTypeEntryKindsItem {
   medical('medical'),
   nonMedical('non_medical'),
@@ -947,6 +1016,41 @@ enum ReviewNeeds {
   String toJson() => wire;
 }
 
+enum SignoffViewAct {
+  complete('complete'),
+  sign('sign'),
+  cosign('cosign'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SignoffViewAct(this.wire);
+  final String wire;
+
+  static SignoffViewAct fromJson(String value) =>
+      SignoffViewAct.values.firstWhere((e) => e.wire == value, orElse: () => SignoffViewAct.unknown);
+
+  String toJson() => wire;
+}
+
+enum SignoffViewEffect {
+  signed('signed'),
+  completed('completed'),
+  savedUnsigned('saved_unsigned'),
+  none('none'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SignoffViewEffect(this.wire);
+  final String wire;
+
+  static SignoffViewEffect fromJson(String value) =>
+      SignoffViewEffect.values.firstWhere((e) => e.wire == value, orElse: () => SignoffViewEffect.unknown);
+
+  String toJson() => wire;
+}
+
 /// Where the result is shown. On the phone no result carries a legal name.
 enum Surface {
   portal('portal'),
@@ -1046,6 +1150,27 @@ enum TeamStatusChangeStatus {
   String toJson() => wire;
 }
 
+/// The note type’s timeline filter (forms 2.2)
+enum TimelineGroup {
+  clinical('clinical'),
+  psych('psych'),
+  social('social'),
+  outreach('outreach'),
+  harmReduction('harm_reduction'),
+  wound('wound'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const TimelineGroup(this.wire);
+  final String wire;
+
+  static TimelineGroup fromJson(String value) =>
+      TimelineGroup.values.firstWhere((e) => e.wire == value, orElse: () => TimelineGroup.unknown);
+
+  String toJson() => wire;
+}
+
 /// applied: written to the kept chart; kept_both: offered in a review there (taken out by the undo); history_only: kept in its history
 enum UndoMergeResultRedirectedEditsItemOutcome {
   applied('applied'),
@@ -1081,6 +1206,46 @@ class Acknowledgement {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'kind': kind.toJson(),
         'version': version,
+      };
+}
+
+class AddendumView {
+  const AddendumView({
+    required this.author,
+    required this.clockVerified,
+    required this.credential,
+    required this.id,
+    required this.noteId,
+    required this.text,
+    required this.writtenAt,
+  });
+
+  final UserRef author;
+  final bool clockVerified;
+  final Credential credential;
+  final String id;
+  final String? noteId;
+  final String text;
+  final DateTime writtenAt;
+
+  factory AddendumView.fromJson(Map<String, dynamic> json) => AddendumView(
+        author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
+        clockVerified: json['clockVerified'] as bool,
+        credential: Credential.fromJson(json['credential'] as String),
+        id: json['id'] as String,
+        noteId: json['noteId'] == null ? null : json['noteId'] as String,
+        text: json['text'] as String,
+        writtenAt: DateTime.parse(json['writtenAt'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'author': author.toJson(),
+        'clockVerified': clockVerified,
+        'credential': credential.toJson(),
+        'id': id,
+        'noteId': noteId == null ? null : noteId!,
+        'text': text,
+        'writtenAt': writtenAt.toUtc().toIso8601String(),
       };
 }
 
@@ -1133,6 +1298,38 @@ class AppointAdmin {
         if (credentialFields != null) 'credentialFields': credentialFields!.toJson(),
         'displayName': displayName,
         'email': email,
+      };
+}
+
+class AttestationView {
+  const AttestationView({
+    required this.attending,
+    required this.attestedAt,
+    required this.id,
+    required this.signoffId,
+    required this.statementVersion,
+  });
+
+  final UserRef attending;
+  final DateTime attestedAt;
+  final String id;
+  final String signoffId;
+  final String statementVersion;
+
+  factory AttestationView.fromJson(Map<String, dynamic> json) => AttestationView(
+        attending: UserRef.fromJson(json['attending'] as Map<String, dynamic>),
+        attestedAt: DateTime.parse(json['attestedAt'] as String),
+        id: json['id'] as String,
+        signoffId: json['signoffId'] as String,
+        statementVersion: json['statementVersion'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'attending': attending.toJson(),
+        'attestedAt': attestedAt.toUtc().toIso8601String(),
+        'id': id,
+        'signoffId': signoffId,
+        'statementVersion': statementVersion,
       };
 }
 
@@ -1543,6 +1740,55 @@ class ConsentView {
         'method': method.toJson(),
         'recordedAt': recordedAt.toUtc().toIso8601String(),
         'recordedBy': recordedBy.toJson(),
+      };
+}
+
+/// The values are in the read model, under the answers
+class CorrectionView {
+  const CorrectionView({
+    required this.clockVerified,
+    required this.correctedAt,
+    required this.corrector,
+    required this.credential,
+    required this.fields,
+    required this.id,
+    required this.outcome,
+    required this.reason,
+    required this.requestedByPatient,
+  });
+
+  final bool clockVerified;
+  final DateTime correctedAt;
+  final UserRef corrector;
+  final Credential credential;
+  final List<String> fields;
+  final String id;
+  final CorrectionViewOutcome outcome;
+  final String reason;
+  final bool requestedByPatient;
+
+  factory CorrectionView.fromJson(Map<String, dynamic> json) => CorrectionView(
+        clockVerified: json['clockVerified'] as bool,
+        correctedAt: DateTime.parse(json['correctedAt'] as String),
+        corrector: UserRef.fromJson(json['corrector'] as Map<String, dynamic>),
+        credential: Credential.fromJson(json['credential'] as String),
+        fields: (json['fields'] as List<dynamic>).map((e) => e as String).toList(),
+        id: json['id'] as String,
+        outcome: CorrectionViewOutcome.fromJson(json['outcome'] as String),
+        reason: json['reason'] as String,
+        requestedByPatient: json['requestedByPatient'] as bool,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'clockVerified': clockVerified,
+        'correctedAt': correctedAt.toUtc().toIso8601String(),
+        'corrector': corrector.toJson(),
+        'credential': credential.toJson(),
+        'fields': fields.map((e) => e).toList(),
+        'id': id,
+        'outcome': outcome.toJson(),
+        'reason': reason,
+        'requestedByPatient': requestedByPatient,
       };
 }
 
@@ -3482,8 +3728,10 @@ class PatientChart {
     this.problemNotes,
     this.problems,
     required this.projection,
+    this.recentVisits,
     this.redirectedFrom,
     required this.reviews,
+    this.timeline,
   });
 
   final List<RecordSnapshot> aliases;
@@ -3500,9 +3748,12 @@ class PatientChart {
   final List<RecordSnapshot>? problems;
   /// Which projection made this copy
   final String projection;
+  /// The last three visits in full, read offline from the cache
+  final List<VisitRead>? recentVisits;
   /// The merged ID that was asked for
   final String? redirectedFrom;
   final List<FieldReviewView> reviews;
+  final Timeline? timeline;
 
   factory PatientChart.fromJson(Map<String, dynamic> json) => PatientChart(
         aliases: (json['aliases'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
@@ -3517,8 +3768,10 @@ class PatientChart {
         problemNotes: json['problemNotes'] == null ? null : (json['problemNotes'] as List<dynamic>).map((e) => ProblemNoteView.fromJson(e as Map<String, dynamic>)).toList(),
         problems: json['problems'] == null ? null : (json['problems'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
         projection: json['projection'] as String,
+        recentVisits: json['recentVisits'] == null ? null : (json['recentVisits'] as List<dynamic>).map((e) => VisitRead.fromJson(e as Map<String, dynamic>)).toList(),
         redirectedFrom: json['redirectedFrom'] == null ? null : json['redirectedFrom'] as String,
         reviews: (json['reviews'] as List<dynamic>).map((e) => FieldReviewView.fromJson(e as Map<String, dynamic>)).toList(),
+        timeline: json['timeline'] == null ? null : Timeline.fromJson(json['timeline'] as Map<String, dynamic>),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -3534,8 +3787,10 @@ class PatientChart {
         if (problemNotes != null) 'problemNotes': problemNotes!.map((e) => e.toJson()).toList(),
         if (problems != null) 'problems': problems!.map((e) => e.toJson()).toList(),
         'projection': projection,
+        if (recentVisits != null) 'recentVisits': recentVisits!.map((e) => e.toJson()).toList(),
         if (redirectedFrom != null) 'redirectedFrom': redirectedFrom!,
         'reviews': reviews.map((e) => e.toJson()).toList(),
+        if (timeline != null) 'timeline': timeline!.toJson(),
       };
 }
 
@@ -4132,6 +4387,140 @@ class QuarantineReceiptResultsItem {
       };
 }
 
+class ReadCorrection {
+  const ReadCorrection({
+    required this.at,
+    required this.by,
+    required this.credential,
+    required this.old,
+    required this.path,
+    required this.reason,
+  });
+
+  final String at;
+  final String by;
+  final String credential;
+  final String? old;
+  final String path;
+  final String reason;
+
+  factory ReadCorrection.fromJson(Map<String, dynamic> json) => ReadCorrection(
+        at: json['at'] as String,
+        by: json['by'] as String,
+        credential: json['credential'] as String,
+        old: json['old'] == null ? null : json['old'] as String,
+        path: json['path'] as String,
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'at': at,
+        'by': by,
+        'credential': credential,
+        'old': old == null ? null : old!,
+        'path': path,
+        'reason': reason,
+      };
+}
+
+class ReadEntry {
+  const ReadEntry({
+    required this.id,
+    required this.items,
+    required this.title,
+  });
+
+  final String id;
+  final List<ReadItem> items;
+  final String title;
+
+  factory ReadEntry.fromJson(Map<String, dynamic> json) => ReadEntry(
+        id: json['id'] as String,
+        items: (json['items'] as List<dynamic>).map((e) => ReadItem.fromJson(e as Map<String, dynamic>)).toList(),
+        title: json['title'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'items': items.map((e) => e.toJson()).toList(),
+        'title': title,
+      };
+}
+
+class ReadItem {
+  const ReadItem({
+    required this.corrections,
+    required this.labels,
+    required this.path,
+    required this.value,
+  });
+
+  final List<ReadCorrection> corrections;
+  final List<String> labels;
+  final String path;
+  /// Null for an answer a correction took away
+  final String? value;
+
+  factory ReadItem.fromJson(Map<String, dynamic> json) => ReadItem(
+        corrections: (json['corrections'] as List<dynamic>).map((e) => ReadCorrection.fromJson(e as Map<String, dynamic>)).toList(),
+        labels: (json['labels'] as List<dynamic>).map((e) => e as String).toList(),
+        path: json['path'] as String,
+        value: json['value'] == null ? null : json['value'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'corrections': corrections.map((e) => e.toJson()).toList(),
+        'labels': labels.map((e) => e).toList(),
+        'path': path,
+        'value': value == null ? null : value!,
+      };
+}
+
+class ReadModel {
+  const ReadModel({
+    required this.sections,
+  });
+
+  final List<ReadSection> sections;
+
+  factory ReadModel.fromJson(Map<String, dynamic> json) => ReadModel(
+        sections: (json['sections'] as List<dynamic>).map((e) => ReadSection.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'sections': sections.map((e) => e.toJson()).toList(),
+      };
+}
+
+/// A section with items, or a repeating one with entries
+class ReadSection {
+  const ReadSection({
+    this.entries,
+    required this.id,
+    this.items,
+    required this.title,
+  });
+
+  final List<ReadEntry>? entries;
+  final String id;
+  final List<ReadItem>? items;
+  final String title;
+
+  factory ReadSection.fromJson(Map<String, dynamic> json) => ReadSection(
+        entries: json['entries'] == null ? null : (json['entries'] as List<dynamic>).map((e) => ReadEntry.fromJson(e as Map<String, dynamic>)).toList(),
+        id: json['id'] as String,
+        items: json['items'] == null ? null : (json['items'] as List<dynamic>).map((e) => ReadItem.fromJson(e as Map<String, dynamic>)).toList(),
+        title: json['title'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (entries != null) 'entries': entries!.map((e) => e.toJson()).toList(),
+        'id': id,
+        if (items != null) 'items': items!.map((e) => e.toJson()).toList(),
+        'title': title,
+      };
+}
+
 class RecordRef {
   const RecordRef({
     required this.entity,
@@ -4598,6 +4987,63 @@ class SignedWipedPayload {
       };
 }
 
+class SignoffView {
+  const SignoffView({
+    required this.act,
+    required this.claimedCredential,
+    required this.clockVerified,
+    this.contentHash,
+    required this.credential,
+    required this.effect,
+    required this.id,
+    required this.needsAttestation,
+    required this.signedAt,
+    required this.signer,
+    required this.statementVersion,
+  });
+
+  final SignoffViewAct act;
+  final Credential? claimedCredential;
+  final bool clockVerified;
+  /// Only to whoever acts as the note’s author, its signer, and a reader who sees every answer of any note
+  final String? contentHash;
+  final Credential credential;
+  final SignoffViewEffect effect;
+  final String id;
+  final bool needsAttestation;
+  final DateTime signedAt;
+  final UserRef signer;
+  final String statementVersion;
+
+  factory SignoffView.fromJson(Map<String, dynamic> json) => SignoffView(
+        act: SignoffViewAct.fromJson(json['act'] as String),
+        claimedCredential: json['claimedCredential'] == null ? null : Credential.fromJson(json['claimedCredential'] as String),
+        clockVerified: json['clockVerified'] as bool,
+        contentHash: json['contentHash'] == null ? null : json['contentHash'] as String,
+        credential: Credential.fromJson(json['credential'] as String),
+        effect: SignoffViewEffect.fromJson(json['effect'] as String),
+        id: json['id'] as String,
+        needsAttestation: json['needsAttestation'] as bool,
+        signedAt: DateTime.parse(json['signedAt'] as String),
+        signer: UserRef.fromJson(json['signer'] as Map<String, dynamic>),
+        statementVersion: json['statementVersion'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'act': act.toJson(),
+        'claimedCredential': claimedCredential == null ? null : claimedCredential!.toJson(),
+        'clockVerified': clockVerified,
+        if (contentHash != null) 'contentHash': contentHash!,
+        'credential': credential.toJson(),
+        'effect': effect.toJson(),
+        'id': id,
+        'needsAttestation': needsAttestation,
+        'signedAt': signedAt.toUtc().toIso8601String(),
+        'signer': signer.toJson(),
+        'statementVersion': statementVersion,
+      };
+}
+
 class SyncChange {
   const SyncChange({
     this.baseVersion,
@@ -5026,6 +5472,92 @@ class TeamStatusChange {
       };
 }
 
+/// On the chart and the phone’s cache; absent where a chart is shown beside a decision
+class Timeline {
+  const Timeline({
+    required this.encounters,
+    required this.referrals,
+  });
+
+  /// Newest first, the first 50
+  final List<TimelineVisit> encounters;
+  final List<RecordSnapshot> referrals;
+
+  factory Timeline.fromJson(Map<String, dynamic> json) => Timeline(
+        encounters: (json['encounters'] as List<dynamic>).map((e) => TimelineVisit.fromJson(e as Map<String, dynamic>)).toList(),
+        referrals: (json['referrals'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounters': encounters.map((e) => e.toJson()).toList(),
+        'referrals': referrals.map((e) => e.toJson()).toList(),
+      };
+}
+
+class TimelineNote {
+  const TimelineNote({
+    required this.attestation,
+    required this.group,
+    required this.noteId,
+    required this.noteTypeKey,
+    required this.status,
+  });
+
+  final NoteAttestation attestation;
+  final TimelineGroup group;
+  final String noteId;
+  final String noteTypeKey;
+  final NoteStatus status;
+
+  factory TimelineNote.fromJson(Map<String, dynamic> json) => TimelineNote(
+        attestation: NoteAttestation.fromJson(json['attestation'] as String),
+        group: TimelineGroup.fromJson(json['group'] as String),
+        noteId: json['noteId'] as String,
+        noteTypeKey: json['noteTypeKey'] as String,
+        status: NoteStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'attestation': attestation.toJson(),
+        'group': group.toJson(),
+        'noteId': noteId,
+        'noteTypeKey': noteTypeKey,
+        'status': status.toJson(),
+      };
+}
+
+class TimelineVisit {
+  const TimelineVisit({
+    required this.encounterId,
+    required this.kind,
+    required this.notes,
+    required this.startedAt,
+    required this.status,
+  });
+
+  final String encounterId;
+  final EncounterKind kind;
+  final List<TimelineNote> notes;
+  final DateTime startedAt;
+  final NoteStatus status;
+
+  factory TimelineVisit.fromJson(Map<String, dynamic> json) => TimelineVisit(
+        encounterId: json['encounterId'] as String,
+        kind: EncounterKind.fromJson(json['kind'] as String),
+        notes: (json['notes'] as List<dynamic>).map((e) => TimelineNote.fromJson(e as Map<String, dynamic>)).toList(),
+        startedAt: DateTime.parse(json['startedAt'] as String),
+        status: NoteStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounterId': encounterId,
+        'kind': kind.toJson(),
+        'notes': notes.map((e) => e.toJson()).toList(),
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'status': status.toJson(),
+      };
+}
+
 class UndoMerge {
   const UndoMerge({
     required this.comment,
@@ -5238,6 +5770,143 @@ class UserRef {
       };
 }
 
+class VisitNote {
+  const VisitNote({
+    required this.actingAuthor,
+    required this.addenda,
+    required this.attestation,
+    required this.attestations,
+    required this.author,
+    required this.completedAt,
+    this.contentHash,
+    required this.corrections,
+    required this.group,
+    required this.noteId,
+    required this.noteTypeKey,
+    required this.noteTypeVersion,
+    required this.read,
+    required this.signoffs,
+    required this.status,
+    required this.title,
+  });
+
+  final UserRef actingAuthor;
+  final List<AddendumView> addenda;
+  final NoteAttestation attestation;
+  final List<AttestationView> attestations;
+  final UserRef author;
+  final DateTime? completedAt;
+  /// The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one
+  final String? contentHash;
+  final List<CorrectionView> corrections;
+  final TimelineGroup group;
+  final String noteId;
+  final String noteTypeKey;
+  final int noteTypeVersion;
+  final ReadModel read;
+  final List<SignoffView> signoffs;
+  final NoteStatus status;
+  final String title;
+
+  factory VisitNote.fromJson(Map<String, dynamic> json) => VisitNote(
+        actingAuthor: UserRef.fromJson(json['actingAuthor'] as Map<String, dynamic>),
+        addenda: (json['addenda'] as List<dynamic>).map((e) => AddendumView.fromJson(e as Map<String, dynamic>)).toList(),
+        attestation: NoteAttestation.fromJson(json['attestation'] as String),
+        attestations: (json['attestations'] as List<dynamic>).map((e) => AttestationView.fromJson(e as Map<String, dynamic>)).toList(),
+        author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
+        completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
+        contentHash: json['contentHash'] == null ? null : json['contentHash'] as String,
+        corrections: (json['corrections'] as List<dynamic>).map((e) => CorrectionView.fromJson(e as Map<String, dynamic>)).toList(),
+        group: TimelineGroup.fromJson(json['group'] as String),
+        noteId: json['noteId'] as String,
+        noteTypeKey: json['noteTypeKey'] as String,
+        noteTypeVersion: (json['noteTypeVersion'] as num).toInt(),
+        read: ReadModel.fromJson(json['read'] as Map<String, dynamic>),
+        signoffs: (json['signoffs'] as List<dynamic>).map((e) => SignoffView.fromJson(e as Map<String, dynamic>)).toList(),
+        status: NoteStatus.fromJson(json['status'] as String),
+        title: json['title'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'actingAuthor': actingAuthor.toJson(),
+        'addenda': addenda.map((e) => e.toJson()).toList(),
+        'attestation': attestation.toJson(),
+        'attestations': attestations.map((e) => e.toJson()).toList(),
+        'author': author.toJson(),
+        'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
+        if (contentHash != null) 'contentHash': contentHash!,
+        'corrections': corrections.map((e) => e.toJson()).toList(),
+        'group': group.toJson(),
+        'noteId': noteId,
+        'noteTypeKey': noteTypeKey,
+        'noteTypeVersion': noteTypeVersion,
+        'read': read.toJson(),
+        'signoffs': signoffs.map((e) => e.toJson()).toList(),
+        'status': status.toJson(),
+        'title': title,
+      };
+}
+
+class VisitRead {
+  const VisitRead({
+    required this.addenda,
+    required this.clockVerified,
+    required this.encounterId,
+    required this.kind,
+    required this.locationText,
+    required this.notes,
+    required this.patientId,
+    required this.records,
+    required this.startedAt,
+    required this.status,
+    this.summary,
+  });
+
+  /// The visit’s own, naming no note
+  final List<AddendumView> addenda;
+  final bool clockVerified;
+  final String encounterId;
+  final EncounterKind kind;
+  final String? locationText;
+  /// The notes the reader may see; no empty draft
+  final List<VisitNote> notes;
+  final String? patientId;
+  /// Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them
+  final List<RecordSnapshot> records;
+  final DateTime startedAt;
+  final NoteStatus status;
+  /// Absent for a Medical visit to a reader of no Medical notes
+  final String? summary;
+
+  factory VisitRead.fromJson(Map<String, dynamic> json) => VisitRead(
+        addenda: (json['addenda'] as List<dynamic>).map((e) => AddendumView.fromJson(e as Map<String, dynamic>)).toList(),
+        clockVerified: json['clockVerified'] as bool,
+        encounterId: json['encounterId'] as String,
+        kind: EncounterKind.fromJson(json['kind'] as String),
+        locationText: json['locationText'] == null ? null : json['locationText'] as String,
+        notes: (json['notes'] as List<dynamic>).map((e) => VisitNote.fromJson(e as Map<String, dynamic>)).toList(),
+        patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        records: (json['records'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+        startedAt: DateTime.parse(json['startedAt'] as String),
+        status: NoteStatus.fromJson(json['status'] as String),
+        summary: json['summary'] == null ? null : json['summary'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'addenda': addenda.map((e) => e.toJson()).toList(),
+        'clockVerified': clockVerified,
+        'encounterId': encounterId,
+        'kind': kind.toJson(),
+        'locationText': locationText == null ? null : locationText!,
+        'notes': notes.map((e) => e.toJson()).toList(),
+        'patientId': patientId == null ? null : patientId!,
+        'records': records.map((e) => e.toJson()).toList(),
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'status': status.toJson(),
+        if (summary != null) 'summary': summary == null ? null : summary!,
+      };
+}
+
 class WipeDevice {
   const WipeDevice({
     required this.reason,
@@ -5361,6 +6030,12 @@ class SineobexApi {
   Future<DuplicatePairDetail> getDuplicatePair({required String pairId}) async {
     final json = await _transport.send('GET', '/v1/team/duplicates/${Uri.encodeComponent(pairId)}');
     return DuplicatePairDetail.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// A visit as the reader may see it: its notes laid out for reading, and what hangs off them
+  Future<VisitRead> getEncounter({required String encounterId}) async {
+    final json = await _transport.send('GET', '/v1/encounters/${Uri.encodeComponent(encounterId)}');
+    return VisitRead.fromJson(json as Map<String, dynamic>);
   }
 
   /// Liveness, database reachability and whether this is a demo deployment

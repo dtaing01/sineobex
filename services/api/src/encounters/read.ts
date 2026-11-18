@@ -1,0 +1,441 @@
+import {
+  effectiveAnswers,
+  readModel,
+  visibleAnswers,
+  type NoteCorrection,
+  type NoteReader,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
+import type { AuditFn, TeamScope } from '../auth/context.ts';
+import { CAPABILITIES, mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
+import type { Tx } from '../db/database.ts';
+import { notFound } from '../lib/errors.ts';
+import type { VisitNoteValue, VisitReadValue } from '../patients/schemas.ts';
+import { loadEncounter } from '../sync/entities/encounter.ts';
+import { RULES } from '../sync/entities/index.ts';
+import { actingAuthor, answersOf, noteRules, noteTypeOf } from '../sync/entities/note.ts';
+import {
+  answerHidden,
+  byDefinition,
+  DefinitionError,
+  noteReader,
+  sameValue,
+  snapshot,
+  type StoredRecord,
+} from '../sync/records.ts';
+import type { AnyRecordEntityName } from '../sync/schemas.ts';
+import { noteContentHash } from './content-hash.ts';
+import { noteIsEmpty } from './rules.ts';
+
+/**
+ * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
+ * hangs off it, a reader is given. They are the sync read's (`fetchRecords`, sync/review.ts), here
+ * as functions both can call: a note the reader may not read is absent with everything that hangs
+ * off it; its answers are what visibleAnswers keeps; a correction is absent when its old or its new
+ * value at any field it changes is hidden from the reader; a sign-off's hash goes only to whoever
+ * acts as the author, its signer and a reader who sees every answer of any note (D86).
+ */
+
+/**
+ * A reader who sees every answer that counts in any note (lifecycle 6.4 rule 4): every key that
+ * hides an answer and a credential that charts Medical. Asked of the reader, never of what the
+ * note holds, so whether a sign-off's hash is sent tells nothing of the note.
+ */
+export const readsWhole = (reader: NoteReader) =>
+  reader.readsMedical && reader.viewSensitive && reader.viewSensitiveExams && reader.chartsMedical;
+
+/**
+ * A Medical visit's summary, and its own addenda, are Medical content (lifecycle 6.4 row 1, D37):
+ * read, as its notes are, with patients.view and encounters.chart or billing.view_codes (RD-7).
+ */
+export const medicalHidden = (permissions: ReadonlySet<Permission>, kind: unknown) =>
+  kind === 'medical' && !mayViewProblems(permissions);
+
+/** A note as a reader may read it: its type, the answers it holds, the reader, and what they see. */
+export interface NoteRead {
+  note: StoredRecord;
+  /** Undefined for a phase 2 note with no version, which has no definition and is read whole. */
+  type: ResolvedNoteType | undefined;
+  /** Every answer the note holds, as stored. */
+  answers: Record<string, unknown>;
+  reader: NoteReader;
+  /** The answers that count that the reader may see (visibleAnswers); every answer of a phase 2 note. */
+  seen: Record<string, unknown>;
+}
+
+/**
+ * A note as this reader may read it (lifecycle 4.4, 6.4), or null when they may not: a type they
+ * may not read, or a definition the server cannot read, since what it would hide cannot be told.
+ */
+export async function noteAsRead(
+  tx: Tx,
+  scope: TeamScope,
+  note: StoredRecord | null,
+): Promise<NoteRead | null> {
+  if (!note) return null;
+  const reader = noteReader(
+    scope.team.permissions,
+    scope.team.credential,
+    scope.principal.userId === actingAuthor(note),
+  );
+  const answers = answersOf(note);
+  try {
+    const type = await noteTypeOf(tx, note);
+    if (type === undefined) return { note, type, answers, reader, seen: answers };
+    const seen = byDefinition(() => visibleAnswers(type, answers, reader));
+    return seen && { note, type, answers, reader, seen };
+  } catch (err) {
+    if (err instanceof DefinitionError) return null;
+    throw err;
+  }
+}
+
+/**
+ * Whether a correction of a note the reader may read is hidden from them: its old or its new value
+ * at any field it changes holds something visibleAnswers would hide (lifecycle 5.1). Missing whole
+ * rather than stripped, since its field alone names the hidden answer. A phase 2 note's are shown.
+ */
+export function correctionHidden(
+  read: NoteRead,
+  changes: readonly { field: string; oldValue: unknown; newValue: unknown }[],
+): boolean {
+  const { type, answers, reader } = read;
+  if (type === undefined) return false;
+  return changes.some((c) => {
+    const path = c.field.slice('data.'.length);
+    try {
+      return byDefinition(
+        () =>
+          answerHidden(type, answers, path, c.oldValue, reader) ||
+          answerHidden(type, answers, path, c.newValue, reader),
+      );
+    } catch (err) {
+      if (err instanceof DefinitionError) return true;
+      throw err;
+    }
+  });
+}
+
+/** Whether a sign-off of a note the reader may read goes to them with its hash (6.4 rule 4, D86). */
+export const signoffHashShown = (read: NoteRead, signerUserId: string, userId: string) =>
+  read.reader.actsAsAuthor || signerUserId === userId || readsWhole(read.reader);
+
+// ------------------------------------------------------------------------------------------------
+// GET /v1/encounters/{encounterId}
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Where a visit was read, for its audit events: a registered phone of this person, the portal, or
+ * the chart (online or for the phone's cache) that carried it as a recent visit.
+ */
+export type ReadSource = 'phone' | 'portal' | 'chart' | 'cache';
+
+/** GET /v1/encounters/{encounterId}: the visit as the reader may see it, logged in its transaction. */
+export async function readVisit(scope: TeamScope, encounterId: string): Promise<VisitReadValue> {
+  return scope.tx(async (tx, audit) => {
+    const visit = await visitAsRead(tx, scope, audit, encounterId, scope.meta.deviceId ? 'phone' : 'portal');
+    if (!visit) throw notFound('encounter');
+    return visit;
+  });
+}
+
+interface SignoffRow {
+  id: string;
+  noteId: string;
+  act: 'complete' | 'sign' | 'cosign';
+  effect: 'signed' | 'completed' | 'saved_unsigned' | 'none';
+  contentHash: string;
+  signerUserId: string;
+  signerName: string;
+  signerCredential: Credential;
+  claimedCredential: Credential | null;
+  needsAttestation: boolean;
+  statementVersion: string;
+  signedAt: Date;
+  clockVerified: boolean;
+}
+
+interface AddendumRow {
+  id: string;
+  noteId: string | null;
+  text: string;
+  authorUserId: string;
+  authorName: string;
+  authorCredential: Credential;
+  writtenAt: Date;
+  clockVerified: boolean;
+}
+
+interface CorrectionRow {
+  id: string;
+  noteId: string;
+  changes: { field: string; oldValue: unknown; newValue: unknown }[];
+  outcome: NoteCorrection['outcome'];
+  reason: string;
+  requestedByPatient: boolean;
+  correctorUserId: string;
+  correctorName: string;
+  correctorCredential: Credential;
+  correctedAt: Date;
+  clockVerified: boolean;
+}
+
+interface AttestationRow {
+  id: string;
+  noteId: string;
+  signoffId: string;
+  attendingUserId: string;
+  attendingName: string;
+  statementVersion: string;
+  attestedAt: Date;
+}
+
+/**
+ * The visit as this reader may see it, every record shown logged as the sync read logs it (10.1):
+ * `encounter.viewed` for the visit, `note.viewed` for each note and for each sign-off, addendum,
+ * correction and attestation, and `patient.viewed` for each record made at the visit, each on its
+ * entity and ID and with its patient. Null when the team has no such visit.
+ *
+ * Left out besides what 6.4 hides: an empty draft, which counts as not there (3.1), and a phase 2
+ * note with no version, which has no definition to lay it out by.
+ */
+export async function visitAsRead(
+  tx: Tx,
+  scope: TeamScope,
+  audit: AuditFn,
+  encounterId: string,
+  source: ReadSource,
+): Promise<VisitReadValue | null> {
+  const visit = await loadEncounter(tx, encounterId, false);
+  if (!visit || visit.teamId !== scope.team.teamId) return null;
+  const permissions = scope.team.permissions;
+  const hideMedical = medicalHidden(permissions, visit.values.kind);
+  const patientId = visit.patientId;
+  const viewed = (action: string, entity: string, entityId: string, about: string | null = patientId) =>
+    audit({ action, entity, entityId, patientId: about, details: { source } });
+  await viewed('encounter.viewed', 'encounter', visit.id);
+
+  const signoffs = await tx<SignoffRow[]>`
+      select s.id, s.note_id, s.act, s.effect, s.content_hash, s.signer_user_id, s.signer_name,
+             s.signer_credential, s.claimed_credential, s.needs_attestation, s.statement_version, s.signed_at,
+             s.clock_verified
+      from sineobex.note_signoffs s
+      join sineobex.encounter_notes n on n.team_id = s.team_id and n.id = s.note_id
+      where n.team_id = ${visit.teamId} and n.encounter_id = ${visit.id}
+      order by s.received_at, s.id`;
+  const addenda = await tx<AddendumRow[]>`
+      select id, note_id, text, author_user_id, author_name, author_credential, written_at, clock_verified
+      from sineobex.note_addenda where team_id = ${visit.teamId} and encounter_id = ${visit.id}
+      order by written_at, created_at, id`;
+  // In the order they were applied, so each one's old value is what the one before it left.
+  const corrections = await tx<CorrectionRow[]>`
+      select c.id, c.note_id, c.changes, c.outcome, c.reason, c.requested_by_patient, c.corrector_user_id,
+             c.corrector_name, c.corrector_credential, c.corrected_at, c.clock_verified
+      from sineobex.note_corrections c
+      join sineobex.encounter_notes n on n.team_id = c.team_id and n.id = c.note_id
+      where n.team_id = ${visit.teamId} and n.encounter_id = ${visit.id}
+      order by c.created_at, c.id`;
+  const attestations = await tx<AttestationRow[]>`
+      select a.id, a.note_id, a.signoff_id, a.attending_user_id, a.attending_name, a.statement_version,
+             a.attested_at
+      from sineobex.note_attestations a
+      join sineobex.encounter_notes n on n.team_id = a.team_id and n.id = a.note_id
+      where n.team_id = ${visit.teamId} and n.encounter_id = ${visit.id}
+      order by a.attested_at, a.id`;
+
+  const noteRows = await tx<{ id: string }[]>`
+    select id from sineobex.encounter_notes
+    where team_id = ${visit.teamId} and encounter_id = ${visit.id} order by created_at, id`;
+  const reads: (NoteRead & { type: ResolvedNoteType })[] = [];
+  for (const { id } of noteRows) {
+    const read = await noteAsRead(tx, scope, await noteRules.load(tx, id, false));
+    if (!read || read.type === undefined) continue;
+    if (read.note.status === 'draft' && noteIsEmpty(read.answers)) continue;
+    reads.push(read as NoteRead & { type: ResolvedNoteType });
+  }
+  const names = await displayNames(
+    tx,
+    reads.flatMap((r) => [r.note.authorUserId, actingAuthor(r.note)]),
+  );
+  const user = (id: string) => ({ userId: id, displayName: names.get(id) ?? '' });
+
+  const can = CAPABILITIES[scope.team.credential];
+  const mayAct = scope.can('encounters.chart') && (can.sign || can.attest);
+  const notes: VisitNoteValue[] = [];
+  for (const read of reads) {
+    const { note, type, answers, reader, seen } = read;
+    await viewed('note.viewed', 'encounter_note', note.id);
+    const shownSignoffs = signoffs.filter((s) => s.noteId === note.id);
+    const shownAddenda = addenda.filter((a) => a.noteId === note.id);
+    const shownCorrections = corrections.filter(
+      (c) => c.noteId === note.id && !correctionHidden(read, c.changes),
+    );
+    const shownAttestations = attestations.filter((a) => a.noteId === note.id);
+    for (const s of shownSignoffs) await viewed('note.viewed', 'note_signoff', s.id);
+    for (const a of shownAddenda) await viewed('note.viewed', 'note_addendum', a.id);
+    for (const c of shownCorrections) await viewed('note.viewed', 'note_correction', c.id);
+    for (const a of shownAttestations) await viewed('note.viewed', 'note_attestation', a.id);
+
+    const sees = (): boolean => byDefinition(() => sameValue(seen, effectiveAnswers(type, answers)));
+    // The hash to co-sign or attest with: whoever may act on the note and sees all of it (lifecycle
+    // 5.1, 5.3, 5.4), besides those who get every sign-off's. Never over a summary the reader may not read.
+    const hashShown = !hideMedical && (reader.actsAsAuthor || readsWhole(reader) || (mayAct && sees()));
+    const attrs = note.attributes as {
+      noteTypeKey: string;
+      noteTypeVersion: number;
+      attestation: VisitNoteValue['attestation'];
+      completedAt: string | null;
+    };
+    notes.push({
+      noteId: note.id,
+      noteTypeKey: attrs.noteTypeKey,
+      noteTypeVersion: attrs.noteTypeVersion,
+      title: type.title,
+      group: type.group,
+      status: note.status as VisitNoteValue['status'],
+      attestation: attrs.attestation,
+      completedAt: attrs.completedAt,
+      author: user(note.authorUserId),
+      actingAuthor: user(actingAuthor(note)),
+      read: byDefinition(() => readModel(type, seen, shownCorrections.map(asNoteCorrection))),
+      signoffs: shownSignoffs.map((s) => ({
+        id: s.id,
+        act: s.act,
+        effect: s.effect,
+        signer: { userId: s.signerUserId, displayName: s.signerName },
+        credential: s.signerCredential,
+        claimedCredential: s.claimedCredential,
+        needsAttestation: s.needsAttestation,
+        statementVersion: s.statementVersion,
+        signedAt: s.signedAt.toISOString(),
+        clockVerified: s.clockVerified,
+        ...(signoffHashShown(read, s.signerUserId, scope.principal.userId)
+          ? { contentHash: s.contentHash }
+          : {}),
+      })),
+      addenda: shownAddenda.map(addendumView),
+      corrections: shownCorrections.map((c) => ({
+        id: c.id,
+        outcome: c.outcome,
+        fields: c.changes.map((x) => x.field),
+        requestedByPatient: c.requestedByPatient,
+        reason: c.reason,
+        corrector: { userId: c.correctorUserId, displayName: c.correctorName },
+        credential: c.correctorCredential,
+        correctedAt: c.correctedAt.toISOString(),
+        clockVerified: c.clockVerified,
+      })),
+      attestations: shownAttestations.map((a) => ({
+        id: a.id,
+        signoffId: a.signoffId,
+        attending: { userId: a.attendingUserId, displayName: a.attendingName },
+        statementVersion: a.statementVersion,
+        attestedAt: a.attestedAt.toISOString(),
+      })),
+      ...(hashShown
+        ? {
+            contentHash: await byDefinition(() =>
+              noteContentHash({
+                noteId: note.id,
+                encounterId: visit.id,
+                patientId,
+                summary: visit.values.summary as string | null,
+                definition: type,
+                answers,
+              }),
+            ),
+          }
+        : {}),
+    });
+  }
+
+  // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
+  const ownAddenda = hideMedical ? [] : addenda.filter((a) => a.noteId === null);
+  for (const a of ownAddenda) await viewed('note.viewed', 'note_addendum', a.id);
+
+  const records = await recordsMadeAt(tx, scope, visit);
+  for (const r of records) await viewed('patient.viewed', r.entity, r.record.id, r.record.patientId);
+
+  return {
+    encounterId: visit.id,
+    patientId,
+    kind: visit.values.kind as VisitReadValue['kind'],
+    status: visit.status as VisitReadValue['status'],
+    startedAt: visit.attributes.startedAt as string,
+    clockVerified: visit.attributes.clockVerified as boolean,
+    locationText: visit.values.locationText as string | null,
+    ...(hideMedical ? {} : { summary: visit.values.summary as string | null }),
+    addenda: ownAddenda.map(addendumView),
+    notes,
+    records: records.map((r) => snapshot(r.record)),
+  };
+}
+
+const asNoteCorrection = (c: CorrectionRow): NoteCorrection => ({
+  outcome: c.outcome,
+  reason: c.reason,
+  correctorName: c.correctorName,
+  correctorCredential: c.correctorCredential,
+  correctedAt: c.correctedAt.toISOString(),
+  changes: c.changes,
+});
+
+const addendumView = (a: AddendumRow) => ({
+  id: a.id,
+  noteId: a.noteId,
+  text: a.text,
+  author: { userId: a.authorUserId, displayName: a.authorName },
+  credential: a.authorCredential,
+  writtenAt: a.writtenAt.toISOString(),
+  clockVerified: a.clockVerified,
+});
+
+async function displayNames(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids)];
+  if (wanted.length === 0) return new Map();
+  const rows = await tx<{ id: string; displayName: string }[]>`
+    select id, display_name from sineobex.users where id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.displayName]));
+}
+
+/**
+ * The records made at the visit (lifecycle 9.7, D91): its referrals, allergies, problems and
+ * problems' notes, whichever chart they are on, since a visit moved to another patient leaves them
+ * with the first (12.1 #25) and this list is how the clinician finds each to enter it in error.
+ * Each as the chart shows it to the reader (phase 3 design 4.3): a problem and its notes need the
+ * problem list's keys, and a sensitive one patients.view_sensitive. The route already needs
+ * patients.view, which reads the rest.
+ */
+async function recordsMadeAt(
+  tx: Tx,
+  scope: TeamScope,
+  visit: StoredRecord,
+): Promise<{ entity: AnyRecordEntityName; record: StoredRecord }[]> {
+  const problems = mayViewProblems(scope.team.permissions);
+  const sensitive = scope.can('patients.view_sensitive');
+  const rows = await tx<{ entity: AnyRecordEntityName; id: string }[]>`
+    select 'referral' as entity, id, recorded_at as at from sineobex.referrals
+    where team_id = ${visit.teamId} and encounter_id = ${visit.id}
+    union all
+    select 'patient_allergy', id, recorded_at from sineobex.patient_allergies
+    where team_id = ${visit.teamId} and encounter_id = ${visit.id}
+    ${
+      problems
+        ? tx`
+    union all
+    select 'problem', pr.id, pr.created_at from sineobex.problems pr
+    where pr.team_id = ${visit.teamId} and pr.created_encounter_id = ${visit.id} ${sensitive ? tx`` : tx`and not pr.sensitive`}
+    union all
+    select 'problem_note', n.id, n.written_at from sineobex.problem_notes n
+    join sineobex.problems pr on pr.team_id = n.team_id and pr.id = n.problem_id
+    where n.team_id = ${visit.teamId} and n.encounter_id = ${visit.id} ${sensitive ? tx`` : tx`and not pr.sensitive`}`
+        : tx``
+    }
+    order by at, id`;
+  const out: { entity: AnyRecordEntityName; record: StoredRecord }[] = [];
+  for (const r of rows) {
+    const record = await RULES[r.entity].load(tx, r.id, false);
+    if (record) out.push({ entity: r.entity, record });
+  }
+  return out;
+}

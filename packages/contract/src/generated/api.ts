@@ -77,6 +77,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/encounters/{encounterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A visit as the reader may see it: its notes laid out for reading, and what hangs off them
+         * @description Built on the sync read’s rules (lifecycle 5.1, 6.4): what the reader may not see is absent, never blanked. Every record returned is logged.
+         */
+        get: operations["getEncounter"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/forms/note-types": {
         parameters: {
             query?: never;
@@ -943,6 +963,18 @@ export interface components {
             kind: "terms_of_use" | "confidentiality";
             version: string;
         };
+        AddendumView: {
+            author: components["schemas"]["UserRef"];
+            clockVerified: boolean;
+            credential: components["schemas"]["Credential"];
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            noteId: string | null;
+            text: string;
+            /** Format: date-time */
+            writtenAt: string;
+        };
         /** @enum {string} */
         AllergyCategory: "drug" | "food" | "environment" | "other" | "unknown";
         /** @enum {string} */
@@ -960,6 +992,16 @@ export interface components {
             displayName: string;
             /** Format: email */
             email: string;
+        };
+        AttestationView: {
+            attending: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            attestedAt: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            signoffId: string;
+            statementVersion: string;
         };
         AuditEntry: {
             action: string;
@@ -1068,6 +1110,21 @@ export interface components {
             /** Format: date-time */
             recordedAt: string;
             recordedBy: components["schemas"]["UserRef"];
+        };
+        /** @description The values are in the read model, under the answers */
+        CorrectionView: {
+            clockVerified: boolean;
+            /** Format: date-time */
+            correctedAt: string;
+            corrector: components["schemas"]["UserRef"];
+            credential: components["schemas"]["Credential"];
+            fields: string[];
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            outcome: "corrected" | "declined" | "no_change" | "draft_edit" | "not_author";
+            reason: string;
+            requestedByPatient: boolean;
         };
         CreateTeam: {
             name: string;
@@ -1206,6 +1263,8 @@ export interface components {
         DuplicateSource: "sync" | "edit" | "merge_rematch" | "correction" | "staff_report";
         /** @enum {string} */
         DuplicateStatus: "open" | "not_sure" | "keep_separate" | "merged" | "superseded";
+        /** @enum {string} */
+        EncounterKind: "medical" | "non_medical";
         ErrorResponse: {
             error: {
                 code: string;
@@ -1556,6 +1615,10 @@ export interface components {
             /** @enum {string} */
             teamStatus: "active" | "suspended";
         };
+        /** @enum {string} */
+        NoteAttestation: "not_needed" | "waiting" | "attested";
+        /** @enum {string} */
+        NoteStatus: "draft" | "completed" | "signed";
         NoteTypeDefinition: {
             /** @description The resolved definition, in the format of @sineobex/forms */
             definition: {
@@ -1679,12 +1742,15 @@ export interface components {
             problems?: components["schemas"]["RecordSnapshot"][];
             /** @description Which projection made this copy */
             projection: string;
+            /** @description The last three visits in full, read offline from the cache */
+            recentVisits?: components["schemas"]["VisitRead"][];
             /**
              * Format: uuid
              * @description The merged ID that was asked for
              */
             redirectedFrom?: string;
             reviews: components["schemas"]["FieldReviewView"][];
+            timeline?: components["schemas"]["Timeline"];
         };
         PatientHit: {
             band: components["schemas"]["MatchBand"];
@@ -1874,6 +1940,36 @@ export interface components {
                 status: "quarantined" | "recorded" | "rejected";
             }[];
         };
+        ReadCorrection: {
+            at: string;
+            by: string;
+            credential: string;
+            old: string | null;
+            path: string;
+            reason: string;
+        };
+        ReadEntry: {
+            id: string;
+            items: components["schemas"]["ReadItem"][];
+            title: string;
+        };
+        ReadItem: {
+            corrections: components["schemas"]["ReadCorrection"][];
+            labels: string[];
+            path: string;
+            /** @description Null for an answer a correction took away */
+            value: string | null;
+        };
+        ReadModel: {
+            sections: components["schemas"]["ReadSection"][];
+        };
+        /** @description A section with items, or a repeating one with entries */
+        ReadSection: {
+            entries?: components["schemas"]["ReadEntry"][];
+            id: string;
+            items?: components["schemas"]["ReadItem"][];
+            title: string;
+        };
         /** @enum {string} */
         RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
         RecordRef: {
@@ -2011,6 +2107,24 @@ export interface components {
             };
             /** @description Ed25519 signature of the canonical JSON of `payload`, unpadded base64url */
             signature: string;
+        };
+        SignoffView: {
+            /** @enum {string} */
+            act: "complete" | "sign" | "cosign";
+            claimedCredential: components["schemas"]["Credential"] | null;
+            clockVerified: boolean;
+            /** @description Only to whoever acts as the note’s author, its signer, and a reader who sees every answer of any note */
+            contentHash?: string;
+            credential: components["schemas"]["Credential"];
+            /** @enum {string} */
+            effect: "signed" | "completed" | "saved_unsigned" | "none";
+            /** Format: uuid */
+            id: string;
+            needsAttestation: boolean;
+            /** Format: date-time */
+            signedAt: string;
+            signer: components["schemas"]["UserRef"];
+            statementVersion: string;
         };
         /**
          * @description Where the result is shown. On the phone no result carries a legal name.
@@ -2170,6 +2284,34 @@ export interface components {
             /** @enum {string} */
             status: "active" | "suspended";
         };
+        /** @description On the chart and the phone’s cache; absent where a chart is shown beside a decision */
+        Timeline: {
+            /** @description Newest first, the first 50 */
+            encounters: components["schemas"]["TimelineVisit"][];
+            referrals: components["schemas"]["RecordSnapshot"][];
+        };
+        /**
+         * @description The note type’s timeline filter (forms 2.2)
+         * @enum {string}
+         */
+        TimelineGroup: "clinical" | "psych" | "social" | "outreach" | "harm_reduction" | "wound";
+        TimelineNote: {
+            attestation: components["schemas"]["NoteAttestation"];
+            group: components["schemas"]["TimelineGroup"];
+            /** Format: uuid */
+            noteId: string;
+            noteTypeKey: string;
+            status: components["schemas"]["NoteStatus"];
+        };
+        TimelineVisit: {
+            /** Format: uuid */
+            encounterId: string;
+            kind: components["schemas"]["EncounterKind"];
+            notes: components["schemas"]["TimelineNote"][];
+            /** Format: date-time */
+            startedAt: string;
+            status: components["schemas"]["NoteStatus"];
+        };
         UndoMerge: {
             /** @description Why, in a few words. Logged. */
             comment: string;
@@ -2229,6 +2371,47 @@ export interface components {
             displayName: string;
             /** Format: uuid */
             userId: string;
+        };
+        VisitNote: {
+            actingAuthor: components["schemas"]["UserRef"];
+            addenda: components["schemas"]["AddendumView"][];
+            attestation: components["schemas"]["NoteAttestation"];
+            attestations: components["schemas"]["AttestationView"][];
+            author: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            completedAt: string | null;
+            /** @description The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one */
+            contentHash?: string;
+            corrections: components["schemas"]["CorrectionView"][];
+            group: components["schemas"]["TimelineGroup"];
+            /** Format: uuid */
+            noteId: string;
+            noteTypeKey: string;
+            noteTypeVersion: number;
+            read: components["schemas"]["ReadModel"];
+            signoffs: components["schemas"]["SignoffView"][];
+            status: components["schemas"]["NoteStatus"];
+            title: string;
+        };
+        VisitRead: {
+            /** @description The visit’s own, naming no note */
+            addenda: components["schemas"]["AddendumView"][];
+            clockVerified: boolean;
+            /** Format: uuid */
+            encounterId: string;
+            kind: components["schemas"]["EncounterKind"];
+            locationText: string | null;
+            /** @description The notes the reader may see; no empty draft */
+            notes: components["schemas"]["VisitNote"][];
+            /** Format: uuid */
+            patientId: string | null;
+            /** @description Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them */
+            records: components["schemas"]["RecordSnapshot"][];
+            /** Format: date-time */
+            startedAt: string;
+            status: components["schemas"]["NoteStatus"];
+            /** @description Absent for a Medical visit to a reader of no Medical notes */
+            summary?: string | null;
         };
         WipeDevice: {
             /** @description Why, in a few words. Logged. */
@@ -2435,6 +2618,64 @@ export interface operations {
             };
             /** @description Not signed in, or the session expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getEncounter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The visit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitRead"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { Reason, Uuid } from '../routes/schemas.ts';
+import { Credential, Reason, Uuid } from '../routes/schemas.ts';
 import { DateTime, FieldState, RecordSnapshot, UserRef } from '../sync/schemas.ts';
 
 /**
@@ -340,6 +340,182 @@ export const PatientMatchResult = z
   .object({ checkId: Uuid, candidates: z.array(PatientHit).max(5) })
   .openapi('PatientMatchResult');
 
+// ------------------------------------------------------------------------------------------------
+// Visits on the chart (phase 4 lifecycle 5.1, 5.2): the visit read, the timeline, recent visits
+// ------------------------------------------------------------------------------------------------
+
+const NoteStatus = z.enum(['draft', 'completed', 'signed']).openapi('NoteStatus');
+const Attestation = z.enum(['not_needed', 'waiting', 'attested']).openapi('NoteAttestation');
+const EncounterKind = z.enum(['medical', 'non_medical']).openapi('EncounterKind');
+const Hash = z.string().regex(/^[0-9a-f]{64}$/);
+export const TimelineGroup = z
+  .enum(['clinical', 'psych', 'social', 'outreach', 'harm_reduction', 'wound'])
+  .openapi('TimelineGroup', { description: 'The note type’s timeline filter (forms 2.2)' });
+
+/** The forms part's ReadModel (forms 7.1): what the portal and the phone draw of a note. */
+export const ReadCorrection = z
+  .object({
+    path: z.string(),
+    old: z.string().nullable(),
+    by: z.string(),
+    credential: z.string(),
+    at: z.string(),
+    reason: z.string(),
+  })
+  .openapi('ReadCorrection');
+export const ReadItem = z
+  .object({
+    path: z.string(),
+    labels: z.array(z.string()),
+    value: z.string().nullable().openapi({ description: 'Null for an answer a correction took away' }),
+    corrections: z.array(ReadCorrection),
+  })
+  .openapi('ReadItem');
+export const ReadEntry = z
+  .object({ id: z.string(), title: z.string(), items: z.array(ReadItem) })
+  .openapi('ReadEntry');
+export const ReadSection = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    items: z.array(ReadItem).optional(),
+    entries: z.array(ReadEntry).optional(),
+  })
+  .openapi('ReadSection', { description: 'A section with items, or a repeating one with entries' });
+export const ReadModel = z.object({ sections: z.array(ReadSection) }).openapi('ReadModel');
+
+export const SignoffView = z
+  .object({
+    id: Uuid,
+    act: z.enum(['complete', 'sign', 'cosign']),
+    effect: z.enum(['signed', 'completed', 'saved_unsigned', 'none']),
+    signer: UserRef,
+    credential: Credential,
+    claimedCredential: z.union([Credential, z.null()]),
+    needsAttestation: z.boolean(),
+    statementVersion: z.string(),
+    signedAt: DateTime,
+    clockVerified: z.boolean(),
+    contentHash: Hash.optional().openapi({
+      description:
+        'Only to whoever acts as the note’s author, its signer, and a reader who sees every answer of any note',
+    }),
+  })
+  .openapi('SignoffView');
+
+export const AddendumView = z
+  .object({
+    id: Uuid,
+    noteId: Uuid.nullable(),
+    text: z.string(),
+    author: UserRef,
+    credential: Credential,
+    writtenAt: DateTime,
+    clockVerified: z.boolean(),
+  })
+  .openapi('AddendumView');
+
+export const CorrectionView = z
+  .object({
+    id: Uuid,
+    outcome: z.enum(['corrected', 'declined', 'no_change', 'draft_edit', 'not_author']),
+    fields: z.array(z.string()),
+    requestedByPatient: z.boolean(),
+    reason: z.string(),
+    corrector: UserRef,
+    credential: Credential,
+    correctedAt: DateTime,
+    clockVerified: z.boolean(),
+  })
+  .openapi('CorrectionView', { description: 'The values are in the read model, under the answers' });
+
+export const AttestationView = z
+  .object({
+    id: Uuid,
+    signoffId: Uuid,
+    attending: UserRef,
+    statementVersion: z.string(),
+    attestedAt: DateTime,
+  })
+  .openapi('AttestationView');
+
+export const VisitNote = z
+  .object({
+    noteId: Uuid,
+    noteTypeKey: z.string(),
+    noteTypeVersion: z.number().int(),
+    title: z.string(),
+    group: TimelineGroup,
+    status: NoteStatus,
+    attestation: Attestation,
+    completedAt: DateTime.nullable(),
+    author: UserRef,
+    actingAuthor: UserRef,
+    read: ReadModel,
+    signoffs: z.array(SignoffView),
+    addenda: z.array(AddendumView),
+    corrections: z.array(CorrectionView),
+    attestations: z.array(AttestationView),
+    contentHash: Hash.optional().openapi({
+      description:
+        'The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one',
+    }),
+  })
+  .openapi('VisitNote');
+
+export const VisitRead = z
+  .object({
+    encounterId: Uuid,
+    patientId: Uuid.nullable(),
+    kind: EncounterKind,
+    status: NoteStatus,
+    startedAt: DateTime,
+    clockVerified: z.boolean(),
+    locationText: z.string().nullable(),
+    summary: z.string().nullable().optional().openapi({
+      description: 'Absent for a Medical visit to a reader of no Medical notes',
+    }),
+    addenda: z.array(AddendumView).openapi({ description: 'The visit’s own, naming no note' }),
+    notes: z.array(VisitNote).openapi({ description: 'The notes the reader may see; no empty draft' }),
+    records: z.array(RecordSnapshot).openapi({
+      description:
+        'Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them',
+    }),
+  })
+  .openapi('VisitRead');
+
+export const TimelineNote = z
+  .object({
+    noteId: Uuid,
+    noteTypeKey: z.string(),
+    group: TimelineGroup,
+    status: NoteStatus,
+    attestation: Attestation,
+  })
+  .openapi('TimelineNote');
+export const TimelineVisit = z
+  .object({
+    encounterId: Uuid,
+    startedAt: DateTime,
+    kind: EncounterKind,
+    status: NoteStatus,
+    notes: z.array(TimelineNote),
+  })
+  .openapi('TimelineVisit');
+export const Timeline = z
+  .object({
+    encounters: z.array(TimelineVisit).openapi({ description: 'Newest first, the first 50' }),
+    referrals: z.array(RecordSnapshot),
+  })
+  .openapi('Timeline');
+export const TimelinePage = z
+  .object({ encounters: z.array(TimelineVisit).openapi({ description: 'Newest first, at most 50' }) })
+  .openapi('TimelinePage');
+export const TimelineQuery = z.object({
+  before: Uuid.optional().openapi({ description: 'The last visit already shown' }),
+});
+export const EncounterParam = z.object({ encounterId: Uuid });
+
 export const PatientChart = z
   .object({
     patient: RecordSnapshot,
@@ -359,6 +535,12 @@ export const PatientChart = z
     reviews: z.array(FieldReviewView),
     duplicate: z.union([DuplicateHint, z.null()]),
     projection: z.string().openapi({ description: 'Which projection made this copy' }),
+    timeline: Timeline.optional().openapi({
+      description: 'On the chart and the phone’s cache; absent where a chart is shown beside a decision',
+    }),
+    recentVisits: z.array(VisitRead).optional().openapi({
+      description: 'The last three visits in full, read offline from the cache',
+    }),
   })
   .openapi('PatientChart');
 
@@ -821,6 +1003,11 @@ export type PatientSearchResultValue = z.infer<typeof PatientSearchResult>;
 export type PatientMatchInput = z.infer<typeof PatientMatchRequest>;
 export type PatientMatchResultValue = z.infer<typeof PatientMatchResult>;
 export type PatientChartValue = z.infer<typeof PatientChart>;
+export type VisitReadValue = z.infer<typeof VisitRead>;
+export type VisitNoteValue = z.infer<typeof VisitNote>;
+export type TimelineValue = z.infer<typeof Timeline>;
+export type TimelineVisitValue = z.infer<typeof TimelineVisit>;
+export type TimelinePageValue = z.infer<typeof TimelinePage>;
 export type PatientSummaryValue = z.infer<typeof PatientSummary>;
 export type FetchChartsInput = z.infer<typeof FetchCharts>;
 export type ChartBundleValue = z.infer<typeof ChartBundle>;
