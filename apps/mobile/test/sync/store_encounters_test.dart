@@ -2181,6 +2181,116 @@ void main() {
     });
 
     test(
+      'a held sign-off’s notice read already, as another phone completed the note again, still settles it here',
+      () async {
+        // D107 with D104: completing again on a phone that never held the sign-off reads its notice on
+        // the server. The sender's phone skipped a notice read elsewhere, so its held sign-off, settled
+        // by that notice alone, stayed Sent for review and locked while the server held a draft.
+        final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+        server.rejectHeld(held.changeId);
+        // Before the sender's phone hears of it, the person opens the notice on a fresh phone and
+        // completes the note again there, the credential still lowered: held too.
+        final fresh = phone(alex);
+        final onFresh = ServerNotices(fresh.store, fresh.engine.api);
+        await onFresh.sync();
+        final told = fresh.store.notices().single;
+        expect(await fresh.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await fresh.engine.openServerRecord('encounter_note', told.noteId!), isTrue);
+        final again = complete(fresh, [finishing(fresh, flags, testRedFlags)])[flags]!;
+        await sync(fresh);
+        expect(fresh.store.sentForReview(flags), isTrue);
+        await onFresh.sync();
+        expect(server.notices.single.readAt, isNotNull);
+
+        // The sender's phone fetches its notices only now: read already, and still the one that settles
+        // its sign-off. The note is the server's draft again, to complete again.
+        await ServerNotices(p.store, p.engine.api).sync();
+        await sync(p);
+        expect([for (final n in p.store.notices()) (n.recordId, n.readAt != null)], [(held.recordId, true)]);
+        expect(p.store.sentForReview(flags), isFalse);
+        expect(p.store.localEffect(flags), isNull);
+        expect(p.store.noteState(flags), state(NoteStatus.draft));
+        expect(complete(p, [finishing(p, flags, testRedFlags)])[flags], isNotNull);
+        // The fresh phone's own held Complete is untouched by it.
+        expect(fresh.store.localEffect(flags)?.toJson(), again.toJson());
+      },
+    );
+
+    /// A student's note completed with a detail, then corrected so that "Nothing more" hides the detail:
+    /// the server keeps it; this phone's refresh has dropped it (D107).
+    Future<({TestPhone s, String n})> correctionHidDetail() async {
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96, 'more.detail': 'Demo: slept outside'});
+      await sync(s);
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      s.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.more.none', 'newValue': true, 'baseVersion': 0},
+        ],
+        'reason': 'Demo: nothing more to say',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': 'student',
+        'signoffId': null,
+      });
+      await sync(s);
+      expect(server.records[n]!.fields['data.more.detail']!.value, 'Demo: slept outside');
+      expect(answersOf(s, n), {'vitals.pulse': 96, 'more.none': true});
+      return (s: s, n: n);
+    }
+
+    test('an answer a correction hid leaves the phone at the refresh; shown again by an offline reopen, it costs a second Complete', () async {
+      // D107, an accepted cost: a finished note's read leaves out an answer a correction hid, which the
+      // server keeps, so the refresh drops it here too. Reopened offline with its field shown again,
+      // the phone shows the field empty and its Complete is refused content_changed; the refresh then
+      // brings the server's draft back, the answer with it, and completing again settles it.
+      final (:s, :n) = await correctionHidDetail();
+      expect(s.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      s.store.setField(n, 'data.more.none', null);
+      expect(effectiveAnswers(definition(testMedical), answersOf(s, n)), {'vitals.pulse': 96});
+      complete(s, [finishing(s, n, testMedical)], signer: student, redFlagsFinished: true);
+      await sync(s);
+      expect(
+        [for (final e in s.store.needsAttention()) (e.entity, e.details?['problem'])],
+        [(entitySignoff, 'content_changed')],
+      );
+      expect(server.records[n]!.fields['status']!.value, 'draft');
+      expect(answersOf(s, n), {'vitals.pulse': 96, 'more.none': null, 'more.detail': 'Demo: slept outside'});
+
+      complete(s, [finishing(s, n, testMedical)], signer: student, redFlagsFinished: true);
+      await sync(s);
+      expect(s.store.needsAttention(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      expect(onServer(n), {'vitals.pulse': 96, 'more.detail': 'Demo: slept outside'});
+    });
+
+    test(
+      'an answer a correction hid, typed over offline after a reopen, conflicts with the answer the server kept',
+      () async {
+        // D107's cost, the other way it shows: the phone holds no row for the answer, so a new one typed
+        // over the empty field meets the server's kept answer as a conflict, both shown, never written
+        // over it unseen.
+        final (:s, :n) = await correctionHidDetail();
+        expect(s.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+        s.store.setField(n, 'data.more.none', null);
+        s.store.setField(n, 'data.more.detail', 'Demo: slept in a shelter');
+        await sync(s);
+        expect(
+          [for (final e in s.store.needsAttention()) (e.field, e.state)],
+          [('data.more.detail', ChangeState.conflict)],
+        );
+        expect(onServer(n)['more.detail'], 'Demo: slept outside');
+      },
+    );
+
+    test(
       'a held receipt lost and its notice fetched before the retry: the retried receipt settles it at once',
       () async {
         // Review finding SRC-3: the receipt sent again set the held record after its notice had come,

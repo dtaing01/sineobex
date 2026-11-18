@@ -1722,8 +1722,12 @@ noteContentHash = sha256Hex(canonicalJson({
   again shows it empty there, while the server's draft holds it and it counts again; the Complete
   is then refused `content_changed`, and completing again after the refresh, which brings the
   answer back, settles it. A phone that first opened the note after the correction never held the
-  answer, so it was the same there before D107. Whether to narrow the drop (to the read that first
-  finds the note finished) is an open question for the coordinator, from D107's review.
+  answer, so it was the same there before D107. A new answer typed over the empty field offline
+  meets the kept one as a conflict, both shown, and never writes over it unseen. The
+  coordinator's decision (Nov 18, D107): this is an accepted cost, pinned by two tests (11.2).
+  Narrowing the drop to the read that first finds the note finished would only shrink it, since
+  that read may already follow the correction; removing it would need the server to send the
+  author a finished note's kept answers, a change to a reviewed read rule for a rare path.
 - **Why the patient and the summary are in it.** They are on the summary screen where Complete
   is pressed (9.6). If a teammate attached the visit to another patient, or rewrote the summary,
   between what the signer saw and what the server holds, the signature must not land. The hashes
@@ -2370,6 +2374,12 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   `ServerNotices` gives the patient of the sign-off's record, which only the sender's own phone
   holds, and `addNotice` takes the note's (through its visit, to the chart that holds them now)
   when it is given none. A phone that holds neither files it under no patient, as before.
+  A notice read on the server before this phone fetched it (the person completed the note again
+  on another phone, or tapped Got it there) still settles the held sign-off it names:
+  `ServerNotices` hands a read `signoff_not_applied` notice to `addNotice` as it does an unread
+  one, and keeps it read and acknowledged. Skipped, as a read notice of any other kind still is,
+  it left the sender's held sign-off Sent for review and locked while the server held a draft
+  (D107's review, finding F1).
 - **Accepted** (the coordinator's decision of Nov 18, D106). With `empty` before the finish check,
   an empty Red flags note's sign-off sent beside Medical notes is stored with no effect, and the
   Medical notes are refused `red_flags_first`, not the Red flags note `incomplete`. The phone never
@@ -3586,7 +3596,9 @@ no patient on a phone that holds neither. What reads a notice's patient did not 
 attention's notice card, whose **Open the chart** it gives (until L5's **Open the note**), and the
 ID card screen, for its own card notices alone; no purge and no chart reads it, so a notice keeps
 no chart on the phone. Completing the note again reads the notice on any phone, by the note it
-names (D107, 4.8), so it leaves Needs attention wherever the person did what it asked.
+names (D107, 4.8), so it leaves Needs attention wherever the person did what it asked. A phone
+that fetches such a notice only after it was read elsewhere keeps it read, and it still settles
+the held sign-off it names there (4.8).
 `finished_differently` names the note.
 
 ### 9.14 Portal: the queues
@@ -3810,8 +3822,8 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | A held sign-off that will not reach the chart tells its sender, once per sign-off | 4.6 | `sync-signoffs.test.ts` ("a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed", "each held sign-off is told once, whether or not an earlier notice was read"); the parity cases of those names; against the real API, `apps/mobile/test/sync/live_api_test.dart` ("each held Complete is told on its own: rejected twice before the first notice’s read arrives"); the phone's half in `apps/mobile/test/sync/store_encounters_test.dart` (group "receipts settle the effect (lifecycle 4.6, 4.8)") |
 | A held sign-off's notice names its note, and no other notice does; the phone keeps it with the notice, and settles nothing by it | 2.1, 4.6, 4.8, 4.10, 9.13 | `db/test/notice-note.test.ts` ("0022 the note a notice names": a note of the notice's own team only, by the key whatever the request may see; "0022 on a database that holds notices already"); `sync-signoffs.test.ts` ("a held sign-off’s notice names its note, rejected or refused on accept; no other notice names one", through the notices' list) and the parity case of that name; `store_encounters_test.dart` ("a phone that knows nothing of the sign-off keeps its notice with the note’s ID, as the sender’s own phone does", "the note a notice names settles nothing: the same note held again on another phone stays Sent for review"); against the real API, the live job's case about held Completes |
 | While a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes (D106) | 4.4, 4.8 | `store_encounters_test.dart` ("while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes"), which also holds that the accept's refresh takes the answer away (D107; until D107 it pinned the answer left on the phone), and that after a reject the draft is the server's |
-| A finished note on the phone holds only the answers its sync read carries; a change of the person's own keeps its answer until its receipt (D107) | 4.5, 4.8, 4.10 | `store_encounters_test.dart` ("the author’s other phone drops an answer Complete dropped once the server finishes the note", "a change of the person’s own to an answer the finished note left out keeps its row until its receipt", "an answer whose refused change still waits keeps its row once the note is finished, until it settles", "a reopen after the refresh dropped an answer shows no ghost of it when its field shows again"), and the D106 test above |
-| Completing again reads every notice that a Complete of the note was not applied, on any phone, and settles nothing else; the notice is filed under the note's patient on a phone that holds the note but not the sign-off (D107) | 4.8, 9.13 | `store_encounters_test.dart` ("completing again reads the notice on a phone that never held the sign-off; another held stays Sent for review", "a phone that holds the note but not the sign-off files its notice under the note’s patient") |
+| A finished note on the phone holds only the answers its sync read carries; a change of the person's own keeps its answer until its receipt (D107) | 4.5, 4.8, 4.10 | `store_encounters_test.dart` ("the author’s other phone drops an answer Complete dropped once the server finishes the note", "a change of the person’s own to an answer the finished note left out keeps its row until its receipt", "an answer whose refused change still waits keeps its row once the note is finished, until it settles", "a reopen after the refresh dropped an answer shows no ghost of it when its field shows again"), and the D106 test above; its accepted cost, an answer a correction hid (4.5): "an answer a correction hid leaves the phone at the refresh; shown again by an offline reopen, it costs a second Complete", "an answer a correction hid, typed over offline after a reopen, conflicts with the answer the server kept" |
+| Completing again reads every notice that a Complete of the note was not applied, on any phone, and settles nothing else; the notice is filed under the note's patient on a phone that holds the note but not the sign-off (D107) | 4.8, 9.13 | `store_encounters_test.dart` ("completing again reads the notice on a phone that never held the sign-off; another held stays Sent for review", "a phone that holds the note but not the sign-off files its notice under the note’s patient", "a held sign-off’s notice read already, as another phone completed the note again, still settles it here") |
 | The values of the new records, the same on both sides | 4.6, 4.7, 4.8 | `packages/contract/test-vectors/sync-values.json` through `services/api/test/contract-vectors.test.ts`, `apps/mobile/test/patients/entities_test.dart` (the registry) and `apps/mobile/test/sync/patient_rules_test.dart` (the fake) |
 | A phone logs the EMS handoff shown and Notes to finish offline | 4.8, 10.1 | `sync-encounters.test.ts` ("offline reads of a visit"); parity case 15; `entities_test.dart` |
 | Every kind of record has a name on the phone and in the portal | 9.13 | `apps/mobile/test/features/sync_labels_test.dart`; the portal's `SYNC_ENTITY` is typed by the contract |

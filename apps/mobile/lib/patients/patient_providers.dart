@@ -244,7 +244,9 @@ class ServerNotices {
           if (n.readAt != null) entry['acked'] = true;
           continue;
         }
-        if (n.readAt != null) continue;
+        // A held sign-off's notice read elsewhere (the note completed again on another phone, D107) is
+        // still the one thing that settles the sign-off it names here (D104): kept, read.
+        if (n.readAt != null && n.kind != noticeSignoffNotApplied) continue;
         final same = local.values
             .where((l) => l.kind == n.kind && l.recordId == n.recordId && n.recordId != null && !linked.contains(l.id))
             .firstOrNull;
@@ -256,8 +258,9 @@ class ServerNotices {
               patientId: _patientOf(n.entity, n.recordId),
               noteId: n.noteId,
             );
+        if (n.readAt != null) store.markNoticeRead(id);
         linked.add(id);
-        map[n.id] = {'local': id, 'entity': n.entity, 'acked': false};
+        map[n.id] = {'local': id, 'entity': n.entity, 'acked': n.readAt != null};
         added = true;
       }
       _saveMap(map);
