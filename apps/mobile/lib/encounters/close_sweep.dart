@@ -19,7 +19,9 @@ const untouchedDraftLifetime = Duration(days: 7);
 /// unchanged, so data still leaves the phone only after a hash-confirmed receipt):
 ///
 /// - a finished note once its sign-off is settled (no `localEffect`) and nothing about it waits in
-///   the outbox: no change to it, and no sign-off, addendum or correction of it;
+///   the outbox: no change to it, and no sign-off, addendum or correction of it; in a Medical visit,
+///   only once no note of the visit stays a draft on the phone, since Complete and the note types
+///   list read the visit's finished Red flags note from here (forms 6.2, lifecycle 3.3 hard stop 5);
 /// - a draft, a teammate's opened to help included, that nobody has changed for
 ///   [untouchedDraftLifetime] and of which nothing waits: it stays on the server and opens again
 ///   online (3.2). Until then a draft stays on its author's phone, so they can complete it with no
@@ -49,6 +51,9 @@ class CloseSweep implements AfterSyncRefresher {
   final showing = <String>{};
 
   static const _seenKey = 'encounters.close_sweep.seen';
+
+  /// A Non-Medical visit's kind (`VisitKind.nonMedical`): it holds no Red flags note.
+  static const _nonMedical = 'non_medical';
 
   @override
   Future<void> refresh(RefreshReason reason) async => sweep();
@@ -89,6 +94,24 @@ class CloseSweep implements AfterSyncRefresher {
         if (shown(n) || waiting.contains(n.id) || state.sentForReview) continue;
         if (draft ? old : store.localEffect(n.id) == null) closing.add(n.id);
       }
+      // A Medical visit's finished notes stay while a note of it stays unfinished: hard stop 5 and
+      // the Red flags note added with a Medical note read its finished Red flags note from the phone
+      // (forms 6.2), and the sweep can't tell which note that is without its definition.
+      final unfinished = {
+        for (final n in notes)
+          if (n.open && !closing.contains(n.id) && store.noteState(n.id)!.status == NoteStatus.draft)
+            n.attributes['encounterId'],
+      };
+      final visits = {
+        for (final r in records)
+          if (r.entity == entityEncounter) r.id: r,
+      };
+      closing.removeWhere((id) {
+        final n = notes.firstWhere((n) => n.id == id);
+        final visitId = n.attributes['encounterId'];
+        final kind = visits[visitId]?.fields['kind']?.value;
+        return store.noteState(id)!.status != NoteStatus.draft && unfinished.contains(visitId) && kind != _nonMedical;
+      });
       for (final v in records) {
         if (v.entity != entityEncounter || !v.open) continue;
         final its = [

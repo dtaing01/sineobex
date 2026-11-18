@@ -274,6 +274,36 @@ void main() {
       expect(statusOn(own), 'signed');
     });
 
+    test('a finished Red flags note the phone no longer holds, as the visit read shows it, asks nothing either '
+        '(review LCM-2)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await charted(r, visit, testMedical, {'vitals.pulse': 96});
+      final first = flagsOf(p, visit, alex).single;
+      await r.openNote(first);
+      r.saveAnswer(first, 'flags.any', 'no');
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      // Done with, its notes and the visit leave the phone (8.2); the visit is opened again online.
+      for (final id in [...p.store.recordIds()]) {
+        p.store.closeRecord(id);
+      }
+      p.store.purge();
+      expect(p.store.record(first), isNull);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      server.offline = true;
+      // The visit read the screen holds shows the finished Red flags note.
+      final more = (await r.addNote(visit, definition(testMedical), another: true, redFlagsFinished: true)).noteId;
+      expect(flagsOf(p, visit, alex), isEmpty);
+      await r.openNote(more);
+      r.saveAnswer(more, 'vitals.pulse', 90);
+      final plan = (await r.openComplete(visit, redFlagsFinished: true))!;
+      expect(plan.stops, isEmpty);
+      expect([for (final n in plan.notes) n.noteId], [more]);
+    });
+
     test('nothing is added while the clock check fails or the store is frozen, nor the Medical note', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

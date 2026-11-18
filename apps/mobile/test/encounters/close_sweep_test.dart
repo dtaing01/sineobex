@@ -160,6 +160,58 @@ void main() {
       expect([held(p, done), held(p, draft), p.store.record(visit)!.open], [false, true, true]);
     });
 
+    test('a Medical visit’s finished notes stay while a draft of it stays: hard stop 5 still sees its Red flags '
+        'note (review LCM-2)', () async {
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final rb = repo(b);
+      final visit = rb.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final theirMedical = await charted(rb, visit, testMedical, {'vitals.pulse': 96});
+      final theirFlags = (await rb.ownRedFlagsNote(visit))!;
+      await rb.openNote(theirFlags);
+      rb.saveAnswer(theirFlags, 'flags.any', 'no');
+      rb.complete((await rb.openComplete(visit))!);
+      await sync(b);
+
+      // Alex opens the visit and Blair's finished Red flags note, and adds a Medical note of their own:
+      // no Red flags note is added for them (forms 6.2).
+      final p = phone(alex);
+      final r = repo(p);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirFlags), isTrue);
+      final own = await charted(r, visit, testMedical, {'vitals.pulse': 88});
+      expect(await r.ownRedFlagsNote(visit), isNull);
+      await sync(p);
+      final sweep = sweeper(p);
+      expect(sweep.sweep(), isEmpty);
+      expect(held(p, theirFlags), isTrue);
+
+      // Offline, Complete is not stopped at hard stop 5, and nobody is asked the red-flag question again.
+      server.offline = true;
+      final plan = (await r.openComplete(visit))!;
+      expect(plan.stops, isEmpty);
+      expect([for (final n in plan.notes) n.noteId], [own]);
+      r.complete(plan);
+      server.offline = false;
+      await sync(p);
+      expect(server.records[own]!.fields['status']!.value, 'signed');
+      // With no draft left, the finished notes and the visit go.
+      expect(sweep.sweep(), unorderedEquals([theirFlags, own, visit]));
+      expect(theirMedical, isNot(own));
+    });
+
+    test('a Non-Medical visit’s finished note goes while a draft of it stays: it has no Red flags note', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final done = await charted(r, visit, testNote, {'vitals.pulse': 88});
+      r.complete((await r.openComplete(visit))!);
+      await charted(r, visit, testNote, {'care.plan': 'Demo: still talking'});
+      await sync(p);
+      expect(sweeper(p).sweep(), [done]);
+    });
+
     test('what a screen shows stays, with the notes of a visit shown', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

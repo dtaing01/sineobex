@@ -3321,7 +3321,11 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
   (`apps/mobile/lib/sync/local_store.dart:1895-1922`). Data still leaves the phone only after a
   hash-confirmed receipt: nothing here touches the purge. A note whose sign-off is held for review
   is not closed (`sentForReview`, 4.8): kept open, the refresh settles an admin's accept, and the
-  notice of a reject finds the note to complete again.
+  notice of a reject finds the note to complete again. A Medical visit's finished notes stay while
+  a note of it stays a draft on the phone: Complete's hard stop 5 and the note types list read the
+  visit's finished Red flags note from the phone (forms 6.2), and offline nothing else says it is
+  there (review LCM-2). Online, the visit read says so, and the screen passes it to `addNote` and
+  `openComplete` as `redFlagsFinished`.
 - **A draft nobody has touched for 7 days** is closed the same way, if nothing of it waits in
   the outbox (3.2). It stays on the server and opens again online.
 - **Reading a visit that has left the phone.** The last three visits of a chart the phone holds
