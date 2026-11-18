@@ -215,4 +215,58 @@ void main() {
     expect(phone.store.outbox(), isEmpty);
     expect(server.records[referral]!.fields['enteredInError']!.value, {'reason': 'Demo: wrong patient'});
   });
+
+  test('a chart cached before a contract change still opens offline: what no longer reads is not cached '
+      '(D108, review LRA-4)', () async {
+    final patient = server.seedPatient(preferredName: 'Demo Zee');
+    final referral = server.seed(entityReferral, {
+      'patientId': patient,
+      'referredOn': '2026-10-12',
+      'details': 'Demo: dental clinic',
+      'encounterId': null,
+    }, by: blair);
+    link.visits[patient] = visitsOf(patient, referral);
+    await services.patients.open(patient);
+    link.offline = true;
+
+    // As a phone cached it before D108: the newest visit's note has no recap lines, and the timeline
+    // lacks a field the contract now requires.
+    final cached = chartMetaOf(phone.store, patient)!.json;
+    final old = {
+      ...cached,
+      'recentVisits': [
+        for (final (i, v) in (cached['recentVisits']! as List<Object?>).indexed)
+          if (i == 0)
+            {
+              ...v! as Map<String, Object?>,
+              'notes': [
+                for (final n in (v as Map<String, Object?>)['notes']! as List<Object?>)
+                  {...n! as Map<String, Object?>}..remove('recap'),
+              ],
+            }
+          else
+            v,
+      ],
+      'timeline': {...cached['timeline']! as Map<String, Object?>}..remove('encounters'),
+    };
+    final meta = ChartMeta(old);
+    expect([for (final v in meta.recentVisits) v.encounterId], [v1]);
+    expect(meta.timeline, isNull);
+    // The referrals it lists still read, each on its own.
+    expect([for (final r in meta.referrals) r.id], [referral]);
+
+    final repo = EncounterRepository(
+      phone.store,
+      user: user,
+      definitions: defs(),
+      noteTypes: () async => definitions.values,
+    );
+    final api = EncounterApi(phone.engine.api, phone.store, user: user, definitions: defs());
+    expect((await api.openVisit(v1, phone: repo, recent: meta.recentVisits)).source, VisitSource.chart);
+    // The visit that no longer reads needs a connection, as one the chart doesn't keep.
+    await expectLater(
+      api.openVisit(v2, phone: repo, recent: meta.recentVisits),
+      throwsA(isA<EncounterRequestFailed>().having((e) => e.problem, 'problem', EncounterProblem.offline)),
+    );
+  });
 }

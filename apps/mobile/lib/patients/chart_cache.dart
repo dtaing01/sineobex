@@ -114,15 +114,45 @@ class ChartMeta {
   ];
 
   /// The profile's timeline as the server read it for this person (lifecycle 5.2): the group's
-  /// first 50 visits and its referrals. Null for a partial copy, or a chart that came without one.
-  Timeline? get timeline =>
-      json['timeline'] == null ? null : Timeline.fromJson(json['timeline']! as Map<String, Object?>);
+  /// first 50 visits and its referrals. Null for a partial copy, a chart that came without one, or
+  /// one cached before the contract it was written by changed (D108 made a note's recap lines
+  /// required), which no longer reads: the timeline then needs a connection, as one not cached.
+  Timeline? get timeline => _read(json['timeline'], Timeline.fromJson);
 
-  /// The chart's last visits in full (5.2), so the last three open with no signal.
-  List<VisitRead> get recentVisits => [for (final v in _maps('recentVisits')) VisitRead.fromJson(v)];
+  /// The chart's last visits in full (5.2), so the last three open with no signal. A visit cached
+  /// before the contract changed, which no longer reads, is left out: it opens online, as one the
+  /// chart doesn't keep, and the chart still opens.
+  List<VisitRead> get recentVisits => [
+    for (final v in json['recentVisits'] as List<Object?>? ?? const []) ?_read(v, VisitRead.fromJson),
+  ];
 
-  /// The group's referrals as the timeline lists them, which the phone need not hold as records.
-  List<RecordSnapshot> get referrals => timeline?.referrals ?? const [];
+  /// The group's referrals as the timeline lists them, which the phone need not hold as records:
+  /// each read on its own, so one that no longer reads leaves the rest.
+  List<RecordSnapshot> get referrals => [
+    for (final r in switch (json['timeline']) {
+      {'referrals': final List<Object?> listed} => listed,
+      _ => const <Object?>[],
+    })
+      ?_read(r, RecordSnapshot.fromJson),
+  ];
+
+  /// [value] read by [fromJson]; null when it isn't there or no longer reads (the generated
+  /// readers cast, so a missing or reshaped field is a TypeError).
+  static T? _read<T>(Object? value, T Function(Map<String, dynamic> json) fromJson) {
+    if (value is! Map<String, Object?>) return null;
+    try {
+      return fromJson(value);
+      // A cached copy is the server's answer of up to 24 hours ago; whatever it no longer matches
+      // is not cached.
+      // ignore: avoid_catching_errors
+    } on TypeError {
+      return null;
+    } on FormatException {
+      return null;
+    } on ArgumentError {
+      return null;
+    }
+  }
 }
 
 /// The chart meta of [patientId]'s record here, if it was downloaded (or opened from the index).
