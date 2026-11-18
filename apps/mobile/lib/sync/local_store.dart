@@ -405,18 +405,24 @@ const noticeProblemRetracted = 'problem_retracted';
 /// was changed."
 const noticeChangeNotApplied = 'change_not_applied';
 
-/// A `change_not_applied` naming a note this phone sent for review (lifecycle 4.6, 9.13): a Program
-/// Admin rejected its held sign-off, or couldn't apply it to the note as it is now. "Your Complete of
-/// this note wasn’t applied. Open it and complete it again."
+/// The server's notice that a sign-off it held for review will not reach the chart (lifecycle 4.6,
+/// 9.13, D89): a Program Admin rejected it, or couldn't apply it to the note as it is now. It names
+/// the sign-off (entity `note_signoff`), and its kind alone words it: "Your Complete of this note
+/// wasn’t applied. Open it and complete it again."
 const noticeSignoffNotApplied = 'signoff_not_applied';
 
 /// A sign-off that found its note already finished by a signature over other content (lifecycle
 /// 3.4): the person opens the note and reads what was signed.
 const noticeFinishedDifferently = 'finished_differently';
 
-/// Where the phone keeps, by note, the sign-off of it the server holds for review (IDs only), so the
-/// notice that it wasn't applied is known for what it is after the note left the phone (4.6).
+/// Where the phone keeps, by note, the sign-off of it the server holds for review (IDs only), until a
+/// Program Admin's decision reaches the phone (4.6).
 const _heldKvPrefix = 'held_signoff.';
+
+/// Where the phone keeps, by sign-off, the note of each sign-off of its own the server held (IDs
+/// only), for good: the notice that one wasn't applied names the sign-off, and settles only the held
+/// one it names, or, for one settled here already, is read (D89).
+const _heldNoteKvPrefix = 'held_note.';
 
 /// Read-only copies of server records expire after this (module 9 "Route cache").
 const serverCopyLifetime = Duration(hours: 24);
@@ -1410,13 +1416,15 @@ class LocalStore {
       attestation: applied.attestationAfter,
       signoffId: signoffId,
     );
-    // Completing again answers "Your Complete of this note wasn’t applied": read here, and on the
-    // server at the next contact, so a Complete not applied again is told again (4.6).
-    _db.execute('UPDATE local_notices SET read_at = ? WHERE kind = ? AND record_id = ? AND read_at IS NULL', [
-      _nowMs,
-      noticeSignoffNotApplied,
-      rec.id,
-    ]);
+    // Completing again answers "Your Complete of this note wasn’t applied" about any sign-off of it:
+    // read here, and on the server at the next contact (4.6).
+    _db.execute(
+      'UPDATE local_notices SET read_at = ? WHERE kind = ? AND read_at IS NULL AND (record_id IN '
+      '(SELECT substr(key, ${_heldNoteKvPrefix.length + 1}) FROM kv '
+      "WHERE substr(key, 1, ${_heldNoteKvPrefix.length}) = '$_heldNoteKvPrefix' AND value = ?) "
+      "OR record_id IN (SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.noteId') = ?))",
+      [_nowMs, noticeSignoffNotApplied, rec.id, entitySignoff, rec.id],
+    );
     _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
       jsonEncode({...rec.attributes, _localEffectKey: local.toJson()}),
       rec.id,
@@ -1759,7 +1767,17 @@ class LocalStore {
     final noteId = value is Map<String, Object?> ? value['noteId'] : null;
     if (noteId is! String) return;
     if (inReview) {
-      setKv('$_heldKvPrefix$noteId', e.recordId);
+      setKv('$_heldNoteKvPrefix${e.recordId}', noteId);
+      // Its notice came first (this receipt was lost and is the one sent again): settled at once.
+      if (_count('SELECT count(*) AS n FROM local_notices WHERE kind = ? AND record_id = ?', [
+            noticeSignoffNotApplied,
+            e.recordId,
+          ]) >
+          0) {
+        if (localEffect(noteId)?.signoffId == e.recordId) _clearEffect(noteId);
+      } else {
+        setKv('$_heldKvPrefix$noteId', e.recordId);
+      }
       return;
     }
     final note = record(noteId);
@@ -2467,26 +2485,27 @@ class LocalStore {
 
   /// Keeps a notice for the person: kinds, fields and IDs only.
   ///
-  /// A [noticeChangeNotApplied] naming a note whose sign-off the server held for review is that
-  /// sign-off not applied (lifecycle 4.6, D89): a Program Admin rejected it, or couldn't apply it to
-  /// the note as it is now. Nothing else would tell the worker, since the phone let the sign-off go
-  /// when it was held. The note is no longer finished here: what the phone expected is cleared, and
-  /// it is a draft again, to read and complete again (fetched again first if it left the phone). The
-  /// notice is kept as [noticeSignoffNotApplied], on the visit's patient.
+  /// A [noticeSignoffNotApplied] names a sign-off the server held for review that will not reach the
+  /// chart (lifecycle 4.6, D89). For the one this phone holds as sent for review, the note is no longer
+  /// finished here: what the phone expected of that sign-off is cleared, and the note is a draft
+  /// again, to read and complete again (fetched again first if it left the phone). One this phone
+  /// settled already (its note finished since) changes nothing, and is kept read. One this phone knows
+  /// nothing of (another phone's, or a database erased since) is kept as it is.
   String addNotice(String kind, {String? patientId, String? recordId, String? field}) => _tx(() {
-    var stored = kind;
-    var patient = patientId;
-    final held = kind == noticeChangeNotApplied && recordId != null ? _heldSignoff(recordId) : null;
-    if (held != null) {
-      stored = noticeSignoffNotApplied;
-      patient ??= _patientOfRecord(recordId);
-      _heldSettled(recordId!);
-      if (localEffect(recordId)?.signoffId == held) _clearEffect(recordId);
+    var settled = false;
+    final noteId = kind == noticeSignoffNotApplied && recordId != null ? kv('$_heldNoteKvPrefix$recordId') : null;
+    if (noteId != null) {
+      if (_heldSignoff(noteId) == recordId) {
+        _heldSettled(noteId);
+        if (localEffect(noteId)?.signoffId == recordId) _clearEffect(noteId);
+      } else {
+        settled = true;
+      }
     }
     final id = _newId();
     _db.execute(
-      'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, stored, patient, recordId, field, _nowMs],
+      'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, kind, patientId, recordId, field, _nowMs, settled ? _nowMs : null],
     );
     return id;
   });

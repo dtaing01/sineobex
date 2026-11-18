@@ -1114,7 +1114,8 @@ describe('phase 4 sync: sign-offs', () => {
           teamId: t.teamId,
           json: { decision, reason: 'Demo: checked with Ned' },
         });
-      const told = [{ userId: ned.id, kind: 'change_not_applied', entity: 'encounter_note' }];
+      // On the held sign-off, by a kind of its own: the phone words it with no state of its own (SRC-2).
+      const told = [{ userId: ned.id, kind: 'signoff_not_applied', entity: 'note_signoff' }];
 
       // Accepted: on the chart, and nobody is told anything.
       expect((await decide(sent[0]!, 'accept')).status).toBe(200);
@@ -1130,7 +1131,8 @@ describe('phase 4 sync: sign-offs', () => {
       });
       expect(await noteRow(changed.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
       expect(await signoffRow(sent[1]!.recordId)).toBeUndefined();
-      expect(await noticesOn(changed.note.noteId)).toEqual(told);
+      expect(await noticesOn(sent[1]!.recordId)).toEqual(told);
+      expect(await noticesOn(changed.note.noteId)).toEqual([]);
       const [event] = await expectAudit(h, 'quarantine.accept_refused', { after: mark, count: 1 });
       expect(event).toMatchObject({
         actorUserId: t.adminId,
@@ -1139,15 +1141,90 @@ describe('phase 4 sync: sign-offs', () => {
         patientId,
         details: { itemId: await itemOf(sent[1]!), changeId: sent[1]!.changeId, problem: 'content_changed' },
       });
-      // Rejected then: the notice Ned has not read yet says it already.
+      // Rejected then: that sign-off was told already.
       expect((await decide(sent[1]!, 'reject')).status).toBe(200);
-      expect(await noticesOn(changed.note.noteId)).toEqual(told);
+      expect(await noticesOn(sent[1]!.recordId)).toEqual(told);
       // A held change that is not a sign-off, rejected, tells nobody; a held sign-off, rejected, its sender.
       expect((await decide(sent[3]!, 'reject')).status).toBe(200);
-      expect(await noticesOn(other.note.noteId)).toEqual([]);
+      expect(await noticesOn(sent[3]!.recordId)).toEqual([]);
       expect((await decide(sent[2]!, 'reject')).status).toBe(200);
-      expect(await noticesOn(other.note.noteId)).toEqual(told);
+      expect(await noticesOn(sent[2]!.recordId)).toEqual(told);
+      expect(await noticesOn(other.note.noteId)).toEqual([]);
       expect(await noteRow(other.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
+    });
+
+    it('each held sign-off is told once, whether or not an earlier notice was read', async () => {
+      // Review findings SRC-1 and SRC-5: told by note, a second held Complete rejected before the
+      // phone's read of the first notice arrived told nobody, and a late reject of the first one was
+      // taken by the phone for the second, still held.
+      const uma = await clinician('uma@example.com', 'Uma (demo)', 'np');
+      const viv = await clinician('viv@example.com', 'Viv (demo)', 'attending');
+      const charted = await chartedVisit(uma);
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(uma.membershipId, 'chw');
+      const itemOf = async (c: Change) =>
+        (
+          await h.scratch.owner<{ id: string }[]>`
+            select id from sineobex.quarantine_items where change_id = ${c.changeId}`
+        )[0]!.id;
+      const decide = async (c: Change, decision: 'accept' | 'reject') =>
+        call(h, `/v1/team/quarantine/${await itemOf(c)}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Uma' },
+        });
+      const told = (signoffId: string) =>
+        h.scratch.owner<{ kind: string; entity: string; read: boolean }[]>`
+          select kind, entity, read_at is not null as read from sineobex.user_notices
+          where user_id = ${uma.id} and record_id = ${signoffId} order by created_at, id`;
+      const once = { kind: 'signoff_not_applied', entity: 'note_signoff' };
+      const held = async () => {
+        const s = await signoff(uma, charted.flags, 'sign');
+        expect(await uma.send(s)).toEqual([expect.objectContaining({ quarantined: true })]);
+        return s;
+      };
+
+      // Held, rejected: told. Completed again, held again, and rejected before the first notice is
+      // read: told again, on the second sign-off.
+      const first = await held();
+      expect((await decide(first, 'reject')).status).toBe(200);
+      const second = await held();
+      expect((await decide(second, 'reject')).status).toBe(200);
+      expect(await told(first.recordId)).toEqual([{ ...once, read: false }]);
+      expect(await told(second.recordId)).toEqual([{ ...once, read: false }]);
+      expect(await noticesOn(charted.flags.noteId)).toEqual([]);
+
+      // Held, its accept refused as the note changed: told, and the person reads it.
+      const third = await held();
+      const edit = await viv.phone.change({
+        entity: 'encounter',
+        recordId: charted.visit.encounterId,
+        op: 'set',
+        field: 'summary',
+        value: 'Demo: seen at the bridge',
+        baseVersion: 0,
+      });
+      expect((await viv.send(edit)).map((r) => r.status)).toEqual(['accepted']);
+      expect((await decide(third, 'accept')).status).toBe(409);
+      const [notice] = await h.scratch.owner<{ id: string }[]>`
+        select id from sineobex.user_notices where record_id = ${third.recordId}`;
+      const read = await call(h, `/v1/team/notices/${notice!.id}/read`, {
+        method: 'POST',
+        token: uma.token,
+        teamId: t.teamId,
+      });
+      expect(read.status).toBe(200);
+      // Completed again and held: still pending, a later sign-off of the same note.
+      const fourth = await held();
+      // The reviewer rejects the third later, as the refused accept invites: that sign-off was told
+      // already, read or not, and nothing names the fourth, which is still held.
+      expect((await decide(third, 'reject')).status).toBe(200);
+      expect(await told(third.recordId)).toEqual([{ ...once, read: true }]);
+      expect(await told(fourth.recordId)).toEqual([]);
+      const [pending] = await h.scratch.owner<{ status: string }[]>`
+        select status from sineobex.quarantine_items where change_id = ${fourth.changeId}`;
+      expect(pending!.status).toBe('pending');
     });
 
     it('a held sign-off’s time is checked against when its push arrived, not when an admin accepted it', async () => {

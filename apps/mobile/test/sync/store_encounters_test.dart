@@ -1221,8 +1221,9 @@ void main() {
       final notices = ServerNotices(p.store, p.engine.api);
       server.rejectHeld(held.changeId);
       await notices.sync();
+      // It names the sign-off that was held, and is worded by its kind alone.
       final told = p.store.notices().single;
-      expect([told.kind, told.recordId, told.patientId], [noticeSignoffNotApplied, flags, patient]);
+      expect([told.kind, told.recordId, told.patientId], [noticeSignoffNotApplied, held.recordId, patient]);
       expect(
         noticeLabel(told.kind, told.field),
         'Your Complete of this note wasn’t applied. Open it and complete it again.',
@@ -1247,7 +1248,7 @@ void main() {
       expect(p.store.record(visit)!.status, 'completed');
     });
 
-    test('held again and refused at the accept: the read notice lets the server tell the person again', () async {
+    test('held again and refused at the accept: the second sign-off is told on its own', () async {
       final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
       final notices = ServerNotices(p.store, p.engine.api);
       server.rejectHeld(held.changeId);
@@ -1268,7 +1269,7 @@ void main() {
       await notices.sync();
       expect(
         [for (final n in p.store.notices(unreadOnly: true)) (n.kind, n.recordId)],
-        [(noticeSignoffNotApplied, flags)],
+        [(noticeSignoffNotApplied, again.recordId)],
       );
       expect(p.store.sentForReview(flags), isFalse);
       // The next sync brings the teammate's answer to the draft.
@@ -1285,11 +1286,165 @@ void main() {
       expect(p.store.record(flags), isNull);
       server.rejectHeld(held.changeId);
       await ServerNotices(p.store, p.engine.api).sync();
-      expect([p.store.notices().single.kind, p.store.notices().single.recordId], [noticeSignoffNotApplied, flags]);
+      expect(
+        [p.store.notices().single.kind, p.store.notices().single.recordId],
+        [noticeSignoffNotApplied, held.recordId],
+      );
       // Fetched again, it is a draft to complete.
       expect(await p.engine.openServerRecord('encounter', visit), isTrue);
       expect(await p.engine.openServerRecord('encounter_note', flags), isTrue);
       expect(p.store.noteState(flags), state(NoteStatus.draft));
+    });
+
+    test('held twice and rejected twice before the first notice’s read reached the server: a draft again', () async {
+      // Review finding SRC-1: told by note, the second reject told nobody while the first notice was
+      // unread on the server, and the note stayed Sent for review for good.
+      final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
+      final notices = ServerNotices(p.store, p.engine.api);
+      server.rejectHeld(held.changeId);
+      await notices.sync();
+      // Completed again, the credential still lowered: held again. The notices refresher runs at most
+      // every two minutes after a sync, so the read made here has not reached the server yet.
+      complete(p, [finishing(p, flags, testRedFlags)]);
+      final again = signoffs(p).single;
+      await sync(p);
+      expect(p.store.sentForReview(flags), isTrue);
+      server.rejectHeld(again.changeId);
+      expect(server.notices.where((n) => n.readAt == null), hasLength(2));
+      await notices.sync();
+      expect(
+        [for (final n in p.store.notices(unreadOnly: true)) (n.kind, n.recordId)],
+        [(noticeSignoffNotApplied, again.recordId)],
+      );
+      expect(p.store.sentForReview(flags), isFalse);
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+      await sync(p);
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+    });
+
+    test(
+      'a phone that knows nothing of the sign-off words its notice the same: erased at sign-out, or a second phone',
+      () async {
+        // Review finding SRC-2: told apart by this phone's own record, the notice read "Only the note’s
+        // author can do that. Nothing was changed." on any other.
+        final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+        // Everything synced (the held sign-off left the outbox), so a sign-out erases the database.
+        expect(p.store.hasUnsynced, isFalse);
+        final fresh = phone(alex);
+        expect(await fresh.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await fresh.engine.openServerRecord('encounter_note', flags), isTrue);
+        server.rejectHeld(held.changeId);
+        for (final other in [fresh, p]) {
+          await ServerNotices(other.store, other.engine.api).sync();
+          final told = other.store.notices().single;
+          expect([told.kind, told.recordId, told.readAt], [noticeSignoffNotApplied, held.recordId, isNull]);
+          expect(
+            noticeLabel(told.kind, told.field),
+            'Your Complete of this note wasn’t applied. Open it and complete it again.',
+          );
+        }
+        // The sender's phone settles its own; the other had nothing to settle.
+        expect(p.store.noteState(flags), state(NoteStatus.draft));
+        expect(fresh.store.noteState(flags), state(NoteStatus.draft));
+      },
+    );
+
+    test(
+      'a held receipt lost and its notice fetched before the retry: the retried receipt settles it at once',
+      () async {
+        // Review finding SRC-3: the receipt sent again set the held record after its notice had come,
+        // and the note stayed Sent for review for good.
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+        final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+        await sync(p);
+        server.changeCredential(alex, 'chw');
+        complete(p, [finishing(p, flags, testRedFlags)]);
+        final s = signoffs(p).single;
+        // The server receives and holds it, but its answer is lost.
+        server.dropPushResponses = 1;
+        await sync(p);
+        expect(server.held.containsKey(s.changeId), isTrue);
+        expect(signoffs(p), hasLength(1));
+        server.rejectHeld(s.changeId);
+        await ServerNotices(p.store, p.engine.api).sync();
+        expect(
+          [p.store.notices().single.kind, p.store.notices().single.recordId],
+          [noticeSignoffNotApplied, s.recordId],
+        );
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        expect(p.store.sentForReview(flags), isFalse);
+        expect(p.store.noteState(flags), state(NoteStatus.draft));
+        expect(p.store.notices(unreadOnly: true), hasLength(1));
+      },
+    );
+
+    test(
+      'a sign-off accepted after its note left the phone: a later change_not_applied about the note is its own',
+      () async {
+        // Review finding SRC-4: the held record outlived the accept, and gave a later notice about the
+        // note the sentence of a Complete not applied.
+        final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+        p.store
+          ..closeRecord(flags)
+          ..closeRecord(visit);
+        expect(p.store.record(flags), isNull);
+        server.acceptHeld(held.changeId);
+        await sync(p);
+        final later = p.store.addNotice(noticeChangeNotApplied, recordId: flags);
+        expect(p.store.notices().singleWhere((n) => n.id == later).kind, noticeChangeNotApplied);
+      },
+    );
+
+    test('a notice about a sign-off settled here already is read, and leaves a later held sign-off alone', () async {
+      // Review findings SRC-5 and SRC-7: told by note, a late reject of the first held sign-off was
+      // taken for the second, still held, and cleared its effect.
+      final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
+      final notices = ServerNotices(p.store, p.engine.api);
+      // A teammate's answer reaches the note first: the admin's accept is refused, the person told.
+      server.serverEdit(flags, 'data.flags.any', 'yes', by: blair);
+      expect((server.acceptHeld(held.changeId)['details']! as Map<String, Object?>)['problem'], 'content_changed');
+      await notices.sync();
+      expect(p.store.noteState(flags), state(NoteStatus.draft));
+      await sync(p);
+      // Read again and completed again; still gated, so held again.
+      final second = complete(p, [finishing(p, flags, testRedFlags)])[flags]!;
+      await sync(p);
+      expect(p.store.sentForReview(flags), isTrue);
+      // Later the reviewer rejects the first, still pending after the refused accept: the server tells
+      // nobody again, and a notice naming it here would change nothing.
+      server.rejectHeld(held.changeId);
+      await notices.sync();
+      expect(p.store.notices(), hasLength(1));
+      final late = p.store.addNotice(noticeSignoffNotApplied, recordId: held.recordId);
+      expect(p.store.notices().singleWhere((n) => n.id == late).readAt, isNotNull);
+      expect(p.store.sentForReview(flags), isTrue);
+      expect(p.store.localEffect(flags)?.toJson(), second.toJson());
+      expect(p.store.noteState(flags), state(NoteStatus.completed, Attestation.notNeeded, true));
+    });
+
+    test('a held sign-off settled by the refresh: its notice, when it comes, is read and not shown', () async {
+      final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
+      // The same person completes the note on another phone, as an attending again: it is finished.
+      server.changeCredential(alex, 'attending');
+      final b = phone(alex);
+      final visitId = p.store.record(flags)!.attributes['encounterId']! as String;
+      expect(await b.engine.openServerRecord('encounter', visitId), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', flags), isTrue);
+      complete(b, [finishing(b, flags, testRedFlags)]);
+      await sync(b);
+      await sync(p);
+      expect(p.store.sentForReview(flags), isFalse);
+      expect(p.store.noteState(flags), state(NoteStatus.completed));
+      server.rejectHeld(held.changeId);
+      await ServerNotices(p.store, p.engine.api).sync();
+      expect(p.store.notices(unreadOnly: true), isEmpty);
+      expect(p.store.noteState(flags), state(NoteStatus.completed));
+      // And the read goes to the server at the next contact.
+      await ServerNotices(p.store, p.engine.api).sync();
+      expect(server.notices.single.readAt, isNotNull);
     });
 
     test('a change_not_applied about anything else says only the author can, and leaves the note as it is', () async {

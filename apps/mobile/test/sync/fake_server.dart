@@ -457,21 +457,19 @@ class FakeSyncServer {
   }
 
   /// A held sign-off that will not reach the chart (review.ts signoffNotApplied, review finding
-  /// NOT-12): its phone let go of it when it was held, so its sender gets `change_not_applied`
-  /// naming the note, unless one they have not read yet says so already. Only for a note on the chart.
+  /// NOT-12): its phone let go of it when it was held, so its sender gets `signoff_not_applied` naming
+  /// that sign-off, once per sign-off whether or not they have read it (SRC-1, SRC-2, SRC-5). Only for
+  /// a sign-off of a note on the chart.
   void _signoffNotApplied(String userId, Map<String, Object?> c) {
     if (c['entity'] != entitySignoff || c['op'] != 'create') return;
     final noteId = (c['value'] as Map<String, Object?>?)?['noteId'];
     if (noteId is! String || records[noteId]?.entity != entityNote) return;
-    final waiting = notices.any(
+    final signoffId = c['recordId']! as String;
+    final told = notices.any(
       (n) =>
-          n.userId == userId &&
-          n.kind == 'change_not_applied' &&
-          n.entity == entityNote &&
-          n.recordId == noteId &&
-          n.readAt == null,
+          n.userId == userId && n.kind == 'signoff_not_applied' && n.entity == entitySignoff && n.recordId == signoffId,
     );
-    if (!waiting) _notify(userId, 'change_not_applied', entityNote, noteId);
+    if (!told) _notify(userId, 'signoff_not_applied', entitySignoff, signoffId);
   }
 
   /// The patient whose chart holds [patientId] now (its canonical ID).

@@ -3094,25 +3094,80 @@ void main() {
             ],
             ['accepted'],
           );
-          final told = ['$dana change_not_applied $entityNote'];
+          // On the held sign-off, by a kind of its own: the phone words it with no state of its own (SRC-2).
+          final told = ['$dana signoff_not_applied $entitySignoff'];
+          String id(Map<String, Object?> c) => c['recordId']! as String;
 
           // Accepted: on the chart, and nobody is told anything.
           expect(server.acceptHeld(sent[0]['changeId']! as String, by: admin)['status'], 'accepted');
+          expect(noticesOn(id(sent[0])), isEmpty);
           expect(noticesOn(other.flags.noteId), isEmpty);
           // Refused on accept, as the note changed: still held, and Dana is told the note needs completing.
           expect(server.acceptHeld(sent[1]['changeId']! as String, by: admin), refused('content_changed'));
           expect(server.held.keys, contains(sent[1]['changeId']));
           expect(server.records[changed.note.noteId]!.fields['status']!.value, 'draft');
-          expect(noticesOn(changed.note.noteId), told);
-          // Rejected then: the notice Dana has not read yet says it already.
+          expect(noticesOn(id(sent[1])), told);
+          expect(noticesOn(changed.note.noteId), isEmpty);
+          // Rejected then: that sign-off was told already.
           server.rejectHeld(sent[1]['changeId']! as String);
-          expect(noticesOn(changed.note.noteId), told);
+          expect(noticesOn(id(sent[1])), told);
           // A held change that is not a sign-off, rejected, tells nobody; a held sign-off, rejected, its sender.
           server.rejectHeld(sent[3]['changeId']! as String);
-          expect(noticesOn(other.note.noteId), isEmpty);
+          expect(noticesOn(id(sent[3])), isEmpty);
           server.rejectHeld(sent[2]['changeId']! as String);
-          expect(noticesOn(other.note.noteId), told);
+          expect(noticesOn(id(sent[2])), told);
+          expect(noticesOn(other.note.noteId), isEmpty);
           expect(server.records[other.note.noteId]!.fields['status']!.value, 'draft');
+        });
+
+        test('each held sign-off is told once, whether or not an earlier notice was read', () async {
+          // Review findings SRC-1 and SRC-5: told by note, a second held Complete rejected before the
+          // phone's read of the first notice arrived told nobody, and a late reject of the first one was
+          // taken by the phone for the second, still held.
+          server.credentials[dana] = 'np';
+          final charted = chartedVisit(dana);
+          server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+          List<(String, String, bool)> toldOf(Map<String, Object?> c) => [
+            for (final n in server.notices)
+              if (n.userId == dana && n.recordId == c['recordId']) (n.kind, n.entity, n.readAt != null),
+          ];
+          const once = ('signoff_not_applied', entitySignoff, false);
+          Future<Map<String, Object?>> held() async {
+            // Signed as the phone's saved profile still shows Dana: a nurse practitioner.
+            final s = signoff(dana, charted.flags, 'sign', claimed: 'np');
+            expect(await send(dana, [s]), [heldOnly(s)]);
+            return s;
+          }
+
+          // Held, rejected: told. Completed again, held again, and rejected before the first notice is
+          // read: told again, on the second sign-off.
+          final first = await held();
+          server.rejectHeld(first['changeId']! as String);
+          final second = await held();
+          server.rejectHeld(second['changeId']! as String);
+          expect(toldOf(first), [once]);
+          expect(toldOf(second), [once]);
+          expect(noticesOn(charted.flags.noteId), isEmpty);
+
+          // Held, its accept refused as the note changed: told, and the person reads it.
+          final third = await held();
+          final edit = setOn(entityEncounter, charted.visit, 'summary', 'Demo: seen at the bridge', 0);
+          expect(
+            [
+              for (final r in await send(alex, [edit])) r['status'],
+            ],
+            ['accepted'],
+          );
+          expect(server.acceptHeld(third['changeId']! as String, by: admin), refused('content_changed'));
+          server.notices.singleWhere((n) => n.recordId == third['recordId']).readAt = now;
+          // Completed again and held: still pending, a later sign-off of the same note.
+          final fourth = await held();
+          // The reviewer rejects the third later, as the refused accept invites: that sign-off was told
+          // already, read or not, and nothing names the fourth, which is still held.
+          server.rejectHeld(third['changeId']! as String);
+          expect(toldOf(third), [('signoff_not_applied', entitySignoff, true)]);
+          expect(toldOf(fourth), isEmpty);
+          expect(server.held.keys, contains(fourth['changeId']));
         });
 
         test(

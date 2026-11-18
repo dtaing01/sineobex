@@ -317,13 +317,16 @@ class Refused extends Error {
 /**
  * A held sign-off that will not reach the chart: rejected, or its accept refused as the note no
  * longer matches it (review finding NOT-12). Its phone let go of it when it was held, so its sender
- * gets `change_not_applied` naming the note, unless one they have not read yet says so already.
- * Only for a sign-off of a note on the chart; anything else tells nobody. The note's ID, or null.
+ * gets `signoff_not_applied` naming that sign-off, a kind of its own so that no phone needs state of
+ * its own to word it (review finding SRC-2), once per sign-off whether or not they have read it: a
+ * refused accept and the reject that follows tell them once, and a second held Complete of the same
+ * note, its own sign-off, is told on its own (SRC-1, SRC-5). Only for a sign-off of a note on the
+ * chart; anything else tells nobody. The note's ID, or null.
  */
 async function signoffNotApplied(
   tx: Tx,
   teamId: string,
-  item: Pick<QuarantineRow, 'entity' | 'op' | 'userId' | 'value'>,
+  item: Pick<QuarantineRow, 'entity' | 'op' | 'userId' | 'recordId' | 'value'>,
 ): Promise<string | null> {
   if (item.entity !== 'note_signoff' || item.op !== 'create') return null;
   // Values were never schema-checked, so the note is read only when it is a UUID.
@@ -334,11 +337,11 @@ async function signoffNotApplied(
   if (!note) return null;
   await tx`
     insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
-    select ${teamId}, ${item.userId}, 'change_not_applied', 'encounter_note', ${note.id}
+    select ${teamId}, ${item.userId}, 'signoff_not_applied', 'note_signoff', ${item.recordId}
     where not exists (
       select 1 from sineobex.user_notices
-      where user_id = ${item.userId} and kind = 'change_not_applied' and entity = 'encounter_note'
-        and record_id = ${note.id} and read_at is null)`;
+      where team_id = ${teamId} and user_id = ${item.userId} and kind = 'signoff_not_applied'
+        and entity = 'note_signoff' and record_id = ${item.recordId})`;
   return note.id;
 }
 
