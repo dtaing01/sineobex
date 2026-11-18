@@ -181,6 +181,11 @@ class _ChoiceFieldState extends State<ChoiceField> {
     // A picked chip's words on the accent, as the theme's selected label is.
     final chips = Theme.of(context).chipTheme;
     final style = on ? chips.secondaryLabelStyle : chips.labelStyle;
+    // A picked choose-one chip clears the answer when tapped again, which a radio-like group
+    // doesn't: said before it is done, as the tap's hint where the reader says one (Android), as the
+    // chip's hint elsewhere (iOS), so it is said once.
+    final clears = on && !_f.many;
+    final hintsTap = !MediaQuery.supportsAnnounceOf(context);
     // One node per chip, the state on the button itself: "selected" or "not selected" comes from
     // the flag, so it is never said twice.
     return Semantics(
@@ -190,6 +195,8 @@ class _ChoiceFieldState extends State<ChoiceField> {
       inMutuallyExclusiveGroup: !_f.many,
       enabled: true,
       label: o.other && on ? '${o.label}, text box below' : o.label,
+      hint: clears && !hintsTap ? 'Double-tap to clear.' : null,
+      onTapHint: clears && hintsTap ? 'clear' : null,
       onTap: tap,
       excludeSemantics: true,
       child: _f.many

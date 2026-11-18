@@ -145,6 +145,47 @@ void main() {
     });
   });
 
+  group('the picked choose-one chip says that tapping it clears it', () {
+    Future<void> openPicked(WidgetTester tester, {required bool announces}) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures(supportsAnnounce: announces);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await open(tester, noTransport, values: {pathOf(noTransport): noTransport.options[1].code});
+    }
+
+    testWidgets('as the tap’s hint where the reader says one (Android)', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openPicked(tester, announces: false);
+      final [a, b, ...] = noTransport.options;
+      expect(tester.getSemantics(chip(b.label)), isSemantics(isSelected: true, onTapHint: 'clear', hint: ''));
+      expect(tester.getSemantics(chip(a.label)).hintOverrides, isNull);
+      handle.dispose();
+    });
+
+    testWidgets('as its hint elsewhere (iOS)', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openPicked(tester, announces: true);
+      final [a, b, ...] = noTransport.options;
+      expect(tester.getSemantics(chip(b.label)).getSemanticsData().hint, 'Double-tap to clear.');
+      expect(tester.getSemantics(chip(a.label)).getSemanticsData().hint, isEmpty);
+      handle.dispose();
+    });
+
+    testWidgets('but not a choose-many chip, which unpicks as a tick does', (tester) async {
+      final handle = tester.ensureSemantics();
+      await open(
+        tester,
+        reasons,
+        values: {
+          pathOf(reasons): [reasons.options.first.code],
+        },
+      );
+      final node = tester.getSemantics(chip(reasons.options.first.label));
+      expect(node, isSemantics(isSelected: true, hint: ''));
+      expect(node.hintOverrides, isNull);
+      handle.dispose();
+    });
+  });
+
   group('choose-many', () {
     testWidgets('stores the codes in the definition’s order, whatever order they were tapped in', (tester) async {
       final answers = await open(tester, disposition);
