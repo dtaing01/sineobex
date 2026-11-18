@@ -710,6 +710,54 @@ or as `incomplete` when its finish check fails (the person's own Red flags note,
 unless a refused sign-off of it waits: Complete then sends that sign-off's fix, which changes
 nothing and settles the refusal (3.4).
 
+As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/complete.dart`, with its
+review): Complete is a plan, then a call.
+
+- **The plan.** `openComplete(encounterId, redFlagsFinished:)` loads the definitions of the
+  visit's notes, offline too, and gives the summary screen a `CompletePlan` (`readComplete` is the
+  same, the definitions loaded): the notes Complete finishes, in the visit's order with the Red
+  flags note last (the store sends it first); for each, the hash of what the phone holds
+  (`contentHashOf`), its recap lines worked out in the same read (9.6), its act by the table above
+  (`sign` for a Medical note when the saved profile's credential signs, else `complete`) and its
+  statement version (`sign-2026-11` or `complete-2026-11`, 12.1 #5 and #23); the button's wording;
+  the signing sentence when a note will be signed (3.5); the teammates' drafts that stay drafts,
+  each named as its note names whoever acts as its author (D108); the person's notes sent for
+  review; and what stops Complete, each a line with the note, the section and the answer it jumps
+  to.
+- **What it finishes**, besides the drafts of the first paragraph: the person's own Red flags note
+  while it is still an empty draft, when a Medical note is finished and the visit has no finished
+  one, so its finish check asks the red-flag question (hard stop 5, forms 6.2); and each note of
+  theirs whose sign-off was refused and that was finished since or removed (an empty draft), marked
+  `settlesOnly`: its fix changes nothing and settles the refusal (3.4; review findings SFN-1 and
+  SFN-7). Without it hard stop 2 would hold the visit for good. Such a note words no button and
+  makes no signing sentence.
+- **What stops it**, said before Complete is pressed: hard stops 1 to 5, each as the store would
+  refuse it. Hard stop 1 is one line per missing answer ("{note}: {section}, “{field}” needs an
+  answer."). Hard stop 5 comes with no note to open when the person has no Red flags note at all
+  (the team's list on the phone named no Red flags type when the Medical note was added, say): the
+  summary adds theirs (`addRedFlagsNote`, forms 6.2) and plans again. Then what the store refuses
+  with less to say: a note whose last Complete still waits to send after a reopen (4.8), a note
+  whose form the phone lacks, nothing of theirs to complete, and what the server would hold for a
+  Program Admin, which the person could never fix: a role without `encounters.chart`, and a Medical
+  note from a credential that doesn't chart Medical (4.2). Hard stop 4 is asked in the plan only:
+  the store refuses removing a visit's patient (4.8), and while the visit's create is refused, hard
+  stop 2 stops Complete.
+- **The call.** `complete(plan, addToAssessment:)` refuses at once, writing nothing, with the
+  plan's stops. It then asks, before the store, whether a note was sent for review, was finished,
+  has left the phone or has a Complete waiting to send since the summary drew it, which the store
+  would say only as `RecordLocked` (a note gone from the phone is "This note changed. Read it
+  again."); then it calls `finishNotes` with the plan's hashes, acts and versions, the profile's
+  `Signer`, the definitions loaded and the plan's `redFlagsFinished`. What was added to the
+  assessment is an addendum to the visit, made in the same transaction and naming the first
+  sign-off made, so it waits behind it (4.7, 9.6). Each refusal comes back as a `CompleteRefused`
+  carrying the summary's sentence: the clock, `NoteChanged` ("This note changed. Read it again."),
+  `needs_attention`, `incomplete`, `red_flags_first`, `not_author`, `empty` and `RecordLocked`. A
+  sign-off the registry refuses is a fault of the app, and is thrown as it is.
+- **Open** (the review; not changed): a note the person removed (9.4), whose refused sign-off's
+  settling fix still waits to send, is the draft Add note opens again for its type. Until the fix
+  is sent, Complete stops that note as waiting to send, in a sentence about a Complete the person
+  did not make.
+
 ### 3.4 What a sign-off does
 
 The server decides the `effect` of each sign-off. The phone shows the same effect at once and is
@@ -1000,6 +1048,19 @@ Admin" (PRD main 99).
   note in it takes a signature.
 - A visit charted on the wrong patient after a note is finished has no fix in the app in this
   phase (12.2, question 5).
+
+As built on the phone (the domain layer, unit L4, `encounter_repository.dart`, with its review):
+a Medical visit names its patient from the start. Start refuses, writing nothing, a Medical visit
+with no patient (`medical_note_needs_patient`, "A clinical note needs a patient. Choose who this
+visit is for."): the design said only that Switch to Medical asks for the patient first (9.3), and
+Start follows the same rule, since a Medical visit is there for its clinical notes (12.1 #11).
+**Switch to Medical** on a visit with no patient takes the patient with it, both set in one
+transaction, and refuses a patient other than the visit's own; on a Medical visit it sends
+nothing. A Medical note is refused on a Non-Medical visit (`not_offered`, "Switch this visit to
+Medical to add a clinical note.") and on a visit with no patient, as the server refuses it. Each
+refuses a role without `encounters.chart` and, for Medical, a credential that doesn't chart Medical
+(`not_charting`, `medical_credential`): the server would hold either for a Program Admin, which
+the person could never fix (4.2), where the design only hides such an action (6.2).
 
 ### 3.11 The clock pause
 
@@ -3421,6 +3482,13 @@ New encounter:
 The encounter is created when step 3 is answered. While the clock check fails, Start says why
 and creates nothing (D35).
 
+As built (the phone's domain layer, unit L4, `startEncounter`): the visit takes the patient or none,
+the place typed (trimmed; blank is none), the place the phone gave on **Use my location** (`lat`,
+`lng` and `accuracyM` as the phone gives them, only on the tap, 12.1 #15) and the kind. A Medical
+visit needs its patient (3.10 as built). Start refuses, writing nothing, while the clock check fails
+or the store is frozen (`ChartingPaused`), and for a role that doesn't chart or a Medical visit from
+a credential that doesn't chart Medical.
+
 ### 9.3 Medical or Non-Medical
 
 Two large buttons, each with one line under it: "Medical: clinical notes, orders, signing" and
@@ -3432,6 +3500,11 @@ that may chart Medical. It changes `kind` and keeps every answer (PRD main 379).
 with no patient it first asks who the patient is (3.10). There is no switch back: a Medical
 encounter with only Non-Medical notes needs none (3.10).
 
+As built (unit L4): Start asks the kind (`asksKind`) of a role that charts with a credential that
+charts Medical; anyone else's visit starts Non-Medical. **Switch to Medical** (`switchToMedical`)
+sets the kind once, gives a visit with no patient its patient in the same transaction, and refuses
+without one (3.10 as built).
+
 ### 9.4 Note types
 
 "Choose an encounter type ... to load its template" (PRD main 380). A list of the note types
@@ -3442,6 +3515,36 @@ The encounter screen lists its notes, each collapsed to its recap line, with **A
 type** below (PRD main 97). A note by a teammate shows their name. A draft the person authors
 has **Remove this note** in its menu: it blanks every answer, after asking, and the note then
 counts for nothing (3.1). Empty drafts are not listed.
+
+As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with its review):
+
+- **The list** (`noteTypesOffered`) is the team's, in its order: every type in a Medical visit and
+  the Non-Medical ones in a Non-Medical visit; to a credential that can't chart Medical, the
+  Non-Medical ones in any visit; nothing to a role that doesn't chart. The Red flags note is never
+  listed: the app adds it (forms 6.2).
+- **Tapping a type** (`addNote`) opens a draft of that type already in the visit (`existing`): the
+  person's own first, even when empty, so going back from a note just added and tapping its type
+  again makes no empty second note; then a teammate's that is not empty and that the person may
+  see (an empty one counts for nothing, 3.1). A draft on another version of the same type counts;
+  one whose form the phone can't lay out, or a Medical one to a credential that can't chart
+  Medical, does not, and a new note is made. `another` makes a second note all the same (4.4,
+  12.1 #3). A Medical note needs a Medical visit with a patient (3.10 as built). With a Medical
+  note of the person's own, new or opened, the app adds their Red flags note (forms 6.2 as built).
+  An open edge of this rule is in 3.3 as built.
+- **Remove this note** (`removeNote`) is for whoever acts as the note's author, on a draft ("Only
+  the note’s author can remove it."; a note finished as the phone knows it, or sent for review, is
+  `RecordLocked`). It blanks every answer that holds anything, those a condition hides included, in
+  one transaction. If a sign-off of the note was refused, the same transaction sends that
+  refusal's fix through `finishNotes` over the empty note, with the refused sign-off's act and
+  statement version and the profile's `Signer`, so the refusal settles at the next sync (3.4). It
+  is all or nothing: while anything else about the visit waits in Needs attention, `finishNotes`
+  refuses the fix and the whole Remove is undone (`needs_attention`, "Something about this visit
+  waits in Needs attention. Fix it there first, then remove the note."); otherwise the refused
+  sign-off of a note nobody sees any more would stop every later Complete of the visit. It also
+  refuses `read_only` when the note holds an answer the server would hold from its author (a
+  section that needs an ordering credential, filled by a teammate): the server's copy would never
+  be empty, and the fix would be refused `content_changed` again.
+- A teammate's note shows the name its record carries (9.7 as built, D108).
 
 ### 9.5 The note form
 
@@ -3464,6 +3567,26 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
 - The form keeps no working copy of the answers, so a second tap of Normal before the screen draws
   the form again sends the same values again. L4 drops a set whose value equals what is stored at
   that path before it queues it (forms 8.1).
+
+As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with its review):
+
+- **What is read-only** (`readOnlyAt`): the whole note when it is not `editable`, which takes a
+  draft as the phone knows it, not sent for review, a role that charts and, for a Medical note, a
+  credential that charts Medical. Otherwise an answer where the server would hold the person's set
+  for a Program Admin, which they could never fix: one that could hold what they may not see, to
+  someone who does not act as the author (`mayHoldHidden`, D88, D92), and, whoever acts as the
+  author, an answer of a section that needs an ordering credential, to a credential that can't
+  order (6.4 rule 5), which the design named only for what the form draws (forms 10.1 #53). The
+  screen hands the form these paths.
+- **Saving an answer** (`saveAnswer`): refused `read_only` where `readOnlyAt` says so ("You can’t
+  change this answer."); checked by the note's own version (`checkAnswer`, refused with its problem
+  and the path, "This answer can’t be saved."); a value equal to what is stored, an absent answer's
+  `null` included, is no change and is not queued; the rest goes to `setField`. A note finished as
+  the phone knows it is `RecordLocked`.
+- **What waits and what conflicts**: the note's `pendingPaths` mark what waits to send of what the
+  reader may see, a cleared answer included (review finding LFM-3), and its `conflicts` give the
+  form each answer two people changed (forms 8.1 as built). A choice on a conflict is made in the
+  store; the screen syncs after it, as Needs attention does (the coordinator's decision, L5).
 
 ### 9.6 The summary, and Complete
 
@@ -3498,6 +3621,34 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
 Complete finishes the person's own notes. If a teammate's draft is in the same encounter, a line
 says so: "{name}'s note stays a draft until they complete it." After Complete, the chart opens
 (8.2).
+
+As built (the phone's domain layer, unit L4, `complete.dart`; 3.3 as built): the summary is drawn
+from Complete's plan, not from a read of its own, so it shows what Complete will sign: each note's
+recap from the plan (item 1); the lines that stop Complete (item 6), each jumping to its note's
+section (`CompleteBlock.section`, the form's `openSection`); the signing sentence (item 7) from
+`CompletePlan.signingSentence`, "By completing, you sign this note as {name}, {credential}.", with
+the name the saved profile has (`EncounterUser.displayName`) and the credential in words as the
+portal words it (`credentialText`, which moved from the forms part's read view to
+`apps/mobile/lib/encounters/credentials.dart`), a credential this app doesn't know left out rather
+than shown as a code; and the button (item 8). A teammate's draft is named by the name its note
+carries (D108). The summary logs what it shows through the visit's read (`openVisit`); the plan
+logs nothing of its own.
+
+- **The assessment** (item 2) is saved by `saveSummary` as it is typed: trimmed, cleared when
+  blank, and the same text not sent again. It refuses, writing nothing, a Medical visit's
+  assessment to a reader of no Medical notes, who is not shown it (`read_only`, 5.1), and any
+  change once the visit has a finished note (`RecordLocked`): what is added then goes with Complete,
+  as an addendum to the visit.
+- **The sentences that are this layer's**, the design giving none: "Your last Complete of this note
+  hasn’t been sent yet. Connect so it can send, then complete again."; "This note was sent to a
+  Program Admin for review. It can’t be completed again until they decide."; "This note is already
+  finished."; "There’s nothing of yours to complete in this visit."; "This note’s form isn’t on this
+  phone yet. Connect to load it, then complete."; "Your role doesn’t chart visits."; "Your
+  credential doesn’t chart clinical notes."; "What you added to the assessment is too long. Keep it
+  to 4,000 characters."; and a missing answer's line, "{note}: {section}, “{field}” needs an
+  answer.", where item 6 gives a hand-worded example. The clock's sentence is the store's
+  (`ChartingPaused`), and hard stop 2's "Something about this visit waits in Needs attention. Fix it
+  there first, then complete again.".
 
 ### 9.7 The visit
 
