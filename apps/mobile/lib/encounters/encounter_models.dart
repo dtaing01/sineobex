@@ -5,7 +5,7 @@ library;
 
 import '../api/generated/api.dart' show RecordSnapshot;
 // The form's own contract types (forms 8.1): a note's conflicts are handed to it as they are.
-import '../features/forms/field_host.dart' show AnswerConflict;
+import '../forms/answer_state.dart' show AnswerConflict;
 import '../forms/definition.dart';
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
