@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   actBody,
+  assignTo,
   attest,
   ATTEST_STATEMENT,
   attestationRows,
@@ -16,6 +17,8 @@ import {
   noticesOf,
   post,
   refusal,
+  rejoin,
+  removeMember,
   SECRETS,
   signoffRows,
   TEST_MEDICAL_EXAM_TYPE,
@@ -114,6 +117,34 @@ describe('phase 4: attest', () => {
       } finally {
         await setCredential(h, w.t, w.nia.membershipId, 'np');
       }
+      await unchanged(v.flags, v.note);
+    });
+
+    it('whoever a note was assigned to acts as its author: refused is_author', async () => {
+      // Review finding LAC-1: every other is_author test used the note's own author.
+      const ren = await clinician(h, w.t, 'ren@example.com', 'Ren (demo)', 'resident');
+      const v = await waitingForAttestation(w, ren);
+      await removeMember(w, ren.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, w.ana.id);
+      const r = await attest(w, w.ana, v.visit.encounterId, [v.flags, v.note]);
+      expect(r.status).toBe(403);
+      expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
+      await unchanged(v.flags, v.note);
+      expect((await attest(w, w.vic, v.visit.encounterId, [v.flags, v.note])).status).toBe(200);
+    });
+
+    it('nor does the note’s writer, once it was assigned away and they came back as an attending', async () => {
+      // Review findings LPM-1, LAC-3: a student's note co-signed by Rae; the student leaves, the
+      // notes are assigned to Nia, and the student comes back as an attending.
+      const ivy = await clinician(h, w.t, 'ivy@example.com', 'Ivy (demo)', 'student');
+      const v = await waitingForCosign(w, ivy);
+      expect((await cosign(w, w.rae, v.visit.encounterId, [v.flags, v.note])).status).toBe(200);
+      await removeMember(w, ivy.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, w.nia.id);
+      const back = await rejoin(w, 'ivy@example.com', 'Ivy (demo)', 'attending');
+      const r = await attest(w, back, v.visit.encounterId, [v.flags, v.note]);
+      expect(r.status).toBe(403);
+      expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
       await unchanged(v.flags, v.note);
     });
 

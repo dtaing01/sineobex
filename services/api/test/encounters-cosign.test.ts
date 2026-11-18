@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   actBody,
+  assignTo,
   chartedVisit,
   correct,
   cosign,
@@ -9,11 +10,14 @@ import {
   createWorld,
   eventsAfter,
   finish,
+  get,
   heldHashOf,
   noteRow,
   noticesOf,
   post,
   refusal,
+  rejoin,
+  removeMember,
   SECRETS,
   signoffRows,
   TEST_MEDICAL_EXAM_TYPE,
@@ -112,6 +116,61 @@ describe('phase 4: co-sign', () => {
       expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
       const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
       expect(denied!.details).toMatchObject({ reason: 'is_author' });
+      await unchanged(v.flags, v.note);
+    });
+
+    it('whoever a note was assigned to acts as its author: refused is_author, and told when it is co-signed', async () => {
+      // Review finding LAC-1: every other is_author test used the note's own author.
+      const stu = await clinician(h, w.t, 'stu@example.com', 'Stu (demo)', 'student');
+      const v = await waitingForCosign(w, stu);
+      await removeMember(w, stu.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, w.rae.id);
+      const mark = await auditMark(h);
+      const r = await cosign(w, w.rae, v.visit.encounterId, [v.flags, v.note]);
+      expect(r.status).toBe(403);
+      expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
+      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied!.details).toMatchObject({ reason: 'is_author' });
+      await unchanged(v.flags, v.note);
+      // Someone else co-signs: "your note was co-signed" goes to whoever acts as the author now.
+      expect((await cosign(w, w.ana, v.visit.encounterId, [v.flags, v.note])).status).toBe(200);
+      expect(await noticesAbout(w.rae.id, 'note_cosigned', v.visit.encounterId)).toHaveLength(1);
+      expect(await noticesAbout(stu.id, 'note_cosigned', v.visit.encounterId)).toEqual([]);
+    });
+
+    it('nor does the note’s writer, once it was assigned away and they came back with a credential that signs', async () => {
+      // Review findings LPM-1, LAC-3: the second person must not be the first (3.7).
+      const ida = await clinician(h, w.t, 'ida@example.com', 'Ida (demo)', 'student');
+      const v = await waitingForCosign(w, ida);
+      await removeMember(w, ida.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, w.rae.id);
+      const back = await rejoin(w, 'ida@example.com', 'Ida (demo)', 'resident');
+      const r = await cosign(w, back, v.visit.encounterId, [v.flags, v.note]);
+      expect(r.status).toBe(403);
+      expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
+      await unchanged(v.flags, v.note);
+      // The queue says so too: the act's own rule.
+      const queue = await get(w, back.token, '/v1/team/cosign-queue');
+      const row = (queue.body.rows as { encounterId: string; notes: { canAct: boolean }[] }[]).find(
+        (x) => x.encounterId === v.visit.encounterId,
+      )!;
+      expect(row.notes.map((n) => n.canAct)).toEqual([false, false]);
+    });
+
+    it('nor does whoever completed it as its assignee, once it was assigned on and they came back', async () => {
+      // Written by one student, completed by another it was assigned to, then assigned on again.
+      const una = await clinician(h, w.t, 'una@example.com', 'Una (demo)', 'student');
+      const kit = await clinician(h, w.t, 'kit@example.com', 'Kit (demo)', 'student');
+      const v = await chartedVisit(w, una);
+      await removeMember(w, una.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, kit.id);
+      await finish(kit, [v.flags, 'complete', 'completed'], [v.note, 'sign', 'saved_unsigned']);
+      await removeMember(w, kit.membershipId);
+      for (const n of [v.flags, v.note]) await assignTo(w, n.noteId, w.rae.id);
+      const back = await rejoin(w, 'kit@example.com', 'Kit (demo)', 'resident');
+      const r = await cosign(w, back, v.visit.encounterId, [v.flags, v.note]);
+      expect(r.status).toBe(403);
+      expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
       await unchanged(v.flags, v.note);
     });
 

@@ -91,6 +91,12 @@ export interface ActNote {
   note: StoredRecord;
   /** Null when the caller may not read the note at all, or the server cannot read its definition. */
   read: NoteRead | null;
+  /**
+   * The caller is no second person to the note (3.7): they act as its author now, wrote it, or
+   * completed it. What the rules call actsAsAuthor (is_author): a note's writer whose note was
+   * assigned away while they were gone is still its writer when they come back (review findings
+   * LPM-1, LAC-3).
+   */
   actsAsAuthor: boolean;
   /**
    * The caller sees every answer that counts (lifecycle 6.4 rule 4): what visibleAnswers gives them
@@ -107,7 +113,11 @@ export async function actNote(
   visit: StoredRecord,
   note: StoredRecord,
 ): Promise<ActNote> {
-  const actsAsAuthor = actingAuthor(note) === scope.principal.userId;
+  const caller = scope.principal.userId;
+  const [writer] = await tx<{ completedBy: string | null }[]>`
+    select completed_by from sineobex.encounter_notes where team_id = ${note.teamId} and id = ${note.id}`;
+  const actsAsAuthor =
+    actingAuthor(note) === caller || note.authorUserId === caller || writer?.completedBy === caller;
   const signoffId = note.attributes.signoffId as string | null;
   const [signature] = signoffId
     ? await tx<{ signerUserId: string }[]>`

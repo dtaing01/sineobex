@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ResolvedNoteType } from '@sineobex/forms';
 import { expect } from 'vitest';
+import type { Credential } from '../src/auth/permissions.ts';
 import { noteContentHash } from '../src/encounters/content-hash.ts';
 import type { Harness } from './harness.ts';
 import { createPatient } from './patient-fixtures.ts';
@@ -8,6 +9,7 @@ import {
   addMember,
   call,
   clinician,
+  CREDENTIAL_FIELDS,
   installNoteTypes,
   noteOn,
   setupTeam,
@@ -325,6 +327,34 @@ export async function correct(c: Clinician, n: HeldNote, h: Harness, path: strin
 
 /** An admin moves a member to another credential, as the members page does. */
 export { setCredential, setRole } from './sync-fixtures.ts';
+
+/** The team's admin hands a departed author's note to [toUserId] (POST /v1/notes/{noteId}/assign). */
+export async function assignTo(w: World, noteId: string, toUserId: string) {
+  const r = await post(w, w.t.adminToken, `/v1/notes/${noteId}/assign`, {
+    toUserId,
+    reason: 'Demo: the author left the team',
+  });
+  expect(r.status).toBe(200);
+}
+
+/**
+ * A removed member invited back, as the members page does, in Healthcare Staff with [credential];
+ * answers a fresh token for them.
+ */
+export async function rejoin(w: World, email: string, displayName: string, credential: Credential) {
+  const roles = await call(w.h, '/v1/team/roles', { token: w.t.adminToken, teamId: w.t.teamId });
+  const roleId = (roles.body as unknown as { key: string; id: string }[]).find(
+    (r) => r.key === 'healthcare_staff',
+  )!.id;
+  const r = await call(w.h, '/v1/team/members', {
+    method: 'POST',
+    token: w.t.adminToken,
+    teamId: w.t.teamId,
+    json: { email, displayName, roleId, credential, credentialFields: CREDENTIAL_FIELDS[credential] },
+  });
+  expect(r.status).toBe(201);
+  return { token: await w.h.tokenFor(email) };
+}
 
 /** The team's admin removes a member, as the members page does. */
 export async function removeMember(w: World, membershipId: string) {
