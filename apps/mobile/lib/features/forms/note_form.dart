@@ -546,6 +546,7 @@ class _Section extends StatelessWidget {
         children: [
           Semantics(
             key: ValueKey('form.section.${section.id}'),
+            header: true,
             button: true,
             expanded: open,
             label: section.title,

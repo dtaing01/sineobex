@@ -84,17 +84,18 @@ void main() {
     }
   });
 
-  testWidgets('a section header is a button that says whether it is open', (tester) async {
+  testWidgets('a section header is a heading and a button that says whether it is open', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpForm(tester, demo, values: {'visit.seen': true});
-    // The first section that shows starts open.
+    // The first section that shows starts open. Each is a heading, so a screen reader moves through
+    // the sections by heading, as it does in the read view.
     expect(
       tester.getSemantics(sectionHeader('visit')),
-      isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: true),
+      isSemantics(isHeader: true, isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: true),
     );
     expect(
       tester.getSemantics(sectionHeader('later')),
-      isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: false),
+      isSemantics(isHeader: true, isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: false),
     );
     expect(fieldHost('later.when'), findsNothing);
     // Opening one closes the other, and a screen reader's tap opens it as a finger does.
