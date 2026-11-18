@@ -270,6 +270,47 @@ void main() {
     },
   ]);
 
+  testWidgets('a screen reader hears a group’s or a grid’s label before its help', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpForm(
+      tester,
+      definitionOf([
+        {
+          'id': 'skin',
+          'title': 'Demo: skin',
+          'fields': [
+            {
+              'id': 'look',
+              'kind': 'group',
+              'layout': 'stack',
+              'label': 'Demo look',
+              'help': 'Demo: group help',
+              'fields': [
+                {'id': 'dry', 'kind': 'flag', 'label': 'Demo dry'},
+              ],
+            },
+            {
+              'id': 'spots',
+              'kind': 'grid',
+              'label': 'Demo spots',
+              'help': 'Demo: grid help',
+              'rows': [
+                {'code': 'arm', 'label': 'Demo arm'},
+              ],
+              'cell': {'id': 'seen', 'kind': 'flag', 'label': 'Demo seen'},
+            },
+          ],
+        },
+      ]),
+    );
+    final heard = tester.semantics.simulatedAccessibilityTraversal().map((n) => n.label).toList();
+    for (final (label, help) in [('Demo look', 'Demo: group help'), ('Demo spots', 'Demo: grid help')]) {
+      expect(heard.indexOf(label), isNot(-1), reason: '$heard');
+      expect(heard.indexOf(help), greaterThan(heard.indexOf(label)), reason: '$heard');
+    }
+    handle.dispose();
+  });
+
   testWidgets('a set flag that doesn’t count clears nothing', (tester) async {
     await pumpForm(tester, hidden, values: {'visit.unable': true, 'visit.length': '4'});
     expect(fieldHost('visit.unable'), findsNothing);

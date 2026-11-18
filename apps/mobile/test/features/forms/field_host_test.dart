@@ -204,6 +204,55 @@ void main() {
     await expectFieldOk(tester);
   });
 
+  testWidgets('a screen reader hears a field’s label before its help', (tester) async {
+    final handle = tester.ensureSemantics();
+    final mood = fieldOf({
+      'id': 'mood',
+      'kind': 'choice',
+      'many': false,
+      'label': 'Demo mood',
+      'help': 'Demo: as the person says it',
+      'options': [
+        {'code': 'calm', 'label': 'Calm'},
+        {'code': 'upset', 'label': 'Upset'},
+      ],
+    });
+    final seen = fieldOf({
+      'id': 'seen',
+      'kind': 'date',
+      'range': 'any',
+      'label': 'Demo seen',
+      'help': 'Demo: date help',
+    });
+    final sided = fieldOf({
+      'id': 'pupils',
+      'kind': 'choice',
+      'many': false,
+      'sides': true,
+      'label': 'Demo pupils',
+      'help': 'Demo: pupil help',
+      'options': [
+        {'code': 'round', 'label': 'Round'},
+      ],
+    });
+    for (final (field, enabled, label, help) in [
+      (mood, true, 'Demo mood', 'Demo: as the person says it'),
+      (seen, false, 'Demo seen', 'Demo: date help'),
+      (seen, true, RegExp('^Demo seen'), 'Demo: date help'),
+      (sided, true, 'Right', 'Demo: pupil help'),
+    ]) {
+      await pumpField(
+        tester,
+        FieldHost(field: field, path: 'demo.${field.id}', answers: TestAnswers(), enabled: enabled),
+      );
+      final heard = tester.semantics.simulatedAccessibilityTraversal().map((n) => n.label).toList();
+      final at = heard.indexWhere((l) => label is RegExp ? label.hasMatch(l) : l == label);
+      expect(at, isNot(-1), reason: '$heard');
+      expect(heard.indexOf(help), greaterThan(at), reason: '$heard');
+    }
+    handle.dispose();
+  });
+
   testWidgets('a disabled field is read-only, and a screen reader hears it', (tester) async {
     final handle = tester.ensureSemantics();
     final answers = TestAnswers({'plan.follow_up': '2026-10-27'})

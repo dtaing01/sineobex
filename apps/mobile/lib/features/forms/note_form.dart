@@ -488,10 +488,18 @@ class _Drawing {
             ExcludeSemantics(child: Text(f.label, style: text.titleMedium)),
             if (f.help != null) ...[
               const SizedBox(height: FieldSpace.s1),
-              Text(f.help!, style: text.bodyMedium?.copyWith(color: context.field.inkMuted)),
+              // Heard after the group or grid that says the label, as it is read after the label.
+              Semantics(
+                container: true,
+                sortKey: const OrdinalSortKey(1),
+                child: Text(f.help!, style: text.bodyMedium?.copyWith(color: context.field.inkMuted)),
+              ),
             ],
             const SizedBox(height: FieldSpace.s2),
-            body,
+            if (f.help == null)
+              body
+            else
+              Semantics(container: true, explicitChildNodes: true, sortKey: const OrdinalSortKey(0), child: body),
           ],
         );
       },

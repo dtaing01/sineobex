@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design/theme.dart';
@@ -128,25 +129,37 @@ class FieldHost extends StatelessWidget {
     if (f is InfoDef) return InfoField(field: f);
     final text = Theme.of(context).textTheme;
     final paths = answerPaths(f, path);
+    final answers = [
+      for (final (i, p) in paths.indexed) ...[
+        if (i > 0) const SizedBox(height: FieldSpace.s3),
+        if (paths.length == 1) _answer(context, field, path, p) else _side(context, sideLabels[p.split('.').last]!, p),
+      ],
+    ];
+    if (_ownLabel) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: answers);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!_ownLabel) ...[
-          // Each control says the field's label itself, so a screen reader hears it once.
-          ExcludeSemantics(child: Text(f.label, style: text.titleMedium)),
-          if (f.help != null) ...[
-            const SizedBox(height: FieldSpace.s1),
-            Text(f.help!, style: text.bodyMedium?.copyWith(color: context.field.inkMuted)),
-          ],
-          const SizedBox(height: FieldSpace.s2),
+        // Each control says the field's label itself, so a screen reader hears it once.
+        ExcludeSemantics(child: Text(f.label, style: text.titleMedium)),
+        if (f.help != null) ...[
+          const SizedBox(height: FieldSpace.s1),
+          // Heard after the control that says the label, as it is read after the label.
+          Semantics(
+            container: true,
+            sortKey: const OrdinalSortKey(1),
+            child: Text(f.help!, style: text.bodyMedium?.copyWith(color: context.field.inkMuted)),
+          ),
         ],
-        for (final (i, p) in paths.indexed) ...[
-          if (i > 0) const SizedBox(height: FieldSpace.s3),
-          if (paths.length == 1)
-            _answer(context, field, path, p)
-          else
-            _side(context, sideLabels[p.split('.').last]!, p),
-        ],
+        const SizedBox(height: FieldSpace.s2),
+        if (f.help == null)
+          ...answers
+        else
+          Semantics(
+            container: true,
+            explicitChildNodes: true,
+            sortKey: const OrdinalSortKey(0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: answers),
+          ),
       ],
     );
   }
