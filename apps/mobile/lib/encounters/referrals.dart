@@ -7,7 +7,7 @@
 library;
 
 import '../api/generated/api.dart' show RecordSnapshot;
-import '../patients/chart_cache.dart' show patientGroup;
+import '../patients/chart_cache.dart' show chartMetaOf, patientGroup;
 import '../sync/entities.dart' show entityReferral;
 import '../sync/local_store.dart';
 import '../sync/sync_engine.dart' show serverRecordFrom;
@@ -117,15 +117,30 @@ class Referrals {
   /// The referrals made at the visit [encounterId], whichever chart they are on: the visit lists them
   /// so the clinician can find each one, a visit moved to someone else included (9.7, 12.1 #25).
   /// Logged as [openReferrals] logs.
-  List<ReferralView> madeAt(String encounterId, {Set<String> shownBefore = const {}}) => _logged(() {
-    final out = <ReferralView>[];
+  List<ReferralView> madeAt(String encounterId, {Set<String> shownBefore = const {}}) =>
+      _logged(() => referralsMadeAt(encounterId), shownBefore);
+
+  /// [madeAt] without its log, for a read that logs what it shows itself (`VisitRecords`): those
+  /// this phone holds, and those of the charts it keeps (their timelines' referrals, 5.2) it does not.
+  List<ReferralView> referralsMadeAt(String encounterId) {
+    _guardFrozen();
+    final out = <String, ReferralView>{};
+    final charts = <RecordSnapshot>[];
     for (final id in store.recordIds()) {
       final rec = store.record(id);
-      if (rec == null || rec.entity != entityReferral || rec.attributes['encounterId'] != encounterId) continue;
-      out.add(_held(rec, patientGroup(store, rec.patientId ?? rec.attributes['patientId']! as String)));
+      if (rec == null) continue;
+      if (rec.entity == entityPatient) charts.addAll(chartMetaOf(store, id)?.referrals ?? const []);
+      if (rec.entity != entityReferral || rec.attributes['encounterId'] != encounterId) continue;
+      out[id] = _held(rec, patientGroup(store, rec.patientId ?? rec.attributes['patientId']! as String));
     }
-    return _newestFirst(out);
-  }, shownBefore);
+    for (final s in charts) {
+      if (s.entity.wire != entityReferral || s.attributes['encounterId'] != encounterId || out.containsKey(s.id)) {
+        continue;
+      }
+      out[s.id] = _fromChart(s, patientGroup(store, s.attributes['patientId']! as String));
+    }
+    return _newestFirst(out.values);
+  }
 
   /// **Add referral** (9.10): the date picked ([referredOn], its calendar day), the [details]
   /// (trimmed, 1 to 2,000 characters), and from an encounter's summary screen the visit it is made at

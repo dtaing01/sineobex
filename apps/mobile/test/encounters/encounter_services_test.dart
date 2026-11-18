@@ -204,7 +204,13 @@ void main() {
       ],
     );
     expect(services.repository.openServerRecord, sync.engine!.openServerRecord);
-    expect([services.repository.store, services.api.store, services.referrals.store], everyElement(sync.store));
+    expect([
+      services.repository.store,
+      services.api.store,
+      services.referrals.store,
+      services.visitRecords.store,
+    ], everyElement(sync.store));
+    expect(services.visitRecords.user, same(services.user));
     // The team's list, offline too, with the Red flags note type the repository adds by itself.
     expect([for (final d in await services.noteTypes()) d.key], contains('red_flags_disposition'));
   });

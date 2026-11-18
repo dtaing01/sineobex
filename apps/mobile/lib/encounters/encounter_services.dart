@@ -17,6 +17,7 @@ import 'encounter_repository.dart';
 import 'note_definitions.dart';
 import 'notes_to_finish.dart';
 import 'referrals.dart';
+import 'visit_records.dart';
 
 /// Visits and notes for the open team (phase 4 design, lifecycle 4.8, 8.2, 9), made once per opened
 /// database by the sync controller's refresher factory ([encounterRefreshers]), beside phase 3's
@@ -71,6 +72,7 @@ class EncounterServices extends ChangeNotifier {
       now: corrected,
     );
     referrals = Referrals(store, user: user)..onChanged = notifyListeners;
+    visitRecords = VisitRecords(store, user: user);
     sweep = CloseSweep(store, now: corrected);
     refreshers = [_NoteTypesRefresher(this), sweep];
     _byStore[store] = this;
@@ -91,6 +93,9 @@ class EncounterServices extends ChangeNotifier {
   late final EncounterApi api;
   late final NotesToFinish notesToFinish;
   late final Referrals referrals;
+
+  /// The records made at a visit the phone holds, for the visit screen (lifecycle 9.7).
+  late final VisitRecords visitRecords;
 
   /// Closes what is done with, at the database's opening and after every sync (lifecycle 8.2). The
   /// screens add what they show to its `showing`, and take it out when they close.

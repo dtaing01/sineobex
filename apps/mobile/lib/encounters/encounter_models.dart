@@ -380,7 +380,7 @@ class VisitView {
 
   /// The records made at the visit (referrals, allergies, problems and problem notes, whichever chart
   /// they are on, 9.7, D91), as the server's read gives them to the reader; none in the phone's own
-  /// read, whose referrals `Referrals.madeAt` lists.
+  /// read, whose records `VisitRecords.madeAt` reads and logs.
   final List<RecordSnapshot> records;
 
   bool get medical => kind == VisitKind.medical;
