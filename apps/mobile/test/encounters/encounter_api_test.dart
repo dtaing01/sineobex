@@ -408,6 +408,55 @@ void main() {
       expect(logged[unknownProblemNote], ('patient.viewed', 'problem_note', null, 'cache'));
     });
 
+    test('a problem’s note that names its patient, as the server snapshots one now, is logged on that patient '
+        'before its problem is asked (review LRA-1)', () async {
+      final p = phone(alex);
+      final e = online(p);
+      const survivor = 'e0000000-0000-4000-8000-0000000000cc';
+      const heldProblem = 'c0000000-0000-4000-8000-000000000003';
+      const onHeld = 'c0000000-0000-4000-8000-000000000004';
+      const onUnknown = 'c0000000-0000-4000-8000-000000000005';
+      // A problem of the first patient read with the chart of the group they were merged into: the
+      // phone files it under that chart, not under the problem's own patient (phase 3).
+      p.store.importServerRecord(
+        const ServerRecord(
+          entity: 'problem',
+          id: heldProblem,
+          status: 'active',
+          authorUserId: blair,
+          attributes: {'patientId': patient, 'title': 'Demo: knee pain', 'code': null, 'sensitive': false},
+          fields: {},
+        ),
+        open: false,
+        patientId: survivor,
+      );
+      Map<String, Object?> noteOn(String id, String problemId) => {
+        'entity': 'problem_note',
+        'id': id,
+        'status': 'written',
+        'authorUserId': blair,
+        'createdAt': '2026-10-19T16:00:00.000Z',
+        'updatedAt': '2026-10-19T16:00:00.000Z',
+        'version': 1,
+        'attributes': {
+          'problemId': problemId,
+          'text': 'Demo: better',
+          'encounterId': visit,
+          'writtenAt': '2026-10-19T16:00:00.000Z',
+          'patientId': patient,
+        },
+        'fields': <String, Object?>{},
+      };
+      final read = readOf()
+        ..['patientId'] = 'e0000000-0000-4000-8000-0000000000bb'
+        ..['records'] = [noteOn(onHeld, heldProblem), noteOn(onUnknown, 'c0000000-0000-4000-8000-000000000009')];
+      api.offline = true;
+      await e.recentVisit(VisitRead.fromJson(read));
+      final logged = {for (final a in audits(p)) a['entityId']: (a['action'], a['patientId'])};
+      expect(logged[onHeld], ('patient.viewed', patient));
+      expect(logged[onUnknown], ('patient.viewed', patient));
+    });
+
     test('each note’s recap lines, as the server worked them out for the reader, online and from the chart '
         '(D108)', () async {
       final p = phone(alex);

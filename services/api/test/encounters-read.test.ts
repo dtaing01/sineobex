@@ -573,6 +573,12 @@ describe('phase 4: read a visit online', () => {
         patientId: w.patientId,
         encounterId: at.encounterId,
       });
+      // A problem's note names its problem's patient too, as nothing else of it does (review LRA-1).
+      expect(ana.body.records.find((x) => x.id === made.problemNote)!.attributes).toMatchObject({
+        patientId: w.patientId,
+        problemId: made.problem,
+        encounterId: at.encounterId,
+      });
       // Billing/Data reads problems but no sensitive one; the CHW preset reads no problem at all.
       const bea = await readAs(w.bea.token, at.encounterId);
       expect(byEntity(bea.body)).toEqual(

@@ -319,6 +319,26 @@ void main() {
     }
   });
 
+  // services/api/test/problems-sync.test.ts, 'a note on a problem names the problem’s patient in its
+  // snapshot' (lifecycle 8.4, review finding LRA-1).
+  test('a note on a problem names the problem’s patient in its snapshot', () async {
+    final p = server.seedPatient();
+    final problem = server.seed(entityProblem, {'patientId': p, 'title': 'Cough', 'status': 'new'});
+    final note = server.seed(entityProblemNote, {'problemId': problem, 'text': 'Demo: dressing changed.'});
+    final got = await as(alex).fetchRecords(
+      body: FetchRecords(
+        records: [RecordRef(entity: RecordEntity.problemNote, id: note)],
+      ),
+    );
+    expect(got.records.single.attributes, {
+      'problemId': problem,
+      'text': 'Demo: dressing changed.',
+      'encounterId': null,
+      'writtenAt': now.toIso8601String(),
+      'patientId': p,
+    });
+  });
+
   // Phase 4, lifecycle 4.9 rules 1 to 6 and 13. Each case has the name of the API test that holds
   // the same rule (services/api/test/sync-encounters.test.ts; rule 13's is
   // db/test/encounter-lifecycle.test.ts) and expects what that test expects of the API.

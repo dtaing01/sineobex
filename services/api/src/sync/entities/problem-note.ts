@@ -85,6 +85,10 @@ export const problemNoteRules: EntityRules<Value> = {
         text: r.text,
         encounterId: r.encounterId,
         writtenAt: r.writtenAt.toISOString(),
+        // Its problem's patient, which nothing else of it names: a phone that reads it beside a visit
+        // moved to someone else since logs the view on this patient, as the server does (lifecycle
+        // 8.4, review finding LRA-1).
+        patientId: r.patientId,
       },
       internal: {},
       createdAt: r.createdAt,

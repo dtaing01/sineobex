@@ -475,5 +475,33 @@ describe('phase 3 sync: problems', () => {
       );
       expect((await read(t.chwToken)).status).toBe(403);
     });
+
+    it('a note on a problem names the problem’s patient in its snapshot (lifecycle 8.4, review LRA-1)', async () => {
+      // A note made at a visit moved to someone else since is still on its problem's chart: a phone
+      // that reads it from a visit logs its view there, as the server does.
+      const id = await problem(['new']);
+      const note = await phoneA.change({
+        entity: 'problem_note',
+        op: 'create',
+        value: { problemId: id, text: 'Demo: dressing changed.' },
+        deviceTime: at('11:00'),
+        correctedTime: at('11:00'),
+      });
+      expect((await asA(note))[0]!.status).toBe('accepted');
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: t.aToken,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'problem_note', id: note.recordId }] },
+      });
+      expect(read.status).toBe(200);
+      expect((read.body.records as { attributes: Record<string, unknown> }[])[0]!.attributes).toEqual({
+        problemId: id,
+        text: 'Demo: dressing changed.',
+        encounterId: null,
+        writtenAt: at('11:00'),
+        patientId,
+      });
+    });
   });
 });

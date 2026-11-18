@@ -1058,6 +1058,16 @@ class FakeSyncServer {
           ..attributes['source'] = v['encounterId'] == null ? 'manual' : 'encounter'
           ..attributes['createdEncounterId'] = v['encounterId'];
       case entityProblemNote:
+        // It names its problem's patient, which nothing else of it names (review finding LRA-1).
+        record.attributes
+          ..clear()
+          ..addAll({
+            'problemId': v['problemId'],
+            'text': v['text'],
+            'encounterId': v['encounterId'],
+            'writtenAt': _iso(DateTime.parse(at)),
+            'patientId': record.patientId,
+          });
         // Stored as sent, with the problem it names, retracted or merged since (review finding 7).
         if (records[v['problemId']]!.retracted) details = {'problemRetracted': true};
     }

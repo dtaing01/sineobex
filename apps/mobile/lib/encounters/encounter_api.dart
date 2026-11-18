@@ -532,8 +532,10 @@ class EncounterApi {
 
 /// The patient [record], one of the records made at a visit ([records], `VisitRead.records`), is on
 /// (lifecycle 8.4, D91), which can be another chart's than the visit's once the visit moved: its own
-/// `patientId`; for a problem's note, which names none, its problem's, from [records] or the phone's
-/// copy of the problem. Null when neither says: never the visit's patient, which may not be its own.
+/// `patientId`, which a problem's note names as its problem's (review LRA-1), taken first since the
+/// phone may hold the problem under the chart it was read with. For a problem's note that names none
+/// (a chart cached before the server named it), its problem's, from [records] or the phone's copy of
+/// the problem. Null when neither says: never the visit's patient, which may not be its own.
 String? patientOfMadeAt(wire.RecordSnapshot record, Iterable<wire.RecordSnapshot> records, LocalStore store) {
   if (record.attributes['patientId'] case final String patientId) return patientId;
   if (record.attributes['problemId'] case final String problemId) {
