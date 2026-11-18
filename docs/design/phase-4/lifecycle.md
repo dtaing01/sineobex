@@ -623,8 +623,8 @@ The encounter's own status follows from its notes (2.2).
   back. It decides which note types the apps offer. It decides nothing about a note that exists.
 
 **An empty draft does not count.** A draft note whose answers are all blank (4.5) is treated as
-if it were not there: by the encounter's status, by Complete, by the lists of notes to finish and
-by the timeline. A note type picked by mistake is undone by **Remove this note**, which blanks
+if it were not there: by the encounter's status, by Complete, by a sign-off, which changes nothing
+(3.4), by the lists of notes to finish and by the timeline. A note type picked by mistake is undone by **Remove this note**, which blanks
 its answers (9.4). The Red flags note that the app adds by itself (forms 6.2) stays out of the
 way until someone answers it. One function, `noteIsEmpty`, says so on both sides (3.12), and the
 database has the same rule (2.2).
@@ -699,6 +699,16 @@ A credential without `chartMedical` (CHW, none) is never offered a Medical note 
 
 After Complete the app opens the patient's chart (PRD main 101).
 
+As built (the phone's store, unit L3, 4.8): `finishNotes` asks the clock first (hard stop 3), then
+each note's hash against the one the summary screen showed (9.6), then hard stop 2, then hard stops
+1 and 5 note by note through `signoffEffect`. Each stops Complete with nothing written: the clock
+as `ChartingPaused`, a changed hash as `NoteChanged`, hard stop 2 as a `LocalValidationError`
+`needs_attention`, hard stops 1 and 5 with the server's problem, `incomplete` or
+`red_flags_first`. Hard stop 4 is the domain layer's (L4). An empty draft is refused as `empty`,
+or as `incomplete` when its finish check fails (the person's own Red flags note, hard stop 5),
+unless a refused sign-off of it waits: Complete then sends that sign-off's fix, which changes
+nothing and settles the refusal (3.4).
+
 ### 3.4 What a sign-off does
 
 The server decides the `effect` of each sign-off. The phone shows the same effect at once and is
@@ -714,11 +724,12 @@ corrected by the receipt if the server decided otherwise.
 | draft | any | the finish check fails | refused: `incomplete` | Draft |
 | draft, Medical note | any | the visit has no finished Red flags note | refused: `red_flags_first` | Draft |
 | draft | any | the sender does not act as the author | `none` | Unchanged; the sender is told |
+| draft, empty (every answer blank, 3.1) | any | the hash matches | `none` | Unchanged: a draft |
 | draft, Non-Medical note | `sign` | treated as `complete` | `completed` | Complete |
 | already finished | any | none | `none` | Unchanged |
 | completed, Medical note | `cosign` (online, 5.3) | hash matches; a second person; can sign; can see every answer that counts | `signed` | Signed; attestation by the co-signer's credential |
 
-Four of these need a word.
+Five of these need a word.
 
 - **`saved_unsigned`** is the PRD's signing rule: "The author's credential can't sign this note
   type: saved as unsigned and routed to a co-signer instead" (PRD main 558). The phone only sends
@@ -729,14 +740,23 @@ Four of these need a word.
   their next route confirmation (PRD main 562). See 12.3 #2.
 - **`none`** covers the same person completing a note from two phones. The second sign-off is
   stored and changes nothing. If its hash differs from the one that finished the note, the
-  receipt says so and the person is told to open the note and read what was signed.
+  receipt says so and the person is told to open the note and read what was signed (the phone's
+  own notice `finished_differently`, 9.13).
 - **A sign-off from someone who does not act as the author** is stored with effect `none`. The
   screens never send one, and the worker could not fix a refusal (4.1).
+- **A sign-off of an empty draft** is stored with effect `none`, reason `empty`, and the note
+  stays a draft. An empty draft does not count (3.1), and there is nothing to fix by completing
+  it, so it is never refused. Complete skips an empty draft (3.3), so the phone sends such a
+  sign-off only as the fix of an earlier refused one, after the person removed the note (Remove
+  this note blanks its answers, 9.4): it changes nothing, and so settles the refusal (the
+  coordinator's decision on review finding SFN-7).
 - **A refusal** (`content_changed`, `incomplete`, `red_flags_first`) leaves the note a draft on the server and puts
   the sign-off in Needs attention. The fix is the same act again: open the note, look, Complete.
-  The phone then sends the same sign-off record again with the new hash, through the store's fix
-  path (`apps/mobile/lib/sync/local_store.dart:1328-1345`), so the refused one is settled and
-  nothing that waited behind it is left waiting.
+  The phone then sends the same sign-off record again with the new hash, through `finishNotes`
+  (4.8), so the refused one is settled and nothing that waited behind it is left waiting. Every
+  refusal can be settled so: when the note was finished since (on the person's other phone, say)
+  or removed since, the fix still goes, over the note as the phone holds it, and is stored with
+  effect `none`, `already_finished` or `empty` (review findings SFN-1 and SFN-7).
 
 ### 3.5 Who may sign what, and under which credential
 
@@ -987,6 +1007,12 @@ Encounters and notes already stop while the clock check fails (D35,
 their device time is what the record shows. A referral does not stop: its date is typed by the
 person, and it registers something said in the street, like an alias or an allergy (D35).
 
+As built (the phone's store, unit L3): `finishNotes`, the only way a sign-off is made or fixed
+(4.8), and `reopenNote` throw `ChartingPaused` and write nothing while the check fails, so the
+fix that settles a refused sign-off waits too. `createRecord`, `fixRejected` and
+`replaceRejected` do the same for an addendum and a correction, by the registry's
+`pausesWithClock`, which `_guardFor` reads, and not for a referral.
+
 ### 3.12 The small core: pure functions, pinned by vectors
 
 The rules above are data. Each function is written once in TypeScript and once in Dart, has no
@@ -1035,9 +1061,9 @@ type Attestation = 'not_needed' | 'waiting' | 'attested';
 signoffEffect(i: {
   noteStatus: NoteStatus; medicalNote: boolean; act: 'complete' | 'sign';
   actsAsAuthor: boolean; canSign: boolean; needsAttestation: boolean;
-  hashMatches: boolean; finishOk: boolean; redFlagsDone: boolean;
+  hashMatches: boolean; emptyDraft: boolean; finishOk: boolean; redFlagsDone: boolean;
 }): { refuse: 'content_changed' | 'incomplete' | 'red_flags_first' }
-  | { effect: 'none'; reason: 'already_finished' | 'not_author' }
+  | { effect: 'none'; reason: 'already_finished' | 'not_author' | 'empty' }
   | { effect: 'completed' | 'signed' | 'saved_unsigned'; statusAfter: NoteStatus; attestationAfter: Attestation }
 ```
 
@@ -1046,6 +1072,14 @@ The checks run in this order, and the first that applies decides:
 1. `noteStatus` is not `draft`: effect `none`, reason `already_finished`.
 2. `actsAsAuthor` is false: effect `none`, reason `not_author`.
 3. `hashMatches` is false: refuse `content_changed`.
+
+   Then the check the vectors call `empty`: `emptyDraft` is true (every answer of the draft is
+   blank, `noteIsEmpty`): effect `none`, reason `empty`. An empty draft does not count (3.1) and
+   has nothing to fix by completing it, so it is never refused, and the fix of a refused sign-off
+   of a note removed since settles that refusal (3.4). It comes after the hash, so a sign-off over
+   content the server does not hold is still refused, and before the finish check. Added with the
+   phone's store, as the coordinator decided on review findings SFN-1 and SFN-7; the checks keep
+   their numbers, which the vector cases' names use.
 4. `finishOk` is false: refuse `incomplete`.
 5. `medicalNote` and not `redFlagsDone`: refuse `red_flags_first`. `redFlagsDone` is true when
    the visit has a finished Red flags note, or this note is one.
@@ -1054,6 +1088,11 @@ The checks run in this order, and the first that applies decides:
 7. `canSign` is true: `signed`, status `signed`, `waiting` if `needsAttestation`, else
    `not_needed`.
 8. Otherwise: `saved_unsigned`, status `completed`, `not_needed`.
+
+`emptyDraft` is `noteIsEmpty` of the answers the note holds: on the server
+(`services/api/src/sync/entities/note-signoff.ts`), in the phone's test server, and in the
+phone's store over its own copy (4.8). `note-lifecycle.json` holds 38 cases of `signoffEffect`;
+seven are about an empty draft: completed, signed, and the order against checks 1 to 5.
 
 **`reopenEffect`** (the table in 4.4):
 
