@@ -2,18 +2,21 @@ import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
 import '../forms/field_at.dart' show fieldAt;
+import '../forms/finish.dart';
 import '../forms/forms_api.dart' show NoteTypeVersion;
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
 import '../forms/visible.dart';
 import '../sync/canonical_json.dart';
-import '../sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
+import '../sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff, parentsOf;
 import '../sync/local_store.dart';
 import 'credentials.dart';
 import 'encounter_models.dart';
 import 'note_definitions.dart';
 import 'rules.dart';
 import 'visibility.dart';
+
+part 'complete.dart';
 
 /// Visits and notes on the phone (phase 4 design, lifecycle 3, 4.8, 9): what the screens read and
 /// do, between them and the store. Every change goes through the store's public methods, which hold
@@ -30,7 +33,7 @@ import 'visibility.dart';
 /// decides. A screen that reads again what it shows passes the IDs it was shown
 /// ([VisitView.shownIds]), so only what the new read adds is logged again.
 class EncounterRepository {
-  EncounterRepository(this.store, {required this.user, required this.definitions, this.nameOf});
+  EncounterRepository(this.store, {required this.user, required this.definitions, this.nameOf, this.openServerRecord});
 
   final LocalStore store;
   final EncounterUser user;
@@ -39,6 +42,12 @@ class EncounterRepository {
   /// A person's name, where the phone knows it; null otherwise. A teammate's record carries only
   /// their ID (an addendum excepted), so a name is often unknown on the phone.
   final String? Function(String userId)? nameOf;
+
+  /// Brings the server's copy of a record onto the phone (`SyncEngine.openServerRecord`): false when
+  /// the server has no such record, a `NetworkException` without signal. An addendum or a correction
+  /// of a note that has left the phone opens it first (lifecycle 4.8, 8.2). Null where there is no
+  /// engine: such a note can't be added to here.
+  final Future<bool> Function(String entity, String id)? openServerRecord;
 
   /// Called after a change made through this repository, so screens read again.
   void Function()? onChanged;
@@ -406,10 +415,10 @@ class EncounterRepository {
   /// Program Admin, which the person could never fix, so nothing is sent.
   void _mayChart({required bool medical}) {
     if (!user.charts) {
-      throw const LocalValidationError('Your role doesn’t chart visits.', problem: 'not_charting');
+      throw const LocalValidationError(_notCharting, problem: 'not_charting');
     }
     if (medical && !user.can.chartMedical) {
-      throw const LocalValidationError('Your credential doesn’t chart clinical notes.', problem: 'medical_credential');
+      throw const LocalValidationError(_medicalCredential, problem: 'medical_credential');
     }
   }
 
