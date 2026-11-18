@@ -59,9 +59,12 @@ class FakeSyncServer {
   final receipts = <String, _Receipt>{};
   final quarantine = <String, Map<String, Object?>>{};
 
-  /// Whose each change in [quarantine] is and why it is held. Nothing here is decided: it waits,
-  /// unless a test accepts it ([acceptHeld]).
+  /// Whose each change in [quarantine] is and why it is held. It waits until a test accepts it
+  /// ([acceptHeld]) or rejects it ([rejectHeld]).
   final held = <String, ({String userId, String deviceId, String reason, String? waitsOn})>{};
+
+  /// The held changes a Program Admin rejected ([rejectHeld]): still held, decided.
+  final rejectedHeld = <String>{};
 
   /// Offline reads appended to the audit chain (AuditAppend entries), with their fields.
   final audit = <Map<String, Object?>>[];
@@ -416,7 +419,13 @@ class FakeSyncServer {
     final c = quarantine[changeId]!;
     final h = held[changeId]!;
     final outcome = _decide(_Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by), c);
-    if (outcome['status'] != 'accepted') return outcome;
+    if (outcome['status'] != 'accepted') {
+      // Refused, the change stays held; a sign-off the note no longer matches tells its sender.
+      if ((outcome['details'] as Map<String, Object?>?)?['problem'] == 'content_changed') {
+        _signoffNotApplied(h.userId, c);
+      }
+      return outcome;
+    }
     quarantine.remove(changeId);
     held.remove(changeId);
     receipts[changeId] = _Receipt(
@@ -436,6 +445,33 @@ class FakeSyncServer {
       details: outcome['details'] as Map<String, Object?>?,
     );
     return outcome;
+  }
+
+  /// A Program Admin rejects a change held for review (review.ts decideQuarantine): it stays held,
+  /// decided, and a retry says so. A held sign-off rejected tells its sender the note needs
+  /// completing again.
+  void rejectHeld(String changeId) {
+    final c = quarantine[changeId]!;
+    rejectedHeld.add(changeId);
+    _signoffNotApplied(held[changeId]!.userId, c);
+  }
+
+  /// A held sign-off that will not reach the chart (review.ts signoffNotApplied, review finding
+  /// NOT-12): its phone let go of it when it was held, so its sender gets `change_not_applied`
+  /// naming the note, unless one they have not read yet says so already. Only for a note on the chart.
+  void _signoffNotApplied(String userId, Map<String, Object?> c) {
+    if (c['entity'] != entitySignoff || c['op'] != 'create') return;
+    final noteId = (c['value'] as Map<String, Object?>?)?['noteId'];
+    if (noteId is! String || records[noteId]?.entity != entityNote) return;
+    final waiting = notices.any(
+      (n) =>
+          n.userId == userId &&
+          n.kind == 'change_not_applied' &&
+          n.entity == entityNote &&
+          n.recordId == noteId &&
+          n.readAt == null,
+    );
+    if (!waiting) _notify(userId, 'change_not_applied', entityNote, noteId);
   }
 
   /// The patient whose chart holds [patientId] now (its canonical ID).
@@ -626,7 +662,7 @@ class FakeSyncServer {
         'status': 'rejected',
         'reason': 'permission',
         'message': 'rejected: permission',
-        'details': {'problem': 'held_for_review', 'decision': 'pending'},
+        'details': {'problem': 'held_for_review', 'decision': rejectedHeld.contains(id) ? 'rejected' : 'pending'},
         'quarantined': true,
         'hash': valueHash(quarantine[id]!['value']),
       };

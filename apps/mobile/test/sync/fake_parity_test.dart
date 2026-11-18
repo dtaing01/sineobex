@@ -244,6 +244,14 @@ void main() {
     );
     expect(server.records[p]!.fields['usualArea']!.value, 'Demo: Oak Street lot');
     expect(server.receipts.containsKey(handed['changeId']), isFalse);
+    // Rejected by a Program Admin, it still stays held, and says so ('a held change its phone pushes
+    // normally once the person is back stays held for review', services/api/test/sync.test.ts).
+    server.rejectHeld(handed['changeId']! as String);
+    expect(results(await push(blair, 'dev-blair', [handed])).single['details'], {
+      'problem': 'held_for_review',
+      'decision': 'rejected',
+    });
+    expect(server.records[p]!.fields['usualArea']!.value, 'Demo: Oak Street lot');
   });
 
   test('a sync read needs each kind’s permission, hides sensitive problems, and is logged', () async {
@@ -2984,6 +2992,50 @@ void main() {
             allOf(containsPair('signerCredential', 'np'), containsPair('needsAttestation', true)),
           );
           expect(server.records[signs[1]['recordId']]!.author, dana);
+        });
+
+        test('a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed', () async {
+          // Review finding NOT-12: the phone let go of the sign-off when it was held.
+          server.credentials[dana] = 'np';
+          final changed = chartedVisit(dana);
+          final other = chartedVisit(dana);
+          final sent = [
+            signoff(dana, other.flags, 'sign'),
+            signoff(dana, changed.note, 'sign'),
+            signoff(dana, other.note, 'sign'),
+            // Not a sign-off: rejected, it tells nobody anything.
+            setOn(entityNote, other.note.noteId, 'data.care.plan', 'Demo: fluids and rest', 1),
+          ];
+          server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+          expect(await send(dana, sent), [for (final c in sent) heldOnly(c)]);
+          // A teammate rewrites the visit's summary while every note is a draft: the note no longer
+          // matches what Dana signed.
+          final rewrite = setOn(entityEncounter, changed.visit, 'summary', 'Demo: seen by the bridge', 0);
+          expect(
+            [
+              for (final r in await send(alex, [rewrite])) r['status'],
+            ],
+            ['accepted'],
+          );
+          final told = ['$dana change_not_applied $entityNote'];
+
+          // Accepted: on the chart, and nobody is told anything.
+          expect(server.acceptHeld(sent[0]['changeId']! as String, by: admin)['status'], 'accepted');
+          expect(noticesOn(other.flags.noteId), isEmpty);
+          // Refused on accept, as the note changed: still held, and Dana is told the note needs completing.
+          expect(server.acceptHeld(sent[1]['changeId']! as String, by: admin), refused('content_changed'));
+          expect(server.held.keys, contains(sent[1]['changeId']));
+          expect(server.records[changed.note.noteId]!.fields['status']!.value, 'draft');
+          expect(noticesOn(changed.note.noteId), told);
+          // Rejected then: the notice Dana has not read yet says it already.
+          server.rejectHeld(sent[1]['changeId']! as String);
+          expect(noticesOn(changed.note.noteId), told);
+          // A held change that is not a sign-off, rejected, tells nobody; a held sign-off, rejected, its sender.
+          server.rejectHeld(sent[3]['changeId']! as String);
+          expect(noticesOn(other.note.noteId), isEmpty);
+          server.rejectHeld(sent[2]['changeId']! as String);
+          expect(noticesOn(other.note.noteId), told);
+          expect(server.records[other.note.noteId]!.fields['status']!.value, 'draft');
         });
 
         test(

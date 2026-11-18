@@ -1786,10 +1786,20 @@ review):
 - **Notices and the audit event**: `note_saved_unsigned` to the signer, `change_not_applied` to a
   sender who does not act as the author, both on entity `encounter_note` and the note; one event
   on the note, with `signoffId` in its details (10.1).
-- **Open** (review finding NOT-12): a held sign-off that the note no longer matches cannot be
-  accepted, and its phone was told to let go of it. Either a refusal at accept time becomes a
-  stored rejection the worker sees, as a push's would be, or rejecting such an item sends the
-  worker a notice that the note needs completing.
+- **A held sign-off that will not reach the chart** (review finding NOT-12, as the coordinator
+  decided). Its phone let go of it when it was held (4.8), so nothing else would tell the worker
+  that the note is still a draft. When a Program Admin rejects it, or their accept is refused
+  because the note no longer matches it (`content_changed`), its sender gets `change_not_applied`
+  on the note (`signoffNotApplied`, `services/api/src/sync/review.ts`), unless one they have not
+  read yet names the note already. A refused accept runs in a savepoint that is rolled back, so the
+  item stays pending and the chart is untouched; it answers 409 `cannot_apply` with
+  `details.problem`, and is logged as `quarantine.accept_refused` on the note with its patient
+  (10.1). Any other refused accept tells nobody, and its reviewer rejects it, which then does. Only
+  a sign-off of a note on the chart tells anyone: a held change of another kind, rejected, tells
+  nobody. A refusal at accept time is not stored as a rejection of the change: the item is still
+  the reviewer's to decide. The phone's half is the store's (L3's store cards, wave E): the notice
+  on a note it shows as "Sent for review" clears that note's `localEffect`, so it is a draft to
+  complete again, fetched again if it had left the phone (4.8, 9.13).
 
 ### 4.7 Addenda, corrections and referrals
 
@@ -2099,7 +2109,10 @@ version moves too.
   fails (D79).
 - **Test hooks** stand in for what the fake has no route for: `finishNote` sets a note's state
   directly; `cosign()` and `attest()` stand in for L2's online routes, as the API tests' inserts
-  do; `acceptHeld` is an admin's accept.
+  do; `acceptHeld` is an admin's accept and `rejectHeld` their reject. Both tell the sender of a
+  held sign-off that will not reach the chart as the API does (`_signoffNotApplied`, 4.6), and a
+  handed-over change that was rejected answers its retry with `decision: 'rejected'`, as
+  `push.ts` does.
 
 **What the fake does not mirror**: the audit events of sync writes (it keeps the offline appends
 and the online reads only); the team lock (it serves one request at a time); credential fields,
@@ -2132,7 +2145,7 @@ retry, answered from its receipt, tells nobody again.
 |---|---|---|
 | `late_change_kept` | the sender, and the acting author when that is someone else | a change to a finished note kept in history (4.4) |
 | `late_change_kept`, on entity `encounter` | the sender, and whoever acts as the author of each finished note of the visit | a change to the patient, the place or the summary kept in history (4.3) |
-| `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1) |
+| `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1); a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`, unless a notice they have not read names the note already (4.6) |
 | `note_saved_unsigned` | the signer | a sign-off saved unsigned (4.6) |
 | `note_corrected` | the co-signer whose co-signature a correction clears; every attester of the current signature when an attested note is no longer attested; never the corrector | a correction applied (4.7) |
 | `conflict_resolved` (phase 2) | the note's author, when the value kept was someone else's | an answer of `keep_server` that saw the current value, a finished note's included (4.3) |
@@ -2830,7 +2843,7 @@ And four notices, shown on Home as phase 2's notices are:
 |---|---|
 | `note_saved_unsigned` | "Your credential can’t sign this note type. It was saved unsigned for a co-signer." (the existing sentence, `services/api/src/sync/apply.ts:34`) |
 | `late_change_kept` | "The note was already finished. Your change was kept in its history. Add an addendum if it matters." |
-| `change_not_applied` | "Only the note’s author can do that. Nothing was changed." |
+| `change_not_applied` | "Only the note’s author can do that. Nothing was changed." On a note the phone shows as "Sent for review" (4.6, a held sign-off that will not reach the chart): "Your Complete of this note wasn’t applied. Open it and complete it again." |
 | `note_corrected` | "A note you signed was corrected. It needs your review again." |
 
 ### 9.14 Portal: the queues
@@ -2890,6 +2903,7 @@ there is one, in the row's patient column. None holds a value, a reason's text o
 | `addendum.added` | `encounterId`, `noteId`, on the addendum |
 | `referral.created` | `encounterId`, on the referral |
 | `referral.entered_in_error` | `field`, `kind`, `version`, and `encounterId` (review finding REC-5) |
+| `quarantine.accept_refused` | A held sign-off's accept refused as the note no longer matches it (4.6): on entity `encounter_note` and the note, with its patient; `itemId`, `changeId`, `problem`. Any other refused accept rolls back and writes nothing, as before |
 | `encounter.viewed`, `note.viewed`, `patient.viewed` (the sync read) | One per record returned, with its entity and ID, and `{ source: 'sync' }`: a visit is `encounter.viewed`; a note, a sign-off, an addendum and a correction are `note.viewed`; a referral is `patient.viewed`. Not one per visit with `noteIds` |
 | `ems_handoff.shown`, `notes_to_finish.viewed` (offline) | The closed list's keys (`AuditAppend`): the handoff names its visit by `entity` `encounter` and `entityId`, and its patient; Notes to finish names `patientIds` and `resultCount`, not `count`. `ems_handoff.exported` stays refused offline |
 
@@ -2981,7 +2995,8 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | What is accepted with no effect, in place of a refusal | 4.1 | `sync-corrections.test.ts` ("what is accepted with no effect, in place of a refusal: each row of the second table of 4.1"); `sync-reads.test.ts` (from someone who does not act as the author, whatever their credential); parity case 17 |
 | Each route's permission, and its refusal logged | 5, 6.1 | `services/api/test/permissions.test.ts` |
 | Sensitive content is absent, not blanked | 6.4 | `services/api/test/encounters-read.test.ts`; the sync read in `services/api/test/sync-reads.test.ts` ("the sync read of a note", "what hangs off a note, and referrals"), held on the fake by `apps/mobile/test/sync/fake_reads_test.dart` |
-| A change the sender may not see, or of a note they may not read, is held; a retry is answered as they may see the field; the review queue shows only what the reviewer may read | 4.4, 6.4 | `sync-reads.test.ts` ("a set of an answer the sender may not see", "a retry is answered from its receipt", "the review queue"); the same groups in `apps/mobile/test/sync/fake_parity_test.dart`, but the queue, which the fake has no route for |
+| A change the sender may not see, or of a note they may not read, is held; a retry is answered as they may see the field; the review queue shows only what the reviewer may read, and only such a reviewer accepts it | 4.4, 6.4 | `sync-reads.test.ts` ("a set of an answer the sender may not see", "a retry is answered from its receipt", "the review queue"); the same groups in `apps/mobile/test/sync/fake_parity_test.dart`, but the queue, which the fake has no route for; the queue page in `apps/portal/src/lib/quarantine.test.ts` and `apps/portal/e2e/phones.spec.ts` |
+| A held sign-off that will not reach the chart tells its sender | 4.6 | `sync-signoffs.test.ts` ("a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed"); the parity case of that name |
 | The values of the new records, the same on both sides | 4.6, 4.7, 4.8 | `packages/contract/test-vectors/sync-values.json` through `services/api/test/contract-vectors.test.ts`, `apps/mobile/test/patients/entities_test.dart` (the registry) and `apps/mobile/test/sync/patient_rules_test.dart` (the fake) |
 | A phone logs the EMS handoff shown and Notes to finish offline | 4.8, 10.1 | `sync-encounters.test.ts` ("offline reads of a visit"); parity case 15; `entities_test.dart` |
 | Every kind of record has a name on the phone and in the portal | 9.13 | `apps/mobile/test/features/sync_labels_test.dart`; the portal's `SYNC_ENTITY` is typed by the contract |

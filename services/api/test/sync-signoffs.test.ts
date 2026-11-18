@@ -1065,6 +1065,91 @@ describe('phase 4 sync: sign-offs', () => {
       });
     });
 
+    it('a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed', async () => {
+      // Review finding NOT-12: the phone let go of the sign-off when it was held.
+      const ned = await clinician('ned@example.com', 'Ned (demo)', 'np');
+      const bea = await clinician('bea@example.com', 'Bea (demo)', 'attending');
+      const changed = await chartedVisit(ned);
+      const other = await chartedVisit(ned);
+      const made = nowIso();
+      const sent = [
+        await signoff(ned, other.flags, 'sign', timed(made)),
+        await signoff(ned, changed.note, 'sign', timed(made)),
+        await signoff(ned, other.note, 'sign', timed(made)),
+        // Not a sign-off: rejected, it tells nobody anything.
+        await ned.phone.change({
+          entity: 'encounter_note',
+          recordId: other.note.noteId,
+          op: 'set',
+          field: 'data.care.plan',
+          value: 'Demo: fluids and rest',
+          baseVersion: 1,
+        }),
+      ];
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(ned.membershipId, 'chw');
+      expect(await ned.send(...sent)).toEqual(
+        sent.map(() => expect.objectContaining({ reason: 'permission', quarantined: true })),
+      );
+      // A teammate rewrites the visit's summary while every note is a draft: the note no longer
+      // matches what Ned signed.
+      const rewrite = await bea.phone.change({
+        entity: 'encounter',
+        recordId: changed.visit.encounterId,
+        op: 'set',
+        field: 'summary',
+        value: 'Demo: seen by the bridge',
+        baseVersion: 0,
+      });
+      expect((await bea.send(rewrite)).map((r) => r.status)).toEqual(['accepted']);
+      const itemOf = async (c: Change) =>
+        (
+          await h.scratch.owner<{ id: string }[]>`
+            select id from sineobex.quarantine_items where change_id = ${c.changeId}`
+        )[0]!.id;
+      const decide = async (c: Change, decision: 'accept' | 'reject') =>
+        call(h, `/v1/team/quarantine/${await itemOf(c)}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Ned' },
+        });
+      const told = [{ userId: ned.id, kind: 'change_not_applied', entity: 'encounter_note' }];
+
+      // Accepted: on the chart, and nobody is told anything.
+      expect((await decide(sent[0]!, 'accept')).status).toBe(200);
+      expect(await noticesOn(other.flags.noteId)).toEqual([]);
+      // Refused on accept, as the note changed: still held, and Ned is told the note needs completing.
+      const mark = await auditMark(h);
+      const refusedAccept = await decide(sent[1]!, 'accept');
+      expect(refusedAccept.status).toBe(409);
+      expect(refusedAccept.body.error).toMatchObject({
+        code: 'cannot_apply',
+        message: expect.stringContaining('The note changed after it was signed'),
+        details: { status: 'rejected', reason: 'validation', problem: 'content_changed' },
+      });
+      expect(await noteRow(changed.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
+      expect(await signoffRow(sent[1]!.recordId)).toBeUndefined();
+      expect(await noticesOn(changed.note.noteId)).toEqual(told);
+      const [event] = await expectAudit(h, 'quarantine.accept_refused', { after: mark, count: 1 });
+      expect(event).toMatchObject({
+        actorUserId: t.adminId,
+        entity: 'encounter_note',
+        entityId: changed.note.noteId,
+        patientId,
+        details: { itemId: await itemOf(sent[1]!), changeId: sent[1]!.changeId, problem: 'content_changed' },
+      });
+      // Rejected then: the notice Ned has not read yet says it already.
+      expect((await decide(sent[1]!, 'reject')).status).toBe(200);
+      expect(await noticesOn(changed.note.noteId)).toEqual(told);
+      // A held change that is not a sign-off, rejected, tells nobody; a held sign-off, rejected, its sender.
+      expect((await decide(sent[3]!, 'reject')).status).toBe(200);
+      expect(await noticesOn(other.note.noteId)).toEqual([]);
+      expect((await decide(sent[2]!, 'reject')).status).toBe(200);
+      expect(await noticesOn(other.note.noteId)).toEqual(told);
+      expect(await noteRow(other.note.noteId)).toMatchObject({ status: 'draft', signoffId: null });
+    });
+
     it('a held sign-off’s time is checked against when its push arrived, not when an admin accepted it', async () => {
       const quinn = await clinician('quinn@example.com', 'Quinn (demo)', 'np');
       const charted = await chartedVisit(quinn);

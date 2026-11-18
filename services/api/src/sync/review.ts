@@ -2,7 +2,7 @@ import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobe
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { conflict, forbidden, notFound } from '../lib/errors.ts';
+import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
   applyInSavepoint,
@@ -31,6 +31,7 @@ import type {
   QuarantineReasonName,
   RecordSnapshotValue,
   SyncChangeInput,
+  SyncResultValue,
 } from './schemas.ts';
 
 /** What a Program Admin reviews (quarantine), and what a phone reads back (records, notices). */
@@ -296,6 +297,49 @@ async function shownValue(r: Pick<QuarantineRow, 'entity' | 'op' | 'value'>): Pr
   return typeof token === 'string' ? { ...rest, tokenRef: await idLinkTokenRef(token) } : rest;
 }
 
+/** An accept the chart's rules refused: thrown to roll back the attempt's savepoint. */
+class Refused extends Error {
+  constructor(readonly result: SyncResultValue) {
+    super('refused');
+  }
+}
+
+/**
+ * A held sign-off that will not reach the chart: rejected, or its accept refused as the note no
+ * longer matches it (review finding NOT-12). Its phone let go of it when it was held, so its sender
+ * gets `change_not_applied` naming the note, unless one they have not read yet says so already.
+ * Only for a sign-off of a note on the chart; anything else tells nobody. The note's ID, or null.
+ */
+async function signoffNotApplied(
+  tx: Tx,
+  teamId: string,
+  item: Pick<QuarantineRow, 'entity' | 'op' | 'userId' | 'value'>,
+): Promise<string | null> {
+  if (item.entity !== 'note_signoff' || item.op !== 'create') return null;
+  // Values were never schema-checked, so the note is read only when it is a UUID.
+  const noteId = (item.value as { noteId?: unknown } | null)?.noteId;
+  if (typeof noteId !== 'string' || !UUID.test(noteId)) return null;
+  const [note] = await tx<{ id: string }[]>`
+    select id from sineobex.encounter_notes where id = ${noteId} and team_id = ${teamId}`;
+  if (!note) return null;
+  await tx`
+    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
+    select ${teamId}, ${item.userId}, 'change_not_applied', 'encounter_note', ${note.id}
+    where not exists (
+      select 1 from sineobex.user_notices
+      where user_id = ${item.userId} and kind = 'change_not_applied' and entity = 'encounter_note'
+        and record_id = ${note.id} and read_at is null)`;
+  return note.id;
+}
+
+/** The patient a queue item is about, as the queue names it (migration 0020, patient_of_change). */
+async function patientOfItem(tx: Tx, itemId: string): Promise<string | null> {
+  const [row] = await tx<{ patientId: string | null }[]>`
+    select sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id
+    from sineobex.quarantine_items q where q.id = ${itemId}`;
+  return row?.patientId ?? null;
+}
+
 const waitingOnRecord = () =>
   conflict(
     'waiting_on_record',
@@ -393,20 +437,52 @@ export async function decideQuarantine(
         auditDetails: { onBehalfOf: item.userId, quarantineItem: item.id },
       };
       // A database constraint the checks missed answers cannot_apply below, not a server error.
-      const result = await applyInSavepoint(tx, audit, actor, change, item.valueHash);
+      // The attempt runs in a savepoint of its own, rolled back when it is refused, so the item
+      // stays pending and the chart is untouched.
+      const result = await tx
+        .savepoint(async (sp) => {
+          const r = await applyInSavepoint(sp, audit, actor, change, item.valueHash);
+          if (r.status !== 'accepted') throw new Refused(r);
+          return r;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Refused) return err.result;
+          throw err;
+        });
       if (result.status !== 'accepted') {
-        // Throwing rolls back the attempt, so the item stays pending and the chart is untouched.
         if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change)))
           throw waitingOnRecord();
-        throw conflict(
+        const problem = typeof result.details?.problem === 'string' ? result.details.problem : null;
+        const refused = conflict(
           'cannot_apply',
           result.reason === 'stale_reference'
             ? 'The record this belongs to isn’t on the chart, so this can’t be applied.'
-            : 'This record can’t be applied as it stands.',
-          { status: result.status, ...(result.reason ? { reason: result.reason } : {}) },
+            : problem === 'content_changed'
+              ? 'The note changed after it was signed, so this can’t be applied. Whoever sent it has been told to complete the note again.'
+              : 'This record can’t be applied as it stands.',
+          {
+            status: result.status,
+            ...(result.reason ? { reason: result.reason } : {}),
+            ...(problem ? { problem } : {}),
+          },
         );
+        if (item.entity !== 'note_signoff' || problem !== 'content_changed') throw refused;
+        // A held sign-off the note no longer matches (review finding NOT-12): its phone let go of
+        // it when it was held, so its sender is told the note needs completing again, and the
+        // refusal is logged with it. The item stays pending, for the reviewer to reject.
+        const noteId = await signoffNotApplied(tx, scope.team.teamId, item);
+        await audit({
+          action: 'quarantine.accept_refused',
+          entity: 'encounter_note',
+          entityId: noteId ?? item.recordId,
+          patientId: await patientOfItem(tx, itemId),
+          details: { itemId, changeId: item.changeId, problem },
+        });
+        return refused;
       }
     }
+    // A held sign-off rejected tells its sender the note needs completing again (NOT-12).
+    if (decision === 'reject') await signoffNotApplied(tx, scope.team.teamId, item);
 
     await tx`
       update sineobex.quarantine_items set status = ${decision === 'accept' ? 'accepted' : 'rejected'},
@@ -420,6 +496,7 @@ export async function decideQuarantine(
     });
     return 'decided' as const;
   });
+  if (outcome instanceof ApiError) throw outcome;
   if (outcome === 'own') {
     await scope.tx((_, audit) =>
       audit({ action: 'access.denied', details: { reason: 'own_quarantined_change', itemId } }),
