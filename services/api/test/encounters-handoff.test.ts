@@ -4,6 +4,7 @@ import {
   PRESETS,
   visibleAnswers,
   type HandoffLine,
+  type NoteReader,
   type ResolvedNoteType,
 } from '@sineobex/forms';
 import { PDFDocument } from 'pdf-lib';
@@ -27,8 +28,9 @@ import { noteOn, TEST_SENSITIVE_TYPE, type Clinician, type HeldNote, type Visit 
 
 // GET /v1/encounters/{encounterId}/ems-handoff (lifecycle 5.7, 9.8; PLAN-OPEN 12.1 #12 and #18):
 // the EMS handoff as a PDF, built on the server from the forms part's handoffLines over what each
-// note's reader may see (visibleAnswers), with phase 3's sensitive list, so no treatment record,
-// sensitive exam or sensitive diagnosis reaches EMS for any reader. Whoever may read the Red flags
+// note's reader may see (visibleAnswers) and EMS may be sent, with phase 3's sensitive list, so no
+// note of a sensitive type, sensitive exam, treatment record or sensitive diagnosis reaches EMS for
+// any reader (the coordinator's decision on review finding LRD-4). Whoever may read the Red flags
 // note may export it, with a fresh sign-in; every page is stamped with who and when; the file and
 // its name name no patient; one ems_handoff.exported event. Every person and value is made up.
 
@@ -74,6 +76,20 @@ const EXAM_ANSWERS = {
 };
 
 const TALK = { 'talk.notes': 'Demo: talked about home' };
+
+/**
+ * EMS as a reader of the note (LRD-4): every note type but the sensitive ones, and nothing that
+ * patients.view_sensitive or patients.view_sensitive_exams gates, whoever exports the file.
+ */
+const EMS_READER: NoteReader = {
+  actsAsAuthor: false,
+  viewSensitive: false,
+  viewSensitiveExams: false,
+  readsMedical: true,
+  chartsMedical: true,
+  ordersMedications: true,
+  sensitiveCodes: SENSITIVE_CODE_RANGES,
+};
 
 /**
  * What no handoff holds, for any reader: a sensitive exam, a treatment record, a sensitive diagnosis.
@@ -152,10 +168,18 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
     return noteReader(new Set(row!.permissions as Permission[]), row!.credential, userId === w.rae.id);
   }
 
-  /** The lines the handoff of the visit holds for [userId]: handoffLines over what they may see. */
+  /**
+   * The lines the handoff of the visit holds for [userId]: handoffLines over what they may see and
+   * EMS may be sent, which is no note of a sensitive type and no sensitive exam (LRD-4).
+   */
   async function linesFor(userId: string) {
     const reader = await readerOf(userId);
-    const seen = notes.map((n) => visibleAnswers(n.type, n.answers, reader));
+    const seen = notes.map((n) => {
+      const theirs = visibleAnswers(n.type, n.answers, reader);
+      const ems = visibleAnswers(n.type, n.answers, EMS_READER);
+      if (theirs === null || ems === null) return null;
+      return Object.fromEntries(Object.entries(ems).filter(([path]) => Object.hasOwn(theirs, path)));
+    });
     const shown = notes.filter((_, i) => seen[i] !== null);
     return {
       titles: shown.map((n) => n.type.title),
@@ -279,22 +303,34 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
 
   it('holds each note that holds something, drafts too, marked with its state', async () => {
     const text = pdfText(new Uint8Array(await (await exportAs(w.vic.token)).arrayBuffer())).join(' ');
-    for (const n of notes) expect(text, n.type.title).toContain(`${n.type.title} (draft)`);
+    // Every note but the one of a sensitive type, which no handoff holds (the next test).
+    for (const n of notes.filter((n) => n.type !== TEST_SENSITIVE_TYPE))
+      expect(text, n.type.title).toContain(`${n.type.title} (draft)`);
   });
 
-  it('leaves out a note the reader may not see: a sensitive note type without patients.view_sensitive', async () => {
-    const shown = async (c: { token: string }) =>
-      pdfText(new Uint8Array(await (await exportAs(c.token)).arrayBuffer())).join(' ');
-    expect(await shown(w.ana)).toContain('Demo: talked about home');
-    expect(await shown(w.bea)).not.toContain('Demo: talked about home');
-    expect(await shown(w.bea)).toContain('Demo: chest pain since the morning');
+  it('leaves out every note of a sensitive type, for every reader, and names none among the notes read', async () => {
+    // The coordinator's decision on review finding LRD-4: what reaches EMS does not depend on who
+    // exports it. Ana and Vic may read the Behavioral health note; neither sends it, nor does Bea,
+    // who may not read it, nor Rae, who wrote it.
+    for (const c of [w.ana, w.vic, w.rae, w.bea]) {
+      const mark = await auditMark(h);
+      const text = pdfText(new Uint8Array(await (await exportAs(c.token)).arrayBuffer())).join(' ');
+      expect(text, c.id).not.toContain('Demo: talked about home');
+      expect(text, c.id).not.toContain(TEST_SENSITIVE_TYPE.title);
+      expect(text, c.id).toContain('Demo: chest pain since the morning');
+      const [event] = await expectAudit(h, 'ems_handoff.exported', { after: mark, count: 1 });
+      expect(event!.details.noteIds, c.id).toEqual(
+        notes.filter((n) => n.type !== TEST_SENSITIVE_TYPE).map((n) => n.noteId),
+      );
+    }
   });
 
-  // Each note goes through visibleAnswers before handoffLines reads it (handoff.ts). No test here
-  // bites if that step is taken out (review finding LPM-7, M40): with today's definitions, what a
-  // reader's keys hide is a treatment record, a sensitive exam or a sensitive diagnosis with its
-  // entry, and handoffLines leaves each of those out for every reader (D82, forms 10.1 #6). The step
-  // stays, for a definition whose hidden content EMS could otherwise be sent.
+  // Each note goes through visibleAnswers for its reader, then for EMS, before handoffLines reads it
+  // (handoff.ts). Taking out the reader's step bites no test here (review finding LPM-7, M40): EMS
+  // is sent no more than any reader of the note may see, since what a reader's keys hide is a note
+  // they may not open (left out before either step), a note of a sensitive type, a treatment record,
+  // a sensitive exam or a sensitive diagnosis with its entry, and EMS is sent none of those (D82,
+  // LRD-4, forms 10.1 #6). The step stays, so the file never holds what its exporter may not see.
   it('holds no sensitive exam, treatment record or sensitive diagnosis, for any reader, the author included', async () => {
     for (const c of [w.rae, w.vic, w.ana, w.bea]) {
       const text = pdfText(new Uint8Array(await (await exportAs(c.token)).arrayBuffer())).join(' ');
@@ -330,7 +366,7 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
       count: 1,
     });
     expect(event).toMatchObject({ actorUserId: w.bea.id, entity: 'encounter', entityId: visit.encounterId });
-    // The sensitive note type is not read for Billing/Data, so it is not named.
+    // The note of a sensitive type is not sent, so it is not named.
     expect(event!.details).toEqual({
       noteIds: notes.filter((n) => n.type !== TEST_SENSITIVE_TYPE).map((n) => n.noteId),
       source: 'portal',

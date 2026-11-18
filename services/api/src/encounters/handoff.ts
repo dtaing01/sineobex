@@ -1,8 +1,10 @@
 import {
   handoffLines,
   NoteReading,
+  visibleAnswers,
   type Answers,
   type HandoffLine,
+  type NoteReader,
   type ResolvedNoteType,
 } from '@sineobex/forms';
 import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
@@ -27,9 +29,11 @@ import { noteIsEmpty } from './rules.ts';
  * this route: a file made on the phone would have to leave through a share sheet, which the PRD
  * rules out (PRD main 413). The phone shows the summary full-screen only.
  *
- * Each note goes through visibleAnswers for the reader (noteAsRead, as the visit read does) before
- * handoffLines reads it, with phase 3's sensitive list, so no treatment record, sensitive exam or
- * sensitive diagnosis reaches EMS for any reader, and no reader is handed a note they may not open.
+ * Each note goes through visibleAnswers for the reader (noteAsRead, as the visit read does), so no
+ * reader is handed a note they may not open, and through visibleAnswers for EMS (EMS_READER), so
+ * what reaches EMS does not depend on who exports it; then handoffLines reads it, with phase 3's
+ * sensitive list. No note of a sensitive type, sensitive exam, treatment record or sensitive
+ * diagnosis reaches EMS, whoever exports the file.
  *
  * A file leaves our control, so the PRD's rule for exports holds (PRD main 602): a recent sign-in
  * (the route asks for it), every page stamped with who exported it and when, no caching and a file
@@ -46,6 +50,39 @@ import { noteIsEmpty } from './rules.ts';
 
 /** The file's name: the same for every visit, so it names no patient (10.2). */
 export const HANDOFF_FILE_NAME = 'ems-handoff.pdf';
+
+/**
+ * EMS as visibleAnswers reads them: a reader of every note type but the sensitive ones, without
+ * patients.view_sensitive or patients.view_sensitive_exams. So no note of a sensitive type (one
+ * that view_sensitive gates) and nothing a sensitive exam put in a note (what view_sensitive_exams
+ * gates) is in the file, for any exporter, as D82 keeps treatment records and sensitive diagnoses
+ * out (the coordinator's decision on review finding LRD-4): a file sent outside the team holds the
+ * same whoever sends it, and nobody sends one holding content they may not see.
+ *
+ * PLAN-OPEN: should any of it reach EMS: a behavioral health, harm reduction or sexual health note,
+ * or a sensitive exam's findings (forms 10.1 #6; for the clinical team and counsel, to be added to
+ * lifecycle 12.1)? Until they say, none does.
+ */
+const EMS_READER: NoteReader = {
+  actsAsAuthor: false,
+  viewSensitive: false,
+  viewSensitiveExams: false,
+  readsMedical: true,
+  chartsMedical: true,
+  ordersMedications: true,
+  sensitiveCodes: SENSITIVE_CODE_RANGES,
+};
+
+/**
+ * What EMS is sent of a note the exporter may read: what EMS_READER sees of it, and of that only
+ * what the exporter sees too. Null for a note of a sensitive type. Interpreter calls: wrapped in
+ * byDefinition by the caller.
+ */
+function sentToEms(read: NoteRead & { type: ResolvedNoteType }): Answers | null {
+  const sent = visibleAnswers(read.type, read.answers, EMS_READER);
+  if (sent === null) return null;
+  return Object.fromEntries(Object.entries(sent).filter(([path]) => Object.hasOwn(read.seen, path)));
+}
 
 /** The Red flags and disposition note, added by itself to a Medical visit (forms 6.2). */
 const isRedFlags = (type: ResolvedNoteType | undefined) => type?.auto === 'medical';
@@ -112,6 +149,7 @@ export async function exportHandoff(
       where team_id = ${visit.teamId} and encounter_id = ${visit.id} order by created_at, id`;
     let hasRedFlags = false;
     const flags: (NoteRead & { type: ResolvedNoteType })[] = [];
+    // The notes in the file, each with `seen` what EMS is sent of it.
     const reads: (NoteRead & { type: ResolvedNoteType })[] = [];
     for (const { id } of rows) {
       const note = await noteRules.load(tx, id, false);
@@ -131,7 +169,10 @@ export async function exportHandoff(
       if (redFlags) flags.push(typed);
       // An empty draft counts as not there (3.1), as on the visit read.
       if (read.note.status === 'draft' && noteIsEmpty(read.answers)) continue;
-      reads.push(typed);
+      // A note of a sensitive type is not sent, nor named among the notes read (LRD-4).
+      const sent = byDefinition(() => sentToEms(typed));
+      if (sent === null) continue;
+      reads.push({ ...typed, seen: sent });
     }
 
     if (!hasRedFlags) throw noHandoff();
