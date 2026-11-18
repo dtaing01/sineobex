@@ -240,6 +240,26 @@ describe('phase 4: co-sign', () => {
       expect((await noteRow(h, draft.note.noteId)).status).toBe('draft');
     });
 
+    it('a note the caller may not read at all does not wait for them, whatever its state', async () => {
+      // Review finding LAC-5: Eli charts and holds no patients.view, so he reads no Medical note.
+      // A 403 for a waiting note and a 409 for a signed one would tell him which is which.
+      const waits = await waitingForCosign(w);
+      const signed = await chartedVisit(w, w.rae);
+      await finish(w.rae, [signed.flags, 'sign', 'signed'], [signed.note, 'sign', 'signed']);
+      const mark = await auditMark(h);
+      const answers = [];
+      for (const v of [waits, signed]) {
+        const r = await cosign(w, w.eli, v.visit.encounterId, [v.note]);
+        answers.push([r.status, refusal(r.body)]);
+      }
+      expect(answers).toEqual([
+        [409, { code: 'not_waiting', noteIds: [waits.note.noteId] }],
+        [409, { code: 'not_waiting', noteIds: [signed.note.noteId] }],
+      ]);
+      expect(await eventsAfter(h, mark)).toEqual([]);
+      await unchanged(waits.flags, waits.note);
+    });
+
     it('a note changed since it was read: 409 content_changed, and nothing is written for any note', async () => {
       const v = await waitingForCosign(w);
       // Sol corrects the note after Ana loaded the visit; Ana's page still holds the old answers.

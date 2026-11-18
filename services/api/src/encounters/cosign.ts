@@ -261,7 +261,8 @@ async function callerNow(tx: Tx, scope: TeamScope): Promise<TeamScope | null> {
  * one no longer a member is refused not_a_member, and one whose role no longer charts is refused as
  * the route refuses them; both logged.
  *
- * Every note named is checked by the act's rule; a note of another visit, or none, does not wait.
+ * Every note named is checked by the act's rule; a note of another visit, or none, or one the caller
+ * may not read at all, does not wait.
  * The list must hold every waiting note of the visit the caller may act on: one left out is one
  * their screen did not show, so the visit changed since they read it (content_changed). When notes
  * are refused, the refusal first in the rule's order is answered, naming every note it is about, and
@@ -301,6 +302,12 @@ export async function secondAct<W>(
         continue;
       }
       const n = await actNote(tx, now, visit, note);
+      // A note the caller may not read at all is answered as one of another visit: no answer may
+      // tell its state (6.4 rule 5, as the sync holds such a change; review finding LAC-5).
+      if (!n.read) {
+        refuse('not_waiting', noteId);
+        continue;
+      }
       const effect = act.effect(now, n, (await heldHash(visit, n)) === contentHash);
       const refusal = refusalOf(effect);
       if (refusal) refuse(refusal, noteId);
