@@ -232,6 +232,74 @@ void main() {
     handle.dispose();
   });
 
+  // What counts, not what is stored (forms 2.3, 7.1): a flag or a picker whose condition doesn't
+  // hold keeps its answer, and that answer clears nothing and picks no row.
+  final hidden = definitionOf([
+    {
+      'id': 'visit',
+      'title': 'Demo: visit',
+      'fields': [
+        {'id': 'seen', 'kind': 'flag', 'label': 'Seen today'},
+        {
+          'id': 'unable',
+          'kind': 'flag',
+          'label': 'Unable to measure',
+          'clears': ['length'],
+          'showWhen': {'field': 'visit.seen', 'filled': true},
+        },
+        {'id': 'length', 'kind': 'text', 'label': 'Length', 'lines': 'one', 'maxLength': 20},
+        {
+          'id': 'nodes',
+          'kind': 'choice',
+          'many': true,
+          'label': 'Demo: nodes',
+          'showWhen': {'field': 'visit.seen', 'filled': true},
+          'options': [
+            {'code': 'neck', 'label': 'Demo: neck'},
+            {'code': 'groin', 'label': 'Demo: groin'},
+          ],
+        },
+        {
+          'id': 'node_findings',
+          'kind': 'grid',
+          'label': 'Demo: findings for each node',
+          'rows': {'pickedIn': 'visit.nodes'},
+          'cell': {'id': 'tender', 'kind': 'flag', 'label': 'Demo: tender'},
+        },
+      ],
+    },
+  ]);
+
+  testWidgets('a set flag that doesn’t count clears nothing', (tester) async {
+    await pumpForm(tester, hidden, values: {'visit.unable': true, 'visit.length': '4'});
+    expect(fieldHost('visit.unable'), findsNothing);
+    expect(tester.widget<FieldHost>(fieldHost('visit.length')).enabled, isTrue);
+    await pumpForm(tester, hidden, values: {'visit.seen': true, 'visit.unable': true, 'visit.length': '4'});
+    expect(tester.widget<FieldHost>(fieldHost('visit.length')).enabled, isFalse);
+  });
+
+  testWidgets('a grid draws no row for an option picked in a picker that doesn’t count', (tester) async {
+    await pumpForm(
+      tester,
+      hidden,
+      values: {
+        'visit.nodes': ['neck'],
+      },
+    );
+    expect(fieldHost('visit.nodes'), findsNothing);
+    expect(find.text('Demo: neck'), findsNothing);
+    expect(fieldHost('visit.node_findings.neck'), findsNothing);
+    await pumpForm(
+      tester,
+      hidden,
+      values: {
+        'visit.seen': true,
+        'visit.nodes': ['neck'],
+      },
+    );
+    expect(fieldHost('visit.node_findings.neck'), findsOneWidget);
+  });
+
   testWidgets('a flag in a group makes the fields it clears read-only', (tester) async {
     final wound = presetDefinition('wound_care');
     const e = 'e0000001';
