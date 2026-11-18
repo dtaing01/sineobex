@@ -45,8 +45,8 @@ import {
  *  - Notes to finish and the team's incomplete notes (5.6): `{ notes: [...] }`, each `{ noteId,
  *    encounterId, patientId, noteTypeKey, startedAt, overdue }`, the team's with `author` and
  *    `authorActive`.
- *  - The counts (5.6): `{ notesToFinish, notesOverdue, cosignWaiting?, attestationWaiting?,
- *    teamIncomplete? }`, each optional one absent for a caller who may not open its list.
+ *  - The counts (5.6): `{ notesToFinish, notesOverdue, cosignWaiting, attestationWaiting,
+ *    teamIncomplete }`, each the length of its list, and absent for a caller who may not open it.
  */
 
 const [NOTE_TYPE, MEDICAL_TYPE] = TEST_NOTE_TYPES as [ResolvedNoteType, ResolvedNoteType];
