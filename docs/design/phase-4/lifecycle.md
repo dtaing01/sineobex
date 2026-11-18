@@ -3038,9 +3038,9 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 23 | What is a person shown when they complete a note without signing it, and which version is stored? | A `complete` carries a statement version as a `sign` does (`complete-2026-11` in the tests); its sentence is not written yet, and 3.5's table has none. The server stores the version the phone sends, any text of 1 to 40 characters from `a-z`, `0-9`, `_`, `.` and `-`, and checks it against no list (4.6) | Counsel |
 | 24 | Does a correction record the wording its corrector was shown? | No. A correction carries no statement version: its row's corrector, credential, time and reason stand as their signature on the change (3.6, 4.7) | Counsel |
 
-Rows 23 and 24 came from wave D's review of unit L1. Their `PLAN-OPEN:` comments are still owed
-in the code: on `NoteSignoffCreate`'s `statementVersion` (`services/api/src/sync/entities/values.ts`)
-and on the correction's value or its row (`note-correction.ts`).
+Rows 23 and 24 came from wave D's review of unit L1. Their `PLAN-OPEN:` comments are on
+`NoteSignoffCreate`'s `statementVersion` (`services/api/src/sync/entities/values.ts`) and on the
+correction's rules (`note-correction.ts`).
 
 ### 12.2 Questions that need a person and have no default
 

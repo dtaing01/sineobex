@@ -271,6 +271,10 @@ export const NoteSignoffCreate = z
     act: z.enum(['complete', 'sign']),
     contentHash: z.string().regex(/^[0-9a-f]{64}$/),
     claimedCredential: z.enum(CREDENTIALS).nullable(),
+    // PLAN-OPEN: what is a person shown when they complete a note without signing it, and which
+    // version is stored (lifecycle 12.1 #23; plan section 6)? A complete carries a version as a
+    // sign does; its sentence is not written yet, and the server stores the version sent, checked
+    // for its form against no list.
     statementVersion: StatementVersion,
   })
   .strict()

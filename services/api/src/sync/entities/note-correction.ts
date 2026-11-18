@@ -59,6 +59,10 @@ import { NoteCorrectionCreate, valueParents } from './values.ts';
  * and correctionEffect (3.12) says what is left of the note's signature: a note is signed only while
  * someone who may sign covers what it says now. A co-signer or attester whose work a correction
  * undoes is told.
+ *
+ * PLAN-OPEN: does a correction record the wording its corrector was shown (lifecycle 12.1 #24; plan
+ * section 6)? No: it carries no statement version, and the row's corrector, credential, time and
+ * reason stand as their signature on the change.
  */
 
 type Value = z.infer<typeof NoteCorrectionCreate>;
