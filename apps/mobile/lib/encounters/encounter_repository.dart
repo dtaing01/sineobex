@@ -1,8 +1,12 @@
+import 'dart:math' show Random;
+
 import '../api/generated/api.dart' as wire;
 import '../api/transport.dart' show NetworkException;
 import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
+import '../forms/effective.dart' show effectiveAnswers;
+import '../forms/expand.dart' show expandQuick;
 import '../forms/field_at.dart' show fieldAt;
 import '../forms/finish.dart';
 import '../forms/forms_api.dart' show NoteTypeVersion;
@@ -22,6 +26,7 @@ import 'rules.dart';
 import 'visibility.dart';
 
 part 'complete.dart';
+part 'expand_quick.dart';
 part 'note_actions.dart';
 part 'red_flags.dart';
 part 'timeline.dart';

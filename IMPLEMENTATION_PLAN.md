@@ -272,7 +272,7 @@ Each is a single configuration point or code path, so changing it later is small
 
 ### Phases 4 to 12 (designed, not built)
 
-Each design lists its own defaults and who decides them, and they move into this section as each is built: phase 4 has 83 and eight questions with no default (`docs/design/phase-4/lifecycle.md` 12.1 and 12.2, `docs/design/phase-4/forms.md` 10.1 and 10.2; `docs/design/phase-4-encounters.md` names the six that matter most). The later designs each end with their own table.
+Each design lists its own defaults and who decides them, and they move into this section as each is built: phase 4 has 84 and eight questions with no default (`docs/design/phase-4/lifecycle.md` 12.1 and 12.2, `docs/design/phase-4/forms.md` 10.1 and 10.2; `docs/design/phase-4-encounters.md` names the six that matter most). The later designs each end with their own table.
 
 ### Phase 3 (patients)
 

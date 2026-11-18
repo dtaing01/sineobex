@@ -3935,6 +3935,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 27 | What of the patient does the EMS handoff PDF's header carry? (forms 10.1 #6 says the summary's comes from the chart) | Their preferred name, their age in years and their allergies, from their chart as the exporter may see it, the allergies worded as the phone's allergy badge words them; never the legal name or the birth date. The file's name and metadata name no patient (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
+| 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. The person's own empty draft of the type is filled as a new note would be (forms 6.4; unit F7) | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -3947,6 +3948,9 @@ Rows 27 to 29 came from unit L2's review, the coordinator's decisions on the han
 the file, row 28's above `zoned`, row 29's on `EMS_READER`. Rows 7, 12, 17 and 18, built with the
 online routes, have theirs at the head of `assign.ts` and of `handoff.ts`, on `RECENT_VISITS`
 (`timeline.ts`) and on `exportHandoff`.
+
+Row 30 came from unit F7, Expand on the phone. Its `PLAN-OPEN:` comment is on `expand`
+(`apps/mobile/lib/encounters/expand_quick.dart`).
 
 ### 12.2 Questions that need a person and have no default
 
