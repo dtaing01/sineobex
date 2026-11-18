@@ -133,6 +133,24 @@ void main() {
       },
     ],
   };
+  // A quick note type whose part maps into a sensitive one (the API's test type `test_sensitive`),
+  // which a teammate's note of is hidden from a reader without `patients.view_sensitive`.
+  final quickTalkJson = <String, Object?>{
+    'key': 'test_quick_talk',
+    'version': 1,
+    'title': 'Test quick talk',
+    'kinds': ['medical'],
+    'group': 'clinical',
+    'sensitivity': 'none',
+    'quick': true,
+    'sections': [
+      {
+        'id': 'talk',
+        'title': 'Talk',
+        'fields': [text('notes', 'Notes', max: 4000, mapsTo: 'test_sensitive:talk.notes')],
+      },
+    ],
+  };
 
   late DateTime serverTime;
   late FakeSyncServer server;
@@ -144,7 +162,14 @@ void main() {
     return p;
   }
 
-  final all = [...presets.values, quickJson, fullJson, ...testNoteTypes];
+  final all = [
+    ...presets.values,
+    quickJson,
+    fullJson,
+    quickTalkJson,
+    ...testNoteTypes,
+    ...restrictedNoteTypes.where((d) => d['key'] == testSensitive.key),
+  ];
   setUp(() {
     serverTime = start;
     server = FakeSyncServer(now: () => serverTime);
@@ -569,6 +594,51 @@ void main() {
       await sync(p);
       serverTookAll(p);
       expect(answersOnServer(done.noteId)['reason.concern'], 'Demo: cough for a week');
+    });
+
+    test('a teammate’s finished note of the type that the person may not read is not opened: Expand makes '
+        'a note of their own (forms 6.4, 12.1 #30)', () async {
+      final a = phone(alex);
+      final patient = server.seedPatient();
+      final ra = repo(a);
+      final visit = ra.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final theirs = (await ra.addNote(visit, type(testSensitive.key))).noteId;
+      await ra.openNote(theirs);
+      ra.saveAnswer(theirs, 'talk.notes', 'Demo: talked about sleep');
+      ra.complete((await ra.openComplete(visit))!);
+      await sync(a);
+      serverTookAll(a);
+
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', theirs), isTrue);
+      // Their role no longer reads sensitive notes: the phone holds Alex's, which is not theirs to see.
+      final rb = repo(b, permissions: staff.difference({'patients.view_sensitive'}));
+      server.offline = true;
+      final quick = await quickNote(rb, visit, {
+        'talk.notes': 'Demo: slept outside',
+      }, key: quickTalkJson['key']! as String);
+      expect(await rb.expandOpensAsItIs(quick, type(testSensitive.key)), isFalse);
+      final done = await rb.expand(quick, type(testSensitive.key));
+      expect(
+        [done.noteId == theirs, done.existing, done.finished, done.written],
+        [
+          false,
+          false,
+          false,
+          {'talk.notes': 'Demo: slept outside'},
+        ],
+      );
+      server.offline = false;
+      await sync(b);
+      serverTookAll(b);
+      expect(
+        [answersOnServer(theirs), answersOnServer(done.noteId)],
+        [
+          {'talk.notes': 'Demo: talked about sleep'},
+          {'talk.notes': 'Demo: slept outside'},
+        ],
+      );
     });
 
     test('once a removed note’s fix has settled, Add note and Expand open the draft with answers made after it, '
