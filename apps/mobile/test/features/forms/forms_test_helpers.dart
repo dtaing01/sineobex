@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -179,6 +180,57 @@ Future<void> expectFieldOk(WidgetTester tester) async {
   for (final r in tester.allRenderObjects.whereType<RenderFlex>()) {
     expect(r.toStringShort(), isNot(contains('OVERFLOWING')));
   }
+  expectReadOnlyReadable(tester);
+}
+
+/// The words of what can't be changed, measured directly: the text contrast guideline skips a node
+/// that is not enabled, which a read-only answer and a disabled tick are, and every answer on a
+/// finished note is one (accessibility: 4.5:1, 7:1 in High contrast). A read-only answer is
+/// measured on its sunken box; a tick on the surface and the ground a form may draw it on.
+void expectReadOnlyReadable(WidgetTester tester) {
+  void measure(Finder within, List<Color> Function(FieldColors c) backgrounds) {
+    for (final e in within.evaluate()) {
+      final palette = Theme.of(e).extension<FieldPalette>()!;
+      final c = palette.colors;
+      final minimum = palette.theme == FieldTheme.contrast ? 7.0 : 4.5;
+      final words = find.descendant(of: find.byWidget(e.widget), matching: find.byType(RichText));
+      for (final paragraph in tester.renderObjectList<RenderParagraph>(words)) {
+        final colors = <Color>[];
+        paragraph.text.visitChildren((span) {
+          if (span is TextSpan && (span.text?.trim().isNotEmpty ?? false)) {
+            if (span.style?.color case final color?) colors.add(color);
+          }
+          return true;
+        });
+        // A span without its own colour takes its paragraph's.
+        colors.addAll([?paragraph.text.style?.color]);
+        for (final color in colors) {
+          for (final background in backgrounds(c)) {
+            final ratio = _contrast(Color.alphaBlend(color, background), background);
+            expect(
+              ratio,
+              greaterThanOrEqualTo(minimum),
+              reason: '"${paragraph.text.toPlainText()}" is ${ratio.toStringAsFixed(2)}:1',
+            );
+          }
+        }
+      }
+    }
+  }
+
+  measure(find.byType(ReadOnlyAnswer), (c) => [c.surfaceSunken]);
+  measure(find.byType(FlagField), (c) => [c.surface, c.ground]);
+}
+
+/// WCAG 2.x contrast ratio, as test/design/contrast_test.dart works it out.
+double _contrast(Color a, Color b) {
+  double luminance(Color c) {
+    double channel(double v) => v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+    return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+  }
+
+  final (la, lb) = (luminance(a), luminance(b));
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
 }
 
 /// Opens a note form on [definition] holding [values], every change drawn again as the screen
