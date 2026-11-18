@@ -622,12 +622,12 @@ The encounter's own status follows from its notes (2.2).
 - The kind only ever goes from Non-Medical to Medical, at any time (PRD main 379), and never
   back. It decides which note types the apps offer. It decides nothing about a note that exists.
 
-**An empty draft does not count.** A draft note whose answers are all blank (4.5) is treated as
-if it were not there: by the encounter's status, by Complete, by a sign-off, which changes nothing
-(3.4), by the lists of notes to finish and by the timeline. A note type picked by mistake is undone by **Remove this note**, which blanks
-its answers (9.4). The Red flags note that the app adds by itself (forms 6.2) stays out of the
-way until someone answers it. One function, `noteIsEmpty`, says so on both sides (3.12), and the
-database has the same rule (2.2).
+**An empty draft does not count.** A draft note whose answers are all blank (4.5) is treated as if
+it were not there: by the encounter's status, by Complete, by a sign-off, which changes nothing
+(3.4), by the lists of notes to finish and by the timeline. A note type picked by mistake is undone
+by **Remove this note**, which blanks its answers (9.4). The Red flags note that the app adds by
+itself (forms 6.2) stays out of the way until someone answers it. One function, `noteIsEmpty`, says
+so on both sides (3.12), and the database has the same rule (2.2).
 
 ```
             Complete (a Non-Medical note)
@@ -1859,13 +1859,14 @@ review):
   Effect `none`: `details: { effect: 'none', reason, status, attestation }`, the reason
   `already_finished`, `not_author` or `empty` (an empty draft: `noteIsEmpty` of the answers the
   note holds, 3.4), the note's state now, so the phone settles every receipt the same way, and
-  `hashMatches` **only to whoever acts as the author** (review findings RD-2, NOT-6): sent to anyone else it would check any guess of what the
-  note holds, a hidden answer included. For `already_finished` it compares with the hash of the
-  sign-off that finished the note, not with the note as it is now (NOT-7): the row by
-  `completed_by` at `completed_at` with an effect other than `none`, the latest received on a tie,
-  else the note's own hash. A co-signature (L2) must leave `completed_at` and `completed_by` as
-  they are for this to keep naming the signature that finished it. The contract's description of
-  `SyncResult.details` names a sign-off's keys and the three reasons.
+  `hashMatches` **only to whoever acts as the author** (review findings RD-2, NOT-6): sent to
+  anyone else it would check any guess of what the note holds, a hidden answer included. For
+  `already_finished` it compares with the hash of the sign-off that finished the note, not with
+  the note as it is now (NOT-7): the row by `completed_by` at `completed_at` with an effect other
+  than `none`, the latest received on a tie, else the note's own hash. A co-signature (L2) must
+  leave `completed_at` and `completed_by` as they are for this to keep naming the signature that
+  finished it. The contract's description of `SyncResult.details` names a sign-off's keys and the
+  three reasons.
 - **Notices and the audit event**: `note_saved_unsigned` to the signer, `change_not_applied` to a
   sender who does not act as the author, both on entity `encounter_note` and the note; one event
   on the note, with `signoffId` in its details (10.1).
@@ -3197,7 +3198,9 @@ free-text assessment" (PRD main 433). "Each collapses to a one-line summary" (PR
   every finished note with nothing waiting, so a note is still closed if the app was killed
   between the receipt and the sweep. The purge then removes what is confirmed
   (`apps/mobile/lib/sync/local_store.dart:1895-1922`). Data still leaves the phone only after a
-  hash-confirmed receipt: nothing here touches the purge.
+  hash-confirmed receipt: nothing here touches the purge. A note whose sign-off is held for review
+  is not closed (`sentForReview`, 4.8): kept open, the refresh settles an admin's accept, and the
+  notice of a reject finds the note to complete again.
 - **A draft nobody has touched for 7 days** is closed the same way, if nothing of it waits in
   the outbox (3.2). It stays on the server and opens again online.
 - **Reading a visit that has left the phone.** The last three visits of a chart the phone holds
