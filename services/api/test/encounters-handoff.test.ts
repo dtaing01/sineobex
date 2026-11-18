@@ -443,7 +443,8 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
 
   it('a visit the team does not have is 404, and an ID that is not a UUID is 422', async () => {
     const mark = await auditMark(h);
-    const missing = await exportAs(w.vic.token, '7d3f0c1e-5a2b-4c8d-9e6f-0a1b2c3d4e5f');
+    const noSuchVisit = '7d3f0c1e-5a2b-4c8d-9e6f-0a1b2c3d4e5f';
+    const missing = await exportAs(w.vic.token, noSuchVisit);
     expect(missing.status).toBe(404);
     expect(((await missing.json()) as { error: { code: string } }).error.code).toBe('not_found');
     expect((await exportAs(w.vic.token, 'not-a-visit')).status).toBe(422);

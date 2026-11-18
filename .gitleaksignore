@@ -18,3 +18,10 @@
 # Nothing to rotate. Scoped to this one commit, file, rule and line so any new finding still fails
 # the scan; a cherry-pick of the release commit changes its hash and needs this line rewritten.
 495d08ae73cbd59f73cc6cee5e95b09141e330dd:packages/forms/definitions.lock.json:generic-api-key:3
+
+# False positive, confirmed 2026-11-18. gitleaks' generic-api-key rule matched a made-up visit ID
+# (a UUID no team holds) passed beside a test member's token to the EMS handoff route, in a test
+# that checks an unknown visit is answered 404. It is a test's input, not a credential. Nothing to
+# rotate. The line now names the ID in a constant of its own, so it no longer matches. Scoped to
+# this one commit, file, rule and line so any new finding still fails the scan.
+ff5b5dbf2aa2b25cabb5d89ce55e4e8584c94ed8:services/api/test/encounters-handoff.test.ts:generic-api-key:310
