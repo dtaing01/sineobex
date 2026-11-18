@@ -245,9 +245,9 @@ export async function chartedVisit(
   c: Clinician,
   type: ResolvedNoteType = TEST_MEDICAL_TYPE,
   answers: Record<string, unknown> = PLAN,
-  o: { startedAt?: string } = {},
+  o: { startedAt?: string; patientId?: string } = {},
 ): Promise<ChartedVisit> {
-  const visit = await visitAt(c, w.patientId, o);
+  const visit = await visitAt(c, o.patientId ?? w.patientId, o);
   const flags = await noteOn(c, visit, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
   const note = await noteOn(c, visit, type, answers);
   return { visit, flags, note };
@@ -266,7 +266,7 @@ export async function waitingForCosign(
   c: Clinician = w.sol,
   type: ResolvedNoteType = TEST_MEDICAL_TYPE,
   answers: Record<string, unknown> = PLAN,
-  o: { startedAt?: string } = {},
+  o: { startedAt?: string; patientId?: string } = {},
 ): Promise<ChartedVisit> {
   const v = await chartedVisit(w, c, type, answers, o);
   // A student's sign is saved unsigned; anyone else's complete of a Medical note waits the same way.
@@ -285,7 +285,7 @@ export async function waitingForAttestation(
   c: Clinician = w.rae,
   type: ResolvedNoteType = TEST_MEDICAL_TYPE,
   answers: Record<string, unknown> = PLAN,
-  o: { startedAt?: string } = {},
+  o: { startedAt?: string; patientId?: string } = {},
 ): Promise<ChartedVisit> {
   const v = await chartedVisit(w, c, type, answers, o);
   await finish(c, [v.flags, 'sign', 'signed'], [v.note, 'sign', 'signed']);
