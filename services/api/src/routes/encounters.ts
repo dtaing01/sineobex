@@ -66,7 +66,7 @@ const cosignRoute = createRoute({
     'Lifecycle 5.3. The list holds every Medical note of the visit that waits for a co-signer and that the caller ' +
     'may act on, each with the contentHash of the visit read. A refusal names its notes in error.details.noteIds: ' +
     '403 is_author, cannot_sign or cannot_see_all (logged); 409 not_waiting or content_changed, and the screen ' +
-    'loads the visit again.',
+    'loads the visit again. A refusal about the caller is logged even when a 409 is answered.',
   security: [{ bearer: [] }],
   request: { params: EncounterParam, body: { required: true, ...json(NoteActInput) } },
   responses: {
@@ -85,7 +85,8 @@ const attestRoute = createRoute({
     'Lifecycle 5.4. The same body as a co-sign: every note of the visit that waits for attestation and that the ' +
     'caller may act on, each with the contentHash of the visit read. Each attestation names the note’s current ' +
     'signature. A refusal names its notes in error.details.noteIds: 403 is_author, is_signer, cannot_attest or ' +
-    'cannot_see_all (logged); 409 not_waiting or content_changed.',
+    'cannot_see_all (logged); 409 not_waiting or content_changed. A refusal about the caller is logged even when ' +
+    'a 409 is answered.',
   security: [{ bearer: [] }],
   request: { params: EncounterParam, body: { required: true, ...json(NoteActInput) } },
   responses: {

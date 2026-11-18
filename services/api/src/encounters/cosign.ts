@@ -262,11 +262,11 @@ async function callerNow(tx: Tx, scope: TeamScope): Promise<TeamScope | null> {
  * the route refuses them; both logged.
  *
  * Every note named is checked by the act's rule; a note of another visit, or none, or one the caller
- * may not read at all, does not wait.
- * The list must hold every waiting note of the visit the caller may act on: one left out is one
- * their screen did not show, so the visit changed since they read it (content_changed). When notes
- * are refused, the refusal first in the rule's order is answered, naming every note it is about, and
- * nothing is written. A refusal about the caller is logged as access.denied with its name.
+ * may not read at all, does not wait. The list must hold every waiting note of the visit the caller
+ * may act on: one left out is one their screen did not show, so the visit changed since they read
+ * it (content_changed). When notes are refused, the refusal first in the rule's order is answered,
+ * naming every note it is about, and nothing is written but the log of a refusal about the caller:
+ * access.denied with its name, whenever a note has one, even when a state refusal (409) is answered.
  */
 export async function secondAct<W>(
   scope: TeamScope,
@@ -325,20 +325,24 @@ export async function secondAct<W>(
     const reason = act.refusals.find((r) => refused.has(r));
     if (reason === undefined)
       return { answer: await act.apply(tx, now, audit, visit, acts, input.statementVersion) };
+    // A refusal about the caller is logged whichever refusal is answered: a note that stopped
+    // waiting, answered first, must not hide that they asked to act on one they may not (review
+    // finding LAC-7). The first in the rule's order, with the notes it is about.
+    const about = act.refusals.find((r) => CALLERS.has(r) && refused.has(r));
+    if (about !== undefined) {
+      await audit({
+        action: 'access.denied',
+        entity: 'encounter',
+        entityId: visit.id,
+        patientId: visit.patientId,
+        details: { reason: about, route, noteIds: refused.get(about)! },
+      });
+    }
     const noteIds = refused.get(reason)!;
-    if (!CALLERS.has(reason))
-      throw conflict(reason, act.messages[reason] ?? 'Load the visit again.', { noteIds });
-    await audit({
-      action: 'access.denied',
-      entity: 'encounter',
-      entityId: visit.id,
-      patientId: visit.patientId,
-      details: { reason, route, noteIds },
-    });
     return {
-      refused: new ApiError(403, reason, act.messages[reason] ?? 'Your role does not allow this.', {
-        noteIds,
-      }),
+      refused: CALLERS.has(reason)
+        ? new ApiError(403, reason, act.messages[reason] ?? 'Your role does not allow this.', { noteIds })
+        : conflict(reason, act.messages[reason] ?? 'Load the visit again.', { noteIds }),
     };
   });
   if ('answer' in outcome) return outcome.answer;

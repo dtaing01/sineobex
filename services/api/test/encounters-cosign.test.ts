@@ -260,6 +260,29 @@ describe('phase 4: co-sign', () => {
       await unchanged(waits.flags, waits.note);
     });
 
+    it('refusals of several notes: the first in the rule’s order is answered, and one about the caller is logged', async () => {
+      // Review finding LAC-7: Sid, a student who is not the author, names a visit's waiting notes
+      // and a note that no longer waits. not_waiting comes first in the rule's order, so it is the
+      // answer; his cannot_sign is logged all the same, naming its notes.
+      const sid = await clinician(h, w.t, 'sid@example.com', 'Sid (demo)', 'student');
+      const v = await waitingForCosign(w);
+      const done = await waitingForCosign(w);
+      expect((await cosign(w, w.ana, done.visit.encounterId, [done.flags, done.note])).status).toBe(200);
+      const mark = await auditMark(h);
+      const r = await cosign(w, sid, v.visit.encounterId, [v.flags, v.note, done.note]);
+      expect(r.status).toBe(409);
+      expect(refusal(r.body)).toEqual({ code: 'not_waiting', noteIds: [done.note.noteId] });
+      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied).toMatchObject({ entity: 'encounter', entityId: v.visit.encounterId });
+      expect(denied!.details).toEqual({
+        reason: 'cannot_sign',
+        route: '/v1/encounters/:encounterId/cosign',
+        noteIds: [v.flags.noteId, v.note.noteId],
+      });
+      expect((await eventsAfter(h, mark)).map((e) => e.action)).toEqual(['access.denied']);
+      await unchanged(v.flags, v.note);
+    });
+
     it('a note changed since it was read: 409 content_changed, and nothing is written for any note', async () => {
       const v = await waitingForCosign(w);
       // Sol corrects the note after Ana loaded the visit; Ana's page still holds the old answers.
