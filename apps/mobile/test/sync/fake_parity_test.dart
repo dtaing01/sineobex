@@ -1872,6 +1872,7 @@ void main() {
         expect(answered[2]['details'], {'notCounted': 'hidden_field'});
 
         // A correction of the answer that does not count is missing for Casey, and her late change is held.
+        // It stays hidden, so it is stored as no change (lifecycle 4.7 step 7), and kept all the same.
         server.finishNote(n);
         final correction = change(entityCorrection, 'create', {
           'noteId': n,
@@ -1884,7 +1885,7 @@ void main() {
           'claimedCredential': null,
           'signoffId': null,
         });
-        expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'corrected'));
+        expect((await send(alex, [correction])).single['details'], containsPair('outcome', 'no_change'));
         Future<List<String>> reads(String user) async => [
           for (final r in (await as(user).fetchRecords(
             body: FetchRecords(
@@ -3899,6 +3900,176 @@ void main() {
           refusedWith(const {'problem': 'field_changed', 'field': 'data.more.detail'}),
         ]);
         expect(fields['data.more.detail']!.value, 'Demo: uses a walker');
+      });
+
+      test('6. an answer a correction hid, kept at its version, is shown again by someone who held no version of it; '
+          'one who held one that moved is still told field_changed (D109, review F2)', () async {
+        const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'};
+        final visit = visitOf(by: dana);
+        final note = server.seed(entityNote, noteValue(visit, testNote, answers), by: dana);
+        final moved = server.seed(entityNote, noteValue(visit, testNote, answers), by: dana);
+        server
+          ..finishNote(note)
+          ..finishNote(moved);
+        final fields = server.records[note]!.fields;
+
+        // "Nothing more" hides the detail. The note keeps it at its version (4.7), and the note's read
+        // leaves it out, since it does not count, so the phone holds no version of it (D107).
+        final hide = correction(dana, note, [answer('more.none', true, 0)]);
+        expect(await send(dana, [hide]), [corrected(hide, 'corrected', 'completed', 'not_needed')]);
+        expect(
+          [fields['data.more.detail']!.value, fields['data.more.detail']!.version],
+          ['Demo: walks with a cane', 1],
+        );
+        expect((await read(entityNote, note)).fields.keys, isNot(contains('data.more.detail')));
+
+        // Shown again, from no version: taken, and the old value goes to history, to be struck through.
+        final back = correction(dana, note, [
+          answer('more.none', null),
+          answer('more.detail', 'Demo: uses a walker', 0),
+        ]);
+        expect(await send(dana, [back]), [corrected(back, 'corrected', 'completed', 'not_needed')]);
+        expect(
+          [
+            for (final f in ['data.more.none', 'data.more.detail']) [fields[f]!.value, fields[f]!.version],
+          ],
+          [
+            [null, 2],
+            ['Demo: uses a walker', 2],
+          ],
+        );
+        expect(
+          [
+            for (final h in server.history)
+              if (h['changeId'] == back['changeId']) [h['field'], h['version'], h['previous'], h['kind']],
+          ],
+          [
+            ['data.more.none', 2, true, 'corrected'],
+            ['data.more.detail', 2, 'Demo: walks with a cane', 'corrected'],
+          ],
+        );
+        expect(server.records[back['recordId']]!.attributes['changes'], [
+          {'field': 'data.more.none', 'oldValue': true, 'newValue': null},
+          {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a cane', 'newValue': 'Demo: uses a walker'},
+        ]);
+        expect((await read(entityNote, note)).fields['data.more.detail']?.version, 2);
+
+        // Someone who held a version of it, corrected since and then hidden, is still told it changed.
+        final first = correction(dana, moved, [answer('more.detail', 'Demo: uses a stick')]);
+        final hideMoved = correction(dana, moved, [answer('more.none', true, 0)]);
+        expect(await send(dana, [first, hideMoved]), [
+          corrected(first, 'corrected', 'completed', 'not_needed'),
+          corrected(hideMoved, 'corrected', 'completed', 'not_needed'),
+        ]);
+        final stale = correction(dana, moved, [
+          answer('more.none', null),
+          answer('more.detail', 'Demo: uses a walker'),
+        ]);
+        expect(await send(dana, [stale]), [
+          refusedWith(const {'problem': 'field_changed', 'field': 'data.more.detail'}),
+        ]);
+        expect(
+          [
+            server.records[moved]!.fields['data.more.detail']!.value,
+            server.records[moved]!.fields['data.more.none']!.value,
+          ],
+          ['Demo: uses a stick', true],
+        );
+      });
+
+      test('7. a correction whose changed answers stay hidden changes nothing the note shows: no change, the signature '
+          'as it was, nobody told (review F4)', () async {
+        // "Nothing more" hides the detail. A correction hides it, then the note is co-signed (a
+        // student's) or attested (a resident's), as it now shows.
+        const answers = {'care.plan': 'Demo: rest', 'more.detail': 'Demo: walks with a cane'};
+        final cosigned = finishedMedical(casey, 'completed', answers);
+        final attested = finishedMedical(blair, 'signed', answers);
+        final hideCosigned = correction(casey, cosigned, [answer('more.none', true, 0)]);
+        expect(await send(casey, [hideCosigned]), [corrected(hideCosigned, 'corrected', 'completed', 'not_needed')]);
+        final hideAttested = correction(blair, attested, [answer('more.none', true, 0)]);
+        expect(await send(blair, [hideAttested]), [corrected(hideAttested, 'corrected', 'signed', 'waiting')]);
+        server
+          ..cosign(cosigned, by: admin)
+          ..attest(attested, by: admin);
+        server.notices.clear();
+        String state(String note) {
+          final r = server.records[note]!;
+          return [
+            r.fields['status']!.value,
+            r.attestation,
+            r.signoffId,
+            for (final f in r.fields.entries.where((e) => e.key.startsWith('data.')))
+              '${f.key}=${f.value.value}@${f.value.version}',
+          ].join(' ');
+        }
+
+        final before = [state(cosigned), state(attested)];
+        final historyBefore = server.history.length;
+
+        // The hidden detail, from no version or from the one held, and Leave it with the phone's blank:
+        // each stays hidden, so the note shows the same.
+        final fixes = [
+          correction(casey, cosigned, [answer('more.detail', 'Demo: uses a walker', 0)]),
+          correction(casey, cosigned, [answer('more.detail', 'Demo: uses a stick')]),
+          correction(casey, cosigned, [answer('more.detail', null, 0)]),
+        ];
+        expect(await send(casey, fixes), [for (final f in fixes) corrected(f, 'no_change', 'signed', 'not_needed')]);
+        final fromBlair = correction(blair, attested, [answer('more.detail', 'Demo: uses a walker', 0)]);
+        expect(await send(blair, [fromBlair]), [corrected(fromBlair, 'no_change', 'signed', 'attested')]);
+
+        // Nothing written: the co-signature and the attestation stand, and nobody is told.
+        expect([state(cosigned), state(attested)], before);
+        expect(server.history, hasLength(historyBefore));
+        expect([...noticesOn(cosigned), ...noticesOn(attested)], isEmpty);
+        expect(server.records[fixes[0]['recordId']]!.attributes['changes'], [
+          {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a cane', 'newValue': 'Demo: uses a walker'},
+        ]);
+        expect(server.correctionHistory[fixes[0]['recordId']], isEmpty);
+
+        // An answer the correction that hides it changes is written: it showed before. Beside an answer
+        // that shows, a hidden one is still not written: from no version, it is written only by a
+        // correction that makes it count again.
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(by: dana), testNote, const {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'}),
+          by: dana,
+        );
+        server.finishNote(note);
+        final hide = correction(dana, note, [
+          answer('more.none', true, 0),
+          answer('more.detail', 'Demo: walks with a stick'),
+        ]);
+        final both = correction(dana, note, [
+          answer('vitals.pulse', 84),
+          answer('more.detail', 'Demo: uses a walker', 0),
+        ]);
+        expect(await send(dana, [hide, both]), [
+          corrected(hide, 'corrected', 'completed', 'not_needed'),
+          corrected(both, 'corrected', 'completed', 'not_needed'),
+        ]);
+        List<Object?> wrote(Map<String, Object?> c) => [
+          for (final h in server.history)
+            if (h['changeId'] == c['changeId']) h['field'],
+        ];
+        expect(
+          [wrote(hide), wrote(both)],
+          [
+            ['data.more.none', 'data.more.detail'],
+            ['data.vitals.pulse'],
+          ],
+        );
+        final fields = server.records[note]!.fields;
+        expect(
+          [
+            for (final f in ['data.vitals.pulse', 'data.more.detail', 'data.more.none'])
+              [fields[f]!.value, fields[f]!.version],
+          ],
+          [
+            [84, 2],
+            ['Demo: walks with a stick', 2],
+            [true, 1],
+          ],
+        );
       });
 
       test(

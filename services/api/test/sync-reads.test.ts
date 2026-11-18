@@ -1069,6 +1069,7 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(answered[2]).toMatchObject({ status: 'accepted', details: { notCounted: 'hidden_field' } });
 
       // A correction of the answer that does not count is missing for Dee, and her late change is held.
+      // It stays hidden, so it is stored as no change (lifecycle 4.7 step 7), and kept all the same.
       await finishNote(
         ana,
         { ...n, answers: { ...assess, 'assess.detail': undefined } },
@@ -1091,7 +1092,7 @@ describe('phase 4 sync: who may read and change what in a note', () => {
           signoffId: null,
         },
       });
-      expect((await ana.send(correction))[0]!.details).toMatchObject({ outcome: 'corrected' });
+      expect((await ana.send(correction))[0]!.details).toMatchObject({ outcome: 'no_change' });
       expect(await read(dee.token, [{ entity: 'note_correction', id: correction.recordId }])).toMatchObject({
         records: [],
         missing: [{ entity: 'note_correction', id: correction.recordId }],

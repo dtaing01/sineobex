@@ -1,5 +1,5 @@
 import type { z } from '@hono/zod-openapi';
-import { checkAnswer, finishCheck } from '@sineobex/forms';
+import { checkAnswer, finishCheck, NoteReading, type ResolvedNoteType } from '@sineobex/forms';
 import { correctionEffect, type Attestation } from '../../encounters/rules.ts';
 import { signedUnder, type SignedUnder } from '../../encounters/signed-under.ts';
 import { credentialChangesAfter, loadSigner } from '../../encounters/signer.ts';
@@ -48,14 +48,15 @@ import { NoteCorrectionCreate, valueParents } from './values.ts';
  * not act as the note's author is told and nothing changes; the Medical gate (4.2) holds the rest of
  * a Medical note's corrections from someone who may not chart one; a declined request is stored
  * as it is; every new value must be one the note type takes; a note reopened since is edited as a
- * draft is; then each answer must still be at the version the person saw, or blank and never seen
- * by them (D109), else `field_changed`; a correction that changes nothing is stored as such, and one
- * that would leave the note failing its finish check is refused (`incomplete`). A refusal is the
- * worker's to fix and stores nothing; the phone sends the same record again.
+ * draft is; then each answer must still be at the version the person saw, or, never seen by them,
+ * one the note's read leaves out, blank or hidden (D109), else `field_changed`; a correction that
+ * changes nothing the note shows is stored as such, and one that would leave the note failing its
+ * finish check is refused (`incomplete`). A refusal is the worker's to fix and stores nothing; the
+ * phone sends the same record again.
  *
- * Otherwise the answers are written with history kind `corrected`, through the guard of 0018, which
- * lets a finished note's answers change only while `app.note_correction` names it; then the row,
- * naming those history rows. The corrector's credential is signedUnder's (3.5), as a signature's is,
+ * Otherwise each answer that shows, before or after, is written with history kind `corrected`,
+ * through the guard of 0018, which lets a finished note's answers change only while
+ * `app.note_correction` names it; then the row, naming those history rows. The corrector's credential is signedUnder's (3.5), as a signature's is,
  * and correctionEffect (3.12) says what is left of the note's signature: a note is signed only while
  * someone who may sign covers what it says now. A co-signer or attester whose work a correction
  * undoes is told.
@@ -233,20 +234,34 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
   }
 
   // 6. Each answer is as the person saw it: another correction may have got there first. An answer
-  // blank now that they held no version of is written, as a draft edit fills a blank (D109): one
-  // Complete dropped is blank at a version the note's read never sends (D107). Someone who held an
-  // older version of it is still told it changed.
+  // the note's read never sends, so the sender held no version of it (D107), is written from
+  // version 0 (D109): one blank now, as Complete leaves one it dropped, or one that does not count
+  // as the note stands, as a correction leaves one it hid. Someone who held a version of it that
+  // moved since is still told it changed.
+  const stored = answersOf(note);
+  const showsNow = shows(definition!, stored);
   const moved = asked.find(
-    (a) => a.cur.version !== a.baseVersion && !(a.baseVersion === 0 && isBlank(a.cur.value)),
+    (a) =>
+      a.cur.version !== a.baseVersion &&
+      !(a.baseVersion === 0 && (isBlank(a.cur.value) || !showsNow(a.path))),
   );
   if (moved) return invalid('field_changed', { field: moved.field });
-  // 7. Nothing to change; "Leave it" after a field_changed sends the value the note holds.
+  // 7. Nothing to change; "Leave it" after a field_changed sends the value the note holds. An answer
+  // hidden before and after changes nothing the note shows, and is not written: the effects of 3.6
+  // are for a correction that changes what the note shows.
+  const showsAfter = shows(definition!, {
+    ...stored,
+    ...Object.fromEntries(asked.map((a) => [a.path, a.newValue])),
+  });
   const writes: Write[] = asked
-    .filter((a) => !sameValue(a.cur.value, a.newValue))
+    .filter((a) => !sameValue(a.cur.value, a.newValue) && (showsNow(a.path) || showsAfter(a.path)))
     .map((a) => ({ field: a.field, value: a.newValue, previous: a.cur.value, kind: 'corrected' }));
   if (writes.length === 0) return store('no_change');
   // 8. "A correction can never leave a signed note without, say, the consent a sensitive exam needs."
-  const answers = { ...answersOf(note), ...Object.fromEntries(asked.map((a) => [a.path, a.newValue])) };
+  const answers = {
+    ...stored,
+    ...Object.fromEntries(writes.map((w) => [w.field.slice('data.'.length), w.value])),
+  };
   if (byDefinition(() => finishCheck(definition!, answers)).length > 0) return invalid('incomplete');
 
   // 9. The table of 3.6.
@@ -266,6 +281,16 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
   // "A note you signed was corrected. It needs your review again."
   for (const userId of told) await notify(ctx, userId, 'note_corrected', 'encounter_note', note.id);
   return outcome;
+}
+
+/**
+ * Whether an answer at a path would count in [answers] (4.4): its field shows there, in an entry that
+ * is there, and nothing clears it. An answer whose field shows neither before nor after a correction
+ * is hidden by a condition throughout.
+ */
+function shows(definition: ResolvedNoteType, answers: Record<string, unknown>): (path: string) => boolean {
+  const reading = byDefinition(() => new NoteReading(definition, answers));
+  return (path) => byDefinition(() => reading.counts(path));
 }
 
 /**

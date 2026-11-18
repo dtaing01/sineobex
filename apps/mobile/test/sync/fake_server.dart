@@ -2185,9 +2185,10 @@ class FakeSyncServer {
   /// A correction (note-correction.ts, lifecycle 4.7), step by step from the one note: whoever does
   /// not act as the author is told; the Medical gate; a declined request is stored as it is; each
   /// new value is one the type takes; a draft is edited by the draft rule; then each answer is still
-  /// at the version the person saw, a correction that changes nothing is stored as such, and one that
-  /// would leave the note failing its finish check is refused. Otherwise the answers are written as
-  /// `corrected`, and correctionEffect says what is left of the signature.
+  /// at the version the person saw (or, never seen, blank or hidden: D109), a correction that changes
+  /// nothing the note shows is stored as such, and one that would leave the note failing its finish
+  /// check is refused. Otherwise each answer that shows, before or after, is written as `corrected`,
+  /// and correctionEffect says what is left of the signature.
   Map<String, Object?> _correction(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final recordId = c['recordId']! as String;
     if (records.containsKey(recordId)) return _invalid('record_exists');
@@ -2292,25 +2293,30 @@ class FakeSyncServer {
       return store('draft_edit', unchanged, _writeAnswers(actor, c, note, writes, null));
     }
     // 6. Each answer is as the person saw it: another correction may have got there first. An answer
-    // blank now that they held no version of is written, as a draft edit fills a blank (D109).
+    // the note's read never sends, so the sender held no version of it, is written from version 0
+    // (D109): one blank now, or one that does not count as the note stands (a correction hid it).
+    final stored = _answersOf(note);
+    final showsNow = _shows(definition!, stored);
     final moved = asked
         .where(
           (a) =>
               a.cur['version'] != a.baseVersion &&
-              (stepSixBeforeD109 || a.baseVersion != 0 || !isBlankValue(a.cur['value'])),
+              (stepSixBeforeD109 || a.baseVersion != 0 || (!isBlankValue(a.cur['value']) && showsNow(a.path))),
         )
         .firstOrNull;
     if (moved != null) return _invalid('field_changed', {'field': moved.field});
-    // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds.
+    // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds. An answer
+    // hidden before and after changes nothing the note shows, and is not written.
+    final showsAfter = _shows(definition, {...stored, for (final a in asked) a.path: a.newValue});
     final writes = <_AnswerWrite>[
       for (final a in asked)
-        if (!_same(a.cur['value'], a.newValue))
+        if (!_same(a.cur['value'], a.newValue) && (showsNow(a.path) || showsAfter(a.path)))
           (field: a.field, value: a.newValue, previous: a.cur['value'], kind: 'corrected'),
     ];
     if (writes.isEmpty) return store('no_change');
     // 8. A correction can never leave a signed note failing its own finish check.
-    final answers = {..._answersOf(note), for (final a in asked) a.path: a.newValue};
-    if (_byDefinition(() => finishCheck(definition!, answers)).isNotEmpty) return _invalid('incomplete');
+    final answers = {...stored, for (final w in writes) w.field.substring('data.'.length): w.value};
+    if (_byDefinition(() => finishCheck(definition, answers)).isNotEmpty) return _invalid('incomplete');
 
     // 9. The table of 3.6.
     final effect = correctionEffect(
@@ -2330,6 +2336,13 @@ class FakeSyncServer {
       _notify(userId, 'note_corrected', entityNote, note.id);
     }
     return outcome;
+  }
+
+  /// Whether an answer at a path would count in [answers] (note-correction.ts `shows`): its field
+  /// shows there, in an entry that is there, and nothing clears it.
+  bool Function(String path) _shows(NoteTypeDef definition, Answers answers) {
+    final reading = _byDefinition(() => NoteReading(definition, answers));
+    return (path) => _byDefinition(() => reading.counts(path));
   }
 
   /// The co-signer of the signature a correction clears, and whoever attested the note when it is no
