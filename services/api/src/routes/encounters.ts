@@ -10,6 +10,7 @@ import {
   NotesToFinish,
 } from '../encounters/incomplete.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
+import { homeCounts, HomeCounts } from '../encounters/counts.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
@@ -173,6 +174,19 @@ const incompleteNotesRoute = createRoute({
   responses: { 200: { description: 'The drafts', ...json(IncompleteNotes) }, ...errors(401, 403, 422) },
 });
 
+const countsRoute = createRoute({
+  method: 'get',
+  path: '/v1/me/counts',
+  operationId: 'getHomeCounts',
+  tags: ['encounters'],
+  summary: 'The numbers Home shows: notes to finish, the queues, the team’s incomplete notes',
+  description:
+    'Lifecycle 5.6, 9.9. Any member may ask. Each number is the length of the list it stands for, and a number ' +
+    'for a list the caller may not open is absent. Names no patient, so it logs none.',
+  security: [{ bearer: [] }],
+  responses: { 200: { description: 'The counts', ...json(HomeCounts) }, ...errors(401, 403) },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -220,5 +234,10 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(incompleteNotesRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['team.manage_users'] });
     return c.json(await incompleteNotes(scope, c.req.valid('query').author), 200);
+  });
+
+  app.openapi(countsRoute, async (c) => {
+    const scope = await teamScope(c, deps);
+    return c.json(await homeCounts(scope), 200);
   });
 }

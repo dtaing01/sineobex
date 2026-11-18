@@ -91,6 +91,15 @@ describe('phase 4: the counts Home shows', () => {
     expect(lous).not.toHaveProperty('attestationWaiting');
   });
 
+  it('a queue’s number counts only the visits its queue shows the caller', async () => {
+    // Eli charts and attends but reads no chart: every waiting note is absent from his queues, so
+    // the number is his queue's length, not the team's.
+    const eli = await counts(w.eli.token);
+    expect(eli.cosignWaiting).toBe(await listLength(w.eli.token, '/v1/team/cosign-queue', 'rows'));
+    expect(eli.attestationWaiting).toBe(await listLength(w.eli.token, '/v1/team/attestation-queue', 'rows'));
+    expect(eli).toMatchObject({ cosignWaiting: 0, attestationWaiting: 0 });
+  });
+
   it('team.manage_users gets the team’s incomplete notes', async () => {
     const admin = await counts(w.t.adminToken);
     expect(admin.teamIncomplete).toBe(await listLength(w.t.adminToken, '/v1/team/incomplete-notes', 'notes'));
@@ -105,6 +114,9 @@ describe('phase 4: the counts Home shows', () => {
       for (const key of ['cosignWaiting', 'attestationWaiting', 'teamIncomplete'])
         expect(c).not.toHaveProperty(key);
     }
+    // Billing/Data charts nothing, so has no notes to finish either.
+    const bea = await counts(w.bea.token);
+    expect(bea).toEqual({});
   });
 
   it('names no patient, and logs no patient', async () => {

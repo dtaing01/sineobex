@@ -228,6 +228,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The numbers Home shows: notes to finish, the queues, the team’s incomplete notes
+         * @description Lifecycle 5.6, 9.9. Any member may ask. Each number is the length of the list it stands for, and a number for a list the caller may not open is absent. Names no patient, so it logs none.
+         */
+        get: operations["getHomeCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/notes-to-finish": {
         parameters: {
             query?: never;
@@ -1541,6 +1561,18 @@ export interface components {
         };
         /** @enum {string} */
         HistoryKind: "created" | "set" | "filled_blank" | "replaced_after_review" | "kept_both" | "confirmed" | "redirected" | "corrected" | "review_decided" | "merge_fill" | "merge_undone" | "cleared_by_allergy" | "entered_in_error";
+        HomeCounts: {
+            /** @description Visits in the attestation queue (GET /v1/team/attestation-queue); encounters.chart and a credential that attests */
+            attestationWaiting?: number;
+            /** @description Visits in the co-sign queue (GET /v1/team/cosign-queue); encounters.chart and a credential that signs */
+            cosignWaiting?: number;
+            /** @description How many of those are overdue (lifecycle 3.9) */
+            notesOverdue?: number;
+            /** @description The drafts the caller acts as the author of (GET /v1/me/notes-to-finish); encounters.chart */
+            notesToFinish?: number;
+            /** @description The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users */
+            teamIncomplete?: number;
+        };
         IdentityCorrection: {
             baseVersion: number;
             /** @enum {string} */
@@ -3308,6 +3340,44 @@ export interface operations {
             };
             /** @description Validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getHomeCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeCounts"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

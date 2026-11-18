@@ -1550,6 +1550,36 @@
         ],
         "type": "string"
       },
+      "HomeCounts": {
+        "properties": {
+          "attestationWaiting": {
+            "description": "Visits in the attestation queue (GET /v1/team/attestation-queue); encounters.chart and a credential that attests",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cosignWaiting": {
+            "description": "Visits in the co-sign queue (GET /v1/team/cosign-queue); encounters.chart and a credential that signs",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "notesOverdue": {
+            "description": "How many of those are overdue (lifecycle 3.9)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "notesToFinish": {
+            "description": "The drafts the caller acts as the author of (GET /v1/me/notes-to-finish); encounters.chart",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "teamIncomplete": {
+            "description": "The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "IdLinkReason": {
         "enum": [
           "first_card",
@@ -6321,6 +6351,53 @@
         "summary": "Accept the Terms of Use or the confidentiality acknowledgement",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/v1/me/counts": {
+      "get": {
+        "description": "Lifecycle 5.6, 9.9. Any member may ask. Each number is the length of the list it stands for, and a number for a list the caller may not open is absent. Names no patient, so it logs none.",
+        "operationId": "getHomeCounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeCounts"
+                }
+              }
+            },
+            "description": "The counts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The numbers Home shows: notes to finish, the queues, the team’s incomplete notes",
+        "tags": [
+          "encounters"
         ]
       }
     },

@@ -2634,6 +2634,43 @@ class Health {
       };
 }
 
+class HomeCounts {
+  const HomeCounts({
+    this.attestationWaiting,
+    this.cosignWaiting,
+    this.notesOverdue,
+    this.notesToFinish,
+    this.teamIncomplete,
+  });
+
+  /// Visits in the attestation queue (GET /v1/team/attestation-queue); encounters.chart and a credential that attests
+  final int? attestationWaiting;
+  /// Visits in the co-sign queue (GET /v1/team/cosign-queue); encounters.chart and a credential that signs
+  final int? cosignWaiting;
+  /// How many of those are overdue (lifecycle 3.9)
+  final int? notesOverdue;
+  /// The drafts the caller acts as the author of (GET /v1/me/notes-to-finish); encounters.chart
+  final int? notesToFinish;
+  /// The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users
+  final int? teamIncomplete;
+
+  factory HomeCounts.fromJson(Map<String, dynamic> json) => HomeCounts(
+        attestationWaiting: json['attestationWaiting'] == null ? null : (json['attestationWaiting'] as num).toInt(),
+        cosignWaiting: json['cosignWaiting'] == null ? null : (json['cosignWaiting'] as num).toInt(),
+        notesOverdue: json['notesOverdue'] == null ? null : (json['notesOverdue'] as num).toInt(),
+        notesToFinish: json['notesToFinish'] == null ? null : (json['notesToFinish'] as num).toInt(),
+        teamIncomplete: json['teamIncomplete'] == null ? null : (json['teamIncomplete'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (attestationWaiting != null) 'attestationWaiting': attestationWaiting!,
+        if (cosignWaiting != null) 'cosignWaiting': cosignWaiting!,
+        if (notesOverdue != null) 'notesOverdue': notesOverdue!,
+        if (notesToFinish != null) 'notesToFinish': notesToFinish!,
+        if (teamIncomplete != null) 'teamIncomplete': teamIncomplete!,
+      };
+}
+
 class IdLinkState {
   const IdLinkState({
     required this.active,
@@ -6428,6 +6465,12 @@ class SineobexApi {
   Future<Health> getHealth() async {
     final json = await _transport.send('GET', '/v1/health');
     return Health.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The numbers Home shows: notes to finish, the queues, the team’s incomplete notes
+  Future<HomeCounts> getHomeCounts() async {
+    final json = await _transport.send('GET', '/v1/me/counts');
+    return HomeCounts.fromJson(json as Map<String, dynamic>);
   }
 
   /// The patient’s Street Medicine ID cards: active links with their URLs, and history
