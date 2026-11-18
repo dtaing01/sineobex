@@ -124,6 +124,31 @@ void main() {
     },
   );
 
+  test('a teammate helping on a draft sees their own cleared answer waiting to send (review LFM-3)', () async {
+    final patient = server.seedPatient();
+    final visit = server.seed('encounter', {'kind': 'non_medical', 'patientId': patient}, by: alex);
+    final n = server.seed('encounter_note', {
+      'encounterId': visit,
+      'noteTypeKey': testNote.key,
+      'noteTypeVersion': testNote.version,
+      'data': const {'care.plan': 'Demo: shelter tonight', 'vitals.pulse': 80},
+    }, by: alex);
+    final b = phone(blair);
+    expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+    expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+    final r = repo(b);
+    await r.openNote(n);
+    server.offline = true;
+    r.saveAnswer(n, 'care.plan', null);
+    r.saveAnswer(n, 'vitals.pulse', 82);
+    final view = (await r.openNote(n))!;
+    expect(view.actsAsAuthor, isFalse);
+    expect(view.pendingPaths, {'care.plan', 'vitals.pulse'});
+    server.offline = false;
+    await sync(b);
+    expect((await r.openNote(n))!.pendingPaths, isEmpty);
+  });
+
   test('an answer equal to what is stored is not queued: a second tap of Normal sends nothing', () async {
     final p = phone(alex);
     final r = repo(p);

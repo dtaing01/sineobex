@@ -700,9 +700,14 @@ class EncounterRepository {
       sentForReview: state.sentForReview,
       editable: draft && !state.sentForReview && user.charts && (!medical || user.can.chartMedical),
       answers: answers,
+      // What waits to send of what the reader may see, a cleared answer included, which the
+      // answers of someone who does not act as the author leave out (review LFM-3).
       pendingPaths: {
         for (final MapEntry(:key, :value) in rec.fields.entries)
-          if (key.startsWith(_data) && !value.confirmed && answers.containsKey(key.substring(_data.length)))
+          if (key.startsWith(_data) &&
+              !value.confirmed &&
+              (answers.containsKey(key.substring(_data.length)) ||
+                  _seesAt(definition, key.substring(_data.length), reader)))
             key.substring(_data.length),
       },
       read: read.model,
