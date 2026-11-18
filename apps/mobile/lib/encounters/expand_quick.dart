@@ -95,7 +95,7 @@ extension QuickExpand on EncounterRepository {
   ///   and listed ([Expanded.leftOut]). A part the person can't chart (it `needs` an ordering
   ///   credential they lack, forms 10.1 #53) is not carried ([Expanded.notCopied]).
   /// - A full note of a Medical type brings the person's own Red flags note with it, as [addNote]
-  ///   does, given [redFlags].
+  ///   does.
   ///
   /// PLAN-OPEN: what Expand does when the visit already has a note of the full type (lifecycle 12.1
   /// #30). The draft the note types list would open opens, as it is unless it is the person's own
@@ -110,7 +110,6 @@ extension QuickExpand on EncounterRepository {
   Future<Expanded> expand(
     String quickNoteId,
     NoteTypeDef full, {
-    NoteTypeDef? redFlags,
     String Function()? newEntryId,
     DateTime Function()? clock,
   }) async {
@@ -133,14 +132,14 @@ extension QuickExpand on EncounterRepository {
     // All of it to its acting author; to anyone else what the server sent them, as they read it.
     final seen = _actsAsAuthor(quickRec) ? stored : _visibleTo(quick, stored);
     if (seen == null) throw StateError('the person may not see this note');
-    final flags = medical && redFlags != null ? redFlags : null;
+    final flags = medical ? await _teamRedFlags() : null;
 
     final open = await _draftToOpen(encounterId, full.key);
     LocalRecord? into;
     if (open != null) {
       final rec = _noteRecord(open);
       if (!_actsAsAuthor(rec) || !noteIsEmpty(EncounterRepository._answersOf(rec))) {
-        if (flags != null && _actsAsAuthor(rec)) await RedFlagsNote(this).addRedFlagsNote(encounterId, flags);
+        if (flags != null && _actsAsAuthor(rec)) await RedFlagsNote(this)._addRedFlagsNote(encounterId, flags);
         return Expanded(noteId: open, existing: true, written: const {}, leftOut: const [], notCopied: const []);
       }
       into = rec;

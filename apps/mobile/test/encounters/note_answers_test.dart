@@ -65,6 +65,7 @@ void main() {
           permissions: permissions,
         ),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+        noteTypes: () async => definitions.values,
       );
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);

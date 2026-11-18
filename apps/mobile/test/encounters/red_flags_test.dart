@@ -56,18 +56,32 @@ void main() {
   NoteTypeDef definition(TestNoteType t) => definitions[(t.key, t.version)]!;
   final flagsType = definition(testRedFlags);
 
-  EncounterRepository repo(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) =>
-      EncounterRepository(
-        p.store,
-        user: EncounterUser(
-          userId: p.userId,
-          displayName: 'Demo Charter',
-          credential: credential,
-          permissions: permissions,
-        ),
-        definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
-        openServerRecord: p.engine.openServerRecord,
-      );
+  /// A team's list on the phone that names no Red flags note type (one the phone never fetched has
+  /// none at all).
+  final noFlags = [
+    for (final d in definitions.values)
+      if (d.auto == null) d,
+  ];
+
+  /// [teamList] is the team's list as the phone holds it: by default every test type, the Red flags
+  /// note type among them.
+  EncounterRepository repo(
+    TestPhone p, {
+    String credential = 'attending',
+    Set<String> permissions = staff,
+    Iterable<NoteTypeDef>? teamList,
+  }) => EncounterRepository(
+    p.store,
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: credential,
+      permissions: permissions,
+    ),
+    definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+    noteTypes: () async => teamList ?? definitions.values,
+    openServerRecord: p.engine.openServerRecord,
+  );
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);
 
@@ -92,7 +106,7 @@ void main() {
   /// A note of [type] added through the domain layer, the app's Red flags note with it, and its
   /// [answers] saved as the form saves them.
   Future<String> charted(EncounterRepository r, String visit, TestNoteType type, Map<String, Object?> answers) async {
-    final id = (await r.addNote(visit, definition(type), redFlags: flagsType)).noteId;
+    final id = (await r.addNote(visit, definition(type))).noteId;
     await r.openNote(id);
     for (final MapEntry(:key, :value) in answers.entries) {
       r.saveAnswer(id, key, value);
@@ -118,12 +132,12 @@ void main() {
         final r = repo(p);
         final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
         // A Non-Medical note in a Medical visit asks no red flags of anyone.
-        await r.addNote(visit, definition(testNote), redFlags: flagsType);
+        await r.addNote(visit, definition(testNote));
         expect(keysOf(p, visit), ['test_note']);
 
         var changed = 0;
         r.onChanged = () => changed++;
-        final medical = await r.addNote(visit, definition(testMedical), redFlags: flagsType);
+        final medical = await r.addNote(visit, definition(testMedical));
         expect(changed, 1);
         expect(keysOf(p, visit), ['test_medical', 'test_note', 'test_red_flags']);
         final flags = flagsOf(p, visit, alex).single;
@@ -136,8 +150,8 @@ void main() {
         expect(creates.indexOf(flags), creates.indexOf(medical.noteId) + 1);
 
         // A second Medical note, another of the same type, or the first opened again, adds no second.
-        await r.addNote(visit, definition(testMedical), redFlags: flagsType);
-        await r.addNote(visit, definition(testMedical), another: true, redFlags: flagsType);
+        await r.addNote(visit, definition(testMedical));
+        await r.addNote(visit, definition(testMedical), another: true);
         expect(flagsOf(p, visit, alex), [flags]);
 
         server.offline = false;
@@ -153,10 +167,10 @@ void main() {
       server.offline = true;
       final r = repo(p);
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
-      // Made by a path that gave no Red flags type.
-      final medical = (await r.addNote(visit, definition(testMedical))).noteId;
+      // Made while the team's list on the phone named no Red flags type.
+      final medical = (await repo(p, teamList: noFlags).addNote(visit, definition(testMedical))).noteId;
       expect(flagsOf(p, visit, alex), isEmpty);
-      final opened = await r.addNote(visit, definition(testMedical), redFlags: flagsType);
+      final opened = await r.addNote(visit, definition(testMedical));
       expect([opened.noteId, opened.existing], [medical, true]);
       final flags = flagsOf(p, visit, alex).single;
       expect(await r.ownRedFlagsNote(visit), flags);
@@ -199,11 +213,11 @@ void main() {
       }
       server.offline = true;
       // Helping with a colleague's Medical draft is not writing one: nothing is added.
-      final helped = await r.addNote(visit, definition(testMedical), redFlags: flagsType);
+      final helped = await r.addNote(visit, definition(testMedical));
       expect([helped.noteId, helped.existing], [theirs, true]);
       expect(flagsOf(p, visit, alex), isEmpty);
       // A Medical note of their own is: and with it a Red flags note of their own.
-      final own = (await r.addNote(visit, definition(testMedical), another: true, redFlags: flagsType)).noteId;
+      final own = (await r.addNote(visit, definition(testMedical), another: true)).noteId;
       await r.openNote(own);
       r.saveAnswer(own, 'vitals.pulse', 88);
       final ownFlags = flagsOf(p, visit, alex).single;
@@ -247,7 +261,8 @@ void main() {
       expect(flagsOf(p, visit, alex), isEmpty);
       expect(await r.ownRedFlagsNote(visit), isNull);
       // Nor would the summary add one: a finished Red flags note makes it needless.
-      expect(await r.addRedFlagsNote(visit, flagsType), isNull);
+      expect(await r.addRedFlagsNote(visit), isNull);
+      expect(await repo(p, teamList: noFlags).addRedFlagsNote(visit), isNull);
       expect(flagsOf(p, visit, alex), isEmpty);
       final plan = (await r.openComplete(visit))!;
       expect(plan.stops, isEmpty);
@@ -268,17 +283,17 @@ void main() {
       server.offline = true;
       p.wall = p.wall.add(const Duration(minutes: 10));
       expect(p.clock.status.paused, isTrue);
-      await expectLater(r.addNote(visit, definition(testMedical), redFlags: flagsType), throwsA(isA<ChartingPaused>()));
-      await expectLater(r.addRedFlagsNote(visit, flagsType), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.addNote(visit, definition(testMedical)), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.addRedFlagsNote(visit), throwsA(isA<ChartingPaused>()));
       expect(p.store.outbox(), isEmpty);
       p.wall = p.wall.subtract(const Duration(minutes: 10));
 
       // Frozen, nothing is read either: not even their own, there already.
-      await r.addNote(visit, definition(testMedical), redFlags: flagsType);
+      await r.addNote(visit, definition(testMedical));
       final before = p.store.outbox().length;
       p.store.freeze('Demo: handing over');
-      await expectLater(r.addNote(visit, definition(testMedical), redFlags: flagsType), throwsA(isA<ChartingPaused>()));
-      await expectLater(r.addRedFlagsNote(visit, flagsType), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.addNote(visit, definition(testMedical)), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.addRedFlagsNote(visit), throwsA(isA<ChartingPaused>()));
       await expectLater(r.ownRedFlagsNote(visit), throwsA(isA<ChartingPaused>()));
       expect(p.store.outbox(), hasLength(before));
     });
@@ -287,6 +302,23 @@ void main() {
       final listed = [definition(testNote), flagsType, definition(testMedical)];
       expect(redFlagsTypeOf(listed), flagsType);
       expect(redFlagsTypeOf([definition(testNote), definition(testMedical)]), isNull);
+    });
+
+    test('the app finds it in the team’s list itself, at the version the list names newest', () async {
+      final newer = {...redFlagsNoteType, 'version': testRedFlags.version + 1};
+      server.noteTypes[(testRedFlags.key, testRedFlags.version + 1)] = newer;
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p, teamList: [...definitions.values, NoteTypeDef.fromJson(newer)]);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await r.addNote(visit, definition(testMedical));
+      final flags = flagsOf(p, visit, alex).single;
+      expect(p.store.record(flags)!.attributes['noteTypeVersion'], testRedFlags.version + 1);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[flags]!.attributes['noteTypeVersion'], testRedFlags.version + 1);
     });
   });
 
@@ -297,8 +329,10 @@ void main() {
       server.offline = true;
       final r = repo(p);
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
-      // Added by a path that gave no Red flags type: Complete stops, naming no note to open.
-      final medical = (await r.addNote(visit, definition(testMedical))).noteId;
+      // Added while the team's list on the phone named no Red flags type: Complete stops, naming no
+      // note to open.
+      final medical = (await repo(p, teamList: noFlags).addNote(visit, definition(testMedical))).noteId;
+      expect(flagsOf(p, visit, alex), isEmpty);
       await r.openNote(medical);
       r.saveAnswer(medical, 'vitals.pulse', 96);
       var plan = (await r.openComplete(visit))!;
@@ -309,9 +343,9 @@ void main() {
       // The summary adds their own, then plans again: it is finished last, and asks the red flags.
       var changed = 0;
       r.onChanged = () => changed++;
-      final flags = (await r.addRedFlagsNote(visit, flagsType))!;
+      final flags = (await r.addRedFlagsNote(visit))!;
       expect(changed, 1);
-      expect(await r.addRedFlagsNote(visit, flagsType), flags);
+      expect(await r.addRedFlagsNote(visit), flags);
       expect(changed, 1);
       plan = (await r.openComplete(visit))!;
       expect([for (final n in plan.notes) n.noteId], [medical, flags]);
@@ -333,7 +367,7 @@ void main() {
       serverTookAll(p);
       expect([statusOn(medical), statusOn(flags)], ['signed', 'signed']);
       // Asked again once it is finished, it is their own that is given back: nothing is added.
-      expect(await r.addRedFlagsNote(visit, flagsType), flags);
+      expect(await r.addRedFlagsNote(visit), flags);
       expect(flagsOf(p, visit, alex), [flags]);
     });
 
@@ -348,15 +382,24 @@ void main() {
       final before = p.store.outbox().length;
       Matcher refused(String problem) =>
           throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', problem));
-      await expectLater(r.addRedFlagsNote(social, flagsType), refused('not_offered'));
-      await expectLater(r.addRedFlagsNote(bare, flagsType), refused('medical_note_needs_patient'));
-      await expectLater(repo(p, credential: 'none').addRedFlagsNote(medical, flagsType), refused('medical_credential'));
+      await expectLater(r.addRedFlagsNote(social), refused('not_offered'));
+      await expectLater(r.addRedFlagsNote(bare), refused('medical_note_needs_patient'));
+      await expectLater(repo(p, credential: 'none').addRedFlagsNote(medical), refused('medical_credential'));
       await expectLater(
-        repo(p, credential: 'chw', permissions: FakeSyncServer.chw).addRedFlagsNote(medical, flagsType),
+        repo(p, credential: 'chw', permissions: FakeSyncServer.chw).addRedFlagsNote(medical),
         refused('not_charting'),
       );
+      // A team's list that names none, or no list on the phone yet: there is nothing to add it on.
+      await expectLater(
+        repo(p, teamList: noFlags).addRedFlagsNote(medical),
+        throwsA(
+          isA<LocalValidationError>()
+              .having((e) => e.problem, 'problem', 'no_red_flags_type')
+              .having((e) => e.message, 'message', 'Connect once to load your team’s note types.'),
+        ),
+      );
+      await expectLater(repo(p, teamList: const []).addRedFlagsNote(medical), refused('no_red_flags_type'));
       expect(p.store.outbox(), hasLength(before));
-      expect(() => r.addRedFlagsNote(medical, definition(testMedical)), throwsArgumentError);
     });
   });
 

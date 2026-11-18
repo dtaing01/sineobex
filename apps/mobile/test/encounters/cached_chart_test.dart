@@ -169,7 +169,12 @@ void main() {
     link.offline = true;
 
     final meta = chartMetaOf(phone.store, patient)!;
-    final repo = EncounterRepository(phone.store, user: user, definitions: defs());
+    final repo = EncounterRepository(
+      phone.store,
+      user: user,
+      definitions: defs(),
+      noteTypes: () async => definitions.values,
+    );
     final timeline = await repo.openTimeline(patient, chart: meta.timeline, typeOf: typeOf);
     expect(
       [

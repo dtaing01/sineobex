@@ -47,11 +47,23 @@ part 'timeline.dart';
 /// decides. A screen that reads again what it shows passes the IDs it was shown
 /// ([VisitView.shownIds]), so only what the new read adds is logged again.
 class EncounterRepository {
-  EncounterRepository(this.store, {required this.user, required this.definitions, this.nameOf, this.openServerRecord});
+  EncounterRepository(
+    this.store, {
+    required this.user,
+    required this.definitions,
+    required this.noteTypes,
+    this.nameOf,
+    this.openServerRecord,
+  });
 
   final LocalStore store;
   final EncounterUser user;
   final NoteDefinitions definitions;
+
+  /// The team's listed note types (`TeamNoteTypes.listed`, from the phone's files, offline too;
+  /// none while the phone holds no list for the team). The app finds the team's Red flags note type
+  /// among them ([redFlagsTypeOf]) to add a person's own with their Medical notes (forms 6.2).
+  final Future<Iterable<NoteTypeDef>> Function() noteTypes;
 
   /// A person's name, where the phone knows it; null otherwise. A teammate's record carries only
   /// their ID (an addendum excepted), so a name is often unknown on the phone.
@@ -230,11 +242,11 @@ class EncounterRepository {
   /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1).
   /// [another] makes a second note of the type all the same (4.4).
   ///
-  /// [redFlags] is the team's Red flags note type ([redFlagsTypeOf]). With a Medical note of the
-  /// person's own, new or opened, the app adds their own Red flags note, in the same transaction as
-  /// a new note, unless the visit has a finished one or one of theirs (forms 6.2,
-  /// [RedFlagsNote.addRedFlagsNote]). Opening a teammate's draft to help with it adds none. Without
-  /// [redFlags] none is added, and Complete stops at hard stop 5 until the summary adds it.
+  /// With a Medical note of the person's own, new or opened, the app adds their own Red flags note
+  /// on the team's type ([noteTypes]), in the same transaction as a new note, unless the visit has a
+  /// finished one or one of theirs (forms 6.2, [RedFlagsNote.addRedFlagsNote]). Opening a teammate's
+  /// draft to help with it adds none. A team whose list names no Red flags type (none on the phone
+  /// yet) gets none, and Complete stops at hard stop 5 until the summary adds it.
   ///
   /// Throws, writing nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
   /// [startEncounter]; for a Medical note, `not_offered` in a Non-Medical visit (switch it first,
@@ -242,19 +254,19 @@ class EncounterRepository {
   ///
   /// PLAN-OPEN: may a note be added to a visit whose other notes are finished (lifecycle 12.1 #3)?
   /// Yes: it is its own note, with its own author and time.
-  Future<NoteAdded> addNote(String encounterId, NoteTypeDef type, {bool another = false, NoteTypeDef? redFlags}) async {
+  Future<NoteAdded> addNote(String encounterId, NoteTypeDef type, {bool another = false}) async {
     _guardFrozen();
     final medical = isMedicalType(type);
     _mayChart(medical: medical);
     final visit = _visit(encounterId);
     if (medical) _medicalNoteAllowed(visit);
     // The Red flags note itself, asked for by hand, brings no second one.
-    final flags = medical && redFlags != null && !_isRedFlags(type) ? redFlags : null;
+    final flags = medical && !_isRedFlags(type) ? await _teamRedFlags() : null;
     if (!another) {
       final open = await _draftToOpen(encounterId, type.key);
       if (open != null) {
         if (flags != null && _actsAsAuthor(_noteRecord(open))) {
-          await RedFlagsNote(this).addRedFlagsNote(encounterId, flags);
+          await RedFlagsNote(this)._addRedFlagsNote(encounterId, flags);
         }
         return (noteId: open, existing: true);
       }
@@ -271,6 +283,9 @@ class EncounterRepository {
     onChanged?.call();
     return (noteId: id, existing: false);
   }
+
+  /// The team's Red flags note type, from its listed note types; null when they name none.
+  Future<NoteTypeDef?> _teamRedFlags() async => redFlagsTypeOf(await noteTypes());
 
   /// What the server needs of a visit before it takes a Medical note (4.2, 3.10): a Medical visit
   /// with a patient. Throws `not_offered` or `medical_note_needs_patient` otherwise.

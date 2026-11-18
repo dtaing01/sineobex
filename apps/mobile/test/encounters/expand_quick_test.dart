@@ -160,7 +160,6 @@ void main() {
 
   final definitions = {for (final d in all) (d['key']! as String, d['version']! as int): NoteTypeDef.fromJson(d)};
   NoteTypeDef type(String key) => definitions[(key, 1)]!;
-  final flags = type('red_flags_disposition');
 
   EncounterRepository repo(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) =>
       EncounterRepository(
@@ -172,6 +171,7 @@ void main() {
           permissions: permissions,
         ),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+        noteTypes: () async => definitions.values,
         openServerRecord: p.engine.openServerRecord,
       );
 
@@ -194,7 +194,7 @@ void main() {
     Map<String, Object?> answers, {
     String key = 'quick_encounter',
   }) async {
-    final id = (await r.addNote(visit, type(key), redFlags: flags)).noteId;
+    final id = (await r.addNote(visit, type(key))).noteId;
     await r.openNote(id);
     for (final MapEntry(:key, :value) in answers.entries) {
       r.saveAnswer(id, key, value);
@@ -262,7 +262,7 @@ void main() {
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
       final quick = await quickNote(r, visit, quickGeneral);
       expect(r.mayExpand((await r.openNote(quick))!), isTrue);
-      final general = (await r.addNote(visit, type('general_primary_care'), redFlags: flags)).noteId;
+      final general = (await r.addNote(visit, type('general_primary_care'))).noteId;
       expect(r.mayExpand((await r.openNote(general))!), isFalse);
     });
   });
@@ -283,7 +283,6 @@ void main() {
       final done = await r.expand(
         quick,
         type('general_primary_care'),
-        redFlags: flags,
         newEntryId: entryIds(['e0000001', 'e0000002', 'e0000003']),
         clock: () => added,
       );
@@ -325,7 +324,6 @@ void main() {
       final done = await r.expand(
         quick,
         type('wound_care'),
-        redFlags: flags,
         newEntryId: entryIds(['e0000009', 'e000000a', 'e000000b', 'e000000c']),
         clock: () => added,
       );
@@ -361,7 +359,7 @@ void main() {
       final r = repo(p);
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
       final quick = await quickNote(r, visit, quickGeneral);
-      final done = await r.expand(quick, type('social_needs'), redFlags: flags);
+      final done = await r.expand(quick, type('social_needs'));
       expect(answersOf(p, done.noteId), {
         'needs.needs': ['housing', 'id'],
       });
@@ -379,8 +377,8 @@ void main() {
       final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
       final quick = await quickNote(r, visit, quickGeneral);
       // An empty draft of theirs, added by mistake: Expand fills it rather than make a second.
-      final empty = (await r.addNote(visit, type('social_needs'), redFlags: flags)).noteId;
-      final first = await r.expand(quick, type('social_needs'), redFlags: flags);
+      final empty = (await r.addNote(visit, type('social_needs'))).noteId;
+      final first = await r.expand(quick, type('social_needs'));
       expect([first.noteId, first.existing], [empty, false]);
       expect(answersOf(p, empty), {
         'needs.needs': ['housing', 'id'],
@@ -390,7 +388,7 @@ void main() {
       await r.openNote(empty);
       r.saveAnswer(empty, 'needs.needs', ['housing']);
       final before = p.store.outbox().length;
-      final again = await r.expand(quick, type('social_needs'), redFlags: flags);
+      final again = await r.expand(quick, type('social_needs'));
       expect([again.noteId, again.existing, again.written, again.leftOut], [empty, true, isEmpty, isEmpty]);
       expect(p.store.outbox(), hasLength(before));
       expect(answersOf(p, empty), {
@@ -415,13 +413,7 @@ void main() {
         'q.count': 3,
         'q.aside': 'Demo: not mapped',
       }, key: 'test_quick');
-      final done = await r.expand(
-        quick,
-        type('test_full'),
-        redFlags: flags,
-        newEntryId: entryIds(['e0000001']),
-        clock: () => added,
-      );
+      final done = await r.expand(quick, type('test_full'), newEntryId: entryIds(['e0000001']), clock: () => added);
       expect(answersOf(p, done.noteId), {
         'vitals.pulse': 96,
         'rows.e0000001.entryAt': added.toIso8601String(),
@@ -454,7 +446,7 @@ void main() {
       expect(await b.engine.openServerRecord('encounter', visit), isTrue);
       expect(await b.engine.openServerRecord('encounter_note', quick), isTrue);
       server.offline = true;
-      final byStudent = await student.expand(quick, type('test_full'), redFlags: flags);
+      final byStudent = await student.expand(quick, type('test_full'));
       expect(answersOf(b, byStudent.noteId), {'vitals.pulse': 96});
       expect(byStudent.notCopied, ['meds.dose']);
       server.offline = false;
@@ -465,7 +457,7 @@ void main() {
       // One who may order carries it.
       final again = r.startEncounter(kind: VisitKind.medical, patientId: patient);
       final second = await quickNote(r, again, {'q.pulse': 96, 'meds.dose': 'Demo: 500 mg'}, key: 'test_quick');
-      final byAttending = await r.expand(second, type('test_full'), redFlags: flags);
+      final byAttending = await r.expand(second, type('test_full'));
       expect(answersOf(p, byAttending.noteId), {'vitals.pulse': 96, 'meds.dose': 'Demo: 500 mg'});
       expect(byAttending.notCopied, isEmpty);
       await sync(p);
@@ -483,10 +475,10 @@ void main() {
       final student = repo(b, credential: 'student');
       expect(await b.engine.openServerRecord('encounter', visit), isTrue);
       expect(await b.engine.openServerRecord('encounter_note', quick), isTrue);
-      await expectLater(student.expand(quick, type('test_full'), redFlags: flags), refused('read_only'));
+      await expectLater(student.expand(quick, type('test_full')), refused('read_only'));
       expect(b.store.outbox(), isEmpty);
       // One who may order carries it.
-      final done = await r.expand(quick, type('test_full'), redFlags: flags);
+      final done = await r.expand(quick, type('test_full'));
       expect(answersOf(p, done.noteId), {'vitals.pulse': 96, 'meds.route': 'Demo: by mouth'});
       await sync(p);
       serverTookAll(p);
@@ -504,7 +496,7 @@ void main() {
       expect(await b.engine.openServerRecord('encounter', visit), isTrue);
       expect(await b.engine.openServerRecord('encounter_note', quick), isTrue);
       server.offline = true;
-      final done = await r.expand(quick, type('general_primary_care'), redFlags: flags);
+      final done = await r.expand(quick, type('general_primary_care'));
       expect(b.store.record(done.noteId)!.authorUserId, blair);
       expect(await r.ownRedFlagsNote(visit), isNotNull);
       server.offline = false;
@@ -523,10 +515,10 @@ void main() {
       await sync(p);
 
       // A note type the quick form maps nothing into, and a note that is not quick.
-      await expectLater(r.expand(quick, type('harm_reduction'), redFlags: flags), throwsArgumentError);
-      final general = (await r.addNote(visit, type('general_primary_care'), redFlags: flags)).noteId;
+      await expectLater(r.expand(quick, type('harm_reduction')), throwsArgumentError);
+      final general = (await r.addNote(visit, type('general_primary_care'))).noteId;
       final before = p.store.outbox().length;
-      await expectLater(r.expand(general, type('wound_care'), redFlags: flags), throwsArgumentError);
+      await expectLater(r.expand(general, type('wound_care')), throwsArgumentError);
       // A role that doesn't chart, and a credential that doesn't chart Medical notes.
       await expectLater(
         repo(p, credential: 'chw', permissions: FakeSyncServer.chw).expand(quick, type('social_needs')),
@@ -547,18 +539,18 @@ void main() {
         },
       );
       final afterStray = p.store.outbox().length;
-      await expectLater(r.expand(stray, type('general_primary_care'), redFlags: flags), refused('not_offered'));
+      await expectLater(r.expand(stray, type('general_primary_care')), refused('not_offered'));
       expect(p.store.outbox(), hasLength(afterStray));
 
       // While the clock check fails, and while the store is frozen.
       server.offline = true;
       p.wall = p.wall.add(const Duration(minutes: 10));
       expect(p.clock.status.paused, isTrue);
-      await expectLater(r.expand(quick, type('wound_care'), redFlags: flags), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.expand(quick, type('wound_care')), throwsA(isA<ChartingPaused>()));
       p.wall = p.wall.subtract(const Duration(minutes: 10));
       p.store.freeze('Demo: handing over');
-      await expectLater(r.expand(quick, type('wound_care'), redFlags: flags), throwsA(isA<ChartingPaused>()));
-      await expectLater(r.expand(quick, type('social_needs'), redFlags: flags), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.expand(quick, type('wound_care')), throwsA(isA<ChartingPaused>()));
+      await expectLater(r.expand(quick, type('social_needs')), throwsA(isA<ChartingPaused>()));
       expect(p.store.outbox(), hasLength(afterStray));
     });
 
@@ -578,7 +570,7 @@ void main() {
       r.complete((await r.openComplete(visit))!);
       expect(r.mayExpand((await r.openNote(quick))!), isFalse);
       final before = p.store.outbox().length;
-      await expectLater(r.expand(quick, type('social_needs'), redFlags: flags), throwsA(isA<RecordLocked>()));
+      await expectLater(r.expand(quick, type('social_needs')), throwsA(isA<RecordLocked>()));
       expect(p.store.outbox(), hasLength(before));
       server.offline = false;
       await sync(p);

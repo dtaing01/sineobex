@@ -245,7 +245,12 @@ void main() {
           noteTypeVersion: testNote.version,
           data: {'vitals.pulse': 72},
         );
-        final repo = EncounterRepository(p.store, user: person(alex), definitions: defs());
+        final repo = EncounterRepository(
+          p.store,
+          user: person(alex),
+          definitions: defs(),
+          noteTypes: () async => definitions.values,
+        );
         final e = online(p);
         final fromPhone = await e.openVisit(held, phone: repo);
         expect([fromPhone.source, fromPhone.notes.length, api.asked], [VisitSource.phone, 1, isEmpty]);

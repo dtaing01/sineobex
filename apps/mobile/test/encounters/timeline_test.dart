@@ -69,6 +69,7 @@ void main() {
       permissions: permissions,
     ),
     definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+    noteTypes: () async => definitions.values,
   );
 
   String note(TestPhone p, String visit, TestNoteType type, [Map<String, Object?> data = const {}]) =>

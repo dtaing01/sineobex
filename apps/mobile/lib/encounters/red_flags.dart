@@ -37,11 +37,11 @@ extension RedFlagsNote on EncounterRepository {
     return _redFlagsIn(_Held.scan(store, encounterId: encounterId), null).own;
   }
 
-  /// **The person's own Red flags note** in the visit [encounterId] (forms 6.2), on [redFlags], the
-  /// team's type ([redFlagsTypeOf]): added unless the visit has a finished Red flags note (on the
-  /// phone, or [redFlagsFinished] when the visit read shows one this phone does not hold) or one of
-  /// their own already, an empty draft included. Returns their own, added now or there already; null
-  /// when a finished one makes it needless.
+  /// **The person's own Red flags note** in the visit [encounterId] (forms 6.2), on the team's type
+  /// ([EncounterRepository.noteTypes], [redFlagsTypeOf]): added unless the visit has a finished Red
+  /// flags note (on the phone, or [redFlagsFinished] when the visit read shows one this phone does not
+  /// hold) or one of their own already, an empty draft included. Returns their own, added now or
+  /// there already; null when a finished one makes it needless.
   ///
   /// The summary calls it when Complete stops at hard stop 5 with no note to open
   /// ([CompleteStop.redFlagsFirst] with no [CompleteBlock.noteId]), then plans again: the note is then
@@ -49,10 +49,18 @@ extension RedFlagsNote on EncounterRepository {
   /// adds it by itself with a Medical note of the person's own.
   ///
   /// Throws, writing nothing: [ChartingPaused]; `not_charting`, `medical_credential`, `not_offered`
-  /// and `medical_note_needs_patient` as [addNote] refuses a Medical note; an [ArgumentError] when
-  /// [redFlags] is not a Red flags note type. A [StateError] when the phone holds no such visit.
-  Future<String?> addRedFlagsNote(String encounterId, NoteTypeDef redFlags, {bool redFlagsFinished = false}) async {
-    if (!_isRedFlags(redFlags)) throw ArgumentError.value(redFlags.key, 'redFlags', 'not the Red flags note type');
+  /// and `medical_note_needs_patient` as [addNote] refuses a Medical note; `no_red_flags_type` when
+  /// the team's list on the phone names no Red flags note type (none fetched yet: "Connect once to
+  /// load your team’s note types.", as Start says). A [StateError] when the phone holds no such
+  /// visit.
+  Future<String?> addRedFlagsNote(String encounterId, {bool redFlagsFinished = false}) async {
+    _guardFrozen();
+    _medicalNoteAllowed(_visit(encounterId));
+    return _addRedFlagsNote(encounterId, await _teamRedFlags(), redFlagsFinished: redFlagsFinished);
+  }
+
+  /// [addRedFlagsNote] on [redFlags], the team's type, if its list names one.
+  Future<String?> _addRedFlagsNote(String encounterId, NoteTypeDef? redFlags, {bool redFlagsFinished = false}) async {
     _guardFrozen();
     _medicalNoteAllowed(_visit(encounterId));
     await definitions.loadAll(EncounterRepository._versions(_Held.scan(store, encounterId: encounterId).notes));
@@ -60,6 +68,9 @@ extension RedFlagsNote on EncounterRepository {
     final held = _redFlagsIn(_Held.scan(store, encounterId: encounterId), redFlags);
     if (held.own != null) return held.own;
     if (held.finished || redFlagsFinished) return null;
+    if (redFlags == null) {
+      throw const LocalValidationError('Connect once to load your team’s note types.', problem: 'no_red_flags_type');
+    }
     final id = store.createNote(encounterId: encounterId, noteTypeKey: redFlags.key, noteTypeVersion: redFlags.version);
     onChanged?.call();
     return id;

@@ -74,6 +74,7 @@ void main() {
       permissions: permissions,
     ),
     definitions: defs ?? lookup(),
+    noteTypes: () async => definitions.values,
   );
 
   List<Map<String, Object?>> audits(TestPhone p) => [

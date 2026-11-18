@@ -59,6 +59,7 @@ void main() {
       permissions: FakeSyncServer.healthcareStaff,
     ),
     definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+    noteTypes: () async => definitions.values,
     openServerRecord: p.engine.openServerRecord,
   );
 

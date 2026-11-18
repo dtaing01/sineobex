@@ -58,6 +58,7 @@ void main() {
     String credential = 'attending',
     Set<String> permissions = staff,
     Set<TestNoteType> lacking = const {},
+    Iterable<NoteTypeDef>? listed,
   }) => EncounterRepository(
     p.store,
     user: EncounterUser(
@@ -69,6 +70,7 @@ void main() {
     definitions: NoteDefinitions(
       held: (key, version) async => lacking.contains((key: key, version: version)) ? null : definitions[(key, version)],
     ),
+    noteTypes: () async => listed ?? definitions.values,
     openServerRecord: p.engine.openServerRecord,
   );
 
@@ -327,12 +329,20 @@ void main() {
       await sync(b);
 
       final p = phone(alex);
-      final r = repo(p);
+      // The team's list on this phone names no Red flags type, so the app adds none of their own
+      // (red_flags_test.dart has the app's own note).
+      final r = repo(
+        p,
+        listed: [
+          for (final d in definitions.values)
+            if (d.auto == null) d,
+        ],
+      );
       expect(await p.engine.openServerRecord('encounter', visit), isTrue);
       expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
       server.offline = true;
       final medical = await charted(r, visit, testMedical, {'vitals.pulse': 96});
-      // A colleague's unfinished Red flags note does not count: the app gives them their own.
+      // A colleague's unfinished Red flags note does not count.
       var plan = (await r.openComplete(visit))!;
       expect(stopsOf(plan), [CompleteStop.redFlagsFirst]);
       expect(plan.stops.single.message, 'Answer the red-flag question first, then complete again.');

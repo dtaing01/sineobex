@@ -35,7 +35,6 @@ void main() {
   };
   final definitions = {for (final MapEntry(:key, :value) in presets.entries) key: NoteTypeDef.fromJson(value)};
   final general = definitions[('general_primary_care', 1)]!;
-  final flags = definitions[('red_flags_disposition', 1)]!;
 
   late FakeSyncServer server;
   final phones = <TestPhone>[];
@@ -69,6 +68,7 @@ void main() {
           permissions: permissions,
         ),
         definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+        noteTypes: () async => definitions.values,
       );
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);
@@ -81,7 +81,7 @@ void main() {
     String? status,
   }) async {
     final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
-    final note = (await r.addNote(visit, general, redFlags: flags)).noteId;
+    final note = (await r.addNote(visit, general)).noteId;
     await r.openNote(note);
     r.saveAnswer(note, 'problems.$entry.entryAt', '2026-10-20T15:01:00.000Z');
     r.saveAnswer(note, '$diagnosis.code', code.code);
