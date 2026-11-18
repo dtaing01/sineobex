@@ -29,12 +29,15 @@ import { encounterStatus, noteIsEmpty, type NoteStatus } from './rules.ts';
 
 /**
  * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
- * hangs off it, a reader is given. They are the sync read's (`fetchRecords`, sync/review.ts), here
- * as functions both can call: a note the reader may not read is absent with everything that hangs
- * off it; its answers are what visibleAnswers keeps; a correction is absent when its old or its new
- * value at any field it changes is hidden from the reader in any state the note has held
- * (hiddenCorrections, which the sync read calls too); a sign-off's hash goes only to whoever
- * acts as the author, its signer and a reader who sees every answer of any note (D86).
+ * hangs off it, a reader is given. There is one copy of each: the sync read (`fetchRecords`,
+ * sync/review.ts), the timeline and the queues call these, so a fix lands once (the coordinator's
+ * decision on the review). A note the reader may not read is absent with everything that hangs off
+ * it (noteAsRead); its answers are what visibleAnswers keeps (seenBy); a Medical visit's summary
+ * goes with its notes (medicalHidden); a correction is absent when its old or its new value at any
+ * field it changes is hidden from the reader in any state the note has held (hiddenCorrections); a
+ * sign-off's hash goes only to whoever acts as the author, its signer and a reader who sees every
+ * answer of any note (signoffHashShown, readsWhole; D86); and a visit's status is worked out from
+ * the notes the reader is shown (statusShown).
  */
 
 /**
@@ -64,32 +67,86 @@ export interface NoteRead {
   seen: Record<string, unknown>;
 }
 
+/** The caller as visibleAnswers reads them, for a note whose acting author is [actingAuthorId]. */
+export const readerOf = (scope: TeamScope, actingAuthorId: string): NoteReader =>
+  noteReader(scope.team.permissions, scope.team.credential, scope.principal.userId === actingAuthorId);
+
 /**
- * A note as this reader may read it (lifecycle 4.4, 6.4), or null when they may not: a type they
- * may not read, or a definition the server cannot read, since what it would hide cannot be told.
+ * What [reader] sees of a note of [type] that holds [answers]: the answers that count that they may
+ * see (visibleAnswers), or null when they may not read the note, or when the interpreter cannot
+ * read it, since what it would hide cannot be told.
  */
-export async function noteAsRead(
-  tx: Tx,
-  scope: TeamScope,
-  note: StoredRecord | null,
-): Promise<NoteRead | null> {
-  if (!note) return null;
-  const reader = noteReader(
-    scope.team.permissions,
-    scope.team.credential,
-    scope.principal.userId === actingAuthor(note),
-  );
-  const answers = answersOf(note);
+export function seenBy(
+  type: ResolvedNoteType,
+  answers: Record<string, unknown>,
+  reader: NoteReader,
+): Record<string, unknown> | null {
   try {
-    const type = await noteTypeOf(tx, note);
-    if (type === undefined) return { note, type, answers, reader, seen: answers };
-    const seen = byDefinition(() => visibleAnswers(type, answers, reader));
-    return seen && { note, type, answers, reader, seen };
+    return byDefinition(() => visibleAnswers(type, answers, reader));
   } catch (err) {
     if (err instanceof DefinitionError) return null;
     throw err;
   }
 }
+
+/**
+ * A note as this reader may read it (lifecycle 4.4, 6.4), or null when they may not: a type they
+ * may not read, or a definition the server cannot read, since what it would hide cannot be told.
+ *
+ * With [authorsDraftAsStored], whoever acts as the author of a draft is given every answer it
+ * holds, without the interpreter, as the sync read sends it: so an answer whose field is hidden for
+ * now comes back when it shows again, and a draft its author holds is sent even when the
+ * interpreter cannot read it. The visit read lays a note out by the answers that count, so it
+ * asks visibleAnswers of the author too.
+ */
+export async function noteAsRead(
+  tx: Tx,
+  scope: TeamScope,
+  note: StoredRecord | null,
+  { authorsDraftAsStored = false }: { authorsDraftAsStored?: boolean } = {},
+): Promise<NoteRead | null> {
+  if (!note) return null;
+  const reader = readerOf(scope, actingAuthor(note));
+  const answers = answersOf(note);
+  let type: ResolvedNoteType | undefined;
+  try {
+    type = await noteTypeOf(tx, note);
+  } catch (err) {
+    if (err instanceof DefinitionError) return null;
+    throw err;
+  }
+  if (type === undefined || (authorsDraftAsStored && reader.actsAsAuthor && note.status === 'draft'))
+    return { note, type, answers, reader, seen: answers };
+  const seen = seenBy(type, answers, reader);
+  return seen && { note, type, answers, reader, seen };
+}
+
+/** A note as statusShown counts it. */
+export interface StatusNote {
+  status: NoteStatus;
+  medical: boolean;
+  answers: Record<string, unknown>;
+}
+
+/** A note the reader may read, as statusShown counts it. */
+export const statusNote = (read: Pick<NoteRead, 'note' | 'answers'>): StatusNote => ({
+  status: read.note.status as NoteStatus,
+  medical: read.note.internal.medical === true,
+  answers: read.answers,
+});
+
+/**
+ * A visit's status as the reader is shown it: encounterStatus over the notes they are shown, an
+ * empty draft not counted, so it says nothing of a note left out (6.4 rule 2; review finding LRD-2).
+ */
+export const statusShown = (shown: readonly StatusNote[]): NoteStatus =>
+  encounterStatus(
+    shown.map((n) => ({
+      status: n.status,
+      medical: n.medical,
+      empty: n.status === 'draft' && noteIsEmpty(n.answers),
+    })),
+  );
 
 /** A correction of a note as stored (note_corrections): what it named, and whether it wrote. */
 export interface StoredCorrection {
@@ -429,14 +486,7 @@ export async function visitAsRead(
     encounterId: visit.id,
     patientId,
     kind: visit.values.kind as VisitReadValue['kind'],
-    // From the notes shown, so it says nothing of a note left out (6.4 rule 2; LRD-2).
-    status: encounterStatus(
-      reads.map((r) => ({
-        status: r.note.status as NoteStatus,
-        medical: r.note.internal.medical === true,
-        empty: false,
-      })),
-    ),
+    status: statusShown(reads.map(statusNote)),
     startedAt: visit.attributes.startedAt as string,
     clockVerified: visit.attributes.clockVerified as boolean,
     locationText: visit.values.locationText as string | null,

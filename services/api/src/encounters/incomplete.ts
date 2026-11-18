@@ -1,10 +1,11 @@
 import { z } from '@hono/zod-openapi';
-import { visibleAnswers, type ResolvedNoteType } from '@sineobex/forms';
+import type { ResolvedNoteType } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { Uuid } from '../routes/schemas.ts';
-import { byDefinition, DefinitionError, definitionOf, noteReader } from '../sync/records.ts';
+import { DefinitionError, definitionOf } from '../sync/records.ts';
 import { DateTime, UserRef } from '../sync/schemas.ts';
+import { readerOf, seenBy } from './read.ts';
 import { isOverdue } from './rules.ts';
 
 /**
@@ -97,18 +98,15 @@ export async function draftsAsRead(
   const now = scope.deps.now().toISOString();
   const notes: IncompleteNoteValue[] = [];
   for (const r of rows) {
-    const reader = noteReader(
-      scope.team.permissions,
-      scope.team.credential,
-      scope.principal.userId === r.actingAuthorId,
-    );
+    let type: ResolvedNoteType | undefined;
     try {
-      const type = await definition(r.noteTypeKey, r.noteTypeVersion);
-      if (!type || byDefinition(() => visibleAnswers(type, r.data, reader)) === null) continue;
+      type = await definition(r.noteTypeKey, r.noteTypeVersion);
     } catch (err) {
       if (err instanceof DefinitionError) continue;
       throw err;
     }
+    // As the visit read reads it (read.ts).
+    if (!type || seenBy(type, r.data, readerOf(scope, r.actingAuthorId)) === null) continue;
     const startedAt = r.startedAt.toISOString();
     notes.push({
       noteId: r.noteId,

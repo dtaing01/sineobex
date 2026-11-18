@@ -1,4 +1,4 @@
-import { visibleAnswers, type ResolvedNoteType } from '@sineobex/forms';
+import type { ResolvedNoteType } from '@sineobex/forms';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { notFound } from '../lib/errors.ts';
@@ -10,13 +10,13 @@ import type {
   VisitReadValue,
 } from '../patients/schemas.ts';
 import { RULES } from '../sync/entities/index.ts';
-import { byDefinition, DefinitionError, definitionOf, noteReader, snapshot } from '../sync/records.ts';
-import { visitAsRead, type ReadSource } from './read.ts';
-import { encounterStatus, noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
+import { DefinitionError, definitionOf, snapshot } from '../sync/records.ts';
+import { readerOf, seenBy, statusShown, visitAsRead, type ReadSource, type StatusNote } from './read.ts';
+import { noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
 
 /**
  * The patient timeline (lifecycle 5.2): a merged group's visits, newest first, each with the notes
- * the reader may see, by the visit read's rules (read.ts: noteReader and visibleAnswers); and the
+ * the reader may see, by the visit read's rules (read.ts: readerOf, seenBy and statusShown); and the
  * last three visits in full, so the phone's chart cache can show what happened last time with no
  * signal (PRD main 533). Nothing a note holds is listed: only its type, group and state, so no
  * finding of a sensitive exam reaches the overview for any reader (6.4 rule 3).
@@ -81,22 +81,17 @@ export async function timelineVisits(
     return definitions.get(at)!;
   };
   const shown = new Map<string, TimelineVisitValue['notes']>(visits.map((v) => [v.id, []]));
-  const counted = new Map<string, Parameters<typeof encounterStatus>[0]>(visits.map((v) => [v.id, []]));
+  const counted = new Map<string, StatusNote[]>(visits.map((v) => [v.id, []]));
   for (const n of notes) {
     if (n.noteTypeVersion === null || (n.status === 'draft' && noteIsEmpty(n.data))) continue;
-    const reader = noteReader(
-      scope.team.permissions,
-      scope.team.credential,
-      scope.principal.userId === n.actingAuthorId,
-    );
     let type: ResolvedNoteType | undefined;
     try {
       type = await definition(n.noteTypeKey, n.noteTypeVersion);
-      if (!type || byDefinition(() => visibleAnswers(type!, n.data, reader)) === null) continue;
     } catch (err) {
       if (err instanceof DefinitionError) continue;
       throw err;
     }
+    if (!type || seenBy(type, n.data, readerOf(scope, n.actingAuthorId)) === null) continue;
     shown.get(n.encounterId)!.push({
       noteId: n.id,
       noteTypeKey: n.noteTypeKey,
@@ -104,13 +99,13 @@ export async function timelineVisits(
       status: n.status,
       attestation: n.attestation,
     });
-    counted.get(n.encounterId)!.push({ status: n.status, medical: n.medical, empty: false });
+    counted.get(n.encounterId)!.push({ status: n.status, medical: n.medical, answers: n.data });
   }
   return visits.map((v) => ({
     encounterId: v.id,
     startedAt: v.startedAt.toISOString(),
     kind: v.kind,
-    status: encounterStatus(counted.get(v.id)!),
+    status: statusShown(counted.get(v.id)!),
     notes: shown.get(v.id)!,
   }));
 }

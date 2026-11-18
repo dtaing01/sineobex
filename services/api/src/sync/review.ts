@@ -1,9 +1,18 @@
-import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobex/forms';
+import { visibleAnswers } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { hiddenCorrections, signoffHashShown, type StoredCorrection } from '../encounters/read.ts';
-import { encounterStatus, noteIsEmpty, type NoteStatus } from '../encounters/rules.ts';
+import {
+  hiddenCorrections,
+  medicalHidden,
+  noteAsRead,
+  readerOf,
+  readsWhole,
+  signoffHashShown,
+  statusNote,
+  statusShown,
+  type StoredCorrection,
+} from '../encounters/read.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
@@ -219,12 +228,11 @@ async function noteChangeShown(
   v: Record<string, unknown>,
   uuid: (x: unknown) => string | null,
 ): Promise<boolean> {
+  // Asked as of someone who acts as no note's author, when the change creates the note.
   const readerFor = (note: StoredRecord | null) =>
-    noteReader(
-      scope.team.permissions,
-      scope.team.credential,
-      note !== null && scope.principal.userId === actingAuthor(note),
-    );
+    note === null
+      ? noteReader(scope.team.permissions, scope.team.credential, false)
+      : readerOf(scope, actingAuthor(note));
   try {
     if (r.entity === 'encounter_note' && r.op === 'create') {
       const version = typeof v.noteTypeVersion === 'number' ? v.noteTypeVersion : null;
@@ -552,15 +560,17 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     return { records, missing };
 
     /**
-     * The record as this reader may see it, or null when they may not see it at all. Sensitive
-     * problems need patients.view_sensitive (Oct 19), and a problem's note goes with it. A note
-     * leaves out the answers the reader may not see (lifecycle 6.4), and what hangs off a note goes
-     * with it: its sign-offs, its addenda, and a correction, which is also missing when one of the
-     * answers it changes is hidden from the reader, now or in any state the note has held, since its
-     * old or new value would give it away (encounters/read.ts hiddenCorrections).
-     * A sign-off's content hash goes only to whoever acts as the author, its signer, and a reader
-     * who sees every answer of any note (readsWhole), and never over a visit's summary withheld from
-     * the reader (encounters/read.ts signoffHashShown).
+     * The record as this reader may see it, or null when they may not see it at all, by the visit
+     * read's rules (encounters/read.ts), which this calls rather than copies. Sensitive problems
+     * need patients.view_sensitive (Oct 19), and a problem's note goes with it. A note leaves out
+     * the answers the reader may not see (lifecycle 6.4), and what hangs off a note goes with it:
+     * its sign-offs, its addenda, and a correction, which is also missing when one of the answers
+     * it changes is hidden from the reader, now or in any state the note has held, since its old or
+     * new value would give it away (hiddenCorrections). A sign-off's content hash goes only to
+     * whoever acts as the author, its signer, and a reader who sees every answer of any note, and
+     * never over a visit's summary withheld from the reader (signoffHashShown). A visit's summary
+     * goes with its notes (medicalHidden), and its status is worked out from the notes the reader
+     * may read (statusShown).
      */
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
@@ -572,34 +582,34 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
           return problem?.attributes.sensitive !== true ? record : null;
         }
         case 'encounter_note':
-          return (await noteAsRead(record))?.note ?? null;
+          return (await noteShown(record))?.note ?? null;
         case 'note_signoff': {
           const note = await noteOf(record);
-          const read = await noteAsRead(note);
+          const read = await noteRead(note);
           if (!read) return null;
           const visit = await RULES.encounter.load(tx, note!.attributes.encounterId as string, false);
           return signoffHashShown(
             read,
             record.authorUserId,
             scope.principal.userId,
-            !visit || medicalHidden(visit),
+            !visit || summaryHidden(visit),
           )
             ? record
             : withoutHash(record);
         }
         case 'encounter':
           return {
-            ...(medicalHidden(record) ? withoutSummary(record) : record),
-            status: await statusShown(record),
+            ...(summaryHidden(record) ? withoutSummary(record) : record),
+            status: await visitStatus(record),
           };
         case 'note_addendum': {
           // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
-          if (record.attributes.noteId !== null) return (await noteAsRead(await noteOf(record))) && record;
+          if (record.attributes.noteId !== null) return (await noteRead(await noteOf(record))) && record;
           const visit = await RULES.encounter.load(tx, record.attributes.encounterId as string, false);
-          return visit && !medicalHidden(visit) ? record : null;
+          return visit && !summaryHidden(visit) ? record : null;
         }
         case 'note_correction': {
-          const read = await noteAsRead(await noteOf(record));
+          const read = await noteRead(await noteOf(record));
           if (!read) return null;
           // Asked with every correction of the note, in the order they were applied: one is hidden
           // when a value it names was hidden in any state the note has held (LRD-1).
@@ -614,34 +624,21 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
       }
     }
 
-    /**
-     * A Medical visit's summary is Medical content (lifecycle 6.4 row 1, D37): read, as its notes
-     * are, with patients.view and encounters.chart or billing.view_codes (review finding RD-7).
-     */
-    function medicalHidden(visit: StoredRecord): boolean {
-      return visit.values.kind === 'medical' && !mayViewProblems(scope.team.permissions);
+    /** A Medical visit's summary is Medical content (encounters/read.ts medicalHidden). */
+    function summaryHidden(visit: StoredRecord): boolean {
+      return medicalHidden(scope.team.permissions, visit.values.kind);
     }
 
-    /**
-     * A visit's status as the reader is shown it: worked out from the notes they may read, so it
-     * says nothing of a note left out (lifecycle 6.4 rule 2; review finding LRD-2). The visit read
-     * and the timeline work it out the same way (encounters/read.ts, timeline.ts).
-     */
-    async function statusShown(visit: StoredRecord): Promise<string> {
+    /** The visit's status from the notes the reader may read (encounters/read.ts statusShown). */
+    async function visitStatus(visit: StoredRecord): Promise<string> {
       const rows = await tx<{ id: string }[]>`
         select id from sineobex.encounter_notes where team_id = ${visit.teamId} and encounter_id = ${visit.id}`;
-      const counted = [];
+      const shown = [];
       for (const { id } of rows) {
-        const read = await noteAsRead(await noteRules.load(tx, id, false));
-        if (!read) continue;
-        const status = read.note.status as NoteStatus;
-        counted.push({
-          status,
-          medical: read.note.internal.medical === true,
-          empty: status === 'draft' && noteIsEmpty(read.answers),
-        });
+        const read = await noteRead(await noteRules.load(tx, id, false));
+        if (read) shown.push(statusNote(read));
       }
-      return encounterStatus(counted);
+      return statusShown(shown);
     }
 
     function noteOf(record: StoredRecord) {
@@ -649,40 +646,25 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     }
 
     /**
-     * A note as this reader may read it (lifecycle 4.4, 6.4), with its type, the answers it holds
-     * and the reader; null when they may not read it. Whoever acts as the author of a draft is sent
-     * every answer it holds, hidden ones included, so they come back when their field shows again;
-     * everyone else, and every finished note, gets the answers that count that the reader may see.
-     * A hidden answer leaves no key behind: no value, no version, no mark of who changed it. A phase
-     * 2 note with no version has no definition and is read whole. One whose definition the server
-     * cannot read is missing: what it hides cannot be told.
+     * A note as this reader may read it (encounters/read.ts noteAsRead), or null. Whoever acts as
+     * the author of a draft is given every answer it holds, hidden ones included, so they come back
+     * when their field shows again.
      */
-    async function noteAsRead(note: StoredRecord | null) {
-      if (!note) return null;
-      let type: ResolvedNoteType | undefined;
-      try {
-        type = await noteTypeOf(tx, note);
-      } catch (err) {
-        if (err instanceof DefinitionError) return null;
-        throw err;
-      }
-      const reader = noteReader(
-        scope.team.permissions,
-        scope.team.credential,
-        scope.principal.userId === actingAuthor(note),
-      );
-      const answers = answersOf(note);
-      if (type === undefined || (reader.actsAsAuthor && note.status === 'draft')) {
-        return { note, type, answers, reader };
-      }
-      let seen: Record<string, unknown> | null;
-      try {
-        seen = byDefinition(() => visibleAnswers(type, answers, reader));
-      } catch (err) {
-        if (err instanceof DefinitionError) return null;
-        throw err;
-      }
-      return seen && { note: onlyAnswers(note, seen), type, answers, reader };
+    function noteRead(note: StoredRecord | null) {
+      return noteAsRead(tx, scope, note, { authorsDraftAsStored: true });
+    }
+
+    /**
+     * A note as the sync read sends it (noteRead): the author's draft as stored; everyone else, and
+     * every finished note, the answers that count that the reader may see. A hidden answer leaves
+     * no key behind: no value, no version, no mark of who changed it. A phase 2 note with no version
+     * has no definition and is read whole.
+     */
+    async function noteShown(note: StoredRecord) {
+      const read = await noteRead(note);
+      if (!read) return null;
+      if (read.type === undefined || (read.reader.actsAsAuthor && read.note.status === 'draft')) return read;
+      return { ...read, note: onlyAnswers(read.note, read.seen) };
     }
   });
 }
@@ -694,14 +676,6 @@ const NOTE_SIDE: ReadonlySet<AnyRecordEntityName> = new Set([
   'note_addendum',
   'note_correction',
 ]);
-
-/**
- * A reader who sees every answer that counts in any note (lifecycle 6.4 rule 4): every key that
- * hides an answer and a credential that charts Medical. Asked of the reader, never of what the
- * note holds, so whether a sign-off's hash is sent tells nothing of the note.
- */
-const readsWhole = (reader: NoteReader) =>
-  reader.readsMedical && reader.viewSensitive && reader.viewSensitiveExams && reader.chartsMedical;
 
 /**
  * A sign-off without the hash of what was signed (lifecycle 6.4 rule 4, review findings NOT-5 and
