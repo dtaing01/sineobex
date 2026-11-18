@@ -13,6 +13,7 @@ import {
   get,
   heldHashOf,
   PLAN,
+  roleWith,
   SECRETS,
   TEST_MEDICAL_EXAM_TYPE,
   TEST_MEDICAL_TYPE,
@@ -25,6 +26,7 @@ import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import {
   call,
+  clinician,
   noteOn,
   secondTeam,
   TEST_RED_FLAGS_TYPE,
@@ -575,5 +577,113 @@ describe('phase 4: read a visit online', () => {
       ];
       expect(fromRead.sort(), reader.displayName).toEqual(fromSync.sort());
     }
+  });
+});
+
+describe('phase 4: a correction made while its entry held a sensitive diagnosis', () => {
+  // Review finding LRD-1: asked only of the note as it is now, a correction written while the entry
+  // held F11.20 was shown, values and all, once a later correction moved the code off the list.
+  let h: Harness;
+  let w: World;
+  let noa: Awaited<ReturnType<typeof clinician>>;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    w = await createWorld(h);
+    // Reads and charts Medical notes, without patients.view_sensitive.
+    const role = await roleWith(h, w.t, 'Charting, no sensitive', ['patients.view', 'encounters.chart']);
+    noa = await clinician(h, w.t, 'noa@example.com', 'Noa (demo)', 'attending', role);
+  });
+  afterAll(() => h.close());
+
+  /** A signed exam note whose entry E1 holds a sensitive diagnosis and a note about it. */
+  async function signedExam() {
+    const v = await visitAt(w.rae, w.patientId);
+    const flags = await noteOn(w.rae, v, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
+    const exam = await noteOn(w.rae, v, TEST_MEDICAL_EXAM_TYPE, {
+      'general.notes': 'Demo: walked over',
+      [`dx.${E1}.entryAt`]: AT,
+      [`dx.${E1}.diagnosis.code`]: 'F11.20',
+      [`dx.${E1}.diagnosis.label`]: 'Demo: opioid use',
+      [`dx.${E1}.note`]: 'Demo: started buprenorphine',
+    });
+    await finish(w.rae, [flags, 'sign', 'signed'], [exam, 'sign', 'signed']);
+    return { visit: v, exam };
+  }
+
+  /** A correction of several answers, as the author's phone sends it, at the versions given. */
+  const correction = (n: HeldNote, changes: [string, unknown, number][], recordId?: string) =>
+    w.rae.phone.change({
+      entity: 'note_correction',
+      op: 'create',
+      ...(recordId ? { recordId } : {}),
+      value: {
+        noteId: n.noteId,
+        changes: changes.map(([path, newValue, baseVersion]) => ({
+          field: `data.${path}`,
+          newValue,
+          baseVersion,
+        })),
+        reason: 'Demo: fixing the entry',
+        requestedByPatient: false,
+        declined: false,
+        claimedCredential: w.rae.credential,
+        signoffId: null,
+      },
+    });
+
+  /** First the entry's note while its code is F11.20; then the code, its label and the note. */
+  const first = (n: HeldNote, recordId?: string) =>
+    correction(n, [[`dx.${E1}.note`, 'Demo: buprenorphine 8 mg', 1]], recordId);
+  const second = (n: HeldNote, recordId?: string) =>
+    correction(
+      n,
+      [
+        [`dx.${E1}.diagnosis.code`, 'J02.9', 1],
+        [`dx.${E1}.diagnosis.label`, 'Demo: sore throat', 1],
+        [`dx.${E1}.note`, 'Demo: throat swab', 2],
+      ],
+      recordId,
+    );
+
+  async function expectHidden(encounterId: string, exam: HeldNote, corrections: string[]) {
+    for (const reader of [w.bea, noa]) {
+      const r = await get(w, reader.token, `/v1/encounters/${encounterId}`);
+      expect(r.status).toBe(200);
+      const note = (r.body.notes as unknown as Note[]).find((n) => n.noteId === exam.noteId)!;
+      expect(note.corrections, reader.id).toEqual([]);
+      expectNoneOf(note, ['buprenorphine', 'opioid', 'F11.20']);
+    }
+    const synced = await call(h, '/v1/sync/records', {
+      method: 'POST',
+      token: noa.token,
+      teamId: w.t.teamId,
+      json: { records: corrections.map((id) => ({ entity: 'note_correction', id })) },
+    });
+    expect(synced.status).toBe(200);
+    expect(synced.body.records).toEqual([]);
+    // A reader who may see the diagnosis gets both, in the visit read and the sync read.
+    const whole = await get(w, w.vic.token, `/v1/encounters/${encounterId}`);
+    const note = (whole.body.notes as unknown as Note[]).find((n) => n.noteId === exam.noteId)!;
+    expect(note.corrections.map((c) => c.id).sort()).toEqual([...corrections].sort());
+  }
+
+  it('stays hidden from a reader without patients.view_sensitive, in the visit read and the sync read', async () => {
+    const { visit, exam } = await signedExam();
+    const one = await first(exam);
+    expect((await w.rae.send(one)).map((r) => r.status)).toEqual(['accepted']);
+    const two = await second(exam);
+    expect((await w.rae.send(two)).map((r) => r.status)).toEqual(['accepted']);
+    await expectHidden(visit.encounterId, exam, [one.recordId, two.recordId]);
+  });
+
+  it('stays hidden when both came in one push, whichever order their IDs sort in', async () => {
+    // One push stores both at one time, so the read cannot tell their order from it: the later
+    // correction's ID sorts first here.
+    const { visit, exam } = await signedExam();
+    const one = await first(exam, 'ffffffff-0000-4000-8000-000000000001');
+    const two = await second(exam, '00000000-0000-4000-8000-000000000002');
+    expect((await w.rae.send(one, two)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+    await expectHidden(visit.encounterId, exam, [one.recordId, two.recordId]);
   });
 });

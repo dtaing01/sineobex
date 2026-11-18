@@ -2,6 +2,7 @@ import { visibleAnswers, type NoteReader, type ResolvedNoteType } from '@sineobe
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
+import { hiddenCorrections, type StoredCorrection } from '../encounters/read.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
@@ -554,7 +555,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      * problems need patients.view_sensitive (Oct 19), and a problem's note goes with it. A note
      * leaves out the answers the reader may not see (lifecycle 6.4), and what hangs off a note goes
      * with it: its sign-offs, its addenda, and a correction, which is also missing when one of the
-     * answers it changes is hidden from the reader, since its old or new value would give it away.
+     * answers it changes is hidden from the reader, now or in any state the note has held, since its
+     * old or new value would give it away (encounters/read.ts hiddenCorrections).
      * A sign-off's content hash goes only to whoever acts as the author, its signer, and a reader
      * who sees every answer of any note (readsWhole).
      */
@@ -589,15 +591,13 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         case 'note_correction': {
           const read = await noteAsRead(await noteOf(record));
           if (!read) return null;
-          const changes = record.attributes.changes as {
-            field: string;
-            oldValue: unknown;
-            newValue: unknown;
-          }[];
-          return read.type === undefined ||
-            !changes.some((c) => changeHidden(read.type!, read.answers, read.reader, c))
-            ? record
-            : null;
+          // Asked with every correction of the note, in the order they were applied: one is hidden
+          // when a value it names was hidden in any state the note has held (LRD-1).
+          const all = await tx<StoredCorrection[]>`
+            select id, outcome, changes from sineobex.note_corrections
+            where team_id = ${record.teamId} and note_id = ${record.attributes.noteId as string}
+            order by created_at, id`;
+          return hiddenCorrections(read, all).has(record.id) ? null : record;
         }
         default:
           return record;
@@ -651,25 +651,6 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         throw err;
       }
       return seen && { note: onlyAnswers(note, seen), type, answers, reader };
-    }
-
-    function changeHidden(
-      type: ResolvedNoteType,
-      answers: Record<string, unknown>,
-      reader: NoteReader,
-      c: { field: string; oldValue: unknown; newValue: unknown },
-    ): boolean {
-      const path = c.field.slice('data.'.length);
-      try {
-        return byDefinition(
-          () =>
-            answerHidden(type, answers, path, c.oldValue, reader) ||
-            answerHidden(type, answers, path, c.newValue, reader),
-        );
-      } catch (err) {
-        if (err instanceof DefinitionError) return true;
-        throw err;
-      }
     }
   });
 }

@@ -32,7 +32,8 @@ import { noteIsEmpty } from './rules.ts';
  * hangs off it, a reader is given. They are the sync read's (`fetchRecords`, sync/review.ts), here
  * as functions both can call: a note the reader may not read is absent with everything that hangs
  * off it; its answers are what visibleAnswers keeps; a correction is absent when its old or its new
- * value at any field it changes is hidden from the reader; a sign-off's hash goes only to whoever
+ * value at any field it changes is hidden from the reader in any state the note has held
+ * (hiddenCorrections, which the sync read calls too); a sign-off's hash goes only to whoever
  * acts as the author, its signer and a reader who sees every answer of any note (D86).
  */
 
@@ -90,30 +91,88 @@ export async function noteAsRead(
   }
 }
 
+/** A correction of a note as stored (note_corrections): what it named, and whether it wrote. */
+export interface StoredCorrection {
+  id: string;
+  outcome: string;
+  changes: readonly { field: string; oldValue: unknown; newValue: unknown }[];
+}
+
+/** The outcomes of a correction that wrote its new values into the note (note-correction.ts). */
+const WROTE = new Set(['corrected', 'draft_edit']);
+
 /**
- * Whether a correction of a note the reader may read is hidden from them: its old or its new value
- * at any field it changes holds something visibleAnswers would hide (lifecycle 5.1). Missing whole
- * rather than stripped, since its field alone names the hidden answer. A phase 2 note's are shown.
+ * The corrections of a note the reader may read that are hidden from them (lifecycle 5.1): those
+ * whose old or new value, at any field they change, visibleAnswers would hide from the reader in
+ * any state the note has held. Missing whole rather than stripped, since a correction's field alone
+ * names the hidden answer. A phase 2 note's are all shown.
+ *
+ * Asked only of the note as it is now, a correction made while its entry held a sensitive
+ * diagnosis was shown once a later correction moved the code off the sensitive list (review finding
+ * LRD-1). So each is asked of the note now; of the note with the later corrections undone, in the
+ * order they were applied ([corrections] is that order); and, since corrections received in one
+ * push share their time and so their order is not certain, of the note now with each correction's
+ * old values, or its new values, put back.
  */
-export function correctionHidden(
-  read: NoteRead,
-  changes: readonly { field: string; oldValue: unknown; newValue: unknown }[],
-): boolean {
+export function hiddenCorrections(
+  read: Pick<NoteRead, 'type' | 'answers' | 'reader'>,
+  corrections: readonly StoredCorrection[],
+): Set<string> {
   const { type, answers, reader } = read;
-  if (type === undefined) return false;
-  return changes.some((c) => {
-    const path = c.field.slice('data.'.length);
-    try {
-      return byDefinition(
-        () =>
-          answerHidden(type, answers, path, c.oldValue, reader) ||
-          answerHidden(type, answers, path, c.newValue, reader),
-      );
-    } catch (err) {
-      if (err instanceof DefinitionError) return true;
-      throw err;
+  const hidden = new Set<string>();
+  if (type === undefined) return hidden;
+  const placed = (on: Record<string, unknown>, values: [string, unknown][]) => {
+    const out = { ...on };
+    for (const [field, value] of values) {
+      const path = field.slice('data.'.length);
+      if (value === null || value === undefined) delete out[path];
+      else out[path] = value;
     }
-  });
+    return out;
+  };
+  const states: Record<string, unknown>[] = [answers];
+  let after = answers;
+  for (const c of [...corrections].reverse()) {
+    if (!WROTE.has(c.outcome)) continue;
+    after = placed(
+      after,
+      c.changes.map((x) => [x.field, x.oldValue]),
+    );
+    states.push(after);
+  }
+  for (const c of corrections) {
+    states.push(
+      placed(
+        answers,
+        c.changes.map((x) => [x.field, x.oldValue]),
+      ),
+    );
+    states.push(
+      placed(
+        answers,
+        c.changes.map((x) => [x.field, x.newValue]),
+      ),
+    );
+  }
+  for (const c of corrections) {
+    const shows = c.changes.every((x) => {
+      const path = x.field.slice('data.'.length);
+      try {
+        return byDefinition(() =>
+          states.every(
+            (state) =>
+              !answerHidden(type, state, path, x.oldValue, reader) &&
+              !answerHidden(type, state, path, x.newValue, reader),
+          ),
+        );
+      } catch (err) {
+        if (err instanceof DefinitionError) return false;
+        throw err;
+      }
+    });
+    if (!shows) hidden.add(c.id);
+  }
+  return hidden;
 }
 
 /** Whether a sign-off of a note the reader may read goes to them with its hash (6.4 rule 4, D86). */
@@ -267,9 +326,9 @@ export async function visitAsRead(
     await viewed('note.viewed', 'encounter_note', note.id);
     const shownSignoffs = signoffs.filter((s) => s.noteId === note.id);
     const shownAddenda = addenda.filter((a) => a.noteId === note.id);
-    const shownCorrections = corrections.filter(
-      (c) => c.noteId === note.id && !correctionHidden(read, c.changes),
-    );
+    const ofNote = corrections.filter((c) => c.noteId === note.id);
+    const hidden = hiddenCorrections(read, ofNote);
+    const shownCorrections = ofNote.filter((c) => !hidden.has(c.id));
     const shownAttestations = attestations.filter((a) => a.noteId === note.id);
     for (const s of shownSignoffs) await viewed('note.viewed', 'note_signoff', s.id);
     for (const a of shownAddenda) await viewed('note.viewed', 'note_addendum', a.id);

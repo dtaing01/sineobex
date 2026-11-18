@@ -1873,6 +1873,60 @@ void main() {
         expect(await send(casey, late), [heldOnly(late.single)]);
       });
 
+      // encounters-read.test.ts, 'a correction made while its entry held a sensitive diagnosis'
+      // (review finding LRD-1): asked of the note as it is now, it was shown once a later correction
+      // moved the code off the sensitive list.
+      test('a correction made while its entry held a sensitive diagnosis stays missing once the code is corrected away, in any order', () async {
+        Map<String, Object?> fix(String note, List<(String, Object?, int)> changes, [String? recordId]) =>
+            change(entityCorrection, 'create', {
+              'noteId': note,
+              'changes': [
+                for (final (path, value, base) in changes)
+                  {'field': 'data.$path', 'newValue': value, 'baseVersion': base},
+              ],
+              'reason': 'Demo: fixing the entry',
+              'requestedByPatient': false,
+              'declined': false,
+              'claimedCredential': null,
+              'signoffId': null,
+            }, recordId: recordId);
+        Future<List<String>> reads(String user, List<String> ids) async => [
+          for (final r in (await as(user).fetchRecords(
+            body: FetchRecords(
+              records: [for (final id in ids) RecordRef(entity: RecordEntity.noteCorrection, id: id)],
+            ),
+          )).records)
+            r.id,
+        ];
+        // Two pushes, then one push holding both.
+        for (final together in [false, true]) {
+          final n = restrictedNote({
+            'general.notes': 'Demo: walked over',
+            'dx.$e1.entryAt': at,
+            'dx.$e1.diagnosis.code': 'F11.20',
+            'dx.$e1.diagnosis.label': 'Demo: opioid use',
+            'dx.$e1.note': 'Demo: started buprenorphine',
+          });
+          server.finishNote(n);
+          final first = fix(n, [('dx.$e1.note', 'Demo: buprenorphine 8 mg', 1)]);
+          final second = fix(n, [
+            ('dx.$e1.diagnosis.code', 'J02.9', 1),
+            ('dx.$e1.diagnosis.label', 'Demo: sore throat', 1),
+            ('dx.$e1.note', 'Demo: throat swab', 2),
+          ]);
+          final sent = together
+              ? await send(alex, [first, second])
+              : [
+                  ...await send(alex, [first]),
+                  ...await send(alex, [second]),
+                ];
+          expect([for (final a in sent) (a['details']! as Map)['outcome']], ['corrected', 'corrected']);
+          final ids = [first['recordId']! as String, second['recordId']! as String];
+          expect(await reads(casey, ids), isEmpty);
+          expect(await reads(alex, ids), ids);
+        }
+      });
+
       test('a removal of an entry hidden from the sender, and a write into a removed one that holds a sensitive diagnosis, are held', () async {
         final n = restrictedNote(const {
           'general.notes': 'Demo: walked over from the shelter',

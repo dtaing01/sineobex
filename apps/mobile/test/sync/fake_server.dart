@@ -3292,30 +3292,76 @@ class FakeSyncServer {
         if (noteId != null) return _noteAsRead(userId, perms, records[noteId]) != null ? _readSnapshot(r) : null;
         final visit = records[r.attributes['encounterId']];
         return visit != null && !_medicalHidden(perms, visit) ? _readSnapshot(r) : null;
-      // Missing too when an answer it changes is hidden from the reader: its old or new value would
-      // give it away.
+      // Missing too when an answer it changes is hidden from the reader, now or in any state the note
+      // has held: its old or new value would give it away (read.ts hiddenCorrections, LRD-1).
       case entityCorrection:
-        final read = _noteAsRead(userId, perms, records[r.attributes['noteId']]);
+        final noteId = r.attributes['noteId'];
+        final read = _noteAsRead(userId, perms, records[noteId]);
         if (read == null) return null;
-        final type = read.type;
-        final changes = (r.attributes['changes']! as List<Object?>).cast<Map<String, Object?>>();
-        bool hidden(Map<String, Object?> change) {
-          final path = (change['field']! as String).substring('data.'.length);
-          try {
-            return _byDefinition(
-              () =>
-                  answerHidden(type!, read.answers, path, change['oldValue'], read.reader) ||
-                  answerHidden(type, read.answers, path, change['newValue'], read.reader),
-            );
-          } on _DefinitionError {
-            return true;
-          }
-        }
-
-        return type == null || !changes.any(hidden) ? _readSnapshot(r) : null;
+        // Every correction of the note, in the order they were stored, which is the order applied.
+        final all = [
+          for (final c in records.values)
+            if (c.entity == entityCorrection && c.attributes['noteId'] == noteId) c,
+        ];
+        return _hiddenCorrections(read.type, read.answers, read.reader, all).contains(r.id) ? null : _readSnapshot(r);
       default:
         return _readSnapshot(r);
     }
+  }
+
+  /// The corrections of a note that are hidden from [reader] (read.ts hiddenCorrections): a value one
+  /// names is hidden in the note now; in the note with the later corrections undone, in [all]'s
+  /// order; or in the note now with each correction's old values, or its new values, put back. None
+  /// of a phase 2 note's.
+  static Set<String> _hiddenCorrections(NoteTypeDef? type, Answers answers, NoteReader reader, List<FakeRecord> all) {
+    if (type == null) return {};
+    List<Map<String, Object?>> changesOf(FakeRecord c) =>
+        (c.attributes['changes']! as List<Object?>).cast<Map<String, Object?>>();
+    Answers placed(Answers on, FakeRecord c, String which) {
+      final out = {...on};
+      for (final change in changesOf(c)) {
+        final path = (change['field']! as String).substring('data.'.length);
+        final value = change[which];
+        if (value == null) {
+          out.remove(path);
+        } else {
+          out[path] = value;
+        }
+      }
+      return out;
+    }
+
+    final states = <Answers>[answers];
+    var after = answers;
+    for (final c in all.reversed) {
+      if (!const {'corrected', 'draft_edit'}.contains(c.attributes['outcome'])) continue;
+      after = placed(after, c, 'oldValue');
+      states.add(after);
+    }
+    for (final c in all) {
+      states
+        ..add(placed(answers, c, 'oldValue'))
+        ..add(placed(answers, c, 'newValue'));
+    }
+    final hidden = <String>{};
+    for (final c in all) {
+      final shows = changesOf(c).every((change) {
+        final path = (change['field']! as String).substring('data.'.length);
+        try {
+          return _byDefinition(
+            () => states.every(
+              (state) =>
+                  !answerHidden(type, state, path, change['oldValue'], reader) &&
+                  !answerHidden(type, state, path, change['newValue'], reader),
+            ),
+          );
+        } on _DefinitionError {
+          return false;
+        }
+      });
+      if (!shows) hidden.add(c.id);
+    }
+    return hidden;
   }
 
   /// A Medical visit whose summary [perms] may not read (review.ts medicalHidden, RD-7).
