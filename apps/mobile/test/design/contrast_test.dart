@@ -40,6 +40,9 @@ void main() {
     'accent on surface (text buttons)': ((c) => c.accent, (c) => c.surface),
     'accent on ground (text buttons)': ((c) => c.accent, (c) => c.ground),
     'critical on surface (field errors)': ((c) => c.critical, (c) => c.surface),
+    // A note form's read-only answer (lib/features/forms/text_field.dart, ReadOnlyAnswer): its label
+    // in muted ink on its sunken box, its value in ink (the neutral chip's pair, above).
+    'muted ink on surface-sunken (a read-only answer’s label)': ((c) => c.inkMuted, (c) => c.surfaceSunken),
   };
 
   for (final theme in FieldTheme.values) {
