@@ -2314,20 +2314,29 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   Complete, hard stop 2 has the visit fixed first, and the sign-off covers the patient. Sending the
   patient as a set after the sign-off would not fit the hold rule, which sends it in the same push
   as the fixed create, ahead of the sign-off; so this records the cost, the review's other choice
-  (review finding SFN-6). And an addendum sent in the same push as its note's sign-off, when the
+  (review finding SFN-6; D106). And an addendum sent in the same push as its note's sign-off, when the
   sign-off is refused, is refused `stale_reference`, as any child sent beside a refused parent is
   (phase 2's rule), and is fixed from Needs attention (kept as built, the coordinator's decision).
-- **Open.** Needs attention is to offer **Open the note** on a `signoff_not_applied` notice (9.13),
-  but the notice names a sign-off, and a held sign-off is not on the chart: the sync read loads a
-  sign-off from `note_signoffs` (`note-signoff.ts`), while the held value is in
-  `quarantine_items`, and the test server's held sign-off is not in its records either. So a phone
-  that knows nothing of the sign-off cannot find the note from the notice. For a sign-off this
-  phone made, its record names the note (`noteId`) while the record is here. The notice could also
-  name the note (a column), or the sync read could give a sender their own held sign-off: for the
-  coordinator. Also open: with
-  `empty` before the finish check, an empty Red flags note's sign-off sent beside Medical notes is
-  stored with no effect, and the Medical notes are refused `red_flags_first`, not the Red flags
-  note `incomplete`. The phone never sends it (it refuses it as `incomplete`); another client could.
+- **Open the note on a `signoff_not_applied` notice** (9.13). The notice names a sign-off, and a
+  held sign-off is not on the chart: the sync read loads a sign-off from `note_signoffs`
+  (`note-signoff.ts`), while the held value is in `quarantine_items`, and the test server's held
+  sign-off is not in its records either. So a phone that knows nothing of the sign-off cannot
+  find the note from it. The coordinator's decision (Nov 18, D104): the notice also names the
+  note, in a new column of `user_notices` that `signoffNotApplied` fills from the note it already
+  reads; the notices' list gives it, the test server mirrors it, the phone keeps it with the
+  notice, and Needs attention opens that note. It is built first in wave F. Until then, for a
+  sign-off this phone made, its record names the note (`noteId`) while the record is here. The
+  other choice, giving a sender their own held sign-off in the sync read, would send values from
+  `quarantine_items`, which were never checked against a schema.
+- **Accepted** (the coordinator's decision of Nov 18, D106). With `empty` before the finish check,
+  an empty Red flags note's sign-off sent beside Medical notes is stored with no effect, and the
+  Medical notes are refused `red_flags_first`, not the Red flags note `incomplete`. The phone never
+  sends it (it refuses it as `incomplete`); another client could, and nothing is finished that
+  should not be. And while a sign-off is held, the refresh brings back into the phone's copy the
+  answers Complete dropped, since the server's draft, and the author's own sync read of it, still
+  hold them (4.4). They are in hidden fields or removed entries, so nothing shown changes; the
+  accept's refresh takes them away again, and after a reject the draft is the server's. A test
+  pins it in wave F.
 - **For the domain layer and the screens** (the card index's L4 and L5 rows): Complete passes each
   note's act and statement version (3.3, 3.5), a `Signer` from the saved profile, a synchronous
   `definitionOf`, and `redFlagsFinished` when the visit read shows a teammate's finished Red flags
@@ -3513,8 +3522,8 @@ sign-out had erased the database, so the server now sends the held sign-off's no
 of its own (4.6, review finding SRC-2). `finished_differently` had no sentence in this design; its
 wording is the coordinator's. A `signoff_not_applied` notice names the sign-off, not the note
 (`ServerNotices.entityOf` gives `note_signoff`): for a sign-off this phone made, the note is the
-sign-off record's `noteId` while that record is here; for one it knows nothing of, how **Open the
-note** finds the note is open (4.8). The notice is filed under the patient of the sign-off's
+sign-off record's `noteId` while that record is here; for one it knows nothing of, the notice will also name the note (D104,
+built first in wave F; 4.8). The notice is filed under the patient of the sign-off's
 record when the phone holds it. `finished_differently` names the note.
 
 ### 9.14 Portal: the queues
