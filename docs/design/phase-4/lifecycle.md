@@ -1216,8 +1216,8 @@ reads it, and each rule gets a test that is checked to bite.
 
 | Entity | Change in phase 4 | Rule | Key | Team lock |
 |---|---|---|---|---|
-| `encounter` | `summary` and `locationText` become settable. `kind` can be set to `medical`. `status` stops being settable. A change that arrives after the first finished note is kept in history. | draft rule while the envelope is open (4.3) | `encounters.chart` | every change |
-| `encounter_note` | The note type and version must exist. Answers are checked against the note type. `status` takes one value from a phone: `draft` (reopen). A change to a finished note is kept in history. | draft rule while a draft (4.4) | `encounters.chart` | every change |
+| `encounter` | `summary` and `locationText` become settable. `kind` can be set to `medical`. `status` stops being settable. A change that arrives after the first finished note is kept in history. The sync read says whether the visit holds a finished note (`hasFinishedNote`, 4.3). | draft rule while the envelope is open (4.3) | `encounters.chart` | every change |
+| `encounter_note` | The note type and version must exist. Answers are checked against the note type. `status` takes one value from a phone: `draft` (reopen). A change to a finished note is kept in history. The sync read says the note's state, and whether it was ever signed (`everSigned`, 4.4). | draft rule while a draft (4.4) | `encounters.chart` | every change |
 | `note_signoff` (new) | Create only | append-only (4.6) | `encounters.chart` | yes |
 | `note_addendum` (new) | Create only | append-only (4.7) | `encounters.chart` | yes |
 | `note_correction` (new) | Create only | append-only (4.7) | `encounters.chart` | yes |
@@ -1469,6 +1469,18 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   and to whoever acts as the author of each finished note, once each (review finding REC-2: the
   patient and the summary are part of what they signed, 3.6). An encounter is never
   `record_locked`: a signed visit keeps a late change, and takes a new note.
+- **`hasFinishedNote`** (review finding SLK-1, as the coordinator decided, with the phone's store):
+  the sync read's snapshot of a visit carries it in its attributes, true when a note of the visit
+  that the reader is shown is `completed` or `signed`. It is worked out in `fetchRecords`' `asRead`
+  (`services/api/src/sync/review.ts`) over the notes the visit's status is worked out from, those
+  the reader may read (`notesShown`, `statusShown`, D95), and not in `encounter.ts`'s load, which
+  does not know the reader. The phone's envelope lock reads it (4.8), since a visit whose status is
+  a draft may hold a finished note: beside a teammate's draft, or a note added after it was signed
+  (4.4); and the phone that signed may hold none of its finished notes once they have left it
+  (8.2). A finished note the reader may not read leaves it false: their edit of the patient, the
+  place or the summary is then sent, kept in history, and `late_change_kept` tells them so. They
+  learn that the visit holds a finished note, and nothing more; that is accepted. The contract's
+  description of a snapshot's attributes names it.
 - **Last seen** moves on an accepted create that names a patient (after its insert) and on an
   applied `patientId` set, on the patient row the visit names, merged or not: reads take the
   group's latest (D27), and the team index's version moves with it. A visit whose start is after
@@ -1650,6 +1662,14 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
   no change sets them, most are set at creation, and some follow what the server records later
   (these four, a patient's `lastSeenAt`, a problem's status times, merge and reversal request).
   What a reader is sent of a note is 6.4's.
+- **`everSigned`** joined them with the phone's store (the coordinator's decision): true once the
+  note's `first_signed_at` is set, so for a note signed once, signed now or not (a student's
+  correction of a co-signed note leaves it completed, 3.6). Such a note's reopen is kept in history
+  (the table above), and the phone passes `everSigned` to `reopenEffect`, so it refuses that
+  reopen as the server would (4.8). Without it the phone offered the reopen, and every edit made
+  offline after it was kept in history too. The contract's description names it, and both sync
+  reads hold it (`sync-reads.test.ts`, `fake_reads_test.dart`: "a note’s snapshot shows its
+  state: attestation, who acts as its author, when it was finished and the signature it names").
 
 ### 4.5 The content hash
 
@@ -2136,7 +2156,7 @@ the API test that holds the same rule, in `services/api/test/sync-{encounters,si
 | 13 | `_refreshVisit` | Its case is named after the db test `db/test/encounter-lifecycle.test.ts`, "the encounter’s status follows its notes", and reads `note-lifecycle.json`'s `encounterStatus` cases through the fake's sync read; no API test has that name |
 | 14 | `checkAnswer` in the note create and `_noteSet`, `notCounted`, `_byDefinition` and the `forged` rows, stored as `definition_error` by `_decide` | |
 | 15 | the registry's `auditIssues`, in `_decide` | |
-| 16 | `_fetch`, `_asRead`, `_noteAsRead`, `_noteSnapshot`, `_readSnapshot`, `_medicalHidden`; `_hiddenFromSender`, `_unreadableBySender`, `noteReader`, `mayHoldHidden`, `answerHidden` | With the read rules of 6.4 as built, a set held by what the answer could hold (`mayHoldHidden`, 4.4), and a retry answered from `_Receipt.result` as its sender may see the field (4.4) |
+| 16 | `_fetch`, `_asRead`, `_noteAsRead`, `_noteSnapshot`, `_readSnapshot`, `_medicalHidden`, `_notesShown`; `_hiddenFromSender`, `_unreadableBySender`, `noteReader`, `mayHoldHidden`, `answerHidden` | With the read rules of 6.4 as built, a set held by what the answer could hold (`mayHoldHidden`, 4.4), and a retry answered from `_Receipt.result` as its sender may see the field (4.4). Since the phone's store: a note's `everSigned` (4.4), and a visit's `hasFinishedNote` from the notes the reader is shown, as its status (4.3), each held by a read case named after its API test |
 | 17 | `_noteStatusSet`, `_kindSet`, `_envelopeKept`, effect `none`, `_correction`'s `not_author` and `draft_edit` | One case walks the second table of 4.1 row by row; `sync-corrections.test.ts` has the API test of its name (FAK-7) |
 
 What else the fake does, as the API does: `signedUnder` is a copy of `signed-under.ts`
@@ -2214,6 +2234,14 @@ The record refresh reads the note's new attributes (4.4). In every copy but the 
 copy of a draft, a note's `version` and `updatedAt` are those of the latest field it shows, so
 they do not move when only a hidden answer changes (6.4); the phone reads only the fields'
 versions.
+
+As built on the phone (unit L3's store, 4.8): the refresh of a note takes the server's
+attributes (`attestation`, `actingAuthorId`, `everSigned`, `completedAt`, `signoffId`), keeping the
+phone's own `localEffect`, unless the note's own create still waits; so an attestation made online,
+or an assignment (3.8), reaches a note the phone holds. It also settles a sign-off held for review
+once the server's copy is finished (a Program Admin accepted it, or the note was finished another
+way), with no notice. The refresh of a visit the phone holds takes the server's attributes too,
+`hasFinishedNote` among them (4.3), which the envelope lock reads.
 
 ## 5. API routes that only work online
 
