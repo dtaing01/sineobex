@@ -69,7 +69,7 @@ status=0
   export SINEOBEX_LIVE_REQUIRED=1
   # One file after the other: the patient scenarios read the seeded P1 and the team index, which
   # the sync scenarios must not change under them. (errexit doesn't apply inside `( ) ||`, hence &&.)
-  flutter test test/sync/live_api_test.dart && flutter test test/patients/live_patients_test.dart
+  flutter test test/sync/live_api_test.dart && flutter test test/patients/live_patients_test.dart && flutter test test/encounters/live_domain_test.dart
 ) || status=$?
 if [[ $status -ne 0 ]]; then
   # The API's log holds no patient details (allowlisted fields only), and this is demo data.
