@@ -6455,6 +6455,11 @@ class SineobexApi {
     return DuplicatePairDetail.fromJson(json as Map<String, dynamic>);
   }
 
+  /// The visit’s EMS handoff as a PDF, stamped with who exported it and when
+  Future<void> getEmsHandoff({required String encounterId}) async {
+    await _transport.send('GET', '/v1/encounters/${Uri.encodeComponent(encounterId)}/ems-handoff');
+  }
+
   /// A visit as the reader may see it: its notes laid out for reading, and what hangs off them
   Future<VisitRead> getEncounter({required String encounterId}) async {
     final json = await _transport.send('GET', '/v1/encounters/${Uri.encodeComponent(encounterId)}');

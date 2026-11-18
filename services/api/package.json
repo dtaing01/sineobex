@@ -19,6 +19,7 @@
     "@sineobex/forms": "workspace:*",
     "hono": "4.13.16",
     "jose": "6.2.12",
+    "pdf-lib": "1.17.1",
     "postgres": "3.4.9",
     "zod": "4.6.7"
   },

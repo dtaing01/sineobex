@@ -6061,6 +6061,85 @@
         ]
       }
     },
+    "/v1/encounters/{encounterId}/ems-handoff": {
+      "get": {
+        "description": "Lifecycle 5.7. Needs patients.view and a recent sign-in (else 403 reauth_required), and the reader must be able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Built from the forms part’s handoffLines over what the reader may see, with no treatment record, sensitive exam or sensitive diagnosis for any reader. 404 no_handoff when EMS was not activated. Never cached; the file name holds no patient details. Logged as ems_handoff.exported.",
+        "operationId": "getEmsHandoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "encounterId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The handoff, as a PDF to save or print"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The visit’s EMS handoff as a PDF, stamped with who exported it and when",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
     "/v1/forms/note-types": {
       "get": {
         "description": "Any member of the team. Installs the platform’s presets the team does not hold yet first, and audits that install when it writes; the list itself holds no patient data and is not audited.",

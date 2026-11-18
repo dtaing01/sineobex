@@ -11,6 +11,7 @@ import {
 } from '../encounters/incomplete.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { homeCounts, HomeCounts } from '../encounters/counts.ts';
+import { exportHandoff, HANDOFF_FILE_NAME } from '../encounters/handoff.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
@@ -187,6 +188,29 @@ const countsRoute = createRoute({
   responses: { 200: { description: 'The counts', ...json(HomeCounts) }, ...errors(401, 403) },
 });
 
+const handoffRoute = createRoute({
+  method: 'get',
+  path: '/v1/encounters/{encounterId}/ems-handoff',
+  operationId: 'getEmsHandoff',
+  tags: ['encounters'],
+  summary: 'The visit’s EMS handoff as a PDF, stamped with who exported it and when',
+  description:
+    'Lifecycle 5.7. Needs patients.view and a recent sign-in (else 403 reauth_required), and the reader must be ' +
+    'able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Built from the forms ' +
+    'part’s handoffLines over what the reader may see, with no treatment record, sensitive exam or sensitive ' +
+    'diagnosis for any reader. 404 no_handoff when EMS was not activated. Never cached; the file name holds no ' +
+    'patient details. Logged as ems_handoff.exported.',
+  security: [{ bearer: [] }],
+  request: { params: EncounterParam },
+  responses: {
+    200: {
+      description: 'The handoff, as a PDF to save or print',
+      content: { 'application/pdf': { schema: z.string().openapi({ format: 'binary' }) } },
+    },
+    ...errors(401, 403, 404, 422),
+  },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -239,5 +263,16 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(countsRoute, async (c) => {
     const scope = await teamScope(c, deps);
     return c.json(await homeCounts(scope), 200);
+  });
+
+  app.openapi(handoffRoute, async (c) => {
+    // A file leaves our control: a fresh sign-in, as for every export (PRD main 602).
+    const scope = await teamScope(c, deps, { permissions: ['patients.view'], recentAuth: true });
+    const pdf = await exportHandoff(scope, c.req.valid('param').encounterId, c.req.routePath);
+    return c.body(pdf, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${HANDOFF_FILE_NAME}"`,
+      'Cache-Control': 'no-store',
+    });
   });
 }
