@@ -8,6 +8,7 @@ import 'package:sineobex_field/encounters/encounter_repository.dart';
 import 'package:sineobex_field/encounters/note_definitions.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/expand.dart' show expandQuick;
+import 'package:sineobex_field/sync/entities.dart' show entityCorrection;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -367,6 +368,46 @@ void main() {
       await sync(p);
       serverTookAll(p);
       expect(server.records[done.noteId]!.author, alex);
+    });
+
+    test('a correction of the full note before its sync reads each answer at the version its create gave it '
+        '(review LCM-5)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final quick = await quickNote(r, visit, {
+        'visit.parts': ['social_needs'],
+        'social.needs': ['housing', 'id'],
+      });
+      final done = await r.expand(quick, type('social_needs'));
+      final own = (await r.ownRedFlagsNote(visit))!;
+      await r.openNote(own);
+      r.saveAnswer(own, 'red_flags.emergency', 'no');
+      r.complete((await r.openComplete(visit))!);
+      await r.correct(
+        visit,
+        done.noteId,
+        changes: {
+          'needs.needs': ['housing'],
+        },
+        reason: 'Demo: ID came through',
+      );
+      final correction = p.store.outbox().lastWhere((e) => e.entity == entityCorrection);
+      expect((correction.value! as Map)['changes'], [
+        {
+          'field': 'data.needs.needs',
+          'newValue': ['housing'],
+          'baseVersion': 1,
+        },
+      ]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(answersOnServer(done.noteId), {
+        'needs.needs': ['housing'],
+      });
     });
 
     test('a part expanded again opens its note as it is; an empty draft of the type of theirs is filled', () async {

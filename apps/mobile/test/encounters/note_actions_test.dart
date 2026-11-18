@@ -178,6 +178,25 @@ void main() {
       expect(p.store.outbox(), isEmpty);
     });
 
+    test('a credential lowered to one that can’t chart Medical reopens nothing: the server would hold it '
+        '(review LCM-4)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final (_, [_, medical]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 96}),
+      ]);
+      await sync(p);
+      server.offline = true;
+      final lowered = repo(p, credential: 'chw');
+      expect(lowered.mayReopen(medical), isFalse);
+      await expectLater(lowered.reopen(medical), refused('medical_credential'));
+      expect(p.store.outbox(), isEmpty);
+      expect(p.store.noteState(medical)!.status, NoteStatus.completed);
+    });
+
     test('a note sent for review says so, and is neither reopened nor corrected', () async {
       final p = phone(alex);
       final patient = server.seedPatient();
@@ -280,6 +299,55 @@ void main() {
       expect(p.clock.status.paused, isTrue);
       await expectLater(r.addAddendum(visit, noteId: n, text: 'Demo: later'), throwsA(isA<ChartingPaused>()));
       expect([for (final e in p.store.outbox()) e.entity], isNot(contains(entityAddendum)));
+    });
+  });
+
+  group('a teammate’s note the person may not read (lifecycle 6.4)', () {
+    // The phone holds Blair's Medical note as a role that reads Medical notes was sent it; Alex's
+    // role now charts but doesn't read Medical notes (no patients.view, D37).
+    final noMedical = {...staff}..remove('patients.view');
+
+    Future<(String, String, String)> blairsMedicalNote(TestPhone p, {required bool finish}) async {
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final rb = repo(b);
+      final visit = rb.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final theirs = await charted(rb, visit, testMedical, {'vitals.pulse': 96});
+      if (finish) {
+        final flags = (await rb.ownRedFlagsNote(visit))!;
+        await rb.openNote(flags);
+        rb.saveAnswer(flags, 'flags.any', 'no');
+        rb.complete((await rb.openComplete(visit))!);
+      }
+      await sync(b);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
+      return (patient, visit, theirs);
+    }
+
+    test('Complete doesn’t name their draft among the teammates’ drafts (review LCM-4)', () async {
+      final p = phone(alex);
+      final (_, visit, theirs) = await blairsMedicalNote(p, finish: false);
+      final reads = repo(p);
+      final mine = await charted(reads, visit, testNote, {'care.plan': 'Demo: blankets'});
+      expect([for (final d in (await reads.openComplete(visit))!.teammateDrafts) d.noteId], [theirs]);
+
+      final r = repo(p, permissions: noMedical);
+      final plan = (await r.openComplete(visit))!;
+      expect(plan.teammateDrafts, isEmpty);
+      expect([for (final n in plan.notes) n.noteId], [mine]);
+    });
+
+    test('an addendum to it is refused cannot_read, which the server would hold (review LCM-4)', () async {
+      final p = phone(alex);
+      final (_, visit, theirs) = await blairsMedicalNote(p, finish: true);
+      final r = repo(p, permissions: noMedical);
+      server.offline = true;
+      await expectLater(r.addAddendum(visit, noteId: theirs, text: 'Demo: seen again'), refused('cannot_read'));
+      expect(p.store.outbox(), isEmpty);
+      // Someone who may read it adds one.
+      await repo(p).addAddendum(visit, noteId: theirs, text: 'Demo: seen again');
+      expect(createOf(p, entityAddendum).value, containsPair('noteId', theirs));
     });
   });
 

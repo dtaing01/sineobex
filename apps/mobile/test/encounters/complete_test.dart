@@ -615,6 +615,63 @@ void main() {
       expect(() => r.complete(drawn), refused(CompleteStop.finished, message: 'This note is already finished.'));
       expect(signoffs(p), hasLength(1));
     });
+
+    test('a note gone from the phone since the summary was drawn: “This note changed.” (review LCM-5)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      final drawn = (await r.openComplete(visit))!;
+      p.store.closeRecord(n);
+      p.store.purge();
+      expect(p.store.record(n), isNull);
+      expect(
+        () => r.complete(drawn),
+        throwsA(
+          isA<CompleteRefused>().having((e) => [for (final s in e.stops) (s.stop, s.noteId, s.message)], 'stops', [
+            (CompleteStop.noteChanged, n, 'This note changed. Read it again.'),
+          ]),
+        ),
+      );
+      expect(signoffs(p), isEmpty);
+    });
+
+    // What the store refuses that the plan does not foresee, worded for the summary all the same: a
+    // fix that only settles a refusal, drawn while the refusal waited, which is gone by the time
+    // Complete is pressed.
+    CompletePlan settling(EncounterRepository r, String visit, String noteId) => CompletePlan(
+      encounterId: visit,
+      notes: [
+        NoteToComplete(
+          noteId: noteId,
+          definition: definition(testNote),
+          shownHash: r.store.contentHashOf(noteId, definition(testNote)),
+          act: SignoffAct.complete,
+          settlesOnly: true,
+        ),
+      ],
+      stops: const [],
+      teammateDrafts: const [],
+      sentForReview: const [],
+      redFlagsFinished: false,
+    );
+
+    test('the store’s RecordLocked and empty are worded too (review LCM-5)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final done = await charted(r, visit, testNote, {'vitals.pulse': 88});
+      r.complete((await r.openComplete(visit))!);
+      expect(
+        () => r.complete(settling(r, visit, done)),
+        refused(CompleteStop.finished, message: 'This note is already finished.'),
+      );
+      final empty = (await r.addNote(visit, definition(testNote), another: true)).noteId;
+      expect(() => r.complete(settling(r, visit, empty)), refused(CompleteStop.nothingToComplete));
+      expect(signoffs(p), hasLength(1));
+    });
   });
 
   group('the assessment (lifecycle 3.1, 9.6)', () {
