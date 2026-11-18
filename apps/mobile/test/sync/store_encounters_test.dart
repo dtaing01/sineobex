@@ -588,6 +588,41 @@ void main() {
       );
     });
 
+    test(
+      'an answer Complete dropped still reaches the server’s history when the note’s refused create is fixed',
+      () async {
+        // Review finding SFN-5: the fixed create was rebuilt from the phone's copy, which Complete had
+        // left without the answer, so the server never saw it and kept no history of it.
+        final p = phone(alex);
+        final visit = p.store.createEncounter(kind: 'non_medical');
+        await sync(p);
+        final n = note(p, visit, testNote, {'vitals.pulse': 88, 'more.detail': 'Demo: slept outside'});
+        p.store.setField(n, 'data.more.none', true);
+        complete(p, [finishing(p, n, testNote)]);
+        expect(answersOf(p, n), {'vitals.pulse': 88, 'more.none': true});
+        // The server refuses the note's create (the sign-off waits behind it), and the person fixes it.
+        final create = createOf(p, n);
+        p.store.reject(create, reason: 'validation', details: {'problem': 'unknown_note_type'});
+        p.store.fixRejected(create.changeId, {
+          'encounterId': visit,
+          'noteTypeKey': testNote.key,
+          'noteTypeVersion': testNote.version,
+        });
+        expect(answersOf(p, n), {'vitals.pulse': 88, 'more.none': true});
+        await sync(p);
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        expect(server.records[n]!.fields['status']!.value, 'completed');
+        expect(
+          [
+            for (final h in server.history)
+              if (h['recordId'] == n && h['field'] == 'data.more.detail') (h['value'], h['previous']),
+          ],
+          [('Demo: slept outside', null), (null, 'Demo: slept outside')],
+        );
+      },
+    );
+
     test('Complete waits for the clock check, and writes nothing while it fails', () async {
       final p = phone(alex);
       final visit = p.store.createEncounter(kind: 'non_medical');

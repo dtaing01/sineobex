@@ -2091,7 +2091,9 @@ class LocalStore {
 
   void _fixNote(OutboxEntry x, Map<String, Object?> created, Map<String, LocalField> fields) {
     final createdData = (created['data'] as Map<String, Object?>?) ?? const {};
+    final dropped = _droppedAtComplete(x.recordId, fields);
     final data = <String, Object?>{
+      ...dropped,
       for (final MapEntry(:key, :value) in fields.entries)
         if (key.startsWith('data.')) key.substring(5): value.value,
       ...createdData,
@@ -2103,7 +2105,10 @@ class LocalStore {
     final head = {...created}..remove('data');
     final (:inCreate, :after) = _splitData(head, data);
     final merged = {...head, if (inCreate.isNotEmpty) 'data': inCreate};
-    final localUpdates = {for (final MapEntry(:key, :value) in data.entries) 'data.$key': value};
+    final localUpdates = {
+      for (final MapEntry(:key, :value) in data.entries)
+        if (!dropped.containsKey(key) || createdData.containsKey(key)) 'data.$key': value,
+    };
     final attributes = {
       for (final name in ['encounterId', 'noteTypeKey', 'noteTypeVersion']) name: merged[name],
     };
@@ -2127,6 +2132,12 @@ class LocalStore {
       }
       _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
       _appendData(x.recordId, after);
+      // What Complete dropped goes to the server, not back into the phone's copy.
+      for (final path in dropped.keys) {
+        if (!localUpdates.containsKey('data.$path')) {
+          _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [x.recordId, 'data.$path']);
+        }
+      }
       // The record is what the fixed create says now, which may be another encounter: the purge
       // keeps the encounter a note names. What a sign-off waiting behind it should do stays.
       _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
@@ -2149,6 +2160,33 @@ class LocalStore {
       }
       _workedOn(x.recordId);
     });
+  }
+
+  /// The answers of [noteId] that Complete dropped from the phone's copy (their rows are gone) while
+  /// a change that carries them, its create or a set, still waits here unresolved: the latest value
+  /// of each. The server has not received them, so a fixed create carries them, and the sign-off
+  /// then drops each into the note's history as it does for any answer that does not count (4.5,
+  /// review finding SFN-5).
+  Map<String, Object?> _droppedAtComplete(String noteId, Map<String, LocalField> fields) {
+    final carried = <String, Object?>{};
+    for (final e
+        in _db
+            .select(
+              "SELECT * FROM outbox WHERE record_id = ? AND state IN ('pending', 'rejected', 'conflict') ORDER BY seq",
+              [noteId],
+            )
+            .map(OutboxEntry.fromRow)) {
+      final value = e.value;
+      if (e.op == 'create' && value is Map<String, Object?> && value['data'] is Map<String, Object?>) {
+        carried.addAll(value['data']! as Map<String, Object?>);
+      } else if (e.op == 'set' && e.field != null && e.field!.startsWith('data.')) {
+        carried[e.field!.substring('data.'.length)] = value;
+      }
+    }
+    return {
+      for (final MapEntry(:key, :value) in carried.entries)
+        if (!fields.containsKey('data.$key')) key: value,
+    };
   }
 
   /// A fix that is a new record (design 2.9-5): a card made on the kept chart after one for a
