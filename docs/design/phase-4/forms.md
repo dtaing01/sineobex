@@ -1245,8 +1245,8 @@ As planned in wave B (unit F6; the plans are the shape files under `definitions/
 As built in wave D, the modules are `modules/exam_<piece, with underscores>/v1.json`, included in
 General as planned. One-tap Normal stays per section, so Cardiovascular has two (heart rate,
 rhythm and sounds; perfusion, edema and JVD) and MSK one in each region's entry and one for gait;
-whether the renderer should offer one Normal for a whole system is open. The review changed the
-plans before release:
+as built, the renderer adds one for a whole system, over its sections (10.3 #7). The review
+changed the plans before release:
 
 - **MSK strength is two numbers**, Strength, right and Strength, left, each shown only for the
   side the entry examines (Right or Bilateral; Left or Bilateral; both for Head / Neck and Back,
@@ -2267,6 +2267,16 @@ the rest of the visit page.
    perfusion), HEENT four, Neurologic two, and MSK one per region examined and one for Gait
    (6.3). For F5: the renderer offers one Normal per system, which runs `normalAnswers` on every
    section of that system (each entry of a repeating one), so the person sees the PRD's one tap.
+   As built (unit F5, `note_form.dart`): a system is the sections that offer Normal and show while
+   one option of one choice is picked (`showWhen: { field: 'exam.systems', is: 'heent' }`), wherever
+   two or more do. In the General note they are HEENT, Cardiac, Neuro and MSK, each named by its
+   option's label in the picker. Above the header of the first of a system's sections that is drawn
+   sits a band with that name and an "All normal", read as "All normal, HEENT". It runs
+   `normalAnswers` on each of the system's sections that is drawn, and on each entry of a repeating
+   one (each MSK region), in the definition's order, each seeing what was written before it, and
+   says what it did as a section's Normal does (8.1). The band shows only where two or more of the
+   system's sections are drawn, and not on a read-only form. Each section keeps its own Normal, and
+   each entry its own.
 
 ### 10.4 Risks
 
