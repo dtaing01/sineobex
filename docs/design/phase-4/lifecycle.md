@@ -4426,19 +4426,19 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 1 | Does a note signed offline count as signed at device time or at server receipt? (PRD main 452) | Device time, clock-corrected, with the receipt time stored beside it (plan section 6) | Counsel and the billing partner |
 | 2 | The PA rule (PRD main 212) | A PA signs like an NP: attestation needed | Brooke and Mercy, the FQHC partner |
 | 3 | May a note be added to a visit whose other notes are finished? | Yes. It is its own note with its own author and time (4.4) | Brooke and Mercy |
-| 4 | How long does an untouched draft stay on its author's phone? | 7 days after its last change, then it is released if fully synced (3.2) | The team |
+| 4 | How long does an untouched draft stay on its author's phone? | 7 days after its last change, then it is released if fully synced (3.2). As built, the change as the phone sees it, its own or a teammate's brought in by a sync, counted only by a clock the phone has checked, and released once nothing of it waits, to send or in Needs attention (8.2) | The team |
 | 5 | The wording a signer, a co-signer and an attester are shown | The three sentences of 3.5, each with a version | Counsel |
 | 6 | May a resident, NP or PA co-sign a student's note, or only an attending? | Any credential that signs; the note then waits for attestation if that credential needs it (3.7) | Brooke and Mercy |
 | 7 | May the clinician assigned to a departed author's note complete its draft, or only correct it? | Both (3.8) | Brooke and Mercy |
 | 8 | Can a co-signer send a note back to its author? | No. The author reopens it while it was never signed (3.6) | Brooke and Mercy |
 | 9 | How is a wrong free-text assessment fixed after Complete? | By an addendum, not a field correction (3.6) | Brooke and Mercy |
 | 10 | What does a patient's amendment request need beyond the logged decision? (HIPAA §164.526: a written answer in 60 days, a statement of disagreement) | Only the logged request and decision are built (3.6) | Counsel |
-| 11 | Can a Medical note be written for someone who is not registered? | No. A Medical note needs a patient; a visit can be given one at any time (3.10) | Brooke and Mercy |
+| 11 | Can a Medical note be written for someone who is not registered? | No. A Medical note needs a patient; a visit can be given one at any time (3.10). As built, a Medical visit names its patient from Start, as Switch to Medical asks for one first | Brooke and Mercy |
 | 12 | Where does the EMS handoff PDF come from? | The portal. The phone shows it full-screen only, and its generated client leaves the route out (5.7) | The team |
 | 13 | Who sees a sensitive exam section, and who may co-sign or attest a note that has one? | Whoever acts as the note's author, and holders of `patients.view_sensitive_exams`. A co-signer or attester needs the key too, so a team gives its attendings a role that has it; until then such a note waits (6.4) | Counsel, Brooke and Mercy |
 | 14 | The Brief call note preset (PRD main 390) | Not built: the field spec has no fields for it | Brooke and Mercy |
 | 15 | Is the GPS position stored, and how exact? | Captured only on a tap, stored as the phone gives it (9.2) | Counsel, the team |
-| 16 | How do a note's problem statuses (New, Chronic, Improving, Worse) map to the problem list's (New, Ongoing, Resolved)? | New to New; the others to Ongoing; nothing resolves (8.3) | Brooke and Mercy |
+| 16 | How do a note's problem statuses (New, Chronic, Improving, Worse) map to the problem list's (New, Ongoing, Resolved)? | New to New; the others to Ongoing; nothing resolves (8.3). With no status, the person chooses New or Ongoing, as on Add problem | Brooke and Mercy |
 | 17 | How many recent visits ride with a chart, to be read offline? | Three (5.2) | The team |
 | 18 | Who may export the EMS handoff as a PDF? PRD main 413 lets a clinician; PRD main 602 keeps exports to Admin and Billing/Data | Whoever may read the Red flags note, with a fresh sign-in, a stamp of who and when, and an audit event; anyone else is refused `cannot_see_red_flags`, and the refusal logged (5.7) | Counsel, the team |
 | 19 | Is a Social needs or Outreach note inside a Medical visit signed and attested? | No. A Non-Medical note is completed, never signed (3.1) | Brooke and Mercy, the billing partner |
@@ -4452,7 +4452,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 27 | What of the patient does the EMS handoff PDF's header carry? (forms 10.1 #6 says the summary's comes from the chart) | Their preferred name, their age in years and their allergies, from their chart as the exporter may see it, the allergies worded as the phone's allergy badge words them; never the legal name or the birth date. The file's name and metadata name no patient (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
-| 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. The person's own empty draft of the type is filled as a new note would be (forms 6.4; unit F7) | Brooke and Mercy |
+| 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. The person's own empty draft of the type is filled as a new note would be, and the form says under Expand which of the two a tap will do. A finished note of the type is not one the list would open, so Expand makes a new note beside it (forms 6.4; unit F7) | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -4468,6 +4468,16 @@ online routes, have theirs at the head of `assign.ts` and of `handoff.ts`, on `R
 
 Row 30 came from unit F7, Expand on the phone. Its `PLAN-OPEN:` comment is on `expand`
 (`apps/mobile/lib/encounters/expand_quick.dart`).
+
+Rows 3, 4, 5, 9, 10, 11, 15, 16 and 30 were built with the phone's domain layer (units L4 and F7),
+and each now has its row in the plan's section 6, as every built default does. Their `PLAN-OPEN:`
+comments, in `apps/mobile/lib/encounters/`, are on `addNote` (row 3) and `startEncounter` (rows 11
+and 15) in `encounter_repository.dart`, on `untouchedDraftLifetime` (row 4) in `close_sweep.dart`,
+on the statement versions (row 5) in `complete.dart` and `encounter_api.dart`, and on `correct`
+(rows 9 and 10) in `note_actions.dart`; row 16's is on `problemListStatus`
+(`apps/mobile/lib/patients/problems.dart`). Besides row 30's, the domain layer added no
+`PLAN-OPEN:` comment of a question this table lacks: its other choices are the coordinator's
+decisions, recorded in the sections' as-built paragraphs.
 
 ### 12.2 Questions that need a person and have no default
 
