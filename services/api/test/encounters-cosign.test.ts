@@ -54,6 +54,16 @@ describe('phase 4: co-sign', () => {
   });
   afterAll(() => h.close());
 
+  const finishedBy = async (n: HeldNote) =>
+    (
+      await h.scratch.owner<{ completedAt: Date; completedBy: string }[]>`
+        select completed_at, completed_by from sineobex.encounter_notes where id = ${n.noteId}`
+    )[0];
+
+  // The world is shared by every test here, so a person's notices are read for one visit at a time.
+  const noticesAbout = async (userId: string, kind: string, encounterId: string) =>
+    (await noticesOf(h, userId, kind)).filter((n) => n.recordId === encounterId);
+
   const path = (encounterId: string) => `/v1/encounters/${encounterId}/cosign`;
   const unchanged = async (...notes: HeldNote[]) => {
     for (const n of notes) {
@@ -183,7 +193,7 @@ describe('phase 4: co-sign', () => {
       // The flags note matched, and is not signed either: all or nothing.
       await unchanged(v.flags, v.note);
       expect((await eventsAfter(h, mark)).filter((e) => e.action === 'note.cosigned')).toEqual([]);
-      expect(await noticesOf(h, w.sol.id, 'note_cosigned')).toEqual([]);
+      expect(await noticesAbout(w.sol.id, 'note_cosigned', v.visit.encounterId)).toEqual([]);
     });
 
     it('a visit the team does not have is 404; a body that is not one is 422', async () => {
@@ -207,6 +217,7 @@ describe('phase 4: co-sign', () => {
     it('an attending: a cosign sign-off for each note, the notes signed with nothing held, one event per note, one notice per author', async () => {
       const v = await waitingForCosign(w);
       const before = await noteRow(h, v.note.noteId);
+      const finished = await finishedBy(v.note);
       const mark = await auditMark(h);
       const r = await cosign(w, w.ana, v.visit.encounterId, [v.flags, v.note]);
       expect(r.status).toBe(200);
@@ -251,6 +262,17 @@ describe('phase 4: co-sign', () => {
         });
       }
       expect(await visitStatus(h, v.visit.encounterId)).toBe('signed');
+      // Who completed the note and when stay: the sync finds the signature that finished it by them
+      // (lifecycle 4.6). The status moved as a field does, so a phone that holds the note learns it.
+      expect(await finishedBy(v.note)).toEqual(finished);
+      const after = await noteRow(h, v.note.noteId);
+      expect(after.version).toBe(before.version + 1);
+      expect(after.fieldVersions.status).toBe((before.fieldVersions.status ?? 0) + 1);
+      expect(
+        await h.scratch.owner`
+          select value, previous_value as "previousValue", kind, changed_by as "changedBy" from sineobex.field_history
+          where record_id = ${v.note.noteId} and field = 'status' and version = ${after.fieldVersions.status!}`,
+      ).toEqual([{ value: 'signed', previousValue: 'completed', kind: 'set', changedBy: w.ana.id }]);
 
       const events = await expectAudit(h, 'note.cosigned', { after: mark, count: 2 });
       for (const [i, n] of [v.flags, v.note].entries()) {
@@ -267,7 +289,7 @@ describe('phase 4: co-sign', () => {
         });
       }
       // Each author is told once for the visit, with no text.
-      expect(await noticesOf(h, w.sol.id, 'note_cosigned')).toEqual([
+      expect(await noticesAbout(w.sol.id, 'note_cosigned', v.visit.encounterId)).toEqual([
         { entity: 'encounter', recordId: v.visit.encounterId },
       ]);
       await expectAuditClean(h, [...SECRETS, 'Ana (demo)', 'Sol (demo)'], mark);

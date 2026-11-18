@@ -97,6 +97,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/encounters/{encounterId}/cosign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Co-sign the visit’s notes that wait for a co-signer, all or nothing
+         * @description Lifecycle 5.3. The list holds every Medical note of the visit that waits for a co-signer and that the caller may act on, each with the contentHash of the visit read. A refusal names its notes in error.details.noteIds: 403 is_author, cannot_sign or cannot_see_all (logged); 409 not_waiting or content_changed, and the screen loads the visit again.
+         */
+        post: operations["cosignEncounter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/forms/note-types": {
         parameters: {
             query?: never;
@@ -1635,6 +1655,24 @@ export interface components {
             /** @enum {string} */
             teamStatus: "active" | "suspended";
         };
+        /** @description Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read */
+        NoteActInput: {
+            notes: {
+                /** @description The note’s contentHash from the visit read: what the person read (lifecycle 4.5) */
+                contentHash: string;
+                /** Format: uuid */
+                noteId: string;
+            }[];
+            statementVersion: string;
+        };
+        NoteActResult: {
+            notes: {
+                attestation: components["schemas"]["NoteAttestation"];
+                /** Format: uuid */
+                noteId: string;
+                status: components["schemas"]["NoteStatus"];
+            }[];
+        };
         /** @enum {string} */
         NoteAttestation: "not_needed" | "waiting" | "attested";
         /** @enum {string} */
@@ -2700,6 +2738,77 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cosignEncounter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteActInput"];
+            };
+        };
+        responses: {
+            /** @description Each note’s state now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteActResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,6 +1,7 @@
 import type { z } from '@hono/zod-openapi';
 import { createRoute } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
+import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
 import { EncounterParam, PatientParam, TimelinePage, TimelineQuery, VisitRead } from '../patients/schemas.ts';
@@ -44,6 +45,25 @@ const timelineRoute = createRoute({
   responses: { 200: { description: 'Earlier visits', ...json(TimelinePage) }, ...errors(401, 403, 404, 422) },
 });
 
+const cosignRoute = createRoute({
+  method: 'post',
+  path: '/v1/encounters/{encounterId}/cosign',
+  operationId: 'cosignEncounter',
+  tags: ['encounters'],
+  summary: 'Co-sign the visit’s notes that wait for a co-signer, all or nothing',
+  description:
+    'Lifecycle 5.3. The list holds every Medical note of the visit that waits for a co-signer and that the caller ' +
+    'may act on, each with the contentHash of the visit read. A refusal names its notes in error.details.noteIds: ' +
+    '403 is_author, cannot_sign or cannot_see_all (logged); 409 not_waiting or content_changed, and the screen ' +
+    'loads the visit again.',
+  security: [{ bearer: [] }],
+  request: { params: EncounterParam, body: { required: true, ...json(NoteActInput) } },
+  responses: {
+    200: { description: 'Each note’s state now', ...json(NoteActResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
@@ -54,5 +74,11 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
     const { patientId } = c.req.valid('param');
     return c.json(await earlierVisits(scope, patientId, c.req.valid('query').before), 200);
+  });
+
+  app.openapi(cosignRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['encounters.chart'] });
+    const { encounterId } = c.req.valid('param');
+    return c.json(await cosignVisit(scope, encounterId, c.req.valid('json'), c.req.routePath), 200);
   });
 }

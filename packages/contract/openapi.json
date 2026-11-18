@@ -2397,6 +2397,76 @@
         ],
         "type": "object"
       },
+      "NoteActInput": {
+        "additionalProperties": false,
+        "description": "Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read",
+        "properties": {
+          "notes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "contentHash": {
+                  "description": "The note’s contentHash from the visit read: what the person read (lifecycle 4.5)",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "noteId": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "noteId",
+                "contentHash"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "statementVersion": {
+            "pattern": "^[a-z0-9_.-]{1,40}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notes",
+          "statementVersion"
+        ],
+        "type": "object"
+      },
+      "NoteActResult": {
+        "properties": {
+          "notes": {
+            "items": {
+              "properties": {
+                "attestation": {
+                  "$ref": "#/components/schemas/NoteAttestation"
+                },
+                "noteId": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/NoteStatus"
+                }
+              },
+              "required": [
+                "noteId",
+                "status",
+                "attestation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes"
+        ],
+        "type": "object"
+      },
       "NoteAttestation": {
         "enum": [
           "not_needed",
@@ -5504,6 +5574,104 @@
           }
         ],
         "summary": "A visit as the reader may see it: its notes laid out for reading, and what hangs off them",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
+    "/v1/encounters/{encounterId}/cosign": {
+      "post": {
+        "description": "Lifecycle 5.3. The list holds every Medical note of the visit that waits for a co-signer and that the caller may act on, each with the contentHash of the visit read. A refusal names its notes in error.details.noteIds: 403 is_author, cannot_sign or cannot_see_all (logged); 409 not_waiting or content_changed, and the screen loads the visit again.",
+        "operationId": "cosignEncounter",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "encounterId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteActInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteActResult"
+                }
+              }
+            },
+            "description": "Each note’s state now"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Co-sign the visit’s notes that wait for a co-signer, all or nothing",
         "tags": [
           "encounters"
         ]

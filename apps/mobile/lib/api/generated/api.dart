@@ -3405,6 +3405,88 @@ class MyTeam {
       };
 }
 
+/// Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read
+class NoteActInput {
+  const NoteActInput({
+    required this.notes,
+    required this.statementVersion,
+  });
+
+  final List<NoteActInputNotesItem> notes;
+  final String statementVersion;
+
+  factory NoteActInput.fromJson(Map<String, dynamic> json) => NoteActInput(
+        notes: (json['notes'] as List<dynamic>).map((e) => NoteActInputNotesItem.fromJson(e as Map<String, dynamic>)).toList(),
+        statementVersion: json['statementVersion'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'notes': notes.map((e) => e.toJson()).toList(),
+        'statementVersion': statementVersion,
+      };
+}
+
+class NoteActInputNotesItem {
+  const NoteActInputNotesItem({
+    required this.contentHash,
+    required this.noteId,
+  });
+
+  /// The note’s contentHash from the visit read: what the person read (lifecycle 4.5)
+  final String contentHash;
+  final String noteId;
+
+  factory NoteActInputNotesItem.fromJson(Map<String, dynamic> json) => NoteActInputNotesItem(
+        contentHash: json['contentHash'] as String,
+        noteId: json['noteId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'contentHash': contentHash,
+        'noteId': noteId,
+      };
+}
+
+class NoteActResult {
+  const NoteActResult({
+    required this.notes,
+  });
+
+  final List<NoteActResultNotesItem> notes;
+
+  factory NoteActResult.fromJson(Map<String, dynamic> json) => NoteActResult(
+        notes: (json['notes'] as List<dynamic>).map((e) => NoteActResultNotesItem.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'notes': notes.map((e) => e.toJson()).toList(),
+      };
+}
+
+class NoteActResultNotesItem {
+  const NoteActResultNotesItem({
+    required this.attestation,
+    required this.noteId,
+    required this.status,
+  });
+
+  final NoteAttestation attestation;
+  final String noteId;
+  final NoteStatus status;
+
+  factory NoteActResultNotesItem.fromJson(Map<String, dynamic> json) => NoteActResultNotesItem(
+        attestation: NoteAttestation.fromJson(json['attestation'] as String),
+        noteId: json['noteId'] as String,
+        status: NoteStatus.fromJson(json['status'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'attestation': attestation.toJson(),
+        'noteId': noteId,
+        'status': status.toJson(),
+      };
+}
+
 class NoteTypeDefinition {
   const NoteTypeDefinition({
     required this.definition,
@@ -5981,6 +6063,12 @@ class SineobexApi {
   Future<PatientChart> correctIdentity({required String patientId, required IdentityCorrection body}) async {
     final json = await _transport.send('POST', '/v1/patients/${Uri.encodeComponent(patientId)}/corrections', body: body.toJson());
     return PatientChart.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Co-sign the visit’s notes that wait for a co-signer, all or nothing
+  Future<NoteActResult> cosignEncounter({required String encounterId, required NoteActInput body}) async {
+    final json = await _transport.send('POST', '/v1/encounters/${Uri.encodeComponent(encounterId)}/cosign', body: body.toJson());
+    return NoteActResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Create a custom role from existing permissions
