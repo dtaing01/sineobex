@@ -753,10 +753,11 @@ review): Complete is a plan, then a call.
   carrying the summary's sentence: the clock, `NoteChanged` ("This note changed. Read it again."),
   `needs_attention`, `incomplete`, `red_flags_first`, `not_author`, `empty` and `RecordLocked`. A
   sign-off the registry refuses is a fault of the app, and is thrown as it is.
-- **Open** (the review; not changed): a note the person removed (9.4), whose refused sign-off's
-  settling fix still waits to send, is the draft Add note opens again for its type. Until the fix
-  is sent, Complete stops that note as waiting to send, in a sentence about a Complete the person
-  did not make.
+- **A removed note whose fix waits** (the review; the coordinator's decision of Nov 18): a note the
+  person removed (9.4), whose refused sign-off's settling fix still waits to send, is not the draft
+  Add note opens again for its type, nor the one Expand fills: a new draft is made beside it. Opened
+  again and charted on, it would be stopped by Complete as waiting to send, in a sentence about a
+  Complete the person did not make; left empty, the fix settles the refusal at the next sync.
 
 ### 3.4 What a sign-off does
 
@@ -931,7 +932,9 @@ when" (PRD main 460).
   with the old values, the reason and who.
 - If every answer already holds its new value, the correction is stored as `no_change`.
 - If an answer changed since the person looked (another correction got there first), it is
-  refused with `field_changed`. The fix is to look again and correct again, or leave it (4.1).
+  refused with `field_changed`. The fix is to look again and correct again, or leave it (4.1). An
+  answer that is blank now, and that the person held no version of, has not changed for them: an
+  answer Complete dropped is one (D109, 4.7 step 6).
 - If the note would then fail its finish check, it is refused with `incomplete`: a correction
   can never leave a signed note without the consent a sensitive exam needs.
 - A correction that reaches a draft is applied as an edit to the draft. This happens only when
@@ -1005,13 +1008,16 @@ is frozen or the clock check fails (3.11):
   server holds already is still counted, which the phone cannot see, and that correction is refused
   `field_changed`: the store giving the version a correction saw would end the count (open, the
   store's).
-- **Open, the server's** (review finding LCM-1). Complete takes an answer that does not count off
-  the phone (4.8), and the server holds it blank at a version the phone never learns. A correction
-  that brings such an answer back is refused `field_changed` whatever version it sends, correcting
-  again cannot settle it, and while it waits in Needs attention hard stop 2 stops every later
-  Complete of the visit. The fix belongs to step 6 of the correction on the server
-  (`note-correction.ts`, the test server with a parity case): an answer whose value is blank, never
-  shown to the reader, does not count as moved, as the draft edit fills a blank (1.2).
+- **An answer Complete dropped** (review finding LCM-1, D109). Complete takes an answer that does
+  not count off the phone (4.8), and the server holds it blank at a version the phone never learns
+  (D107), so a correction that brings it back sends `baseVersion` 0. The server refused that
+  `field_changed`; correcting again sent 0 again, so the refusal could never settle, and while it
+  waited in Needs attention it kept the visit on the phone and hard stop 2 stopped every later
+  Complete of the visit. Step 6 now takes a change to an answer blank now that the sender held no
+  version of, as a draft edit fills a blank (4.7; `note-correction.ts` and the test server, with a
+  parity case). A refusal a phone already holds settles when **Correct again** sends the same
+  record with the versions now seen, 0 for that answer. A sender who held a version of an answer
+  blank now at a later one is still told `field_changed`.
 
 ### 3.7 Co-sign and attest
 
@@ -2087,7 +2093,11 @@ fails its own finish check.
   4. `declined` (only with `requestedByPatient`): the row is stored with `outcome: 'declined'`
      and the note is unchanged.
   5. Each `newValue` passes `checkAnswer`, else the correction is refused with that problem.
-  6. Each answer's version equals its `baseVersion`, else `field_changed`.
+  6. Each answer's version equals its `baseVersion`, else `field_changed`. An answer blank now
+     that the sender held no version of (`baseVersion` 0) is taken, as a draft edit fills a blank
+     (D109): an answer Complete dropped is blank at a version the note's read never sends (D107).
+     A sender who held a version of an answer now blank at a later one is still refused
+     `field_changed`, which tells them someone corrected it first.
   7. Every answer already holds its `newValue`: stored with `outcome: 'no_change'`.
   8. The forms part's `finishCheck` passes on the answers as they would be, else `incomplete`. A
      correction can never leave a signed note without, say, the consent a sensitive exam needs.
@@ -2155,10 +2165,10 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
   (review finding NOT-1); step 4 (a declined request is stored, the note unchanged, in any state);
   a finished note with no version is `definition_error`; step 5 (`checkAnswer`,
   `{ problem, field }`); the 1,000-answer bound (`too_many_fields`); step 2 (the draft edit);
-  step 6 (`field_changed` `{ field }`); step 7 (`no_change`); step 8 (`incomplete`); step 9. The
-  gates and a declined request come before the draft edit, unlike the order written above: a
-  draft edit changes a Medical note as any set of it does, and a declined request must never
-  edit a reopened note.
+  step 6 (`field_changed` `{ field }`, an answer blank now and never held by the sender taken,
+  D109); step 7 (`no_change`); step 8 (`incomplete`); step 9. The gates and a declined request come
+  before the draft edit, unlike the order written above: a draft edit changes a Medical note as any
+  set of it does, and a declined request must never edit a reopened note.
 - **The draft edit** cannot answer a conflict, being part of a create. Each answer the person saw
   is written as `set`, a blank as `filled_blank`, the same value not at all; one they did not see
   refuses the whole correction with `field_changed`, and nothing is written. It is stored
@@ -2166,9 +2176,9 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
 - **Step 9 as built**: the answers are written in one update, `app.note_correction` set to the
   loaded row's ID for that statement and reset to `''` after it; `correctionEffect` sets
   `status`, `attestation` and `signoff_id` in the same statement; a status that moves takes its
-  next version and a `set` history row, the answers `corrected` ones. Then the row, naming each
-  history row. Every correction's receipt is `accepted`, `serverVersion` 1,
-  `details: { outcome, status, attestation }`.
+  next version and a `set` history row, the answers `corrected` ones, an answer filled from blank
+  at step 6 included (its old value null, D109). Then the row, naming each history row. Every
+  correction's receipt is `accepted`, `serverVersion` 1, `details: { outcome, status, attestation }`.
 - **The corrector's credential** is `signedUnder`'s, with the claim, at the correction's time,
   `notBefore` from the note's create as for a sign-off. A correction carries no statement version
   (12.1 #24).
@@ -3661,11 +3671,13 @@ As built on the phone (the domain layer, unit L4, with its review):
   its visit has moved since to someone outside its patient's group (`onAnotherChart`), and each is
   logged as 10.1's table for the phone says.
 - **A visit read from the server or a chart's cache** gives its records as the server's snapshots
-  (`VisitView.records`, 9.7 as built). A problem's note names no patient, so the phone finds its
-  patient through its problem (`patientOfMadeAt`), among the visit's records or on the phone, and
-  never takes the visit's patient, which may not be its own (review finding LRA-1); one it cannot
-  find is logged with no patient. Open, the server's: the snapshot of a problem's note naming its
-  patient.
+  (`VisitView.records`, 9.7 as built). Each is logged on its own patient, never the visit's, which
+  may not be its own (review finding LRA-1). A problem's note names its problem's patient in its
+  snapshot (`attributes.patientId`, `problem-note.ts` and the test server, with a parity case), as
+  nothing else of it does, and `patientOfMadeAt` takes that first: the phone may hold the problem
+  under the chart it was read with. A note cached before the server named it is found through its
+  problem, among the visit's records or on the phone, and one it cannot find that way is logged with
+  no patient; the cache is fetched again at the next chart open online (5.2).
 
 ## 9. Screens
 
@@ -3773,7 +3785,9 @@ As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with i
   Medical, does not, and a new note is made. `another` makes a second note all the same (4.4,
   12.1 #3). A Medical note needs a Medical visit with a patient (3.10 as built). With a Medical
   note of the person's own, new or opened, the app adds their Red flags note (forms 6.2 as built).
-  An open edge of this rule is in 3.3 as built.
+  The person's own empty draft whose settling fix waits to send (a note removed while its refused
+  sign-off is settled, below) is not opened: a new draft is made, so Complete never tells the
+  person about a Complete they did not make (3.3 as built).
 - **Remove this note** (`removeNote`) is for whoever acts as the note's author, on a draft ("Only
   the note’s author can remove it."; a note finished as the phone knows it, or sent for review, is
   `RecordLocked`). It blanks every answer that holds anything, those a condition hides included, in
@@ -3898,8 +3912,8 @@ nothing of its own.
 
 Opened from the timeline or from Notes to finish. A draft the person may edit opens as the form
 (9.5). Everything else opens as the read view, drawn from a read model: the phone's own, for a
-visit it holds; the chart's `recentVisits`, offline, for the last three; the server's (5.1),
-online, for the rest (8.2). The view:
+visit it holds; else the chart's `recentVisits`, for the last three, online or not; else the
+server's (5.1), online, for the rest (8.2). The view:
 
 - The envelope: date and time ("time not verified" when it was not), place, Medical or
   Non-Medical, the assessment.
@@ -3932,13 +3946,13 @@ Offline reads are logged on the phone in the same local transaction (`encounter.
 As built (the phone's domain layer, unit L4, `encounter_repository.dart` and `encounter_api.dart`,
 with its review):
 
-- **Where a visit is read from.** `EncounterApi.openVisit` reads the phone's own copy
-  (`EncounterRepository.openVisit`), else the chart's cached recent visit (`recentVisit`), else the
-  server's read (`readVisit`, shown from memory: the phone keeps nothing of it); offline the last
-  says "This visit isn’t on this phone. Connect to open it.". It reads a cached recent visit before
-  the server even with signal, where the first paragraph reads `recentVisits` offline (open, the
-  coordinator's to confirm): the cache is fetched again each time the chart opens online, and
-  Co-sign and Attest read the visit online first (5 as built), so nothing is signed from it.
+- **Where a visit is read from**, in this order, decided as built: `EncounterApi.openVisit` reads
+  the phone's own copy (`EncounterRepository.openVisit`), else the chart's cached recent visit
+  (`recentVisit`), with signal or without, else the server's read (`readVisit`, shown from memory:
+  the phone keeps nothing of it); offline the last says "This visit isn’t on this phone. Connect to
+  open it.". The cache is fetched again each time the chart opens online (5.2), so it is as old as
+  the chart on screen, and Co-sign and Attest read the visit online first (5 as built), so nothing
+  is signed from it.
 - **One read model** (`VisitView`, `NoteView`) whatever the source: `visitFromRead` turns the
   server's read, or a cached recent visit, into the read model the phone's own read gives, with the
   server's laid-out note (`read`), each note's recap lines (`VisitNote.recap`, D108), the Red flags
@@ -4339,7 +4353,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
 | A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts` ("the encounter’s fields", "a finished note, and its reopen"); parity cases 2 and 5 |
 | Reopen | 3.6, 4.4 | `sync-encounters.test.ts` ("the reopen: a set of status to draft"); parity case 6 |
-| Corrections, and what happens to the signature after one | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7"); parity case 10 |
+| Corrections, and what happens to the signature after one; an answer blank now and never held by the sender is taken, one held is `field_changed` (D109) | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7", with "6. an answer Complete dropped, blank now, is corrected from blank by someone who held no version of it; one who held one is still told field_changed (D109)"); parity case 10, and the parity case of that name |
 | Addenda | 3.6, 4.7 | `sync-corrections.test.ts` ("addenda"); parity case 9 |
 | What an addendum and a correction name: a note of the visit, a sign-off of the note | 4.1, 4.7 | `sync-corrections.test.ts`; parity "what an addendum and a correction name" |
 | Referrals, and a visit of another patient | 4.7, 8.3 | `services/api/test/sync-referrals.test.ts`; `sync-encounters.test.ts` ("an allergy and a problem’s note made at a visit", "a problem made at a visit"); parity case 11 |
@@ -4376,18 +4390,19 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | Every action writes its audit event in the same transaction, with no answer in it | 10.1 | `expectAudit` and `expectAuditClean` in each API test above (`services/api/test/patient-fixtures.ts`), and in the encounters tests `eventsAfter` and `expectNoneOf` (`services/api/test/encounters-fixtures.ts`) |
 | A visit read offline is logged or refused | 9.7 | `apps/mobile/test/encounters/visit_read_test.dart` (the rows below) |
 | A visit read from the phone: each record logged in the read's transaction, only what a re-read adds, nothing while frozen, never paused for the clock; what each reader sees; notes in the order the server made them, people named as their records name them (D108); the state as the phone knows it | 5.1, 6.4, 9.7, 10.1 | `visit_read_test.dart` (groups "what a read logs (lifecycle 9.7, 10.1)", "who and when, as the sync read gives them (D108)", "what the reader sees (lifecycle 6.4)", "the state as this phone knows it (lifecycle 3.1, 4.8)"); the Dart copies of the read rules in `visibility_test.dart`, held to the test server's copies and the API's named cases, and of the credential table in `credentials_test.dart`, held to `permissions.ts` and the portal's `labels.ts` |
-| Start, Switch to Medical, the note types offered, a draft of the type opened, Remove this note all or nothing | 3.10, 9.2 to 9.4 | `start_test.dart` (groups "Start (lifecycle 9.2, 9.3)", "Switch to Medical (lifecycle 3.10, 9.3)", "Note types (lifecycle 6.2, 9.4)", "Remove this note (lifecycle 3.1, 3.4, 9.4)") |
+| Start, Switch to Medical, the note types offered, a draft of the type opened, but not a removed note whose fix waits to send; Remove this note all or nothing | 3.3, 3.10, 9.2 to 9.4 | `start_test.dart` (groups "Start (lifecycle 9.2, 9.3)", "Switch to Medical (lifecycle 3.10, 9.3)", "Note types (lifecycle 6.2, 9.4)", "Remove this note (lifecycle 3.1, 3.4, 9.4)") |
 | An answer checked, saved, and not sent when it changes nothing; read-only where the server would hold it, an ordering credential's section to its author too; a cleared answer waiting to send; a conflict's values, the one Use my value sends, and none the reader may not see | 9.5; forms 8.1 | `note_answers_test.dart` (groups "what the person may not change is read-only to them (lifecycle 6.4 rule 5, 9.5)" and "two people changed one answer (forms 8.1, lifecycle 9.5)"; "a teammate helping on a draft sees their own cleared answer waiting to send (review LFM-3)", "Keep theirs, then a new conflict: “Your value” is the value the choice carried, which Use my value sends (review LFM-1)"); the field host's side in `apps/mobile/test/features/forms/field_host_test.dart` ("“Your value” is the value the choice would send, when the domain layer gives one (review LFM-1)", "a diagnosis’s one choice shows the values the choices would send (review LFM-1)") |
 | Complete's plan and call: what it finishes, the act and the button by credential, the signing sentence, settle-only notes, each stop, each refusal worded, the recap from the read that hashed it; the assessment | 3.3, 3.5, 9.6 | `complete_test.dart` (groups "what Complete finishes, and how (lifecycle 3.3, 3.5)", "what stops Complete (lifecycle 3.3, 9.6)", "Complete, and each refusal worded for the summary (lifecycle 4.8, 9.6)", "the assessment (lifecycle 3.1, 9.6)"; "the summary draws each note’s recap from the read that hashed it (review LCM-7)") |
-| Reopen, addenda and corrections, offered and refused as the server would take them; a correction's version, after Keep theirs and on a note expanded before its sync; a teammate's note the reader may not read; a note that has left the phone | 3.6, 4.7 | `note_actions_test.dart` (groups "Reopen (lifecycle 3.6, 4.4)", "Addenda (lifecycle 3.6, 4.7)", "a teammate’s note the person may not read (lifecycle 6.4)", "Corrections (lifecycle 3.6, 4.7)", "a note that has left the phone (lifecycle 4.8, 8.2)"); `expand_quick_test.dart` ("a correction of the full note before its sync reads each answer at the version its create gave it (review LCM-5)") |
+| Reopen, addenda and corrections, offered and refused as the server would take them; a correction's version, after Keep theirs and on a note expanded before its sync; an answer Complete dropped, corrected back, and a refusal of one made before D109 settled by Correct again; a teammate's note the reader may not read; a note that has left the phone | 3.6, 4.7 | `note_actions_test.dart` (groups "Reopen (lifecycle 3.6, 4.4)", "Addenda (lifecycle 3.6, 4.7)", "a teammate’s note the person may not read (lifecycle 6.4)", "Corrections (lifecycle 3.6, 4.7)", "a note that has left the phone (lifecycle 4.8, 8.2)"); `expand_quick_test.dart` ("a correction of the full note before its sync reads each answer at the version its create gave it (review LCM-5)") |
 | The close sweep: what leaves the phone and what stays, a Medical visit's finished notes while a draft of it stays, the 7 days by a verified clock; the services made for each team, the sweep after every sync | 3.2, 8.2 | `close_sweep_test.dart` (groups "a finished note leaves the phone (lifecycle 8.2)" and "a draft stays until it is finished, or untouched for 7 days (lifecycle 3.2)"); `encounter_services_test.dart`; the shared app harness in `app_wiring_test.dart` |
 | The Red flags note: added with a person's Medical note in the same change, and when their Medical draft opens again; never a second; none for a teammate's draft; added by the summary at hard stop 5; shown last | 3.3; forms 6.2 | `red_flags_test.dart` (groups "the app adds the Red flags note (forms 6.2)", "hard stop 5 (lifecycle 3.3)", "where it shows (forms 6.2)") |
-| Expand: the parts offered, what is written and what is left out, an ordering credential's part not carried, a draft of the type opened as it is (12.1 #30), the Red flags note it brings, what it refuses; the control and its words | forms 6.4 | `expand_quick_test.dart` (groups "the parts a quick form offers to expand (forms 6.4)" and "Expand (forms 6.4)"); `apps/mobile/test/features/forms/note_form_expand_test.dart` |
+| Expand: the parts offered, what is written and what is left out, an ordering credential's part not carried, a draft of the type opened as it is and a finished one read-only (12.1 #30), the Red flags note it brings, and none when the visit read shows a finished one, what it refuses; the control and its words | forms 6.4 | `expand_quick_test.dart` (groups "the parts a quick form offers to expand (forms 6.4)" and "Expand (forms 6.4)"); `apps/mobile/test/features/forms/note_form_expand_test.dart` |
 | Add to the problem list: under a diagnosis, the status mapped, the same problem coming back, a sensitive Resolved problem asked of a reader who may see it only | 8.3 | `problem_list_test.dart`; `apps/mobile/test/features/forms/problem_field_list_test.dart` |
 | A problem, a problem's note and an allergy name their visit, and another patient's visit is refused here; "at a visit" only while the visit is the group's | 8.3, 8.4 | `apps/mobile/test/patients/problems_test.dart`; `referrals_test.dart` ("a visit the phone doesn’t hold is “a visit” of the chart only when the chart lists it as the group’s (review LRA-3)") |
+| A problem's note names its problem's patient in its snapshot, and the phone logs a read of it on that patient (review finding LRA-1) | 8.4, 10.1 | `services/api/test/problems-sync.test.ts` ("a note on a problem names the problem’s patient in its snapshot (lifecycle 8.4, review LRA-1)"); `encounters-read.test.ts` ("lists them, whichever chart they are on, as the chart would show them to the reader"); the parity case "a note on a problem names the problem’s patient in its snapshot"; `encounter_api_test.dart` ("a problem’s note that names its patient, as the server snapshots one now, is logged on that patient before its problem is asked (review LRA-1)") |
 | Referrals: the list and its log, Add referral and Entered in error, at a visit | 7, 9.10 | `referrals_test.dart` (groups "the list (lifecycle 7, 9.10)", "on whose chart, at which visit (lifecycle 8.4)", "Add referral (lifecycle 4.7, 9.10)", "at a visit (lifecycle 7, 8.4, 9.7)", "Entered in error (lifecycle 4.7, 7)") |
 | The records made at a visit the phone holds: by kind, as each chart shows them, each logged once on its own patient; on another chart once the visit moved | 8.4, 9.7 | `visit_records_test.dart` |
-| The online calls: a visit read from the server, a cached recent visit logged on each record's own patient, the recap lines (D108), Co-sign and Attest planned by the server's rules and only on a visit read online, each refusal worded, the queues and Home's tiles | 5, 9.7, 9.9 | `encounter_api_test.dart` (groups "a visit read online (lifecycle 5.1, 8.2, 9.7)", "co-sign and attest (lifecycle 3.7, 5.3, 5.4, 9.7, 9.9)", "the queues and Home’s counts (lifecycle 5.4, 5.6, 9.9)"; "a recent visit logs each addendum and correction of its notes, and each record made at it on that record’s own patient, the visit moved or not (review LRA-1, LRA-2)"), against scripted answers (`scripted_api.dart`); against the real API, `live_domain_test.dart`, which `tools/live-sync.sh` runs: Expand and Complete with the Red flags note the app added, co-sign, attest, notes to finish, Home's counts and earlier visits |
+| The online calls: a visit read from the server, a cached recent visit logged on each record's own patient, the recap lines (D108), Co-sign and Attest planned by the server's rules and only on a visit read online, each refusal worded, the queues and Home's tiles | 5, 9.7, 9.9 | `encounter_api_test.dart` (groups "a visit read online (lifecycle 5.1, 8.2, 9.7)", "co-sign and attest (lifecycle 3.7, 5.3, 5.4, 9.7, 9.9)", "the queues and Home’s counts (lifecycle 5.4, 5.6, 9.9)"; "a recent visit logs each addendum and correction of its notes, and each record made at it on that record’s own patient, the visit moved or not (review LRA-1, LRA-2)"), against scripted answers (`scripted_api.dart`); against the real API, `live_domain_test.dart`, which `tools/live-sync.sh` runs: Expand and Complete with the Red flags note the app added, a correction of an answer Complete dropped (D109), co-sign, attest, notes to finish, Home's counts and earlier visits |
 | Notes to finish: the phone's drafts merged with the server's list, logged; Home's tile | 3.9, 9.9 | `notes_to_finish_test.dart` |
 | The timeline: the chart's list merged with the phone's visits, a note hidden from the reader left out though the chart lists it, the filter, earlier visits | 5.2, 9.1 | `timeline_test.dart` |
 | The cached chart: its timeline, last visits and referrals kept and replaced whole; one cached before D108 still opens offline | 5.2 | `apps/mobile/test/patients/chart_cache_test.dart` ("a chart keeps its timeline, its last visits and the group’s referrals, offline, for its 24 hours", "a refresh replaces them whole, so they follow a role or credential change; offline, they stay"); `cached_chart_test.dart`; against the real API, `apps/mobile/test/patients/live_patients_test.dart` ("a problem added at a visit reaches the chart as made there; the chart keeps the visit offline") |
@@ -4456,7 +4471,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 27 | What of the patient does the EMS handoff PDF's header carry? (forms 10.1 #6 says the summary's comes from the chart) | Their preferred name, their age in years and their allergies, from their chart as the exporter may see it, the allergies worded as the phone's allergy badge words them; never the legal name or the birth date. The file's name and metadata name no patient (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
-| 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. The person's own empty draft of the type is filled as a new note would be, and the form says under Expand which of the two a tap will do. A finished note of the type is not one the list would open, so Expand makes a new note beside it (forms 6.4; unit F7) | Brooke and Mercy |
+| 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's) opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`

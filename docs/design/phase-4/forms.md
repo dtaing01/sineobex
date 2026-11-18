@@ -1384,7 +1384,8 @@ As built on the phone (unit F7, `apps/mobile/lib/encounters/expand_quick.dart` a
   into given a new entry at an ID no answer of the note uses, in the form's format, at the phone's
   clock, as the form's Add makes one. What the full version does not take comes back as `leftOut`,
   with the quick field's label, for the person to be told (10.1 #12). A Medical full note brings
-  the person's own Red flags note (6.2 as built).
+  the person's own Red flags note (6.2 as built), unless the visit has a finished one: on the phone,
+  or, as Add note takes it, in the visit read online or from the cached chart (`redFlagsFinished`).
 - **What it refuses or leaves.** It refuses, writing nothing, what Add note refuses of a Medical
   note (`not_charting`, `medical_credential`, `not_offered`, `medical_note_needs_patient`), and
   `read_only` when an answer to write is one the server would hold from the person, which only an
@@ -1394,18 +1395,21 @@ As built on the phone (unit F7, `apps/mobile/lib/encounters/expand_quick.dart` a
   mapping nothing.
 - **A note of the type in the visit already** (lifecycle 12.1 #30). The draft the note types list
   would open (Add note's rule: the person's own first, then a teammate's they may see) opens as it
-  is, nothing copied (`existing`), unless it is the person's own and empty, which is filled by its
-  own version as a new note would be; a Medical draft of their own opened so gets their Red flags
-  note if they have none. `expandOpensAsItIs` tells the form beforehand, so the line under the
-  button says what a tap will do (review finding LFM-5). A finished note of the type is not one the
-  list would open, so Expand makes a new note beside it, carrying the same answers again; the review
-  left this to the coordinator.
+  is, nothing copied (`existing`), unless it is the person's own and empty; a Medical draft of their
+  own opened so gets their Red flags note if they have none. Else the first finished note of the
+  type, in the visit's order, that the person may see, their own or a teammate's, opens read-only
+  and nothing is copied (`existing` and `finished`; the coordinator's decision of Nov 18): carrying
+  the same answers into a second note would chart the wound or the vitals twice, and an addendum or
+  a correction adds to the finished one. Only then is the person's own empty draft filled, by its
+  own version, as a new note would be. `expandOpensAsItIs` tells the form beforehand, so the line
+  under the button says what a tap will do (review finding LFM-5).
 - **The control.** `NoteForm` takes an `ExpandHandler`, which gives each part its `ExpandOffer`s
   (the full type's title, what a tap does, and whether it opens a note already there). Each is a
   button, "Expand into {title}", heard as "Expand into {title}, from {part}", the visible words
   first (review finding LFM-2), with one line under it: "Its answers are copied into a full note.
-  This quick note keeps them.", or "Opens the {title} note already in this visit. Nothing is
-  copied.". It is not drawn on a read-only form, and a second tap while the first runs does nothing.
+  This quick note keeps them.", or, for a draft that opens as it is or a finished note, "Opens the
+  {title} note already in this visit. Nothing is copied.". It is not drawn on a read-only form, and
+  a second tap while the first runs does nothing.
 
 ### 6.5 Sexual and reproductive branching
 
