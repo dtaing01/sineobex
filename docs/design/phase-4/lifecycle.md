@@ -713,17 +713,17 @@ nothing and settles the refusal (3.4).
 As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/complete.dart`, with its
 review): Complete is a plan, then a call.
 
-- **The plan.** `openComplete(encounterId, redFlagsFinished:)` loads the definitions of the
-  visit's notes, offline too, and gives the summary screen a `CompletePlan` (`readComplete` is the
-  same, the definitions loaded): the notes Complete finishes, in the visit's order with the Red
-  flags note last (the store sends it first); for each, the hash of what the phone holds
-  (`contentHashOf`), its recap lines worked out in the same read (9.6), its act by the table above
-  (`sign` for a Medical note when the saved profile's credential signs, else `complete`) and its
-  statement version (`sign-2026-11` or `complete-2026-11`, 12.1 #5 and #23); the button's wording;
-  the signing sentence when a note will be signed (3.5); the teammates' drafts that stay drafts,
-  each named as its note names whoever acts as its author (D108); the person's notes sent for
-  review; and what stops Complete, each a line with the note, the section and the answer it jumps
-  to.
+- **The plan.** `openComplete(encounterId, redFlagsFinished:)` loads the definitions of the visit's
+  notes, offline too, and gives the summary screen a `CompletePlan` (`readComplete` is the same, the
+  definitions loaded): the notes Complete finishes, in the visit's order with the Red flags note
+  last (the store sends it first); for each, the hash of what the phone holds (`contentHashOf`), its
+  recap lines worked out in the same read (9.6), its act by the table above (`sign` for a Medical
+  note when the saved profile's credential signs, else `complete`) and its statement version
+  (`sign-2026-11` or `complete-2026-11`, 12.1 #5 and #23); the button's wording; the signing
+  sentence when a note will be signed (3.5); the teammates' drafts that stay drafts, each named as
+  its note names whoever acts as its author (D108); the person's notes sent for review; and what
+  stops Complete, each a line naming the note it is about and, for a missing answer, the section and
+  the answer to open.
 - **What it finishes**, besides the drafts of the first paragraph: the person's own Red flags note
   while it is still an empty draft, when a Medical note is finished and the visit has no finished
   one, so its finish check asks the red-flag question (hard stop 5, forms 6.2); and each note of
@@ -997,13 +997,14 @@ is frozen or the clock check fails (3.11):
   8.2); offline the action says "This note isn’t on this phone. Connect, then try again.".
 - **The correction's `baseVersion`** for each answer is the version the person read, the one the
   server will hold once this phone's own waiting changes are applied: a confirmed answer's server
-  version; otherwise a count, the note's create writing each of its answers at version 1 and each
-  set waiting here adding one, but a Keep theirs choice (`keep_server`), which the server takes at
-  the version it holds (review finding LCM-3). An answer never written is at 0. The phone's copy
-  alone gave 0 for a note whose create had not been sent, which the server refused `field_changed`.
-  A set waiting here whose value is the one the server holds already is still counted, which the
-  phone cannot see, and that correction is refused `field_changed`: the store giving the version a
-  correction saw would end the count (open, the store's).
+  version; otherwise that version and one more for each change waiting here that writes the answer,
+  the note's create (which writes each of its answers at version 1) and each set, but a Keep theirs
+  choice (`keep_server`), which the server takes at the version it holds (review finding LCM-3). An
+  answer never written is at 0. The phone's copy alone gave 0 for a note whose create had not been
+  sent, which the server refused `field_changed`. A set waiting here whose value is the one the
+  server holds already is still counted, which the phone cannot see, and that correction is refused
+  `field_changed`: the store giving the version a correction saw would end the count (open, the
+  store's).
 - **Open, the server's** (review finding LCM-1). Complete takes an answer that does not count off
   the phone (4.8), and the server holds it blank at a version the phone never learns. A correction
   that brings such an answer back is refused `field_changed` whatever version it sends, correcting
@@ -1095,18 +1096,18 @@ Admin" (PRD main 99).
 - A visit charted on the wrong patient after a note is finished has no fix in the app in this
   phase (12.2, question 5).
 
-As built on the phone (the domain layer, unit L4, `encounter_repository.dart`, with its review):
-a Medical visit names its patient from the start. Start refuses, writing nothing, a Medical visit
-with no patient (`medical_note_needs_patient`, "A clinical note needs a patient. Choose who this
-visit is for."): the design said only that Switch to Medical asks for the patient first (9.3), and
-Start follows the same rule, since a Medical visit is there for its clinical notes (12.1 #11).
-**Switch to Medical** on a visit with no patient takes the patient with it, both set in one
-transaction, and refuses a patient other than the visit's own; on a Medical visit it sends
-nothing. A Medical note is refused on a Non-Medical visit (`not_offered`, "Switch this visit to
-Medical to add a clinical note.") and on a visit with no patient, as the server refuses it. Each
-refuses a role without `encounters.chart` and, for Medical, a credential that doesn't chart Medical
-(`not_charting`, `medical_credential`): the server would hold either for a Program Admin, which
-the person could never fix (4.2), where the design only hides such an action (6.2).
+As built on the phone (the domain layer, unit L4, `encounter_repository.dart`, with its review): a
+Medical visit names its patient from the start. Start refuses, writing nothing, a Medical visit with
+no patient (`medical_note_needs_patient`, "A clinical note needs a patient. Choose who this visit is
+for."): the design said only that Switch to Medical asks for the patient first (9.3), and Start
+follows the same rule, since a Medical visit is there for its clinical notes (12.1 #11). **Switch to
+Medical** on a visit with no patient takes the patient with it, both set in one transaction, and
+refuses a patient other than the visit's own; on a Medical visit it sends nothing. A Medical note is
+refused on a Non-Medical visit (`not_offered`, "Switch this visit to Medical to add a clinical
+note."), which offers Non-Medical note types only, and, as the server refuses it, on a visit with no
+patient. Each refuses a role without `encounters.chart` and, for Medical, a credential that doesn't
+chart Medical (`not_charting`, `medical_credential`): the server would hold either for a Program
+Admin, which the person could never fix (4.2), where the design only hides such an action (6.2).
 
 ### 3.11 The clock pause
 
@@ -2735,9 +2736,11 @@ rule (5.3, 5.4). Co-sign and attest read the caller's membership again once the 
 theirs (5.3).
 
 As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/encounter_api.dart`,
-with its review): `EncounterApi` calls these routes, but the handoff's, through the generated
-client, as the person in the open team, and asks nothing while the store is frozen. Each answer
-becomes what a screen draws (a visit through `visitFromRead`, 9.7 as built) and each refusal an
+with its review): `EncounterApi` calls, through the generated client and as the person in the open
+team, the routes the phone uses: the visit read, earlier visits, co-sign, attest, the two queues,
+the person's notes to finish and Home's counts (assigning, the team's incomplete notes and the
+handoff are the portal's). It asks nothing while the store is frozen. Each answer becomes what a
+screen draws (a visit through `visitFromRead`, 9.7 as built) and each refusal an
 `EncounterRequestFailed`, with the sentence the screen shows, the server's code and the notes a
 co-sign's or an attest's refusal names. No signal gives each call's own sentence ("Connect to
 co-sign.", "This visit isn’t on this phone. Connect to open it."); a 401, or a 403
@@ -3535,13 +3538,13 @@ As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/cl
   keeps its own, in the store's key-value table (`encounters.close_sweep.seen`): for each open draft
   and visit a fingerprint, a hash of its status and of each field's version and waiting change,
   never a value, and when a sweep first saw it so. A change of the person's own and a teammate's
-  brought in by a refresh both change it. The 7 days run from the first sweep that sees a record
-  as it is now, so the first sweep after an update gives every draft 7 more days, which only keeps
-  it longer, and an unreadable record is counted from now. Only a verified clock counts (review
-  finding LCM-6): the sweep takes the clock check's corrected time, none while the check has no
-  reference (a phone restarted offline, whose own clock could be days off); then nothing is
-  released for its age, no time is recorded and what was seen before is kept, while finished notes
-  still close.
+  brought in by a refresh both change it. The 7 days run from the first sweep that sees a record as
+  it is now, so the first sweep after an update gives every draft 7 more days, which only keeps it
+  longer; should its own record not read, every record is counted from now. Only a verified clock
+  counts (review finding LCM-6): the sweep takes the clock check's corrected time, none while the
+  check has no reference (a phone restarted offline, whose own clock could be days off); then
+  nothing is released for its age, no time is recorded and what was seen before is kept, while
+  finished notes still close.
 - **The services** (`EncounterServices`) are made once for each team database the app opens, by
   the sync controller's refresher factory (`appRefreshers`, `apps/mobile/lib/app_providers.dart`),
   beside phase 3's patient services, as the shared app test harness makes them too: one repository,
@@ -3865,15 +3868,15 @@ says so: "{name}'s note stays a draft until they complete it." After Complete, t
 
 As built (the phone's domain layer, unit L4, `complete.dart`; 3.3 as built): the summary is drawn
 from Complete's plan, not from a read of its own, so it shows what Complete will sign: each note's
-recap from the plan (item 1); the lines that stop Complete (item 6), each jumping to its note's
-section (`CompleteBlock.section`, the form's `openSection`); the signing sentence (item 7) from
-`CompletePlan.signingSentence`, "By completing, you sign this note as {name}, {credential}.", with
-the name the saved profile has (`EncounterUser.displayName`) and the credential in words as the
-portal words it (`credentialText`, which moved from the forms part's read view to
+recap from the plan (item 1); the lines that stop Complete (item 6), each naming its note and, for a
+missing answer, the section to open (`CompleteBlock.section`, the form's `openSection`); the signing
+sentence (item 7) from `CompletePlan.signingSentence`, "By completing, you sign this note as {name},
+{credential}.", with the name the saved profile has (`EncounterUser.displayName`) and the credential
+in words as the portal words it (`credentialText`, which moved from the forms part's read view to
 `apps/mobile/lib/encounters/credentials.dart`), a credential this app doesn't know left out rather
 than shown as a code; and the button (item 8). A teammate's draft is named by the name its note
-carries (D108). The summary logs what it shows through the visit's read (`openVisit`); the plan
-logs nothing of its own.
+carries (D108). The summary logs what it shows through the visit's read (`openVisit`); the plan logs
+nothing of its own.
 
 - **The assessment** (item 2) is saved by `saveSummary` as it is typed: trimmed, cleared when
   blank, and the same text not sent again. It refuses, writing nothing, a Medical visit's

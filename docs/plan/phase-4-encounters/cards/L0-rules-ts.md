@@ -9,7 +9,7 @@ file expects for every case.
 
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md` lines 1158-1281 (section 3.12, from the types the ten
+- `docs/design/phase-4/lifecycle.md` lines 1159-1282 (section 3.12, from the types the ten
   functions share to `isOverdue`): every signature, and the order of each function's checks.
 - `services/api/test/encounter-rules.test.ts`, all of it (about 60 lines) (made by L0-vectors):
   how the functions are called.
