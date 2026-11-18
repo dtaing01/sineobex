@@ -7,6 +7,7 @@ library;
 import '../forms/visible.dart';
 import '../patients/access.dart';
 import '../patients/generated/sensitive_codes.dart';
+import '../sync/local_store.dart' show Signer;
 
 /// What a credential may do (services/api/src/auth/permissions.ts `CredentialCapabilities`, less
 /// the rank, which only the server's credential change reads).
@@ -54,6 +55,11 @@ class EncounterUser {
 
   /// Charts: starts visits, adds notes, changes drafts (lifecycle 3.1, the draft rule).
   bool get charts => permissions.contains('encounters.chart');
+
+  /// The person as Complete names them to the store (lifecycle 3.3, 3.5, 4.8), from the saved
+  /// profile: the credential a `sign` claims, whether it signs, and whether its signature waits for
+  /// an attending. The server decides again from the membership it holds.
+  Signer get signer => Signer(credential: credential, canSign: can.sign, needsAttestation: can.billingNeedsAttestation);
 
   /// The person as `visibleAnswers` reads them (records.ts noteReader): their keys and their
   /// credential now, and whether they act as the note's author (lifecycle 3.8).

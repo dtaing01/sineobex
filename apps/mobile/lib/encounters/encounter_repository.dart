@@ -1,9 +1,12 @@
+import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
+import '../forms/field_at.dart' show fieldAt;
 import '../forms/forms_api.dart' show NoteTypeVersion;
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
 import '../forms/visible.dart';
+import '../sync/canonical_json.dart';
 import '../sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
 import '../sync/local_store.dart';
 import 'credentials.dart';
@@ -96,7 +99,9 @@ class EncounterRepository {
   }
 
   /// One note, as the person may see it, with what hangs off it; null when the phone holds no such
-  /// note or the person may not see it. The visit itself is not read, nor logged.
+  /// note or the person may not see it. The visit itself is not read, nor logged. An empty draft,
+  /// which no list shows (3.1), opens here for whoever acts as its author: it is the form of a note
+  /// just added, or of one they removed and add again (9.4).
   Future<NoteView?> openNote(String noteId, {Set<String> shownBefore = const {}}) async {
     _guardFrozen();
     final rec = store.record(noteId);
@@ -113,12 +118,336 @@ class EncounterRepository {
       if (rec == null || rec.entity != entityNote) return null;
       final held = _Held.scan(store, noteId: noteId);
       final shown = <_Shown>[];
-      final view = _note(rec, held, shown);
+      final view = _note(rec, held, shown, ownEmptyShown: true);
       final visit = held.visit;
       _log(shown, visit == null ? null : _patientOf(visit), shownBefore);
       return view;
     });
   }
+
+  // ---- starting a visit, its notes, and their answers ----
+
+  /// Whether Start asks "Medical or Non-Medical" (lifecycle 9.3): a credential that can't chart
+  /// Medical is not asked, and its visits start Non-Medical (6.2).
+  bool get asksKind => user.charts && user.can.chartMedical;
+
+  /// The note types to offer in a visit of [kind] (lifecycle 6.2, 9.4), from the team's list
+  /// [listed], in its order: every type in a Medical visit and the Non-Medical ones in a Non-Medical
+  /// visit; to a credential that can't chart Medical, the Non-Medical ones in any visit. The Red
+  /// flags note is not among them: the app adds it (forms 6.2).
+  List<NoteTypeDef> noteTypesOffered(Iterable<NoteTypeDef> listed, VisitKind kind) => [
+    if (user.charts)
+      for (final type in listed)
+        if (type.auto == null && (!isMedicalType(type) || (kind == VisitKind.medical && user.can.chartMedical))) type,
+  ];
+
+  /// **New encounter** (lifecycle 9.2, 9.3): a visit of [kind] for [patientId] (none for someone who
+  /// declines to be registered, 3.10), at the place typed ([locationText], trimmed; blank is none)
+  /// and the one the phone gave on **Use my location** ([location]). Returns its ID.
+  ///
+  /// Throws, writing nothing: [ChartingPaused] while the clock check fails or the store is frozen;
+  /// a [LocalValidationError] for someone whose role doesn't chart (`not_charting`), for a Medical
+  /// visit from a credential that can't chart Medical (`medical_credential`) or with no patient
+  /// (`medical_note_needs_patient`: a Medical visit is for its clinical notes, and those need a
+  /// chart, 12.1 #11; Switch to Medical asks who the patient is first, 9.3).
+  ///
+  /// PLAN-OPEN: can a Medical note be written for someone who is not registered (lifecycle 12.1
+  /// #11)? No: a Medical visit names its patient here, and the server refuses a Medical note on a
+  /// visit with none.
+  /// PLAN-OPEN: is the GPS position stored, and how exact (lifecycle 12.1 #15)? Only on the tap, and
+  /// as the phone gave it.
+  String startEncounter({
+    required VisitKind kind,
+    String? patientId,
+    String? locationText,
+    Map<String, Object?>? location,
+  }) {
+    _guardFrozen();
+    _mayChart(medical: kind == VisitKind.medical);
+    if (kind == VisitKind.medical && patientId == null) throw _needsPatient;
+    final place = locationText?.trim();
+    final id = store.createEncounter(
+      kind: kind.code,
+      patientId: patientId,
+      location: location,
+      locationText: place == null || place.isEmpty ? null : place,
+    );
+    onChanged?.call();
+    return id;
+  }
+
+  /// **Switch to Medical** (lifecycle 3.10, 9.3): the visit's kind set to Medical, every answer kept.
+  /// A visit with no patient is given [patientId] with it, in one transaction; without one it throws
+  /// `medical_note_needs_patient` and the screen asks who the patient is. Nothing is sent for a visit
+  /// that is Medical already. There is no switch back.
+  ///
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
+  /// [startEncounter]; an [ArgumentError] for a [patientId] other than the visit's own.
+  void switchToMedical(String encounterId, {String? patientId}) {
+    _guardFrozen();
+    _mayChart(medical: true);
+    final visit = _visit(encounterId);
+    final current = visit.fields['patientId']?.value as String?;
+    if (current != null && patientId != null && patientId != current) {
+      throw ArgumentError('the visit has a patient: change it on its own');
+    }
+    if (VisitKind.fromCode(visit.fields['kind']?.value) == VisitKind.medical) return;
+    if (current == null && patientId == null) throw _needsPatient;
+    store.transaction(() {
+      // A patient is given to a visit with none at any time, its notes finished or not (3.1).
+      if (current == null) store.setField(encounterId, 'patientId', patientId);
+      store.setField(encounterId, 'kind', VisitKind.medical.code);
+    });
+    onChanged?.call();
+  }
+
+  /// A note of [type] in the visit (lifecycle 9.4): [type] is the definition the team's list gives
+  /// for a new note, so the note is written on that version. If the visit already has a draft of
+  /// that type the person may change, that draft is opened instead: their own first, empty or not,
+  /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1).
+  /// [another] makes a second note of the type all the same (4.4).
+  ///
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
+  /// [startEncounter]; for a Medical note, `not_offered` in a Non-Medical visit (switch it first,
+  /// 3.10) and `medical_note_needs_patient` in a visit with no patient, as the server refuses it.
+  ///
+  /// PLAN-OPEN: may a note be added to a visit whose other notes are finished (lifecycle 12.1 #3)?
+  /// Yes: it is its own note, with its own author and time.
+  Future<NoteAdded> addNote(String encounterId, NoteTypeDef type, {bool another = false}) async {
+    _guardFrozen();
+    final medical = isMedicalType(type);
+    _mayChart(medical: medical);
+    final visit = _visit(encounterId);
+    if (medical) {
+      if (VisitKind.fromCode(visit.fields['kind']?.value) != VisitKind.medical) {
+        throw const LocalValidationError(
+          'Switch this visit to Medical to add a clinical note.',
+          problem: 'not_offered',
+        );
+      }
+      if (visit.fields['patientId']?.value == null) throw _needsPatient;
+    }
+    if (!another) {
+      final open = await _draftToOpen(encounterId, type.key);
+      if (open != null) return (noteId: open, existing: true);
+    }
+    _guardFrozen();
+    final id = store.createNote(encounterId: encounterId, noteTypeKey: type.key, noteTypeVersion: type.version);
+    onChanged?.call();
+    return (noteId: id, existing: false);
+  }
+
+  /// The draft of the type [key] in the visit that [addNote] opens, if there is one.
+  Future<String?> _draftToOpen(String encounterId, String key) async {
+    final held = _Held.scan(store, encounterId: encounterId);
+    final drafts = [
+      for (final rec in held.ordered(held.notes))
+        if (rec.attributes['noteTypeKey'] == key &&
+            store.noteState(rec.id)!.status == NoteStatus.draft &&
+            !store.sentForReview(rec.id))
+          rec,
+    ];
+    final own = [
+      for (final rec in drafts)
+        if (_actsAsAuthor(rec)) rec,
+    ];
+    for (final rec in [...own, ...drafts.where((r) => !own.contains(r))]) {
+      final version = rec.attributes['noteTypeVersion'];
+      // A note the phone can't lay out can't be charted on: a new one is made instead.
+      final definition = version is int ? await definitions.load(key, version) : null;
+      if (definition == null || (isMedicalType(definition) && !user.can.chartMedical)) continue;
+      if (own.contains(rec)) return rec.id;
+      final stored = _answersOf(rec);
+      if (noteIsEmpty(stored)) continue;
+      try {
+        if (visibleAnswers(definition, stored, user.reader(actsAsAuthor: false)) != null) return rec.id;
+        // A definition the interpreter can't run is one the phone can't lay the note out by.
+        // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /// **Remove this note** (lifecycle 3.1, 9.4), asked first by the screen: every answer of the
+  /// person's own draft blanked, those a condition hides included, so the note counts for nothing.
+  /// One transaction. If a sign-off of the note was refused, Complete sends that sign-off's fix over
+  /// the empty note (`finishNotes`), which the server stores with no effect, so the refusal settles
+  /// at the next sync (3.4, 4.8; review finding SFN-7) rather than wait in Needs attention for a note
+  /// nobody sees any more.
+  ///
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
+  /// [startEncounter]; `not_author` for a note the person does not act as the author of; [RecordLocked]
+  /// for a note finished as this phone knows it, or sent for review (the store's lock: a finished note
+  /// is never empty); `read_only` when an answer is
+  /// one the server would hold from them (a section that needs an ordering credential, a teammate
+  /// charted it), since the note would then never be empty there; `needs_attention` while anything
+  /// else about the visit waits in Needs attention, so a refusal is never left behind (3.3 hard
+  /// stop 2). A [StateError] when the phone holds no such note, or not its definition.
+  Future<void> removeNote(String noteId) async {
+    _guardFrozen();
+    final definition = await _definitionOf(_noteRecord(noteId));
+    _guardFrozen();
+    final rec = _noteRecord(noteId);
+    if (!_actsAsAuthor(rec)) {
+      throw const LocalValidationError('Only the note’s author can remove it.', problem: 'not_author');
+    }
+    _mayChart(medical: isMedicalType(definition));
+    final filled = [
+      for (final MapEntry(:key, :value) in _answersOf(rec).entries)
+        if (!noteIsEmpty({key: value})) key,
+    ];
+    if (filled.any((path) => _heldFromPerson(definition, path, actsAsAuthor: true))) throw _readOnly;
+    final refused = [
+      for (final e in store.needsAttention())
+        if ((e.entity, e.op, e.state, e.value)
+            case (
+              entitySignoff,
+              'create',
+              ChangeState.rejected,
+              {'noteId': final String id, 'act': final String act, 'statementVersion': final String version},
+            )
+            when id == noteId)
+          (act: act, version: version),
+    ];
+    store.transaction(() {
+      for (final path in filled) {
+        store.setField(noteId, '$_data$path', null);
+      }
+      if (refused.isEmpty) return;
+      try {
+        store.finishNotes(
+          [
+            NoteToFinish(
+              noteId: noteId,
+              shownHash: store.contentHashOf(noteId, definition),
+              act: SignoffAct.values.byName(refused.last.act),
+              statementVersion: refused.last.version,
+            ),
+          ],
+          signer: user.signer,
+          definitionOf: definitions.loaded,
+        );
+      } on LocalValidationError catch (e) {
+        if (e.problem != 'needs_attention') rethrow;
+        throw const LocalValidationError(
+          'Something about this visit waits in Needs attention. Fix it there first, then remove the note.',
+          problem: 'needs_attention',
+        );
+      }
+    });
+    onChanged?.call();
+  }
+
+  /// Whether the answer at [path] of [note] is read-only to the person now (lifecycle 9.5, forms
+  /// 8.1): the whole note when it is not [NoteView.editable]; otherwise an answer the server would
+  /// hold their set of for a Program Admin, which they could never fix: one that could hold what
+  /// they may not see, to someone who does not act as the author ([mayHoldHidden], D88, D92), and an
+  /// answer of a section that needs an ordering credential, to a credential that can't order,
+  /// whoever acts as the author (6.4 rule 5). The form draws such an answer as it draws one a set
+  /// flag clears.
+  bool readOnlyAt(NoteView note, String path) {
+    final definition = note.definition;
+    if (!note.editable || definition == null) return true;
+    return _heldFromPerson(definition, path, actsAsAuthor: note.actsAsAuthor);
+  }
+
+  /// Saves one answer of the note form (lifecycle 3.2, 9.5): checked by the note's own version
+  /// (`checkAnswer`, forms 7.1), then queued with the store's `setField`; the screen then reads the
+  /// note again ([onChanged]) and draws the form with the answers the store holds. [value] null
+  /// clears the answer. A value equal to what is stored at [path], an answer there or none, is no
+  /// change and is not queued: the form keeps no copy of its answers, so a second tap of Normal
+  /// before it is drawn again sends the same values again (forms 8.1). Returns whether a change was
+  /// queued.
+  ///
+  /// The definition is the one [openNote] or [openVisit] loaded. Throws, writing nothing:
+  /// [ChartingPaused]; `not_charting` and `medical_credential` as [startEncounter]; `read_only` for
+  /// an answer [readOnlyAt] says is; the problem `checkAnswer` names (`unknown_path`, `wrong_type`,
+  /// ...), with [path]; [RecordLocked] for a note finished as this phone knows it, or sent for
+  /// review. A [StateError] when the phone holds no such note, or its definition was not loaded.
+  bool saveAnswer(String noteId, String path, Object? value) {
+    _guardFrozen();
+    final rec = _noteRecord(noteId);
+    final version = rec.attributes['noteTypeVersion'];
+    final key = rec.attributes['noteTypeKey'];
+    final definition = key is String && version is int ? definitions.loaded(key, version) : null;
+    if (definition == null) throw StateError('open the note first: its definition is not loaded');
+    _mayChart(medical: isMedicalType(definition));
+    if (_heldFromPerson(definition, path, actsAsAuthor: _actsAsAuthor(rec))) throw _readOnly;
+    final problem = checkAnswer(definition, path, value);
+    if (problem != null) {
+      throw LocalValidationError('This answer can’t be saved.', problem: problem.code, paths: {path});
+    }
+    if (store.noteState(noteId)!.status != NoteStatus.draft) throw const RecordLocked();
+    if (canonicalJson(rec.fields['$_data$path']?.value) == canonicalJson(value)) return false;
+    store.setField(noteId, '$_data$path', value);
+    onChanged?.call();
+    return true;
+  }
+
+  /// Whether the server would hold this person's set of [path] for a Program Admin (lifecycle 4.4,
+  /// 6.4 rule 5): a section's `needs` the credential lacks, whoever acts as the author; and, for
+  /// someone who does not, an answer that could hold what they may not see. An answer the
+  /// definition can't place is held, as the server's `byDefinition` refuses it.
+  bool _heldFromPerson(NoteTypeDef definition, String path, {required bool actsAsAuthor}) {
+    try {
+      if (fieldAt(definition, path)?.section.needs == 'orderMedications' && !user.can.orderMedications) return true;
+      return !actsAsAuthor && mayHoldHidden(definition, path, user.reader(actsAsAuthor: false));
+      // The interpreter's own faults are Errors as well as Exceptions (records.ts byDefinition).
+      // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// What the server needs of whoever charts (lifecycle 6.1): `encounters.chart`, and for a Medical
+  /// visit or note a credential that charts Medical (4.2). Without either it holds the change for a
+  /// Program Admin, which the person could never fix, so nothing is sent.
+  void _mayChart({required bool medical}) {
+    if (!user.charts) {
+      throw const LocalValidationError('Your role doesn’t chart visits.', problem: 'not_charting');
+    }
+    if (medical && !user.can.chartMedical) {
+      throw const LocalValidationError('Your credential doesn’t chart clinical notes.', problem: 'medical_credential');
+    }
+  }
+
+  static const _needsPatient = LocalValidationError(
+    'A clinical note needs a patient. Choose who this visit is for.',
+    problem: 'medical_note_needs_patient',
+  );
+
+  static const _readOnly = LocalValidationError('You can’t change this answer.', problem: 'read_only');
+
+  LocalRecord _visit(String encounterId) {
+    final visit = store.record(encounterId);
+    if (visit == null || visit.entity != entityEncounter) throw StateError('no such visit on this phone');
+    return visit;
+  }
+
+  LocalRecord _noteRecord(String noteId) {
+    final rec = store.record(noteId);
+    if (rec == null || rec.entity != entityNote) throw StateError('no such note on this phone');
+    return rec;
+  }
+
+  /// The definition of [note]'s own key and version, loaded for [definitions.loaded] too.
+  Future<NoteTypeDef> _definitionOf(LocalRecord note) async {
+    final key = note.attributes['noteTypeKey'], version = note.attributes['noteTypeVersion'];
+    final definition = key is String && version is int ? await definitions.load(key, version) : null;
+    if (definition == null) throw StateError('the definition of the note’s own version is not on this phone');
+    return definition;
+  }
+
+  /// Who acts as [note]'s author (lifecycle 3.8): the assignee the server's copy names, else its author.
+  bool _actsAsAuthor(LocalRecord note) =>
+      (note.attributes['actingAuthorId'] as String? ?? note.authorUserId) == user.userId;
+
+  static Map<String, Object?> _answersOf(LocalRecord note) => {
+    for (final MapEntry(:key, :value) in note.fields.entries)
+      if (key.startsWith(_data)) key.substring(_data.length): value.value,
+  };
 
   void _guardFrozen() {
     if (store.frozen) throw ChartingPaused(store.frozenMessage!);
@@ -152,7 +481,7 @@ class EncounterRepository {
   /// shown: an empty draft (3.1), a note the reader may not see (6.4), or one whose definition the
   /// phone lacks, to anyone but whoever acts as its author (the server leaves out a note it cannot
   /// lay out, 5.1).
-  NoteView? _note(LocalRecord rec, _Held held, List<_Shown> shown) {
+  NoteView? _note(LocalRecord rec, _Held held, List<_Shown> shown, {bool ownEmptyShown = false}) {
     final key = rec.attributes['noteTypeKey'] as String? ?? '';
     final version = rec.attributes['noteTypeVersion'] as int?;
     final authorId = rec.authorUserId ?? '';
@@ -163,7 +492,7 @@ class EncounterRepository {
       for (final MapEntry(:key, :value) in rec.fields.entries)
         if (key.startsWith(_data)) key.substring(_data.length): value.value,
     };
-    if (state.status == NoteStatus.draft && noteIsEmpty(stored)) return null;
+    if (state.status == NoteStatus.draft && noteIsEmpty(stored) && !(ownEmptyShown && actsAsAuthor)) return null;
     final reader = user.reader(actsAsAuthor: actsAsAuthor);
     final definition = version == null ? null : definitions.loaded(key, version);
     final corrections = held.ordered(held.correctionsOf(rec.id));
@@ -371,6 +700,10 @@ class EncounterRepository {
 }
 
 const _data = 'data.';
+
+/// The note [EncounterRepository.addNote] opens: a new one, or a draft of the type already in the
+/// visit ([existing]).
+typedef NoteAdded = ({String noteId, bool existing});
 
 /// A record a read shows, and how it is logged.
 class _Shown {
