@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -10,6 +12,7 @@ import '../../forms/definition.dart';
 import '../../patients/patient_providers.dart' show problemCodesProvider;
 import '../../patients/problems.dart' show ProblemCode, isSensitiveCode;
 import '../patients/patient_widgets.dart';
+import 'field_host.dart' show FieldHost;
 import 'text_field.dart' show ReadOnlyAnswer, limitCodePoints;
 
 /// What a diagnosis holds: its code and its label, each stored at its own part (forms 2.3).
@@ -36,6 +39,42 @@ String? problemText(ProblemAnswer value) => switch (value) {
   (code: final code, label: final label) => label ?? code,
 };
 
+/// What the screen offers under a picked diagnosis (lifecycle 8.3): **Add to the problem list**, or
+/// that it is there already.
+class ProblemListOffer {
+  /// Add it: [onAdd] takes the problem list's status, `new` or `ongoing`, and says itself what
+  /// stops it (the clock, a visit of someone else). [status] is the one the note's own status beside
+  /// the diagnosis gives; without one the person chooses first, as on Add problem.
+  const ProblemListOffer.add({required FutureOr<void> Function(String status) this.onAdd, this.status})
+    : listed = false;
+
+  /// The patient's problem list holds it already: "On the problem list".
+  const ProblemListOffer.listed() : onAdd = null, status = null, listed = true;
+
+  final FutureOr<void> Function(String status)? onAdd;
+  final String? status;
+  final bool listed;
+}
+
+/// What the screen offers under the diagnosis picked at [path] (its whole path, entry part
+/// included), or null where it offers nothing (a visit with no patient, a role that can't add a
+/// problem).
+typedef ProblemListHandler = ProblemListOffer? Function(String path, ProblemAnswer diagnosis);
+
+/// Gives each diagnosis below it the screen's [handler]: a note screen puts it around its form,
+/// since the field host gives a widget only its field, its value and its callback.
+class ProblemListScope extends InheritedWidget {
+  const ProblemListScope({super.key, required this.handler, required super.child});
+
+  final ProblemListHandler handler;
+
+  static ProblemListHandler? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ProblemListScope>()?.handler;
+
+  @override
+  bool updateShouldNotify(ProblemListScope oldWidget) => handler != oldWidget.handler;
+}
+
 /// A diagnosis (forms 2.2 `problem`): a search of the problem code list the phone holds from phase
 /// 3, offline, by word or by code. Picking a match stores its code and its label together; what
 /// was typed to search is never stored. A code on phase 3's sensitive list is marked Sensitive, as
@@ -43,6 +82,11 @@ String? problemText(ProblemAnswer value) => switch (value) {
 ///
 /// The field labels itself: the search box carries its label and help, and so does the diagnosis
 /// once picked.
+///
+/// Under a picked diagnosis on a note that can be changed, **Add to the problem list** (lifecycle
+/// 8.3), where the screen offers it through a [ProblemListScope]; once the list holds it, "On the
+/// problem list" instead. The field stores nothing for it: the screen's domain layer adds the
+/// problem.
 ///
 /// PLAN-OPEN: a diagnosis not on the phone's list (forms 10.1 #46; phase 3 lets a problem have no
 /// code). Until the team decides, only a code from the list can be picked: a typed label would
@@ -54,6 +98,7 @@ class ProblemField extends ConsumerStatefulWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.path,
   });
 
   final ProblemDef field;
@@ -65,12 +110,16 @@ class ProblemField extends ConsumerStatefulWidget {
   /// False: shown read-only, said so to a screen reader.
   final bool enabled;
 
+  /// The diagnosis's whole path, for Add to the problem list; the field host's around it when null.
+  final String? path;
+
   @override
   ConsumerState<ProblemField> createState() => _ProblemFieldState();
 }
 
 class _ProblemFieldState extends ConsumerState<ProblemField> {
   final _query = TextEditingController();
+  bool _adding = false;
 
   @override
   void dispose() {
@@ -150,9 +199,79 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
             ),
           ),
         ),
+        ?_problemList(context, widget.value.label ?? shown),
       ],
     );
   }
+
+  /// Add to the problem list, or that it is there, where the screen offers either.
+  Widget? _problemList(BuildContext context, String name) {
+    final path = widget.path ?? context.findAncestorWidgetOfExactType<FieldHost>()?.path;
+    final offer = path == null ? null : ProblemListScope.of(context)?.call(path, widget.value);
+    if (offer == null) return null;
+    final Widget shown;
+    if (offer.listed) {
+      shown = const Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: StatusChip(label: 'On the problem list', icon: LucideIcons.listChecks),
+      );
+    } else {
+      void tap() => unawaited(_add(offer));
+      shown = Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Semantics(
+          container: true,
+          button: true,
+          enabled: !_adding,
+          label: 'Add $name to the problem list',
+          onTap: _adding ? null : tap,
+          excludeSemantics: true,
+          child: OutlinedButton.icon(
+            onPressed: _adding ? null : tap,
+            icon: const Icon(LucideIcons.listPlus),
+            label: const Text('Add to the problem list'),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: FieldSpace.s2),
+      child: shown,
+    );
+  }
+
+  /// Adds it at the status the note gives, or the one the person chooses when it gives none. A tap
+  /// while it is being added does nothing.
+  Future<void> _add(ProblemListOffer offer) async {
+    if (_adding) return;
+    final status = offer.status ?? await _chooseStatus();
+    if (status == null || !mounted) return;
+    final adding = offer.onAdd!(status);
+    if (adding is! Future<void>) return;
+    setState(() => _adding = true);
+    try {
+      await adding;
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  /// New or Ongoing, as Add problem asks (Resolved is not offered when a problem is added); null
+  /// when the person cancels.
+  Future<String?> _chooseStatus() => showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      // Its words and three buttons outgrow a small phone at large text: it scrolls.
+      scrollable: true,
+      title: const Text('Add as New or Ongoing?'),
+      content: const Text('The note gives this diagnosis no status. Choose one for the problem list.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.of(context).pop('ongoing'), child: const Text('Ongoing')),
+        FilledButton(onPressed: () => Navigator.of(context).pop('new'), child: const Text('New')),
+      ],
+    ),
+  );
 
   Widget _search(BuildContext context) {
     final text = Theme.of(context).textTheme;

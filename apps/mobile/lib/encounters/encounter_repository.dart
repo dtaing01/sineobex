@@ -14,6 +14,7 @@ import '../forms/read_model.dart';
 import '../forms/recap.dart';
 import '../forms/visible.dart';
 import '../patients/chart_cache.dart' show patientGroup;
+import '../patients/problems.dart' show Problems, problemListStatus;
 import '../sync/canonical_json.dart';
 import '../sync/entities.dart'
     show credentials, entityAddendum, entityCorrection, entitySignoff, maxCorrectionChanges, parentsOf;
@@ -430,6 +431,74 @@ class EncounterRepository {
     return true;
   }
 
+  /// Where the diagnosis at [path] of the note [noteId] stands for **Add to the problem list**
+  /// (lifecycle 8.3), which the form shows under it: null when it is not offered (no diagnosis
+  /// picked there, a visit with no patient, or a role that doesn't chart and so can't add a problem);
+  /// else whether the patient's problem list, as the person may see it, holds it open already
+  /// ([listed]: "On the problem list"), and the list's status the note's own status beside it maps to
+  /// ([status], null when it gives none and the person chooses New or Ongoing). Throws
+  /// [ChartingPaused] while the store is frozen; a [StateError] when the phone holds no such note.
+  ProblemListPlace? problemListPlace(String noteId, String path) {
+    _guardFrozen();
+    final at = _diagnosisAt(noteId, path);
+    if (at == null || !user.charts) return null;
+    final listed = (Problems(store, permissions: user.permissions.toList()).problemsOf(at.patientId) ?? const []).any(
+      (p) => p.code?.code == at.code && p.status != 'resolved',
+    );
+    return (listed: listed, status: at.status);
+  }
+
+  /// **Add to the problem list** (lifecycle 8.3): the diagnosis at [path] of the note [noteId] made a
+  /// problem of the visit's patient through phase 3's path (`Problems.add`), naming the visit so the
+  /// server records it as made at one: its label as the title (cut to the title's 200 characters)
+  /// and as the code's words, at [status], New or Ongoing (from [problemListPlace], or the person's
+  /// choice), Sensitive for a code on the sensitive list. Returns the problem's ID.
+  ///
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting`; a [LocalValidationError] for a
+  /// status that is not New or Ongoing, or a visit the phone holds of someone outside the patient's
+  /// group; a [StateError] when there is no diagnosis at [path] or the visit has no patient.
+  String addToProblemList(String noteId, String path, {required String status}) {
+    _guardFrozen();
+    _mayChart(medical: false);
+    final at = _diagnosisAt(noteId, path);
+    if (at == null) throw StateError('no diagnosis picked at $path');
+    final id = Problems(store, permissions: user.permissions.toList()).add(
+      at.patientId,
+      title: String.fromCharCodes(at.label.runes.take(200)),
+      code: (system: 'icd10cm', code: at.code, display: at.label),
+      status: status,
+      encounterId: at.encounterId,
+    );
+    onChanged?.call();
+    return id;
+  }
+
+  /// The diagnosis picked at [path] of a note, with its visit, the visit's patient and the list's
+  /// status the note's own status beside it maps to (PLAN-OPEN 12.1 #16, `problemListStatus`); null
+  /// when nothing is picked there or the visit has no patient.
+  ({String code, String label, String encounterId, String patientId, String? status})? _diagnosisAt(
+    String noteId,
+    String path,
+  ) {
+    final rec = _noteRecord(noteId);
+    final answers = _answersOf(rec);
+    final code = answers['$path.code'];
+    final encounterId = rec.attributes['encounterId'];
+    final visit = encounterId is String ? store.record(encounterId) : null;
+    final patientId = visit == null ? null : _patientOf(visit);
+    if (code is! String || code.isEmpty || encounterId is! String || patientId == null) return null;
+    final label = answers['$path.label'];
+    // The status is an ordinary field beside the diagnosis, in its entry (8.3).
+    final status = answers['${path.substring(0, path.lastIndexOf('.') + 1)}status'];
+    return (
+      code: code,
+      label: label is String && label.isNotEmpty ? label : code,
+      encounterId: encounterId,
+      patientId: patientId,
+      status: problemListStatus(status is String ? status : null),
+    );
+  }
+
   /// Whether the server would hold this person's set of [path] for a Program Admin (lifecycle 4.4,
   /// 6.4 rule 5): a section's `needs` the credential lacks, whoever acts as the author; and, for
   /// someone who does not, an answer that could hold what they may not see. An answer the
@@ -762,6 +831,11 @@ class EncounterRepository {
 }
 
 const _data = 'data.';
+
+/// Where a note's diagnosis stands for **Add to the problem list**
+/// ([EncounterRepository.problemListPlace]): on the patient's list already, and the list's status
+/// the note gives it, if any.
+typedef ProblemListPlace = ({bool listed, String? status});
 
 /// The note [EncounterRepository.addNote] opens: a new one, or a draft of the type already in the
 /// visit ([existing]).
