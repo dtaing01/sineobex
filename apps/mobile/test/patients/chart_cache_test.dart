@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason;
+import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason, Timeline, VisitRead;
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/patients/chart_cache.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
@@ -13,6 +13,7 @@ import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
+import '../encounters/scripted_api.dart';
 import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 
@@ -24,13 +25,24 @@ class _Narrow implements ApiTransport {
   int maxCharts = 1000;
   bool offline = false;
 
+  /// What the API's chart answer adds for a chart (lifecycle 5.2), by its canonical ID: its
+  /// `timeline` and `recentVisits`, which the phone's test server does not give.
+  final visits = <String, Map<String, Object?>>{};
+
   @override
   Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
     if (offline) throw const NetworkException('offline');
-    final result = await inner.send(method, path, query: query, body: body);
+    var result = await inner.send(method, path, query: query, body: body);
     if (path == '/v1/patients/charts' &&
         ((body! as Map<String, Object?>)['patientIds']! as List<Object?>).length > maxCharts) {
       throw const NetworkException('timeout');
+    }
+    if (path == '/v1/patients/charts' && visits.isNotEmpty) {
+      final answer = jsonDecode(jsonEncode(result)) as Map<String, Object?>;
+      for (final chart in (answer['charts']! as List<Object?>).cast<Map<String, Object?>>()) {
+        chart.addAll(visits[chart['canonicalId']] ?? const {});
+      }
+      result = answer;
     }
     return result;
   }
@@ -114,6 +126,75 @@ void main() {
 
   int links(String patientId) =>
       phone.db.db.select('SELECT count(*) AS n FROM id_links WHERE patient_id = ?', [patientId]).first['n']! as int;
+
+  const blair = 'b0000000-0000-4000-8000-00000000000b';
+  const v1 = 'e0000000-0000-4000-8000-000000000001';
+  const v2 = 'e0000000-0000-4000-8000-000000000002';
+  const n1 = 'f0000000-0000-4000-8000-000000000001';
+  const n2 = 'f0000000-0000-4000-8000-000000000002';
+  const referral = 'f0000000-0000-4000-8000-000000000004';
+
+  /// What the API's chart answer says of [patientId]'s visits (lifecycle 5.2): the [recent] visits
+  /// newest first, each in the timeline and in full, and the group's one referral unless
+  /// [withReferral] is false.
+  Map<String, Object?> visitsOf(String patientId, {List<String> recent = const [v2, v1], bool withReferral = true}) {
+    final notes = {v1: n1, v2: n2};
+    final started = {v1: '2026-10-10T15:00:00.000Z', v2: '2026-10-15T15:00:00.000Z'};
+    return {
+      'timeline': {
+        'encounters': [
+          for (final v in recent)
+            {
+              'encounterId': v,
+              'startedAt': started[v],
+              'kind': 'medical',
+              'status': 'completed',
+              'notes': [
+                {
+                  'noteId': notes[v],
+                  'noteTypeKey': 'test_medical',
+                  'group': 'clinical',
+                  'status': 'completed',
+                  'attestation': 'not_needed',
+                },
+              ],
+            },
+        ],
+        'referrals': [
+          if (withReferral)
+            {
+              'entity': 'referral',
+              'id': referral,
+              'status': 'active',
+              'authorUserId': blair,
+              'createdAt': '2026-10-12T16:00:00.000Z',
+              'updatedAt': '2026-10-12T16:00:00.000Z',
+              'version': 1,
+              'attributes': {
+                'patientId': patientId,
+                'referredOn': '2026-10-12',
+                'details': 'Demo: dental clinic',
+                'encounterId': null,
+                'recordedAt': '2026-10-12T16:00:00.000Z',
+                'clockVerified': true,
+              },
+              'fields': {
+                'enteredInError': {'value': null, 'version': 0},
+              },
+            },
+        ],
+      },
+      'recentVisits': [
+        for (final v in recent)
+          visitJson(
+            encounterId: v,
+            patientId: patientId,
+            startedAt: started[v]!,
+            notes: [visitNoteJson(noteId: notes[v]!, author: userRef(blair, 'Demo Blair'))],
+          ),
+      ],
+    };
+  }
 
   test('an opened chart stays 24 hours; then it goes with its names, its card tokens and its trigrams', () async {
     final p = seedChart();
@@ -256,6 +337,78 @@ void main() {
     expect(server.records[p]!.fields.keys, isNot(contains(chartMetaField)));
     // The server never heard of it: every change it stored names a real field.
     expect(server.history.map((h) => h['field']), isNot(contains(chartMetaField)));
+  });
+
+  group('the visits a chart keeps (lifecycle 5.2, D100)', () {
+    test('a chart keeps its timeline, its last visits and the group’s referrals, offline, for its 24 hours', () async {
+      final p = seedChart();
+      link.visits[p] = visitsOf(p);
+      await services.patients.open(p);
+      link.offline = true;
+      // Read back from the store's database, as after the app is killed.
+      await phone.restart();
+      final meta = chartMetaOf(store(), p)!;
+      final sent = visitsOf(p);
+      expect(meta.timeline!.toJson(), Timeline.fromJson(sent['timeline']! as Map<String, Object?>).toJson());
+      expect(
+        [for (final v in meta.recentVisits) v.toJson()],
+        [
+          for (final v in sent['recentVisits']! as List<Object?>)
+            VisitRead.fromJson(v! as Map<String, Object?>).toJson(),
+        ],
+      );
+      expect([for (final v in meta.recentVisits) v.encounterId], [v2, v1]);
+      expect(
+        [meta.referrals.single.id, meta.referrals.single.attributes['details']],
+        [referral, 'Demo: dental clinic'],
+      );
+      // None of it travels: it is the chart's, not a change.
+      expect(jsonEncode([for (final e in store().outbox()) e.value]), isNot(contains(v1)));
+
+      // The chart's lifetime: they go with it.
+      advance(const Duration(hours: 25));
+      store().purge();
+      expect(chartMetaOf(store(), p), isNull);
+    });
+
+    test('a refresh replaces them whole, so they follow a role or credential change; offline, they stay', () async {
+      final p = seedChart();
+      link.visits[p] = visitsOf(p);
+      await services.patients.open(p);
+      List<String> recent() => [for (final v in chartMetaOf(store(), p)!.recentVisits) v.encounterId];
+      expect(recent(), [v2, v1]);
+
+      // The server now reads the person one visit fewer and no referral: offline, the phone keeps
+      // what it holds until it can refresh.
+      link.visits[p] = visitsOf(p, recent: [v1], withReferral: false);
+      link.offline = true;
+      expect((await services.charts.fetch([p], reason: FetchChartsReason.refresh)).offline, isTrue);
+      expect(
+        [recent(), chartMetaOf(store(), p)!.referrals.length],
+        [
+          [v2, v1],
+          1,
+        ],
+      );
+
+      link.offline = false;
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      final meta = chartMetaOf(store(), p)!;
+      expect(
+        [recent(), meta.timeline!.encounters.map((v) => v.encounterId), meta.referrals],
+        [
+          [v1],
+          [v1],
+          isEmpty,
+        ],
+      );
+
+      // A chart answer with neither leaves nothing of the earlier one behind.
+      link.visits.remove(p);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      final bare = chartMetaOf(store(), p)!;
+      expect([bare.timeline, bare.recentVisits, bare.referrals], [null, isEmpty, isEmpty]);
+    });
   });
 
   group('opened recently', () {

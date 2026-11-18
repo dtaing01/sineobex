@@ -17,7 +17,8 @@ import 'team_index.dart' show TeamIndex;
 /// offline edit carries real field versions. What a chart says beyond its records (consents,
 /// reviews, the duplicate hint, problem history and notes, which records it lists) rides in the
 /// patient record as the server-only field [chartMetaField], so it has exactly the chart's
-/// lifetime: imported with it, refreshed with it, purged with it.
+/// lifetime: imported with it, refreshed with it, purged with it. Since phase 4 that includes the
+/// chart's timeline, its last visits in full and the group's referrals (lifecycle 5.2).
 
 /// The patient record's field holding what the chart says beyond its records ([ChartMeta]).
 /// Version 0, never set by the phone, so a refresh always replaces it.
@@ -52,6 +53,10 @@ class ChartMeta {
     'duplicate': c.duplicate?.toJson(),
     'mergedFrom': [for (final m in c.mergedFrom) m.toJson()],
     'lastSeenOn': (c.patient.attributes['lastSeenAt'] as String?)?.substring(0, 10),
+    // Read for this person when the chart was, and replaced whole with it, so a role or credential
+    // change reaches them at the next refresh (D100).
+    'timeline': c.timeline?.toJson(),
+    'recentVisits': c.recentVisits?.map((v) => v.toJson()).toList(),
   });
 
   /// An index entry opened offline (design 6.5): only the index's fields, marked partial.
@@ -107,6 +112,17 @@ class ChartMeta {
   List<PatientChartMergedFromItem> get mergedFrom => [
     for (final m in _maps('mergedFrom')) PatientChartMergedFromItem.fromJson(m),
   ];
+
+  /// The profile's timeline as the server read it for this person (lifecycle 5.2): the group's
+  /// first 50 visits and its referrals. Null for a partial copy, or a chart that came without one.
+  Timeline? get timeline =>
+      json['timeline'] == null ? null : Timeline.fromJson(json['timeline']! as Map<String, Object?>);
+
+  /// The chart's last visits in full (5.2), so the last three open with no signal.
+  List<VisitRead> get recentVisits => [for (final v in _maps('recentVisits')) VisitRead.fromJson(v)];
+
+  /// The group's referrals as the timeline lists them, which the phone need not hold as records.
+  List<RecordSnapshot> get referrals => timeline?.referrals ?? const [];
 }
 
 /// The chart meta of [patientId]'s record here, if it was downloaded (or opened from the index).
