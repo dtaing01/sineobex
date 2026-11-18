@@ -416,6 +416,37 @@ void main() {
       },
     );
 
+    test(
+      'a correction after Keep theirs, before the sync, reads the version the server keeps (review LCM-3)',
+      () async {
+        final p = phone(alex);
+        final r = repo(p);
+        final visit = r.startEncounter(kind: VisitKind.nonMedical);
+        final n = await charted(r, visit, testNote, {'vitals.pulse': 88});
+        await sync(p);
+        server.serverEdit(n, 'data.vitals.pulse', 92, by: blair);
+        r.saveAnswer(n, 'vitals.pulse', 90);
+        await sync(p);
+        final conflict = p.store.needsAttention().single;
+        server.offline = true;
+        // Keep theirs: the server keeps 92 at its version, which the choice doesn't move.
+        expect(p.store.resolveConflict(conflict.changeId, keepMine: false), isTrue);
+        r.complete((await r.openComplete(visit))!);
+        await r.correct(visit, n, changes: {'vitals.pulse': 94}, reason: 'Demo: misread');
+        expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+          {
+            'field': 'data.vitals.pulse',
+            'newValue': 94,
+            'baseVersion': server.records[n]!.fields['data.vitals.pulse']!.version,
+          },
+        ]);
+        server.offline = false;
+        await sync(p);
+        serverTookAll(p);
+        expect(serverAnswer(n, 'vitals.pulse'), 94);
+      },
+    );
+
     test('a correction made before the sign-off is confirmed names it, and waits behind it', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

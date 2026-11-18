@@ -237,8 +237,9 @@ extension NoteActions on EncounterRepository {
 
   /// The version the answer at [path] of [note] has on the server once what waits of it here is
   /// applied: the person reads the note as the phone holds it, their own changes not yet sent
-  /// included. A note's create writes each answer at version 1, and each set adds one; an answer
-  /// never written is at 0. Should the server hold another, the correction is refused
+  /// included. A note's create writes each answer at version 1, and each set adds one, but a Keep
+  /// theirs choice, which the server takes at the version it holds (fields.ts `keepServer`); an
+  /// answer never written is at 0. Should the server hold another, the correction is refused
   /// `field_changed`, and the person looks again (4.7 step 6).
   int _versionSeen(LocalRecord note, String path) {
     final field = note.fields['$_data$path'];
@@ -249,7 +250,7 @@ extension NoteActions on EncounterRepository {
       if (e.recordId != note.id || e.state != ChangeState.pending) continue;
       final written = switch ((e.op, e.value)) {
         ('create', {'data': final Map<String, Object?> data}) => data.containsKey(path),
-        ('set', _) => e.field == '$_data$path',
+        ('set', _) => e.field == '$_data$path' && e.resolution != 'keep_server',
         _ => false,
       };
       if (written) version++;
