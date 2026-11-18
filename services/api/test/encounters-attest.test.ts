@@ -245,6 +245,31 @@ describe('phase 4: attest', () => {
     });
   });
 
+  describe('what is logged of a refusal', () => {
+    it('a state conflict, a body it cannot take and a visit the team does not have write no audit event', async () => {
+      // The coordinator's decision on review finding LPM-2: a refusal about access (403) is logged as
+      // access.denied with the reason's name; a 409, a 422 and a 404 are not, as in phases 1 to 3.
+      const v = await waitingForAttestation(w);
+      const read = v.note;
+      await correct(w.rae, v.note, h, 'care.plan', 'Demo: soup and a blanket');
+      const waits = await waitingForCosign(w);
+      const mark = await auditMark(h);
+      const answers = [
+        await attest(w, w.ana, v.visit.encounterId, [v.flags, read]),
+        await attest(w, w.ana, waits.visit.encounterId, [waits.flags, waits.note]),
+        await attest(w, w.ana, randomUUID(), [v.flags, v.note]),
+        await post(w, w.ana.token, `/v1/encounters/${v.visit.encounterId}/attest`, { notes: [] }),
+      ];
+      expect(answers.map((r) => [r.status, refusal(r.body).code])).toEqual([
+        [409, 'content_changed'],
+        [409, 'not_waiting'],
+        [404, 'not_found'],
+        [422, 'validation_failed'],
+      ]);
+      expect(await eventsAfter(h, mark)).toEqual([]);
+    });
+  });
+
   describe('what an attestation writes', () => {
     it('an attestation of the note’s current signature for each note, one event per note, one notice per signer', async () => {
       const v = await waitingForAttestation(w);

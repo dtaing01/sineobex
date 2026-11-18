@@ -315,6 +315,32 @@ describe('phase 4: co-sign', () => {
     });
   });
 
+  describe('what is logged of a refusal', () => {
+    it('a state conflict, a body it cannot take and a visit the team does not have write no audit event', async () => {
+      // The coordinator's decision on review finding LPM-2: a refusal about access (403) is logged as
+      // access.denied with the reason's name; a 409, a 422 and a 404 are not, as in phases 1 to 3.
+      const v = await waitingForCosign(w);
+      const read = v.note;
+      await correct(w.sol, v.note, h, 'care.plan', 'Demo: soup and a blanket');
+      const signed = await chartedVisit(w, w.rae);
+      await finish(w.rae, [signed.flags, 'sign', 'signed'], [signed.note, 'sign', 'signed']);
+      const mark = await auditMark(h);
+      const answers = [
+        await cosign(w, w.ana, v.visit.encounterId, [v.flags, read]),
+        await cosign(w, w.ana, signed.visit.encounterId, [signed.note]),
+        await cosign(w, w.ana, randomUUID(), [v.flags, v.note]),
+        await post(w, w.ana.token, path(v.visit.encounterId), { notes: [] }),
+      ];
+      expect(answers.map((r) => [r.status, refusal(r.body).code])).toEqual([
+        [409, 'content_changed'],
+        [409, 'not_waiting'],
+        [404, 'not_found'],
+        [422, 'validation_failed'],
+      ]);
+      expect(await eventsAfter(h, mark)).toEqual([]);
+    });
+  });
+
   describe('what a co-sign writes', () => {
     it('an attending: a cosign sign-off for each note, the notes signed with nothing held, one event per note, one notice per author', async () => {
       const v = await waitingForCosign(w);

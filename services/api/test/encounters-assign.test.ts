@@ -195,6 +195,33 @@ describe('phase 4: assign a note', () => {
     });
   });
 
+  describe('what is logged of a refusal', () => {
+    it('a state conflict, input it cannot take and a note the team does not have write no audit event', async () => {
+      // The coordinator's decision on review finding LPM-2: a refusal about access (403) is logged as
+      // access.denied with the reason's name; a 409, a 422 and a 404 are not, as in phases 1 to 3.
+      const active = await chartedVisit(w, w.rae);
+      const { c, v } = await departed('resident');
+      await gone(c);
+      const mark = await auditMark(h);
+      const answers = [
+        await assign(active.note.noteId, w.nia.id),
+        await assign(v.note.noteId, randomUUID()),
+        await assign(v.note.noteId, w.bea.id),
+        await assign(v.note.noteId, w.nia.id, w.t.adminToken, 'no'),
+        await assign(randomUUID(), w.nia.id),
+      ];
+      expect(answers.map((r) => [r.status, (r.body as Json).error?.code])).toEqual([
+        [409, 'author_active'],
+        [422, 'assignee_not_member'],
+        [422, 'assignee_cannot_chart'],
+        [422, 'validation_failed'],
+        [404, 'not_found'],
+      ]);
+      expect(await eventsAfter(h, mark)).toEqual([]);
+      await unassigned(v);
+    });
+  });
+
   describe('what an assignment writes, and what it changes', () => {
     it('a row, the note’s assignee, one event with no reason in it, and a notice to the assignee', async () => {
       const { c, v } = await departed('resident');
