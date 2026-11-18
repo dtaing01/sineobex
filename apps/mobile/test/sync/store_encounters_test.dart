@@ -3,7 +3,7 @@ import 'package:sineobex_field/encounters/content_hash.dart';
 import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/effective.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
+import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entityReferral, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -12,9 +12,9 @@ import 'phone_harness.dart';
 import 'test_note_types.dart';
 
 /// The phone's store in phase 4 (lifecycle 4.8): the visit as the server keeps it, Complete
-/// (`finishNotes`), and the lock that follows a note's effect. Each rule is checked against the
-/// phone's test server, which mirrors the API (lifecycle 4.9): where the answer is the server's, the
-/// test syncs and reads the store's state after the receipt.
+/// (`finishNotes`), the lock that follows a note's effect, and the patient of a new record. Each
+/// rule is checked against the phone's test server, which mirrors the API (lifecycle 4.9): where
+/// the answer is the server's, the test syncs and reads the store's state after the receipt.
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
@@ -105,6 +105,9 @@ void main() {
     ...server.history.where((h) => h['kind'] == 'kept_both'),
     ...server.notices.where((n) => n.kind == 'late_change_kept' || n.kind == 'change_not_applied'),
   ];
+
+  OutboxEntry createOf(TestPhone p, String recordId) =>
+      p.store.outbox().singleWhere((e) => e.recordId == recordId && e.op == 'create');
 
   group('the visit as the server keeps it (lifecycle 4.3)', () {
     test('a new visit holds its kind as a field beside the place typed by hand, and no status', () async {
@@ -874,6 +877,119 @@ void main() {
       expect(server.records[visit]!.status, 'draft');
       // It changes nothing that was finished: the visit's envelope stays locked.
       expect(() => p.store.setField(visit, 'summary', 'Demo: later'), throwsA(isA<RecordLocked>()));
+    });
+  });
+
+  group('the patient of a new record (lifecycle 4.8)', () {
+    test('a sign-off, an addendum, a correction and a referral are filed under their patient', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical', patientId: patient);
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      final addendum = p.store.createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: called back with results',
+        'signoffId': signoff,
+      });
+      final correction = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.vitals.pulse', 'newValue': 86, 'baseVersion': 1},
+        ],
+        'reason': 'Demo: counted twice',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': signoff,
+      });
+      final referral = p.store.createRecord(entityReferral, {
+        'patientId': patient,
+        'referredOn': '2026-10-20',
+        'details': 'Demo: shelter intake',
+        'encounterId': visit,
+      });
+      final made = [signoff, addendum, correction, referral];
+      for (final id in made) {
+        expect([p.store.record(id)!.patientId, createOf(p, id).patientId], [patient, patient], reason: id);
+      }
+      expect(p.store.recordIdsOfPatient(patient), containsAll(made));
+      expect(p.store.localWorkPatients(), {patient});
+      expect(p.store.scopes().single.patientId, patient);
+
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[correction]!.status, 'corrected');
+      expect(server.records[referral]!.attributes['encounterId'], visit);
+    });
+
+    test('records made at a visit with no patient are filed under the patient it is given', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      final addendum = p.store.createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: name given later',
+        'signoffId': signoff,
+      });
+      for (final id in [signoff, addendum]) {
+        expect([p.store.record(id)!.patientId, createOf(p, id).patientId], [null, null]);
+      }
+      expect(p.store.localWorkPatients(), isEmpty);
+
+      p.store.setField(visit, 'patientId', patient);
+      for (final id in [signoff, addendum]) {
+        expect([p.store.record(id)!.patientId, createOf(p, id).patientId], [patient, patient], reason: id);
+      }
+      expect(p.store.recordIdsOfPatient(patient), containsAll([signoff, addendum]));
+      expect(p.store.localWorkPatients(), {patient});
+      await sync(p);
+      expect(p.store.outbox(), isEmpty);
+      expect(server.records[visit]!.fields['patientId']!.value, patient);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+    });
+
+    test('a patient a teammate gives the visit files what waits here under them', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      server.serverEdit(visit, 'patientId', patient, by: blair);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect([p.store.record(signoff)!.patientId, createOf(p, signoff).patientId], [patient, patient]);
+      expect(p.store.localWorkPatients(), {patient});
+    });
+
+    test('a sign-off, an addendum and a correction opened from the server are filed under their patient', () async {
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final visit = b.store.createEncounter(kind: 'non_medical', patientId: patient);
+      final n = note(b, visit, testNote, {'vitals.pulse': 88});
+      await sync(b);
+      final signoff = complete(b, [finishing(b, n, testNote)])[n]!.signoffId;
+      final addendum = b.store.createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: seen again at noon',
+        'signoffId': signoff,
+      });
+      await sync(b);
+      expect(b.store.outbox(), isEmpty);
+
+      final p = phone(alex);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', n), isTrue);
+      for (final (entity, id) in [('note_signoff', signoff), ('note_addendum', addendum)]) {
+        expect(await p.engine.openServerRecord(entity, id), isTrue, reason: entity);
+        expect(p.store.record(id)!.patientId, patient, reason: entity);
+      }
     });
   });
 }
