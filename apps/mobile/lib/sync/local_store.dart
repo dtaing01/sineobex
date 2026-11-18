@@ -987,7 +987,7 @@ class LocalStore {
       _workedOn(recordId);
       final patientId = rec.patientId;
       if (patientId != null) _extendOpened(patientId);
-      if (rec.entity == entityEncounter && field == 'patientId') _fileUnfiled();
+      if (rec.entity == entityEncounter && field == 'patientId') _fileUnder();
     });
   }
 
@@ -1034,20 +1034,22 @@ class LocalStore {
   /// assigned it to after its author left, as the server's copy says, else its author.
   bool _actsAsAuthor(LocalRecord note) => (note.attributes['actingAuthorId'] ?? note.authorUserId) == userId;
 
-  /// Files under their patient the records made here that had none to name when they were made: a
-  /// sign-off, an addendum or a correction at a visit with no patient, once the visit is given one
-  /// (lifecycle 3.1), as its notes then are. Their waiting changes keep that chart on the phone.
-  void _fileUnfiled() {
+  /// Files under their patient the records found through a visit (a sign-off, an addendum, a
+  /// correction: lifecycle 4.8), as the visit's patient stands here now: one given at last to a visit
+  /// they were made at with none (3.1), or another than the one they were filed under (a teammate's
+  /// value kept over one filled here, review finding SFN-4). Their waiting changes go with them and
+  /// keep that chart on the phone. A record whose visit has no patient here stays where it is.
+  void _fileUnder() {
     for (final r in _db.select(
-      'SELECT id, entity, attributes_json FROM records WHERE patient_id IS NULL AND entity IN (?, ?, ?)',
+      'SELECT id, entity, attributes_json, patient_id FROM records WHERE entity IN (?, ?, ?)',
       [entitySignoff, entityAddendum, entityCorrection],
     )) {
       final attributes = jsonDecode(r['attributes_json'] as String) as Map<String, Object?>;
       final patientId = _patientOfRecord(rulesFor(r['entity'] as String)!.patientVia(attributes)?.id);
-      if (patientId == null) continue;
+      if (patientId == null || patientId == r['patient_id']) continue;
       _db
         ..execute('UPDATE records SET patient_id = ? WHERE id = ?', [patientId, r['id']])
-        ..execute('UPDATE outbox SET patient_id = ? WHERE record_id = ? AND patient_id IS NULL', [patientId, r['id']]);
+        ..execute('UPDATE outbox SET patient_id = ? WHERE record_id = ?', [patientId, r['id']]);
       _extendOpened(patientId);
     }
   }
@@ -1788,6 +1790,7 @@ class LocalStore {
           // Kept, not applied: the chart's value is what the person sees now.
           _putField(e.recordId, e.field!, server.value, serverVersion: server.version);
           _touch(e.recordId, status: rules?.statusAfter(e.field!, server.value));
+          if (e.entity == entityEncounter && e.field == 'patientId') _fileUnder();
         } else {
           _db.execute('UPDATE fields SET server_version = ? WHERE record_id = ? AND field = ? AND server_version < ?', [
             serverVersion,
@@ -2025,6 +2028,7 @@ class LocalStore {
       _putField(shown.recordId, field, shownValue, serverVersion: server.version, pending: resolution);
       _touch(shown.recordId, status: rulesFor(shown.entity)?.statusAfter(field, shownValue));
       _workedOn(shown.recordId);
+      if (shown.entity == entityEncounter && field == 'patientId') _fileUnder();
     });
     return true;
   }
@@ -2140,7 +2144,7 @@ class LocalStore {
         x.recordId,
       ]);
       _touch(x.recordId, status: rules.initialStatus(merged));
-      if (x.entity == entityEncounter) _fileUnfiled();
+      if (x.entity == entityEncounter) _fileUnder();
       // The create always starts where a create starts (a draft, a problem's first status); a
       // later move, or a retraction, goes as its own change after it.
       for (final MapEntry(key: name, value: v) in after.entries) {
@@ -2479,7 +2483,7 @@ class LocalStore {
           ]);
         }
         // A teammate may have given it a patient.
-        _fileUnfiled();
+        _fileUnder();
         return;
       }
       if (r.entity == entityNote) _noteFromServer(r);

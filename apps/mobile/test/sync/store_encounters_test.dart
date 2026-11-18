@@ -1426,6 +1426,43 @@ void main() {
       expect(p.store.localWorkPatients(), {patient});
     });
 
+    test('what was filed under a patient filled here moves when the visit ends up with another', () async {
+      // Review finding SFN-4: only records with no patient were filed, so a patient filled here that
+      // lost to a teammate's left the sign-off and the addendum, and their waiting changes, under it.
+      final p = phone(alex);
+      final x = server.seedPatient();
+      final y = server.seedPatient(preferredName: 'Demo Other');
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      await sync(p);
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      final addendum = p.store.createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: called back later',
+        'signoffId': signoff,
+      });
+      p.store.setField(visit, 'patientId', x);
+      expect([p.store.record(signoff)!.patientId, p.store.record(addendum)!.patientId], [x, x]);
+      // A teammate filled it first: the person keeps theirs.
+      server.serverEdit(visit, 'patientId', y, by: blair);
+      await sync(p);
+      final conflict = p.store.needsAttention().singleWhere((e) => e.state == ChangeState.conflict);
+      expect(conflict.field, 'patientId');
+      p.store.resolveConflict(conflict.changeId, keepMine: false);
+      expect(p.store.record(visit)!.fields['patientId']!.value, y);
+      expect([p.store.record(signoff)!.patientId, p.store.record(addendum)!.patientId], [y, y]);
+      expect(
+        {
+          for (final e in p.store.outbox())
+            if (e.state != ChangeState.superseded && (e.recordId == signoff || e.recordId == addendum)) e.patientId,
+        },
+        {y},
+      );
+      await sync(p);
+      expect(p.store.localWorkPatients(), isNot(contains(x)));
+    });
+
     test('a sign-off, an addendum and a correction opened from the server are filed under their patient', () async {
       final b = phone(blair);
       final patient = server.seedPatient();
