@@ -295,8 +295,9 @@ class ExpandOffer {
   /// The full note type's title: "Expand into General / primary care".
   final String into;
 
-  /// Expand would open a draft of the type already in the visit as it is, copying nothing (12.1
-  /// #30; the domain layer's `expandOpensAsItIs`): the line under the button says so.
+  /// Expand would open a note of the type already in the visit, copying nothing (12.1 #30; the domain
+  /// layer's `expandOpensAsItIs`): a draft as it is, or a finished note read-only. The line under the
+  /// button says so.
   final bool opensExisting;
 
   /// While a future it returns runs, another tap does nothing: one tap makes one note.

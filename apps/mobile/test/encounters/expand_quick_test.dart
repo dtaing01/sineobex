@@ -8,7 +8,7 @@ import 'package:sineobex_field/encounters/encounter_repository.dart';
 import 'package:sineobex_field/encounters/note_definitions.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/expand.dart' show expandQuick;
-import 'package:sineobex_field/sync/entities.dart' show entityCorrection;
+import 'package:sineobex_field/sync/entities.dart' show entityCorrection, entityNote;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -471,6 +471,104 @@ void main() {
       server.offline = false;
       await sync(p);
       serverTookAll(p);
+    });
+
+    test('a finished note of the type opens read-only and nothing is copied, their own or a teammate’s, '
+        'rather than an empty draft of theirs filled beside it (12.1 #30)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      // Their Social needs note, finished before the quick note was started.
+      final social = (await r.addNote(visit, type('social_needs'))).noteId;
+      await r.openNote(social);
+      r.saveAnswer(social, 'needs.needs', ['food']);
+      r.complete((await r.openComplete(visit))!);
+      final quick = await quickNote(r, visit, quickGeneral);
+      // An empty draft of the type, added by mistake: filled, it would chart the needs a second time.
+      final empty = (await r.addNote(visit, type('social_needs'), another: true)).noteId;
+      expect(await r.expandOpensAsItIs(quick, type('social_needs')), isTrue);
+      final before = p.store.outbox().length;
+      final done = await r.expand(quick, type('social_needs'));
+      expect(
+        [done.noteId, done.existing, done.finished, done.written, done.leftOut, done.notCopied],
+        [social, true, true, isEmpty, isEmpty, isEmpty],
+      );
+      expect(p.store.outbox(), hasLength(before));
+      expect(
+        [answersOf(p, social), answersOf(p, empty)],
+        [
+          {
+            'needs.needs': ['food'],
+          },
+          isEmpty,
+        ],
+      );
+      expect((await r.openNote(social))!.editable, isFalse);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+
+      // A teammate's quick note on the visit opens the same finished note, theirs to read.
+      final b = phone(blair);
+      final rb = repo(b);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', social), isTrue);
+      server.offline = true;
+      final theirs = await quickNote(rb, visit, quickGeneral);
+      expect(await rb.expandOpensAsItIs(theirs, type('social_needs')), isTrue);
+      final opened = await rb.expand(theirs, type('social_needs'));
+      expect([opened.noteId, opened.existing, opened.finished, opened.written], [social, true, true, isEmpty]);
+      server.offline = false;
+      await sync(b);
+      serverTookAll(b);
+      expect(answersOnServer(social), {
+        'needs.needs': ['food'],
+      });
+    });
+
+    test('a visit read that shows a finished Red flags note the phone doesn’t hold brings no second one, '
+        'as Add note takes it (forms 6.2)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await sync(p);
+      // A teammate's Red flags note, finished on the server: the visit read shows it, the phone holds none.
+      server.finishNote(
+        server.seed(entityNote, {
+          'encounterId': visit,
+          'noteTypeKey': 'red_flags_disposition',
+          'noteTypeVersion': 1,
+          'data': {'red_flags.emergency': 'no'},
+        }, by: blair),
+        status: 'signed',
+      );
+      server.offline = true;
+      final quick = (await r.addNote(visit, type('quick_encounter'), redFlagsFinished: true)).noteId;
+      await r.openNote(quick);
+      r.saveAnswer(quick, 'visit.parts', ['general']);
+      r.saveAnswer(quick, 'general.concern', 'Demo: cough for a week');
+      final done = await r.expand(quick, type('general_primary_care'), redFlagsFinished: true);
+      expect([done.existing, answersOf(p, done.noteId)['reason.concern']], [false, 'Demo: cough for a week']);
+      expect(await r.ownRedFlagsNote(visit), isNull);
+      // Completed with the teammate's Red flags note as the visit read shows it, then expanded into again
+      // from a second quick note: the finished note opens to be read, and brings no Red flags note.
+      final plan = (await r.openComplete(visit, redFlagsFinished: true))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, quick, done.noteId]);
+      r.complete(plan);
+      final second = (await r.addNote(visit, type('quick_encounter'), another: true, redFlagsFinished: true)).noteId;
+      await r.openNote(second);
+      r.saveAnswer(second, 'visit.parts', ['general']);
+      r.saveAnswer(second, 'general.concern', 'Demo: cough still');
+      final again = await r.expand(second, type('general_primary_care'));
+      expect([again.noteId, again.existing, again.finished], [done.noteId, true, true]);
+      expect(await r.ownRedFlagsNote(visit), isNull);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(answersOnServer(done.noteId)['reason.concern'], 'Demo: cough for a week');
     });
 
     test('answers the full note type doesn’t take are left out and listed; the rest are written', () async {
