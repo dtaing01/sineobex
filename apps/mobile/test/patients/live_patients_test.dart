@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/auth/auth_provider.dart';
+import 'package:sineobex_field/patients/chart_cache.dart';
 import 'package:sineobex_field/patients/consent_script.dart';
 import 'package:sineobex_field/patients/display.dart';
 import 'package:sineobex_field/patients/dob.dart';
@@ -407,6 +408,37 @@ void main() {
       skip: skip,
     );
   }
+
+  test('a problem added at a visit reaches the chart as made there; the chart keeps the visit offline', () async {
+    final a = await phone('clinician@example.com');
+    final p = await registered(a, intake(name('Morq'), descriptor: 'Demo: blue hat'));
+    await a.services.patients.open(p);
+    a.network.offline = true;
+    final visit = a.store.createEncounter(kind: 'non_medical', patientId: p);
+    final problem = a.services.problems.add(p, title: 'Demo: cough', status: 'new', encounterId: visit);
+    a.network.offline = false;
+    await a.phone.engine.syncAll(force: true);
+    expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
+
+    // The chart, downloaded again: the API's timeline and the visit in full, kept for offline.
+    await a.services.charts.fetch([p], reason: FetchChartsReason.refresh);
+    a.network.offline = true;
+    final meta = chartMetaOf(a.store, p)!;
+    expect(meta.timeline!.encounters.map((v) => v.encounterId), [visit]);
+    final recent = meta.recentVisits.single;
+    expect(
+      [recent.encounterId, recent.patientId, recent.records.map((r) => r.id)],
+      [
+        visit,
+        p,
+        [problem],
+      ],
+    );
+    final record = a.store.record(problem)!;
+    expect([record.attributes['source'], record.attributes['createdEncounterId']], ['encounter', visit]);
+    final shown = a.services.problems.problem(problem)!;
+    expect([shown.encounterId, shown.atVisit], [visit, true]);
+  }, skip: skip);
 }
 
 /// One phone with its patient services, on the real API.
