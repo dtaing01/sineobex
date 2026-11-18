@@ -1171,6 +1171,36 @@ So they are one note type, `red_flags_disposition`, with `auto: 'medical'`:
   wound's, in Wound care, and Sexual and reproductive health's (Results needed, Referral, PCP)
   (10.1 #41).
 
+As built on the phone (units F7 and L4, `apps/mobile/lib/encounters/red_flags.dart` with
+`encounter_repository.dart` and `expand_quick.dart`, with their review):
+
+- **The Red flags note is always added.** The repository takes the team's listed note types and
+  finds the Red flags type itself (`redFlagsTypeOf`: the listed type with `auto: 'medical'`, at its
+  newest listed version), so no caller can leave it out. With a Medical note of the person's own,
+  the app adds their Red flags note: in the same change as a new note, and when it opens a Medical
+  draft of theirs that has none (one made before the team's list named the type, say), from Add
+  note or from Expand (6.4 as built). Nothing is added when the visit has a finished Red flags note
+  (on the phone, or one the visit read shows that the phone does not hold, `redFlagsFinished`),
+  when the person has one already, an empty draft included, when they only help with a teammate's
+  draft, or when the note asked for is the Red flags note itself. A team whose list on the phone
+  names no Red flags type gets none, and Complete stops at hard stop 5 until the summary adds it.
+- **`addRedFlagsNote`** is the summary's fix for hard stop 5 when Complete stops with no note to
+  open (lifecycle 3.3 as built): it adds the person's own and the summary plans again, the note then
+  finished with the Medical notes, its finish check asking the red-flag question. It gives back the
+  person's own even when it is finished, and nothing only when a finished one makes it needless; it
+  refuses `no_red_flags_type` ("Connect once to load your team’s note types.") when one must be made
+  and the phone's list names none. `ownRedFlagsNote` says which note is the person's own.
+- **It shows last**, on the phone's own read of a visit and on a visit read from the server
+  (`redFlagsLast`), and on the summary; the store still sends its sign-off first.
+- **It stays on the phone with the visit's drafts** (lifecycle 8.2 as built; review finding
+  LCM-2): a Medical visit's finished notes stay while a note of it stays a draft, since hard stop 5
+  and the note added with a Medical note read the finished Red flags note from the phone.
+- **An `open_note_type` action that names the Red flags note** (Wound care's Urgent, the
+  psychological safety action, Outreach's Emergency; card F7-actions, the next wave) goes through
+  `addRedFlagsNote`, not Add note, so no second Red flags note is made once the person's is
+  finished; when a teammate's finished one makes it needless, the action opens that note
+  read-only (the coordinator's decision).
+
 ### 6.3 The Focused Exam
 
 "It lives only inside General / primary care, after Vitals. The picker asks 'What did you
@@ -1340,6 +1370,42 @@ As built (`expandQuick`, unit F1, 7.1):
 - **Two answers are required while they show** (wave D's review), because the step that acts on
   each needs it: a referral's details (PRD main 113), and a medication delivery's instructions,
   with which phase 7 creates the delivery task (PRD main 418).
+
+As built on the phone (unit F7, `apps/mobile/lib/encounters/expand_quick.dart` and
+`apps/mobile/lib/features/forms/note_form.dart`, with its review):
+
+- **What is offered.** `expandTargets` lists, for each part (section) of a quick note type, each
+  full note type a field of it maps into, once; `mayExpand` says the form offers Expand on a quick
+  note the person may change now. A finished quick note, or one sent for review, is not expanded
+  (`RecordLocked`).
+- **What Expand writes.** `expand` takes the full type's listed version and works from what the
+  person may see of the quick note: all of it to whoever acts as its author, `visibleAnswers` to
+  anyone else. A new note is made with its answers in one create, each repeating section it writes
+  into given a new entry at an ID no answer of the note uses, in the form's format, at the phone's
+  clock, as the form's Add makes one. What the full version does not take comes back as `leftOut`,
+  with the quick field's label, for the person to be told (10.1 #12). A Medical full note brings
+  the person's own Red flags note (6.2 as built).
+- **What it refuses or leaves.** It refuses, writing nothing, what Add note refuses of a Medical
+  note (`not_charting`, `medical_credential`, `not_offered`, `medical_note_needs_patient`), and
+  `read_only` when an answer to write is one the server would hold from the person, which only an
+  older quick version could cause, the validator holding the newest to `maps_to_needs`. A part that
+  needs an ordering credential the person lacks is not carried (`notCopied`, its answers listed for
+  the person; 10.1 #53): with the released quick type it changes nothing, its Medication section
+  mapping nothing.
+- **A note of the type in the visit already** (lifecycle 12.1 #30). The draft the note types list
+  would open (Add note's rule: the person's own first, then a teammate's they may see) opens as it
+  is, nothing copied (`existing`), unless it is the person's own and empty, which is filled by its
+  own version as a new note would be; a Medical draft of their own opened so gets their Red flags
+  note if they have none. `expandOpensAsItIs` tells the form beforehand, so the line under the
+  button says what a tap will do (review finding LFM-5). A finished note of the type is not one the
+  list would open, so Expand makes a new note beside it, carrying the same answers again; the review
+  left this to the coordinator.
+- **The control.** `NoteForm` takes an `ExpandHandler`, which gives each part its `ExpandOffer`s
+  (the full type's title, what a tap does, and whether it opens a note already there). Each is a
+  button, "Expand into {title}", heard as "Expand into {title}, from {part}", the visible words
+  first (review finding LFM-2), with one line under it: "Its answers are copied into a full note.
+  This quick note keeps them.", or "Opens the {title} note already in this visit. Nothing is
+  copied.". It is not drawn on a read-only form, and a second tap while the first runs does nothing.
 
 ### 6.5 Sexual and reproductive branching
 
@@ -1797,7 +1863,7 @@ As built (unit F5):
 
 | File | Is |
 |---|---|
-| `note_form.dart` | `NoteForm`, the shell: the sections as an accordion, each header with its recap line; the fields that show, each through the field host; groups, grids and actions, which the form lays out itself; the entries of a repeating section with Add and Remove; one-tap Normal for a section, an entry and a system |
+| `note_form.dart` | `NoteForm`, the shell: the sections as an accordion, each header with its recap line; the fields that show, each through the field host; groups, grids and actions, which the form lays out itself; the entries of a repeating section with Add and Remove; one-tap Normal for a section, an entry and a system. Since unit F7, Expand on a part of a quick form (`ExpandHandler`, `ExpandOffer`; 6.4) |
 | `field_host.dart` | `FieldHost`: the widget for a field's kind, its label and help, and under each answer it shows "Waiting to send" and phase 2's conflict choice. Also the host's contract with the form (`FormAnswers`, `AnswerState`, `AnswerConflict`, `ConflictBy`, from `lib/forms/answer_state.dart`, which it exports), `answerPaths`, `otherTextPath` and `answerText` |
 | `text_field.dart` | `NoteTextField`, and what the other widgets share: `TypingSaver` and `typingPause`, which save what is typed; `limitCodePoints`; and `ReadOnlyAnswer`, an answer that can't be changed |
 | `choice_field.dart` | `ChoiceField`: the chips, and the box of the Other text (`otherTextField`); `pickedCodes` |
@@ -1806,10 +1872,10 @@ As built (unit F5):
 | `group_field.dart` | `GroupField`, its two layouts (`FieldsInStack`, `FieldsInRow`), `clearedBy`, and `Collapsible`, the header of a collapsed group or grid |
 | `grid_field.dart` | `GridField`, with `gridRows`, `gridSides` and `cellPath` |
 | `region_field.dart` | `RegionField`: the region, the side and Front or back, each a choose-one of chips |
-| `problem_field.dart` | `ProblemField`: a search of phase 3's problem code list |
+| `problem_field.dart` | `ProblemField`: a search of phase 3's problem code list. Since unit F7, **Add to the problem list** under a picked diagnosis, or "On the problem list", as the screen offers it (`ProblemListScope`, `ProblemListOffer`; lifecycle 8.3) |
 | `action_field.dart` | `ActionField`, and `ActionHandler`, what the screen does for an action |
 | `photo_field.dart`, `info_field.dart` | The place of photos until phase 8, which says "Photos arrive in a later release."; guidance |
-| `note_read_view.dart` | `NoteReadView`, which draws a `readModel`, and `credentialText` |
+| `note_read_view.dart` | `NoteReadView`, which draws a `readModel`. `credentialText`, which words a credential, moved in unit L4 to `apps/mobile/lib/encounters/credentials.dart`, where the signing sentence words it too (lifecycle 3.5) |
 
 No widget knows which note type it is in, and nothing in `features/forms` touches the store. A
 widget calls back with the value to store; `note_form.dart` hands each change, one answer at a time,
@@ -2004,6 +2070,43 @@ which the visit screen places among the note's recap, sign-offs and addenda (lif
   `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's test server,
   `apps/mobile/test/sync/fake_server.dart`, has one), with that copy's own tests against the
   server's cases: never a second idea of which fields are hidden.
+
+As built on the domain layer's side (unit L4, `apps/mobile/lib/encounters/`, with its review;
+lifecycle 9.5 as built), what the screen has to give the form:
+
+- **The answers and their saving.** A note read for the form (`NoteView`) gives its `answers`, every
+  answer stored to whoever acts as the author of a draft and what `visibleAnswers` gives to anyone
+  else, and its own `definition`. `saveAnswer(noteId, path, value)` checks one answer and saves it,
+  and queues nothing when the value equals what is stored, an absent answer's `null` included; the
+  screen then reads the note again.
+- **What waits**: `NoteView.pendingPaths`, each answer the reader may see that waits to send, a
+  cleared one included (review finding LFM-3).
+- **What conflicts**: `NoteView.conflicts`, by path, from the store's conflicts, the latest of each
+  answer as Needs attention shows it: `theirs`, `by`, `at`, `mine` (the store's `myValue`, what
+  **Use my value** sends; review finding LFM-1) and `onChoose`, which resolves the conflict in the
+  store and is null while charting is paused for the clock. A choice made out of date (the other
+  value moved on, or the conflict was settled in Needs attention) is refused `conflict_changed`
+  ("The other value changed. Check both values again.") and changes nothing. The screen syncs after
+  a choice, as Needs attention does (the coordinator's decision; L5). To someone who does not act
+  as the author, a conflict at an answer that could hold what they may not see is not given
+  (`mayHoldHidden`): the server's value there could be hidden content. Needs attention still lists
+  it unfiltered: since D88 the server holds such a set from someone who does not act as the author
+  rather than answering it with a conflict, so none is expected there (the coordinator's decision;
+  the review found no path that makes one).
+- **The read-only answers** are the domain layer's `readOnlyAt(note, path)`: the whole note when it
+  may not be changed now; else each answer the server would hold the person's set of, one that
+  could hold what they may not see to someone who does not act as the author (`mayHoldHidden`, its
+  Dart copy held to the test server's over every path of every test note type and to the API's
+  named cases), and one of a section that needs an ordering credential to a credential that can't
+  order, its author included (lifecycle 6.4 rule 5). The form takes no list of them yet: the screen
+  that wires it in (L5) gives it one.
+- **The contract's types** (`AnswerState`, `AnswerConflict`, `ConflictBy`, `FormAnswers`) are in
+  `apps/mobile/lib/forms/answer_state.dart`, which `field_host.dart` exports, so the domain layer
+  imports no widget library (`apps/mobile/test/encounters/layering_test.dart` holds it so).
+- **Expand and Add to the problem list.** `NoteForm.expand` takes the screen's offers, made from
+  `expandTargets`, `expandOpensAsItIs` and `expand` (6.4 as built). `ProblemListScope` takes a
+  handler made from `problemListPlace` and `addToProblemList` (lifecycle 8.3 as built), and a
+  diagnosis finds its own path from the field host around it, so a widget still names no note type.
 
 ### 8.2 What every field widget must do
 

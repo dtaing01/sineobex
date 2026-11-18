@@ -3817,7 +3817,8 @@ As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with i
   someone who does not act as the author (`mayHoldHidden`, D88, D92), and, whoever acts as the
   author, an answer of a section that needs an ordering credential, to a credential that can't
   order (6.4 rule 5), which the design named only for what the form draws (forms 10.1 #53). The
-  screen hands the form these paths.
+  form takes no list of such answers yet: the screen that wires it in (L5) gives it one, from
+  `readOnlyAt` (forms 8.1).
 - **Saving an answer** (`saveAnswer`): refused `read_only` where `readOnlyAt` says so ("You can’t
   change this answer."); checked by the note's own version (`checkAnswer`, refused with its problem
   and the path, "This answer can’t be saved."); a value equal to what is stored, an absent answer's
