@@ -9,6 +9,7 @@ import '../sync/local_store.dart';
 import 'access.dart';
 import 'chart_cache.dart';
 import 'generated/sensitive_codes.dart';
+import 'normalize.dart' show normalizeName;
 
 /// The problem list (design section 9): New, Ongoing, Resolved. Only New and Ongoing count toward
 /// the bag check (phases 6–7). On the phone a problem moves only forward; Resolved back to Ongoing
@@ -184,6 +185,19 @@ class Problems {
       return a.title.compareTo(b.title);
     });
     return out;
+  }
+
+  /// A Resolved problem of [patientId]'s group, as the person may see the list, with the same [code]
+  /// or the same [title] compared loosely: **Add problem** then asks "Is this the same problem coming
+  /// back?" (design 9.5), and a Yes adds the new one as a recurrence of it. Null when there is none.
+  ProblemView? resolvedMatch(String patientId, {String? code, String? title}) {
+    final words = normalizeName(title);
+    for (final p in problemsOf(patientId) ?? const <ProblemView>[]) {
+      if (p.status != 'resolved') continue;
+      if (code != null && p.code?.code == code) return p;
+      if (words != null && normalizeName(p.title) == words) return p;
+    }
+    return null;
   }
 
   ProblemView? problem(String problemId) {

@@ -16,7 +16,8 @@ import '../sync/phone_harness.dart';
 
 /// **Add to the problem list** under a diagnosis of a note (lifecycle 8.3; card F7-problem-button):
 /// the diagnosis made a problem through phase 3's path, naming the visit, at the status the note
-/// gives it (PLAN-OPEN 12.1 #16). Each runs offline first, then syncs to the phone's test server.
+/// gives it (PLAN-OPEN 12.1 #16), asking phase 3's "same problem coming back?" when the list holds
+/// it Resolved. Each runs offline first, then syncs to the phone's test server.
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
@@ -96,7 +97,7 @@ void main() {
     server.offline = true;
     final r = repo(p);
     final at = await assessed(r, patient, scalp, status: 'chronic');
-    expect(r.problemListPlace(at.note, diagnosis), (listed: false, status: 'ongoing'));
+    expect(r.problemListPlace(at.note, diagnosis), (listed: false, status: 'ongoing', resolved: null));
     var changed = 0;
     r.onChanged = () => changed++;
     final problem = r.addToProblemList(at.note, diagnosis, status: 'ongoing');
@@ -107,7 +108,7 @@ void main() {
       [scalp.title, scalp.code, scalp.title, 'ongoing', at.visit, true],
     );
     // Once it is there, it says so rather than offer a second.
-    expect(r.problemListPlace(at.note, diagnosis), (listed: true, status: 'ongoing'));
+    expect(r.problemListPlace(at.note, diagnosis), (listed: true, status: 'ongoing', resolved: null));
 
     server.offline = false;
     await sync(p);
@@ -125,7 +126,11 @@ void main() {
     final r = repo(p);
     for (final (status, mapped) in [('new', 'new'), ('improving', 'ongoing'), ('worse', 'ongoing'), (null, null)]) {
       final at = await assessed(r, patient, scalp, status: status);
-      expect(r.problemListPlace(at.note, diagnosis), (listed: false, status: mapped), reason: '$status');
+      expect(r.problemListPlace(at.note, diagnosis), (
+        listed: false,
+        status: mapped,
+        resolved: null,
+      ), reason: '$status');
     }
     final at = await assessed(r, patient, syphilis);
     // A sensitive code goes on the list marked sensitive, as phase 3's Add problem marks it.
@@ -134,6 +139,95 @@ void main() {
     expect(() => r.addToProblemList(at.note, diagnosis, status: 'resolved'), throwsA(isA<LocalValidationError>()));
     await sync(p);
     expect(p.store.needsAttention(), isEmpty);
+  });
+
+  test('a Resolved problem with the same code or title asks whether it came back, as Add problem asks', () async {
+    final p = phone(alex);
+    final patient = server.seedPatient();
+    final other = server.seedPatient(preferredName: 'Demo Other');
+    server.offline = true;
+    final problems = Problems(p.store, permissions: staff.toList());
+    final earlier = problems.add(
+      patient,
+      title: 'Demo: scalp cut',
+      code: (system: 'icd10cm', code: scalp.code, display: scalp.title),
+      status: 'new',
+    );
+    problems.move(earlier, 'resolved');
+    // Another patient's, with no code and the diagnosis's words written differently.
+    final byTitle = problems.add(
+      other,
+      title: '  laceration without foreign body of SCALP, initial encounter',
+      status: 'new',
+    );
+    problems.move(byTitle, 'resolved');
+    // An open problem with the same words is not the one asked about: only a Resolved one is.
+    problems.add(other, title: scalp.title, status: 'ongoing');
+    final r = repo(p);
+
+    // By its code: the person answers before anything is added; Yes makes a new episode of it.
+    final at = await assessed(r, patient, scalp, status: 'worse');
+    expect(r.problemListPlace(at.note, diagnosis), (
+      listed: false,
+      status: 'ongoing',
+      resolved: (id: earlier, title: 'Demo: scalp cut'),
+    ));
+    final before = p.store.outbox().length;
+    expect(
+      () => r.addToProblemList(at.note, diagnosis, status: 'ongoing'),
+      throwsA(
+        isA<LocalValidationError>()
+            .having((e) => e.problem, 'problem', 'same_problem_question')
+            .having((e) => e.message, 'message', 'Answer whether this is the same problem coming back.'),
+      ),
+    );
+    expect(p.store.outbox(), hasLength(before));
+    final again = r.addToProblemList(at.note, diagnosis, status: 'ongoing', sameComingBack: true);
+    expect([problems.problem(again)!.recurrenceOf, problems.problem(again)!.encounterId], [earlier, at.visit]);
+    // The new episode is open: the next note finds it on the list.
+    final next = await assessed(r, patient, scalp, status: 'worse');
+    expect(r.problemListPlace(next.note, diagnosis), (listed: true, status: 'ongoing', resolved: null));
+
+    // By its title, compared loosely: No adds a different problem, linked to nothing.
+    final theirs = await assessed(r, other, scalp, status: 'new');
+    expect(r.problemListPlace(theirs.note, diagnosis)?.resolved, (
+      id: byTitle,
+      title: 'laceration without foreign body of SCALP, initial encounter',
+    ));
+    final different = r.addToProblemList(theirs.note, diagnosis, status: 'new', sameComingBack: false);
+    expect([problems.problem(different)!.recurrenceOf, problems.problem(different)!.resolvedInErrorOf], [null, null]);
+
+    server.offline = false;
+    await sync(p);
+    expect([p.store.outbox(), p.store.needsAttention()], [isEmpty, isEmpty]);
+    expect(
+      [server.records[again]!.attributes['recurrenceOf'], server.records[different]!.attributes['recurrenceOf']],
+      [earlier, null],
+    );
+  });
+
+  test('a sensitive Resolved problem asks only a reader who may see it; one who may not adds it without', () async {
+    final p = phone(alex);
+    final patient = server.seedPatient();
+    final problems = Problems(p.store, permissions: staff.toList());
+    final earlier = problems.add(
+      patient,
+      title: syphilis.title,
+      code: (system: 'icd10cm', code: syphilis.code, display: syphilis.title),
+      status: 'new',
+    );
+    problems.move(earlier, 'resolved');
+    final r = repo(p);
+    final at = await assessed(r, patient, syphilis, status: 'new');
+    expect(r.problemListPlace(at.note, diagnosis)?.resolved?.id, earlier);
+
+    // Telling them it is there would show what they may not see (the coordinator's decision of Nov 18).
+    final reader = repo(p, permissions: staff.difference({'patients.view_sensitive'}));
+    expect(reader.problemListPlace(at.note, diagnosis), (listed: false, status: 'new', resolved: null));
+    final added = reader.addToProblemList(at.note, diagnosis, status: 'new');
+    expect(problems.problem(added)!.recurrenceOf, isNull);
+    await sync(p);
+    expect([p.store.outbox(), p.store.needsAttention()], [isEmpty, isEmpty]);
   });
 
   test('not offered without a diagnosis picked, or to a role that doesn’t chart; nothing written then', () async {

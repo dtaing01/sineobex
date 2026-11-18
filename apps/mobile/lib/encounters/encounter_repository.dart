@@ -451,38 +451,55 @@ class EncounterRepository {
   /// (lifecycle 8.3), which the form shows under it: null when it is not offered (no diagnosis
   /// picked there, a visit with no patient, or a role that doesn't chart and so can't add a problem);
   /// else whether the patient's problem list, as the person may see it, holds it open already
-  /// ([listed]: "On the problem list"), and the list's status the note's own status beside it maps to
-  /// ([status], null when it gives none and the person chooses New or Ongoing). Throws
-  /// [ChartingPaused] while the store is frozen; a [StateError] when the phone holds no such note.
+  /// ([listed]: "On the problem list"), the list's status the note's own status beside it maps to
+  /// ([status], null when it gives none and the person chooses New or Ongoing), and, when it is not
+  /// listed, the Resolved problem phase 3's Add problem would ask about ([resolved]: "Is this the
+  /// same problem coming back?", `Problems.resolvedMatch`). Throws [ChartingPaused] while the store is
+  /// frozen; a [StateError] when the phone holds no such note.
   ProblemListPlace? problemListPlace(String noteId, String path) {
     _guardFrozen();
     final at = _diagnosisAt(noteId, path);
     if (at == null || !user.charts) return null;
-    final listed = (Problems(store, permissions: user.permissions.toList()).problemsOf(at.patientId) ?? const []).any(
+    final problems = Problems(store, permissions: user.permissions.toList());
+    final listed = (problems.problemsOf(at.patientId) ?? const []).any(
       (p) => p.code?.code == at.code && p.status != 'resolved',
     );
-    return (listed: listed, status: at.status);
+    final match = listed ? null : problems.resolvedMatch(at.patientId, code: at.code, title: at.label);
+    return (listed: listed, status: at.status, resolved: match == null ? null : (id: match.id, title: match.title));
   }
 
   /// **Add to the problem list** (lifecycle 8.3): the diagnosis at [path] of the note [noteId] made a
   /// problem of the visit's patient through phase 3's path (`Problems.add`), naming the visit so the
   /// server records it as made at one: its label as the title (cut to the title's 200 characters)
   /// and as the code's words, at [status], New or Ongoing (from [problemListPlace], or the person's
-  /// choice), Sensitive for a code on the sensitive list. Returns the problem's ID.
+  /// choice), Sensitive for a code on the sensitive list. When the list holds it Resolved
+  /// ([ProblemListPlace.resolved]), [sameComingBack] is the person's answer to phase 3's "Is this the
+  /// same problem coming back?": Yes adds it as a new episode of that one (`recurrenceOf`), No as a
+  /// different problem, as Add problem does. Returns the problem's ID.
   ///
-  /// Throws, writing nothing: [ChartingPaused]; `not_charting`; a [LocalValidationError] for a
-  /// status that is not New or Ongoing, or a visit the phone holds of someone outside the patient's
-  /// group; a [StateError] when there is no diagnosis at [path] or the visit has no patient.
-  String addToProblemList(String noteId, String path, {required String status}) {
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting`; `same_problem_question` while that
+  /// question waits for its answer; a [LocalValidationError] for a status that is not New or Ongoing,
+  /// or a visit the phone holds of someone outside the patient's group; a [StateError] when there is
+  /// no diagnosis at [path] or the visit has no patient.
+  String addToProblemList(String noteId, String path, {required String status, bool? sameComingBack}) {
     _guardFrozen();
     _mayChart(medical: false);
     final at = _diagnosisAt(noteId, path);
     if (at == null) throw StateError('no diagnosis picked at $path');
-    final id = Problems(store, permissions: user.permissions.toList()).add(
+    final problems = Problems(store, permissions: user.permissions.toList());
+    final match = problems.resolvedMatch(at.patientId, code: at.code, title: at.label);
+    if (match != null && sameComingBack == null) {
+      throw const LocalValidationError(
+        'Answer whether this is the same problem coming back.',
+        problem: 'same_problem_question',
+      );
+    }
+    final id = problems.add(
       at.patientId,
       title: String.fromCharCodes(at.label.runes.take(200)),
       code: (system: 'icd10cm', code: at.code, display: at.label),
       status: status,
+      recurrenceOf: match != null && sameComingBack! ? match.id : null,
       encounterId: at.encounterId,
     );
     onChanged?.call();
@@ -903,9 +920,9 @@ class EncounterRepository {
 const _data = 'data.';
 
 /// Where a note's diagnosis stands for **Add to the problem list**
-/// ([EncounterRepository.problemListPlace]): on the patient's list already, and the list's status
-/// the note gives it, if any.
-typedef ProblemListPlace = ({bool listed, String? status});
+/// ([EncounterRepository.problemListPlace]): on the patient's list already, the list's status the
+/// note gives it, if any, and the Resolved problem it may be coming back as, if any.
+typedef ProblemListPlace = ({bool listed, String? status, ({String id, String title})? resolved});
 
 /// The note [EncounterRepository.addNote] opens: a new one, or a draft of the type already in the
 /// visit ([existing]).

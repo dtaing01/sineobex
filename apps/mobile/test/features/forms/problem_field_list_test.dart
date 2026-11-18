@@ -10,8 +10,9 @@ import 'forms_test_helpers.dart';
 
 /// **Add to the problem list** under a picked diagnosis (lifecycle 8.3; card F7-problem-button):
 /// offered where the screen gives it through a [ProblemListScope], at the status the note gives,
-/// or New or Ongoing as the person chooses; "On the problem list" once it is there. The widget
-/// stores nothing for it: the screen's domain layer adds the problem (`addToProblemList`).
+/// or New or Ongoing as the person chooses; phase 3's "Is this the same problem coming back?" when
+/// the list holds it Resolved; "On the problem list" once it is there. The widget stores nothing for
+/// it: the screen's domain layer adds the problem (`addToProblemList`).
 void main() {
   final general = presetDefinition('general_primary_care');
   final diagnosis = presetField('general_primary_care', 'problems.diagnosis') as ProblemDef;
@@ -47,20 +48,21 @@ void main() {
   }
 
   forEachRun('a picked diagnosis offers Add to the problem list, then says it is there', (tester, run) async {
-    final added = <String>[];
+    final added = <(String, bool?)>[];
     final listed = ValueNotifier(false);
     await open(
       tester,
       run: run,
       handler: (at, d) => listed.value
           ? const ProblemListOffer.listed()
-          : ProblemListOffer.add(status: 'ongoing', onAdd: (status) => added.add(status)),
+          : ProblemListOffer.add(status: 'ongoing', onAdd: (status, again) => added.add((status, again))),
     );
     expect(controlNamed(tester, addLabel), isSemantics(isButton: true, hasTapAction: true, isEnabled: true));
     expect(find.text('Add to the problem list'), findsOneWidget);
     await expectFieldOk(tester);
     await tap(tester, find.bySemanticsLabel(addLabel));
-    expect(added, ['ongoing']);
+    // Nothing on the list Resolved: nothing asked.
+    expect(added, [('ongoing', null)]);
 
     listed.value = true;
     await open(tester, run: run, handler: (at, d) => const ProblemListOffer.listed());
@@ -74,7 +76,7 @@ void main() {
     await open(
       tester,
       run: run,
-      handler: (at, d) => ProblemListOffer.add(onAdd: added.add),
+      handler: (at, d) => ProblemListOffer.add(onAdd: (status, _) => added.add(status)),
     );
     await tap(tester, find.bySemanticsLabel(addLabel));
     expect(find.text('Add as New or Ongoing?'), findsOneWidget);
@@ -88,6 +90,35 @@ void main() {
     expect(added, ['new', 'ongoing']);
   }, over: formRuns);
 
+  forEachRun('with the diagnosis on the list as Resolved, it asks whether it is the same problem coming back', (
+    tester,
+    run,
+  ) async {
+    final added = <(String, bool?)>[];
+    await open(
+      tester,
+      run: run,
+      handler: (at, d) =>
+          ProblemListOffer.add(resolvedTitle: 'Demo: scalp cut', onAdd: (status, again) => added.add((status, again))),
+    );
+    // The status first, as the note gives none; then the question, as Add problem asks it.
+    await tap(tester, find.bySemanticsLabel(addLabel));
+    await tap(tester, find.text('Ongoing'));
+    expect(find.text('Is this the same problem coming back?'), findsOneWidget);
+    expect(find.text('“Demo: scalp cut” is on the list as Resolved.'), findsOneWidget);
+    await expectFieldOk(tester);
+    await tap(tester, find.text('Cancel'));
+    expect(added, isEmpty);
+
+    await tap(tester, find.bySemanticsLabel(addLabel));
+    await tap(tester, find.text('New'));
+    await tap(tester, find.text('Yes, it came back'));
+    await tap(tester, find.bySemanticsLabel(addLabel));
+    await tap(tester, find.text('Ongoing'));
+    await tap(tester, find.text('No, a different problem'));
+    expect(added, [('new', true), ('ongoing', false)]);
+  }, over: formRuns);
+
   testWidgets('one tap adds one problem: a second tap while it is being added does nothing', (tester) async {
     final handle = tester.ensureSemantics();
     final added = <String>[];
@@ -96,7 +127,7 @@ void main() {
       tester,
       handler: (at, d) => ProblemListOffer.add(
         status: 'new',
-        onAdd: (status) {
+        onAdd: (status, _) {
           added.add(status);
           return adding.future;
         },
@@ -114,7 +145,7 @@ void main() {
 
   testWidgets('nothing offered on a read-only note, without the screen’s offer, or before a pick', (tester) async {
     final handle = tester.ensureSemantics();
-    ProblemListOffer offer(String at, ProblemAnswer d) => ProblemListOffer.add(status: 'new', onAdd: (_) {});
+    ProblemListOffer offer(String at, ProblemAnswer d) => ProblemListOffer.add(status: 'new', onAdd: (_, _) {});
     await open(tester, handler: offer, enabled: false);
     expect(find.text('Add to the problem list'), findsNothing);
     await open(tester);

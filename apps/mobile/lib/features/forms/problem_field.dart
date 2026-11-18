@@ -42,17 +42,24 @@ String? problemText(ProblemAnswer value) => switch (value) {
 /// What the screen offers under a picked diagnosis (lifecycle 8.3): **Add to the problem list**, or
 /// that it is there already.
 class ProblemListOffer {
-  /// Add it: [onAdd] takes the problem list's status, `new` or `ongoing`, and says itself what
-  /// stops it (the clock, a visit of someone else). [status] is the one the note's own status beside
-  /// the diagnosis gives; without one the person chooses first, as on Add problem.
-  const ProblemListOffer.add({required FutureOr<void> Function(String status) this.onAdd, this.status})
-    : listed = false;
+  /// Add it: [onAdd] takes the problem list's status, `new` or `ongoing`, and the answer to "Is
+  /// this the same problem coming back?" (null when it was not asked), and says itself what stops it
+  /// (the clock, a visit of someone else). [status] is the one the note's own status beside the
+  /// diagnosis gives; without one the person chooses first, as on Add problem. [resolvedTitle] names
+  /// the Resolved problem on the list it may be coming back as: the person is asked then, as phase
+  /// 3's Add problem asks.
+  const ProblemListOffer.add({
+    required FutureOr<void> Function(String status, bool? sameComingBack) this.onAdd,
+    this.status,
+    this.resolvedTitle,
+  }) : listed = false;
 
   /// The patient's problem list holds it already: "On the problem list".
-  const ProblemListOffer.listed() : onAdd = null, status = null, listed = true;
+  const ProblemListOffer.listed() : onAdd = null, status = null, resolvedTitle = null, listed = true;
 
-  final FutureOr<void> Function(String status)? onAdd;
+  final FutureOr<void> Function(String status, bool? sameComingBack)? onAdd;
   final String? status;
+  final String? resolvedTitle;
   final bool listed;
 }
 
@@ -240,13 +247,19 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
     );
   }
 
-  /// Adds it at the status the note gives, or the one the person chooses when it gives none. A tap
-  /// while it is being added does nothing.
+  /// Adds it at the status the note gives, or the one the person chooses when it gives none, once
+  /// they say whether it is a Resolved problem coming back, when there is one. A tap while it is
+  /// being added does nothing.
   Future<void> _add(ProblemListOffer offer) async {
     if (_adding) return;
     final status = offer.status ?? await _chooseStatus();
     if (status == null || !mounted) return;
-    final adding = offer.onAdd!(status);
+    bool? again;
+    if (offer.resolvedTitle case final title?) {
+      again = await _askComingBack(title);
+      if (again == null || !mounted) return;
+    }
+    final adding = offer.onAdd!(status, again);
     if (adding is! Future<void>) return;
     setState(() => _adding = true);
     try {
@@ -269,6 +282,23 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         TextButton(onPressed: () => Navigator.of(context).pop('ongoing'), child: const Text('Ongoing')),
         FilledButton(onPressed: () => Navigator.of(context).pop('new'), child: const Text('New')),
+      ],
+    ),
+  );
+
+  /// Phase 3's recurrence question, in Add problem's words: true for a new episode of the Resolved
+  /// problem named [title], false for a different problem; null when the person cancels. Neither
+  /// answer is put forward.
+  Future<bool?> _askComingBack(String title) => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      scrollable: true,
+      title: const Text('Is this the same problem coming back?'),
+      content: Text('“$title” is on the list as Resolved.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No, a different problem')),
+        TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes, it came back')),
       ],
     ),
   );
