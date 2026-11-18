@@ -407,6 +407,18 @@ class Generator {
     for (const { path, method, op } of ops) {
       if (!op.operationId) throw new Error(`${method.toUpperCase()} ${path} has no operationId`);
       const name = camel(op.operationId);
+      // The transport decodes every answer as JSON, so an operation that answers a file (the EMS
+      // handoff's PDF) is left out: the phone never calls it, and a call would fail after the server
+      // had logged the export (lifecycle 5.7; review finding LPM-5).
+      const answered = Object.entries(op.responses ?? {}).find(([code]) => /^2\d\d$/.test(code))?.[1];
+      const types = Object.keys(answered?.content ?? {});
+      if (types.length > 0 && !types.includes('application/json')) {
+        methods.push(
+          `  // ${name} (${method.toUpperCase()} ${path}) is not here: it answers ${types.join(', ')}, not JSON.`,
+          '',
+        );
+        continue;
+      }
       const typeBase = pascal(op.operationId);
       const params: string[] = [];
       const pathParams = (op.parameters ?? []).filter((p) => p.in === 'path');

@@ -140,6 +140,32 @@ describe('Dart generator', () => {
     );
   });
 
+  it('leaves out an operation whose answer is not JSON, with a comment: the phone never decodes a file as JSON', () => {
+    // Review finding LPM-5: GET /v1/encounters/{id}/ems-handoff answers a PDF, and a Future<void> that
+    // ran the transport's JSON decode over it failed after the export was logged.
+    const files = generateDart({
+      ...doc,
+      paths: {
+        '/v1/files/{fileId}': {
+          get: {
+            operationId: 'getFile',
+            parameters: [{ name: 'fileId', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: {
+              '200': {
+                description: 'the file',
+                content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(files).not.toMatch(/Future<[^>]*> getFile\(/);
+    expect(files).toContain('// getFile (GET /v1/files/{fileId}) is not here: it answers application/pdf');
+    // An answer with no content at all is still a Future<void>.
+    expect(out).toContain('Future<void> addProblem({required Problem body}) async {');
+  });
+
   it('is deterministic', () => {
     expect(generateDart(doc)).toBe(out);
   });
