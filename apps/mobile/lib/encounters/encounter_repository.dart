@@ -240,8 +240,9 @@ class EncounterRepository {
   /// A note of [type] in the visit (lifecycle 9.4): [type] is the definition the team's list gives
   /// for a new note, so the note is written on that version. If the visit already has a draft of
   /// that type the person may change, that draft is opened instead: their own first, empty or not,
-  /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1).
-  /// [another] makes a second note of the type all the same (4.4).
+  /// then a teammate's they may see (an empty draft of a teammate's is not there to them, 3.1). An
+  /// empty draft of their own whose refused sign-off's fix waits to send (a note removed, 3.3 as
+  /// built) is not opened. [another] makes a second note of the type all the same (4.4).
   ///
   /// With a Medical note of the person's own, new or opened, the app adds their own Red flags note
   /// on the team's type ([noteTypes]), in the same transaction as a new note, unless the visit has a
@@ -308,11 +309,16 @@ class EncounterRepository {
   /// The draft of the type [key] in the visit that [addNote] opens, if there is one.
   Future<String?> _draftToOpen(String encounterId, String key) async {
     final held = _Held.scan(store, encounterId: encounterId);
+    final settling = EncounterCompletion(this)._signoffsOfNotes(ChangeState.pending);
     final drafts = [
       for (final rec in held.ordered(held.notes))
         if (rec.attributes['noteTypeKey'] == key &&
             store.noteState(rec.id)!.status == NoteStatus.draft &&
-            !store.sentForReview(rec.id))
+            !store.sentForReview(rec.id) &&
+            // A note removed while its refused sign-off is settled, the fix still waiting to send
+            // (3.3 as built): charted on again, Complete would stop it over a Complete the person
+            // never made.
+            !(settling.contains(rec.id) && noteIsEmpty(_answersOf(rec))))
           rec,
     ];
     final own = [

@@ -529,6 +529,55 @@ void main() {
       expect((await r.openVisit(visit))!.notes, isEmpty);
     });
 
+    test('Add note makes a new draft while a removed note’s fix waits to send, so Complete never stops it '
+        'over a Complete the person did not make (lifecycle 3.3, 9.4)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = (await r.addNote(visit, definition(testNote))).noteId;
+      p.store.setField(n, 'data.vitals.pulse', 88);
+      await sync(p);
+      server.serverEdit(n, 'data.care.plan', 'Demo: shelter tonight', by: blair);
+      complete(p, [finishing(p, n, testNote)]);
+      await sync(p);
+      server.offline = true;
+      await r.removeNote(n);
+
+      final added = await r.addNote(visit, definition(testNote));
+      expect([added.existing, added.noteId == n], [false, false]);
+      p.store.setField(added.noteId, 'data.vitals.pulse', 90);
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final x in plan.notes) x.noteId], [isEmpty, added.noteId]);
+      r.complete(plan);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(
+        [server.records[n]!.fields['status']!.value, server.records[added.noteId]!.fields['status']!.value],
+        ['draft', 'completed'],
+      );
+    });
+
+    test('a reopened note of theirs whose last Complete waits to send is still the draft Add note opens: '
+        'that Complete was theirs', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      server.offline = true;
+      final r = repo(p, credential: 'student');
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final medical = (await r.addNote(visit, definition(testMedical))).noteId;
+      p.store.setField((await r.ownRedFlagsNote(visit))!, 'data.flags.any', 'no');
+      p.store.setField(medical, 'data.vitals.pulse', 96);
+      r.complete((await r.openComplete(visit))!);
+      expect(p.store.reopenNote(medical, definition(testMedical)), ReopenEffect.apply);
+      final opened = await r.addNote(visit, definition(testMedical));
+      expect([opened.noteId, opened.existing], [medical, true]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+    });
+
     test('waits, writing nothing, while something else about the visit waits in Needs attention', () async {
       final p = phone(alex);
       final r = repo(p);
