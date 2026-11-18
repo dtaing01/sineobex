@@ -981,12 +981,15 @@ class LocalStore {
   NoteStatus _noteStatusHere(LocalRecord note) =>
       LocalEffect.fromJson(note.attributes[_localEffectKey])?.status ?? NoteStatus.values.byName(note.status);
 
-  /// Whether [visit]'s envelope is locked (lifecycle 3.1): a note of it this phone holds is
-  /// finished, or the server's status of the visit says every note that counts is, those this phone
-  /// does not hold included. A teammate's finished note beside a draft is not known here; the server
-  /// keeps a change it locks in history, and its receipt shows the visit as it is.
+  /// Whether [visit]'s envelope is locked (lifecycle 3.1): the server's copy says it holds a finished
+  /// note (`hasFinishedNote`, review finding SLK-1), or a note of it this phone holds is finished
+  /// here. The visit's status is not read: a finished note beside a teammate's draft leaves it a
+  /// draft. A finished note the reader may not see still locks the visit on the server, which keeps
+  /// the change in history; the person learns that the visit holds a finished note, and nothing more.
+  /// After every finished note is reopened here, the lock holds until a refresh says otherwise:
+  /// that is the safe direction (SLK-2).
   bool _envelopeLockedHere(LocalRecord visit) =>
-      visit.status != 'draft' ||
+      visit.attributes['hasFinishedNote'] == true ||
       envelopeLocked([
         for (final r in _db.select(
           "SELECT id FROM records WHERE entity = ? AND json_extract(attributes_json, '\$.encounterId') = ?",
@@ -2324,8 +2327,15 @@ class LocalStore {
         return;
       }
       if (r.entity == entityEncounter) {
-        // The server works a visit's status out from its notes (lifecycle 2.2); no change sets it.
+        // The server works a visit's status out from its notes (lifecycle 2.2), and whether it holds a
+        // finished note (hasFinishedNote); no change sets either.
         _touch(r.id, status: r.status);
+        if (existing) {
+          _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
+            jsonEncode({...record(r.id)!.attributes, ...r.attributes}),
+            r.id,
+          ]);
+        }
         // A teammate may have given it a patient.
         _fileUnfiled();
         return;

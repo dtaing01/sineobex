@@ -548,6 +548,27 @@ void main() {
       expect((await noteAs(alex, flags)).attributes['actingAuthorId'], alex);
     });
 
+    test(
+      'a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it',
+      () async {
+        // Review finding SLK-1, worked out over the notes the reader is shown (LRD-2).
+        final v = visit();
+        Future<RecordSnapshot> visitAs(String user) async => (await read(user, [(entityEncounter, v)])).records.single;
+        final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'});
+        expect((await visitAs(alex)).attributes, containsPair('hasFinishedNote', false));
+        finish(talk, 'complete');
+        expect(
+          [(await visitAs(alex)).status, (await visitAs(alex)).attributes['hasFinishedNote']],
+          ['completed', true],
+        );
+        // A teammate's draft beside it: the visit is a draft, its envelope locked all the same.
+        noteOn(v, testNote, const {'care.plan': 'Demo: housing list'}, by: ben);
+        expect([(await visitAs(alex)).status, (await visitAs(alex)).attributes['hasFinishedNote']], ['draft', true]);
+        // Dee may not read the sensitive note: nothing says it is there.
+        expect([(await visitAs(dee)).status, (await visitAs(dee)).attributes['hasFinishedNote']], ['draft', false]);
+      },
+    );
+
     group('what hangs off a note, and referrals (6.4 rule 7)', () {
       String correctionOf(String note, String path, Object? newValue, [int baseVersion = 1]) =>
           server.seed(entityCorrection, {

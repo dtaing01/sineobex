@@ -730,6 +730,67 @@ void main() {
       expect(late(), isEmpty);
     });
 
+    test('a visit with a finished note beside a teammate’s draft is locked here, as the server says', () async {
+      // Review finding SLK-1: the visit's status is a draft while any note that counts is, so the
+      // phone took the envelope for unlocked; the server kept each edit in history and told the signer.
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      p.store.setField(visit, 'summary', 'Demo: well');
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, n, testMedical, act: SignoffAct.sign),
+      ]);
+      await sync(p);
+      // A teammate adds a note to the signed visit (4.4), and syncs: the visit is a draft again.
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      note(b, visit, testNote, {'care.plan': 'Demo: shelter'});
+      await sync(b);
+      expect([server.records[visit]!.status, b.store.record(visit)!.status], ['draft', 'draft']);
+      expect(b.store.record(visit)!.attributes['hasFinishedNote'], isTrue);
+      final before = b.store.outbox().length;
+      for (final (field, value) in [('summary', 'Demo: teammate changed it'), ('locationText', 'Demo: north lot')]) {
+        expect(() => b.store.setField(visit, field, value), throwsA(isA<RecordLocked>()), reason: field);
+      }
+      expect(b.store.outbox(), hasLength(before));
+      await sync(b);
+      expect(late(), isEmpty);
+    });
+
+    test('the signer’s own phone keeps the visit locked once its finished notes have left it', () async {
+      // Review finding SLK-1 on the phone that signed: its notes are closed and purged after Complete
+      // (8.2), and a teammate's draft keeps the visit's status a draft.
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(p, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(p, visit, testMedical, {'vitals.pulse': 96});
+      await sync(p);
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      note(b, visit, testNote, {'care.plan': 'Demo: shelter'});
+      await sync(b);
+      complete(p, [
+        finishing(p, flags, testRedFlags, act: SignoffAct.sign),
+        finishing(p, n, testMedical, act: SignoffAct.sign),
+      ]);
+      await sync(p);
+      p.store
+        ..closeRecord(flags)
+        ..closeRecord(n);
+      expect([p.store.record(flags), p.store.record(n)], [isNull, isNull]);
+      await sync(p);
+      expect(p.store.record(visit)!.status, 'draft');
+      expect(() => p.store.setField(visit, 'summary', 'Demo: later'), throwsA(isA<RecordLocked>()));
+      // A blank is still filled, and the kind still goes to Medical (3.1, 3.10): nothing here was signed.
+      expect(p.store.outbox(), isEmpty);
+      await sync(p);
+      expect(late(), isEmpty);
+    });
+
     test('a reopen gets through: a student’s note waiting for a co-signer goes back to draft for its author', () async {
       final s = phone(blair);
       server.credentials[blair] = 'student';

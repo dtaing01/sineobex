@@ -3284,8 +3284,19 @@ class FakeSyncServer {
       // A Medical visit's summary is Medical content, read as its notes are (review.ts medicalHidden).
       // Its status is worked out from the notes the reader may read, so it says nothing of one left out
       // (review.ts statusShown, LRD-2).
+      // Whether it holds a finished note is worked out from the same notes: the patient, the place and
+      // the summary are locked from the first one on (lifecycle 3.1, review finding SLK-1).
       case entityEncounter:
-        final shown = {..._readSnapshot(r), 'status': _statusShown(userId, perms, r.id)};
+        final notes = _notesShown(userId, perms, r.id);
+        final read = _readSnapshot(r);
+        final shown = {
+          ...read,
+          'status': encounterStatus(notes).name,
+          'attributes': {
+            ...read['attributes']! as Map<String, Object?>,
+            'hasFinishedNote': notes.any((n) => n.status != NoteStatus.draft),
+          },
+        };
         if (!_medicalHidden(perms, r)) return shown;
         return {
           ...shown,
@@ -3369,8 +3380,13 @@ class FakeSyncServer {
     return hidden;
   }
 
-  /// A visit's status as [userId] is shown it (review.ts statusShown): from the notes they may read.
-  String _statusShown(String userId, Set<String> perms, String encounterId) => encounterStatus([
+  /// The notes of a visit [userId] may read, as its status is worked out from them (review.ts
+  /// notesShown, statusShown).
+  List<({NoteStatus status, bool medical, bool empty})> _notesShown(
+    String userId,
+    Set<String> perms,
+    String encounterId,
+  ) => [
     for (final n in _notesOf(encounterId))
       if (_noteAsRead(userId, perms, n) case final read?)
         (
@@ -3378,7 +3394,7 @@ class FakeSyncServer {
           medical: n.medical,
           empty: _noteStatusOf(n) == 'draft' && noteIsEmpty(read.answers),
         ),
-  ]).name;
+  ];
 
   /// A Medical visit whose summary [perms] may not read (review.ts medicalHidden, RD-7).
   static bool _medicalHidden(Set<String> perms, FakeRecord visit) =>

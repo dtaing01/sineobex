@@ -1046,9 +1046,11 @@ describe('phase 4 sync: encounters and notes', () => {
       expect(snapshot!.status).toBe('draft');
       expect(Object.keys(snapshot!.attributes).sort()).toEqual([
         'clockVerified',
+        'hasFinishedNote',
         'startedAt',
         'startedDeviceTime',
       ]);
+      expect(snapshot!.attributes.hasFinishedNote).toBe(false);
       expect(Object.keys(snapshot!.fields).sort()).toEqual([
         'kind',
         'location',

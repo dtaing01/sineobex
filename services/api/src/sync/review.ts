@@ -11,6 +11,7 @@ import {
   signoffHashShown,
   statusNote,
   statusShown,
+  type StatusNote,
   type StoredCorrection,
 } from '../encounters/read.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
@@ -572,8 +573,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      * new value would give it away (hiddenCorrections). A sign-off's content hash goes only to
      * whoever acts as the author, its signer, and a reader who sees every answer of any note, and
      * never over a visit's summary withheld from the reader (signoffHashShown). A visit's summary
-     * goes with its notes (medicalHidden), and its status is worked out from the notes the reader
-     * may read (statusShown).
+     * goes with its notes (medicalHidden), and its status, and whether it holds a finished note, are
+     * worked out from the notes the reader may read (statusShown).
      */
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
@@ -600,11 +601,17 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
             ? record
             : withoutHash(record);
         }
-        case 'encounter':
+        case 'encounter': {
+          const shown = await notesShown(record);
+          const visit = summaryHidden(record) ? withoutSummary(record) : record;
           return {
-            ...(summaryHidden(record) ? withoutSummary(record) : record),
-            status: await visitStatus(record),
+            ...visit,
+            status: statusShown(shown),
+            // The patient, the place and the summary are locked from the first finished note on
+            // (lifecycle 3.1): a visit whose status is a draft may hold one (review finding SLK-1).
+            attributes: { ...visit.attributes, hasFinishedNote: shown.some((n) => n.status !== 'draft') },
           };
+        }
         case 'note_addendum': {
           // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
           if (record.attributes.noteId !== null) return (await noteRead(await noteOf(record))) && record;
@@ -632,8 +639,11 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
       return medicalHidden(scope.team.permissions, visit.values.kind);
     }
 
-    /** The visit's status from the notes the reader may read (encounters/read.ts statusShown). */
-    async function visitStatus(visit: StoredRecord): Promise<string> {
+    /**
+     * The visit's notes the reader may read, as the visit's status (encounters/read.ts statusShown)
+     * and whether it holds a finished note are worked out from them.
+     */
+    async function notesShown(visit: StoredRecord): Promise<StatusNote[]> {
       const rows = await tx<{ id: string }[]>`
         select id from sineobex.encounter_notes where team_id = ${visit.teamId} and encounter_id = ${visit.id}`;
       const shown = [];
@@ -641,7 +651,7 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         const read = await noteRead(await noteRules.load(tx, id, false));
         if (read) shown.push(statusNote(read));
       }
-      return statusShown(shown);
+      return shown;
     }
 
     function noteOf(record: StoredRecord) {

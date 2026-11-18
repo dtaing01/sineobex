@@ -445,7 +445,13 @@ void main() {
         );
         final snapshot = await read(entityEncounter, id);
         expect(snapshot.status, 'draft');
-        expect(snapshot.attributes.keys.toList()..sort(), ['clockVerified', 'startedAt', 'startedDeviceTime']);
+        expect(snapshot.attributes.keys.toList()..sort(), [
+          'clockVerified',
+          'hasFinishedNote',
+          'startedAt',
+          'startedDeviceTime',
+        ]);
+        expect(snapshot.attributes['hasFinishedNote'], isFalse);
         expect(snapshot.fields.keys.toList()..sort(), ['kind', 'location', 'locationText', 'patientId', 'summary']);
         expect([snapshot.fields['kind']!.value, snapshot.fields['kind']!.version], ['non_medical', 1]);
         expect(

@@ -360,6 +360,31 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         .owner`update sineobex.encounter_notes set assigned_user_id = ${ana.id} where id = ${flags.noteId}`;
       expect((await noteAs(ana, flags))!.attributes.actingAuthorId).toBe(ana.id);
     });
+    it('a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it', async () => {
+      // Review finding SLK-1: a visit holding a finished note beside a teammate's draft is a draft by
+      // its status, and the phone took its envelope for unlocked; the server keeps such a change in
+      // history. Worked out over the notes the reader is shown, as the visit's status is (LRD-2).
+      const visit = await visitOf(ana, patientId);
+      const visitAs = async (c: { token: string }) => {
+        const r = await read(c.token, [{ entity: 'encounter', id: visit.encounterId }]);
+        expect(r.status).toBe(200);
+        return r.records[0]!;
+      };
+      const talk = await noteOn(ana, visit, TEST_SENSITIVE_TYPE, {
+        'talk.notes': 'Demo: talked about sleep',
+      });
+      expect((await visitAs(ana)).attributes).toMatchObject({ hasFinishedNote: false });
+      await finishNote(ana, talk, 'complete', 'completed');
+      expect(await visitAs(ana)).toMatchObject({
+        status: 'completed',
+        attributes: { hasFinishedNote: true },
+      });
+      // A teammate's draft beside it: the visit is a draft, its envelope locked all the same.
+      await noteOn(ben, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: housing list' });
+      expect(await visitAs(ana)).toMatchObject({ status: 'draft', attributes: { hasFinishedNote: true } });
+      // Dee may not read the sensitive note: nothing says it is there.
+      expect(await visitAs(dee)).toMatchObject({ status: 'draft', attributes: { hasFinishedNote: false } });
+    });
   });
 
   describe('what hangs off a note, and referrals (6.4 rule 7)', () => {
