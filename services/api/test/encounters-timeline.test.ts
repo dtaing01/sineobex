@@ -13,12 +13,14 @@ import {
   TEST_MEDICAL_TYPE,
   TEST_NOTE_TYPE,
   visitAt,
+  visitStatus,
   WITH_EXAM,
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createPatient, expectAudit, mergeDirect } from './patient-fixtures.ts';
 import {
+  call,
   noteOn,
   TEST_RED_FLAGS_TYPE,
   TEST_SENSITIVE_TYPE,
@@ -255,5 +257,79 @@ describe('phase 4: the timeline and recent visits', () => {
       // A visit of another patient names no place in this one's timeline.
       expect((await earlier(w.ana.token, busy, visit.encounterId)).status).toBe(404);
     });
+  });
+});
+
+describe('phase 4: a visit’s status, as the reader is shown it', () => {
+  // Review finding LRD-2: the stored status counts every note, so "completed" with no note listed
+  // told the CHW preset and Billing/Data that a sensitive note type was there. It is worked out from
+  // the notes the reader is shown: a visit with none is a draft, as one with no note is.
+  let h: Harness;
+  let w: World;
+  let only: string;
+  let mixed: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    w = await createWorld(h);
+    // A Non-Medical visit whose only note is a sensitive type, completed.
+    const v1 = await visitAt(w.ana, w.patientId, { kind: 'non_medical', startedAt: '2026-10-20T10:00:00Z' });
+    only = v1.encounterId;
+    const talk = await noteOn(w.ana, v1, TEST_SENSITIVE_TYPE, { 'talk.notes': 'Demo: talked about sleep' });
+    await finish(w.ana, [talk, 'complete', 'completed']);
+    // A Non-Medical visit: a social note completed, a sensitive note still a draft.
+    const v2 = await visitAt(w.ana, w.patientId, { kind: 'non_medical', startedAt: '2026-10-20T11:00:00Z' });
+    mixed = v2.encounterId;
+    const social = await noteOn(w.ana, v2, TEST_NOTE_TYPE, { 'care.plan': 'Demo: housing list' });
+    await finish(w.ana, [social, 'complete', 'completed']);
+    await noteOn(w.ana, v2, TEST_SENSITIVE_TYPE, { 'talk.notes': 'Demo: talked about home' });
+  });
+  afterAll(() => h.close());
+
+  async function shown(token: string) {
+    const chart = (await get(w, token, `/v1/patients/${w.patientId}`)).body as unknown as Chart;
+    const at = (id: string) => {
+      const timeline = chart.timeline.encounters.find((e) => e.encounterId === id)!;
+      const recent = (chart.recentVisits as unknown as { encounterId: string; status: string }[]).find(
+        (e) => e.encounterId === id,
+      )!;
+      return { timeline: timeline.status, recent: recent.status, notes: timeline.notes.map((n) => n.status) };
+    };
+    const read = async (id: string) => (await get(w, token, `/v1/encounters/${id}`)).body.status;
+    return {
+      only: { ...at(only), read: await read(only) },
+      mixed: { ...at(mixed), read: await read(mixed) },
+    };
+  }
+
+  it('says nothing of a note the reader may not see, on the timeline, in the recent visits and in the visit read', async () => {
+    for (const reader of [w.kim, w.bea]) {
+      expect(await shown(reader.token), reader.id).toEqual({
+        only: { timeline: 'draft', recent: 'draft', notes: [], read: 'draft' },
+        mixed: { timeline: 'completed', recent: 'completed', notes: ['completed'], read: 'completed' },
+      });
+    }
+    // A reader who sees both notes is shown the visit's own status.
+    expect(await shown(w.ana.token)).toEqual({
+      only: { timeline: 'completed', recent: 'completed', notes: ['completed'], read: 'completed' },
+      mixed: { timeline: 'draft', recent: 'draft', notes: ['completed', 'draft'], read: 'draft' },
+    });
+    expect([await visitStatus(h, only), await visitStatus(h, mixed)]).toEqual(['completed', 'draft']);
+  });
+
+  it('says nothing of it in the sync read either', async () => {
+    // Eli charts and holds no patients.view_sensitive: the sensitive note is not his to read.
+    const statusFor = async (token: string) => {
+      const r = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token,
+        teamId: w.t.teamId,
+        json: { records: [{ entity: 'encounter', id: only }] },
+      });
+      expect(r.status).toBe(200);
+      return (r.body.records as { status: string }[]).map((x) => x.status);
+    };
+    expect(await statusFor(w.eli.token)).toEqual(['draft']);
+    expect(await statusFor(w.ana.token)).toEqual(['completed']);
   });
 });

@@ -12,7 +12,7 @@ import type {
 import { RULES } from '../sync/entities/index.ts';
 import { byDefinition, DefinitionError, definitionOf, noteReader, snapshot } from '../sync/records.ts';
 import { visitAsRead, type ReadSource } from './read.ts';
-import { noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
+import { encounterStatus, noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
 
 /**
  * The patient timeline (lifecycle 5.2): a merged group's visits, newest first, each with the notes
@@ -33,7 +33,6 @@ interface VisitRow {
   id: string;
   startedAt: Date;
   kind: TimelineVisitValue['kind'];
-  status: NoteStatus;
 }
 
 interface NoteRow {
@@ -43,6 +42,7 @@ interface NoteRow {
   noteTypeVersion: number | null;
   status: NoteStatus;
   attestation: Attestation;
+  medical: boolean;
   data: Record<string, unknown>;
   actingAuthorId: string;
 }
@@ -50,7 +50,9 @@ interface NoteRow {
 /**
  * A page of the group's visits, newest first, after [before] when it is given. A note the reader
  * may not see is left out of its visit, as are an empty draft (3.1), a phase 2 note with no version
- * and a note whose definition the server cannot read, as the visit read leaves them out.
+ * and a note whose definition the server cannot read, as the visit read leaves them out. A visit's
+ * status is worked out from the notes listed, so it says nothing of a note left out (6.4 rule 2;
+ * review finding LRD-2).
  */
 export async function timelineVisits(
   tx: Tx,
@@ -59,7 +61,7 @@ export async function timelineVisits(
   before: { startedAt: Date; id: string } | null = null,
 ): Promise<TimelineVisitValue[]> {
   const visits = await tx<VisitRow[]>`
-    select e.id, e.started_at, e.kind, e.status from sineobex.encounters e
+    select e.id, e.started_at, e.kind from sineobex.encounters e
     join sineobex.patients p on p.team_id = e.team_id and p.id = e.patient_id
     where e.team_id = ${scope.team.teamId} and p.canonical_id = ${canonicalId}
       ${before ? tx`and (e.started_at, e.id) < (${before.startedAt}, ${before.id})` : tx``}
@@ -67,7 +69,7 @@ export async function timelineVisits(
     limit ${TIMELINE_PAGE}`;
   if (visits.length === 0) return [];
   const notes = await tx<NoteRow[]>`
-    select id, encounter_id, note_type_key, note_type_version, status, attestation, data,
+    select id, encounter_id, note_type_key, note_type_version, status, attestation, medical, data,
            coalesce(assigned_user_id, author_user_id) as acting_author_id
     from sineobex.encounter_notes
     where team_id = ${scope.team.teamId} and encounter_id = any (${visits.map((v) => v.id)}::uuid[])
@@ -79,6 +81,7 @@ export async function timelineVisits(
     return definitions.get(at)!;
   };
   const shown = new Map<string, TimelineVisitValue['notes']>(visits.map((v) => [v.id, []]));
+  const counted = new Map<string, Parameters<typeof encounterStatus>[0]>(visits.map((v) => [v.id, []]));
   for (const n of notes) {
     if (n.noteTypeVersion === null || (n.status === 'draft' && noteIsEmpty(n.data))) continue;
     const reader = noteReader(
@@ -101,12 +104,13 @@ export async function timelineVisits(
       status: n.status,
       attestation: n.attestation,
     });
+    counted.get(n.encounterId)!.push({ status: n.status, medical: n.medical, empty: false });
   }
   return visits.map((v) => ({
     encounterId: v.id,
     startedAt: v.startedAt.toISOString(),
     kind: v.kind,
-    status: v.status,
+    status: encounterStatus(counted.get(v.id)!),
     notes: shown.get(v.id)!,
   }));
 }

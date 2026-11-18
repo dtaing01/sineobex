@@ -25,7 +25,7 @@ import {
 } from '../sync/records.ts';
 import type { AnyRecordEntityName } from '../sync/schemas.ts';
 import { noteContentHash } from './content-hash.ts';
-import { noteIsEmpty } from './rules.ts';
+import { encounterStatus, noteIsEmpty, type NoteStatus } from './rules.ts';
 
 /**
  * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
@@ -256,7 +256,8 @@ interface AttestationRow {
  * entity and ID and with its patient. Null when the team has no such visit.
  *
  * Left out besides what 6.4 hides: an empty draft, which counts as not there (3.1), and a phase 2
- * note with no version, which has no definition to lay it out by.
+ * note with no version, which has no definition to lay it out by. The visit's status is worked out
+ * from the notes shown (encounterStatus), as the timeline's is.
  */
 export async function visitAsRead(
   tx: Tx,
@@ -419,7 +420,14 @@ export async function visitAsRead(
     encounterId: visit.id,
     patientId,
     kind: visit.values.kind as VisitReadValue['kind'],
-    status: visit.status as VisitReadValue['status'],
+    // From the notes shown, so it says nothing of a note left out (6.4 rule 2; LRD-2).
+    status: encounterStatus(
+      reads.map((r) => ({
+        status: r.note.status as NoteStatus,
+        medical: r.note.internal.medical === true,
+        empty: false,
+      })),
+    ),
     startedAt: visit.attributes.startedAt as string,
     clockVerified: visit.attributes.clockVerified as boolean,
     locationText: visit.values.locationText as string | null,

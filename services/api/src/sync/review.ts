@@ -3,6 +3,7 @@ import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { hiddenCorrections, type StoredCorrection } from '../encounters/read.ts';
+import { encounterStatus, noteIsEmpty, type NoteStatus } from '../encounters/rules.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
 import {
@@ -581,7 +582,10 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
             : withoutHash(record);
         }
         case 'encounter':
-          return medicalHidden(record) ? withoutSummary(record) : record;
+          return {
+            ...(medicalHidden(record) ? withoutSummary(record) : record),
+            status: await statusShown(record),
+          };
         case 'note_addendum': {
           // An addendum to the visit itself is read with the visit: with its summary, on a Medical one.
           if (record.attributes.noteId !== null) return (await noteAsRead(await noteOf(record))) && record;
@@ -610,6 +614,28 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      */
     function medicalHidden(visit: StoredRecord): boolean {
       return visit.values.kind === 'medical' && !mayViewProblems(scope.team.permissions);
+    }
+
+    /**
+     * A visit's status as the reader is shown it: worked out from the notes they may read, so it
+     * says nothing of a note left out (lifecycle 6.4 rule 2; review finding LRD-2). The visit read
+     * and the timeline work it out the same way (encounters/read.ts, timeline.ts).
+     */
+    async function statusShown(visit: StoredRecord): Promise<string> {
+      const rows = await tx<{ id: string }[]>`
+        select id from sineobex.encounter_notes where team_id = ${visit.teamId} and encounter_id = ${visit.id}`;
+      const counted = [];
+      for (const { id } of rows) {
+        const read = await noteAsRead(await noteRules.load(tx, id, false));
+        if (!read) continue;
+        const status = read.note.status as NoteStatus;
+        counted.push({
+          status,
+          medical: read.note.internal.medical === true,
+          empty: status === 'draft' && noteIsEmpty(read.answers),
+        });
+      }
+      return encounterStatus(counted);
     }
 
     function noteOf(record: StoredRecord) {

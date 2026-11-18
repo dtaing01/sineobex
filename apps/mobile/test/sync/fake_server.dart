@@ -3279,8 +3279,10 @@ class FakeSyncServer {
           'attributes': {...r.attributes}..remove('contentHash'),
         };
       // A Medical visit's summary is Medical content, read as its notes are (review.ts medicalHidden).
+      // Its status is worked out from the notes the reader may read, so it says nothing of one left out
+      // (review.ts statusShown, LRD-2).
       case entityEncounter:
-        final shown = _readSnapshot(r);
+        final shown = {..._readSnapshot(r), 'status': _statusShown(userId, perms, r.id)};
         if (!_medicalHidden(perms, r)) return shown;
         return {
           ...shown,
@@ -3363,6 +3365,17 @@ class FakeSyncServer {
     }
     return hidden;
   }
+
+  /// A visit's status as [userId] is shown it (review.ts statusShown): from the notes they may read.
+  String _statusShown(String userId, Set<String> perms, String encounterId) => encounterStatus([
+    for (final n in _notesOf(encounterId))
+      if (_noteAsRead(userId, perms, n) case final read?)
+        (
+          status: NoteStatus.values.byName(_noteStatusOf(n)),
+          medical: n.medical,
+          empty: _noteStatusOf(n) == 'draft' && noteIsEmpty(read.answers),
+        ),
+  ]).name;
 
   /// A Medical visit whose summary [perms] may not read (review.ts medicalHidden, RD-7).
   static bool _medicalHidden(Set<String> perms, FakeRecord visit) =>

@@ -1873,6 +1873,29 @@ void main() {
         expect(await send(casey, late), [heldOnly(late.single)]);
       });
 
+      // encounters-timeline.test.ts, 'a visit’s status, as the reader is shown it' (review finding
+      // LRD-2): the stored status counts every note, so it told of a note the reader may not read.
+      test('a visit’s status in the sync read is worked out from the notes the reader may read', () async {
+        final visit = visitOf(patientId: patient, kind: 'non_medical');
+        final talk = server.seed(
+          entityNote,
+          noteValue(visit, testSensitive, const {'talk.notes': 'Demo: talked about sleep'}),
+          by: alex,
+        );
+        server.finishNote(talk);
+        Future<List<String>> statusFor(String user) async => [
+          for (final r in (await as(user).fetchRecords(
+            body: FetchRecords(
+              records: [RecordRef(entity: RecordEntity.encounter, id: visit)],
+            ),
+          )).records)
+            r.status,
+        ];
+        expect(server.records[visit]!.status, 'completed');
+        expect(await statusFor(casey), ['draft']);
+        expect(await statusFor(alex), ['completed']);
+      });
+
       // encounters-read.test.ts, 'a correction made while its entry held a sensitive diagnosis'
       // (review finding LRD-1): asked of the note as it is now, it was shown once a later correction
       // moved the code off the sensitive list.
