@@ -3224,7 +3224,11 @@ referral's details or a name.
 | `ems_handoff.shown`, `ems_handoff.exported` | 9.8 (offline: a new entry in the closed list of 4.8), 5.7 | `encounterId` |
 
 Every event names its patient in the audit row's patient column, so the audit search by patient
-finds it (D53). A refused online request is logged with the reason's name.
+finds it (D53). Of the refusals of an online request, a refusal of access (403) is logged, as
+`access.denied` with the reason's name; a state conflict (409), input the route cannot take (422)
+and a record the team does not have (404) are not, as in phases 1 to 3. `reauth_required` is not
+logged either: it asks for a fresh sign-in, and refuses no access (the coordinator's decision on
+review finding LPM-2).
 
 As built for the sync half (unit L1, with wave D's review). The event of a change carries
 `changeId`, and a create's `clockVerified`, beside the keys below, and names its patient, when
@@ -3248,9 +3252,25 @@ there is one, in the row's patient column. None holds a value, a reason's text o
 
 A sign-off's and a correction's events are on entity `encounter_note` and the note, with their
 own ID in the details, so the audit search by note finds them. A change held for review writes
-`sync.quarantined` with the reason `permission` and nothing that names the rule. Open: the online
-events of L2 take the same keys (`resultCount`; `entity` and `entityId`), so that one search finds
-both.
+`sync.quarantined` with the reason `permission` and nothing that names the rule. The online events
+of L2 take the same keys (`resultCount`; `entity` and `entityId`), so that one search finds both
+(below).
+
+As built for the online half (unit L2, with its review). Each event is written in its route's
+transaction; a refusal's, in a transaction that writes nothing else. None holds an answer, a
+summary, a reason's text or an addendum's.
+
+| Action | As built |
+|---|---|
+| `encounter.viewed`, `note.viewed`, `patient.viewed` (the visit read, 5.1; a chart's recent visits, 5.2) | One per record returned, on its entity and ID, with its patient, and `{ source }`: `phone` or `portal` for the visit read, `chart` or `cache` for the recent visits a chart carries. A visit is `encounter.viewed`; a note, a sign-off, an addendum, a correction and an attestation are `note.viewed` (on `encounter_note`, `note_signoff`, `note_addendum`, `note_correction`, `note_attestation`); a record made at the visit is `patient.viewed`, on its own entity and its own patient. Not one per visit with `noteIds` |
+| `chart.timeline_viewed` | On entity `patient` and the canonical ID: `resultCount`, and `before` when it was given. Not `count` |
+| `cosign_queue.viewed`, `attestation_queue.viewed`, `notes_to_finish.viewed`, `incomplete_notes.viewed` | No patient in the row's column; `patientIds` (each patient shown, once) and `resultCount`, not `count`; the team's list adds `author` when it is filtered |
+| `note.cosigned` | On entity `encounter_note` and the note, with the visit's patient: `signoffId`, `credential`, `needsAttestation` |
+| `note.attested` | The same entity: `attestationId`, `signoffId` |
+| `note.assigned` | The same entity: `fromUserId`, `toUserId`. Never the reason, which `note_assignments` keeps |
+| `ems_handoff.exported` | On entity `encounter` and the visit, with its patient, as the offline `ems_handoff.shown`: `noteIds` (the notes the file holds, none of a sensitive type) and `source`. No `note.viewed` per note |
+| `access.denied` | A missing key: `permission`, `route`, from the team scope, or from co-sign and attest when the caller's role no longer charts once the team lock is theirs. A rule about the caller: `reason` and `route`, on entity `encounter` and the visit with its patient for co-sign and attest (with `noteIds`: `is_author`, `is_signer`, `cannot_sign`, `cannot_attest`, `cannot_see_all`) and for the handoff (`cannot_see_red_flags`); with no entity for the queues' `cannot_sign` and `cannot_attest`, and for a caller of co-sign or attest who is no longer an active member once the lock is theirs (`not_a_member`) |
+| Not logged | `reauth_required`, and every 409, 422 and 404. When a co-sign or an attest answers a 409 and a note it names was refused about the caller too, that refusal is logged (5.3). `GET /v1/me/counts` writes no event: it names no patient (5.6) |
 
 ### 10.2 PHI rules, applied to this phase
 
@@ -3264,6 +3284,33 @@ both.
 | A read that can't be logged is refused | The visit screen logs before it shows (9.7); the queue routes log in their transaction. |
 | The offline index holds no legal names | Unchanged. Queue and list rows show the preferred name through the reader's projection. |
 | Demo data only | Seeded visits use the invented patients of `db/seed/demo-patients.ts`; free text starts with "Demo:". |
+
+As built for the online routes (unit L2, with its review):
+
+- **URLs.** The one query string that is not an ID, the handoff's `timeZone`, takes a zone's name
+  and nothing else, by a pattern in the contract (5.7). The handoff file's name is
+  `ems-handoff.pdf` for every visit, and its metadata hold a fixed title and the export's time.
+- **Logs.** The audit details of 10.1's online table. An assignment's reason is stored and never
+  logged; the handoff's event names notes by ID.
+- **A read that can't be logged is refused.** The visit read, a chart's recent visits, earlier
+  visits, the queues and both lists of 5.6 write their events in their own transaction. Home's
+  counts name no patient and write none.
+- **Names.** A queue row shows the canonical chart's preferred name, and only to a reader with
+  `patients.view`. The EMS handoff PDF, a file that leaves the team, names its patient by
+  preferred name, with their age and allergies, never by the legal name or the birth date
+  (PLAN-OPEN 12.1 #27).
+- **Demo data.** `db/seed/demo-encounters.ts` charts three made-up visits in the demo team, with
+  fixed IDs, so a second run changes nothing: a Medical visit for demo patient 15 by the demo
+  resident, whose Red flags note the demo attending attests a day later, beside a completed Social
+  needs note; a Non-Medical outreach visit for demo patient 24 by a demo member with the Logistics
+  role and no credential; and a wound visit for demo patient 21 by the attending, corrected a day
+  later. Free text starts with "Demo:". The rows are the ones sync and the online attest write:
+  the db package cannot import the API, so the seed restates the few rules it needs, and
+  `db/test/demo-encounters.test.ts` holds every row to the API's own functions. A team that does
+  not hold the released note types gets no visits. Kept as built: the seed writes no audit events
+  or notices, since seeding is no one's act, as phase 3's seed writes none for its patients; the
+  preview gets no visits, having no seeded staff to sign them; and no demo student is added, so the
+  queues and Notes to finish start empty.
 
 ## 11. Tests
 
