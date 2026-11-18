@@ -54,9 +54,10 @@ import { NoteCorrectionCreate, valueParents } from './values.ts';
  * finish check is refused (`incomplete`). A refusal is the worker's to fix and stores nothing; the
  * phone sends the same record again.
  *
- * Otherwise each answer that shows, before or after, is written with history kind `corrected`,
- * through the guard of 0018, which lets a finished note's answers change only while
- * `app.note_correction` names it; then the row, naming those history rows. The corrector's credential is signedUnder's (3.5), as a signature's is,
+ * Otherwise each changed answer that shows, before or after, or that the sender held at its version,
+ * is written with history kind `corrected`, through the guard of 0018, which lets a finished note's
+ * answers change only while `app.note_correction` names it; then the row, naming those answers and
+ * their history rows. The corrector's credential is signedUnder's (3.5), as a signature's is,
  * and correctionEffect (3.12) says what is left of the note's signature: a note is signed only while
  * someone who may sign covers what it says now. A co-signer or attester whose work a correction
  * undoes is told.
@@ -246,17 +247,22 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
       !(a.baseVersion === 0 && (isBlank(a.cur.value) || !showsNow(a.path))),
   );
   if (moved) return invalid('field_changed', { field: moved.field });
-  // 7. Nothing to change; "Leave it" after a field_changed sends the value the note holds. An answer
-  // hidden before and after changes nothing the note shows, and is not written: the effects of 3.6
-  // are for a correction that changes what the note shows.
+  // 7. Nothing to change; "Leave it" after a field_changed sends the value the note holds. A
+  // correction whose changes are all to answers hidden before it and after it changes nothing the
+  // note shows, and writes nothing: the effects of 3.6 are for a correction that changes what the
+  // note shows. Beside a change that shows, a hidden answer the sender held at its version is theirs
+  // to change, as they saw it, while one they never held is written only by a correction that makes
+  // it count again (review R1).
   const showsAfter = shows(definition!, {
     ...stored,
     ...Object.fromEntries(asked.map((a) => [a.path, a.newValue])),
   });
-  const writes: Write[] = asked
-    .filter((a) => !sameValue(a.cur.value, a.newValue) && (showsNow(a.path) || showsAfter(a.path)))
+  const changed = asked.filter((a) => !sameValue(a.cur.value, a.newValue));
+  const counts = (a: Asked) => showsNow(a.path) || showsAfter(a.path);
+  if (!changed.some(counts)) return store('no_change');
+  const writes: Write[] = changed
+    .filter((a) => counts(a) || a.baseVersion > 0)
     .map((a) => ({ field: a.field, value: a.newValue, previous: a.cur.value, kind: 'corrected' }));
-  if (writes.length === 0) return store('no_change');
   // 8. "A correction can never leave a signed note without, say, the consent a sensitive exam needs."
   const answers = {
     ...stored,
@@ -418,8 +424,10 @@ async function writeAnswers(
 
 /**
  * The correction's row, its audit event and its receipt. The row keeps every answer it names with
- * the value the note held and the one asked for, and the history row written for it, or null. The
- * audit event names the fields and the outcome, never a value or the reason (10.1).
+ * the value the note held and the one asked for, and the history row written for it, or null. A
+ * correction that changed the note names only the answers it wrote, since the note's read strikes
+ * through the old value of each answer a `corrected` correction names (review R1). The audit event
+ * names the same fields and the outcome, never a value or the reason (10.1).
  */
 async function storeCorrection(
   ctx: ChangeContext,
@@ -432,7 +440,8 @@ async function storeCorrection(
   ids: Record<string, string>,
 ): Promise<Outcome> {
   const { tx, actor, change: c } = ctx;
-  const changes = asked.map((a) => ({
+  const named = outcome === 'corrected' ? asked.filter((a) => Object.hasOwn(ids, a.field)) : asked;
+  const changes = named.map((a) => ({
     field: a.field,
     oldValue: a.cur.value,
     newValue: a.newValue,
@@ -455,7 +464,7 @@ async function storeCorrection(
       ...actor.auditDetails,
       changeId: c.changeId,
       correctionId: c.recordId,
-      fields: asked.map((a) => a.field),
+      fields: named.map((a) => a.field),
       outcome,
       requestedByPatient: v.requestedByPatient,
       credential: under.credential,

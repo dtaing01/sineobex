@@ -4070,6 +4070,70 @@ void main() {
             [true, 1],
           ],
         );
+        // The correction names only the answer it wrote (review R1).
+        expect(server.records[both['recordId']]!.attributes['changes'], [
+          {'field': 'data.vitals.pulse', 'oldValue': 80, 'newValue': 84},
+        ]);
+      });
+
+      test('7. beside an answer that shows, a hidden answer the sender held at its version is written; one they '
+          'never held is not, and the correction names only what it wrote (review R1)', () async {
+        final note = server.seed(
+          entityNote,
+          noteValue(visitOf(by: dana), testNote, const {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'}),
+          by: dana,
+        );
+        server.finishNote(note);
+        // One phone, offline: "Nothing more" hides the detail; then, from the same copy, which still shows
+        // the detail at the version the person saw, the pulse and the detail.
+        final hide = correction(dana, note, [answer('more.none', true, 0)], reason: 'Demo: nothing more');
+        final held = correction(dana, note, [
+          answer('vitals.pulse', 84),
+          answer('more.detail', 'Demo: uses a walker'),
+        ], reason: 'Demo: pulse and aid');
+        expect(await send(dana, [hide, held]), [
+          corrected(hide, 'corrected', 'completed', 'not_needed'),
+          corrected(held, 'corrected', 'completed', 'not_needed'),
+        ]);
+        final fields = server.records[note]!.fields;
+        expect(
+          [
+            for (final f in ['data.vitals.pulse', 'data.more.detail', 'data.more.none'])
+              [fields[f]!.value, fields[f]!.version],
+          ],
+          [
+            [84, 2],
+            ['Demo: uses a walker', 2],
+            [true, 1],
+          ],
+        );
+        expect(
+          [
+            for (final h in server.history)
+              if (h['changeId'] == held['changeId']) [h['field'], h['previous']],
+          ],
+          [
+            ['data.vitals.pulse', 80],
+            ['data.more.detail', 'Demo: walks with a cane'],
+          ],
+        );
+        expect(server.records[held['recordId']]!.attributes['changes'], [
+          {'field': 'data.vitals.pulse', 'oldValue': 80, 'newValue': 84},
+          {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a cane', 'newValue': 'Demo: uses a walker'},
+        ]);
+
+        // A detail never held, beside the pulse, is not written while it stays hidden, and the correction
+        // does not name it.
+        final unheld = correction(dana, note, [
+          answer('vitals.pulse', 86, 2),
+          answer('more.detail', 'Demo: uses a frame', 0),
+        ], reason: 'Demo: pulse again');
+        expect(await send(dana, [unheld]), [corrected(unheld, 'corrected', 'completed', 'not_needed')]);
+        expect(fields['data.more.detail']!.value, 'Demo: uses a walker');
+        expect(server.records[unheld['recordId']]!.attributes['changes'], [
+          {'field': 'data.vitals.pulse', 'oldValue': 84, 'newValue': 86},
+        ]);
+        expect(server.correctionHistory[unheld['recordId']]!.keys, ['data.vitals.pulse']);
       });
 
       test(

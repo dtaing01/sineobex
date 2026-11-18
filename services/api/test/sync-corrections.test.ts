@@ -1273,11 +1273,118 @@ describe('phase 4 sync: addenda and corrections', () => {
         expect((await historyBy(note.noteId, both.changeId)).map((r) => r.field)).toEqual([
           'data.vitals.pulse',
         ]);
+        // The correction names only the answer it wrote (review R1).
         expect(await correctionRow(both.recordId)).toMatchObject({
           changes: [
-            { field: 'data.vitals.pulse', oldValue: 80, newValue: 84 },
-            { field: 'data.more.detail', oldValue: 'Demo: walks with a stick', historyId: null },
+            { field: 'data.vitals.pulse', oldValue: 80, newValue: 84, historyId: expect.any(String) },
           ],
+        });
+      });
+
+      it('7. beside an answer that shows, a hidden answer the sender held at its version is written; one they never held is not, and the correction names only what it wrote (review R1)', async () => {
+        const visit = await visitOf(cora, patientId);
+        const note = await noteOn(cora, visit, TEST_NOTE_TYPE, {
+          'vitals.pulse': 80,
+          'more.detail': 'Demo: walks with a cane',
+        });
+        await finishNote(cora, note, 'complete', 'completed');
+        const visitRead = async () => {
+          const r = await call(h, `/v1/encounters/${visit.encounterId}`, {
+            token: cora.token,
+            teamId: t.teamId,
+          });
+          expect(r.status).toBe(200);
+          return (
+            r.body.notes as {
+              noteId: string;
+              read: {
+                sections: { items: { path: string; value: string | null; corrections: unknown[] }[] }[];
+              };
+              corrections: { id: string; fields: string[] }[];
+            }[]
+          ).find((n) => n.noteId === note.noteId)!;
+        };
+        const item = (n: Awaited<ReturnType<typeof visitRead>>, path: string) =>
+          n.read.sections.flatMap((s) => s.items).find((i) => i.path === path);
+
+        // One phone, offline: "Nothing more" hides the detail; then, from the same copy, which still
+        // shows the detail at the version the person saw, the pulse and the detail. The server takes the
+        // first before the second.
+        const hide = await correction(cora, note, [answer('more.none', true, 0)], {
+          reason: 'Demo: nothing more',
+        });
+        const held = await correction(
+          cora,
+          note,
+          [answer('vitals.pulse', 84), answer('more.detail', 'Demo: uses a walker')],
+          { reason: 'Demo: pulse and aid' },
+        );
+        const mark = await auditMark(h);
+        expect(await cora.send(hide, held)).toEqual([
+          taken(hide, 'corrected', 'completed', 'not_needed'),
+          taken(held, 'corrected', 'completed', 'not_needed'),
+        ]);
+        // The detail had not moved, so the person's change is theirs to make, hidden or not.
+        const after = await noteRow(note.noteId);
+        expect(after.data).toEqual({
+          'vitals.pulse': 84,
+          'more.detail': 'Demo: uses a walker',
+          'more.none': true,
+        });
+        expect(after.fieldVersions['data.more.detail']).toBe(2);
+        expect((await historyBy(note.noteId, held.changeId)).map((r) => [r.field, r.previousValue])).toEqual([
+          ['data.vitals.pulse', 80],
+          ['data.more.detail', 'Demo: walks with a cane'],
+        ]);
+        expect(await correctionRow(held.recordId)).toMatchObject({
+          changes: [
+            { field: 'data.vitals.pulse', historyId: expect.any(String) },
+            { field: 'data.more.detail', historyId: expect.any(String) },
+          ],
+        });
+
+        // A detail never held, beside the pulse, is not written while it stays hidden, and the correction
+        // does not name it: not in its row, its audit event or the visit read.
+        const unheld = await correction(
+          cora,
+          note,
+          [answer('vitals.pulse', 86, 2), answer('more.detail', 'Demo: uses a frame', 0)],
+          { reason: 'Demo: pulse again' },
+        );
+        expect(await cora.send(unheld)).toEqual([taken(unheld, 'corrected', 'completed', 'not_needed')]);
+        expect((await noteRow(note.noteId)).data['more.detail']).toBe('Demo: uses a walker');
+        expect(await correctionRow(unheld.recordId)).toMatchObject({
+          changes: [
+            { field: 'data.vitals.pulse', oldValue: 84, newValue: 86, historyId: expect.any(String) },
+          ],
+        });
+        const events = await expectAudit(h, 'note.corrected', { after: mark, count: 3 });
+        expect(events.map((e) => (e.details as { fields: string[] }).fields)).toEqual([
+          ['data.more.none'],
+          ['data.vitals.pulse', 'data.more.detail'],
+          ['data.vitals.pulse'],
+        ]);
+        const hidden = await visitRead();
+        expect(hidden.corrections.map((c) => [c.id, c.fields])).toEqual([
+          [hide.recordId, ['data.more.none']],
+          [held.recordId, ['data.vitals.pulse', 'data.more.detail']],
+          [unheld.recordId, ['data.vitals.pulse']],
+        ]);
+        // The detail does not count: the old value the held correction changed is struck through, with
+        // its reason; the correction that did not write it is not on it.
+        expect(item(hidden, 'more.detail')).toMatchObject({
+          value: null,
+          corrections: [{ old: 'Demo: walks with a cane', reason: 'Demo: pulse and aid' }],
+        });
+
+        // Shown again, the detail reads as the person corrected it, over the value it had.
+        const show = await correction(cora, note, [answer('more.none', null)], {
+          reason: 'Demo: there was more',
+        });
+        expect(await cora.send(show)).toEqual([taken(show, 'corrected', 'completed', 'not_needed')]);
+        expect(item(await visitRead(), 'more.detail')).toMatchObject({
+          value: 'Demo: uses a walker',
+          corrections: [{ old: 'Demo: walks with a cane', reason: 'Demo: pulse and aid' }],
         });
       });
 

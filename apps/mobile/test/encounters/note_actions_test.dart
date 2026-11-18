@@ -8,6 +8,7 @@ import 'package:sineobex_field/encounters/encounter_repository.dart';
 import 'package:sineobex_field/encounters/note_definitions.dart';
 import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/read_model.dart';
 import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -789,6 +790,119 @@ void main() {
       ]);
       final held = p.store.record(n)!.fields['data.more.detail']!;
       expect([held.value, held.serverVersion], ['Demo: uses a walker', 3]);
+    });
+
+    /// The read [r] gives of [noteId]'s answer at [path], once the phone holds what the server made of
+    /// the [corrections]: a phone learns a correction's outcome by reading it (4.10).
+    Future<ReadItem?> readOf(
+      TestPhone p,
+      EncounterRepository r,
+      String noteId,
+      String path,
+      List<String> corrections,
+    ) async {
+      for (final id in corrections) {
+        expect(await p.engine.openServerRecord(entityCorrection, id), isTrue);
+      }
+      return r.readNote(noteId)!.read!.sections.expand((s) => s.items).where((i) => i.path == path).firstOrNull;
+    }
+
+    test('two corrections made offline in a row: the first hides the detail, the second changes it beside the pulse, '
+        'and the server writes it as the person saw it (review R1)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'};
+      final n = await charted(r, visit, testNote, answers);
+      final other = await charted(r, visit, testNote, answers);
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      serverTookAll(p);
+
+      // Offline, the phone's copy still shows the detail at the version the person saw while the first
+      // correction waits, so the second sends it at that version.
+      server.offline = true;
+      final hide = await r.correct(visit, n, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      final held = await r.correct(
+        visit,
+        n,
+        changes: {'vitals.pulse': 84, 'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: pulse and aid',
+      );
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {'field': 'data.vitals.pulse', 'newValue': 84, 'baseVersion': 1},
+        {'field': 'data.more.detail', 'newValue': 'Demo: uses a walker', 'baseVersion': 1},
+      ]);
+      // On the other note, the detail alone: once the first is taken it changes nothing the note shows,
+      // and the server stores it as no change (review F4).
+      final hideOther = await r.correct(visit, other, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      final alone = await r.correct(visit, other, changes: {'more.detail': 'Demo: uses a frame'}, reason: 'Demo: aid');
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(
+        [
+          for (final id in [hide, held, hideOther, alone]) server.records[id]!.status,
+        ],
+        ['corrected', 'corrected', 'corrected', 'no_change'],
+      );
+      expect(
+        [serverAnswer(n, 'vitals.pulse'), serverAnswer(n, 'more.detail'), serverAnswer(other, 'more.detail')],
+        [84, 'Demo: uses a walker', 'Demo: walks with a cane'],
+      );
+      expect(server.records[held]!.attributes['changes'], [
+        {'field': 'data.vitals.pulse', 'oldValue': 80, 'newValue': 84},
+        {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a cane', 'newValue': 'Demo: uses a walker'},
+      ]);
+      // Hidden, the detail shows its old value struck through under the correction that changed it.
+      final hidden = (await readOf(p, r, n, 'more.detail', [hide, held]))!;
+      expect(
+        [hidden.value, for (final c in hidden.corrections) (c.old, c.reason)],
+        [null, ('Demo: walks with a cane', 'Demo: pulse and aid')],
+      );
+
+      // Shown again, it reads as the person corrected it.
+      final show = await r.correct(visit, n, changes: {'more.none': null}, reason: 'Demo: there was more');
+      await sync(p);
+      serverTookAll(p);
+      final shown = (await readOf(p, r, n, 'more.detail', [show]))!;
+      expect(
+        [shown.value, for (final c in shown.corrections) (c.old, c.reason)],
+        ['Demo: uses a walker', ('Demo: walks with a cane', 'Demo: pulse and aid')],
+      );
+    });
+
+    test('a correction beside the pulse to a detail the phone never held, which stays hidden, is neither written '
+        'nor named, so the read strikes nothing through (review R1)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'});
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      final hide = await r.correct(visit, n, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      await sync(p);
+      serverTookAll(p);
+      expect(p.store.record(n)!.fields['data.more.detail'], isNull);
+      // A correction of the pulse that sends the detail at no version, as one made elsewhere could.
+      final both = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.vitals.pulse', 'newValue': 84, 'baseVersion': 1},
+          {'field': 'data.more.detail', 'newValue': 'Demo: uses a frame', 'baseVersion': 0},
+        ],
+        'reason': 'Demo: pulse again',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[both]!.status, serverAnswer(n, 'more.detail')], ['corrected', 'Demo: walks with a cane']);
+      expect(await readOf(p, r, n, 'more.detail', [hide, both]), isNull);
+      final pulse = (await readOf(p, r, n, 'vitals.pulse', const []))!;
+      expect([pulse.value, for (final c in pulse.corrections) (c.old, c.reason)], ['84', ('80', 'Demo: pulse again')]);
     });
 
     test('Correct again sends the refused correction with the version now seen, after a correction made '

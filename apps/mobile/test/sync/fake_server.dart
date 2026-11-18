@@ -2187,8 +2187,9 @@ class FakeSyncServer {
   /// new value is one the type takes; a draft is edited by the draft rule; then each answer is still
   /// at the version the person saw (or, never seen, blank or hidden: D109), a correction that changes
   /// nothing the note shows is stored as such, and one that would leave the note failing its finish
-  /// check is refused. Otherwise each answer that shows, before or after, is written as `corrected`,
-  /// and correctionEffect says what is left of the signature.
+  /// check is refused. Otherwise each changed answer that shows, before or after, or that the sender
+  /// held at its version, is written as `corrected`, and correctionEffect says what is left of the
+  /// signature.
   Map<String, Object?> _correction(_Actor actor, Map<String, Object?> c, Map<String, Object?> v) {
     final recordId = c['recordId']! as String;
     if (records.containsKey(recordId)) return _invalid('record_exists');
@@ -2229,8 +2230,11 @@ class FakeSyncServer {
         clockVerified: c['clockVerified'] == true,
         attributes: {
           'noteId': note.id,
+          // A correction that changed the note names only the answers it wrote (review R1).
           'changes': [
-            for (final a in asked) {'field': a.field, 'oldValue': a.cur['value'], 'newValue': a.newValue},
+            for (final a in asked)
+              if (outcome != 'corrected' || ids.containsKey(a.field))
+                {'field': a.field, 'oldValue': a.cur['value'], 'newValue': a.newValue},
           ],
           'outcome': outcome,
           'reason': v['reason'],
@@ -2305,15 +2309,22 @@ class FakeSyncServer {
         )
         .firstOrNull;
     if (moved != null) return _invalid('field_changed', {'field': moved.field});
-    // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds. An answer
-    // hidden before and after changes nothing the note shows, and is not written.
+    // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds. A
+    // correction whose changes are all to answers hidden before and after changes nothing the note
+    // shows, and writes nothing. Beside a change that shows, a hidden answer the sender held at its
+    // version is written; one they never held only by a correction that makes it count again.
     final showsAfter = _shows(definition, {...stored, for (final a in asked) a.path: a.newValue});
-    final writes = <_AnswerWrite>[
+    final changed = [
       for (final a in asked)
-        if (!_same(a.cur['value'], a.newValue) && (showsNow(a.path) || showsAfter(a.path)))
+        if (!_same(a.cur['value'], a.newValue)) a,
+    ];
+    bool counts(String path) => showsNow(path) || showsAfter(path);
+    if (!changed.any((a) => counts(a.path))) return store('no_change');
+    final writes = <_AnswerWrite>[
+      for (final a in changed)
+        if (counts(a.path) || a.baseVersion > 0)
           (field: a.field, value: a.newValue, previous: a.cur['value'], kind: 'corrected'),
     ];
-    if (writes.isEmpty) return store('no_change');
     // 8. A correction can never leave a signed note failing its own finish check.
     final answers = {...stored, for (final w in writes) w.field.substring('data.'.length): w.value};
     if (_byDefinition(() => finishCheck(definition, answers)).isNotEmpty) return _invalid('incomplete');
