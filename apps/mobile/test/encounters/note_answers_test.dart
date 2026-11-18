@@ -4,6 +4,7 @@ import 'package:sineobex_field/encounters/encounter_models.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart';
 import 'package:sineobex_field/encounters/note_definitions.dart';
 import 'package:sineobex_field/encounters/rules.dart';
+import 'package:sineobex_field/features/forms/field_host.dart' show ConflictBy;
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -312,6 +313,135 @@ void main() {
       expect(p.store.outbox(), hasLength(before));
       await sync(p);
       serverTookAll(p);
+    });
+  });
+
+  group('two people changed one answer (forms 8.1, lifecycle 9.5)', () {
+    /// Alex's note with a pulse the server confirmed, then changed on the server by [by] while Alex's
+    /// phone changed it too: the sync finds the conflict.
+    Future<({TestPhone p, EncounterRepository r, String n, DateTime at})> conflicted(String by) async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = (await r.addNote(visit, definition(testNote))).noteId;
+      await r.openNote(n);
+      r.saveAnswer(n, 'vitals.pulse', 88);
+      r.saveAnswer(n, 'care.plan', 'Demo: shelter tonight');
+      await sync(p);
+      serverTime = serverTime.add(const Duration(minutes: 3));
+      server.serverEdit(n, 'data.vitals.pulse', 90, by: by);
+      r.saveAnswer(n, 'vitals.pulse', 92);
+      await sync(p);
+      expect(
+        [for (final e in p.store.needsAttention()) (e.state, e.field)],
+        [(ChangeState.conflict, 'data.vitals.pulse')],
+      );
+      return (p: p, r: r, n: n, at: serverTime);
+    }
+
+    test('the note gives the server’s value, who holds it and when; Use my value sends theirs to history', () async {
+      final (:p, :r, :n, :at) = await conflicted(blair);
+      var view = (await r.openNote(n))!;
+      expect(view.conflicts.keys, ['vitals.pulse']);
+      final c = view.conflicts['vitals.pulse']!;
+      expect([c.theirs, c.by, c.at, c.onChoose != null], [90, ConflictBy.teammate, at, true]);
+      // The form still shows what this phone holds, waiting to send.
+      expect([view.answers['vitals.pulse'], view.pendingPaths.contains('vitals.pulse')], [92, true]);
+
+      // Offline, the choice is made here and sent at the next contact.
+      server.offline = true;
+      var changed = 0;
+      r.onChanged = () => changed++;
+      await c.onChoose!(true);
+      expect(changed, 1);
+      view = r.readNote(n, shownBefore: view.shownIds.toSet())!;
+      expect([view.conflicts, view.answers['vitals.pulse']], [isEmpty, 92]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 92);
+    });
+
+    test('from their own other phone; Keep theirs shows the server’s value', () async {
+      final (:p, :r, :n, at: _) = await conflicted(alex);
+      final c = (await r.openNote(n))!.conflicts['vitals.pulse']!;
+      expect([c.theirs, c.by], [90, ConflictBy.youElsewhere]);
+      await c.onChoose!(false);
+      final view = (await r.openNote(n))!;
+      expect([view.conflicts, view.answers['vitals.pulse']], [isEmpty, 90]);
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
+    });
+
+    test('no choice while the clock check fails; a choice made elsewhere first leaves this one out of date', () async {
+      final (:p, :r, :n, at: _) = await conflicted(blair);
+      server.offline = true;
+      p.wall = p.wall.add(const Duration(minutes: 10));
+      expect(p.clock.status.paused, isTrue);
+      final paused = (await r.openNote(n))!.conflicts['vitals.pulse']!;
+      expect([paused.theirs, paused.onChoose], [90, isNull]);
+      p.wall = p.wall.subtract(const Duration(minutes: 10));
+      final c = (await r.openNote(n))!.conflicts['vitals.pulse']!;
+      expect(c.onChoose, isNotNull);
+
+      // Chosen in Needs attention meanwhile: the form's choice is out of date and changes nothing.
+      expect(p.store.resolveConflict(p.store.needsAttention().single.changeId, keepMine: false), isTrue);
+      final queued = p.store.outbox().length;
+      await expectLater(
+        c.onChoose!(true),
+        throwsA(
+          isA<LocalValidationError>()
+              .having((e) => e.problem, 'problem', 'conflict_changed')
+              .having((e) => e.message, 'message', 'The other value changed. Check both values again.'),
+        ),
+      );
+      expect(p.store.outbox(), hasLength(queued));
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+    });
+
+    test('a value someone may not see is not shown them as the other value', () async {
+      // Alex's draft as Blair's phone holds it; Blair changed the list of systems before losing the
+      // exam key, and the server answered with Alex's value, which may hold what Blair may not see.
+      final patient = server.seedPatient();
+      final visit = server.seed('encounter', {'kind': 'non_medical', 'patientId': patient}, by: alex);
+      final n = server.seed('encounter_note', {
+        'encounterId': visit,
+        'noteTypeKey': testMarked.key,
+        'noteTypeVersion': testMarked.version,
+        'data': const {
+          'look.systems': ['heart'],
+          'look.notes': 'Demo: walked over',
+        },
+      }, by: alex);
+      final b = phone(blair);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+      server.offline = true;
+      b.store
+        ..setField(n, 'data.look.systems', null)
+        ..setField(n, 'data.look.notes', 'Demo: walked back');
+      final theirs = DateTime.utc(2026, 10, 20, 15, 5);
+      for (final e in b.store.outbox()) {
+        if (e.field case 'data.look.systems' || 'data.look.notes') {
+          b.store.conflict(
+            e,
+            ServerField(
+              value: e.field == 'data.look.systems' ? ['heart', 'other'] : 'Demo: walked in',
+              version: 2,
+              changedBy: alex,
+              changedAt: theirs,
+            ),
+          );
+        }
+      }
+      final without = (await repo(b).openNote(n))!;
+      expect(without.conflicts.keys, ['look.notes']);
+      expect(without.conflicts['look.notes']!.theirs, 'Demo: walked in');
+      final keyed = (await repo(b, permissions: {...staff, 'patients.view_sensitive_exams'}).openNote(n))!;
+      expect(keyed.conflicts.keys, unorderedEquals(['look.systems', 'look.notes']));
     });
   });
 

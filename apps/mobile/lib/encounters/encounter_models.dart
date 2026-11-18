@@ -4,6 +4,8 @@
 library;
 
 import '../api/generated/api.dart' show RecordSnapshot;
+// The form's own contract types (forms 8.1): a note's conflicts are handed to it as they are.
+import '../features/forms/field_host.dart' show AnswerConflict;
 import '../forms/definition.dart';
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
@@ -212,6 +214,7 @@ class NoteView {
     required this.notSynced,
     this.title,
     this.contentHash,
+    this.conflicts = const {},
   });
 
   final String noteId;
@@ -260,6 +263,11 @@ class NoteView {
 
   /// Answers changed here and not yet confirmed ("Waiting to send" under the field).
   final Set<String> pendingPaths;
+
+  /// By path, each answer two people changed (lifecycle 9.5): the value on the server beside the
+  /// one in [answers], until the person chooses; the choice is null while charting is paused for the
+  /// phone's clock (3.11). Only a value the reader may see is given; none in the server's read.
+  final Map<String, AnswerConflict> conflicts;
 
   /// The note laid out for reading, with the corrections the reader may see; null when the phone laid
   /// it out and [unreadable].

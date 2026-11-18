@@ -2,6 +2,7 @@ import 'dart:math' show Random;
 
 import '../api/generated/api.dart' as wire;
 import '../api/transport.dart' show NetworkException;
+import '../features/forms/field_host.dart' show AnswerConflict, ConflictBy;
 import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
 import '../forms/definition.dart';
@@ -688,7 +689,61 @@ class EncounterRepository {
       attestations: const [],
       notSynced: held.createOf(rec.id) != null,
       title: definition.title,
+      conflicts: _conflictsOf(rec.id, definition, reader),
     );
+  }
+
+  /// The answers of [noteId] two people changed (lifecycle 9.5, forms 8.1), from the store's
+  /// conflicts, the latest of each answer as Needs attention shows it. A value the server holds at
+  /// an answer that could hold what [reader] may not see is left out for someone who does not act as
+  /// the author (6.4, D92): Needs attention still has it.
+  Map<String, AnswerConflict> _conflictsOf(String noteId, NoteTypeDef definition, NoteReader reader) {
+    final paused = store.chartingPaused;
+    return {
+      for (final e in store.needsAttention())
+        if ((e.state, e.recordId, e.field, e.server)
+            case (ChangeState.conflict, final id, final String field, final ServerField server)
+            when id == noteId && field.startsWith(_data) && _seesAt(definition, field.substring(_data.length), reader))
+          field.substring(_data.length): AnswerConflict(
+            theirs: server.value,
+            by: server.changedBy == null
+                ? ConflictBy.server
+                : server.changedBy == user.userId
+                ? ConflictBy.youElsewhere
+                : ConflictBy.teammate,
+            at: server.changedAt,
+            onChoose: paused ? null : (keepMine) async => _choose(e.changeId, keepMine: keepMine),
+          ),
+    };
+  }
+
+  /// Whether [reader] sees whatever the server holds at [path]: all of it, acting as the author.
+  bool _seesAt(NoteTypeDef definition, String path, NoteReader reader) {
+    if (reader.actsAsAuthor) return true;
+    try {
+      return !mayHoldHidden(definition, path, reader);
+      // A definition the interpreter can't run is one the phone can't lay the note out by.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The person's choice on an answer two people changed, as Needs attention makes it (phase 2): one
+  /// change for the answer, sent at the next contact. Throws [ChartingPaused] while the clock check
+  /// fails or the store is frozen; `conflict_changed` when the choice is out of date (the server's
+  /// value moved on, or the conflict was settled in Needs attention), changing nothing.
+  void _choose(String changeId, {required bool keepMine}) {
+    _guardFrozen();
+    final done =
+        store.entry(changeId)?.state == ChangeState.conflict && store.resolveConflict(changeId, keepMine: keepMine);
+    onChanged?.call();
+    if (!done) {
+      throw const LocalValidationError(
+        'The other value changed. Check both values again.',
+        problem: 'conflict_changed',
+      );
+    }
   }
 
   /// What [reader] sees of a note on [definition] holding [stored]: [_Hidden] when they may not see
