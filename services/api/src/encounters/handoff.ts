@@ -7,11 +7,15 @@ import {
 } from '@sineobex/forms';
 import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { TeamScope } from '../auth/context.ts';
+import type { Tx } from '../db/database.ts';
 import { ApiError, forbidden, notFound } from '../lib/errors.ts';
+import { loadChart } from '../patients/charts.ts';
+import type { BirthValue } from '../patients/matching.ts';
+import { ageYears } from '../patients/projection.ts';
 import { SENSITIVE_CODE_RANGES } from '../patients/generated/sensitive-codes.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
 import { noteRules, noteTypeOf } from '../sync/entities/note.ts';
-import { byDefinition, DefinitionError } from '../sync/records.ts';
+import { byDefinition, DefinitionError, type StoredRecord } from '../sync/records.ts';
 import { noteAsRead, type NoteRead } from './read.ts';
 import { noteIsEmpty } from './rules.ts';
 
@@ -29,8 +33,15 @@ import { noteIsEmpty } from './rules.ts';
  *
  * A file leaves our control, so the PRD's rule for exports holds (PRD main 602): a recent sign-in
  * (the route asks for it), every page stamped with who exported it and when, no caching and a file
- * name that names no patient. The patient's name, age and allergies are not in it: they are the
- * chart's, and the summary is its lines alone (forms 10.1 #6).
+ * name that names no patient.
+ *
+ * PLAN-OPEN: what of the patient does the handoff's header carry (forms 10.1 #6; for the clinical
+ * team and counsel, to be added to lifecycle 12.1)? Their preferred name, their age in years and
+ * their allergies, from the chart as the reader may see it, as the summary EMS is shown does; never
+ * the legal name or the birth date.
+ *
+ * Each note that holds something is in it, drafts too, each marked with its state: a draft, complete,
+ * signed, or attested.
  */
 
 /** The file's name: the same for every visit, so it names no patient (10.2). */
@@ -55,6 +66,19 @@ export function offersHandoff(type: ResolvedNoteType, answers: Answers): boolean
   );
 }
 
+/**
+ * Whether the runtime knows [zone] as an IANA time zone. The portal sends the reader's; the server
+ * prints the file's times in it.
+ */
+export function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const noHandoff = () =>
   new ApiError(404, 'no_handoff', 'This visit has no EMS handoff: EMS was not activated in it.');
 
@@ -77,6 +101,7 @@ export async function exportHandoff(
   scope: TeamScope,
   encounterId: string,
   route: string,
+  timeZone?: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const outcome = await scope.tx(async (tx, audit) => {
     const visit = await loadEncounter(tx, encounterId, false);
@@ -137,13 +162,19 @@ export async function exportHandoff(
       patientId: visit.patientId,
       details: { noteIds: reads.map((r) => r.note.id), source: scope.meta.deviceId ? 'phone' : 'portal' },
     });
+    const exportedAt = scope.deps.now();
+    const zone = timeZone ?? null;
     const pdf = await handoffPdf({
-      titles: reads.map((r) => r.type.title),
+      patient: visit.patientId
+        ? await patientHeader(tx, scope, visit.patientId, dayIn(exportedAt, zone))
+        : null,
+      notes: reads.map((r) => ({ title: r.type.title, state: stateOf(r.note) })),
       lines,
       startedAt: visit.attributes.startedAt as string,
       clockVerified: visit.attributes.clockVerified as boolean,
       exportedBy: scope.principal.displayName,
-      exportedAt: scope.deps.now(),
+      exportedAt,
+      timeZone: zone,
     });
     return { pdf };
   });
@@ -155,13 +186,72 @@ export async function exportHandoff(
   return outcome.pdf;
 }
 
+/** A note's state as the file marks it. */
+export type HandoffNoteState = 'draft' | 'complete' | 'signed' | 'attested';
+
+function stateOf(note: StoredRecord): HandoffNoteState {
+  if (note.status === 'draft') return 'draft';
+  if (note.status === 'completed') return 'complete';
+  return note.attributes.attestation === 'attested' ? 'attested' : 'signed';
+}
+
+/** Who the handoff is about, as its header says: never the legal name or the birth date. */
+export interface HandoffPatient {
+  /** Null when the chart holds none. */
+  preferredName: string | null;
+  /** "Age 52", "Age about 46", or "Age not recorded". */
+  age: string;
+  /** "Allergies: Demo: latex (severe), Demo: peanuts", "No known allergies" or "Allergies not asked yet". */
+  allergies: string;
+}
+
+/**
+ * The header's patient from their chart as the reader may see it (loadChart: the merged group's,
+ * projected for the reader), worked out on [today] in the reader's time zone. The export's event is
+ * the read: it names the patient.
+ */
+async function patientHeader(tx: Tx, scope: TeamScope, patientId: string, today: string) {
+  const chart = await loadChart(tx, scope, patientId, { linkUrls: false });
+  if (!chart) return null;
+  const field = (name: string) => chart.patient.fields[name]?.value;
+  const birth = (field('birth') ?? null) as BirthValue | null;
+  const years = ageYears(birth, today);
+  const allergies = chart.allergies
+    .filter((a) => a.status !== 'entered_in_error')
+    .map((a) => ({
+      substance: a.attributes.substance as string,
+      severe: a.attributes.severity === 'severe',
+    }));
+  // As the phone's allergy badge words it (display.dart): severe first, and the badge's three states.
+  const listed = [...allergies.filter((a) => a.severe), ...allergies.filter((a) => !a.severe)];
+  return {
+    preferredName: (field('preferredName') as string | null | undefined) ?? null,
+    age:
+      years === null
+        ? 'Age not recorded'
+        : birth?.precision === 'day'
+          ? `Age ${years}`
+          : `Age about ${years}`,
+    allergies:
+      listed.length > 0
+        ? `${listed.length === 1 ? 'Allergy' : 'Allergies'}: ${listed
+            .map((a) => (a.severe ? `${a.substance} (severe)` : a.substance))
+            .join(', ')}`
+        : field('allergyScreen') === 'none_known'
+          ? 'No known allergies'
+          : 'Allergies not asked yet',
+  };
+}
+
 // ------------------------------------------------------------------------------------------------
 // The file
 // ------------------------------------------------------------------------------------------------
 
 export interface HandoffPdfInput {
-  /** Each note's title, by its place in the lists handoffLines was given. */
-  titles: readonly string[];
+  /** Who it is about; null for a visit with no patient. */
+  patient: HandoffPatient | null;
+  /** Each note's title and state, by its place in the lists handoffLines was given. */
+  notes: readonly { title: string; state: HandoffNoteState }[];
   lines: readonly HandoffLine[];
   /** The visit's start, an ISO time. */
   startedAt: string;
@@ -169,6 +259,8 @@ export interface HandoffPdfInput {
   /** Who exported it and when: stamped on every page (PRD main 602). */
   exportedBy: string;
   exportedAt: Date;
+  /** The reader's IANA time zone, which the file's times are printed in; UTC when null. */
+  timeZone: string | null;
 }
 
 // A4, in points.
@@ -179,10 +271,50 @@ const BOTTOM = 60;
 const SIZE = { title: 18, heading: 13, note: 11, text: 10, stamp: 8 };
 const LEADING = 1.35;
 
-/** A time as the stamp writes it: the server knows no time zone of the reader's, so UTC. */
-const utc = (at: Date | string) => {
-  const iso = typeof at === 'string' ? new Date(at).toISOString() : at.toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+// PLAN-OPEN: the time zone of the handoff's times (to be added to lifecycle 12.1). The reader's, as
+// the portal sends it; without one, UTC. A team's own time zone can come with routes (phase 7).
+
+/** [at]'s date and time in [zone], or in UTC; the zone named after it, so the file says which. */
+function zoned(at: Date | string, zone: string | null): { day: string; time: string; label: string } {
+  const d = typeof at === 'string' ? new Date(at) : at;
+  if (zone === null) {
+    const iso = d.toISOString();
+    return { day: iso.slice(0, 10), time: iso.slice(11, 16), label: 'UTC' };
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(d)
+      .map((p) => [p.type, p.value]),
+  );
+  return {
+    day: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+    label: zone,
+  };
+}
+
+/** A time as the file writes it: "2026-10-20 10:40 America/Detroit", or "… UTC". */
+const stamped = (at: Date | string, zone: string | null) => {
+  const z = zoned(at, zone);
+  return `${z.day} ${z.time} ${z.label}`;
+};
+
+/** Today's date where the reader is, for the patient's age. */
+const dayIn = (at: Date, zone: string | null) => zoned(at, zone).day;
+
+const STATE_LABEL: Record<HandoffNoteState, string> = {
+  draft: 'draft',
+  complete: 'complete',
+  signed: 'signed',
+  attested: 'signed and attested',
 };
 
 /**
@@ -224,8 +356,13 @@ export async function handoffPdf(input: HandoffPdfInput): Promise<Uint8Array<Arr
   };
 
   write('EMS handoff', bold, SIZE.title);
+  if (input.patient) {
+    write(input.patient.preferredName ?? 'No preferred name recorded', bold, SIZE.heading, 0, 4);
+    write(input.patient.age, regular, SIZE.text);
+    write(input.patient.allergies, regular, SIZE.text);
+  } else write('No patient recorded for this visit', bold, SIZE.heading, 0, 4);
   write(
-    `Visit started ${utc(input.startedAt)}${input.clockVerified ? '' : ' (phone clock, not verified)'}`,
+    `Visit started ${stamped(input.startedAt, input.timeZone)}${input.clockVerified ? '' : ' (phone clock, not verified)'}`,
     regular,
     SIZE.text,
     0,
@@ -240,7 +377,8 @@ export async function handoffPdf(input: HandoffPdfInput): Promise<Uint8Array<Arr
     for (const line of lines) {
       if (line.note !== note) {
         note = line.note;
-        write(input.titles[note] ?? '', bold, SIZE.note, 0, 8);
+        const n = input.notes[note];
+        write(n ? `${n.title} (${STATE_LABEL[n.state]})` : '', bold, SIZE.note, 0, 8);
       }
       write(`${line.label}: ${line.value}`, regular, SIZE.text, 12);
     }
@@ -249,7 +387,7 @@ export async function handoffPdf(input: HandoffPdfInput): Promise<Uint8Array<Arr
   part('recap', 'Recap');
   if (input.lines.length === 0) write('Nothing to hand over.', regular, SIZE.text, 0, 8);
 
-  const stamp = `Exported by ${input.exportedBy} on ${utc(input.exportedAt)}`;
+  const stamp = `Exported by ${input.exportedBy} on ${stamped(input.exportedAt, input.timeZone)}`;
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     const count = `Page ${i + 1} of ${pages.length}`;

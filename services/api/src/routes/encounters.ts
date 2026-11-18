@@ -11,7 +11,7 @@ import {
 } from '../encounters/incomplete.ts';
 import { cosignVisit, NoteActInput, NoteActResult } from '../encounters/cosign.ts';
 import { homeCounts, HomeCounts } from '../encounters/counts.ts';
-import { exportHandoff, HANDOFF_FILE_NAME } from '../encounters/handoff.ts';
+import { exportHandoff, HANDOFF_FILE_NAME, isTimeZone } from '../encounters/handoff.ts';
 import { readQueue, SignatureQueue, type QueueName } from '../encounters/queues.ts';
 import { readVisit } from '../encounters/read.ts';
 import { earlierVisits } from '../encounters/timeline.ts';
@@ -189,6 +189,19 @@ const countsRoute = createRoute({
   responses: { 200: { description: 'The counts', ...json(HomeCounts) }, ...errors(401, 403) },
 });
 
+const HandoffQuery = z.object({
+  timeZone: z
+    .string()
+    .max(64)
+    .refine(isTimeZone, { message: 'unknown_time_zone' })
+    .optional()
+    .openapi({
+      description:
+        'The reader’s IANA time zone (for example America/Detroit): the file’s times are printed in it, with its ' +
+        'name. Without it, in UTC.',
+    }),
+});
+
 const handoffRoute = createRoute({
   method: 'get',
   path: '/v1/encounters/{encounterId}/ems-handoff',
@@ -197,12 +210,14 @@ const handoffRoute = createRoute({
   summary: 'The visit’s EMS handoff as a PDF, stamped with who exported it and when',
   description:
     'Lifecycle 5.7. Needs patients.view and a recent sign-in (else 403 reauth_required), and the reader must be ' +
-    'able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Built from the forms ' +
-    'part’s handoffLines over what the reader may see, with no treatment record, sensitive exam or sensitive ' +
-    'diagnosis for any reader. 404 no_handoff when EMS was not activated. Never cached; the file name holds no ' +
-    'patient details. Logged as ems_handoff.exported.',
+    'able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Its header names the ' +
+    'patient by preferred name, with their age in years and their allergies as the reader’s chart shows them, ' +
+    'never the legal name or the birth date. Built from the forms part’s handoffLines over what the reader may ' +
+    'see, with no treatment record, sensitive exam or sensitive diagnosis for any reader; each note that holds ' +
+    'something is in it, drafts too, marked with its state. 404 no_handoff when EMS was not activated. Never ' +
+    'cached; the file name holds no patient details. Logged as ems_handoff.exported.',
   security: [{ bearer: [] }],
-  request: { params: EncounterParam },
+  request: { params: EncounterParam, query: HandoffQuery },
   responses: {
     200: {
       description: 'The handoff, as a PDF to save or print',
@@ -269,7 +284,12 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(handoffRoute, async (c) => {
     // A file leaves our control: a fresh sign-in, as for every export (PRD main 602).
     const scope = await teamScope(c, deps, { permissions: ['patients.view'], recentAuth: true });
-    const pdf = await exportHandoff(scope, c.req.valid('param').encounterId, c.req.routePath);
+    const pdf = await exportHandoff(
+      scope,
+      c.req.valid('param').encounterId,
+      c.req.routePath,
+      c.req.valid('query').timeZone,
+    );
     return c.body(pdf, 200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${HANDOFF_FILE_NAME}"`,

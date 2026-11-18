@@ -146,7 +146,7 @@ export interface paths {
         };
         /**
          * The visit’s EMS handoff as a PDF, stamped with who exported it and when
-         * @description Lifecycle 5.7. Needs patients.view and a recent sign-in (else 403 reauth_required), and the reader must be able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Built from the forms part’s handoffLines over what the reader may see, with no treatment record, sensitive exam or sensitive diagnosis for any reader. 404 no_handoff when EMS was not activated. Never cached; the file name holds no patient details. Logged as ems_handoff.exported.
+         * @description Lifecycle 5.7. Needs patients.view and a recent sign-in (else 403 reauth_required), and the reader must be able to read the visit’s Red flags note (else 403 cannot_see_red_flags, logged). Its header names the patient by preferred name, with their age in years and their allergies as the reader’s chart shows them, never the legal name or the birth date. Built from the forms part’s handoffLines over what the reader may see, with no treatment record, sensitive exam or sensitive diagnosis for any reader; each note that holds something is in it, drafts too, marked with its state. 404 no_handoff when EMS was not activated. Never cached; the file name holds no patient details. Logged as ems_handoff.exported.
          */
         get: operations["getEmsHandoff"];
         put?: never;
@@ -3145,7 +3145,10 @@ export interface operations {
     };
     getEmsHandoff: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The reader’s IANA time zone (for example America/Detroit): the file’s times are printed in it, with its name. Without it, in UTC. */
+                timeZone?: string;
+            };
             header?: never;
             path: {
                 encounterId: string;

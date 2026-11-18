@@ -22,7 +22,7 @@ import {
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import { noteOn, TEST_SENSITIVE_TYPE, type Clinician, type HeldNote, type Visit } from './sync-fixtures.ts';
 
 // GET /v1/encounters/{encounterId}/ems-handoff (lifecycle 5.7, 9.8; PLAN-OPEN 12.1 #12 and #18):
@@ -196,9 +196,12 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
     expect(Buffer.from(bytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
     const doc = await PDFDocument.load(bytes, { updateMetadata: false });
     expect(doc.getTitle()).toBe('EMS handoff');
-    // Nothing that names the patient, in the file or its metadata.
+    // The header names the patient by preferred name (forms 10.1 #6); the metadata do not, and
+    // neither the file nor its metadata holds an ID.
+    const metadata = [doc.getTitle(), doc.getSubject(), doc.getKeywords(), doc.getAuthor()].join(' ');
+    expect(metadata).not.toContain(w.preferredName);
     const text = pdfText(bytes).join(' ');
-    for (const term of [w.preferredName, w.patientId, visit.encounterId])
+    for (const term of [w.patientId, visit.encounterId])
       expect(`${text} ${Buffer.from(bytes).toString('latin1')}`).not.toContain(term);
   });
 
@@ -214,6 +217,69 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
       expect(text).toContain('EMS handoff');
       expect(text).toContain('Visit started 2026-10-20 14:40 UTC');
     }
+  });
+
+  it('heads the file with the patient’s preferred name, age and allergies from their chart, never the legal name or birth date', async () => {
+    // The coordinator's decision on the review (forms 10.1 #6, PLAN-OPEN for the clinical team and counsel).
+    const rowan = (
+      await createPatient(h, w.t.teamId, w.t.adminId, {
+        preferredName: 'Demo Rowan',
+        legalName: { given: 'Ysolde', family: 'Varrowick' },
+        birth: { precision: 'day', date: '1970-11-02' },
+      })
+    ).id;
+    const allergies = [
+      await w.rae.phone.change({
+        entity: 'patient_allergy',
+        op: 'create',
+        value: { patientId: rowan, substance: 'Demo: peanuts' },
+      }),
+      await w.rae.phone.change({
+        entity: 'patient_allergy',
+        op: 'create',
+        value: { patientId: rowan, substance: 'Demo: latex', severity: 'severe' },
+      }),
+    ];
+    expect((await w.rae.send(...allergies)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+    const v = await visitAt(w.rae, rowan, { startedAt: '2026-10-20T14:40:00Z' });
+    await noteOn(w.rae, v, RED_FLAGS as ResolvedNoteType, EMS);
+    h.clock.set(new Date('2026-10-20T15:12:30Z'));
+    const text = pdfText(
+      new Uint8Array(await (await exportAs(w.vic.token, v.encounterId)).arrayBuffer()),
+    ).join('|');
+    expect(text).toContain('Demo Rowan|Age 55|Allergies: Demo: latex (severe), Demo: peanuts|Visit started');
+    for (const term of ['Ysolde', 'Varrowick', '1970', '11-02', 'Nov']) expect(text).not.toContain(term);
+    // A chart with no birth and no allergy asked about says so.
+    const plain = pdfText(new Uint8Array(await (await exportAs(w.vic.token)).arrayBuffer())).join('|');
+    expect(plain).toContain(`${w.preferredName}|Age not recorded|Allergies not asked yet|Visit started`);
+  });
+
+  it('prints its times in the time zone the portal sends, named; without one, in UTC', async () => {
+    h.clock.set(new Date('2026-10-20T15:12:30Z'));
+    const zoned = await h.request(
+      `/v1/encounters/${visit.encounterId}/ems-handoff?timeZone=America/Detroit`,
+      {
+        token: w.vic.token,
+        teamId: w.t.teamId,
+      },
+    );
+    expect(zoned.status).toBe(200);
+    const text = pdfText(new Uint8Array(await zoned.arrayBuffer())).join(' ');
+    expect(text).toContain('Visit started 2026-10-20 10:40 America/Detroit');
+    expect(text).toContain('Exported by Vic (demo) on 2026-10-20 11:12 America/Detroit');
+    // A zone the runtime does not know is refused, and nothing is exported or logged.
+    const mark = await auditMark(h);
+    const unknown = await h.request(`/v1/encounters/${visit.encounterId}/ems-handoff?timeZone=Mars/Olympus`, {
+      token: w.vic.token,
+      teamId: w.t.teamId,
+    });
+    expect(unknown.status).toBe(422);
+    expect(await eventsAfter(h, mark)).toEqual([]);
+  });
+
+  it('holds each note that holds something, drafts too, marked with its state', async () => {
+    const text = pdfText(new Uint8Array(await (await exportAs(w.vic.token)).arrayBuffer())).join(' ');
+    for (const n of notes) expect(text, n.type.title).toContain(`${n.type.title} (draft)`);
   });
 
   it('leaves out a note the reader may not see: a sensitive note type without patients.view_sensitive', async () => {
@@ -345,12 +411,14 @@ describe('phase 4: export the EMS handoff as a PDF', () => {
 
 describe('phase 4: the EMS handoff PDF', () => {
   const input = (lines: HandoffLine[], titles = ['Demo: Red flags']): HandoffPdfInput => ({
-    titles,
+    patient: null,
+    notes: titles.map((title) => ({ title, state: 'signed' as const })),
     lines,
     startedAt: '2026-10-20T14:40:00.000Z',
     clockVerified: true,
     exportedBy: 'Ana (demo)',
     exportedAt: new Date('2026-10-20T15:12:30Z'),
+    timeZone: null,
   });
   const field = (label: string, value: string, note = 0): HandoffLine => ({
     kind: 'field',
@@ -358,6 +426,40 @@ describe('phase 4: the EMS handoff PDF', () => {
     section: 's',
     label,
     value,
+  });
+
+  it('heads the file with the patient, or says there is none', async () => {
+    const patient = { preferredName: 'Demo Rowan', age: 'Age about 46', allergies: 'No known allergies' };
+    const text = pdfText(await handoffPdf({ ...input([field('Demo', 'x')]), patient })).join('|');
+    expect(text).toContain('EMS handoff|Demo Rowan|Age about 46|No known allergies|Visit started');
+    const none = pdfText(await handoffPdf(input([field('Demo', 'x')]))).join('|');
+    expect(none).toContain('EMS handoff|No patient recorded for this visit|Visit started');
+  });
+
+  it('marks each note with its state', async () => {
+    const lines = [field('a', '1', 0), field('b', '2', 1), field('c', '3', 2), field('d', '4', 3)];
+    const states = ['draft', 'complete', 'signed', 'attested'] as const;
+    const text = pdfText(
+      await handoffPdf({
+        ...input(lines),
+        notes: states.map((state, i) => ({ title: `Demo: Note ${i + 1}`, state })),
+      }),
+    ).join('|');
+    expect(text).toContain('Demo: Note 1 (draft)|a: 1');
+    expect(text).toContain('Demo: Note 2 (complete)|b: 2');
+    expect(text).toContain('Demo: Note 3 (signed)|c: 3');
+    expect(text).toContain('Demo: Note 4 (signed and attested)|d: 4');
+  });
+
+  it('prints its times in the reader’s time zone, named, and in UTC without one', async () => {
+    const zoned = pdfText(
+      await handoffPdf({ ...input([field('Demo', 'x')]), timeZone: 'America/Detroit' }),
+    ).join(' ');
+    expect(zoned).toContain('Visit started 2026-10-20 10:40 America/Detroit');
+    expect(zoned).toContain('Exported by Ana (demo) on 2026-10-20 11:12 America/Detroit');
+    const utc = pdfText(await handoffPdf(input([field('Demo', 'x')]))).join(' ');
+    expect(utc).toContain('Visit started 2026-10-20 14:40 UTC');
+    expect(utc).toContain('Exported by Ana (demo) on 2026-10-20 15:12 UTC');
   });
 
   it('runs on to more pages, each stamped, and loses no line', async () => {
