@@ -90,7 +90,17 @@ attestation waits for the Red flags note), `api/sync/review.ts` (the sync read c
 `encounters/read.ts`'s rules and keeps no copy of its own), and `phone-test/sync/fake_server.dart`
 with `fake_parity_test.dart` and `fake_reads_test.dart` (the same three read rules on the fake: a
 correction asked of every state its note has held, a visit's status from the notes shown, no
-sign-off's hash over a withheld summary).
+sign-off's hash over a withheld summary). L3's store cards and their review edited files of L0,
+L1, L2 and L5: `api/encounters/rules.ts`, `phone/encounters/rules.dart`,
+`vectors/note-lifecycle.json` and `phone-test/encounters/rules_test.dart` (`signoffEffect`'s
+`emptyDraft`); `api/sync/entities/{note,note-signoff}.ts`, `api/sync/review.ts` and
+`api/sync/schemas.ts` with the contract, and
+`api-test/sync-{signoffs,corrections,encounters,reads}.test.ts` (an empty draft's sign-off,
+`everSigned`, `hasFinishedNote`, the held sign-off's notice); L2-seed's
+`db/test/demo-encounters.test.ts` (the new input); L5-needs-attention's
+`phone/features/sync/sync_labels.dart` with `phone-test/features/sync_labels_test.dart` (the
+notices of a note's life); and phase 2's `phone-test/sync/local_store_test.dart` and
+`live_api_test.dart`.
 
 One landing holds L1 and five cards of L3: L3-registry, L3-fake-encounter, L3-fake-signoff,
 L3-fake-rest and L3-parity. The phone's test server mirrors the server's sync rules by hand, so
@@ -336,9 +346,9 @@ already charted, which findings can be held together, and what counts once a fin
 | Card | Files | Needs |
 |---|---|---|
 | L3-registry | `phone/sync/entities.dart` (the changed and new entities; the patient of a new record; the referral's date rule; the two audit actions). As built also `phone-test/patients/entities_test.dart` and `phone-test/sync/patient_rules_test.dart` (the phase 4 vectors run), and `phone-test/sync/local_store_test.dart` (two status sets the registry now refuses). After wave D's review a year below 100 is refused, with two cases in `vectors/sync-values.json`; the bound on `noteTypeVersion` is still owed (lifecycle 4.8) | L1 |
-| L3-store-finish | `phone/sync/local_store.dart`, `phone-test/sync/store_encounters_test.dart` (`finishNotes`: the hash shown, the fix path, the Red flags note first, hidden answers dropped) | L3-registry, L0-rules-dart, L0-content-hash-dart |
-| L3-store-lock | `phone/sync/local_store.dart` (the lock by effect; reopen gets through; a note on any encounter) | L3-store-finish |
-| L3-store-receipts | `phone/sync/local_store.dart` (receipts settle the effect; a sign-off held for review; the clock guard) | L3-store-lock |
+| L3-store-finish | `phone/sync/local_store.dart`, `phone-test/sync/store_encounters_test.dart` (`finishNotes`: the hash shown, the fix path, the Red flags note first, hidden answers dropped). As built also the visit as wave D keeps it (`createEncounter` takes `locationText`, `kind` is a field, a visit's status comes from the snapshot, a fixed visit create carries `locationText`) and one test of `phone-test/sync/local_store_test.dart`; the caller passes each note's act and statement version (`NoteToFinish`), a `Signer`, a synchronous `definitionOf` and `redFlagsFinished`. Its review added hard stop 2 (`needs_attention`), a sign-off made and fixed only by `finishNotes`, the answers Complete dropped carried in a note's fixed create, and the settling of every refused sign-off, for which `signoffEffect` gained `emptyDraft` in L0's and L1's files: `api/encounters/rules.ts`, `phone/encounters/rules.dart`, `vectors/note-lifecycle.json`, `phone-test/encounters/rules_test.dart`, `api/sync/entities/note-signoff.ts`, `api/sync/schemas.ts` with the contract, the test server and its parity test, `api-test/sync-{signoffs,corrections}.test.ts`, and L2-seed's `db/test/demo-encounters.test.ts` (lifecycle 3.3, 3.4, 3.12, 4.8) | L3-registry, L0-rules-dart, L0-content-hash-dart; as built also F2-finish (`finishCheck`) |
+| L3-store-lock | `phone/sync/local_store.dart` (the lock by effect; reopen gets through; a note on any encounter). As built also `phone-test/sync/store_encounters_test.dart`, the reopen as a call of its own (`reopenNote`), and what hangs off a visit filed under its patient (`patientVia`). Its review, as the coordinator decided, added a note's `everSigned` and a visit's `hasFinishedNote` to the sync read, which the reopen and the envelope lock read, in L1's `api/sync/entities/note.ts`, `api/sync/review.ts` and `api/sync/schemas.ts` with the contract, the test server with `fake_reads_test.dart` and `fake_parity_test.dart`, and `api-test/sync-{reads,encounters}.test.ts`; it refuses on the phone a visit's kind set back from Medical and its patient removed, and refiles what hangs off a visit whenever its patient changes (lifecycle 4.3, 4.4, 4.8) | L3-store-finish |
+| L3-store-receipts | `phone/sync/local_store.dart` (receipts settle the effect; a sign-off held for review; the clock guard). As built also `phone-test/sync/store_encounters_test.dart`, and in L5-needs-attention's `phone/features/sync/sync_labels.dart` the sentences of `change_not_applied`, `signoff_not_applied` and `finished_differently`, with `phone-test/features/sync_labels_test.dart`. Its review made the notice that a held sign-off will not reach the chart a kind of its own, naming the sign-off, once per sign-off, in L1's `api/sync/review.ts`, the test server with `fake_parity_test.dart`, and `api-test/sync-signoffs.test.ts`, with a case against the real API in `phone-test/sync/live_api_test.dart` (lifecycle 4.6, 4.8, 9.13) | L3-store-lock |
 | L3-fake-encounter | `phone-test/sync/fake_server.dart` (rules 1 to 6 and 13 of lifecycle 4.9). As built with their cases in `fake_parity_test.dart`, and `phone-test/features/sync_flow_test.dart` and `phone-test/sync/sync_scenarios_test.dart` moved onto the test-only type | L3-registry |
 | L3-fake-signoff | `phone-test/sync/fake_server.dart` (rules 7 to 10), with their cases in `fake_parity_test.dart` | L3-fake-encounter |
 | L3-fake-rest | `phone-test/sync/fake_server.dart` (rules 11, 12 and 14 to 17), with their cases in `fake_parity_test.dart` and `fake_reads_test.dart`. As built also `phone-test/sync/sync_scenarios_test.dart`, whose answers now fit the type's 4,000 characters | L3-fake-signoff |
@@ -350,14 +360,14 @@ already charted, which findings can be held together, and what counts once a fin
 |---|---|---|---|
 | L4-tests | X | The test files of this unit's T cards | L3 |
 | L4-models-read | T | `encounter_models.dart`, `encounter_repository.dart` (read a visit from the store, the read logged) | L4-tests, F4-fetch |
-| L4-start | T | `encounter_repository.dart` (start an encounter, add a note, remove a note, switch to Medical) | L4-models-read |
-| L4-complete | T | `complete.dart` (hard stops 1 to 4, then `finishNotes` with the hashes shown) | L4-start |
-| L4-note-actions | T | `note_actions.dart` (reopen, addendum, correction) | L4-complete |
+| L4-start | T | `encounter_repository.dart` (start an encounter, add a note, remove a note, switch to Medical). As L3 built the store: Remove this note, on a note whose sign-off was refused, calls `finishNotes` for that note once its answers are blank, so the refusal settles at the next sync (lifecycle 3.4, 4.8) | L4-models-read |
+| L4-complete | T | `complete.dart` (hard stops 1 to 4, then `finishNotes` with the hashes shown). As L3 built the store, `finishNotes` checks hard stops 1, 2, 3 and 5 and the hash itself, and throws, writing nothing (`ChartingPaused`, `NoteChanged`, `LocalValidationError` `needs_attention`, `incomplete`, `red_flags_first`, `not_author` or `empty`, `RecordLocked`); this card still works out what stops Complete for the summary screen (lifecycle 9.6), hard stop 4 included, which the store does not check. It passes each note's act and statement version (`NoteToFinish`), a `Signer` from the saved profile, a synchronous `definitionOf` and `redFlagsFinished` when the visit read shows a teammate's finished Red flags note; draws the hashes with `contentHashOf`; shows `NoteChanged` as "This note changed. Read it again."; expects a note whose fix only settles a refusal to be left out of the map; checks `sentForReview` first; and after a reopen while the first sign-off waits reads `RecordLocked` as "the last Complete must sync first" (lifecycle 4.8) | L4-start |
+| L4-note-actions | T | `note_actions.dart` (reopen, addendum, correction). As L3 built the store: the reopen is `reopenNote` with the definition of the note's own key and version (`nothing` for a draft; `RecordLocked` for a note finished for good or sent for review; `not_author`); an addendum or a correction on a note the phone does not hold opens the note first (`openServerRecord`), since the store files it under its patient through the note and takes no patient hint (lifecycle 4.8) | L4-complete |
 | L4-referrals | T | `referrals.dart` | L4-models-read |
 | L4-notes-to-finish | T | `notes_to_finish.dart` (the phone's drafts merged with the server's list; the offline read logged) | L4-models-read |
 | L4-online | T | `encounter_api.dart` (the visit read, the queues, co-sign, attest, counts) | L2-contract |
 | L4-timeline | T | `timeline.dart` (the chart's list merged with unconfirmed visits) | L4-models-read |
-| L4-close-sweep | T | `close_sweep.dart` (close finished notes with nothing waiting, and drafts untouched for 7 days) | L4-complete |
+| L4-close-sweep | T | `close_sweep.dart` (close finished notes with nothing waiting, and drafts untouched for 7 days). As L3 built the store: a note `sentForReview` is not closed, so the refresh settles an admin's accept and the notice finds the note (lifecycle 4.8) | L4-complete |
 | L4-chart-cache | R | `phone/patients/chart_cache.dart`, its test (keeps `timeline`, `recentVisits` and the referral snapshots) | L2-timeline |
 | L4-problems-link | R | `phone/patients/problems.dart`, its test (a problem made or changed in a visit carries its ID) | L1-problem-source |
 
@@ -387,7 +397,7 @@ Every card is level R, except L5-labels, and includes its widget test file under
 | L5-queues | `queue_screen.dart`, `phone/features/home/home_screen.dart` | L4-online, L5-visit-actions |
 | L5-referrals | `referrals_sheet.dart` | L4-referrals |
 | L5-profile-timeline | `timeline_section.dart`, `phone/features/patients/patient_screen.dart` (+ Encounter, + Referral, the timeline, Show earlier visits) | L4-timeline, L4-chart-cache, L5-referrals |
-| L5-needs-attention | `phone/features/sync/sync_labels.dart`, `phone/features/sync/needs_attention_screen.dart` (the sentences, the notices, the buttons that settle each problem) | L3 |
+| L5-needs-attention | `phone/features/sync/sync_labels.dart`, `phone/features/sync/needs_attention_screen.dart` (the sentences, the notices, the buttons that settle each problem). As L3 built the store, `noticeLabel` already words `change_not_applied`, `signoff_not_applied` and `finished_differently` (lifecycle 9.13). A `signoff_not_applied` notice names a sign-off (`ServerNotices.entityOf` gives `note_signoff`): Open the note finds the note by the sign-off record's `noteId` while this phone holds it; for a sign-off it knows nothing of, how is open (lifecycle 4.8). `finished_differently` names the note | L3 |
 | L5-location | `location_field.dart`, `apps/mobile/pubspec.yaml` (Use my location) | L5-new-encounter |
 
 ### L6 The portal (lifecycle 9.11 to 9.14). Folder: `portal/`
