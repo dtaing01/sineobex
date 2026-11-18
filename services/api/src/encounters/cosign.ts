@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { z } from '@hono/zod-openapi';
 import { effectiveAnswers } from '@sineobex/forms';
-import type { AuditFn, TeamScope } from '../auth/context.ts';
-import { CAPABILITIES } from '../auth/permissions.ts';
+import { TeamScope, type AuditFn } from '../auth/context.ts';
+import { CAPABILITIES, CREDENTIALS, isPermission, type Credential } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { ApiError, conflict, notFound } from '../lib/errors.ts';
+import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { VisitNote } from '../patients/schemas.ts';
 import { Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
@@ -184,10 +184,12 @@ export interface SecondAct<W> {
   messages: Partial<Record<ActRefusal, string>>;
   /** The visit's notes that wait for this act. */
   waiting: (tx: Tx, visit: StoredRecord) => Promise<string[]>;
-  effect: (n: ActNote, hashMatches: boolean) => { refuse: ActRefusal } | W;
+  /** Asked of the caller as they are once the team lock is held (secondAct's `now`). */
+  effect: (scope: TeamScope, n: ActNote, hashMatches: boolean) => { refuse: ActRefusal } | W;
   /** Writes the act for every note, with its events and notices, and answers each note's state. */
   apply: (
     tx: Tx,
+    scope: TeamScope,
     audit: AuditFn,
     visit: StoredRecord,
     acts: { n: ActNote; effect: W; contentHash: string }[],
@@ -210,9 +212,54 @@ const CALLERS = new Set<ActRefusal>([
 ]);
 
 /**
+ * The caller as they are now that the team lock is held: their role, credential and its fields read
+ * again, since the request's scope was read before the lock, and a demotion or a removal that took
+ * the lock first has committed since (lifecycle 3.5: moving down removes permissions at once; review
+ * finding LAC-4). Null when they are no longer an active member.
+ */
+async function callerNow(tx: Tx, scope: TeamScope): Promise<TeamScope | null> {
+  const [row] = await tx<
+    {
+      status: string;
+      credential: string;
+      credentialFields: Record<string, string>;
+      roleId: string;
+      roleKey: string;
+      roleName: string;
+      permissions: string[];
+    }[]
+  >`
+    select m.status, m.credential, m.credential_fields, r.id as role_id, r.key as role_key, r.name as role_name,
+           r.permissions
+    from sineobex.team_memberships m join sineobex.roles r on r.id = m.role_id
+    where m.team_id = ${scope.team.teamId} and m.user_id = ${scope.principal.userId}`;
+  if (!row || row.status !== 'active') return null;
+  const credential = (CREDENTIALS as readonly string[]).includes(row.credential)
+    ? (row.credential as Credential)
+    : 'none';
+  return new TeamScope(
+    scope.deps,
+    scope.principal,
+    {
+      ...scope.team,
+      roleId: row.roleId,
+      roleKey: row.roleKey,
+      roleName: row.roleName,
+      permissions: new Set(row.permissions.filter(isPermission)),
+      credential,
+      credentialFields: row.credentialFields,
+    },
+    scope.meta,
+  );
+}
+
+/**
  * Runs a co-sign or an attest of a visit, all or nothing (lifecycle 5.3, 5.4). The team lock is its
  * first statement and each note named is loaded for update after it, as a push does, so a
- * correction cannot change a note between its hash check and its signature.
+ * correction cannot change a note between its hash check and its signature. The caller is read
+ * again after the lock (callerNow), and the act is asked of, and recorded under, who they are then:
+ * one no longer a member is refused not_a_member, and one whose role no longer charts is refused as
+ * the route refuses them; both logged.
  *
  * Every note named is checked by the act's rule; a note of another visit, or none, does not wait.
  * The list must hold every waiting note of the visit the caller may act on: one left out is one
@@ -227,9 +274,19 @@ export async function secondAct<W>(
   route: string,
   act: SecondAct<W>,
 ): Promise<NoteActResultValue> {
-  type Outcome = { answer: NoteActResultValue } | { refusal: ActRefusal; noteIds: string[] };
+  type Outcome = { answer: NoteActResultValue } | { refused: ApiError };
   const outcome = await scope.tx(async (tx, audit): Promise<Outcome> => {
     await lockTeamWrites(tx, scope.team.teamId);
+    const now = await callerNow(tx, scope);
+    // Each logged in this transaction, which writes nothing else.
+    if (!now) {
+      await audit({ action: 'access.denied', details: { reason: 'not_a_member', route } });
+      return { refused: forbidden('You are not a member of this team.', 'not_a_member') };
+    }
+    if (!now.can('encounters.chart')) {
+      await audit({ action: 'access.denied', details: { permission: 'encounters.chart', route } });
+      return { refused: forbidden() };
+    }
     const visit = await loadEncounter(tx, encounterId, false);
     if (!visit || visit.teamId !== scope.team.teamId) throw notFound('encounter');
 
@@ -243,8 +300,8 @@ export async function secondAct<W>(
         refuse('not_waiting', noteId);
         continue;
       }
-      const n = await actNote(tx, scope, visit, note);
-      const effect = act.effect(n, (await heldHash(visit, n)) === contentHash);
+      const n = await actNote(tx, now, visit, note);
+      const effect = act.effect(now, n, (await heldHash(visit, n)) === contentHash);
       const refusal = refusalOf(effect);
       if (refusal) refuse(refusal, noteId);
       else acts.push({ n, effect: effect as W, contentHash });
@@ -254,17 +311,16 @@ export async function secondAct<W>(
       if (named.has(noteId)) continue;
       const note = await noteRules.load(tx, noteId, false);
       if (!note) continue;
-      if (!refusalOf(act.effect(await actNote(tx, scope, visit, note), true)))
+      if (!refusalOf(act.effect(now, await actNote(tx, now, visit, note), true)))
         refuse('content_changed', noteId);
     }
 
     const reason = act.refusals.find((r) => refused.has(r));
     if (reason === undefined)
-      return { answer: await act.apply(tx, audit, visit, acts, input.statementVersion) };
+      return { answer: await act.apply(tx, now, audit, visit, acts, input.statementVersion) };
     const noteIds = refused.get(reason)!;
     if (!CALLERS.has(reason))
       throw conflict(reason, act.messages[reason] ?? 'Load the visit again.', { noteIds });
-    // Logged in this transaction, which writes nothing else.
     await audit({
       action: 'access.denied',
       entity: 'encounter',
@@ -272,17 +328,14 @@ export async function secondAct<W>(
       patientId: visit.patientId,
       details: { reason, route, noteIds },
     });
-    return { refusal: reason, noteIds };
+    return {
+      refused: new ApiError(403, reason, act.messages[reason] ?? 'Your role does not allow this.', {
+        noteIds,
+      }),
+    };
   });
   if ('answer' in outcome) return outcome.answer;
-  throw new ApiError(
-    403,
-    outcome.refusal,
-    act.messages[outcome.refusal] ?? 'Your role does not allow this.',
-    {
-      noteIds: outcome.noteIds,
-    },
-  );
+  throw outcome.refused;
 }
 
 /** A notice with no text about the visit (lifecycle 4.10): one per person per visit. */
@@ -332,9 +385,8 @@ export function cosignVisit(scope: TeamScope, encounterId: string, input: NoteAc
           where team_id = ${visit.teamId} and encounter_id = ${visit.id} and status = 'completed' and medical
           order by created_at, id`
       ).map((r) => r.id),
-    effect: (n, hashMatches) => cosignOf(scope, n, hashMatches),
-    apply: (tx, audit, visit, acts, statementVersion) =>
-      writeCosign(tx, scope, audit, visit, acts, statementVersion),
+    effect: cosignOf,
+    apply: writeCosign,
   });
 }
 

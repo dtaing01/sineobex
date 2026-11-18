@@ -404,6 +404,54 @@ describe('phase 4: co-sign', () => {
       }
     });
 
+    it('records the credential the caller holds once the team lock is theirs, not the one read before', async () => {
+      // Review finding LAC-4: an admin's demotion to resident takes the team lock first and commits
+      // while Pat's co-sign waits for it.
+      const pat = await clinician(h, w.t, 'pat@example.com', 'Pat (demo)', 'attending');
+      const v = await waitingForCosign(w);
+      const body = await actBody([v.flags, v.note], COSIGN_STATEMENT);
+      const { waited, answer } = await whileTeamLocked(
+        h,
+        w.t.teamId,
+        () => post(w, pat.token, path(v.visit.encounterId), body),
+        (sql) => sql`
+          update sineobex.team_memberships set credential = 'resident',
+            credential_fields = ${sql.json(CREDENTIAL_FIELDS.resident)}
+          where id = ${pat.membershipId}`,
+      );
+      expect(waited).toBe(true);
+      expect(answer.status).toBe(200);
+      const [row] = (await signoffRows(h, v.note.noteId)).filter((s) => s.act === 'cosign');
+      const { npi, ...fields } = CREDENTIAL_FIELDS.resident;
+      expect(row).toMatchObject({
+        signerCredential: 'resident',
+        signerNpi: npi,
+        signerFields: fields,
+        needsAttestation: true,
+      });
+      expect((await noteRow(h, v.note.noteId)).attestation).toBe('waiting');
+    });
+
+    it('refuses a caller removed while it waited for the team lock, logged, and writes nothing', async () => {
+      const lee = await clinician(h, w.t, 'lee@example.com', 'Lee (demo)', 'attending');
+      const v = await waitingForCosign(w);
+      const body = await actBody([v.flags, v.note], COSIGN_STATEMENT);
+      const mark = await auditMark(h);
+      const { answer } = await whileTeamLocked(
+        h,
+        w.t.teamId,
+        () => post(w, lee.token, path(v.visit.encounterId), body),
+        (sql) => sql`
+          update sineobex.team_memberships set status = 'removed', removed_at = now()
+          where id = ${lee.membershipId}`,
+      );
+      expect(answer.status).toBe(403);
+      expect(answer.body.error?.code).toBe('not_a_member');
+      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied!.details).toMatchObject({ reason: 'not_a_member' });
+      await unchanged(v.flags, v.note);
+    });
+
     it('takes the team lock before it locks a note or a visit', async () => {
       const v = await waitingForCosign(w);
       const run = await whileTeamLocked(h, w.t.teamId, () =>

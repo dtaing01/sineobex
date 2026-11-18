@@ -69,9 +69,8 @@ export function attestVisit(scope: TeamScope, encounterId: string, input: NoteAc
             and attestation = 'waiting'
           order by created_at, id`
       ).map((r) => r.id),
-    effect: (n, hashMatches) => attestOf(scope, n, hashMatches),
-    apply: (tx, audit, visit, acts, statementVersion) =>
-      writeAttestations(tx, scope, audit, visit, acts, statementVersion),
+    effect: attestOf,
+    apply: writeAttestations,
   });
 }
 

@@ -502,9 +502,15 @@ export const refusal = (body: Json) => ({
  * Runs [request] while another connection holds the team's write lock, waits until the request
  * waits on it, and answers how many locks on the note and visit tables the waiting request held by
  * then (none, if the team lock was its first statement), and the request's answer once the lock is
- * let go.
+ * let go. [meanwhile] runs in the lock holder's transaction before it commits: a writer that took
+ * the lock first.
  */
-export async function whileTeamLocked<T>(h: Harness, teamId: string, request: () => Promise<T>) {
+export async function whileTeamLocked<T>(
+  h: Harness,
+  teamId: string,
+  request: () => Promise<T>,
+  meanwhile?: (sql: Awaited<ReturnType<Harness['scratch']['owner']['reserve']>>) => Promise<unknown>,
+) {
   const other = await h.scratch.owner.reserve();
   try {
     await other`begin`;
@@ -526,6 +532,7 @@ export async function whileTeamLocked<T>(h: Harness, teamId: string, request: ()
           and relation in ('sineobex.encounter_notes'::regclass, 'sineobex.encounters'::regclass)`;
       rowLocks = held!.n;
     }
+    if (meanwhile) await meanwhile(other);
     await other`commit`;
     return { waited: waiting !== undefined, rowLocks, answer: await answer };
   } finally {
