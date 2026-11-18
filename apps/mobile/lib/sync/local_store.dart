@@ -379,6 +379,7 @@ class LocalNotice {
     required this.field,
     required this.createdAt,
     required this.readAt,
+    this.noteId,
   });
   final String id;
   final String kind;
@@ -387,6 +388,11 @@ class LocalNotice {
   final String? field;
   final DateTime createdAt;
   final DateTime? readAt;
+
+  /// The note a server notice names beside its record (D104): a [noticeSignoffNotApplied] names the
+  /// held sign-off, which no sync read gives, and this its note, so a phone that never held the
+  /// sign-off opens the note by it. Null for every other notice.
+  final String? noteId;
 }
 
 /// "Two values recorded for Usual area. Someone who knows this person will choose."
@@ -423,6 +429,10 @@ const _heldKvPrefix = 'held_signoff.';
 /// only), for good: the notice that one wasn't applied names the sign-off, and settles only the held
 /// one it names, or, for one settled here already, is read (D89).
 const _heldNoteKvPrefix = 'held_note.';
+
+/// Where the phone keeps, by local notice, the note a server notice names (IDs only, D104):
+/// `local_notices` has no column for it, and a `kv` row needs no change to the database's schema.
+const _noticeNoteKvPrefix = 'notice_note.';
 
 /// Read-only copies of server records expire after this (module 9 "Route cache").
 const serverCopyLifetime = Duration(hours: 24);
@@ -2647,13 +2657,17 @@ class LocalStore {
   /// again, to read and complete again (fetched again first if it left the phone). One this phone
   /// settled already (its note finished since) changes nothing, and is kept read. One this phone knows
   /// nothing of (another phone's, or a database erased since) is kept as it is.
-  String addNotice(String kind, {String? patientId, String? recordId, String? field}) => _tx(() {
+  ///
+  /// [noteId] is the note a server notice names (D104), kept with it for the screens to open. It
+  /// settles nothing: a held sign-off is settled by its own ID alone, so one phone's notice never
+  /// undoes a later Complete of the same note held on another.
+  String addNotice(String kind, {String? patientId, String? recordId, String? field, String? noteId}) => _tx(() {
     var settled = false;
-    final noteId = kind == noticeSignoffNotApplied && recordId != null ? kv('$_heldNoteKvPrefix$recordId') : null;
-    if (noteId != null) {
-      if (_heldSignoff(noteId) == recordId) {
-        _heldSettled(noteId);
-        if (localEffect(noteId)?.signoffId == recordId) _clearEffect(noteId);
+    final heldNote = kind == noticeSignoffNotApplied && recordId != null ? kv('$_heldNoteKvPrefix$recordId') : null;
+    if (heldNote != null) {
+      if (_heldSignoff(heldNote) == recordId) {
+        _heldSettled(heldNote);
+        if (localEffect(heldNote)?.signoffId == recordId) _clearEffect(heldNote);
       } else {
         settled = true;
       }
@@ -2663,12 +2677,14 @@ class LocalStore {
       'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [id, kind, patientId, recordId, field, _nowMs, settled ? _nowMs : null],
     );
+    if (noteId != null) setKv('$_noticeNoteKvPrefix$id', noteId);
     return id;
   });
 
   List<LocalNotice> notices({bool unreadOnly = false}) => [
     for (final r in _db.select(
-      'SELECT * FROM local_notices ${unreadOnly ? 'WHERE read_at IS NULL ' : ''}ORDER BY created_at, id',
+      "SELECT n.*, k.value AS note_id FROM local_notices n LEFT JOIN kv k ON k.key = '$_noticeNoteKvPrefix' || n.id "
+      '${unreadOnly ? 'WHERE n.read_at IS NULL ' : ''}ORDER BY n.created_at, n.id',
     ))
       LocalNotice(
         id: r['id'] as String,
@@ -2678,6 +2694,7 @@ class LocalStore {
         field: r['field'] as String?,
         createdAt: DateTime.fromMillisecondsSinceEpoch(r['created_at'] as int, isUtc: true),
         readAt: r['read_at'] == null ? null : DateTime.fromMillisecondsSinceEpoch(r['read_at'] as int, isUtc: true),
+        noteId: r['note_id'] as String?,
       ),
   ];
 

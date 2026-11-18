@@ -160,11 +160,13 @@ const noticeCardConflict = 'id_link_conflict';
 /// A Program Admin decided a "Resolved by mistake" request (design 9.4).
 const noticeReversalDecided = 'problem_reversal_decided';
 
-/// The person's notices from the server (`GET /v1/team/notices`: kind, entity and record ID only),
-/// kept with the phone's own ([LocalStore.notices]), and read on the phone and on the server alike.
+/// The person's notices from the server (`GET /v1/team/notices`: kind, entity and record ID only, and
+/// for a held sign-off's, its note's ID, D104), kept with the phone's own ([LocalStore.notices]), and
+/// read on the phone and on the server alike.
 ///
 /// The server's notice IDs live in `kv` with the local notice each became and its entity (IDs only,
-/// no PHI), so a notice is stored once however often it is fetched. A notice the phone already
+/// no PHI), so a notice is stored once however often it is fetched. The note a notice names is kept
+/// with the local notice ([LocalNotice.noteId]). A notice the phone already
 /// made from a receipt (the same kind about the same record, a card that lost) is that notice, not
 /// a second one. A read on the phone reaches the server at the next contact; offline reads wait in
 /// `kv` by notice ID.
@@ -247,7 +249,13 @@ class ServerNotices {
             .where((l) => l.kind == n.kind && l.recordId == n.recordId && n.recordId != null && !linked.contains(l.id))
             .firstOrNull;
         final id =
-            same?.id ?? store.addNotice(n.kind, recordId: n.recordId, patientId: _patientOf(n.entity, n.recordId));
+            same?.id ??
+            store.addNotice(
+              n.kind,
+              recordId: n.recordId,
+              patientId: _patientOf(n.entity, n.recordId),
+              noteId: n.noteId,
+            );
         linked.add(id);
         map[n.id] = {'local': id, 'entity': n.entity, 'acked': false};
         added = true;

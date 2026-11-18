@@ -1869,6 +1869,59 @@ void main() {
     );
 
     test(
+      'a phone that knows nothing of the sign-off keeps its notice with the note’s ID, as the sender’s own phone does',
+      () async {
+        // D104: a held sign-off is in no sync read, so a fresh database could not find the note from
+        // the sign-off the notice names.
+        final (:p, patient: _, visit: _, :flags, :held, expected: _) = await heldForReview();
+        final fresh = phone(alex);
+        server.rejectHeld(held.changeId);
+        for (final other in [fresh, p]) {
+          await ServerNotices(other.store, other.engine.api).sync();
+          final told = other.store.notices().single;
+          expect([told.kind, told.recordId, told.noteId], [noticeSignoffNotApplied, held.recordId, flags]);
+        }
+        // The fresh phone holds neither, keeps the notice as it came, and opens the note by it: a draft
+        // to complete again.
+        expect([fresh.store.record(flags), fresh.store.record(held.recordId)], [isNull, isNull]);
+        final told = fresh.store.notices().single;
+        expect(told.readAt, isNull);
+        expect(await fresh.engine.openServerRecord('encounter_note', told.noteId!), isTrue);
+        expect(fresh.store.noteState(flags), state(NoteStatus.draft));
+        // The sender's phone settled its own by the sign-off's ID.
+        expect(p.store.noteState(flags), state(NoteStatus.draft));
+      },
+    );
+
+    test(
+      'the note a notice names settles nothing: the same note held again on another phone stays Sent for review',
+      () async {
+        // D104: a held sign-off is settled by its own ID only. By its note, the notice of one phone's held
+        // Complete would undo another's still held, as SRC-5 found of a phone's own.
+        final (:p, patient: _, :visit, :flags, :held, expected: _) = await heldForReview();
+        final b = phone(alex);
+        expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+        expect(await b.engine.openServerRecord('encounter_note', flags), isTrue);
+        final second = complete(b, [finishing(b, flags, testRedFlags)])[flags]!;
+        await sync(b);
+        expect(b.store.sentForReview(flags), isTrue);
+        server.rejectHeld(held.changeId);
+        for (final other in [p, b]) {
+          await ServerNotices(other.store, other.engine.api).sync();
+        }
+        final told = b.store.notices().single;
+        expect(
+          [told.kind, told.recordId, told.noteId, told.readAt],
+          [noticeSignoffNotApplied, held.recordId, flags, isNull],
+        );
+        expect(b.store.sentForReview(flags), isTrue);
+        expect(b.store.localEffect(flags)?.toJson(), second.toJson());
+        expect(b.store.noteState(flags), state(NoteStatus.completed, Attestation.notNeeded, true));
+        expect(p.store.noteState(flags), state(NoteStatus.draft));
+      },
+    );
+
+    test(
       'a held receipt lost and its notice fetched before the retry: the retried receipt settles it at once',
       () async {
         // Review finding SRC-3: the receipt sent again set the held record after its notice had come,
