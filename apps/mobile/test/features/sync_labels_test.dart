@@ -11,6 +11,18 @@ void main() {
     }
   });
 
+  test('the notices of a note’s life are worded by their kind alone (lifecycle 3.4, 9.13)', () {
+    expect(noticeLabel('change_not_applied', null), 'Only the note’s author can do that. Nothing was changed.');
+    expect(
+      noticeLabel('signoff_not_applied', null),
+      'Your Complete of this note wasn’t applied. Open it and complete it again.',
+    );
+    expect(
+      noticeLabel('finished_differently', null),
+      'This note was already finished with different content. Open it and read what was finished.',
+    );
+  });
+
   test('every outbox category has a name', () {
     for (final entity in [...recordEntities, entityAudit]) {
       final category = categoryOf(entity);

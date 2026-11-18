@@ -1490,7 +1490,7 @@ void main() {
         expect([told.kind, told.recordId], [noticeFinishedDifferently, changed]);
         expect(
           noticeLabel(told.kind, told.field),
-          'This note was already finished, and not as you saw it. Open it and read what was signed.',
+          'This note was already finished with different content. Open it and read what was finished.',
         );
         expect(a.store.notices(), isEmpty);
       },
