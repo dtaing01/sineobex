@@ -171,7 +171,7 @@ note, which is why decision D56 exists.
 ## What a person has to decide
 
 Every default is built, marked `PLAN-OPEN` and listed with who decides: 26 in
-`lifecycle.md` 12.1, 41 in `forms.md` 10.1, and eight questions with no default in 12.2 and 10.2.
+`lifecycle.md` 12.1, 54 in `forms.md` 10.1, and eight questions with no default in 12.2 and 10.2.
 The ones that would change the most if answered differently:
 
 1. **Who may co-sign or attest a note that has a GU, breast or rectal exam.** The default follows
