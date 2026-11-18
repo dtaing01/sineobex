@@ -2686,7 +2686,9 @@ class LocalStore {
   ///
   /// [noteId] is the note a server notice names (D104), kept with it for the screens to open. It
   /// settles nothing: a held sign-off is settled by its own ID alone, so one phone's notice never
-  /// undoes a later Complete of the same note held on another.
+  /// undoes a later Complete of the same note held on another. A notice the caller gives no patient
+  /// (the phone holds no record of the sign-off) is filed under the note's when the phone holds the
+  /// note (D107), so it leads to that chart on a second phone as on the sender's own.
   String addNotice(String kind, {String? patientId, String? recordId, String? field, String? noteId}) => _tx(() {
     var settled = false;
     final heldNote = kind == noticeSignoffNotApplied && recordId != null ? kv('$_heldNoteKvPrefix$recordId') : null;
@@ -2698,10 +2700,19 @@ class LocalStore {
         settled = true;
       }
     }
+    final notePatient = kind == noticeSignoffNotApplied ? _patientOfRecord(noteId ?? heldNote) : null;
     final id = _newId();
     _db.execute(
       'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, kind, patientId, recordId, field, _nowMs, settled ? _nowMs : null],
+      [
+        id,
+        kind,
+        patientId ?? (notePatient == null ? null : canonicalPatient(notePatient)),
+        recordId,
+        field,
+        _nowMs,
+        settled ? _nowMs : null,
+      ],
     );
     if (noteId != null) setKv('$_noticeNoteKvPrefix$id', noteId);
     return id;

@@ -1968,6 +1968,31 @@ void main() {
       },
     );
 
+    test('a phone that holds the note but not the sign-off files its notice under the note’s patient', () async {
+      // D107: filed under the sign-off's record alone, the notice named no patient on any phone but the
+      // sender's own, so Needs attention offered no chart to open.
+      final (:p, :patient, :visit, :flags, :held, expected: _) = await heldForReview();
+      final b = phone(alex);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', flags), isTrue);
+      final fresh = phone(alex);
+      server.rejectHeld(held.changeId);
+      for (final other in [p, b, fresh]) {
+        await ServerNotices(other.store, other.engine.api).sync();
+      }
+      expect(
+        [
+          for (final other in [p, b, fresh])
+            (
+              other.store.record(held.recordId) != null,
+              other.store.record(flags) != null,
+              other.store.notices().single.patientId,
+            ),
+        ],
+        [(true, true, patient), (false, true, patient), (false, false, null)],
+      );
+    });
+
     test(
       'while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes',
       () async {
