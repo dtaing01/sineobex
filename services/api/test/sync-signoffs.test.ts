@@ -1262,6 +1262,70 @@ describe('phase 4 sync: sign-offs', () => {
       expect(pending!.status).toBe('pending');
     });
 
+    it('a held sign-off’s notice names its note, rejected or refused on accept; no other notice names one', async () => {
+      // D104: the notice names the held sign-off, which waits in the review queue and is never in the
+      // sync read, so a phone that never held it (a second phone, or one erased at a synced sign-out)
+      // finds the note by the notice alone.
+      const ivy = await clinician('ivy@example.com', 'Ivy (demo)', 'np');
+      const jon = await clinician('jon@example.com', 'Jon (demo)', 'attending');
+      const rejected = await chartedVisit(ivy);
+      const changed = await chartedVisit(ivy);
+      const sent = [await signoff(ivy, rejected.flags, 'sign'), await signoff(ivy, changed.flags, 'sign')];
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(ivy.membershipId, 'chw');
+      expect(await ivy.send(...sent)).toEqual(sent.map(() => expect.objectContaining({ quarantined: true })));
+      // A teammate rewrites one visit's summary, so its Red flags note no longer matches what Ivy
+      // signed, and signs Ivy's other note of it, which tells Jon about that note.
+      const rewrite = await jon.phone.change({
+        entity: 'encounter',
+        recordId: changed.visit.encounterId,
+        op: 'set',
+        field: 'summary',
+        value: 'Demo: seen under the bridge',
+        baseVersion: 0,
+      });
+      const theirs = await signoff(jon, changed.note, 'sign');
+      expect((await jon.send(rewrite, theirs)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+      const itemOf = async (c: Change) =>
+        (
+          await h.scratch.owner<{ id: string }[]>`
+            select id from sineobex.quarantine_items where change_id = ${c.changeId}`
+        )[0]!.id;
+      const decide = async (c: Change, decision: 'accept' | 'reject') =>
+        call(h, `/v1/team/quarantine/${await itemOf(c)}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Ivy' },
+        });
+      expect((await decide(sent[0]!, 'reject')).status).toBe(200);
+      expect((await decide(sent[1]!, 'accept')).status).toBe(409);
+
+      const listed = async (c: Who) =>
+        (await call(h, '/v1/team/notices', { token: c.token, teamId: t.teamId })).body as unknown;
+      const notice = (kind: string, entity: string, recordId: string, noteId: string | null) => ({
+        id: expect.any(String),
+        kind,
+        entity,
+        recordId,
+        noteId,
+        createdAt: expect.any(String),
+        readAt: null,
+      });
+      // Newest first: the refused accept's, then the reject's.
+      expect(await listed(ivy)).toEqual([
+        notice('signoff_not_applied', 'note_signoff', sent[1]!.recordId, changed.flags.noteId),
+        notice('signoff_not_applied', 'note_signoff', sent[0]!.recordId, rejected.flags.noteId),
+      ]);
+      expect(await listed(jon)).toEqual([
+        notice('change_not_applied', 'encounter_note', changed.note.noteId, null),
+      ]);
+      // Of every notice written here, only a held sign-off's names a note.
+      expect(
+        await h.scratch.owner`select distinct kind from sineobex.user_notices where note_id is not null`,
+      ).toEqual([{ kind: 'signoff_not_applied' }]);
+    });
+
     it('a held sign-off’s time is checked against when its push arrived, not when an admin accepted it', async () => {
       const quinn = await clinician('quinn@example.com', 'Quinn (demo)', 'np');
       const charted = await chartedVisit(quinn);

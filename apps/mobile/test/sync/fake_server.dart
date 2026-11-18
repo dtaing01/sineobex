@@ -158,7 +158,8 @@ class FakeSyncServer {
   /// ID links, by ID.
   final idLinks = <String, FakeIdLink>{};
 
-  /// Notices for people (user_notices): kind, entity and record ID only.
+  /// Notices for people (user_notices): kind, entity and record ID only, and for a held sign-off's the
+  /// note's ID (D104).
   final notices = <FakeNotice>[];
 
   /// What the online read routes audited: `patient.viewed`, `patient.searched`,
@@ -458,8 +459,9 @@ class FakeSyncServer {
 
   /// A held sign-off that will not reach the chart (review.ts signoffNotApplied, review finding
   /// NOT-12): its phone let go of it when it was held, so its sender gets `signoff_not_applied` naming
-  /// that sign-off, once per sign-off whether or not they have read it (SRC-1, SRC-2, SRC-5). Only for
-  /// a sign-off of a note on the chart.
+  /// that sign-off, once per sign-off whether or not they have read it (SRC-1, SRC-2, SRC-5), and its
+  /// note, which no sync read finds from a held sign-off (D104). Only for a sign-off of a note on the
+  /// chart.
   void _signoffNotApplied(String userId, Map<String, Object?> c) {
     if (c['entity'] != entitySignoff || c['op'] != 'create') return;
     final noteId = (c['value'] as Map<String, Object?>?)?['noteId'];
@@ -469,7 +471,7 @@ class FakeSyncServer {
       (n) =>
           n.userId == userId && n.kind == 'signoff_not_applied' && n.entity == entitySignoff && n.recordId == signoffId,
     );
-    if (!told) _notify(userId, 'signoff_not_applied', entitySignoff, signoffId);
+    if (!told) _notify(userId, 'signoff_not_applied', entitySignoff, signoffId, noteId: noteId);
   }
 
   /// The patient whose chart holds [patientId] now (its canonical ID).
@@ -2130,9 +2132,9 @@ class FakeSyncServer {
     );
   }
 
-  /// A notice with no text (user_notices).
-  void _notify(String userId, String kind, String entity, String recordId) =>
-      notices.add(FakeNotice(_uuid(), userId, kind, entity, recordId, now()));
+  /// A notice with no text (user_notices). Only a held sign-off's names a note.
+  void _notify(String userId, String kind, String entity, String recordId, {String? noteId}) =>
+      notices.add(FakeNotice(_uuid(), userId, kind, entity, recordId, now(), noteId: noteId));
 
   /// A patient's record names a visit of someone else (records.ts visitOfOtherPatient): one whose
   /// patient is outside [patientId]'s merged group. A visit that names no patient names nobody else.
@@ -2949,6 +2951,7 @@ class FakeSyncServer {
           'kind': n.kind,
           'entity': n.entity,
           'recordId': n.recordId,
+          'noteId': n.noteId,
           'createdAt': _iso(n.createdAt),
           'readAt': n.readAt == null ? null : _iso(n.readAt!),
         },
@@ -3799,12 +3802,15 @@ class FakePair {
 }
 
 class FakeNotice {
-  FakeNotice(this.id, this.userId, this.kind, this.entity, this.recordId, this.createdAt);
+  FakeNotice(this.id, this.userId, this.kind, this.entity, this.recordId, this.createdAt, {this.noteId});
   final String id;
   final String userId;
   final String kind;
   final String entity;
   final String recordId;
+
+  /// The note a `signoff_not_applied` notice is about (user_notices.note_id, D104); null for any other.
+  final String? noteId;
   final DateTime createdAt;
   DateTime? readAt;
 }

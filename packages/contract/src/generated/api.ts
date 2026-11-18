@@ -1944,6 +1944,11 @@ export interface components {
             /** Format: uuid */
             id: string;
             kind: string;
+            /**
+             * Format: uuid
+             * @description The note a `signoff_not_applied` notice is about: its record is the held sign-off, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
+             */
+            noteId: string | null;
             /** Format: date-time */
             readAt: string | null;
             /** Format: uuid */

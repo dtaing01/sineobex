@@ -3793,6 +3793,7 @@ class Notice {
     required this.entity,
     required this.id,
     required this.kind,
+    required this.noteId,
     required this.readAt,
     required this.recordId,
   });
@@ -3801,6 +3802,8 @@ class Notice {
   final String? entity;
   final String id;
   final String kind;
+  /// The note a `signoff_not_applied` notice is about: its record is the held sign-off, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
+  final String? noteId;
   final DateTime? readAt;
   final String? recordId;
 
@@ -3809,6 +3812,7 @@ class Notice {
         entity: json['entity'] == null ? null : json['entity'] as String,
         id: json['id'] as String,
         kind: json['kind'] as String,
+        noteId: json['noteId'] == null ? null : json['noteId'] as String,
         readAt: json['readAt'] == null ? null : DateTime.parse(json['readAt'] as String),
         recordId: json['recordId'] == null ? null : json['recordId'] as String,
       );
@@ -3818,6 +3822,7 @@ class Notice {
         'entity': entity == null ? null : entity!,
         'id': id,
         'kind': kind,
+        'noteId': noteId == null ? null : noteId!,
         'readAt': readAt == null ? null : readAt!.toUtc().toIso8601String(),
         'recordId': recordId == null ? null : recordId!,
       };

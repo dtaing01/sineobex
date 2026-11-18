@@ -321,8 +321,9 @@ class Refused extends Error {
  * gets `signoff_not_applied` naming that sign-off, a kind of its own so that no phone needs state of
  * its own to word it (review finding SRC-2), once per sign-off whether or not they have read it: a
  * refused accept and the reject that follows tell them once, and a second held Complete of the same
- * note, its own sign-off, is told on its own (SRC-1, SRC-5). Only for a sign-off of a note on the
- * chart; anything else tells nobody. The note's ID, or null.
+ * note, its own sign-off, is told on its own (SRC-1, SRC-5). The notice also names the note (D104):
+ * a held sign-off is in no sync read, so a phone that never held it finds the note by that alone.
+ * Only for a sign-off of a note on the chart; anything else tells nobody. The note's ID, or null.
  */
 async function signoffNotApplied(
   tx: Tx,
@@ -337,8 +338,8 @@ async function signoffNotApplied(
     select id from sineobex.encounter_notes where id = ${noteId} and team_id = ${teamId}`;
   if (!note) return null;
   await tx`
-    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
-    select ${teamId}, ${item.userId}, 'signoff_not_applied', 'note_signoff', ${item.recordId}
+    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id, note_id)
+    select ${teamId}, ${item.userId}, 'signoff_not_applied', 'note_signoff', ${item.recordId}, ${note.id}
     where not exists (
       select 1 from sineobex.user_notices
       where team_id = ${teamId} and user_id = ${item.userId} and kind = 'signoff_not_applied'
@@ -747,11 +748,12 @@ export async function listNotices(scope: TeamScope) {
         kind: string;
         entity: string | null;
         recordId: string | null;
+        noteId: string | null;
         createdAt: Date;
         readAt: Date | null;
       }[]
     >`
-      select id, kind, entity, record_id, created_at, read_at from sineobex.user_notices
+      select id, kind, entity, record_id, note_id, created_at, read_at from sineobex.user_notices
       where user_id = ${scope.principal.userId}
       order by created_at desc limit 100`,
   );
@@ -760,6 +762,7 @@ export async function listNotices(scope: TeamScope) {
     kind: r.kind,
     entity: r.entity,
     recordId: r.recordId,
+    noteId: r.noteId,
     createdAt: r.createdAt.toISOString(),
     readAt: r.readAt?.toISOString() ?? null,
   }));

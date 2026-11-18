@@ -3208,6 +3208,44 @@ void main() {
         });
 
         test(
+          'a held sign-off’s notice names its note, rejected or refused on accept; no other notice names one',
+          () async {
+            // D104: the notice names the held sign-off, which waits in the review queue and is never in
+            // the sync read, so a phone that never held it finds the note by the notice alone.
+            server.credentials[dana] = 'np';
+            final rejected = chartedVisit(dana);
+            final changed = chartedVisit(dana);
+            final sent = [signoff(dana, rejected.flags, 'sign'), signoff(dana, changed.flags, 'sign')];
+            server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+            expect(await send(dana, sent), [for (final c in sent) heldOnly(c)]);
+            // A teammate rewrites one visit's summary, so its Red flags note no longer matches what Dana
+            // signed, and signs Dana's other note of it, which tells Alex about that note.
+            final rewrite = setOn(entityEncounter, changed.visit, 'summary', 'Demo: seen under the bridge', 0);
+            final theirs = signoff(alex, changed.note, 'sign');
+            expect(
+              [
+                for (final r in await send(alex, [rewrite, theirs])) r['status'],
+              ],
+              ['accepted', 'accepted'],
+            );
+            server.rejectHeld(sent[0]['changeId']! as String);
+            expect(server.acceptHeld(sent[1]['changeId']! as String, by: admin), refused('content_changed'));
+
+            Future<List<(String, String?, String?, String?)>> listed(String user) async => [
+              for (final n in await as(user).listNotices()) (n.kind, n.entity, n.recordId, n.noteId),
+            ];
+            // Newest first: the refused accept's, then the reject's.
+            expect(await listed(dana), [
+              ('signoff_not_applied', entitySignoff, sent[1]['recordId'], changed.flags.noteId),
+              ('signoff_not_applied', entitySignoff, sent[0]['recordId'], rejected.flags.noteId),
+            ]);
+            expect(await listed(alex), [('change_not_applied', entityNote, changed.note.noteId, null)]);
+            // Of every notice written here, only a held sign-off's names a note.
+            expect({for (final n in server.notices.where((n) => n.noteId != null)) n.kind}, {'signoff_not_applied'});
+          },
+        );
+
+        test(
           'a held sign-off’s time is checked against when its push arrived, not when an admin accepted it',
           () async {
             server.credentials[dana] = 'np';
