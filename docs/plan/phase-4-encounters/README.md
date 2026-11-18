@@ -185,29 +185,31 @@ takes the sensitive list, and shares `sensitiveDiagnoses` with `visible.dart`), 
 
 ### F5 The renderer (forms 8). Folder: `phone/features/forms/`, tests under `phone-test/features/forms/`
 
-Every card is level R and includes its widget test file.
+Every card is level R and includes its widget test file. As built, each kind card after the first
+seven also wrote its kind's case of the field host and of `field_host_test.dart`, which F5-smoke
+applied; the unit's review changed only the unit's own files (forms 8).
 
 | Card | Files | Needs |
 |---|---|---|
-| F5-field-host | `field_host.dart` | F2 |
-| F5-info, F5-text, F5-flag, F5-date, F5-time, F5-duration, F5-photo | one file each: `info_field.dart` and so on | F5-field-host |
-| F5-choice | `choice_field.dart` (chips, exclusive options, blocked pairs, Other with its text) | F5-field-host |
-| F5-number | `number_field.dart` (range, unit, the second unit, stepper, out of N) | F5-field-host |
-| F5-group | `group_field.dart` (stack, row, collapsed) | F5-field-host |
-| F5-grid | `grid_field.dart` | F5-choice, F5-number |
-| F5-region | `region_field.dart` (the list of regions by front and back) | F5-choice |
-| F5-region-side | `region_field.dart` (side and surface) | F5-region |
-| F5-problem | `problem_field.dart` (search of the problem code list) | F5-field-host |
-| F5-action | `action_field.dart` | F5-field-host |
-| F5-form-shell | `note_form.dart` (sections as an accordion) | the widget cards |
+| F5-field-host | `field_host.dart`. As built after the seven cards below, whose widgets it draws, with the unit's test helper, `phone-test/features/forms/forms_test_helpers.dart`, which F5-info began | F2 |
+| F5-info, F5-text, F5-flag, F5-date, F5-time, F5-duration, F5-photo | one file each: `info_field.dart` and so on. As built before F5-field-host. `text_field.dart` also holds what the other widgets share: `TypingSaver` (an answer saved as typing pauses), `limitCodePoints` and `ReadOnlyAnswer` | F5-field-host |
+| F5-choice | `choice_field.dart` (chips, exclusive options, blocked pairs, Other with its text). As built the Other text is F5-text's `NoteTextField`, kept at the host's `otherTextPath` | F5-field-host |
+| F5-number | `number_field.dart` (range, unit, the second unit, stepper, out of N). As built it saves through F5-text's `TypingSaver` | F5-field-host |
+| F5-group | `group_field.dart` (stack, row, collapsed). As built it takes a builder that draws each of its fields, not a value, and holds `Collapsible`, which F5-grid uses; the test helper gained `kindWidget` | F5-field-host |
+| F5-grid | `grid_field.dart`. As built it takes a builder for its cell, and uses F5-group's `Collapsible` and F5-choice's `pickedCodes` | F5-choice, F5-number |
+| F5-region | `region_field.dart` (the list of regions by front and back). As built one list of regions, with Front or back the surface's own choice (forms 10.1 #3), each part an F5-choice choose-one; built with F5-region-side in one change | F5-choice |
+| F5-region-side | `region_field.dart` (side and surface). As built with F5-region | F5-region |
+| F5-problem | `problem_field.dart` (search of the problem code list). As built it reads phase 3's `problemCodesProvider`, so the test helper puts every widget in a `ProviderScope` | F5-field-host |
+| F5-action | `action_field.dart`. As built with `ActionHandler`, what the screen gives each action to do | F5-field-host |
+| F5-form-shell | `note_form.dart` (sections as an accordion). As built the form lays out groups, grids and actions itself and hosts only the fields that store answers, giving the host a grid's `cell` (`field_host.dart` and its test); `note_form_test.dart`; the test helper's `pumpForm` | the widget cards |
 | F5-form-recap | `note_form.dart` (a section's header shows its recap line) | F5-form-shell |
-| F5-form-repeat | `note_form.dart` (entries: add, remove, titles) | F5-form-shell |
-| F5-form-normal | `note_form.dart` (one-tap Normal) | F5-form-shell |
+| F5-form-repeat | `note_form.dart` (entries: add, remove, titles). As built with `note_form_entries_test.dart` | F5-form-shell |
+| F5-form-normal | `note_form.dart` (one-tap Normal). As built per section, per entry and per system (forms 10.3 #7), with `note_form_normal_test.dart` | F5-form-shell |
 | F5-read-view | `note_read_view.dart` | F2 |
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| F5-smoke | X | `phone-test/features/forms/presets_smoke_test.dart` (every bundled note type, three themes, 200% text, 320 px) | F5-form-normal, E-presets |
+| F5-smoke | X | `phone-test/features/forms/presets_smoke_test.dart` (every bundled note type, three themes, 200% text, 320 px). As built also 200% text on a 320 px phone in Day and Night run (`formRuns`, from the unit's review), each note drawn as it opens, answered and read-only, and its read view. It found the host still without the later cards' cases and applied them (`field_host.dart`, `note_form.dart` and their tests) | F5-form-normal, E-presets |
 
 ### F6 The definitions (forms 4, 5, 6). Folder: `forms/definitions/`
 
