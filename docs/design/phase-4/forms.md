@@ -1964,8 +1964,9 @@ which the visit screen places among the note's recap, sign-offs and addenda (lif
   never send what `checkAnswer` refuses for a blocked pair, an exclusive option, a range, decimals
   or a length. The form keeps no copy of its own: until it is drawn again a choice shows what it
   last sent and a box what was typed, but Normal works from the answers it was given, so a second
-  tap before the screen draws again writes the same values again, each one more change to sync.
-  Whether the form should keep a working copy is open (F5's review).
+  tap before the screen draws again writes the same values again. So L4 drops a set whose value
+  equals what the store holds at that path before it queues it: it is no change, and queued it
+  would be one more change to sync and one more history row.
 - **A change after the form has gone.** A box saves what was typed as it leaves the screen, in a
   microtask, so `onChanged` can come after the form is disposed (Save & Close while typing). The
   screen must take it without the form on screen.
@@ -1987,11 +1988,19 @@ which the visit screen places among the note's recap, sign-offs and addenda (lif
   may read but not change now.
 - `newEntryId` and `clock` make an entry's ID and its `entryAt`; they default to `makeEntryId` and
   the phone's clock.
-- **Open from F5's review (BEH-4).** A teammate's phone holds someone else's draft as
-  `visibleAnswers` gives it (lifecycle 4.4), so a choose-many it writes holds only the codes its
-  reader may see: a teammate without `patients.view_sensitive_exams` who taps the exam picker sends
-  a list without the GU, breast or rectal code the note holds. The phone cannot put back what it was
-  never sent; what the server does with such a set is lifecycle 4.4's.
+- **A field that could hold what the person may not see is read-only to them (F5's review,
+  BEH-4).** A teammate's phone holds someone else's draft as `visibleAnswers` gives it (lifecycle
+  4.4), so a choose-many it writes holds only the codes its reader may see: a teammate without
+  `patients.view_sensitive_exams` who taps the exam picker would send a list without the GU, breast
+  or rectal code the note holds, and the phone cannot put back what it was never sent. Since D88 the
+  server holds every set, from someone who does not act as the author, of a field that could hold
+  content they may not see, whatever it holds now. So the screen shows such a field read-only to
+  them (the exam picker, for someone without `patients.view_sensitive_exams`), drawn as the form
+  draws a field a set flag clears. The form takes no list of such fields yet: the unit that wires
+  the rule in gives it one. L4 builds the rule as a Dart copy of the one the server uses,
+  `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's test server,
+  `apps/mobile/test/sync/fake_server.dart`, has one), with that copy's own tests against the
+  server's cases: never a second idea of which fields are hidden.
 
 ### 8.2 What every field widget must do
 

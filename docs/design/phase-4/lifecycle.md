@@ -2716,6 +2716,16 @@ The forms part's renderer: accordion sections, each collapsing to its recap line
 - A finished note opens read-only (9.7).
 - A conflict on an answer (two people changed it) shows both values side by side on the field,
   with the phase 2 choice (PRD main 100).
+- A field that could hold content the person may not see is shown read-only to someone who does not
+  act as the author: since D88 the server holds every set of such a field from them, whatever it
+  holds now (4.4), and their phone holds the note as `visibleAnswers` gave it, so a set would drop
+  what they were never sent (the exam picker, for someone without
+  `patients.view_sensitive_exams`; F5's review, BEH-4). L4 builds the rule as a Dart copy of the
+  server's, `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's test server has
+  one), never a second idea of it (forms 8.1).
+- The form keeps no working copy of the answers, so a second tap of Normal before the screen draws
+  the form again sends the same values again. L4 drops a set whose value equals what is stored at
+  that path before it queues it (forms 8.1).
 
 ### 9.6 The summary, and Complete
 
