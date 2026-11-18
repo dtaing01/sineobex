@@ -1,3 +1,4 @@
+import '../api/generated/api.dart' as wire;
 import '../api/transport.dart' show NetworkException;
 import '../forms/check_answer.dart';
 import '../forms/conditions.dart' show Answers;
@@ -8,6 +9,7 @@ import '../forms/forms_api.dart' show NoteTypeVersion;
 import '../forms/read_model.dart';
 import '../forms/recap.dart';
 import '../forms/visible.dart';
+import '../patients/chart_cache.dart' show patientGroup;
 import '../sync/canonical_json.dart';
 import '../sync/entities.dart'
     show credentials, entityAddendum, entityCorrection, entitySignoff, maxCorrectionChanges, parentsOf;
@@ -15,11 +17,13 @@ import '../sync/local_store.dart';
 import 'credentials.dart';
 import 'encounter_models.dart';
 import 'note_definitions.dart';
+import 'referrals.dart';
 import 'rules.dart';
 import 'visibility.dart';
 
 part 'complete.dart';
 part 'note_actions.dart';
+part 'timeline.dart';
 
 /// Visits and notes on the phone (phase 4 design, lifecycle 3, 4.8, 9): what the screens read and
 /// do, between them and the store. Every change goes through the store's public methods, which hold
