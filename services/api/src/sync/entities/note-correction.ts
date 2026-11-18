@@ -77,6 +77,7 @@ interface CorrectionRow {
   reason: string;
   requestedByPatient: boolean;
   correctorUserId: string;
+  correctorName: string;
   correctorCredential: string;
   claimedCredential: string | null;
   correctedAt: Date;
@@ -101,7 +102,7 @@ export const noteCorrectionRules: EntityRules<Value> = {
   async load(tx, id) {
     const rows = await tx<CorrectionRow[]>`
       select c.id, c.team_id, c.note_id, c.changes, c.outcome, c.reason, c.requested_by_patient, c.corrector_user_id,
-             c.corrector_credential, c.claimed_credential, c.corrected_at, c.clock_verified, c.created_at, e.patient_id
+             c.corrector_name, c.corrector_credential, c.claimed_credential, c.corrected_at, c.clock_verified, c.created_at, e.patient_id
       from sineobex.note_corrections c
       join sineobex.encounter_notes n on n.team_id = c.team_id and n.id = c.note_id
       join sineobex.encounters e on e.id = n.encounter_id
@@ -125,6 +126,8 @@ export const noteCorrectionRules: EntityRules<Value> = {
         outcome: r.outcome,
         reason: r.reason,
         requestedByPatient: r.requestedByPatient,
+        // The name and credential as they were then, as an addendum's author is kept (0019).
+        correctorName: r.correctorName,
         correctorCredential: r.correctorCredential,
         claimedCredential: r.claimedCredential,
         correctedAt: r.correctedAt.toISOString(),

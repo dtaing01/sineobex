@@ -507,14 +507,17 @@ void main() {
     test('a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names', () async {
       const res = 'f0000000-0000-4000-8000-0000000000f5';
       server.credentials[res] = 'resident';
+      server.names[res] = 'Res (demo)';
       final v = visit(by: res);
       final flags = noteOn(v, testRedFlags, const {'flags.any': 'no'}, by: res);
       expect((await noteAs(res, flags)).attributes, {
         'encounterId': v,
         'noteTypeKey': 'test_red_flags',
         'noteTypeVersion': 1,
+        'createdAt': now.toIso8601String(),
         'attestation': 'not_needed',
         'actingAuthorId': res,
+        'actingAuthorName': 'Res (demo)',
         'everSigned': false,
         'completedAt': null,
         'signoffId': null,
@@ -526,8 +529,10 @@ void main() {
         'encounterId': v,
         'noteTypeKey': 'test_red_flags',
         'noteTypeVersion': 1,
+        'createdAt': now.toIso8601String(),
         'attestation': 'waiting',
         'actingAuthorId': res,
+        'actingAuthorName': 'Res (demo)',
         'everSigned': true,
         'completedAt': server.records[flags]!.completedAt,
         'signoffId': signoff,
@@ -545,7 +550,40 @@ void main() {
       );
       // Assigned by an admin once the author has left (3.8): the assignee acts as the author.
       server.records[flags]!.assignedTo = alex;
-      expect((await noteAs(alex, flags)).attributes['actingAuthorId'], alex);
+      server.names[alex] = 'Alex (demo)';
+      expect(
+        (await noteAs(alex, flags)).attributes,
+        allOf(containsPair('actingAuthorId', alex), containsPair('actingAuthorName', 'Alex (demo)')),
+      );
+    });
+
+    test('a note’s snapshot says when the server made it, the order the visit read gives a visit’s notes in', () async {
+      // The phone keeps a record's attributes and not the snapshot's own times, so a visit's notes
+      // read offline are put in the server's order by this (D108). The fake serves no visit read:
+      // the API's test holds that read's order to the same time.
+      final v = visit();
+      // Written on the phone an hour before it reached the server: the server's time, not the phone's.
+      final first = server.seed(
+        entityNote,
+        {
+          'encounterId': v,
+          'noteTypeKey': testNote.key,
+          'noteTypeVersion': testNote.version,
+          'data': const {'care.plan': 'Demo: socks'},
+        },
+        by: ben,
+        at: now.subtract(const Duration(hours: 1)),
+      );
+      final later = now.add(const Duration(minutes: 1));
+      server.now = () => later;
+      final second = noteOn(v, testNote, const {'care.plan': 'Demo: water'});
+      final snapshots = (await read(alex, [(entityNote, second), (entityNote, first)])).records;
+      expect(
+        [for (final s in snapshots) (s.id, s.attributes['createdAt'])],
+        [(second, later.toIso8601String()), (first, now.toIso8601String())],
+      );
+      // Dated the same for a reader shown less of it.
+      expect((await noteAs(dee, first)).attributes['createdAt'], now.toIso8601String());
     });
 
     test(
@@ -570,7 +608,7 @@ void main() {
     );
 
     group('what hangs off a note, and referrals (6.4 rule 7)', () {
-      String correctionOf(String note, String path, Object? newValue, [int baseVersion = 1]) =>
+      String correctionOf(String note, String path, Object? newValue, [int baseVersion = 1, String by = alex]) =>
           server.seed(entityCorrection, {
             'noteId': note,
             'changes': [
@@ -581,7 +619,62 @@ void main() {
             'declined': false,
             'claimedCredential': null,
             'signoffId': null,
-          }, by: alex);
+          }, by: by);
+
+      test('a note names who acts as its author by their name now; a sign-off its signer and a correction its corrector by theirs then; none goes to a reader the record is not shown', () async {
+        // The phone shows who wrote, signed and corrected a note (lifecycle 9.4, 9.6, 9.7), and the
+        // sync read gave only their IDs (D108). Kept as they were then where the record keeps it,
+        // as an addendum's author is; staff names, not patient details.
+        const lou = 'f0000000-0000-4000-8000-0000000001a0';
+        server.names[lou] = 'Lou (demo)';
+        final v = visit(by: lou);
+        final n = noteOn(v, testNote, const {'care.plan': 'Demo: socks and water'}, by: lou);
+        final signoff = finish(n, 'complete', by: lou);
+        final correction = correctionOf(n, 'care.plan', 'Demo: socks, water and a blanket', 1, lou);
+        expect(server.records[correction]!.status, 'corrected');
+        final refs = [(entityNote, n), (entitySignoff, signoff), (entityCorrection, correction)];
+        Future<List<List<Object?>>> named(String user) async => [
+          for (final r in (await read(user, refs)).records)
+            [
+              r.entity.toJson(),
+              r.entity == RecordEntity.encounterNote ? r.attributes['actingAuthorId'] : r.authorUserId,
+              r.attributes['actingAuthorName'] ?? r.attributes['signerName'] ?? r.attributes['correctorName'],
+            ],
+        ];
+        expect(await named(ben), [
+          [entityNote, lou, 'Lou (demo)'],
+          [entitySignoff, lou, 'Lou (demo)'],
+          [entityCorrection, lou, 'Lou (demo)'],
+        ]);
+
+        // Renamed since: the note follows who acts as its author now; what they signed and corrected
+        // keeps the name they did it under.
+        server.names[lou] = 'Lou Rowe (demo)';
+        expect(await named(ben), [
+          [entityNote, lou, 'Lou Rowe (demo)'],
+          [entitySignoff, lou, 'Lou (demo)'],
+          [entityCorrection, lou, 'Lou (demo)'],
+        ]);
+        // Assigned once the author has left (3.8): the assignee is named.
+        server.records[n]!.assignedTo = alex;
+        server.names[alex] = 'Alex (demo)';
+        expect((await named(ben)).first, [entityNote, alex, 'Alex (demo)']);
+
+        // A note the reader may not read is missing with what hangs off it, and so are their names.
+        final talk = noteOn(v, testSensitive, const {'talk.notes': 'Demo: talked about sleep'}, by: lou);
+        final talkSignoff = finish(talk, 'complete', by: lou);
+        final talkFix = correctionOf(talk, 'talk.notes', 'Demo: talked about sleep and food', 1, lou);
+        expect(server.records[talkFix]!.status, 'corrected');
+        final hidden = await server.handle(dee, team, 'POST', '/v1/sync/records', {
+          'records': [
+            {'entity': entityNote, 'id': talk},
+            {'entity': entitySignoff, 'id': talkSignoff},
+            {'entity': entityCorrection, 'id': talkFix},
+          ],
+        });
+        expect((hidden! as Map<String, Object?>)['records'], isEmpty);
+        expect(jsonEncode(hidden), isNot(contains('Lou')));
+      });
 
       test(
         'a Medical visit’s summary and its own addenda are Medical content: read with patients.view, as its notes are',

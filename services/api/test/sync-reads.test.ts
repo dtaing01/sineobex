@@ -15,6 +15,7 @@ import {
   setRole,
   setupTeam,
   signoffOf,
+  TEST_NOTE,
   TEST_NOTE_TYPES,
   TEST_ASSESS_TYPE,
   TEST_MARKED_TYPE,
@@ -40,6 +41,7 @@ interface Snapshot {
   entity: string;
   id: string;
   status: string;
+  authorUserId: string;
   attributes: Record<string, unknown>;
   fields: Record<
     string,
@@ -155,8 +157,11 @@ describe('phase 4 sync: who may read and change what in a note', () => {
 
   const noteRow = async (id: string) =>
     (
-      await h.scratch.owner<{ status: string; data: Record<string, unknown>; completedAt: Date | null }[]>`
-        select status, data, completed_at as "completedAt" from sineobex.encounter_notes where id = ${id}`
+      await h.scratch.owner<
+        { status: string; data: Record<string, unknown>; completedAt: Date | null; createdAt: Date }[]
+      >`
+        select status, data, completed_at as "completedAt", created_at as "createdAt"
+        from sineobex.encounter_notes where id = ${id}`
     )[0]!;
 
   const held = { status: 'rejected', reason: 'permission', quarantined: true };
@@ -333,8 +338,10 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         encounterId: visit.encounterId,
         noteTypeKey: 'test_red_flags',
         noteTypeVersion: 1,
+        createdAt: (await noteRow(flags.noteId)).createdAt.toISOString(),
         attestation: 'not_needed',
         actingAuthorId: res.id,
+        actingAuthorName: 'Res (demo)',
         everSigned: false,
         completedAt: null,
         signoffId: null,
@@ -358,7 +365,51 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       // Assigned by an admin once the author has left (3.8): the assignee acts as the author.
       await h.scratch
         .owner`update sineobex.encounter_notes set assigned_user_id = ${ana.id} where id = ${flags.noteId}`;
-      expect((await noteAs(ana, flags))!.attributes.actingAuthorId).toBe(ana.id);
+      expect((await noteAs(ana, flags))!.attributes).toMatchObject({
+        actingAuthorId: ana.id,
+        actingAuthorName: 'Ana (demo)',
+      });
+    });
+
+    it('a note’s snapshot says when the server made it, the order the visit read gives a visit’s notes in', async () => {
+      // The phone keeps a record's attributes and not the snapshot's own times, so a visit's notes
+      // read offline are put in the server's order by this (D108).
+      const visit = await visitOf(ana, patientId);
+      // Written on the phone an hour before it reached the server: the server's time, not the phone's.
+      const early = new Date(Date.now() - 60 * 60_000).toISOString();
+      const create = await ben.phone.change({
+        entity: 'encounter_note',
+        op: 'create',
+        value: { encounterId: visit.encounterId, ...TEST_NOTE, data: { 'care.plan': 'Demo: socks' } },
+        deviceTime: early,
+        correctedTime: early,
+      });
+      expect((await ben.send(create)).map((r) => r.status)).toEqual(['accepted']);
+      const second = await noteOn(ana, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: water' });
+      const first = { noteId: create.recordId };
+      const made = (await noteRow(first.noteId)).createdAt;
+      expect(made.getTime()).toBeGreaterThan(Date.parse(early) + 30 * 60_000);
+
+      const snapshots = (await read(ana.token, [noteRef(second), noteRef(first)])).records;
+      expect(snapshots.map((s) => [s.id, s.attributes.createdAt])).toEqual([
+        [second.noteId, (await noteRow(second.noteId)).createdAt.toISOString()],
+        [first.noteId, made.toISOString()],
+      ]);
+      // Dated the same for a reader shown less of it.
+      expect((await noteAs(dee, first))!.attributes.createdAt).toBe(made.toISOString());
+      const byServer = [...snapshots]
+        .sort((a, b) =>
+          a.attributes.createdAt === b.attributes.createdAt
+            ? a.id.localeCompare(b.id)
+            : (a.attributes.createdAt as string).localeCompare(b.attributes.createdAt as string),
+        )
+        .map((s) => s.id);
+      const visitRead = await call(h, `/v1/encounters/${visit.encounterId}`, {
+        token: ana.token,
+        teamId: t.teamId,
+      });
+      expect(visitRead.status).toBe(200);
+      expect((visitRead.body.notes as { noteId: string }[]).map((n) => n.noteId)).toEqual(byServer);
     });
     it('a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it', async () => {
       // Review finding SLK-1: a visit holding a finished note beside a teammate's draft is a draft by
@@ -467,6 +518,70 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await read(t.chwToken, [referralRef])).records.map((r) => r.id)).toEqual([referral.recordId]);
       await expectAudit(h, 'patient.viewed', { after: before, patientId, count: 1 });
       expect((await read(eli.token, [referralRef])).status).toBe(403);
+    });
+
+    it('a note names who acts as its author by their name now; a sign-off its signer and a correction its corrector by theirs then; none goes to a reader the record is not shown', async () => {
+      // The phone shows who wrote, signed and corrected a note (lifecycle 9.4, 9.6, 9.7), and the
+      // sync read gave only their IDs (D108). Kept as they were then where the record keeps it, as
+      // an addendum's author is; staff names, not patient details.
+      const lou = await clinician(h, t, 'lou@example.com', 'Lou (demo)', 'attending');
+      const visit = await visitOf(lou, patientId);
+      const n = await noteOn(lou, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: socks and water' });
+      const signoff = await finishNote(lou, n, 'complete', 'completed');
+      const correction = await correctionOf(lou, n, 'care.plan', 'Demo: socks, water and a blanket');
+      expect((await lou.send(correction)).map((r) => r.details?.outcome)).toEqual(['corrected']);
+      const refs = [
+        noteRef(n),
+        { entity: 'note_signoff', id: signoff.recordId },
+        { entity: 'note_correction', id: correction.recordId },
+      ];
+      const named = async (c: { token: string }) =>
+        (await read(c.token, refs)).records.map((r) => [
+          r.entity,
+          r.entity === 'encounter_note' ? r.attributes.actingAuthorId : r.authorUserId,
+          r.attributes.actingAuthorName ?? r.attributes.signerName ?? r.attributes.correctorName,
+        ]);
+      expect(await named(ben)).toEqual([
+        ['encounter_note', lou.id, 'Lou (demo)'],
+        ['note_signoff', lou.id, 'Lou (demo)'],
+        ['note_correction', lou.id, 'Lou (demo)'],
+      ]);
+
+      // Renamed since: the note follows who acts as its author now; what they signed and corrected
+      // keeps the name they did it under.
+      await h.scratch.owner`update sineobex.users set display_name = 'Lou Rowe (demo)' where id = ${lou.id}`;
+      expect(await named(ben)).toEqual([
+        ['encounter_note', lou.id, 'Lou Rowe (demo)'],
+        ['note_signoff', lou.id, 'Lou (demo)'],
+        ['note_correction', lou.id, 'Lou (demo)'],
+      ]);
+      // Assigned once the author has left (3.8): the assignee is named.
+      await h.scratch
+        .owner`update sineobex.encounter_notes set assigned_user_id = ${ana.id} where id = ${n.noteId}`;
+      expect((await named(ben))[0]).toEqual(['encounter_note', ana.id, 'Ana (demo)']);
+
+      // A note the reader may not read is missing with what hangs off it, and so are their names.
+      const talk = await noteOn(lou, visit, TEST_SENSITIVE_TYPE, {
+        'talk.notes': 'Demo: talked about sleep',
+      });
+      const talkSignoff = await finishNote(lou, talk, 'complete', 'completed');
+      const talkFix = await correctionOf(lou, talk, 'talk.notes', 'Demo: talked about sleep and food');
+      expect((await lou.send(talkFix)).map((r) => r.details?.outcome)).toEqual(['corrected']);
+      const hidden = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: dee.token,
+        teamId: t.teamId,
+        json: {
+          records: [
+            noteRef(talk),
+            { entity: 'note_signoff', id: talkSignoff.recordId },
+            { entity: 'note_correction', id: talkFix.recordId },
+          ],
+        },
+      });
+      expect(hidden.status).toBe(200);
+      expect(hidden.body.records).toEqual([]);
+      expect(JSON.stringify(hidden.body)).not.toMatch(/Lou/);
     });
 
     it('a Medical visit’s summary and its own addenda are Medical content: read with patients.view, as its notes are', async () => {

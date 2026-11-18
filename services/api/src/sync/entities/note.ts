@@ -92,6 +92,7 @@ interface NoteRow {
   createdAt: Date;
   updatedAt: Date;
   patientId: string | null;
+  actingAuthorName: string;
 }
 
 export const noteRules: EntityRules<Value> = {
@@ -154,11 +155,15 @@ export const noteRules: EntityRules<Value> = {
   async load(tx, id, lock) {
     const rows = lock
       ? await tx<NoteRow[]>`
-          select n.*, e.patient_id from sineobex.encounter_notes n
-          join sineobex.encounters e on e.id = n.encounter_id where n.id = ${id} for no key update of n`
+          select n.*, e.patient_id, u.display_name as acting_author_name from sineobex.encounter_notes n
+          join sineobex.encounters e on e.id = n.encounter_id
+          join sineobex.users u on u.id = coalesce(n.assigned_user_id, n.author_user_id)
+          where n.id = ${id} for no key update of n`
       : await tx<NoteRow[]>`
-          select n.*, e.patient_id from sineobex.encounter_notes n
-          join sineobex.encounters e on e.id = n.encounter_id where n.id = ${id}`;
+          select n.*, e.patient_id, u.display_name as acting_author_name from sineobex.encounter_notes n
+          join sineobex.encounters e on e.id = n.encounter_id
+          join sineobex.users u on u.id = coalesce(n.assigned_user_id, n.author_user_id)
+          where n.id = ${id}`;
     const r = rows[0];
     if (!r) return null;
     const values: Record<string, unknown> = { status: r.status };
@@ -179,8 +184,13 @@ export const noteRules: EntityRules<Value> = {
         encounterId: r.encounterId,
         noteTypeKey: r.noteTypeKey,
         noteTypeVersion: r.noteTypeVersion,
+        // The server's time, which the visit read orders a visit's notes by: the phone keeps a
+        // record's attributes, not a snapshot's own times (D108).
+        createdAt: r.createdAt.toISOString(),
         attestation: r.attestation,
         actingAuthorId: r.assignedUserId ?? r.authorUserId,
+        // Their name now, as the visit read gives it (UserRef): a note keeps no name of its own.
+        actingAuthorName: r.actingAuthorName,
         // Signed once, signed now or not (a student's correction of a co-signed note, 3.6): its reopen
         // is kept in history, so the phone does not offer one (reopenEffect).
         everSigned: r.firstSignedAt !== null,

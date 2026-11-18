@@ -55,6 +55,7 @@ interface SignoffRow {
   effect: string;
   contentHash: string;
   signerUserId: string;
+  signerName: string;
   signerCredential: string;
   claimedCredential: string | null;
   needsAttestation: boolean;
@@ -80,8 +81,8 @@ export const noteSignoffRules: EntityRules<Value> = {
 
   async load(tx, id) {
     const rows = await tx<SignoffRow[]>`
-      select s.id, s.team_id, s.note_id, s.act, s.effect, s.content_hash, s.signer_user_id, s.signer_credential,
-             s.claimed_credential, s.needs_attestation, s.statement_version, s.signed_at, s.clock_verified,
+      select s.id, s.team_id, s.note_id, s.act, s.effect, s.content_hash, s.signer_user_id, s.signer_name,
+             s.signer_credential, s.claimed_credential, s.needs_attestation, s.statement_version, s.signed_at, s.clock_verified,
              s.received_at, e.patient_id
       from sineobex.note_signoffs s
       join sineobex.encounter_notes n on n.team_id = s.team_id and n.id = s.note_id
@@ -106,6 +107,8 @@ export const noteSignoffRules: EntityRules<Value> = {
         act: r.act,
         effect: r.effect,
         contentHash: r.contentHash,
+        // The name and credential as they were then, as an addendum's author is kept (0019).
+        signerName: r.signerName,
         signerCredential: r.signerCredential,
         claimedCredential: r.claimedCredential,
         needsAttestation: r.needsAttestation,

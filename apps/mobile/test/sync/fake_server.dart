@@ -96,6 +96,12 @@ class FakeSyncServer {
   static const defaultCredential = 'attending';
   String credentialOf(String userId) => credentials[userId] ?? defaultCredential;
 
+  /// Each person's display name now (users.display_name); [defaultName] for anyone not listed. A
+  /// sign-off, a correction and an addendum keep the one their person had then.
+  final names = <String, String>{};
+  static const defaultName = 'Demo user';
+  String nameOf(String userId) => names[userId] ?? defaultName;
+
   /// Each person's credential changes and restores (membership_changes of kind credential and
   /// restored), with the credential each replaced: what signedUnder reads after a signature.
   final credentialChanges = <({String userId, DateTime changedAt, String oldCredential})>[];
@@ -240,7 +246,13 @@ class FakeSyncServer {
       entity: entitySignoff,
       author: by,
       createdAt: now(),
-      attributes: {'noteId': noteId, 'act': 'cosign', 'effect': 'signed', 'signerCredential': credentialOf(by)},
+      attributes: {
+        'noteId': noteId,
+        'act': 'cosign',
+        'effect': 'signed',
+        'signerName': nameOf(by),
+        'signerCredential': credentialOf(by),
+      },
       status: 'signed',
       fields: {},
     )..storedAt = now().toUtc();
@@ -955,8 +967,10 @@ class FakeSyncServer {
       },
     );
     // When the server received the create (records.ts createReceivedAt): when its push held it, if an
-    // admin's accept made it later.
-    record.storedAt = heldAt[c['changeId']] ?? now().toUtc();
+    // admin's accept made it later. Its row is written now all the same (created_at).
+    record
+      ..storedAt = heldAt[c['changeId']] ?? now().toUtc()
+      ..madeAt = now().toUtc();
     for (final MapEntry(:key, :value) in initial.entries) {
       _history(record, key, 1, value, null, 'created', actor, c);
     }
@@ -972,7 +986,7 @@ class FakeSyncServer {
             'text': v['text'],
             'writtenAt': _iso(DateTime.parse(at)),
             'clockVerified': c['clockVerified'] == true,
-            'authorName': 'Demo user',
+            'authorName': nameOf(actor.userId),
             'authorCredential': authorCredential,
           });
       case entityReferral:
@@ -1939,6 +1953,8 @@ class FakeSyncServer {
           _ => 'none',
         },
         'contentHash': v['contentHash'],
+        // The name and credential as they were then, as an addendum's author is kept (0019).
+        'signerName': nameOf(actor.userId),
         'signerCredential': under.credential,
         'claimedCredential': v['claimedCredential'],
         'needsAttestation': under.needsAttestation,
@@ -2204,6 +2220,8 @@ class FakeSyncServer {
           'outcome': outcome,
           'reason': v['reason'],
           'requestedByPatient': v['requestedByPatient'],
+          // The name and credential as they were then, as an addendum's author is kept (0019).
+          'correctorName': nameOf(actor.userId),
           'correctorCredential': under.credential,
           'claimedCredential': v['claimedCredential'],
           'correctedAt': _iso(DateTime.parse(_when(c))),
@@ -2429,7 +2447,10 @@ class FakeSyncServer {
   }
 
   static String _iso(DateTime t) => t.toUtc().toIso8601String();
-  Map<String, Object?> _user(String? id) => {'userId': id ?? 'unknown', 'displayName': 'Demo user'};
+  Map<String, Object?> _user(String? id) => {
+    'userId': id ?? 'unknown',
+    'displayName': id == null ? defaultName : nameOf(id),
+  };
 
   /// The open or not-sure pair touching a group whose sides are still two patients (the most
   /// recently flagged), as a chart, an index entry and a summary show it.
@@ -3464,8 +3485,12 @@ class FakeSyncServer {
       'encounterId': note.attributes['encounterId'],
       'noteTypeKey': note.attributes['noteTypeKey'],
       'noteTypeVersion': note.attributes['noteTypeVersion'],
+      // The server's time, which the visit read orders a visit's notes by (D108).
+      'createdAt': _iso(note.madeAt ?? note.createdAt),
       'attestation': note.attestation,
       'actingAuthorId': _actingAuthor(note),
+      // Their name now, as the visit read gives it: a note keeps no name of its own.
+      'actingAuthorName': nameOf(_actingAuthor(note)),
       'everSigned': note.everSigned,
       'completedAt': note.completedAt,
       'signoffId': note.signoffId,
@@ -3752,8 +3777,13 @@ class FakeRecord {
   String attestation = 'not_needed';
   String? signoffId;
 
-  /// When the server received its create (created_at): signedUnder believes no time before it.
+  /// When the server received its create (records.ts createReceivedAt): signedUnder believes no time
+  /// before it. When a push held the create, that push's time, not the admin's accept.
   DateTime? storedAt;
+
+  /// When the server wrote its row (created_at): at its create, or at the admin's accept of a held
+  /// one. A note's snapshot gives it as its `createdAt`.
+  DateTime? madeAt;
 
   /// The field as a FieldState: version 0 and no value when never written.
   Map<String, Object?> state(String field) {
