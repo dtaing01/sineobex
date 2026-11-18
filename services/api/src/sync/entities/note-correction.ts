@@ -48,10 +48,10 @@ import { NoteCorrectionCreate, valueParents } from './values.ts';
  * not act as the note's author is told and nothing changes; the Medical gate (4.2) holds the rest of
  * a Medical note's corrections from someone who may not chart one; a declined request is stored
  * as it is; every new value must be one the note type takes; a note reopened since is edited as a
- * draft is; then each answer must still be at the version the person saw (`field_changed`), a
- * correction that changes nothing is stored as such, and one that would leave the note failing its
- * finish check is refused (`incomplete`). A refusal is the worker's to fix and stores nothing; the
- * phone sends the same record again.
+ * draft is; then each answer must still be at the version the person saw, or blank and never seen
+ * by them (D109), else `field_changed`; a correction that changes nothing is stored as such, and one
+ * that would leave the note failing its finish check is refused (`incomplete`). A refusal is the
+ * worker's to fix and stores nothing; the phone sends the same record again.
  *
  * Otherwise the answers are written with history kind `corrected`, through the guard of 0018, which
  * lets a finished note's answers change only while `app.note_correction` names it; then the row,
@@ -232,8 +232,13 @@ async function applyCorrection(ctx: ChangeContext, v: Value): Promise<Outcome> {
     return store('draft_edit', unchanged, await writeAnswers(ctx, note, writes, null));
   }
 
-  // 6. Each answer is as the person saw it: another correction may have got there first.
-  const moved = asked.find((a) => a.cur.version !== a.baseVersion);
+  // 6. Each answer is as the person saw it: another correction may have got there first. An answer
+  // blank now that they held no version of is written, as a draft edit fills a blank (D109): one
+  // Complete dropped is blank at a version the note's read never sends (D107). Someone who held an
+  // older version of it is still told it changed.
+  const moved = asked.find(
+    (a) => a.cur.version !== a.baseVersion && !(a.baseVersion === 0 && isBlank(a.cur.value)),
+  );
   if (moved) return invalid('field_changed', { field: moved.field });
   // 7. Nothing to change; "Leave it" after a field_changed sends the value the note holds.
   const writes: Write[] = asked

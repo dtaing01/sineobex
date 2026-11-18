@@ -206,6 +206,46 @@ void main() {
     }
   }, skip: skip);
 
+  test('an answer Complete dropped from the Red flags note, corrected back, is taken (D109, review LCM-1)', () async {
+    final a = await phone('clinician@example.com');
+    final patient = await registered(a, 'Corx');
+    final visit = a.repo.startEncounter(kind: VisitKind.medical, patientId: patient);
+    // A General note, left empty, brings the Red flags note; only that one is completed.
+    await charted(a, visit, 'general_primary_care', {});
+    final flags = (await a.repo.ownRedFlagsNote(visit))!;
+    await a.repo.openNote(flags);
+    a.repo.saveAnswer(flags, 'red_flags.emergency', 'yes');
+    a.repo.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+    a.repo.saveAnswer(flags, 'red_flags.emergency', 'no');
+    await completed(a, visit, {flags}, act: SignoffAct.sign);
+    await a.sync();
+    expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
+    // "EMS activated" no longer showed, so Complete dropped it: the phone holds no version of it.
+    expect(a.store.record(flags)!.fields['data.red_flags.ems_activated'], isNull);
+
+    final id = await a.repo.correct(
+      visit,
+      flags,
+      changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'no'},
+      reason: 'Demo: misread',
+    );
+    final sent = (a.store.outbox().lastWhere((e) => e.recordId == id).value! as Map<String, Object?>)['changes'];
+    expect((sent! as List<Object?>).last, {
+      'field': 'data.red_flags.ems_activated',
+      'newValue': 'no',
+      'baseVersion': 0,
+    });
+    await a.sync();
+    expect([a.store.outbox(), a.store.needsAttention()], [isEmpty, isEmpty]);
+    final note = (await a.api.readVisit(visit)).notes.singleWhere((n) => n.noteId == flags);
+    expect(
+      [for (final c in note.corrections) (c.id, c.outcome, c.fields)],
+      [
+        (id, 'corrected', ['data.red_flags.emergency', 'data.red_flags.ems_activated']),
+      ],
+    );
+  }, skip: skip);
+
   test('co-sign online: notes completed for a co-signer, read from the server and co-signed with their '
       'hashes; the same act again is refused as changed', () async {
     // The resident's phone still holds a student's profile (the credential changed since it last

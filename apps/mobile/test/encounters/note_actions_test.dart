@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/credentials.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart';
@@ -49,25 +52,42 @@ void main() {
     phones.clear();
   });
 
+  // The released Red flags and disposition note, as the phone bundles it: the note review LCM-1 was
+  // found on.
+  final releasedRedFlags = [
+    for (final p in (jsonDecode(
+      File('assets/forms/presets.json').readAsStringSync(),
+    ) as List<Object?>).cast<Map<String, Object?>>())
+      if (p['key'] == 'red_flags_disposition') p['definition']! as Map<String, Object?>,
+  ].single;
   final definitions = {
-    for (final d in [...testNoteTypes, redFlagsNoteType, ...restrictedNoteTypes])
+    for (final d in [...testNoteTypes, redFlagsNoteType, ...restrictedNoteTypes, releasedRedFlags])
       (d['key']! as String, d['version']! as int): NoteTypeDef.fromJson(d),
   };
   NoteTypeDef definition(TestNoteType t) => definitions[(t.key, t.version)]!;
+  // The team's list: the test types, with the test Red flags type as the one the app adds.
+  final listed = [
+    for (final MapEntry(:key, :value) in definitions.entries)
+      if (key.$1 != releasedRedFlags['key']) value,
+  ];
 
-  EncounterRepository repo(TestPhone p, {String credential = 'attending', Set<String> permissions = staff}) =>
-      EncounterRepository(
-        p.store,
-        user: EncounterUser(
-          userId: p.userId,
-          displayName: 'Demo Charter',
-          credential: credential,
-          permissions: permissions,
-        ),
-        definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
-        noteTypes: () async => definitions.values,
-        openServerRecord: p.engine.openServerRecord,
-      );
+  EncounterRepository repo(
+    TestPhone p, {
+    String credential = 'attending',
+    Set<String> permissions = staff,
+    Iterable<NoteTypeDef>? noteTypes,
+  }) => EncounterRepository(
+    p.store,
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: credential,
+      permissions: permissions,
+    ),
+    definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+    noteTypes: () async => noteTypes ?? listed,
+    openServerRecord: p.engine.openServerRecord,
+  );
 
   Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);
 
@@ -530,6 +550,115 @@ void main() {
       serverTookAll(p);
       expect(server.records[declined]!.status, 'declined');
       expect(serverAnswer(n, 'care.history'), 'Demo: smokes');
+    });
+
+    /// The released Red flags note of a Medical visit, answered as review LCM-1 found it: an emergency,
+    /// EMS not activated, then no emergency after all; completed offline and synced. Complete drops
+    /// "EMS activated", which no longer shows: blank on the server at a version the phone never held.
+    Future<(EncounterRepository, String, String)> droppedAnswer(TestPhone p) async {
+      final released = NoteTypeDef.fromJson(releasedRedFlags);
+      server.noteTypes[(released.key, released.version)] = releasedRedFlags;
+      final r = repo(p, noteTypes: [...listed.where((d) => d.auto != 'medical'), released]);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final flags = (await r.addRedFlagsNote(visit))!;
+      await r.openNote(flags);
+      r.saveAnswer(flags, 'red_flags.emergency', 'yes');
+      r.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+      r.saveAnswer(flags, 'red_flags.emergency', 'no');
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, flags]);
+      r.complete(plan);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      final dropped = server.records[flags]!.fields['data.red_flags.ems_activated']!;
+      expect([dropped.value, dropped.version], [null, 2]);
+      expect(p.store.record(flags)!.fields['data.red_flags.ems_activated'], isNull);
+      return (r, visit, flags);
+    }
+
+    test('an answer Complete dropped, corrected back, is taken from blank, and the visit completes again after '
+        '(D109, review LCM-1)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      server.offline = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'no'},
+        reason: 'Demo: misread',
+      );
+      // The phone holds no version of the answer Complete dropped, and sends none.
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.red_flags.emergency',
+          'newValue': 'yes',
+          'baseVersion': server.records[flags]!.fields['data.red_flags.emergency']!.version,
+        },
+        {'field': 'data.red_flags.ems_activated', 'newValue': 'no', 'baseVersion': 0},
+      ]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.status, 'corrected');
+      expect(
+        [serverAnswer(flags, 'red_flags.emergency'), serverAnswer(flags, 'red_flags.ems_activated')],
+        ['yes', 'no'],
+      );
+      // Nothing about the visit waits: a later note of it completes.
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    test('a correction refused field_changed before D109 is settled by Correct again', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      server.stepSixBeforeD109 = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'no'},
+        reason: 'Demo: misread',
+      );
+      await sync(p);
+      final refusal = p.store.needsAttention().single;
+      expect(
+        [refusal.recordId, refusal.details],
+        [
+          id,
+          {'problem': 'field_changed', 'field': 'data.red_flags.ems_activated'},
+        ],
+      );
+      // While it waits, every later Complete of the visit waits too (hard stop 2).
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      expect([for (final s in (await r.openComplete(visit))!.stops) s.stop], [CompleteStop.needsAttention]);
+
+      // The server as it is now. Correct again: the same record, each answer at the version now seen,
+      // which for the answer Complete dropped is still none.
+      server.stepSixBeforeD109 = false;
+      final held = p.store.record(flags)!.fields;
+      final sent = refusal.value! as Map<String, Object?>;
+      p.store.fixRejected(refusal.changeId, {
+        ...sent,
+        'changes': [
+          for (final c in (sent['changes']! as List<Object?>).cast<Map<String, Object?>>())
+            {...c, 'baseVersion': held[c['field']]?.serverVersion ?? 0},
+        ],
+      });
+      expect(((p.store.outbox().last.value! as Map)['changes'] as List).last, {
+        'field': 'data.red_flags.ems_activated',
+        'newValue': 'no',
+        'baseVersion': 0,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.receipts[refusal.changeId]!.resolved], ['corrected', true]);
+      expect(serverAnswer(flags, 'red_flags.ems_activated'), 'no');
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
     });
   });
 

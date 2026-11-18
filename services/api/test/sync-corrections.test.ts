@@ -1032,6 +1032,77 @@ describe('phase 4 sync: addenda and corrections', () => {
         ]);
       });
 
+      it('6. an answer Complete dropped, blank now, is corrected from blank by someone who held no version of it; one who held one is still told field_changed (D109)', async () => {
+        const visit = await visitOf(cora, patientId);
+        // "Nothing more" hides the detail, so Complete drops it: blank at its next version, which the
+        // note's read leaves out (D107). The phone holds no version of it, and sends 0.
+        const answers = { 'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane', 'more.none': true };
+        const note = await noteOn(cora, visit, TEST_NOTE_TYPE, answers);
+        const left = await noteOn(cora, visit, TEST_NOTE_TYPE, answers);
+        await finishNote(cora, note, 'complete', 'completed');
+        await finishNote(cora, left, 'complete', 'completed');
+        const before = await noteRow(note.noteId);
+        expect(before.data).toEqual({ 'vitals.pulse': 80, 'more.none': true });
+        expect(before.fieldVersions['data.more.detail']).toBe(2);
+
+        // The version the person held is older than the blank: someone else changed it since.
+        const held = await correction(cora, note, [
+          answer('more.none', null),
+          answer('more.detail', 'Demo: uses a walker'),
+        ]);
+        expect(await cora.send(held)).toEqual([
+          rejectedAs(held, 'validation', { problem: 'field_changed', field: 'data.more.detail' }),
+        ]);
+        // Correct again with the version now seen, none: the blank is filled, as a draft edit fills one.
+        const correctAgain = await again(cora, held, [
+          answer('more.none', null),
+          answer('more.detail', 'Demo: uses a walker', 0),
+        ]);
+        expect(await cora.send(correctAgain)).toEqual([
+          taken(correctAgain, 'corrected', 'completed', 'not_needed'),
+        ]);
+        const after = await noteRow(note.noteId);
+        expect(after.data).toEqual({
+          'vitals.pulse': 80,
+          'more.none': null,
+          'more.detail': 'Demo: uses a walker',
+        });
+        expect([after.fieldVersions['data.more.none'], after.fieldVersions['data.more.detail']]).toEqual([
+          2, 3,
+        ]);
+        expect(
+          (await historyBy(note.noteId, correctAgain.changeId)).map((r) => [
+            r.field,
+            r.version,
+            r.previousValue,
+            r.kind,
+          ]),
+        ).toEqual([
+          ['data.more.none', 2, true, 'corrected'],
+          ['data.more.detail', 3, null, 'corrected'],
+        ]);
+        expect(await correctionRow(correctAgain.recordId)).toMatchObject({
+          outcome: 'corrected',
+          changes: [
+            { field: 'data.more.none', oldValue: true, newValue: null },
+            { field: 'data.more.detail', oldValue: null, newValue: 'Demo: uses a walker' },
+          ],
+        });
+        const [refusal] = await h.scratch.owner<{ resolvedByChange: string | null }[]>`
+          select resolved_by_change as "resolvedByChange" from sineobex.sync_changes where change_id = ${held.changeId}`;
+        expect(refusal!.resolvedByChange).toBe(correctAgain.changeId);
+
+        // Leave it, on an answer still blank: stored as no change.
+        const leaveIt = await correction(cora, left, [answer('more.detail', null, 0)]);
+        expect(await cora.send(leaveIt)).toEqual([taken(leaveIt, 'no_change', 'completed', 'not_needed')]);
+        // Never held, and not blank now: someone's answer is never written over unseen.
+        const unseen = await correction(cora, note, [answer('more.detail', 'Demo: no aid', 0)]);
+        expect(await cora.send(unseen)).toEqual([
+          rejectedAs(unseen, 'validation', { problem: 'field_changed', field: 'data.more.detail' }),
+        ]);
+        expect((await noteRow(note.noteId)).data).toEqual(after.data);
+      });
+
       it('8. one answer opens another: corrected alone it fails the finish check, together with the other it is taken', async () => {
         const note = await finishedMedical(
           dev,

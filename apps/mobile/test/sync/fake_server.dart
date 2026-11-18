@@ -192,6 +192,10 @@ class FakeSyncServer {
   /// Process only this many changes, then stop (a server failure mid-batch).
   int? stopAfter;
 
+  /// Step 6 of a correction as the API ran it before D109, which refused a change to an answer blank
+  /// now that the sender held no version of: for a phone that still holds such a refusal.
+  bool stepSixBeforeD109 = false;
+
   /// Called with each request before it is handled (to advance clocks in tests).
   void Function(String path)? onRequest;
 
@@ -2277,8 +2281,15 @@ class FakeSyncServer {
       }
       return store('draft_edit', unchanged, _writeAnswers(actor, c, note, writes, null));
     }
-    // 6. Each answer is as the person saw it: another correction may have got there first.
-    final moved = asked.where((a) => a.cur['version'] != a.baseVersion).firstOrNull;
+    // 6. Each answer is as the person saw it: another correction may have got there first. An answer
+    // blank now that they held no version of is written, as a draft edit fills a blank (D109).
+    final moved = asked
+        .where(
+          (a) =>
+              a.cur['version'] != a.baseVersion &&
+              (stepSixBeforeD109 || a.baseVersion != 0 || !isBlankValue(a.cur['value'])),
+        )
+        .firstOrNull;
     if (moved != null) return _invalid('field_changed', {'field': moved.field});
     // 7. Nothing to change: "Leave it" after a field_changed sends the value the note holds.
     final writes = <_AnswerWrite>[

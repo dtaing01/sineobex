@@ -3800,6 +3800,87 @@ void main() {
         },
       );
 
+      test('6. an answer Complete dropped, blank now, is corrected from blank by someone who held no version of it; '
+          'one who held one is still told field_changed (D109)', () async {
+        // "Nothing more" hides the detail, so Complete drops it: blank at its next version, which the
+        // note's read leaves out (D107). The phone holds no version of it, and sends 0.
+        const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane', 'more.none': true};
+        final visit = visitOf(by: dana);
+        Future<String> finished() async {
+          final note = server.seed(entityNote, noteValue(visit, testNote, answers), by: dana);
+          final signoff = change(entitySignoff, 'create', {
+            'noteId': note,
+            'act': 'complete',
+            'contentHash': noteContentHash(
+              noteId: note,
+              encounterId: visit,
+              patientId: null,
+              summary: null,
+              definition: NoteTypeDef.fromJson(server.noteTypes[(testNote.key, testNote.version)]!),
+              answers: answers,
+            ),
+            'claimedCredential': null,
+            'statementVersion': 'complete-2026-11',
+          });
+          expect((await send(dana, [signoff])).single['details'], containsPair('effect', 'completed'));
+          return note;
+        }
+
+        final note = await finished();
+        final left = await finished();
+        final fields = server.records[note]!.fields;
+        expect([fields['data.more.detail']!.value, fields['data.more.detail']!.version], [null, 2]);
+
+        // The version the person held is older than the blank: someone else changed it since.
+        final held = correction(dana, note, [answer('more.none', null), answer('more.detail', 'Demo: uses a walker')]);
+        expect(await send(dana, [held]), [
+          refusedWith(const {'problem': 'field_changed', 'field': 'data.more.detail'}),
+        ]);
+        // Correct again with the version now seen, none: the blank is filled, as a draft edit fills one.
+        final correctAgain = correction(
+          dana,
+          note,
+          [answer('more.none', null), answer('more.detail', 'Demo: uses a walker', 0)],
+          recordId: held['recordId']! as String,
+          supersedes: held['changeId']! as String,
+        );
+        expect(await send(dana, [correctAgain]), [corrected(correctAgain, 'corrected', 'completed', 'not_needed')]);
+        expect(
+          [
+            for (final f in ['data.more.none', 'data.more.detail']) [fields[f]!.value, fields[f]!.version],
+          ],
+          [
+            [null, 2],
+            ['Demo: uses a walker', 3],
+          ],
+        );
+        expect(
+          [
+            for (final h in server.history)
+              if (h['changeId'] == correctAgain['changeId']) [h['field'], h['version'], h['previous'], h['kind']],
+          ],
+          [
+            ['data.more.none', 2, true, 'corrected'],
+            ['data.more.detail', 3, null, 'corrected'],
+          ],
+        );
+        expect(server.records[correctAgain['recordId']]!.attributes['changes'], [
+          {'field': 'data.more.none', 'oldValue': true, 'newValue': null},
+          {'field': 'data.more.detail', 'oldValue': null, 'newValue': 'Demo: uses a walker'},
+        ]);
+        expect(server.receipts[held['changeId']]!.resolved, isTrue);
+
+        // Leave it, on an answer still blank: stored as no change.
+        final leaveIt = correction(dana, left, [answer('more.detail', null, 0)]);
+        expect(await send(dana, [leaveIt]), [corrected(leaveIt, 'no_change', 'completed', 'not_needed')]);
+        // Never held, and not blank now: someone's answer is never written over unseen.
+        final unseen = correction(dana, note, [answer('more.detail', 'Demo: no aid', 0)]);
+        expect(await send(dana, [unseen]), [
+          refusedWith(const {'problem': 'field_changed', 'field': 'data.more.detail'}),
+        ]);
+        expect(fields['data.more.detail']!.value, 'Demo: uses a walker');
+      });
+
       test(
         '8. one answer opens another: corrected alone it fails the finish check, together with the other it is taken',
         () async {
