@@ -114,6 +114,59 @@ void main() {
     expect(saved(answers), [115, 50]);
   });
 
+  testWidgets('typed one key at a time, nothing is said until typing pauses', (tester) async {
+    final handle = tester.ensureSemantics();
+    final answers = await open(tester, temp);
+    Iterable<String> live() => [
+      for (final e in find.byType(Text).evaluate())
+        if (tester.getSemantics(find.byWidget(e.widget)).flagsCollection.isLiveRegion) (e.widget as Text).data!,
+    ];
+    // 9 alone is out of the range, as is 1 and 12 on the way to 120: none is said while typing.
+    for (final keys in ['9', '98', '98.', '98.6', '9', '1', '12']) {
+      await tester.enterText(box(temp), keys);
+      await tester.pump(typingPause ~/ 3);
+      expect(live(), isEmpty, reason: keys);
+      expect(find.textContaining('It must be from'), findsNothing, reason: keys);
+    }
+    await tester.enterText(box(temp), '120');
+    await tester.pump(typingPause);
+    expect(live(), ['It must be from 50 to 115 °F.']);
+    // Typed right again, the line goes at once.
+    await tester.enterText(box(temp), '12');
+    await tester.pump(typingPause ~/ 3);
+    expect(live(), ['It must be from 50 to 115 °F.']);
+    await tester.enterText(box(temp), '102');
+    await tester.pump();
+    expect(live(), isEmpty);
+    await tester.pump(typingPause);
+    // Leaving the box says it at once, as it saves at once.
+    await tester.enterText(box(temp), '-');
+    await tester.pump();
+    expect(live(), isEmpty);
+    FocusManager.instance.primaryFocus!.unfocus();
+    // The focus change is told after the frame, and the line drawn in the next.
+    await tester.pump();
+    await tester.pump();
+    expect(live(), ['Type a number.']);
+    expect(saved(answers), [102]);
+    handle.dispose();
+  });
+
+  testWidgets('a trailing zero past the field’s decimals is not counted', (tester) async {
+    final wound = await open(tester, length);
+    await type(tester, length, '2.50');
+    expect(find.text('Type at most 1 decimal place.'), findsNothing);
+    expect(saved(wound), [2.5]);
+    expect(checkAnswer(presetDefinition('wound_care'), 'wound.e0000001.measurements.length', 2.5), isNull);
+    final bp = await open(tester, systolic);
+    await type(tester, systolic, '120.00');
+    expect(saved(bp), [120]);
+    expect(saved(bp).single, isA<int>());
+    await type(tester, systolic, '120.50');
+    expect(find.text('Type a whole number.'), findsOneWidget);
+    expect(saved(bp), [120]);
+  });
+
   testWidgets('more decimals than the field keeps are not saved', (tester) async {
     final answers = await open(tester, temp);
     await type(tester, temp, '98.65');

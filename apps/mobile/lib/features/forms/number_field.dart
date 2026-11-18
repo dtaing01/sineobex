@@ -129,7 +129,10 @@ class _NumberFieldState extends State<NumberField> {
     final text = _controller.text.trim().replaceAll(',', '.');
     if (text.isEmpty) return const _Value(null);
     if (!_number.hasMatch(text)) return const _Wrong('Type a number.');
-    final places = text.contains('.') ? text.length - text.indexOf('.') - 1 : 0;
+    // Counted on the value, not the typing: 2.50 is 2.5, which a field of one decimal keeps (7.1).
+    final places = text.contains('.')
+        ? text.substring(text.indexOf('.') + 1).replaceFirst(RegExp(r'0+$'), '').length
+        : 0;
     final num base;
     if (_alt) {
       // Rounded to the field's decimals in the base unit: what is stored is what checkAnswer takes.
@@ -147,8 +150,12 @@ class _NumberFieldState extends State<NumberField> {
     return base < _f.min || base > _f.max ? _Wrong(_range) : _Value(base);
   }
 
+  /// Saves what was typed, or says why it can't be saved: when typing pauses or the box is left,
+  /// never at a keystroke, so typing 98.6 doesn't say the range at its 9.
   void _save() {
     final typed = _typed();
+    // From dispose: the answer still goes, and there is nothing left to say it on.
+    if (mounted) setState(() => _error = typed is _Wrong ? typed.message : null);
     if (typed is! _Value || typed.value == _saved) return;
     _saved = typed.value;
     widget.onChanged(typed.value);
@@ -156,9 +163,11 @@ class _NumberFieldState extends State<NumberField> {
 
   void _changed(String _) {
     final typed = _typed();
-    final error = typed is _Wrong ? typed.message : null;
-    // Rebuilt at each keystroke for the second unit's "Saved as" line.
-    setState(() => _error = error);
+    // Rebuilt at each keystroke for the second unit's "Saved as" line. A line already said goes as
+    // soon as what is typed can be saved; a new one waits for the pause.
+    setState(() {
+      if (typed is! _Wrong) _error = null;
+    });
     _saver.typed();
   }
 
