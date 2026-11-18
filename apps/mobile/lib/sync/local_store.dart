@@ -5,6 +5,11 @@ import 'package:uuid/data.dart';
 import 'package:uuid/rng.dart';
 import 'package:uuid/uuid.dart';
 
+import '../encounters/content_hash.dart';
+import '../encounters/rules.dart';
+import '../forms/definition.dart';
+import '../forms/effective.dart';
+import '../forms/finish.dart';
 import '../patients/recognisable.dart';
 import 'canonical_json.dart';
 import 'entities.dart';
@@ -66,6 +71,76 @@ class LocalValidationError implements Exception {
 class RecordLocked implements Exception {
   const RecordLocked();
 }
+
+/// Complete stopped before writing anything: these notes changed since the summary screen worked
+/// out their hashes (a sync brought in a teammate's change), and a signature covers what was on the
+/// screen, not what arrived behind it. "This note changed. Read it again." (lifecycle 4.8, 9.6).
+class NoteChanged implements Exception {
+  const NoteChanged(this.noteIds);
+  final List<String> noteIds;
+  @override
+  String toString() => 'NoteChanged';
+}
+
+/// Who presses Complete, as the phone's saved profile shows them (lifecycle 3.3, 3.5). The server
+/// decides again from the membership it holds; this is what the phone shows at once.
+class Signer {
+  const Signer({required this.credential, required this.canSign, required this.needsAttestation});
+
+  /// The credential a `sign` claims (`claimedCredential`).
+  final String credential;
+  final bool canSign;
+  final bool needsAttestation;
+}
+
+/// One note Complete finishes (lifecycle 4.8): the content hash the summary screen worked out when
+/// it drew the note, what the person asked for (3.3's table), and the wording they were shown.
+class NoteToFinish {
+  const NoteToFinish({
+    required this.noteId,
+    required this.shownHash,
+    required this.act,
+    required this.statementVersion,
+  });
+  final String noteId;
+  final String shownHash;
+  final SignoffAct act;
+  final String statementVersion;
+}
+
+/// What the phone expects a sign-off it made to do to its note (`localEffect`, lifecycle 4.8),
+/// worked out by [signoffEffect], until the sign-off's receipt settles it. A note with one is
+/// finished as far as the phone is concerned.
+class LocalEffect {
+  const LocalEffect({required this.effect, required this.status, required this.attestation, required this.signoffId});
+
+  static LocalEffect? fromJson(Object? j) => j is Map<String, Object?>
+      ? LocalEffect(
+          effect: SignoffOutcome.values.firstWhere((o) => o.code == j['effect']),
+          status: NoteStatus.values.byName(j['status']! as String),
+          attestation: Attestation.values.firstWhere((a) => a.code == j['attestation']),
+          signoffId: j['signoffId']! as String,
+        )
+      : null;
+
+  final SignoffOutcome effect;
+  final NoteStatus status;
+  final Attestation attestation;
+
+  /// The sign-off that should do it: an addendum written before its receipt names it, so it waits
+  /// behind it (lifecycle 4.7).
+  final String signoffId;
+
+  Map<String, Object?> toJson() => {
+    'effect': effect.code,
+    'status': status.name,
+    'attestation': attestation.code,
+    'signoffId': signoffId,
+  };
+}
+
+/// Where a note keeps its [LocalEffect] (in its record's attributes, which no change sets).
+const _localEffectKey = 'localEffect';
 
 enum ChangeState { pending, rejected, conflict, superseded }
 
@@ -508,22 +583,20 @@ class LocalStore {
     return changeId;
   }
 
-  /// The patient a change is work on: the one a create names (a problem note's is its problem's),
-  /// the one an encounter is moved to, or the record's own.
+  /// The patient a change is work on: the one a create names, or that of the record it hangs off (a
+  /// problem note's problem, a note's or an addendum's visit, a sign-off's or a correction's note:
+  /// lifecycle 4.8), the one an encounter is moved to, or the record's own.
   String? _patientOfChange(String entity, String op, String recordId, String? field, Object? value) {
     if (op == 'create' && value is Map<String, Object?>) {
-      return switch (entity) {
-        entityProblemNote => _patientOfRecord(value['problemId']),
-        entityNote => _patientOfRecord(value['encounterId']),
-        _ => rulesFor(entity)?.patientOfCreate(recordId, value),
-      };
+      final rules = rulesFor(entity);
+      return rules?.patientOfCreate(recordId, value) ?? _patientOfRecord(rules?.patientVia(value)?.id);
     }
     if (entity == entityEncounter && field == 'patientId') return value is String ? value : null;
     return _patientOfRecord(recordId);
   }
 
-  /// The patient a record here belongs to: its own column for patient-side records, an
-  /// encounter's patient field, and a note's encounter's.
+  /// The patient a record here belongs to: its own column for patient-side records (a sign-off's is
+  /// its note's), an encounter's patient field, and a note's encounter's.
   String? _patientOfRecord(Object? id) {
     if (id is! String) return null;
     final r = _db.select('SELECT entity, patient_id, attributes_json FROM records WHERE id = ?', [id]).firstOrNull;
@@ -925,6 +998,264 @@ class LocalStore {
   void endEditing(String recordId) {
     _editing.remove(recordId);
     purge();
+  }
+
+  // ---- Complete (phase 4) ----
+
+  /// Complete (lifecycle 3.3, 4.8): one sign-off for each of [notes], in one transaction, and the
+  /// Red flags note first, so the server finds it finished when the visit's other notes arrive
+  /// (4.6). Returns what the phone expects of each, by note, in the order the sign-offs go.
+  ///
+  /// Each note's content hash is worked out again over what the phone holds now. If one differs
+  /// from the hash the summary screen showed, nothing is written and [NoteChanged] names the notes.
+  /// Otherwise each note keeps only its answers that count, as the server's copy will once it is
+  /// finished (4.5), and gets its sign-off: a new one, or for a note whose last sign-off was refused,
+  /// the fix of that sign-off (the same record with the new hash, superseding the refusal), so the
+  /// refusal is settled and what waited behind it goes. Each note is then marked with the effect
+  /// [signoffEffect] gives ([localEffect]).
+  ///
+  /// [definitionOf] finds a note type's definition by key and version: the definitions of the notes
+  /// finished, and of the visit's other notes, to find a finished Red flags note among them.
+  /// [redFlagsFinished]: the visit has a finished Red flags note this phone does not hold (the visit
+  /// read says so).
+  ///
+  /// Throws, writing nothing: [ChartingPaused] while the clock check fails (3.11); [RecordLocked]
+  /// for a note finished already, here or on the server; [LocalValidationError] with the server's
+  /// problem for a sign-off it would refuse (`incomplete`, `red_flags_first`) or store with no effect
+  /// (`not_author`), since a worker can't fix either once it is sent.
+  Map<String, LocalEffect> finishNotes(
+    List<NoteToFinish> notes, {
+    required Signer signer,
+    required NoteTypeDef? Function(String key, int version) definitionOf,
+    bool redFlagsFinished = false,
+  }) {
+    _guardFor(entitySignoff);
+    if ({for (final n in notes) n.noteId}.length != notes.length) {
+      throw ArgumentError('a note is finished once by one Complete');
+    }
+    final shown = [
+      for (final n in notes) (asked: n, note: _signable(n.noteId, _definitionOfNote(n.noteId, definitionOf))),
+    ];
+    final changed = [
+      for (final s in shown)
+        if (s.note.hash != s.asked.shownHash) s.asked.noteId,
+    ];
+    if (changed.isNotEmpty) throw NoteChanged(changed);
+    final ordered = [
+      for (final s in shown)
+        if (_isRedFlags(s.note.definition)) s,
+      for (final s in shown)
+        if (!_isRedFlags(s.note.definition)) s,
+    ];
+    // A Red flags note finished with the others counts as finished for them: if it can't be, the
+    // whole Complete stops on it.
+    final redFlagsWith = {
+      for (final s in ordered)
+        if (_isRedFlags(s.note.definition)) s.note.encounterId,
+    };
+    return _tx(() {
+      final made = <String, LocalEffect>{};
+      for (final (:asked, :note) in ordered) {
+        bool redFlagsDone() =>
+            _isRedFlags(note.definition) ||
+            redFlagsFinished ||
+            redFlagsWith.contains(note.encounterId) ||
+            _redFlagsFinishedHere(note.encounterId, note.rec.id, definitionOf);
+        made[asked.noteId] = _finishNote(asked, note, signer, redFlagsDone);
+      }
+      return made;
+    });
+  }
+
+  /// The content hash of [noteId] as this phone holds it (lifecycle 4.5): the visit's patient and
+  /// summary, and the note's answers that count by [definition], the definition of its own version.
+  /// The summary screen shows the person this, and [finishNotes] works it out again.
+  String contentHashOf(String noteId, NoteTypeDef definition) => _signable(noteId, definition).hash;
+
+  /// What the phone expects the sign-off it made of [noteId] to do, until its receipt settles it;
+  /// null when it made none (lifecycle 4.8).
+  LocalEffect? localEffect(String noteId) => LocalEffect.fromJson(record(noteId)?.attributes[_localEffectKey]);
+
+  /// The Red flags and disposition note, which the app adds to a Medical visit by itself (forms 6.2):
+  /// found by its type's `auto`, never by its key, as the server finds it.
+  static bool _isRedFlags(NoteTypeDef definition) => definition.auto == 'medical';
+
+  NoteTypeDef? _definitionOfNote(String noteId, NoteTypeDef? Function(String key, int version) definitionOf) {
+    final attributes = record(noteId)?.attributes ?? const {};
+    final key = attributes['noteTypeKey'], version = attributes['noteTypeVersion'];
+    return key is String && version is num ? definitionOf(key, version.toInt()) : null;
+  }
+
+  /// A note as Complete reads it: the record, its definition, the visit it is on, its answers as
+  /// the person has them, and its content hash over those.
+  ({LocalRecord rec, NoteTypeDef definition, String encounterId, Map<String, Object?> answers, String hash}) _signable(
+    String noteId,
+    NoteTypeDef? definition,
+  ) {
+    final rec = record(noteId);
+    if (rec == null || rec.entity != entityNote) throw StateError('no such note');
+    final version = rec.attributes['noteTypeVersion'];
+    // The hash names the type's key and version, so it is taken by the note's own (lifecycle 4.5).
+    if (definition == null ||
+        definition.key != rec.attributes['noteTypeKey'] ||
+        version is! num ||
+        definition.version != version.toInt()) {
+      throw StateError('the definition of the note’s own version is needed');
+    }
+    final encounterId = rec.attributes['encounterId'];
+    final visit = encounterId is String ? record(encounterId) : null;
+    if (visit == null) throw StateError('the note’s visit is not on this phone');
+    final answers = <String, Object?>{
+      for (final MapEntry(:key, :value) in rec.fields.entries)
+        if (key.startsWith('data.')) key.substring('data.'.length): value.value,
+    };
+    final patientId = visit.fields['patientId']?.value, summary = visit.fields['summary']?.value;
+    return (
+      rec: rec,
+      definition: definition,
+      encounterId: visit.id,
+      answers: answers,
+      hash: noteContentHash(
+        noteId: noteId,
+        encounterId: visit.id,
+        patientId: patientId is String ? patientId : null,
+        summary: summary is String ? summary : null,
+        definition: definition,
+        answers: answers,
+      ),
+    );
+  }
+
+  /// One note of [finishNotes], inside its transaction.
+  LocalEffect _finishNote(
+    NoteToFinish asked,
+    ({LocalRecord rec, NoteTypeDef definition, String encounterId, Map<String, Object?> answers, String hash}) note,
+    Signer signer,
+    bool Function() redFlagsDone,
+  ) {
+    final rec = note.rec;
+    final waiting = _signoffsOf(rec.id);
+    // Never two sign-offs of one note: one waiting, or one the server holds whose receipt hasn't
+    // settled the note, finishes it here. Only a refused one is completed again.
+    if (waiting.any((e) => e.state != ChangeState.rejected) || (waiting.isEmpty && localEffect(rec.id) != null)) {
+      throw const RecordLocked();
+    }
+    final medical = !note.definition.kinds.contains(NoteKind.nonMedical);
+    final effect = signoffEffect(
+      noteStatus: NoteStatus.values.byName(rec.status),
+      medicalNote: medical,
+      act: asked.act,
+      actsAsAuthor: (rec.attributes['actingAuthorId'] ?? rec.authorUserId) == userId,
+      canSign: signer.canSign,
+      needsAttestation: signer.needsAttestation,
+      hashMatches: true,
+      finishOk: finishCheck(note.definition, note.answers).isEmpty,
+      redFlagsDone: medical && redFlagsDone(),
+    );
+    final applied = switch (effect) {
+      SignoffApplied() => effect,
+      SignoffUnchanged(reason: SignoffUnchangedReason.alreadyFinished) => throw const RecordLocked(),
+      SignoffUnchanged() => throw const LocalValidationError(
+        'Only the note’s author can complete it.',
+        problem: 'not_author',
+      ),
+      SignoffRefused(problem: SignoffRefusal.redFlagsFirst) => throw const LocalValidationError(
+        'Answer the red-flag question first, then complete again.',
+        problem: 'red_flags_first',
+      ),
+      SignoffRefused(:final problem) => throw LocalValidationError(
+        'This is missing something the note needs.',
+        problem: problem.code,
+      ),
+    };
+    final value = <String, Object?>{
+      'noteId': rec.id,
+      'act': asked.act.name,
+      'contentHash': note.hash,
+      'claimedCredential': asked.act == SignoffAct.sign ? signer.credential : null,
+      'statementVersion': asked.statementVersion,
+    };
+    final rules = rulesFor(entitySignoff)!;
+    _checkCreate(rules, value);
+    // The phone's copy holds what was signed, as the server's will (lifecycle 4.5), so nothing done
+    // here later (a correction) can bring back an answer the signer never saw. A change to one that
+    // is not confirmed yet still goes: the server drops it as it finishes the note, into history.
+    final counting = effectiveAnswers(note.definition, note.answers);
+    for (final path in note.answers.keys) {
+      if (!counting.containsKey(path)) {
+        _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [rec.id, 'data.$path']);
+      }
+    }
+    final String signoffId;
+    if (waiting.isEmpty) {
+      signoffId = _newId();
+      _insertCreated(
+        rules,
+        signoffId,
+        value,
+        _append(entity: entitySignoff, recordId: signoffId, op: 'create', value: value, baseVersion: 0),
+      );
+    } else {
+      // The refused sign-off sent again with the new hash (lifecycle 3.4): the same record ID, so
+      // what names it (an addendum) still does, and the copy here holds the new value.
+      signoffId = waiting.last.recordId;
+      final fix = _append(
+        entity: entitySignoff,
+        recordId: signoffId,
+        op: 'create',
+        value: value,
+        baseVersion: 0,
+        supersedes: waiting.last.changeId,
+      );
+      for (final refused in waiting) {
+        _supersede(refused.changeId, by: fix);
+      }
+      _db.execute('DELETE FROM records WHERE id = ?', [signoffId]);
+      _insertCreated(rules, signoffId, value, fix);
+    }
+    final local = LocalEffect(
+      effect: applied.effect,
+      status: applied.statusAfter,
+      attestation: applied.attestationAfter,
+      signoffId: signoffId,
+    );
+    _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
+      jsonEncode({...rec.attributes, _localEffectKey: local.toJson()}),
+      rec.id,
+    ]);
+    _touch(rec.id);
+    _workedOn(rec.id);
+    return local;
+  }
+
+  /// The sign-offs of [noteId] in the outbox that nothing has superseded, oldest first.
+  List<OutboxEntry> _signoffsOf(String noteId) => _db
+      .select(
+        "SELECT * FROM outbox WHERE entity = ? AND op = 'create' AND state <> 'superseded' "
+        "AND json_extract(value_json, '\$.noteId') = ? ORDER BY seq",
+        [entitySignoff, noteId],
+      )
+      .map(OutboxEntry.fromRow)
+      .toList();
+
+  /// Whether a Red flags note of [encounterId] other than [noteId] is finished as this phone knows
+  /// it: by the server's copy, or by a sign-off made here that the server has not refused.
+  bool _redFlagsFinishedHere(
+    String encounterId,
+    String noteId,
+    NoteTypeDef? Function(String key, int version) definitionOf,
+  ) {
+    for (final r in _db.select(
+      "SELECT id, status FROM records WHERE entity = ? AND id <> ? AND json_extract(attributes_json, '\$.encounterId') = ?",
+      [entityNote, noteId, encounterId],
+    )) {
+      final id = r['id'] as String;
+      final definition = _definitionOfNote(id, definitionOf);
+      if (definition == null || !_isRedFlags(definition)) continue;
+      if (r['status'] != 'draft') return true;
+      if (localEffect(id) != null && !_signoffsOf(id).any((e) => e.state == ChangeState.rejected)) return true;
+    }
+    return false;
   }
 
   // ---- reading ----
@@ -1495,8 +1826,11 @@ class LocalStore {
       _db.execute('UPDATE fields SET pending_change = ?, server_version = 0 WHERE record_id = ?', [fix, x.recordId]);
       _appendData(x.recordId, after);
       // The record is what the fixed create says now, which may be another encounter: the purge
-      // keeps the encounter a note names.
-      _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), x.recordId]);
+      // keeps the encounter a note names. What a sign-off waiting behind it should do stays.
+      _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [
+        jsonEncode({...?record(x.recordId)?.attributes, ...attributes}),
+        x.recordId,
+      ]);
       final status = fields['status']?.value;
       if (status != null && status != 'draft') {
         // The create always starts as a draft; a later Complete goes as its own change.
