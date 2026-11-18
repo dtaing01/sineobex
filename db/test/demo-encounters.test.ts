@@ -210,7 +210,7 @@ describe('demo visits in the seed', () => {
 
   /** What the note held when it was signed: its answers now, with each later correction undone. */
   const answersAt = (n: Note, at: Date): Answers => {
-    const answers: Answers = { ...n.data };
+    const answers: Record<string, unknown> = { ...n.data };
     const later = corrections.filter((c) => c.noteId === n.id && c.correctedAt > at).reverse();
     for (const c of later) {
       for (const ch of c.changes) {
