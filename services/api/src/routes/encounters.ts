@@ -2,7 +2,8 @@ import type { z } from '@hono/zod-openapi';
 import { createRoute } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
 import { readVisit } from '../encounters/read.ts';
-import { EncounterParam, VisitRead } from '../patients/schemas.ts';
+import { earlierVisits } from '../encounters/timeline.ts';
+import { EncounterParam, PatientParam, TimelinePage, TimelineQuery, VisitRead } from '../patients/schemas.ts';
 import type { App } from '../app.ts';
 import type { Deps } from '../types.ts';
 import { errors } from './schemas.ts';
@@ -29,9 +30,29 @@ const visitRoute = createRoute({
   responses: { 200: { description: 'The visit', ...json(VisitRead) }, ...errors(401, 403, 404, 422) },
 });
 
+const timelineRoute = createRoute({
+  method: 'get',
+  path: '/v1/patients/{patientId}/timeline',
+  operationId: 'getPatientTimeline',
+  tags: ['encounters'],
+  summary: 'The patient’s earlier visits, 50 at a time, after the last one shown',
+  description:
+    'The chart carries the first 50 (lifecycle 5.2). A merged ID answers its group. Each visit lists the notes the ' +
+    'reader may see, by type and state only.',
+  security: [{ bearer: [] }],
+  request: { params: PatientParam, query: TimelineQuery },
+  responses: { 200: { description: 'Earlier visits', ...json(TimelinePage) }, ...errors(401, 403, 404, 422) },
+});
+
 export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(visitRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
     return c.json(await readVisit(scope, c.req.valid('param').encounterId), 200);
+  });
+
+  app.openapi(timelineRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
+    const { patientId } = c.req.valid('param');
+    return c.json(await earlierVisits(scope, patientId, c.req.valid('query').before), 200);
   });
 }

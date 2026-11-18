@@ -252,6 +252,8 @@ describe('phase 4: the timeline and recent visits', () => {
     it('a patient the team does not have is 404, and an earlier visit that is not one is 422', async () => {
       expect((await earlier(w.ana.token, randomUUID(), busyVisits[0]!.id)).status).toBe(404);
       expect((await earlier(w.ana.token, busy, 'not-an-id')).status).toBe(422);
+      // A visit of another patient names no place in this one's timeline.
+      expect((await earlier(w.ana.token, busy, visit.encounterId)).status).toBe(404);
     });
   });
 });

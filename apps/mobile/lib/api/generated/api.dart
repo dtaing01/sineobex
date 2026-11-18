@@ -5526,6 +5526,23 @@ class TimelineNote {
       };
 }
 
+class TimelinePage {
+  const TimelinePage({
+    required this.encounters,
+  });
+
+  /// Newest first, at most 50
+  final List<TimelineVisit> encounters;
+
+  factory TimelinePage.fromJson(Map<String, dynamic> json) => TimelinePage(
+        encounters: (json['encounters'] as List<dynamic>).map((e) => TimelineVisit.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'encounters': encounters.map((e) => e.toJson()).toList(),
+      };
+}
+
 class TimelineVisit {
   const TimelineVisit({
     required this.encounterId,
@@ -6083,6 +6100,12 @@ class SineobexApi {
   Future<FieldHistoryPage> getPatientHistory({required String patientId, String? field, String? afterId}) async {
     final json = await _transport.send('GET', '/v1/patients/${Uri.encodeComponent(patientId)}/history', query: <String, String>{if (field != null) 'field': (field).toString(), if (afterId != null) 'afterId': (afterId).toString()}, );
     return FieldHistoryPage.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The patient’s earlier visits, 50 at a time, after the last one shown
+  Future<TimelinePage> getPatientTimeline({required String patientId, String? before}) async {
+    final json = await _transport.send('GET', '/v1/patients/${Uri.encodeComponent(patientId)}/timeline', query: <String, String>{if (before != null) 'before': (before).toString()}, );
+    return TimelinePage.fromJson(json as Map<String, dynamic>);
   }
 
   /// Server time, used by the phone to measure its clock offset (module 9)
