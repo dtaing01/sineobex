@@ -66,6 +66,12 @@ void main() {
       if (key.startsWith('data.')) key.substring('data.'.length): value.value,
   };
 
+  /// The answers the server holds for [noteId], those it holds null (dropped into history) left out.
+  Map<String, Object?> onServer(String noteId) => {
+    for (final MapEntry(:key, :value) in server.records[noteId]!.fields.entries)
+      if (key.startsWith('data.') && value.value != null) key.substring('data.'.length): value.value,
+  };
+
   /// The hash the summary screen works out as it draws [noteId] (lifecycle 9.6): the visit's patient
   /// and summary and the note's answers, as the phone holds them now.
   String drawn(TestPhone p, String noteId, TestNoteType type) {
@@ -1925,7 +1931,8 @@ void main() {
       'while a sign-off is held, the refresh brings back an answer Complete dropped, and nothing shown changes',
       () async {
         // D106's third cost (lifecycle 4.4, 4.8): until the review decides, the server's draft, and the
-        // author's own sync read of it, still hold an answer Complete dropped from the phone's copy.
+        // author's own sync read of it, still hold an answer Complete dropped from the phone's copy;
+        // once the server finishes the note, the refresh takes it away (D107).
         final p = phone(alex);
         final patient = server.seedPatient();
         final visit = p.store.createEncounter(kind: 'medical', patientId: patient);
@@ -1959,30 +1966,153 @@ void main() {
           expect(p.store.contentHashOf(n, definition(testMedical)), shown[i].shownHash);
         }
 
-        // Accepted: the server drops the detail into its history as it finishes the note. As built, the
-        // refresh leaves it here, where lifecycle 4.8 expected it taken away (an open question): a
-        // finished note's read gives only the answers that count, so the phone keeps the detail at the
-        // version it had. Nothing shown changes.
+        // Accepted: the server drops the detail into its history as it finishes the note, and the
+        // refresh takes it from the phone's copy too (D107): a finished note's read gives only the
+        // answers that count, and the phone's copy of a finished note holds only what that read
+        // carries. Nothing shown changes.
         server.acceptHeld(held[0].changeId);
         await sync(p);
         expect(p.store.noteState(notes[0]), state(NoteStatus.completed));
         final dropped = server.records[notes[0]]!.fields['data.more.detail']!;
         expect([dropped.value, dropped.version], [null, 2]);
-        expect(answersOf(p, notes[0]), {...counting, 'more.detail': details[0]});
-        expect(p.store.record(notes[0])!.fields['data.more.detail']!.serverVersion, 1);
-        expect(effectiveAnswers(definition(testMedical), answersOf(p, notes[0])), counting);
+        expect(answersOf(p, notes[0]), counting);
+        expect(answersOf(p, notes[0]), onServer(notes[0]));
+        expect(p.store.contentHashOf(notes[0], definition(testMedical)), shown[0].shownHash);
         // Rejected, and told: the draft is the server's, the detail with it.
         server.rejectHeld(held[1].changeId);
         await ServerNotices(p.store, p.engine.api).sync();
         await sync(p);
         expect(p.store.noteState(notes[1]), state(NoteStatus.draft));
         expect(answersOf(p, notes[1]), {...counting, 'more.detail': details[1]});
-        expect(answersOf(p, notes[1]), {
-          for (final MapEntry(:key, :value) in server.records[notes[1]]!.fields.entries)
-            if (key.startsWith('data.') && value.value != null) key.substring('data.'.length): value.value,
-        });
+        expect(answersOf(p, notes[1]), onServer(notes[1]));
       },
     );
+
+    /// [alex]'s note with a detail, synced, and held as a draft on alex's second phone too.
+    Future<({TestPhone a, TestPhone b, String visit, String n})> heldOnTwoPhones() async {
+      final a = phone(alex);
+      final visit = a.store.createEncounter(kind: 'non_medical');
+      final n = note(a, visit, testNote, {'vitals.pulse': 88, 'more.detail': 'Demo: slept outside'});
+      await sync(a);
+      final b = phone(alex);
+      expect(await b.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+      expect(answersOf(b, n), {'vitals.pulse': 88, 'more.detail': 'Demo: slept outside'});
+      return (a: a, b: b, visit: visit, n: n);
+    }
+
+    test('the author’s other phone drops an answer Complete dropped once the server finishes the note', () async {
+      // D107: a finished note's read carries only the answers that count, so the other phone kept the
+      // detail at the version it had, while the server holds it null in its history.
+      final (:a, :b, visit: _, :n) = await heldOnTwoPhones();
+      // "Nothing more" hides the detail, and Complete drops it on the first phone.
+      a.store.setField(n, 'data.more.none', true);
+      complete(a, [finishing(a, n, testNote)]);
+      await sync(a);
+      expect(server.records[n]!.fields['data.more.detail']!.value, isNull);
+
+      await sync(b);
+      expect(b.store.noteState(n), state(NoteStatus.completed));
+      expect(answersOf(b, n), {'vitals.pulse': 88, 'more.none': true});
+      expect(answersOf(b, n), onServer(n));
+      expect(b.store.contentHashOf(n, definition(testNote)), a.store.contentHashOf(n, definition(testNote)));
+      // The note's other fields are the server's as before.
+      expect(b.store.record(n)!.fields['status']!.value, 'completed');
+    });
+
+    test(
+      'a change of the person’s own to an answer the finished note left out keeps its row until its receipt',
+      () async {
+        final (:a, :b, visit: _, :n) = await heldOnTwoPhones();
+        // Offline, the second phone changes the detail; meanwhile the first hides it and completes the note.
+        b.store.setField(n, 'data.more.detail', 'Demo: slept by the river');
+        a.store.setField(n, 'data.more.none', true);
+        complete(a, [finishing(a, n, testNote)]);
+        await sync(a);
+        // Read again before that change is sent: the finished note's read leaves the detail out, and the
+        // change still waits, so its row stays as the person left it.
+        expect(await b.engine.openServerRecord('encounter_note', n), isTrue);
+        expect(b.store.noteState(n), state(NoteStatus.completed));
+        final waiting = b.store.record(n)!.fields['data.more.detail'];
+        expect([waiting?.value, waiting?.pendingChange], ['Demo: slept by the river', isNotNull]);
+        // Its receipt: kept in the server's history, and the refresh after it takes the row away.
+        await sync(b);
+        expect(b.store.outbox(), isEmpty);
+        expect(
+          server.history.where((h) => h['recordId'] == n && h['kind'] == 'kept_both').single['value'],
+          'Demo: slept by the river',
+        );
+        expect(answersOf(b, n), {'vitals.pulse': 88, 'more.none': true});
+      },
+    );
+
+    test(
+      'an answer whose refused change still waits keeps its row once the note is finished, until it settles',
+      () async {
+        // D107: an outbox entry of the person's own keeps an answer at the refresh, not only a row that
+        // says a change is pending. Here the row is the server's, brought back after Complete dropped
+        // it, while the person's refused change to it waits in Needs attention.
+        final (:a, :b, visit: _, :n) = await heldOnTwoPhones();
+        // Offline, the person changes the detail, then ticks "Nothing more", which hides it, and completes.
+        a.store.setField(n, 'data.more.detail', 'Demo: slept by the river');
+        a.store.setField(n, 'data.more.none', true);
+        complete(a, [finishing(a, n, testNote)]);
+        final refused = a.store.outbox().singleWhere((e) => e.field == 'data.more.detail');
+        a.store.reject(refused, reason: 'validation');
+        // Read again before anything is sent (opened from Needs attention): the server's draft brings
+        // its detail back.
+        expect(await a.engine.openServerRecord('encounter_note', n), isTrue);
+        final back = a.store.record(n)!.fields['data.more.detail'];
+        expect([back?.value, back?.pendingChange], ['Demo: slept outside', isNull]);
+        // The other phone finishes the note first. Read again, the detail is left out, and the refusal
+        // still waits, so the row stays.
+        b.store.setField(n, 'data.more.none', true);
+        complete(b, [finishing(b, n, testNote)]);
+        await sync(b);
+        expect(await a.engine.openServerRecord('encounter_note', n), isTrue);
+        expect(a.store.record(n)!.fields['data.more.detail']?.value, 'Demo: slept outside');
+        // Settled: the fix is kept in the server's history, and the row goes with the refresh after it.
+        a.store.fixRejected(refused.changeId, 'Demo: slept by the river');
+        await sync(a);
+        expect(a.store.outbox(), isEmpty);
+        expect(answersOf(a, n), {'vitals.pulse': 88, 'more.none': true});
+        expect(answersOf(a, n), onServer(n));
+      },
+    );
+
+    test('a reopen after the refresh dropped an answer shows no ghost of it when its field shows again', () async {
+      // D107: kept on the other phone, the detail came back once "Nothing more" was cleared after the
+      // reopen, and a Complete over it was refused content_changed, as the server holds it null.
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final patient = server.seedPatient();
+      final visit = s.store.createEncounter(kind: 'medical', patientId: patient);
+      final flags = note(s, visit, testRedFlags, {'flags.any': 'no'});
+      final n = note(s, visit, testMedical, {'vitals.pulse': 96, 'more.detail': 'Demo: slept outside'});
+      await sync(s);
+      final other = phone(blair);
+      expect(await other.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await other.engine.openServerRecord('encounter_note', n), isTrue);
+      s.store.setField(n, 'data.more.none', true);
+      complete(s, [finishing(s, flags, testRedFlags), finishing(s, n, testMedical)], signer: student);
+      await sync(s);
+      await sync(other);
+      expect(answersOf(other, n), {'vitals.pulse': 96, 'more.none': true});
+
+      // A student's note waiting for a co-signer goes back to draft for its author, who clears
+      // "Nothing more": the detail shows again, empty, as the server holds it.
+      expect(other.store.reopenNote(n, definition(testMedical)), ReopenEffect.apply);
+      other.store.setField(n, 'data.more.none', null);
+      expect(answersOf(other, n), {'vitals.pulse': 96, 'more.none': null});
+      expect(effectiveAnswers(definition(testMedical), answersOf(other, n)), {'vitals.pulse': 96});
+      await sync(other);
+      complete(other, [finishing(other, n, testMedical)], signer: student, redFlagsFinished: true);
+      await sync(other);
+      expect(other.store.needsAttention(), isEmpty);
+      expect(other.store.outbox(), isEmpty);
+      expect(server.records[n]!.fields['status']!.value, 'completed');
+      expect(answersOf(other, n), onServer(n));
+    });
 
     test(
       'a held receipt lost and its notice fetched before the retry: the retried receipt settles it at once',

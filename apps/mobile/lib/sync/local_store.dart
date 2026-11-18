@@ -666,6 +666,12 @@ class LocalStore {
     );
   }
 
+  /// Takes the answer [field] out of the phone's copy of [noteId], as the server's copy of a finished
+  /// note holds only what was signed (lifecycle 4.5): one that does not count, at Complete; one a
+  /// finished note's sync read no longer carries, at its refresh.
+  void _dropAnswer(String noteId, String field) =>
+      _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [noteId, field]);
+
   /// A new encounter, open for charting. Returns its ID (made here, so no server round trip).
   ///
   /// Its kind is a field, which a set moves to Medical; its status is not: the server works it out
@@ -1491,9 +1497,7 @@ class LocalStore {
     if (applied != null) {
       final counting = effectiveAnswers(note.definition, note.answers);
       for (final path in note.answers.keys) {
-        if (!counting.containsKey(path)) {
-          _db.execute('DELETE FROM fields WHERE record_id = ? AND field = ?', [rec.id, 'data.$path']);
-        }
+        if (!counting.containsKey(path)) _dropAnswer(rec.id, 'data.$path');
       }
     }
     final String signoffId;
@@ -2509,6 +2513,8 @@ class LocalStore {
   /// phone expects of its own sign-off stays until a receipt settles it, but one the server held for
   /// review is settled once the server's copy is finished: a Program Admin accepted it, or the note
   /// was finished another way. The note then shows as the server holds it.
+  ///
+  /// A finished note here holds only the answers its sync read carries (lifecycle 4.5, D107).
   void _noteFromServer(ServerRecord r) {
     if (_count("SELECT count(*) AS n FROM outbox WHERE record_id = ? AND op = 'create' AND state <> 'superseded'", [
           r.id,
@@ -2516,8 +2522,9 @@ class LocalStore {
         0) {
       return;
     }
+    final here = record(r.id)!;
     final attributes = {...r.attributes};
-    final kept = record(r.id)!.attributes[_localEffectKey];
+    final kept = here.attributes[_localEffectKey];
     final expected = LocalEffect.fromJson(kept);
     if (expected != null && (r.status == NoteStatus.draft.name || _signoffsOf(r.id).isNotEmpty)) {
       attributes[_localEffectKey] = kept;
@@ -2525,6 +2532,20 @@ class LocalStore {
       _heldSettled(r.id);
     }
     _db.execute('UPDATE records SET attributes_json = ? WHERE id = ?', [jsonEncode(attributes), r.id]);
+    // The read of a finished note gives only its answers that count, as its reader may see them, and
+    // the phone's copy holds no more: an answer it leaves out the server holds null in its history, or
+    // keeps from this reader. Kept here (one Complete dropped, brought back by a refresh while its
+    // sign-off was held, or held by the author's other phone), a reopen could show it again, and a
+    // Complete over it would be refused. A change of the person's own to it that still waits in the outbox (pending, refused or
+    // in conflict, which a field's pending change always is) keeps it until its receipt.
+    if (NoteStatus.values.asNameMap()[r.status] case final status? when status != NoteStatus.draft) {
+      for (final name in here.fields.keys) {
+        if (!name.startsWith('data.') || r.fields.containsKey(name)) continue;
+        if (_count('SELECT count(*) AS n FROM outbox WHERE record_id = ? AND field = ?', [r.id, name]) == 0) {
+          _dropAnswer(r.id, name);
+        }
+      }
+    }
   }
 
   // ---- charts kept on the phone (section 7) ----
