@@ -185,6 +185,11 @@ export interface SecondAct<W> {
   ) => Promise<NoteActResultValue>;
 }
 
+const refusalOf = (effect: unknown): ActRefusal | null =>
+  typeof effect === 'object' && effect !== null && 'refuse' in effect
+    ? (effect as { refuse: ActRefusal }).refuse
+    : null;
+
 /** The refusals that are about the caller, not the note's state: 403, logged as access.denied. */
 const CALLERS = new Set<ActRefusal>([
   'is_author',
@@ -230,7 +235,8 @@ export async function secondAct<W>(
       }
       const n = await actNote(tx, scope, visit, note);
       const effect = act.effect(n, (await heldHash(visit, n)) === contentHash);
-      if (typeof effect === 'object' && effect !== null && 'refuse' in effect) refuse(effect.refuse, noteId);
+      const refusal = refusalOf(effect);
+      if (refusal) refuse(refusal, noteId);
       else acts.push({ n, effect: effect as W, contentHash });
     }
     const named = new Set(input.notes.map((n) => n.noteId));
@@ -238,8 +244,7 @@ export async function secondAct<W>(
       if (named.has(noteId)) continue;
       const note = await noteRules.load(tx, noteId, false);
       if (!note) continue;
-      const effect = act.effect(await actNote(tx, scope, visit, note), true);
-      if (!(typeof effect === 'object' && effect !== null && 'refuse' in effect))
+      if (!refusalOf(act.effect(await actNote(tx, scope, visit, note), true)))
         refuse('content_changed', noteId);
     }
 

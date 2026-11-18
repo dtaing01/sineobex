@@ -319,11 +319,15 @@ describe('phase 4: attest', () => {
       const { note } = await correct(w.rae, v.note, h, 'care.plan', 'Demo: fluids and rest');
       expect(await noteRow(h, v.note.noteId)).toMatchObject({ status: 'signed', attestation: 'waiting' });
       expect((await attest(w, w.vic, v.visit.encounterId, [note])).status).toBe(200);
+      // The harness's clock stands still, so both rows carry the same time: compared as a set.
       const rows = await attestationRows(h, v.note.noteId);
-      expect(rows.map((r) => [r.attendingUserId, r.contentHash])).toEqual([
-        [w.ana.id, await heldHashOf(v.note)],
-        [w.vic.id, await heldHashOf(note)],
-      ]);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => [r.attendingUserId, r.contentHash])).toEqual(
+        expect.arrayContaining([
+          [w.ana.id, await heldHashOf(v.note)],
+          [w.vic.id, await heldHashOf(note)],
+        ]),
+      );
       expect((await noteRow(h, v.note.noteId)).attestation).toBe('attested');
     });
 
