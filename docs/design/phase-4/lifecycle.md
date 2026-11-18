@@ -909,7 +909,8 @@ says at once "this note changed, read it again", and nothing waits on the phone.
   attending may co-sign.
 - **Attest**: an attending reads a signed note that waits and attests it. "Attesting adds a dated
   statement below the note and doesn't change it" (PRD main 216).
-- Nobody co-signs or attests a note they act as the author of. Nobody attests a note whose
+- Nobody co-signs or attests a note they wrote, completed or act as the author of (as built,
+  5.3: an assignment moves who acts as the author, not who wrote the note). Nobody attests a note whose
   current signature is their own: a resident who co-signed a student's note and later became an
   attending does not attest it.
 - The person must be able to read every answer of the note that counts (6.4, rule 4). An
@@ -2164,7 +2165,9 @@ retry, answered from its receipt, tells nobody again.
 | `note_corrected` | the co-signer whose co-signature a correction clears; every attester of the current signature when an attested note is no longer attested; never the corrector | a correction applied (4.7) |
 | `conflict_resolved` (phase 2) | the note's author, when the value kept was someone else's | an answer of `keep_server` that saw the current value, a finished note's included (4.3) |
 
-`note_cosigned`, `note_attested` and `note_assigned` come with the online routes (L2). A change
+`note_cosigned`, `note_attested` and `note_assigned` come with the online routes (L2). As built,
+`note_cosigned` and `note_attested` name the visit (entity `encounter`), once per visit however
+many of its notes the act covered (5.3, 5.4). A change
 kept with `use_signoff`, `kind_cannot_go_back` or `patient_cannot_be_removed` sends none: the
 receipt's `details.problem` tells the phone. An addendum tells nobody.
 
@@ -2632,9 +2635,9 @@ As built (unit L2, with its review; `services/api/src/encounters/handoff.ts`, `g
 - **The phone never exports it.** The generated Dart client leaves out an operation whose success
   answer is not JSON, with a comment that names it, so no phone code decodes the PDF as JSON
   (review finding LPM-5).
-- **Open**: whether the phone's full-screen summary (9.8), which EMS reads too, leaves out a note
-  of a sensitive type for every reader as the file does. As designed it holds what the person
-  showing it may see (forms 10.1 #6).
+- **The phone's full-screen summary follows the same rule** (decided Nov 18, D94). It is built for
+  EMS's reader too, so it leaves out every note of a sensitive type and every sensitive exam's
+  findings whoever shows it (9.8; card F7-handoff).
 
 ## 6. Permissions
 
@@ -3099,7 +3102,8 @@ Red flags answered Yes opens the EMS branch in the form (forms part). When EMS i
 form offers **Show handoff**. It opens a full-screen page built by the forms part's
 `handoffLines`: large text, high contrast in every theme, no app bar actions, **Done** at the
 bottom. It has no copy and no share (PRD main 413), and its text cannot be selected. Showing it
-is logged (`ems_handoff.shown`). It works offline.
+is logged (`ems_handoff.shown`). It works offline. It is built for EMS's reader, as the file is
+(5.7, D94): no note of a sensitive type and no sensitive exam's findings, whoever shows it.
 
 ### 9.9 Home: notes to finish, and the queues
 
@@ -3530,7 +3534,7 @@ their levels, files and order. This part's units, and what each owns:
 |---|---|---|
 | **L0** Schema and core rules | `db/migrations/0018` to `0021`, their `db/test` files, the three vector files of 3.12 and their readers, `services/api/src/encounters/{rules,content-hash,signed-under}.ts`, `apps/mobile/lib/encounters/{rules,content_hash}.dart` | forms F1 and F2 for `effectiveAnswers` (the content hash) |
 | **L1** Server sync | `services/api/src/sync/**` (changes), `services/api/src/sync/entities/{note-signoff,note-addendum,note-correction,referral}.ts`, `services/api/src/encounters/signer.ts`, `services/api/test/sync-{encounters,signoffs,corrections,referrals}.test.ts`, and phase 2's sync tests, which move to a test-only note type (4.4) | L0; forms F1 (`checkAnswer`, `finishCheck`, `effectiveAnswers`, `visibleAnswers`) and F3 (stored definitions) |
-| **L2** Server routes | `services/api/src/routes/encounters.ts`, `services/api/src/encounters/{read,timeline,queues,cosign,attest,assign,incomplete,counts,handoff}.ts`, the timeline and recent visits in `services/api/src/patients/{charts,projection,schemas}.ts`, `services/api/test/encounters-*.test.ts` | L1; forms F1 (`readModel`, `handoffLines`) |
+| **L2** Server routes | `services/api/src/routes/encounters.ts`, `services/api/src/encounters/{read,timeline,queues,cosign,attest,assign,incomplete,counts,handoff}.ts`, the timeline and recent visits in `services/api/src/patients/{charts,schemas}.ts`, `services/api/test/encounters-*.test.ts` | L1; forms F1 (`readModel`, `handoffLines`) |
 | **L3** The phone's sync layer | `apps/mobile/lib/sync/{entities,local_store}.dart`, `apps/mobile/test/sync/{fake_server,fake_parity_test,fake_reads_test,store_encounters_test}.dart` | L0, L1 (the fake mirrors it); forms F2 and F4 (the fake reads definitions from the conformance file and the bundled presets) |
 | **L4** The phone's domain layer | `apps/mobile/lib/encounters/` (all but the two core files of L0 and the two of forms F7), `apps/mobile/test/encounters/`, and named edits to `apps/mobile/lib/patients/{chart_cache,problems}.dart` | L3, the generated client from L2 |
 | **L5** The phone's screens | `apps/mobile/lib/features/encounters/`, its tests, and named edits to `patient_screen.dart`, `home_screen.dart`, `app.dart`, `sync_labels.dart`, `needs_attention_screen.dart` | L4; forms F5 (the renderer and the read view, which F5 owns) |

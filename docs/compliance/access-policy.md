@@ -115,6 +115,5 @@ If a team's Program Admins are unavailable, a platform owner appoints a replacem
 - Counsel: the Logistics reason above; whether 42 CFR Part 2 applies; which diagnosis codes count as sensitive (default: F01–F99, O00–O9A, Z30–Z39, B20, Z21, A50–A64, Z71.4x).
 - Each customer team: its own access policy naming who holds each role. This page describes what the software enforces; the team's policy says who and why for its own staff.
 - A team can't keep the phone's patient list from a role that registers or charts patients. A team setting can add that later without a new permission.
-- The team (phase 4): whether a reviewer who may not read a held change may still accept it. Today they can, though the queue shows them nothing of it.
 - Counsel and the team (phase 4): who may export the EMS handoff; today, whoever may read the visit's Red flags note, Billing/Data included (lifecycle 12.1 #18).
 - The clinical team and counsel (phase 4): what of the patient the EMS handoff's header carries (today the preferred name, age and allergies), and whether any note of a sensitive type or sensitive exam finding should reach EMS (today none does; lifecycle 12.1 #27 and #29).

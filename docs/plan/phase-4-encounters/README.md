@@ -274,7 +274,7 @@ already charted, which findings can be held together, and what counts once a fin
 | F7-expand | T | `phone/encounters/expand_quick.dart` | F7-tests, F6-general-assemble |
 | F7-expand-control | R | `phone/features/forms/note_form.dart` (the Expand control on a quick form part) | F7-expand, F5-form-shell |
 | F7-actions | R | `phone/features/forms/action_field.dart`, `phone/features/encounters/note_screen.dart` (`open_note_type`, `add_referral`) | F5-action, L5-note-screen |
-| F7-handoff | R | `phone/features/encounters/handoff_screen.dart` (the lines, through `visibleAnswers`) | L5-handoff |
+| F7-handoff | R | `phone/features/encounters/handoff_screen.dart` (the lines, through `visibleAnswers` for EMS's reader: no note of a sensitive type and no sensitive exam's findings, whoever shows it, D94) | L5-handoff |
 | F7-problem-button | R | `phone/features/forms/problem_field.dart` (Add to the problem list) | F5-problem, L4-problems-link |
 
 ### L0 Schema and core rules (lifecycle 2, 3.12, 4.5)
