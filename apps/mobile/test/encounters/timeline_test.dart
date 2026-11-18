@@ -228,6 +228,17 @@ void main() {
       );
       final shown = await repo(p).openTimeline(patient, typeOf: typeOf);
       expect([for (final c in visitIn(shown, visit).notes) (c.noteId, c.group)], [(sensitive, 'psych')]);
+
+      // The chart was cached while their role saw it: the phone holds the note and hides it now, so
+      // the chart's chip of it is not shown either (review LRA-5).
+      final chart = Timeline.fromJson({
+        'encounters': [
+          visitRow(visit, '2026-10-20T15:00:00.000Z', notes: [noteRow(sensitive, 'test_sensitive', group: 'psych')]),
+        ],
+        'referrals': <Object?>[],
+      });
+      final cached = await reader.openTimeline(patient, chart: chart, typeOf: typeOf);
+      expect(visitIn(cached, visit).notes, isEmpty);
     });
 
     test('the type filter: a visit under each group its notes are in, a referral under Referrals', () async {
