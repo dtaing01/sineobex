@@ -954,6 +954,20 @@ void main() {
       expect(server.records[n]!.fields['status']!.value, 'completed');
     });
 
+    test('a refused visit fixed with a patient files what was made at it under them', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final refused = p.store.outbox().single;
+      final n = note(p, visit, testNote, {'vitals.pulse': 88});
+      final signoff = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+      p.store.reject(refused, reason: 'validation');
+      expect(p.store.record(signoff)!.patientId, isNull);
+      p.store.fixRejected(refused.changeId, {'kind': 'non_medical', 'patientId': patient});
+      expect([p.store.record(signoff)!.patientId, createOf(p, signoff).patientId], [patient, patient]);
+      expect(p.store.localWorkPatients(), {patient});
+    });
+
     test('a patient a teammate gives the visit files what waits here under them', () async {
       final p = phone(alex);
       final patient = server.seedPatient();
