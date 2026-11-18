@@ -129,6 +129,9 @@ export const encounterRules: EntityRules<Value> = {
     return rows[0]!.version;
   },
 
+  // PLAN-OPEN: where do the records made at a visit go when the visit moves to another patient
+  // (lifecycle 12.1 #25; plan section 6)? They stay with the first patient, still naming the
+  // visit: nothing here moves them, and the visit screen lists them to be entered in error.
   async afterWrite(s) {
     if (s.field === 'patientId' && typeof s.value === 'string') {
       await seen(s, s.value, new Date(s.rec.attributes.startedAt as string));

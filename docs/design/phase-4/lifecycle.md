@@ -1428,10 +1428,14 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   group's latest (D27), and the team index's version moves with it. A visit whose start is after
   the server's clock moves it to the server's clock (review finding REC-4): the visit happened, so
   the patient was seen, and a phone's wrong clock never sets a time in the future.
-- **Open** (review finding REC-6): moving a visit to another patient leaves the referrals,
-  problems and allergies made at it naming the first. Either such a move is kept in history when
-  records made at the visit name another group, or the drift is accepted and written here and in
-  8.4.
+- **Records made at a visit that moves to another patient stay with the first** (review finding
+  REC-6, as the coordinator decided; a default, 12.1 #25). The referrals, problems, allergies and
+  problem notes made at it keep their patient and still name the visit. Moving clinical records
+  by themselves is riskier than showing them, and refusing the visit's move would keep the visit
+  on the wrong patient. A chart says "at a visit" only when the visit's patient is in its merged
+  group (8.4), so the first chart's records stop naming the moved visit. The visit screen (9.7,
+  unit L5) lists the records made at the visit, whichever chart they are on, so the clinician can
+  find each one, enter it in error on the first chart and chart it again on the second.
 
 ### 4.4 The note
 
@@ -2628,6 +2632,11 @@ The same two buttons settle `encounter_other_patient` (4.7): a referral, a probl
 or a problem note that names a visit of someone else. On a chart, a referral or a problem says
 "at a visit" only when that visit's patient is in the chart's merged group.
 
+A visit that moves to another patient once records were made at it leaves them with the first
+patient (4.3, a default: 12.1 #25). Nothing on the phone or the server moves them, and no card
+asks about them: the visit screen lists the records made at the visit (9.7), so the clinician can
+find each one and enter it in error.
+
 ## 9. Screens
 
 Every screen here follows the rules of `CLAUDE.md` and the phase 3 screens
@@ -2754,6 +2763,10 @@ online, for the rest (8.2). The view:
   value}".
 - Below each note, in time order: sign-offs ("Signed by {name}, {credential}, {date}"),
   co-signatures, attestations ("Attested by {name}, {date}"), addenda (PRD main 459, 725).
+- The records made at the visit: its referrals, problems, allergies and problem notes, whichever
+  chart they are on, each opening where it can be entered in error. A visit moved to another
+  patient leaves them with the first (4.3, 12.1 #25), and this list is how the clinician finds
+  them.
 - Actions, each shown only when the server would accept it: **Add addendum**; **Correct** on an
   answer, for the acting author; **Reopen**, for a note waiting for a co-signer that was never
   signed; **Co-sign** and **Attest**, online only, greyed with "Connect to co-sign" offline.
@@ -3039,8 +3052,10 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 22 | Which credential is a signature or a correction recorded under when its time cannot be trusted (the clock not verified, more than five minutes after the receipt, before the server received the note, or a time that cannot be read)? | The one held when the server receives it, with the phone's claim stored beside it; the claim can still make it wait for attestation (3.5) | Counsel and the billing partner |
 | 23 | What is a person shown when they complete a note without signing it, and which version is stored? | A `complete` carries a statement version as a `sign` does (`complete-2026-11` in the tests); its sentence is not written yet, and 3.5's table has none. The server stores the version the phone sends, any text of 1 to 40 characters from `a-z`, `0-9`, `_`, `.` and `-`, and checks it against no list (4.6) | Counsel |
 | 24 | Does a correction record the wording its corrector was shown? | No. A correction carries no statement version: its row's corrector, credential, time and reason stand as their signature on the change (3.6, 4.7) | Counsel |
+| 25 | Where do the records made at a visit go when the visit moves to another patient? | They stay with the first patient, still naming the visit; the visit screen lists them so the clinician can find each and enter it in error (4.3, 8.4, 9.7) | Brooke and Mercy |
 
-Rows 23 and 24 came from wave D's review of unit L1. Their `PLAN-OPEN:` comments are on
+Rows 23 to 25 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
+the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`). Rows 23 and 24's are on
 `NoteSignoffCreate`'s `statementVersion` (`services/api/src/sync/entities/values.ts`) and on the
 correction's rules (`note-correction.ts`).
 
