@@ -2447,6 +2447,15 @@ class FakeSyncServer {
   }
 
   static String _iso(DateTime t) => t.toUtc().toIso8601String();
+
+  /// [t] to the microsecond, with all six places, as note.ts load gives a note's createdAt: the time
+  /// Postgres keeps, as text that sorts as the time does (review finding N2-R1).
+  static String isoMicros(DateTime t) {
+    final u = t.toUtc();
+    final places = (u.millisecond * 1000 + u.microsecond).toString().padLeft(6, '0');
+    return '${u.toIso8601String().substring(0, 19)}.${places}Z';
+  }
+
   Map<String, Object?> _user(String? id) => {
     'userId': id ?? 'unknown',
     'displayName': id == null ? defaultName : nameOf(id),
@@ -3486,7 +3495,7 @@ class FakeSyncServer {
       'noteTypeKey': note.attributes['noteTypeKey'],
       'noteTypeVersion': note.attributes['noteTypeVersion'],
       // The server's time, which the visit read orders a visit's notes by (D108).
-      'createdAt': _iso(note.madeAt ?? note.createdAt),
+      'createdAt': isoMicros(note.madeAt ?? note.createdAt),
       'attestation': note.attestation,
       'actingAuthorId': _actingAuthor(note),
       // Their name now, as the visit read gives it: a note keeps no name of its own.

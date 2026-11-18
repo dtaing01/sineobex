@@ -1680,9 +1680,14 @@ As built (unit L1, `services/api/src/sync/entities/note.ts`, with wave D's revie
 - **`createdAt` and `actingAuthorName`** joined them for the phone's domain layer (D108, the
   coordinator's decision). `createdAt` is when the server made the note
   (`encounter_notes.created_at`; an admin's accept, for a create held for review), never the
-  phone's time: the visit read gives a visit's notes in that order, then by ID (5.1), and the phone
-  keeps a record's attributes, not the snapshot's own `createdAt`, so it orders the notes it holds
-  the same way. `actingAuthorName` is the display name now of whoever acts as the author
+  phone's time, and no later change moves it: the visit read gives a visit's notes in that order,
+  then by ID (5.1), and the phone keeps a record's attributes, not the snapshot's own `createdAt`,
+  so it orders the notes it holds the same way. It is given to the microsecond Postgres keeps, with
+  all six places (`2026-11-18T10:00:00.000900Z`), not as other times are, to the millisecond: each
+  pushed change is its own transaction, so two phones' pushes can make a visit's notes inside one
+  millisecond, which a time cut to the millisecond ties, and the phone would then order them by ID
+  where the visit read orders them by the microsecond (review finding N2-R1). With every place
+  kept, the text sorts as the time does. `actingAuthorName` is the display name now of whoever acts as the author
   (`users.display_name`, where the visit read's `UserRef` takes it from; the assignee's once a note
   is assigned, 3.8): a note keeps no name of its own. The phone shows it where a teammate's note is
   listed (9.4) and where their draft waits for them (9.6). Both are in every copy of the note a

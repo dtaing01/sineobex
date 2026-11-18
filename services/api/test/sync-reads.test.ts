@@ -158,9 +158,17 @@ describe('phase 4 sync: who may read and change what in a note', () => {
   const noteRow = async (id: string) =>
     (
       await h.scratch.owner<
-        { status: string; data: Record<string, unknown>; completedAt: Date | null; createdAt: Date }[]
+        {
+          status: string;
+          data: Record<string, unknown>;
+          completedAt: Date | null;
+          createdAt: Date;
+          updatedAt: Date;
+          madeAt: string;
+        }[]
       >`
-        select status, data, completed_at as "completedAt", created_at as "createdAt"
+        select status, data, completed_at as "completedAt", created_at as "createdAt", updated_at as "updatedAt",
+               to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "madeAt"
         from sineobex.encounter_notes where id = ${id}`
     )[0]!;
 
@@ -338,7 +346,7 @@ describe('phase 4 sync: who may read and change what in a note', () => {
         encounterId: visit.encounterId,
         noteTypeKey: 'test_red_flags',
         noteTypeVersion: 1,
-        createdAt: (await noteRow(flags.noteId)).createdAt.toISOString(),
+        createdAt: (await noteRow(flags.noteId)).madeAt,
         attestation: 'not_needed',
         actingAuthorId: res.id,
         actingAuthorName: 'Res (demo)',
@@ -387,16 +395,16 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect((await ben.send(create)).map((r) => r.status)).toEqual(['accepted']);
       const second = await noteOn(ana, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: water' });
       const first = { noteId: create.recordId };
-      const made = (await noteRow(first.noteId)).createdAt;
-      expect(made.getTime()).toBeGreaterThan(Date.parse(early) + 30 * 60_000);
+      const { createdAt, madeAt: made } = await noteRow(first.noteId);
+      expect(createdAt.getTime()).toBeGreaterThan(Date.parse(early) + 30 * 60_000);
 
       const snapshots = (await read(ana.token, [noteRef(second), noteRef(first)])).records;
       expect(snapshots.map((s) => [s.id, s.attributes.createdAt])).toEqual([
-        [second.noteId, (await noteRow(second.noteId)).createdAt.toISOString()],
-        [first.noteId, made.toISOString()],
+        [second.noteId, (await noteRow(second.noteId)).madeAt],
+        [first.noteId, made],
       ]);
       // Dated the same for a reader shown less of it.
-      expect((await noteAs(dee, first))!.attributes.createdAt).toBe(made.toISOString());
+      expect((await noteAs(dee, first))!.attributes.createdAt).toBe(made);
       const byServer = [...snapshots]
         .sort((a, b) =>
           a.attributes.createdAt === b.attributes.createdAt
@@ -411,6 +419,47 @@ describe('phase 4 sync: who may read and change what in a note', () => {
       expect(visitRead.status).toBe(200);
       expect((visitRead.body.notes as { noteId: string }[]).map((n) => n.noteId)).toEqual(byServer);
     });
+
+    it('notes made within one millisecond keep the visit read’s order: a note’s createdAt is given to the microsecond', async () => {
+      // Review finding N2-R1: each pushed change is its own transaction, so two phones' pushes can
+      // make a visit's notes inside one millisecond. The visit read orders them by the time Postgres
+      // keeps, to the microsecond, then by ID; a JavaScript time cut to the millisecond tied them, and
+      // the phone ordered them by ID alone.
+      const visit = await visitOf(ana, patientId);
+      const [lo, hi] = [
+        (await noteOn(ana, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: socks' })).noteId,
+        (await noteOn(ana, visit, TEST_NOTE_TYPE, { 'care.plan': 'Demo: water' })).noteId,
+      ].sort() as [string, string];
+      // The smaller ID made later, in the same millisecond.
+      await h.scratch.owner`
+        update sineobex.encounter_notes set created_at = '2026-11-18T10:00:00.000900Z' where id = ${lo}`;
+      await h.scratch.owner`
+        update sineobex.encounter_notes set created_at = '2026-11-18T10:00:00.000100Z' where id = ${hi}`;
+      const snapshots = (await read(ana.token, [noteRef({ noteId: lo }), noteRef({ noteId: hi })])).records;
+      expect(snapshots.map((s) => [s.id, s.attributes.createdAt])).toEqual([
+        [lo, '2026-11-18T10:00:00.000900Z'],
+        [hi, '2026-11-18T10:00:00.000100Z'],
+      ]);
+      // As the phone orders them: by the time, then by ID.
+      const byPhone = [...snapshots]
+        .sort((a, b) => {
+          const [x, y] = [a.attributes.createdAt as string, b.attributes.createdAt as string];
+          return x !== y ? (x < y ? -1 : 1) : a.id < b.id ? -1 : 1;
+        })
+        .map((s) => s.id);
+      expect(byPhone).toEqual([hi, lo]);
+      const visitRead = await call(h, `/v1/encounters/${visit.encounterId}`, {
+        token: ana.token,
+        teamId: t.teamId,
+      });
+      expect(visitRead.status).toBe(200);
+      expect((visitRead.body.notes as { noteId: string }[]).map((n) => n.noteId)).toEqual(byPhone);
+      // Every place is kept, a time on the whole second too, so the text sorts as the time does.
+      await h.scratch.owner`
+        update sineobex.encounter_notes set created_at = '2026-11-18T10:00:01Z' where id = ${lo}`;
+      expect((await noteAs(ana, { noteId: lo }))!.attributes.createdAt).toBe('2026-11-18T10:00:01.000000Z');
+    });
+
     it('a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it', async () => {
       // Review finding SLK-1: a visit holding a finished note beside a teammate's draft is a draft by
       // its status, and the phone took its envelope for unlocked; the server keeps such a change in

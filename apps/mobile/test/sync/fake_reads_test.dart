@@ -514,7 +514,7 @@ void main() {
         'encounterId': v,
         'noteTypeKey': 'test_red_flags',
         'noteTypeVersion': 1,
-        'createdAt': now.toIso8601String(),
+        'createdAt': FakeSyncServer.isoMicros(now),
         'attestation': 'not_needed',
         'actingAuthorId': res,
         'actingAuthorName': 'Res (demo)',
@@ -529,7 +529,7 @@ void main() {
         'encounterId': v,
         'noteTypeKey': 'test_red_flags',
         'noteTypeVersion': 1,
-        'createdAt': now.toIso8601String(),
+        'createdAt': FakeSyncServer.isoMicros(now),
         'attestation': 'waiting',
         'actingAuthorId': res,
         'actingAuthorName': 'Res (demo)',
@@ -580,11 +580,54 @@ void main() {
       final snapshots = (await read(alex, [(entityNote, second), (entityNote, first)])).records;
       expect(
         [for (final s in snapshots) (s.id, s.attributes['createdAt'])],
-        [(second, later.toIso8601String()), (first, now.toIso8601String())],
+        [(second, FakeSyncServer.isoMicros(later)), (first, FakeSyncServer.isoMicros(now))],
       );
       // Dated the same for a reader shown less of it.
-      expect((await noteAs(dee, first)).attributes['createdAt'], now.toIso8601String());
+      expect((await noteAs(dee, first)).attributes['createdAt'], FakeSyncServer.isoMicros(now));
     });
+
+    test(
+      'notes made within one millisecond keep the visit read’s order: a note’s createdAt is given to the microsecond',
+      () async {
+        // Review finding N2-R1: the visit read orders a visit's notes by the time Postgres keeps, to the
+        // microsecond, then by ID; the snapshot gives that time with all six places, as text that sorts
+        // as the time does.
+        final v = visit();
+        const lo = 'f0000000-0000-4000-8000-0000000001b1';
+        const hi = 'f0000000-0000-4000-8000-0000000001b2';
+        String made(String id, DateTime at) {
+          server.now = () => at;
+          return server.seed(entityNote, {
+            'encounterId': v,
+            'noteTypeKey': testNote.key,
+            'noteTypeVersion': testNote.version,
+            'data': const {'care.plan': 'Demo: socks'},
+          }, id: id);
+        }
+
+        // The smaller ID made later, in the same millisecond.
+        made(hi, DateTime.utc(2026, 11, 18, 10, 0, 0, 0, 100));
+        made(lo, DateTime.utc(2026, 11, 18, 10, 0, 0, 0, 900));
+        final snapshots = (await read(alex, [(entityNote, lo), (entityNote, hi)])).records;
+        expect(
+          [for (final s in snapshots) (s.id, s.attributes['createdAt'])],
+          [(lo, '2026-11-18T10:00:00.000900Z'), (hi, '2026-11-18T10:00:00.000100Z')],
+        );
+        // As the phone orders them: by the time, then by ID.
+        final byPhone = [...snapshots]
+          ..sort((a, b) {
+            final at = (a.attributes['createdAt']! as String).compareTo(b.attributes['createdAt']! as String);
+            return at != 0 ? at : a.id.compareTo(b.id);
+          });
+        expect(byPhone.map((s) => s.id), [hi, lo]);
+        // Every place is kept, a time on the whole second too.
+        made('f0000000-0000-4000-8000-0000000001b3', DateTime.utc(2026, 11, 18, 10, 0, 1));
+        expect(
+          (await noteAs(alex, 'f0000000-0000-4000-8000-0000000001b3')).attributes['createdAt'],
+          '2026-11-18T10:00:01.000000Z',
+        );
+      },
+    );
 
     test(
       'a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it',

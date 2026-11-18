@@ -93,7 +93,15 @@ interface NoteRow {
   updatedAt: Date;
   patientId: string | null;
   actingAuthorName: string;
+  madeAt: string;
 }
+
+/**
+ * When the server made a note (created_at), to the microsecond Postgres keeps, with all six places:
+ * the visit read orders a visit's notes by it, then by ID, and a JavaScript time, cut to the
+ * millisecond, would tie two notes that two phones' pushes made inside one (review finding N2-R1).
+ */
+const madeAt = (tx: Tx) => tx`to_char(n.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 export const noteRules: EntityRules<Value> = {
   entity: 'encounter_note',
@@ -155,12 +163,14 @@ export const noteRules: EntityRules<Value> = {
   async load(tx, id, lock) {
     const rows = lock
       ? await tx<NoteRow[]>`
-          select n.*, e.patient_id, u.display_name as acting_author_name from sineobex.encounter_notes n
+          select n.*, e.patient_id, u.display_name as acting_author_name, ${madeAt(tx)} as made_at
+          from sineobex.encounter_notes n
           join sineobex.encounters e on e.id = n.encounter_id
           join sineobex.users u on u.id = coalesce(n.assigned_user_id, n.author_user_id)
           where n.id = ${id} for no key update of n`
       : await tx<NoteRow[]>`
-          select n.*, e.patient_id, u.display_name as acting_author_name from sineobex.encounter_notes n
+          select n.*, e.patient_id, u.display_name as acting_author_name, ${madeAt(tx)} as made_at
+          from sineobex.encounter_notes n
           join sineobex.encounters e on e.id = n.encounter_id
           join sineobex.users u on u.id = coalesce(n.assigned_user_id, n.author_user_id)
           where n.id = ${id}`;
@@ -186,7 +196,7 @@ export const noteRules: EntityRules<Value> = {
         noteTypeVersion: r.noteTypeVersion,
         // The server's time, which the visit read orders a visit's notes by: the phone keeps a
         // record's attributes, not a snapshot's own times (D108).
-        createdAt: r.createdAt.toISOString(),
+        createdAt: r.madeAt,
         attestation: r.attestation,
         actingAuthorId: r.assignedUserId ?? r.authorUserId,
         // Their name now, as the visit read gives it (UserRef): a note keeps no name of its own.
