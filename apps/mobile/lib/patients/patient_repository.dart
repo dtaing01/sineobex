@@ -929,9 +929,13 @@ class PatientRepository {
     onChanged?.call();
   }
 
-  /// An allergy recorded for the patient.
-  String addAllergy(String patientId, NewAllergy allergy) {
-    final id = store.createRecord(entityAllergy, allergy.value(store.canonicalPatient(patientId)));
+  /// An allergy recorded for the patient; [encounterId] is the visit it is recorded at, when recorded
+  /// inside one (phase 4 lifecycle 9.7). A visit this phone holds of someone outside the patient's
+  /// merged group is refused, writing nothing, as `Problems.add` refuses one (`encounter_other_patient`).
+  String addAllergy(String patientId, NewAllergy allergy, {String? encounterId}) {
+    final canonical = store.canonicalPatient(patientId);
+    checkVisitOf(store, canonical, encounterId);
+    final id = store.createRecord(entityAllergy, {...allergy.value(canonical), 'encounterId': ?encounterId});
     onChanged?.call();
     return id;
   }

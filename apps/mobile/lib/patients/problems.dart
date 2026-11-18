@@ -384,24 +384,9 @@ class Problems {
     });
   }
 
-  /// A visit this phone holds of someone outside [patientId]'s merged group: the server would refuse
-  /// the record as a stale reference (records.ts visitOfOtherPatient). A visit with no patient names
-  /// nobody else; one the phone does not hold is the server's to check.
-  void _checkVisit(String patientId, String? encounterId) {
-    if (encounterId != null && !_atVisit(encounterId, patientId)) {
-      throw const LocalValidationError(
-        'That visit is someone else’s. Add this from their chart, or without the visit.',
-        problem: 'encounter_other_patient',
-        paths: {'encounterId'},
-      );
-    }
-  }
+  void _checkVisit(String patientId, String? encounterId) => checkVisitOf(store, patientId, encounterId);
 
-  bool _atVisit(String? encounterId, String patientId) {
-    if (encounterId == null) return false;
-    final visitPatient = store.record(encounterId)?.fields['patientId']?.value;
-    return visitPatient is! String || patientGroup(store, patientId).contains(store.canonicalPatient(visitPatient));
-  }
+  bool _atVisit(String? encounterId, String patientId) => atVisitOf(store, patientId, encounterId);
 
   static String _reason(String reason) {
     final r = reason.trim();
@@ -410,6 +395,29 @@ class Problems {
     }
     return r;
   }
+}
+
+/// Refuses a record of [patientId] made at the visit [encounterId] when the phone holds that visit
+/// and it is someone else's, outside the patient's merged group: the server would refuse it as a
+/// stale reference (records.ts visitOfOtherPatient), for a problem, a problem's note and an allergy
+/// alike (lifecycle 4.7, 8.4). A visit with no patient names nobody else; one the phone does not hold
+/// is the server's to check.
+void checkVisitOf(LocalStore store, String patientId, String? encounterId) {
+  if (encounterId != null && !atVisitOf(store, patientId, encounterId)) {
+    throw const LocalValidationError(
+      'That visit is someone else’s. Add this from their chart, or without the visit.',
+      problem: 'encounter_other_patient',
+      paths: {'encounterId'},
+    );
+  }
+}
+
+/// "at a visit" on [patientId]'s chart (lifecycle 8.4): [encounterId] names a visit, and that visit's
+/// patient is in the chart's merged group as far as the phone knows.
+bool atVisitOf(LocalStore store, String patientId, String? encounterId) {
+  if (encounterId == null) return false;
+  final visitPatient = store.record(encounterId)?.fields['patientId']?.value;
+  return visitPatient is! String || patientGroup(store, patientId).contains(store.canonicalPatient(visitPatient));
 }
 
 /// The problem list's status for a diagnosis added from a note (**Add to the problem list**,

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason;
 import 'package:sineobex_field/patients/patient_providers.dart';
+import 'package:sineobex_field/patients/patient_repository.dart' show NewAllergy;
 import 'package:sineobex_field/patients/problems.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -8,9 +9,10 @@ import 'package:sineobex_field/sync/sync_controller.dart';
 import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 
-/// Problems made or changed in an encounter (lifecycle 8.3, 8.4; card L4-problems-link): each names
-/// the visit, so the server marks a problem made at one; a visit of someone else is refused as the
-/// server would refuse it; and a chart says "at a visit" only while that visit is the patient's.
+/// Problems made or changed in an encounter (lifecycle 8.3, 8.4; card L4-problems-link), and an
+/// allergy recorded in one (9.7): each names the visit, so the server marks a problem made at one; a
+/// visit of someone else is refused as the server would refuse it; and a chart says "at a visit" only
+/// while that visit is the patient's.
 void main() {
   const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
   const alex = 'a0000000-0000-4000-8000-00000000000a';
@@ -156,6 +158,43 @@ void main() {
       [nobodys, ofMerged],
     );
     expect(server.records[n]!.attributes['encounterId'], ofMerged);
+  });
+
+  test('an allergy recorded at a visit names it; a visit of someone outside the group is refused, writing '
+      'nothing', () async {
+    final p = await openedPatient();
+    final other = await openedPatient(name: 'Demo Other');
+    server.offline = true;
+    final visit = store().createEncounter(kind: 'medical', patientId: p);
+    final theirs = store().createEncounter(kind: 'medical', patientId: other);
+    final nobodys = store().createEncounter(kind: 'non_medical');
+    final before = store().outbox().length;
+    expect(
+      () => services.patients.addAllergy(p, const NewAllergy(substance: 'latex'), encounterId: theirs),
+      refusedAsOtherPatient(),
+    );
+    expect(store().outbox(), hasLength(before));
+
+    final atVisit = services.patients.addAllergy(
+      p,
+      const NewAllergy(substance: 'latex', severity: 'mild'),
+      encounterId: visit,
+    );
+    final atNobodys = services.patients.addAllergy(p, const NewAllergy(substance: 'peanuts'), encounterId: nobodys);
+    final byHand = services.patients.addAllergy(p, const NewAllergy(substance: 'shellfish'));
+    expect(createOf(atVisit).value, containsPair('encounterId', visit));
+    expect(createOf(atNobodys).value, containsPair('encounterId', nobodys));
+    expect(createOf(byHand).value, isNot(contains('encounterId')));
+
+    server.offline = false;
+    await phone.engine.syncAll(force: true);
+    expect([store().outbox(), store().needsAttention()], [isEmpty, isEmpty]);
+    expect(
+      [
+        for (final id in [atVisit, atNobodys, byHand]) server.records[id]!.attributes['encounterId'],
+      ],
+      [visit, nobodys, null],
+    );
   });
 
   test('“at a visit” only while the visit this phone holds is the patient’s; one it does not hold is '
