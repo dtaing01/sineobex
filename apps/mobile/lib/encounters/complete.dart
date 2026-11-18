@@ -233,8 +233,7 @@ extension EncounterCompletion on EncounterRepository {
       if (redFlags && !draft) redFlagsDone = true;
       if (!_actsAsAuthor(rec)) {
         if (draft && !state.sentForReview && !empty && definition != null && _seesNote(definition, stored)) {
-          final author = rec.attributes['actingAuthorId'] as String? ?? rec.authorUserId ?? '';
-          teammateDrafts.add(TeammateDraft(noteId: rec.id, author: _person(author), title: definition.title));
+          teammateDrafts.add(TeammateDraft(noteId: rec.id, author: _actingAuthorOf(rec), title: definition.title));
         }
         continue;
       }

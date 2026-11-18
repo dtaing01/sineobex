@@ -691,8 +691,8 @@ class EncounterRepository {
       noteTypeKey: key,
       noteTypeVersion: version,
       definition: definition,
-      author: _person(authorId),
-      actingAuthor: _person(actingId),
+      author: _authorOf(rec),
+      actingAuthor: _actingAuthorOf(rec),
       actsAsAuthor: actsAsAuthor,
       status: state.status,
       attestation: state.attestation,
@@ -813,8 +813,8 @@ class EncounterRepository {
       noteTypeKey: key,
       noteTypeVersion: version,
       definition: null,
-      author: _person(authorId),
-      actingAuthor: _person(actingId),
+      author: _authorOf(rec),
+      actingAuthor: _actingAuthorOf(rec),
       actsAsAuthor: true,
       status: state.status,
       attestation: state.attestation,
@@ -833,7 +833,24 @@ class EncounterRepository {
     );
   }
 
-  PersonRef _person(String userId) => PersonRef(userId, name: nameOf?.call(userId));
+  PersonRef _person(String userId, {Object? named}) => PersonRef(
+    userId,
+    name: user.nameFor(userId, named: named, nameOf: nameOf),
+  );
+
+  /// Whoever acts as [note]'s author, by the name its snapshot carries (`actingAuthorName`, D108).
+  PersonRef _actingAuthorOf(LocalRecord note) => _person(
+    note.attributes['actingAuthorId'] as String? ?? note.authorUserId ?? '',
+    named: note.attributes['actingAuthorName'],
+  );
+
+  /// [note]'s author: named only when they act as its author, since the snapshot names no other
+  /// (D108: the original author of an assigned note is not named).
+  PersonRef _authorOf(LocalRecord note) {
+    final authorId = note.authorUserId ?? '';
+    final acting = note.attributes['actingAuthorId'] as String? ?? authorId;
+    return acting == authorId ? _actingAuthorOf(note) : _person(authorId);
+  }
 
   SignoffItem _signoff(LocalRecord s, _Held held, List<_Shown> shown) {
     shown.add(_Shown('note.viewed', entitySignoff, s));
@@ -841,7 +858,7 @@ class EncounterRepository {
     final create = held.createOf(s.id);
     return SignoffItem(
       id: s.id,
-      signer: _person(s.authorUserId ?? ''),
+      signer: _person(s.authorUserId ?? '', named: a['signerName']),
       act: a['act'] as String? ?? '',
       effect: a['effect'] as String?,
       credential: a['signerCredential'] as String? ?? a['claimedCredential'] as String?,
@@ -861,7 +878,7 @@ class EncounterRepository {
     return AddendumItem(
       id: r.id,
       noteId: a['noteId'] as String?,
-      author: PersonRef(authorId, name: a['authorName'] as String? ?? nameOf?.call(authorId)),
+      author: _person(authorId, named: a['authorName']),
       credential: a['authorCredential'] as String?,
       text: a['text'] as String? ?? '',
       writtenAt: _time(a['writtenAt']) ?? create?.time,
@@ -876,7 +893,7 @@ class EncounterRepository {
     final create = held.createOf(r.id);
     return CorrectionItem(
       id: r.id,
-      corrector: _person(r.authorUserId ?? ''),
+      corrector: _person(r.authorUserId ?? '', named: a['correctorName']),
       credential: a['correctorCredential'] as String? ?? a['claimedCredential'] as String?,
       fields: [for (final c in _changes(a)) c['field']! as String],
       outcome: a['outcome'] as String?,
@@ -904,15 +921,15 @@ class EncounterRepository {
     ],
   );
 
-  /// A correction the server has answered, as the read model takes it. A teammate's name is often
-  /// unknown on the phone: "a teammate", and "you" for the reader's own.
+  /// A correction the server has answered, as the read model takes it, its corrector named as the
+  /// server gave them (D108); "a teammate" only when nothing names them.
   NoteCorrection _readCorrection(LocalRecord r, String outcome) {
     final a = r.attributes;
     final by = r.authorUserId ?? '';
     return NoteCorrection(
       outcome: outcome,
       reason: a['reason'] as String? ?? '',
-      correctorName: nameOf?.call(by) ?? (by == user.userId ? 'you' : 'a teammate'),
+      correctorName: _person(by, named: a['correctorName']).name ?? 'a teammate',
       correctorCredential: a['correctorCredential'] as String? ?? '',
       correctedAt: a['correctedAt'] as String? ?? '',
       changes: [
@@ -1028,11 +1045,15 @@ class _Held {
   };
 
   /// [records] in the order they were made, as far as the phone can tell: those the server holds by
-  /// the time it gives them, then those confirmed with no time known (a note, or a record made here
-  /// before a refresh brings its time) by ID, then those waiting here in the order they were made. The server's order is the order it applied them, which is what
-  /// [hiddenCorrections] reads.
+  /// the time it gives them, then those confirmed with no time known (a record made here before a
+  /// refresh brings its time) by ID, then those waiting here in the order they were made. A note's
+  /// time is when the server made it (`createdAt`, D108), compared as its text, to the microsecond,
+  /// then by ID as text, as the visit read orders a visit's notes; a sign-off, an addendum and a
+  /// correction go by when it was made. The server's order of corrections is the order it applied
+  /// them, which is what [hiddenCorrections] reads.
   List<LocalRecord> ordered(List<LocalRecord> records) {
-    DateTime? at(LocalRecord r) {
+    Comparable<Object>? at(LocalRecord r) {
+      if (r.entity == entityNote) return r.attributes['createdAt'] as String?;
       for (final key in const ['signedAt', 'writtenAt', 'correctedAt']) {
         if (r.attributes[key] case final String iso) return DateTime.tryParse(iso);
       }
@@ -1043,11 +1064,12 @@ class _Held {
     return [...records]..sort((a, b) {
       final byRank = rank(a).compareTo(rank(b));
       if (byRank != 0) return byRank;
-      return switch (rank(a)) {
+      final byTime = switch (rank(a)) {
         0 => at(a)!.compareTo(at(b)!),
         2 => _creates[a.id]!.seq.compareTo(_creates[b.id]!.seq),
-        _ => a.id.compareTo(b.id),
+        _ => 0,
       };
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
     });
   }
 }

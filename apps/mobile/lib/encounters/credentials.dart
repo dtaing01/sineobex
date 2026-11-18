@@ -78,6 +78,16 @@ class EncounterUser {
   /// Charts: starts visits, adds notes, changes drafts (lifecycle 3.1, the draft rule).
   bool get charts => permissions.contains('encounters.chart');
 
+  /// The name of [userId] as a record shows it (D108): the one the record carries ([named]: a
+  /// note's `actingAuthorName`, a sign-off's `signerName`, a correction's `correctorName`, an
+  /// addendum's `authorName`, as the server gave them), else [nameOf]'s, else, for a record of the
+  /// person's own (one made here and not yet sent carries none), their own display name. Null when
+  /// none says: the screen words it "a teammate".
+  String? nameFor(String userId, {Object? named, String? Function(String userId)? nameOf}) => switch (named) {
+    final String name when name.isNotEmpty => name,
+    _ => nameOf?.call(userId) ?? (userId == this.userId && displayName.isNotEmpty ? displayName : null),
+  };
+
   /// The person as Complete names them to the store (lifecycle 3.3, 3.5, 4.8), from the saved
   /// profile: the credential a `sign` claims, whether it signs, and whether its signature waits for
   /// an attending. The server decides again from the membership it holds.

@@ -12,6 +12,7 @@ import '../auth/auth_provider.dart' show AuthErrorCode, AuthException;
 import '../forms/definition.dart';
 import '../forms/forms_api.dart' show NoteTypeVersion;
 import '../forms/read_model.dart';
+import '../forms/recap.dart' show RecapLine;
 import '../sync/local_store.dart' show ChartingPaused, LocalStore;
 import 'credentials.dart';
 import 'encounter_models.dart';
@@ -546,9 +547,10 @@ String? patientOfMadeAt(wire.RecordSnapshot record, Iterable<wire.RecordSnapshot
 
 /// The server's read of a visit (5.1) as the read model the screens draw: from [source] `server`,
 /// or `chart` for one of a chart's recent visits (5.2). Every answer it holds is one the reader may
-/// see, laid out by the server (`read`); the phone has no answers to put in a form, and no recap,
-/// which the read does not carry. [definitionOf] gives each note's own definition where the phone
-/// holds it, to tell a Medical note from another.
+/// see, laid out by the server (`read`), and each note's recap lines are the server's, worked out
+/// over what the reader may see (`VisitNote.recap`, D108); the phone has no answers to put in a
+/// form. [definitionOf] gives each note's own definition where the phone holds it, to tell a Medical
+/// note from another.
 VisitView visitFromRead(
   wire.VisitRead read, {
   required VisitSource source,
@@ -601,7 +603,7 @@ NoteView _noteFromRead(
   answers: const {},
   pendingPaths: const {},
   read: _readModel(n.read),
-  recap: const [],
+  recap: [for (final l in n.recap) RecapLine(section: l.section, text: l.text)],
   signoffs: [
     for (final s in n.signoffs)
       SignoffItem(

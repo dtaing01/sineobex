@@ -408,6 +408,29 @@ void main() {
       expect(logged[unknownProblemNote], ('patient.viewed', 'problem_note', null, 'cache'));
     });
 
+    test('each note’s recap lines, as the server worked them out for the reader, online and from the chart '
+        '(D108)', () async {
+      final p = phone(alex);
+      final e = online(p);
+      Map<String, Object?> read() => readOf(
+        notes: [
+          visitNoteJson(
+            noteId: n1,
+            author: blairRef,
+            recap: [
+              {'section': 'vitals', 'text': 'Pulse: 86'},
+              {'section': 'care', 'text': 'Plan: Demo: rest'},
+            ],
+          ),
+        ],
+      );
+      api.on('GET', '/v1/encounters/$visit', (_) => read());
+      List<(String, String)> recapOf(VisitView v) => [for (final l in v.notes.single.recap) (l.section, l.text)];
+      const lines = [('vitals', 'Pulse: 86'), ('care', 'Plan: Demo: rest')];
+      expect(recapOf(await e.readVisit(visit)), lines);
+      expect(recapOf(await e.recentVisit(VisitRead.fromJson(read()))), lines);
+    });
+
     test('what the server refuses becomes what the screen shows', () async {
       final p = phone(alex);
       final e = online(p);

@@ -258,6 +258,94 @@ void main() {
     });
   });
 
+  group('who and when, as the sync read gives them (D108)', () {
+    test('a visit’s notes in the order the server made them, to the microsecond, then by ID; those made '
+        'here after them, in the order made', () async {
+      final patient = server.seedPatient();
+      final visit = server.seed('encounter', {'kind': 'non_medical', 'patientId': patient}, by: blair);
+      String seeded(String id, Duration after) {
+        serverTime = start.add(after);
+        return server.seed(
+          'encounter_note',
+          {
+            'encounterId': visit,
+            'noteTypeKey': testNote.key,
+            'noteTypeVersion': testNote.version,
+            'data': const {'vitals.pulse': 80},
+          },
+          id: id,
+          by: blair,
+        );
+      }
+
+      // Made in the opposite order to their IDs; the last two in the same microsecond. A millisecond
+      // apart only in their microseconds would sort wrong through milliseconds.
+      final second = seeded('f0000000-0000-4000-8000-000000000002', const Duration(microseconds: 1001));
+      final first = seeded('f0000000-0000-4000-8000-000000000001', const Duration(microseconds: 1002));
+      final tiedB = seeded('f0000000-0000-4000-8000-000000000004', const Duration(seconds: 1));
+      final tiedA = seeded('f0000000-0000-4000-8000-000000000003', const Duration(seconds: 1));
+      serverTime = start;
+      final p = phone(alex);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      for (final n in [tiedA, first, tiedB, second]) {
+        expect(await p.engine.openServerRecord('encounter_note', n), isTrue);
+      }
+      expect(p.store.record(second)!.attributes['createdAt'], endsWith('.001001Z'));
+      final mine = note(p, visit, testNote, {'vitals.pulse': 70});
+      final later = note(p, visit, testNote, {'vitals.pulse': 72});
+      final view = (await repo(p).openVisit(visit))!;
+      expect([for (final n in view.notes) n.noteId], [second, first, tiedA, tiedB, mine, later]);
+    });
+
+    test('a teammate is named by the name their record carries; the reader’s own records by their own name', () async {
+      server.names[blair] = 'Demo Blair Rivera';
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final rb = repo(b);
+      final visit = rb.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final theirs = (await rb.addNote(visit, definition(testNote), another: true)).noteId;
+      await rb.openNote(theirs);
+      rb.saveAnswer(theirs, 'vitals.pulse', 88);
+      rb.complete((await rb.openComplete(visit))!);
+      await sync(b);
+      await rb.correct(visit, theirs, changes: {'vitals.pulse': 86}, reason: 'Demo: counted twice');
+      await sync(b);
+
+      // Alex's phone has no way to name Blair but what the server sent with each record.
+      final p = phone(alex);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
+      for (final rec in [...server.records.values]) {
+        if (rec.attributes['noteId'] == theirs) expect(await p.engine.openServerRecord(rec.entity, rec.id), isTrue);
+      }
+      final r = repo(p);
+      final mine = (await r.addNote(visit, definition(testNote), another: true)).noteId;
+      await r.openNote(mine);
+      r.saveAnswer(mine, 'care.plan', 'Demo: blankets');
+      r.complete((await r.openComplete(visit))!);
+      await r.addAddendum(visit, noteId: theirs, text: 'Demo: seen again');
+      final view = (await r.openVisit(visit))!;
+      final blairs = noteIn(view, theirs);
+      expect(
+        [
+          blairs.author.name,
+          blairs.actingAuthor.name,
+          blairs.signoffs.single.signer.name,
+          blairs.corrections.single.corrector.name,
+          blairs.addenda.single.author.name,
+        ],
+        ['Demo Blair Rivera', 'Demo Blair Rivera', 'Demo Blair Rivera', 'Demo Blair Rivera', 'Demo Charter'],
+      );
+      final shownCorrection = blairs.read!.sections.expand((s) => s.items).single.corrections.single;
+      expect(shownCorrection.by, 'Demo Blair Rivera');
+      final own = noteIn(view, mine);
+      expect(
+        [own.author.name, own.actingAuthor.name, own.signoffs.single.signer.name],
+        ['Demo Charter', 'Demo Charter', 'Demo Charter'],
+      );
+    });
+  });
+
   group('what the reader sees (lifecycle 6.4)', () {
     const e1 = 'e0000001';
     const at = '2026-10-20T14:50:00Z';
