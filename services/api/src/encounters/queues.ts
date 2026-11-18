@@ -85,6 +85,9 @@ interface WaitingRow {
   preferredName: string | null;
 }
 
+/** Whether the caller's credential does the queue's act: who may open it. */
+export const mayOpenQueue = (scope: TeamScope, which: QueueName) => QUEUES[which].mayAct(scope);
+
 /**
  * GET /v1/team/cosign-queue and /v1/team/attestation-queue. The route has checked encounters.chart;
  * a credential that cannot do the act is refused here (403 cannot_sign or cannot_attest), logged
@@ -104,68 +107,7 @@ export async function readQueue(
     throw forbidden(queue.message, queue.refusal);
   }
   return scope.tx(async (tx, audit) => {
-    const teamId = scope.team.teamId;
-    const waits =
-      which === 'cosign'
-        ? tx`n.status = 'completed' and n.medical`
-        : tx`n.status = 'signed' and n.attestation = 'waiting'`;
-    const waiting = await tx<WaitingRow[]>`
-      select n.id, n.encounter_id, e.started_at, e.patient_id, c.preferred_name
-      from sineobex.encounter_notes n
-      join sineobex.encounters e on e.team_id = n.team_id and e.id = n.encounter_id
-      left join sineobex.patients p on p.team_id = e.team_id and p.id = e.patient_id
-      left join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
-      where n.team_id = ${teamId} and ${waits}
-      order by e.started_at, e.id, n.created_at, n.id`;
-
-    const visits = new Map<string, StoredRecord | null>();
-    const shown: { row: WaitingRow; n: ActNote; canAct: boolean }[] = [];
-    for (const row of waiting) {
-      if (!visits.has(row.encounterId))
-        visits.set(row.encounterId, await loadEncounter(tx, row.encounterId, false));
-      const visit = visits.get(row.encounterId);
-      const note = await noteRules.load(tx, row.id, false);
-      if (!visit || !note) continue;
-      const n = await actNote(tx, scope, visit, note);
-      // As the visit read: a note the caller may not read, or with no definition to read it by, is absent.
-      if (!n.read || n.read.type === undefined) continue;
-      const effect = queue.effect(scope, n, true);
-      shown.push({ row, n, canAct: !('refuse' in effect) });
-    }
-
-    const ids = shown.map((s) => s.n.note.id);
-    const before = await signedAndAttestedBefore(tx, teamId, ids);
-    const authors = await displayNames(
-      tx,
-      shown.map((s) => s.n.note.authorUserId),
-    );
-    // A preferred name is in every summary patients.view reads (phase 3 design 4.3).
-    const names = scope.can('patients.view');
-    const rows: QueueVisitValue[] = [];
-    for (const { row, n, canAct } of shown) {
-      let visit = rows.at(-1);
-      if (visit?.encounterId !== row.encounterId) {
-        visit = {
-          encounterId: row.encounterId,
-          patientId: row.patientId,
-          preferredName: names ? row.preferredName : null,
-          startedAt: row.startedAt.toISOString(),
-          notes: [],
-        };
-        rows.push(visit);
-      }
-      const { note } = n;
-      visit.notes.push({
-        noteId: note.id,
-        noteTypeKey: note.attributes.noteTypeKey as string,
-        author: { userId: note.authorUserId, displayName: authors.get(note.authorUserId) ?? '' },
-        completedAt: note.attributes.completedAt as string | null,
-        signedBefore: before.signed.get(note.id) ?? null,
-        attestedBefore: before.attested.get(note.id) ?? null,
-        canAct,
-      });
-    }
-
+    const rows = await queueRows(tx, scope, which);
     await audit({
       action: queue.action,
       patientId: null,
@@ -176,6 +118,76 @@ export async function readQueue(
     });
     return { rows };
   });
+}
+
+/**
+ * The queue's rows as the caller is shown them, with no audit event: readQueue logs the patients it
+ * shows, and Home's count (counts.ts) is the number of these rows, so the two never drift.
+ */
+export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Promise<QueueVisitValue[]> {
+  const queue = QUEUES[which];
+  const teamId = scope.team.teamId;
+  const waits =
+    which === 'cosign'
+      ? tx`n.status = 'completed' and n.medical`
+      : tx`n.status = 'signed' and n.attestation = 'waiting'`;
+  const waiting = await tx<WaitingRow[]>`
+    select n.id, n.encounter_id, e.started_at, e.patient_id, c.preferred_name
+    from sineobex.encounter_notes n
+    join sineobex.encounters e on e.team_id = n.team_id and e.id = n.encounter_id
+    left join sineobex.patients p on p.team_id = e.team_id and p.id = e.patient_id
+    left join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
+    where n.team_id = ${teamId} and ${waits}
+    order by e.started_at, e.id, n.created_at, n.id`;
+
+  const visits = new Map<string, StoredRecord | null>();
+  const shown: { row: WaitingRow; n: ActNote; canAct: boolean }[] = [];
+  for (const row of waiting) {
+    if (!visits.has(row.encounterId))
+      visits.set(row.encounterId, await loadEncounter(tx, row.encounterId, false));
+    const visit = visits.get(row.encounterId);
+    const note = await noteRules.load(tx, row.id, false);
+    if (!visit || !note) continue;
+    const n = await actNote(tx, scope, visit, note);
+    // As the visit read: a note the caller may not read, or with no definition to read it by, is absent.
+    if (!n.read || n.read.type === undefined) continue;
+    const effect = queue.effect(scope, n, true);
+    shown.push({ row, n, canAct: !('refuse' in effect) });
+  }
+
+  const ids = shown.map((s) => s.n.note.id);
+  const before = await signedAndAttestedBefore(tx, teamId, ids);
+  const authors = await displayNames(
+    tx,
+    shown.map((s) => s.n.note.authorUserId),
+  );
+  // A preferred name is in every summary patients.view reads (phase 3 design 4.3).
+  const names = scope.can('patients.view');
+  const rows: QueueVisitValue[] = [];
+  for (const { row, n, canAct } of shown) {
+    let visit = rows.at(-1);
+    if (visit?.encounterId !== row.encounterId) {
+      visit = {
+        encounterId: row.encounterId,
+        patientId: row.patientId,
+        preferredName: names ? row.preferredName : null,
+        startedAt: row.startedAt.toISOString(),
+        notes: [],
+      };
+      rows.push(visit);
+    }
+    const { note } = n;
+    visit.notes.push({
+      noteId: note.id,
+      noteTypeKey: note.attributes.noteTypeKey as string,
+      author: { userId: note.authorUserId, displayName: authors.get(note.authorUserId) ?? '' },
+      completedAt: note.attributes.completedAt as string | null,
+      signedBefore: before.signed.get(note.id) ?? null,
+      attestedBefore: before.attested.get(note.id) ?? null,
+      canAct,
+    });
+  }
+  return rows;
 }
 
 type Person = { userId: string; displayName: string };
