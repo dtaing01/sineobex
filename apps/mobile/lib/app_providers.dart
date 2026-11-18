@@ -10,6 +10,7 @@ import 'api/transport.dart';
 import 'auth/auth_provider.dart';
 import 'auth/session_controller.dart';
 import 'config/env.dart';
+import 'encounters/encounter_services.dart' show encounterRefreshers;
 import 'encounters/note_definitions.dart' show heldNoteTypes;
 import 'forms/definition_store.dart';
 import 'patients/patient_providers.dart' show patientRefreshers;
@@ -136,12 +137,42 @@ DefinitionStore appDefinitionStore({Future<String> Function() databases = databa
 
 const appVersion = String.fromEnvironment('SINEOBEX_APP_VERSION', defaultValue: '0.2.0');
 
+/// What the sync controller makes for each team database it opens (its `refreshers`): the team
+/// index, the chart cache and the card hook ([patientRefreshers]), then the visits and notes, with
+/// the close sweep among their refreshers ([encounterRefreshers]). Each is made for the person the
+/// [session] unlocked: the patient services with the keys the controller opened the team with, the
+/// encounter services with the credential and name of the same profile, the definitions [sync]
+/// holds, and the engine [sync] just opened for the team, which brings a record that left the phone
+/// back to add to it. Copy link must work on a phone that never downloaded a chart with a card, so
+/// [idLinkBaseUrl] is the sign-in's `/v1/me` address.
+RefresherFactory appRefreshers({
+  required SessionController session,
+  required SyncController Function() sync,
+  String? Function()? idLinkBaseUrl,
+}) => (team) {
+  final controller = sync();
+  final engine = controller.engine;
+  return [
+    ...patientRefreshers(team, idLinkBaseUrl: idLinkBaseUrl?.call()),
+    ...encounterRefreshers(
+      team,
+      person: switch (session.state) {
+        Unlocked(:final user) => user,
+        _ => null,
+      },
+      definitionStore: controller.definitions,
+      openServerRecord: engine != null && identical(engine.store, team.store) ? engine.openServerRecord : null,
+    ),
+  ];
+};
+
 final Provider<SyncController> syncControllerProvider = Provider<SyncController>((ref) {
   final config = ref.watch(appConfigProvider);
   final client = ref.watch(httpClientProvider);
   final session = ref.watch(sessionProvider);
   final linkBase = ref.watch(idLinkBaseProvider);
-  final controller = SyncController(
+  late final SyncController controller;
+  controller = SyncController(
     session: session,
     databaseDirectory: databaseDirectory,
     deviceStore: ref.watch(deviceStoreProvider),
@@ -152,10 +183,7 @@ final Provider<SyncController> syncControllerProvider = Provider<SyncController>
     boot: PlatformBootClock(),
     platform: Platform.isIOS ? RegisterDevicePlatform.ios : RegisterDevicePlatform.android,
     appVersion: appVersion,
-    // The team index, the chart cache and the card hook for each team database it opens. Copy link
-    // must work on a phone that never downloaded a chart with a card, so the card address comes
-    // from the sign-in's /v1/me.
-    refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: linkBase.value),
+    refreshers: appRefreshers(session: session, sync: () => controller, idLinkBaseUrl: () => linkBase.value),
     definitions: appDefinitionStore(),
     // A draft on a version the team's list no longer names still opens offline (forms 3.4).
     heldNoteTypes: heldNoteTypes,
