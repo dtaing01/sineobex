@@ -3116,7 +3116,7 @@ correction's rules (`note-correction.ts`).
 1. **Signing offline is the riskiest rule in the product.** A signature must cover what was
    read. The content hash is the whole defence, so its two implementations are pinned by one
    vector file, the fake uses the same file, and the live job signs against the real API.
-2. **The fake server grows by about a third.** Fourteen rules are mirrored by hand (4.9). Each
+2. **The fake server grows by about a third.** Seventeen rules are mirrored by hand (4.9). Each
    has a parity case; a rule added later without one is plan risk 7 again.
 3. **The status trigger and the finished-note guard put rules in the database.** They are the
    second line, as row-level security is. The first line is still the API, and the guard's error
