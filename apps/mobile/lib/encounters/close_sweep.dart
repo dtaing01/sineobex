@@ -39,12 +39,15 @@ const untouchedDraftLifetime = Duration(days: 7);
 /// saw each open draft and visit as it is now, in the store's key-value table (IDs, a hash of the
 /// fields' versions, and a time: nothing of a patient).
 class CloseSweep implements AfterSyncRefresher {
-  CloseSweep(this.store, {DateTime Function()? now}) : _now = now ?? DateTime.now;
+  CloseSweep(this.store, {DateTime? Function()? now}) : _now = now ?? DateTime.now;
 
   final LocalStore store;
 
-  /// The clock the 7 days are counted by: the phone's, corrected by the clock check.
-  final DateTime Function() _now;
+  /// The clock the 7 days are counted by: the phone's, corrected by the clock check; null while the
+  /// clock check has no reference (a phone restarted offline), when the device's own clock could be
+  /// days off. Then nothing is released for its age and no time is recorded: finished notes still
+  /// close (review LCM-6).
+  final DateTime? Function() _now;
 
   /// The visits and notes a screen shows now, which the screens add and remove: left open, and a
   /// visit's notes with it.
@@ -63,7 +66,7 @@ class CloseSweep implements AfterSyncRefresher {
   List<String> sweep() {
     if (store.frozen) return const [];
     return store.transaction(() {
-      final nowMs = _now().toUtc().millisecondsSinceEpoch;
+      final nowMs = _now()?.toUtc().millisecondsSinceEpoch;
       final waiting = _waiting();
       final records = [for (final id in store.recordIds()) store.record(id)!];
       final notes = [
@@ -73,11 +76,18 @@ class CloseSweep implements AfterSyncRefresher {
       final seen = _readSeen();
       final stillSeen = <String, (String, int)>{};
 
-      /// Whether [r] has been as it is now for the whole lifetime, by this phone's sweeps.
+      /// Whether [r] has been as it is now for the whole lifetime, by this phone's sweeps. With no
+      /// time to count by, what was seen before is kept as it is, and a change is counted from the
+      /// next sweep that has one.
       bool untouched(LocalRecord r) {
         final print = _fingerprint(r);
         final before = seen[r.id];
-        final since = before != null && before.$1 == print ? before.$2 : nowMs;
+        final same = before != null && before.$1 == print;
+        if (nowMs == null) {
+          if (same) stillSeen[r.id] = before;
+          return false;
+        }
+        final since = same ? before.$2 : nowMs;
         stillSeen[r.id] = (print, since);
         return nowMs - since >= untouchedDraftLifetime.inMilliseconds;
       }

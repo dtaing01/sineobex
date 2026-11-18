@@ -307,6 +307,37 @@ void main() {
       expect(sweeper(p).sweep(), [n, visit]);
     });
 
+    test('while the clock has no reference, no draft is released for its age, and no time is counted; a '
+        'finished note still goes (review LCM-6)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final draft = await charted(r, visit, testNote, {'vitals.pulse': 88});
+      final other = r.startEncounter(kind: VisitKind.nonMedical, patientId: patient);
+      final done = await charted(r, other, testNote, {'care.plan': 'Demo: blankets'});
+      r.complete((await r.openComplete(other))!);
+      await sync(p);
+      DateTime? clock = p.wall;
+      final sweep = CloseSweep(p.store, now: () => clock);
+      expect(sweep.sweep(), [done, other]);
+      // Restarted offline, its device clock 8 days ahead: unverified, so it counts for nothing.
+      clock = null;
+      expect(sweep.sweep(), isEmpty);
+      // A change made meanwhile is counted from the next sweep with a verified time.
+      server.offline = true;
+      r.saveAnswer(draft, 'vitals.pulse', 90);
+      server.offline = false;
+      await sync(p);
+      expect(sweep.sweep(), isEmpty);
+      clock = p.wall.add(const Duration(days: 1));
+      expect(sweep.sweep(), isEmpty);
+      clock = p.wall.add(const Duration(days: 7, hours: 23));
+      expect(sweep.sweep(), isEmpty);
+      clock = p.wall.add(const Duration(days: 8));
+      expect(sweep.sweep(), [draft, visit]);
+    });
+
     test('a visit with no note is released the same way, never at once', () async {
       final p = phone(alex);
       server.offline = true;

@@ -73,7 +73,9 @@ class EncounterServices extends ChangeNotifier {
     );
     referrals = Referrals(store, user: user)..onChanged = notifyListeners;
     visitRecords = VisitRecords(store, user: user);
-    sweep = CloseSweep(store, now: corrected);
+    // Only a verified clock counts a draft's 7 days: a phone restarted offline has no reference,
+    // and its own clock may be days ahead.
+    sweep = CloseSweep(store, now: () => team.clock.stamp().correctedTime);
     refreshers = [_NoteTypesRefresher(this), sweep];
     _byStore[store] = this;
   }
