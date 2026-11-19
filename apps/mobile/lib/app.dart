@@ -10,6 +10,8 @@ import 'auth/session_controller.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'design/widgets/demo_banner.dart';
+import 'features/encounters/encounter_screen.dart';
+import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
 import 'features/home/home_screen.dart';
 import 'features/lock/lock_screens.dart';
 import 'features/patients/add_problem_screen.dart';
@@ -112,6 +114,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/patients/:id/problems/:problemId',
         builder: (_, state) =>
             ProblemScreen(patientId: state.pathParameters['id']!, problemId: state.pathParameters['problemId']!),
+      ),
+      // Visits (lifecycle 9.2 to 9.4): UUIDs only, as the patient routes (10.2).
+      GoRoute(
+        path: '/encounters/:id',
+        builder: (_, state) => EncounterScreen(encounterId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/encounters/:id/note-types',
+        builder: (_, state) => NoteTypesScreen(encounterId: state.pathParameters['id']!),
       ),
     ],
   );
