@@ -7,7 +7,9 @@ import { Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
 import { noteRules } from '../sync/entities/note.ts';
 import type { StoredRecord } from '../sync/records.ts';
+import { NoteTitle } from '../patients/schemas.ts';
 import { DateTime, UserRef } from '../sync/schemas.ts';
+import { preferredNames } from './read.ts';
 import { actNote, attestOf, cosignOf, type ActNote } from './second-person.ts';
 
 /**
@@ -26,6 +28,7 @@ export const QueueNote = z
   .object({
     noteId: Uuid,
     noteTypeKey: z.string(),
+    title: NoteTitle,
     author: UserRef,
     completedAt: DateTime.nullable(),
     signedBefore: z.union([UserRef, z.null()]).openapi({
@@ -80,8 +83,6 @@ interface WaitingRow {
   encounterId: string;
   startedAt: Date;
   patientId: string | null;
-  /** The canonical chart's, as a merged ID's chart shows it. */
-  preferredName: string | null;
 }
 
 /** Whether the caller's credential does the queue's act: who may open it. */
@@ -131,11 +132,9 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
       ? tx`n.status = 'completed' and n.medical`
       : tx`n.status = 'signed' and n.attestation = 'waiting'`;
   const waiting = await tx<WaitingRow[]>`
-    select n.id, n.encounter_id, e.started_at, e.patient_id, c.preferred_name
+    select n.id, n.encounter_id, e.started_at, e.patient_id
     from sineobex.encounter_notes n
     join sineobex.encounters e on e.team_id = n.team_id and e.id = n.encounter_id
-    left join sineobex.patients p on p.team_id = e.team_id and p.id = e.patient_id
-    left join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
     where n.team_id = ${teamId} and ${waits}
     order by e.started_at, e.id, n.created_at, n.id`;
 
@@ -160,8 +159,12 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
     tx,
     shown.map((s) => s.n.note.authorUserId),
   );
-  // A preferred name is in every summary patients.view reads (phase 3 design 4.3).
-  const names = scope.can('patients.view');
+  // The canonical chart's, as a merged ID's chart shows it; none without patients.view.
+  const names = await preferredNames(
+    tx,
+    scope,
+    shown.map((s) => s.row.patientId),
+  );
   const rows: QueueVisitValue[] = [];
   for (const { row, n, canAct } of shown) {
     let visit = rows.at(-1);
@@ -169,7 +172,7 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
       visit = {
         encounterId: row.encounterId,
         patientId: row.patientId,
-        preferredName: names ? row.preferredName : null,
+        preferredName: row.patientId ? (names.get(row.patientId) ?? null) : null,
         startedAt: row.startedAt.toISOString(),
         notes: [],
       };
@@ -179,6 +182,8 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
     visit.notes.push({
       noteId: note.id,
       noteTypeKey: note.attributes.noteTypeKey as string,
+      // Listed only with a definition to read it by (above).
+      title: n.read!.type!.title,
       author: { userId: note.authorUserId, displayName: authors.get(note.authorUserId) ?? '' },
       completedAt: note.attributes.completedAt as string | null,
       signedBefore: before.signed.get(note.id) ?? null,

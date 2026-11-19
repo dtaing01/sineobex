@@ -442,11 +442,15 @@ export const AttestationView = z
   })
   .openapi('AttestationView');
 
-// Fields added after phone builds cached a chart's recent visits carry a default, so a copy cached
-// before them still reads (unit L6).
-const Medical = z.boolean().default(false).openapi({
+// Fields added after phone builds cached a chart's recent visits and timeline carry a default, so a
+// copy cached before them still reads, and so does a scripted answer written before them (unit L6).
+export const Medical = z.boolean().default(false).openapi({
   description:
     'A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)',
+});
+export const NoteTitle = z.string().default('').openapi({
+  description:
+    'The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent',
 });
 
 export const NoteHeldBecause = z
@@ -527,6 +531,8 @@ export const TimelineNote = z
   .object({
     noteId: Uuid,
     noteTypeKey: z.string(),
+    title: NoteTitle,
+    medical: Medical,
     group: TimelineGroup,
     status: NoteStatus,
     attestation: Attestation,

@@ -27,6 +27,7 @@ interface Counts {
   cosignWaiting?: number;
   attestationWaiting?: number;
   teamIncomplete?: number;
+  teamOverdue?: number;
 }
 
 const HOUR = 3600_000;
@@ -81,6 +82,7 @@ describe('phase 4: the counts Home shows', () => {
     expect(ana.cosignWaiting).toBe(2);
     expect(ana.attestationWaiting).toBe(1);
     expect(ana).not.toHaveProperty('teamIncomplete');
+    expect(ana).not.toHaveProperty('teamOverdue');
     // A resident co-signs and does not attest.
     const rae = await counts(w.rae.token);
     expect(rae.cosignWaiting).toBe(2);
@@ -100,10 +102,16 @@ describe('phase 4: the counts Home shows', () => {
     expect(eli).toMatchObject({ cosignWaiting: 0, attestationWaiting: 0 });
   });
 
-  it('team.manage_users gets the team’s incomplete notes', async () => {
+  it('team.manage_users gets the team’s incomplete notes, and how many of them are overdue', async () => {
     const admin = await counts(w.t.adminToken);
     expect(admin.teamIncomplete).toBe(await listLength(w.t.adminToken, '/v1/team/incomplete-notes', 'notes'));
     expect(admin.teamIncomplete).toBeGreaterThanOrEqual(2);
+    // The list's own overdue, so Home's "2 are older than a day" never disagrees with the list (9.12).
+    const list = await get(w, w.t.adminToken, '/v1/team/incomplete-notes');
+    const overdue = ((list.body as Json).notes as { overdue: boolean }[]).filter((n) => n.overdue).length;
+    expect(admin.teamOverdue).toBe(overdue);
+    expect(overdue).toBeGreaterThanOrEqual(1);
+    expect(overdue).toBeLessThan(admin.teamIncomplete!);
     // Program Admin's credential here is none: no queue's number.
     expect(admin).not.toHaveProperty('cosignWaiting');
   });
@@ -111,7 +119,7 @@ describe('phase 4: the counts Home shows', () => {
   it('any member may ask; a role that charts nothing gets no number of a list it may not open', async () => {
     for (const token of [w.kim.token, w.bea.token]) {
       const c = await counts(token);
-      for (const key of ['cosignWaiting', 'attestationWaiting', 'teamIncomplete'])
+      for (const key of ['cosignWaiting', 'attestationWaiting', 'teamIncomplete', 'teamOverdue'])
         expect(c).not.toHaveProperty(key);
     }
     // Billing/Data charts nothing, so has no notes to finish either.

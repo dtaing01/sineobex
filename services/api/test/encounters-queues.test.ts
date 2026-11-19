@@ -32,6 +32,7 @@ import { clinician, noteOn, type Clinician, type HeldNote, type Json } from './s
 interface QueueNote {
   noteId: string;
   noteTypeKey: string;
+  title: string;
   author: { userId: string; displayName: string };
   completedAt: string;
   signedBefore: { userId: string; displayName: string } | null;
@@ -157,6 +158,7 @@ describe('phase 4: the co-sign and attestation queues', () => {
       expect(noteIn(rowOf(r.rows, oldest), oldest.note)).toEqual({
         noteId: oldest.note.noteId,
         noteTypeKey: oldest.note.type.key,
+        title: oldest.note.type.title,
         author: person(w.sol),
         completedAt: await completedAt(oldest.note),
         signedBefore: null,
@@ -279,6 +281,7 @@ describe('phase 4: the co-sign and attestation queues', () => {
       expect(noteIn(rowOf(r.rows, first), first.note)).toEqual({
         noteId: first.note.noteId,
         noteTypeKey: first.note.type.key,
+        title: first.note.type.title,
         author: person(w.rae),
         completedAt: await completedAt(first.note),
         signedBefore: null,

@@ -1576,6 +1576,11 @@
             "description": "The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users",
             "minimum": 0,
             "type": "integer"
+          },
+          "teamOverdue": {
+            "description": "How many of the team’s drafts are overdue, as that list says each is; team.manage_users",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "type": "object"
@@ -1809,6 +1814,19 @@
               "authorActive": {
                 "description": "The author is still an active member of the team",
                 "type": "boolean"
+              },
+              "preferredName": {
+                "default": null,
+                "description": "The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "default": "",
+                "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+                "type": "string"
               }
             },
             "required": [
@@ -3829,6 +3847,11 @@
               }
             ],
             "description": "Who signed it before, when a correction sent it back; null otherwise"
+          },
+          "title": {
+            "default": "",
+            "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+            "type": "string"
           }
         },
         "required": [
@@ -5074,6 +5097,11 @@
           "group": {
             "$ref": "#/components/schemas/TimelineGroup"
           },
+          "medical": {
+            "default": false,
+            "description": "A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)",
+            "type": "boolean"
+          },
           "noteId": {
             "format": "uuid",
             "type": "string"
@@ -5083,6 +5111,11 @@
           },
           "status": {
             "$ref": "#/components/schemas/NoteStatus"
+          },
+          "title": {
+            "default": "",
+            "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+            "type": "string"
           }
         },
         "required": [

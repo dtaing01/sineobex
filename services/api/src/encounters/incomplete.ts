@@ -5,7 +5,8 @@ import type { Tx } from '../db/database.ts';
 import { Uuid } from '../routes/schemas.ts';
 import { DefinitionError, definitionOf } from '../sync/records.ts';
 import { DateTime, UserRef } from '../sync/schemas.ts';
-import { readerOf, seenBy } from './read.ts';
+import { NoteTitle } from '../patients/schemas.ts';
+import { preferredNames, readerOf, seenBy } from './read.ts';
 import { isOverdue } from './rules.ts';
 
 /**
@@ -16,7 +17,8 @@ import { isOverdue } from './rules.ts';
  * A note is listed as the timeline lists it (timeline.ts): one the reader may not read is absent,
  * and so is a phase 2 note with no version or one whose definition the server cannot read (6.4
  * rule 2). Whoever acts as a note's author reads all of it (rule 1), so the caller's own list holds
- * every draft of theirs. Nothing a note holds is listed: its type, its visit and its patient's ID.
+ * every draft of theirs. Nothing a note holds is listed: its type, its visit and its patient, whom
+ * the team's list names as the queues do (preferredNames).
  */
 
 export const NoteToFinish = z
@@ -34,6 +36,11 @@ export const NoteToFinish = z
   .openapi('NoteToFinish');
 
 export const IncompleteNote = NoteToFinish.extend({
+  title: NoteTitle,
+  preferredName: z.string().nullable().default(null).openapi({
+    description:
+      'The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view',
+  }),
   author: UserRef.openapi({ description: 'Whoever acts as the author: the assignee, when there is one' }),
   authorActive: z.boolean().openapi({ description: 'The author is still an active member of the team' }),
 }).openapi('IncompleteNote');
@@ -96,6 +103,11 @@ export async function draftsAsRead(
     return definitions.get(at)!;
   };
   const now = scope.deps.now().toISOString();
+  const names = await preferredNames(
+    tx,
+    scope,
+    rows.map((r) => r.patientId),
+  );
   const notes: IncompleteNoteValue[] = [];
   for (const r of rows) {
     let type: ResolvedNoteType | undefined;
@@ -112,7 +124,9 @@ export async function draftsAsRead(
       noteId: r.noteId,
       encounterId: r.encounterId,
       patientId: r.patientId,
+      preferredName: r.patientId ? (names.get(r.patientId) ?? null) : null,
       noteTypeKey: r.noteTypeKey,
+      title: type.title,
       startedAt,
       overdue: isOverdue({
         noteStatus: 'draft',

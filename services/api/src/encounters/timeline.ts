@@ -18,8 +18,9 @@ import { noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
  * The patient timeline (lifecycle 5.2): a merged group's visits, newest first, each with the notes
  * the reader may see, by the visit read's rules (read.ts: readerOf, seenBy and statusShown); and the
  * last three visits in full, so the phone's chart cache can show what happened last time with no
- * signal (PRD main 533). Nothing a note holds is listed: only its type, group and state, so no
- * finding of a sensitive exam reaches the overview for any reader (6.4 rule 3).
+ * signal (PRD main 533). Nothing a note holds is listed: only its type (its key and title), group,
+ * whether it is Medical and its state, so no finding of a sensitive exam reaches the overview for
+ * any reader (6.4 rule 3).
  */
 
 /** Visits per page of the timeline: the chart's first page, and each of "Show earlier visits". */
@@ -95,6 +96,8 @@ export async function timelineVisits(
     shown.get(n.encounterId)!.push({
       noteId: n.id,
       noteTypeKey: n.noteTypeKey,
+      title: type.title,
+      medical: n.medical,
       group: type.group,
       status: n.status,
       attestation: n.attestation,

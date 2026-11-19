@@ -1592,6 +1592,8 @@ export interface components {
             notesToFinish?: number;
             /** @description The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users */
             teamIncomplete?: number;
+            /** @description How many of the team’s drafts are overdue, as that list says each is; team.manage_users */
+            teamOverdue?: number;
         };
         IdentityCorrection: {
             baseVersion: number;
@@ -1659,6 +1661,16 @@ export interface components {
             author: components["schemas"]["UserRef"] & unknown;
             /** @description The author is still an active member of the team */
             authorActive: boolean;
+            /**
+             * @description The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view
+             * @default null
+             */
+            preferredName: string | null;
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         IncompleteNotes: {
             notes: components["schemas"]["IncompleteNote"][];
@@ -2239,6 +2251,11 @@ export interface components {
             noteTypeKey: string;
             /** @description Who signed it before, when a correction sent it back; null otherwise */
             signedBefore: components["schemas"]["UserRef"] | null;
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         QueueVisit: {
             /** Format: uuid */
@@ -2617,10 +2634,20 @@ export interface components {
         TimelineNote: {
             attestation: components["schemas"]["NoteAttestation"];
             group: components["schemas"]["TimelineGroup"];
+            /**
+             * @description A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+             * @default false
+             */
+            medical: boolean;
             /** Format: uuid */
             noteId: string;
             noteTypeKey: string;
             status: components["schemas"]["NoteStatus"];
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         TimelinePage: {
             /** @description Newest first, at most 50 */

@@ -41,7 +41,15 @@ interface TimelineVisit {
   startedAt: string;
   kind: string;
   status: string;
-  notes: { noteId: string; noteTypeKey: string; group: string; status: string; attestation: string }[];
+  notes: {
+    noteId: string;
+    noteTypeKey: string;
+    title: string;
+    medical: boolean;
+    group: string;
+    status: string;
+    attestation: string;
+  }[];
 }
 interface Chart {
   canonicalId: string;
@@ -147,14 +155,20 @@ describe('phase 4: the timeline and recent visits', () => {
       expect(c.timeline.encounters).toHaveLength(4);
       const e = entryOf(c, visit.encounterId)!;
       expect(e).toMatchObject({ encounterId: visit.encounterId, kind: 'medical', startedAt: ago(1) });
+      // Each note with its type's title and whether it is Medical, so no page reads the note types
+      // list to word it (unit L6).
       expect(e.notes.find((n) => n.noteId === plain.noteId)).toEqual({
         noteId: plain.noteId,
         noteTypeKey: TEST_MEDICAL_TYPE.key,
+        title: TEST_MEDICAL_TYPE.title,
+        medical: true,
         group: 'clinical',
         status: 'signed',
         attestation: 'waiting',
       });
       expect(e.notes.find((n) => n.noteId === talk.noteId)).toMatchObject({
+        title: TEST_SENSITIVE_TYPE.title,
+        medical: false,
         group: 'psych',
         status: 'draft',
       });

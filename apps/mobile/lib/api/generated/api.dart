@@ -2661,6 +2661,7 @@ class HomeCounts {
     this.notesOverdue,
     this.notesToFinish,
     this.teamIncomplete,
+    this.teamOverdue,
   });
 
   /// Visits in the attestation queue (GET /v1/team/attestation-queue); encounters.chart and a credential that attests
@@ -2673,6 +2674,8 @@ class HomeCounts {
   final int? notesToFinish;
   /// The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users
   final int? teamIncomplete;
+  /// How many of the team’s drafts are overdue, as that list says each is; team.manage_users
+  final int? teamOverdue;
 
   factory HomeCounts.fromJson(Map<String, dynamic> json) => HomeCounts(
         attestationWaiting: json['attestationWaiting'] == null ? null : (json['attestationWaiting'] as num).toInt(),
@@ -2680,6 +2683,7 @@ class HomeCounts {
         notesOverdue: json['notesOverdue'] == null ? null : (json['notesOverdue'] as num).toInt(),
         notesToFinish: json['notesToFinish'] == null ? null : (json['notesToFinish'] as num).toInt(),
         teamIncomplete: json['teamIncomplete'] == null ? null : (json['teamIncomplete'] as num).toInt(),
+        teamOverdue: json['teamOverdue'] == null ? null : (json['teamOverdue'] as num).toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2688,6 +2692,7 @@ class HomeCounts {
         if (notesOverdue != null) 'notesOverdue': notesOverdue!,
         if (notesToFinish != null) 'notesToFinish': notesToFinish!,
         if (teamIncomplete != null) 'teamIncomplete': teamIncomplete!,
+        if (teamOverdue != null) 'teamOverdue': teamOverdue!,
       };
 }
 
@@ -2864,6 +2869,8 @@ class IncompleteNote {
     required this.startedAt,
     required this.author,
     required this.authorActive,
+    this.preferredName,
+    this.title,
   });
 
   final String encounterId;
@@ -2876,6 +2883,10 @@ class IncompleteNote {
   final Object? author;
   /// The author is still an active member of the team
   final bool authorActive;
+  /// The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view
+  final String? preferredName;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory IncompleteNote.fromJson(Map<String, dynamic> json) => IncompleteNote(
         encounterId: json['encounterId'] as String,
@@ -2886,6 +2897,8 @@ class IncompleteNote {
         startedAt: DateTime.parse(json['startedAt'] as String),
         author: json['author'],
         authorActive: json['authorActive'] as bool,
+        preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2897,6 +2910,8 @@ class IncompleteNote {
         'startedAt': startedAt.toUtc().toIso8601String(),
         'author': author,
         'authorActive': authorActive,
+        if (preferredName != null) 'preferredName': preferredName == null ? null : preferredName!,
+        if (title != null) 'title': title!,
       };
 }
 
@@ -4706,6 +4721,7 @@ class QueueNote {
     required this.noteId,
     required this.noteTypeKey,
     required this.signedBefore,
+    this.title,
   });
 
   /// Who attested it last, when a correction sent it back; null otherwise
@@ -4718,6 +4734,8 @@ class QueueNote {
   final String noteTypeKey;
   /// Who signed it before, when a correction sent it back; null otherwise
   final UserRef? signedBefore;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory QueueNote.fromJson(Map<String, dynamic> json) => QueueNote(
         attestedBefore: json['attestedBefore'] == null ? null : UserRef.fromJson(json['attestedBefore'] as Map<String, dynamic>),
@@ -4727,6 +4745,7 @@ class QueueNote {
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         signedBefore: json['signedBefore'] == null ? null : UserRef.fromJson(json['signedBefore'] as Map<String, dynamic>),
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -4737,6 +4756,7 @@ class QueueNote {
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'signedBefore': signedBefore == null ? null : signedBefore!.toJson(),
+        if (title != null) 'title': title!,
       };
 }
 
@@ -5921,31 +5941,41 @@ class TimelineNote {
   const TimelineNote({
     required this.attestation,
     required this.group,
+    this.medical,
     required this.noteId,
     required this.noteTypeKey,
     required this.status,
+    this.title,
   });
 
   final NoteAttestation attestation;
   final TimelineGroup group;
+  /// A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+  final bool? medical;
   final String noteId;
   final String noteTypeKey;
   final NoteStatus status;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory TimelineNote.fromJson(Map<String, dynamic> json) => TimelineNote(
         attestation: NoteAttestation.fromJson(json['attestation'] as String),
         group: TimelineGroup.fromJson(json['group'] as String),
+        medical: json['medical'] == null ? null : json['medical'] as bool,
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         status: NoteStatus.fromJson(json['status'] as String),
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'attestation': attestation.toJson(),
         'group': group.toJson(),
+        if (medical != null) 'medical': medical!,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'status': status.toJson(),
+        if (title != null) 'title': title!,
       };
 }
 

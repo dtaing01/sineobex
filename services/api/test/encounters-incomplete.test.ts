@@ -15,7 +15,7 @@ import {
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean, mergeDirect } from './patient-fixtures.ts';
 import { addMember, clinician, noteOn, type Clinician, type HeldNote, type Json } from './sync-fixtures.ts';
 
 // GET /v1/me/notes-to-finish and GET /v1/team/incomplete-notes (lifecycle 3.9, 5.6): draft notes
@@ -31,11 +31,16 @@ interface Row {
   noteTypeKey: string;
   startedAt: string;
   overdue: boolean;
+  title?: string;
+  preferredName?: string | null;
   author?: { userId: string; displayName: string };
   authorActive?: boolean;
 }
 
 const HOUR = 3600_000;
+
+// The team's list names each patient (lifecycle 9.12); nothing a note holds is in either list.
+const ANSWERS = SECRETS.filter((s) => s !== 'Demo Robin');
 const PLAN = { 'care.plan': 'Demo: rest and fluids' };
 
 describe('phase 4: notes that are not complete', () => {
@@ -197,16 +202,21 @@ describe('phase 4: notes that are not complete', () => {
       for (const n of [fresh, late, unverifiedRecent, unverifiedLate, noPatient, teammates, departedDraft])
         expect(rows.has(n.noteId), n.noteId).toBe(true);
       for (const n of [empty, done]) expect(rows.has(n.noteId)).toBe(false);
+      // The note type's title and the patient's preferred name, so the page reads neither the note
+      // types list nor a chart to word a row (unit L6).
       expect(rows.get(late.noteId)).toEqual({
         noteId: late.noteId,
         encounterId: late.encounterId,
         patientId: other,
+        preferredName: 'Demo Sasha',
         noteTypeKey: TEST_NOTE_TYPE.key,
+        title: TEST_NOTE_TYPE.title,
         startedAt: await startOf(late),
         overdue: true,
         author: { userId: lou.id, displayName: 'Lou (demo)' },
         authorActive: true,
       });
+      expect(rows.get(noPatient.noteId)).toMatchObject({ patientId: null, preferredName: null });
       expect(rows.get(departedDraft.noteId)).toMatchObject({
         author: { userId: departed.id, displayName: 'Gil (demo)' },
         authorActive: false,
@@ -216,7 +226,15 @@ describe('phase 4: notes that are not complete', () => {
       // An assigned note's author is whoever acts as it now.
       expect(rows.get(handed.noteId)).toMatchObject({ author: { userId: lou.id }, authorActive: true });
       expect(rows.get(teammates.noteId)).toMatchObject({ author: { userId: w.ana.id }, overdue: true });
-      expectNoneOf(r.body, [...SECRETS, 'Demo Sasha']);
+      expectNoneOf(r.body, ANSWERS);
+    });
+
+    it('names a merged patient by the chart they were merged into, as the queues do', async () => {
+      const merged = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Robin R' })).id;
+      const n = await draftOf(lou, 4, { patientId: merged });
+      await mergeDirect(h, w.t.teamId, merged, w.patientId, w.t.adminId);
+      const rows = byId((await list(w.t.adminToken, '/v1/team/incomplete-notes')).notes);
+      expect(rows.get(n.noteId)).toMatchObject({ patientId: merged, preferredName: w.preferredName });
     });
 
     it('takes an author filter, by ID', async () => {
@@ -236,9 +254,14 @@ describe('phase 4: notes that are not complete', () => {
       expect(byId((await list(w.t.adminToken, '/v1/team/incomplete-notes')).notes).has(note.noteId)).toBe(
         true,
       );
-      const rows = byId((await list(ros.token, '/v1/team/incomplete-notes')).notes);
+      const r = await list(ros.token, '/v1/team/incomplete-notes');
+      const rows = byId(r.notes);
       expect(rows.has(note.noteId)).toBe(false);
       expect(rows.has(teammates.noteId)).toBe(true);
+      // Without patients.view, no patient's name: a preferred name is in every summary that key
+      // reads (phase 3 design 4.3), and in none without it.
+      expect(rows.get(teammates.noteId)).toMatchObject({ patientId: w.patientId, preferredName: null });
+      expectNoneOf(r.body, [w.preferredName, 'Demo Sasha']);
     });
 
     it('is logged as a view of the patients it shows, with how many notes', async () => {
