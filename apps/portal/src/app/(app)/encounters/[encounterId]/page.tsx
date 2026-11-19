@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { UUID } from '@/app/(app)/patients/chart';
 import { api, PortalApiError, unwrap } from '@/lib/api';
+import { ASSIGNED_STATES, assignedState, assigneeOptions } from '@/lib/assign';
 import { addendumEntry, ENCOUNTER_KIND, madeAtRows, startedText } from '@/lib/encounters';
 import { HANDOFF_STATES, handoffState } from '@/lib/handoff';
+import { can, currentUser } from '@/lib/me';
 import { SIGNED_STATES, signedState, signPlan } from '@/lib/sign';
 import styles from '../encounters.module.css';
+import { AssignForm } from './AssignForm';
 import { HandoffExport } from './HandoffExport';
 import { NoteView, Trail } from './NoteView';
 import { SignActions } from './SignActions';
@@ -32,11 +35,29 @@ async function loadVisit(encounterId: string): Promise<Schemas['VisitRead']> {
 }
 
 /**
+ * Who may be assigned each note, for a person who may assign (lifecycle 5.5, 9.12): the assignees
+ * route's answer, asked of every note shown. It answers 200 only for a note whose author has left,
+ * and the page offers Assign exactly there; a 409 or a 404 is a note it doesn't offer.
+ */
+async function assigneesOf(notes: Schemas['VisitNote'][]): Promise<Map<string, Schemas['NoteAssignee'][]>> {
+  const client = await api();
+  const answers = await Promise.all(
+    notes.map(async (n) => {
+      const { data, response } = await client.GET('/v1/notes/{noteId}/assignees', {
+        params: { path: { noteId: n.noteId } },
+      });
+      return response.ok && data ? ([n.noteId, data.assignees] as const) : null;
+    }),
+  );
+  return new Map(answers.filter((a) => a !== null));
+}
+
+/**
  * The visit page (lifecycle 9.7, 9.11), read-only: the envelope, each note the reader may see with
  * its recap, its sections and what hangs off it, and the records made at the visit. Export EMS
  * handoff (PDF) shows when the API says the export would give the file (`hasHandoff`); Co-sign and
- * Attest, at the bottom, when it marks a note the reader may act on (`canCosign`, `canAttest`). Each
- * act loads the page again after it.
+ * Attest, at the bottom, when it marks a note the reader may act on (`canCosign`, `canAttest`);
+ * Assign, under a note, when its assignees route answers. Each act loads the page again after it.
  */
 export default async function VisitPage({
   params,
@@ -47,10 +68,19 @@ export default async function VisitPage({
 }) {
   const { encounterId } = await params;
   const visit = await loadVisit(encounterId);
+  const { team } = await currentUser();
+  const assignees = can(team, 'team.manage_users') ? await assigneesOf(visit.notes) : new Map();
   const query = await searchParams;
   const handoff = handoffState(query.handoff);
   const signed = signedState(query.signed);
-  const notice = handoff ? HANDOFF_STATES[handoff] : signed ? SIGNED_STATES[signed] : null;
+  const assigned = assignedState(query.assign);
+  const notice = handoff
+    ? HANDOFF_STATES[handoff]
+    : signed
+      ? SIGNED_STATES[signed]
+      : assigned
+        ? ASSIGNED_STATES[assigned]
+        : null;
   const patient = visit.patientId ? (visit.preferredName ?? 'No name recorded') : 'No patient recorded';
   const started = startedText(visit.startedAt, visit.clockVerified);
   const records = madeAtRows(visit.records, visit.patientId);
@@ -133,7 +163,21 @@ export default async function VisitPage({
       {visit.notes.length === 0 ? (
         <p className="px-panel">No notes to show.</p>
       ) : (
-        visit.notes.map((note) => <NoteView key={note.noteId} note={note} />)
+        visit.notes.map((note) => {
+          const offered = assignees.get(note.noteId);
+          return (
+            <NoteView key={note.noteId} note={note}>
+              {offered && (
+                <AssignForm
+                  encounterId={visit.encounterId}
+                  noteId={note.noteId}
+                  title={note.title || 'Note'}
+                  options={assigneeOptions(offered)}
+                />
+              )}
+            </NoteView>
+          );
+        })
       )}
 
       {records.length > 0 && (

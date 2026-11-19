@@ -1,4 +1,5 @@
 import type { Schemas } from '@sineobex/contract';
+import type { ReactNode } from 'react';
 import { heldBecauseText, noteState, noteTrail, replacedBy, type TrailEntry } from '@/lib/encounters';
 import styles from '../encounters.module.css';
 
@@ -86,9 +87,10 @@ export function Trail({ entries }: { entries: TrailEntry[] }) {
 
 /**
  * A note of the visit, read-only (lifecycle 9.7, 9.11): its title and state, who wrote it, why it
- * waits for someone else when the API says so, its recap, its sections, and what hangs off it.
+ * waits for someone else when the API says so, its recap, its sections, and what hangs off it; then
+ * what the page offers on this note alone (Assign).
  */
-export function NoteView({ note }: { note: Schemas['VisitNote'] }) {
+export function NoteView({ note, children }: { note: Schemas['VisitNote']; children?: ReactNode }) {
   const heading = `note-${note.noteId}`;
   const state = noteState(note);
   const waiting = (note.status === 'completed' && note.medical) || note.attestation === 'waiting';
@@ -128,6 +130,7 @@ export function NoteView({ note }: { note: Schemas['VisitNote'] }) {
           <Trail entries={trail} />
         </div>
       )}
+      {children}
     </article>
   );
 }
