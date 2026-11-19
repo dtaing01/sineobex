@@ -769,6 +769,38 @@ test('a second press while the visit loads again after Co-sign sends nothing: th
   expect(await audited('clinician@example.com', v.patient, 'note.cosigned')).toBe(1);
 });
 
+test('a press the route answers with a problem: the alert takes focus, and a second failure is said again', async ({
+  page,
+}) => {
+  // Review finding PAX-1: the button is disabled while it sends, so focus fell to the page's body,
+  // and the same problem twice changed nothing a screen reader would hear.
+  const v = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS]]);
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/encounters/${v.id}`);
+  const sign = /\/encounters\/[0-9a-f-]{36}\/sign$/;
+  await page.route(sign, (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ problem: 'Something went wrong. Try again.' }),
+    }),
+  );
+  const section = page.getByRole('region', { name: 'Co-sign' });
+  const button = section.getByRole('button', { name: 'Co-sign' });
+  await button.focus();
+  await page.keyboard.press('Enter');
+  const alert = section.getByRole('alert');
+  await expect(alert).toHaveText('Something went wrong. Try again.');
+  await expect(alert).toBeFocused();
+  const first = await alert.elementHandle();
+  await button.focus();
+  await page.keyboard.press('Enter');
+  await expect(alert).toBeFocused();
+  // A new alert, which a screen reader announces again.
+  expect(await first!.evaluate((e) => e.isConnected)).toBe(false);
+  await page.unroute(sign);
+  expect((await visitAsJordan(v.id)).notes[0]!.status).toBe('completed');
+});
+
 test('an act refused for the person: a credential changed since the page was read loads the visit again and says so, and a dropped connection sends nothing', async ({
   page,
 }) => {

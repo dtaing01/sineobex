@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { samePlan, SIGN_ACTS, visitAfter, type SignAct, type SignAnswer, type SignPlan } from '@/lib/sign';
 import styles from '../encounters.module.css';
 
@@ -36,6 +36,13 @@ export function SignActions({
   // page, and the button must not come back while it loads (review finding PAC-1).
   const [leaving, setLeaving] = useState(false);
   const busy = sending || leaving;
+  // A problem takes focus, which fell to the page while the button was off, each time it comes
+  // (review finding PAX-1). Cleared at each press, so the same problem again is a new alert.
+  const alert = useRef<HTMLParagraphElement>(null);
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    if (problem) alert.current?.focus();
+  }, [problem, tries]);
   const words = SIGN_ACTS[act];
   const heading = `${act}-heading`;
   const changed = !samePlan(read?.notes ?? [], plan?.notes ?? []);
@@ -46,11 +53,17 @@ export function SignActions({
     window.location.assign(to);
   }
 
+  function fail(text: string) {
+    setProblem(text);
+    setTries((n) => n + 1);
+  }
+
   function press() {
     if (!read || changed) {
       leave(visitAfter(encounterId, 'changed'));
       return;
     }
+    setProblem('');
     startSending(async () => {
       let answer: SignAnswer;
       try {
@@ -69,14 +82,14 @@ export function SignActions({
         }
         answer = (await response.json()) as SignAnswer;
       } catch {
-        setProblem('Nothing was sent. Check the connection and try again.');
+        fail('Nothing was sent. Check the connection and try again.');
         return;
       }
       if ('go' in answer) {
         leave(answer.go);
         return;
       }
-      setProblem(answer.problem);
+      fail(answer.problem);
     });
   }
 
@@ -104,7 +117,7 @@ export function SignActions({
         </p>
       )}
       {problem && (
-        <p role="alert" className="px-alert px-alert--error">
+        <p ref={alert} tabIndex={-1} role="alert" className="px-alert px-alert--error">
           {problem}
         </p>
       )}

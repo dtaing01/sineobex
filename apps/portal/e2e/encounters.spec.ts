@@ -505,12 +505,32 @@ test('@responsive the timeline lists a chart’s visits and referrals, and Show 
   const pages = await audited('clinician@example.com', chart.recordId, 'chart.timeline_viewed');
   // Empty, the notice is there for a screen reader and takes no room in the panel.
   await expect(timeline.getByRole('status')).toHaveCSS('position', 'absolute');
+
+  // The connection drops: an alert that takes focus, said again when it drops again (review
+  // finding PAX-1).
+  const earlier = /\/encounters\/earlier$/;
+  await page.route(earlier, (route) => route.abort('internetdisconnected'));
+  const show = timeline.getByRole('button', { name: 'Show earlier visits' });
+  await show.focus();
+  await page.keyboard.press('Enter');
+  const alert = timeline.getByRole('alert');
+  await expect(alert).toHaveText('Earlier visits couldn’t be loaded. Check the connection and try again.');
+  await expect(alert).toBeFocused();
+  const first = await alert.elementHandle();
+  await show.focus();
+  await page.keyboard.press('Enter');
+  await expect(alert).toBeFocused();
+  expect(await first!.evaluate((e) => e.isConnected)).toBe(false);
+  await expectAccessible(page, 'timeline, earlier visits failed', { inPlace: true });
+  await page.unroute(earlier);
+
   await timeline.getByRole('button', { name: 'Show earlier visits' }).click();
   await expect(visitLinks).toHaveCount(52);
   // Focus moves to the first visit the page added, and there is nothing earlier to show.
   await expect(visitLinks.nth(50)).toBeFocused();
   await expect(visitLinks.nth(50)).toHaveAttribute('href', `/encounters/${visits[1]!.recordId}`);
   await expect(timeline.getByRole('status')).toHaveText('2 earlier visits shown.');
+  await expect(timeline.getByRole('alert')).toHaveCount(0);
   await expect(timeline.getByRole('status')).toHaveCSS('position', 'static');
   await expect(timeline.getByRole('button', { name: 'Show earlier visits' })).toHaveCount(0);
   // The next page is logged by the API once, and the chart is not read again.

@@ -33,6 +33,10 @@ export function Timeline({
   const links = useRef(new Map<string, HTMLAnchorElement>());
   const heading = useRef<HTMLHeadingElement>(null);
   const focusOn = useRef<string | null>(null);
+  // A problem takes focus, which fell to the page while the button was off, each time it comes
+  // (review finding PAX-1). Cleared at each press, so the same problem again is a new alert.
+  const alert = useRef<HTMLParagraphElement>(null);
+  const [tries, setTries] = useState(0);
   const visits = [
     ...firstPage,
     ...earlier.filter((v) => !firstPage.some((f) => f.encounterId === v.encounterId)),
@@ -46,9 +50,19 @@ export function Timeline({
     }
   }, [earlier]);
 
+  useEffect(() => {
+    if (problem) alert.current?.focus();
+  }, [problem, tries]);
+
+  function fail(text: string) {
+    setProblem(text);
+    setTries((n) => n + 1);
+  }
+
   function showEarlier() {
     const before = visits.at(-1)?.encounterId;
     if (!before) return;
+    setProblem('');
     startLoading(async () => {
       let answer: EarlierAnswer;
       try {
@@ -66,7 +80,7 @@ export function Timeline({
         }
         answer = (await response.json()) as EarlierAnswer;
       } catch {
-        setProblem('Earlier visits couldn’t be loaded. Check the connection and try again.');
+        fail('Earlier visits couldn’t be loaded. Check the connection and try again.');
         return;
       }
       if ('go' in answer) {
@@ -74,10 +88,9 @@ export function Timeline({
         return;
       }
       if ('problem' in answer) {
-        setProblem(answer.problem);
+        fail(answer.problem);
         return;
       }
-      setProblem('');
       setMore(answer.more);
       const shown = new Set(visits.map((v) => v.encounterId));
       const fresh = answer.visits.filter((v) => !shown.has(v.encounterId));
@@ -137,7 +150,7 @@ export function Timeline({
         {notice}
       </p>
       {problem && (
-        <p role="alert" className="px-alert px-alert--error">
+        <p ref={alert} tabIndex={-1} role="alert" className="px-alert px-alert--error">
           {problem}
         </p>
       )}
