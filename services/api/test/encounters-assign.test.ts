@@ -6,10 +6,12 @@ import {
   createWorld,
   eventsAfter,
   finish,
+  get,
   noteRow,
   noticesOf,
   post,
   removeMember,
+  roleWith,
   SECRETS,
   setCredential,
   staleToken,
@@ -25,7 +27,7 @@ import {
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import type { Credential } from '../src/auth/permissions.ts';
-import { clinician, noteOn, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
+import { addMember, clinician, noteOn, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
 
 // POST /v1/notes/{noteId}/assign (lifecycle 3.8, 5.5, PRD main 461): a Program Admin puts another
 // clinician in the place of a note's author who has left the team. team.manage_users and a recent
@@ -187,6 +189,25 @@ describe('phase 4: assign a note', () => {
       expect((r.body as Json).error?.code).toBe('cannot_see_all');
       expect((await noteRow(h, inMedical.noteId)).assignedUserId).toBeNull();
       expect((await assign(inSocial.noteId, w.eli.id)).status).toBe(200);
+    });
+
+    it('a note the caller may not read is 404, as its assignees route answers, whatever its state, and nothing is written or logged', async () => {
+      // Review finding PAC-3: the act took a note its picker hid as not found, and answered 409 about
+      // the state of another. A role that manages the team without reading a Medical note.
+      const role = await roleWith(h, w.t, 'Roster keeper', ['team.manage_users']);
+      const ros = await addMember(h, w.t, 'roster-keeper@example.com', 'Roster keeper (demo)', role);
+      const { c, v } = await departed('resident');
+      await gone(c);
+      const active = await chartedVisit(w, w.rae);
+      const mark = await auditMark(h);
+      for (const note of [v.note, active.note]) {
+        expect((await get(w, ros.token, `/v1/notes/${note.noteId}/assignees`)).status).toBe(404);
+        const r = await assign(note.noteId, w.nia.id, ros.token);
+        expect(r.status).toBe(404);
+        expect((r.body as Json).error?.code).toBe('not_found');
+      }
+      await unassigned(v);
+      expect(await eventsAfter(h, mark)).toEqual([]);
     });
 
     it('a note the team does not have is 404; a reason too short or too long is 422', async () => {

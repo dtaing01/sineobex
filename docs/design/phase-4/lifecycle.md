@@ -3215,7 +3215,10 @@ As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `as
 - **The body** is `AssignInput`, strict; the answer `NoteAssigned`, `{ assignmentId, noteId,
   fromUserId, toUserId }`. The key is asked first, then the recent sign-in: without one, 403
   `reauth_required`, not logged (10.1).
-- **Under the team lock** the note is loaded for update; one the team does not have is 404.
+- **Under the team lock** the note is loaded for update; one the team does not have, or the
+  caller may not read (`noteAsRead`), is 404, as the assignees route answers, so the act and its
+  picker agree on the note and no answer tells the state of one the caller may not read (6.4 rule
+  5; review finding PAC-3).
 - **What `mayAssign` is given**: whether whoever acts as the author is an active member; whether
   the assignee is one and holds `encounters.chart`; the rank needed, from the credential the
   note's current signature was recorded under, else from its writer's credential on their

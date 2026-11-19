@@ -210,7 +210,8 @@ async function assignDecision(tx: Tx, a: AssignedNote, assignee: Member | undefi
 /**
  * POST /v1/notes/{noteId}/assign. The route has checked team.manage_users and a recent sign-in.
  * The team lock is the first statement, then the note is loaded for update, as every online writer
- * does (lifecycle 5). A refusal is a state the admin can see on the page (409) or a person the
+ * does (lifecycle 5). A note the team does not have, or the caller may not read, is 404, as the
+ * assignees route answers. A refusal is a state the admin can see on the page (409) or a person the
  * picker should not have offered (422); neither writes anything. On success: a note_assignments
  * row, the note's assigned_user_id, one note.assigned event whose details name the two people and
  * not the reason, and a notice with no text to the assignee.
@@ -224,7 +225,9 @@ export function assignNote(
     const teamId = scope.team.teamId;
     await lockTeamWrites(tx, teamId);
     const note = await noteRules.load(tx, noteId, true);
-    if (!note || note.teamId !== teamId) throw notFound('note');
+    // A note the caller may not read is not found, as its assignees route answers, so no answer
+    // tells its state (6.4 rule 5; review finding PAC-3).
+    if (!note || note.teamId !== teamId || !(await noteAsRead(tx, scope, note))) throw notFound('note');
     const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
     if (!visit) throw notFound('note');
 
