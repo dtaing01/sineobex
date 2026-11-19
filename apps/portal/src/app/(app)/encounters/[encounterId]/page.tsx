@@ -5,7 +5,9 @@ import { notFound } from 'next/navigation';
 import { UUID } from '@/app/(app)/patients/chart';
 import { api, PortalApiError, unwrap } from '@/lib/api';
 import { addendumEntry, ENCOUNTER_KIND, madeAtRows, startedText } from '@/lib/encounters';
+import { HANDOFF_STATES, handoffState } from '@/lib/handoff';
 import styles from '../encounters.module.css';
+import { HandoffExport } from './HandoffExport';
 import { NoteView, Trail } from './NoteView';
 
 // Never a name: titles land in the history and on screen shares (lifecycle 10.2).
@@ -29,11 +31,20 @@ async function loadVisit(encounterId: string): Promise<Schemas['VisitRead']> {
 
 /**
  * The visit page (lifecycle 9.7, 9.11), read-only: the envelope, each note the reader may see with
- * its recap, its sections and what hangs off it, and the records made at the visit.
+ * its recap, its sections and what hangs off it, and the records made at the visit. Export EMS
+ * handoff (PDF) shows when the API says the export would give the file (`hasHandoff`).
  */
-export default async function VisitPage({ params }: { params: Promise<{ encounterId: string }> }) {
+export default async function VisitPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ encounterId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { encounterId } = await params;
   const visit = await loadVisit(encounterId);
+  const handoff = handoffState((await searchParams).handoff);
+  const notice = handoff ? HANDOFF_STATES[handoff] : null;
   const patient = visit.patientId ? (visit.preferredName ?? 'No name recorded') : 'No patient recorded';
   const started = startedText(visit.startedAt, visit.clockVerified);
   const records = madeAtRows(visit.records, visit.patientId);
@@ -55,6 +66,11 @@ export default async function VisitPage({ params }: { params: Promise<{ encounte
             </li>
           </ul>
         </nav>
+      )}
+      {notice && (
+        <p role="status" className={`px-alert px-alert--${notice.tone}`}>
+          {notice.text}
+        </p>
       )}
 
       <section aria-labelledby="visit-heading" className="px-panel">
@@ -93,6 +109,20 @@ export default async function VisitPage({ params }: { params: Promise<{ encounte
           </div>
         )}
       </section>
+
+      {visit.hasHandoff && (
+        <section aria-labelledby="handoff-heading" className="px-panel">
+          <h2 id="handoff-heading" className="px-h2">
+            EMS handoff
+          </h2>
+          <p className="sx-help">
+            EMS was called at this visit. The handoff is a PDF for the crew, stamped with your name and the
+            time. Nothing from a sensitive note or exam is in it. You may be asked to confirm it’s you first,
+            and each export is logged.
+          </p>
+          <HandoffExport encounterId={visit.encounterId} />
+        </section>
+      )}
 
       {visit.notes.length === 0 ? (
         <p className="px-panel">No notes to show.</p>

@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
 import {
   apiCall,
   expectAccessible,
   expectNothingStored,
   expectReflow,
+  IDP,
+  MFA_CODE,
   signIn,
   staffToken,
   watchCsp,
@@ -17,6 +21,7 @@ import { newPatient, newSurname, phoneOf, type PhoneChange } from './phone-recor
 const patient = (n: number) => `5eed0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const visit = (n: number) => `5eed2000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const MARCUS = patient(15); // visit 1: a resident's Red flags note, attested a day later; a Social needs note
+const OUTREACH = visit(2); // Pepe's Non-Medical outreach visit: no Red flags note
 const WOUND = visit(3); // the attending's wound note, a measurement corrected the next day
 
 test.describe.configure({ mode: 'serial' });
@@ -42,7 +47,26 @@ async function audited(email: string, patientId: string, action: string): Promis
 /** The visit page's addresses, and the patient page's: IDs only. */
 function expectOnlyIds(addresses: string[]) {
   for (const address of addresses)
-    expect(address).toMatch(/\/(patients|encounters)\/[0-9a-f-]{36}$|\/(home|sign-in.*)$/);
+    expect(address).toMatch(
+      /\/(patients|encounters)\/[0-9a-f-]{36}(\?handoff=[a-z_]+)?$|\/(home|sign-in.*|reauth.*)$/,
+    );
+}
+
+/** The text a PDF draws: pdf-lib writes each page as a Flate stream, each string in hex. */
+function pdfText(bytes: Buffer): string {
+  const raw = bytes.toString('latin1');
+  const out: string[] = [];
+  for (const m of raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+    let content: string;
+    try {
+      content = inflateSync(Buffer.from(m[1]!, 'latin1')).toString('latin1');
+    } catch {
+      continue;
+    }
+    for (const t of content.matchAll(/<([0-9A-Fa-f]*)>\s*Tj/g))
+      out.push(Buffer.from(t[1]!, 'hex').toString('latin1'));
+  }
+  return out.join(' ');
 }
 
 /** The items of the trail under a note: sign-offs, attestations, corrections, addenda. */
@@ -99,7 +123,8 @@ test('@responsive a resident’s signed note, attested the next day, opened from
   await expect(trail(page, 'Social needs')).toHaveText([
     'Completed by Casey Nguyen (demo), Resident, Oct 20, 2026, 12:25 PM',
   ]);
-  // Nothing on the page changes the visit.
+  // EMS was not activated: nothing to export. Nothing on the page changes the visit.
+  await expect(page.getByRole('region', { name: 'EMS handoff' })).toHaveCount(0);
   await expect(main.getByRole('button')).toHaveCount(0);
   await expect(main.locator('form')).toHaveCount(0);
 
@@ -289,4 +314,152 @@ test('@responsive the timeline lists a chart’s visits and referrals, and Show 
     `/patients/${chart.recordId}`,
   );
   await expectAccessible(page, 'visit page, a record made at it');
+});
+
+test.describe('the EMS handoff', () => {
+  // The browser's time zone, which the export sends: the file's times are printed in it.
+  test.use({ timezoneId: 'America/Chicago' });
+
+  let emsVisit = '';
+  let emsPatient = '';
+
+  test.beforeAll(async () => {
+    const phone = await phoneOf('clinician@example.com');
+    const chart = newPatient({ preferredName: `Ash ${newSurname()}` }, 60);
+    emsVisit = randomUUID();
+    emsPatient = chart.recordId;
+    await phone.send(
+      chart,
+      {
+        entity: 'encounter',
+        recordId: emsVisit,
+        op: 'create',
+        value: {
+          kind: 'medical',
+          patientId: chart.recordId,
+          locationText: 'Demo: by the made-up river walk',
+        },
+        minutesAgo: 30,
+      },
+      {
+        entity: 'encounter_note',
+        recordId: randomUUID(),
+        op: 'create',
+        value: {
+          encounterId: emsVisit,
+          noteTypeKey: 'red_flags_disposition',
+          noteTypeVersion: 1,
+          data: {
+            'red_flags.emergency': 'yes',
+            'red_flags.ems_activated': 'yes',
+            'red_flags.ems_time': '14:05',
+          },
+        },
+        minutesAgo: 29,
+      },
+    );
+  });
+
+  test('Export EMS handoff (PDF) asks for a fresh sign-in, sends the browser’s time zone and keeps the file’s name', async ({
+    page,
+  }) => {
+    // Billing/Data reads the Red flags note. Their sign-in is dated back an hour, so the export
+    // goes through /reauth first.
+    const stale = await fetch(`${IDP}/test/stale-sign-in`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'billing@example.com', minutes: 60 }),
+    });
+    expect(stale.status).toBe(200);
+    await signIn(page, 'billing@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto(`/encounters/${emsVisit}`);
+    const handoff = page.getByRole('region', { name: 'EMS handoff' });
+    const exportButton = handoff.getByRole('button', { name: 'Export EMS handoff (PDF)' });
+    await expect(exportButton).toBeVisible();
+    await expectAccessible(page, 'visit page with a handoff');
+
+    await exportButton.click();
+    await expect(page).toHaveURL(/\/reauth\?next=/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`/encounters/${emsVisit}\\?handoff=reauthed$`));
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(
+      'You confirmed it’s you. Export the handoff again.',
+    );
+    await expectAccessible(page, 'visit page after /reauth');
+
+    const reads = await audited('billing@example.com', emsPatient, 'encounter.viewed');
+    const exports = await audited('billing@example.com', emsPatient, 'ems_handoff.exported');
+    const sent = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/ems-handoff'));
+    const downloaded = page.waitForEvent('download');
+    await exportButton.click();
+    const [request, download] = await Promise.all([sent, downloaded]);
+    expect(new URLSearchParams(request.postData() ?? '').get('timeZone')).toBe('America/Chicago');
+    expect(download.suggestedFilename()).toBe('ems-handoff.pdf');
+    const file = readFileSync(await download.path());
+    expect(file.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    const text = pdfText(file);
+    expect(text).toContain('EMS handoff');
+    expect(text).toContain('America/Chicago');
+    expect(text).toContain('Exported by Riley Chen (demo)');
+
+    // The page stays as it was: the export reads the visit for the file, and the page is not read again.
+    await expect(page).toHaveURL(new RegExp(`/encounters/${emsVisit}\\?handoff=reauthed$`));
+    expect(await audited('billing@example.com', emsPatient, 'ems_handoff.exported')).toBe(exports + 1);
+    expect(await audited('billing@example.com', emsPatient, 'encounter.viewed')).toBe(reads);
+    expectOnlyIds(traffic.addresses);
+    await expectNothingStored(page, 'visit page with a handoff');
+    expect(csp).toEqual([]);
+  });
+
+  test('no_handoff and cannot_see_red_flags come back as states of the visit page, and another site can’t export', async ({
+    page,
+  }) => {
+    // The CHW preset reads no Medical note: the page offers no export.
+    await signIn(page, 'chw@example.com');
+    await page.goto(`/encounters/${emsVisit}`);
+    await expect(page.getByRole('region', { name: 'EMS handoff' })).toHaveCount(0);
+
+    // A form sent from a page loaded before something changed comes back as a state, not an error.
+    const refused = await page.request.post(`/encounters/${emsVisit}/ems-handoff`, {
+      form: { timeZone: 'America/Chicago' },
+      maxRedirects: 0,
+    });
+    expect(refused.status()).toBe(303);
+    expect(refused.headers().location).toMatch(
+      new RegExp(`/encounters/${emsVisit}\\?handoff=cannot_see_red_flags$`),
+    );
+    await page.goto(`/encounters/${emsVisit}?handoff=cannot_see_red_flags`);
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(
+      'Only someone who may read the visit’s Red flags note may export its handoff.',
+    );
+    await expectAccessible(page, 'visit page, cannot_see_red_flags');
+
+    const none = await page.request.post(`/encounters/${OUTREACH}/ems-handoff`, {
+      form: { timeZone: 'America/Chicago' },
+      maxRedirects: 0,
+    });
+    expect(none.status()).toBe(303);
+    expect(none.headers().location).toMatch(new RegExp(`/encounters/${OUTREACH}\\?handoff=no_handoff$`));
+    await page.goto(`/encounters/${OUTREACH}?handoff=no_handoff`);
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(
+      'This visit has no EMS handoff: EMS was not activated in it.',
+    );
+    await expectAccessible(page, 'visit page, no_handoff');
+
+    // Only a POST from the portal's own page exports: not another site's form, and not a link.
+    const exports = await audited('chw@example.com', emsPatient, 'ems_handoff.exported');
+    const elsewhere = await page.request.post(`/encounters/${emsVisit}/ems-handoff`, {
+      form: { timeZone: 'America/Chicago' },
+      headers: { origin: 'https://elsewhere.example.com' },
+      maxRedirects: 0,
+    });
+    expect(elsewhere.status()).toBe(403);
+    expect(
+      (await page.request.get(`/encounters/${emsVisit}/ems-handoff`, { maxRedirects: 0 })).status(),
+    ).toBe(405);
+    expect(await audited('chw@example.com', emsPatient, 'ems_handoff.exported')).toBe(exports);
+  });
 });
