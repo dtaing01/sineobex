@@ -1,5 +1,4 @@
 import {
-  effectiveAnswers,
   readModel,
   recapLines,
   visibleAnswers,
@@ -8,7 +7,7 @@ import {
   type ResolvedNoteType,
 } from '@sineobex/forms';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
-import { CAPABILITIES, mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
+import { mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { notFound } from '../lib/errors.ts';
 import type { VisitNoteValue, VisitReadValue } from '../patients/schemas.ts';
@@ -20,13 +19,13 @@ import {
   byDefinition,
   DefinitionError,
   noteReader,
-  sameValue,
   snapshot,
   type StoredRecord,
 } from '../sync/records.ts';
 import type { AnyRecordEntityName } from '../sync/schemas.ts';
 import { noteContentHash } from './content-hash.ts';
 import { encounterStatus, noteIsEmpty, type NoteStatus } from './rules.ts';
+import { actNote, maySecondSign } from './second-person.ts';
 
 /**
  * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
@@ -386,11 +385,10 @@ export async function visitAsRead(
   );
   const user = (id: string) => ({ userId: id, displayName: names.get(id) ?? '' });
 
-  const can = CAPABILITIES[scope.team.credential];
-  const mayAct = scope.can('encounters.chart') && (can.sign || can.attest);
   const notes: VisitNoteValue[] = [];
   for (const read of reads) {
     const { note, type, answers, reader, seen } = read;
+    const second = await actNote(tx, scope, visit, note, read);
     await viewed('note.viewed', 'encounter_note', note.id);
     const shownSignoffs = signoffs.filter((s) => s.noteId === note.id);
     const shownAddenda = addenda.filter((a) => a.noteId === note.id);
@@ -403,16 +401,18 @@ export async function visitAsRead(
     for (const c of shownCorrections) await viewed('note.viewed', 'note_correction', c.id);
     for (const a of shownAttestations) await viewed('note.viewed', 'note_attestation', a.id);
 
-    const sees = (): boolean => byDefinition(() => sameValue(seen, effectiveAnswers(type, answers)));
     // The hash to co-sign or attest with: whoever may act on the note and sees all of it (lifecycle
-    // 5.1, 5.3, 5.4), besides those who get every sign-off's. Never over a summary the reader may not read.
+    // 5.1, 5.3, 5.4; second-person.ts), besides those who get every sign-off's. Never over a summary
+    // the reader may not read.
     //
     // Unlike D86's rule for the sign-offs' hashes, this one asks what the note holds: a reader who
     // may co-sign or attest learns from a missing hash that the note holds content they may not
     // see. The queue's canAct already tells them that (5.4 rule 4), and the online act needs the
     // hash, so the coordinator kept it (review finding LRD-3). The sync read keeps D86: it sends no
     // note's hash, and a sign-off's only by signoffHashShown.
-    const hashShown = !hideMedical && (reader.actsAsAuthor || readsWhole(reader) || (mayAct && sees()));
+    const hashShown =
+      !hideMedical &&
+      (reader.actsAsAuthor || readsWhole(reader) || (maySecondSign(scope) && second.seesAllThatCounts));
     const attrs = note.attributes as {
       noteTypeKey: string;
       noteTypeVersion: number;

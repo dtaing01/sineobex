@@ -8,8 +8,7 @@ import { loadEncounter } from '../sync/entities/encounter.ts';
 import { noteRules } from '../sync/entities/note.ts';
 import type { StoredRecord } from '../sync/records.ts';
 import { DateTime, UserRef } from '../sync/schemas.ts';
-import { attestOf } from './attest.ts';
-import { actNote, cosignOf, type ActNote } from './cosign.ts';
+import { actNote, attestOf, cosignOf, type ActNote } from './second-person.ts';
 
 /**
  * The co-sign queue and the attestation queue (lifecycle 3.7, 5.4): team-wide, every attending sees
@@ -19,8 +18,8 @@ import { actNote, cosignOf, type ActNote } from './cosign.ts';
  * read at all is absent, as on the timeline, and a row left with no note is absent too. A note they
  * may read but not act on is listed with canAct false, so the queue can say why it waits for
  * someone else: an answer they may not see (6.4 rule 4), or a note they wrote or signed. canAct is
- * the act's own rule (cosignOf, attestOf) asked as if the hash matched, so the queue and the act
- * never disagree. Nothing a note holds is listed: its type, author and times only.
+ * the act's own rule (second-person.ts: cosignOf, attestOf) asked as if the hash matched, so the
+ * queue and the act never disagree. Nothing a note holds is listed: its type, author and times only.
  */
 
 export const QueueNote = z
