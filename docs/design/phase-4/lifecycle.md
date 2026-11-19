@@ -2794,10 +2794,11 @@ just changed.
 | # | Route | Key | Credential |
 |---|---|---|---|
 | 5.1 | `GET /v1/encounters/{encounterId}` | `patients.view` | none |
-| 5.2 | `GET /v1/patients/{patientId}` (existing) gains `timeline` and `recentVisits`; `GET /v1/patients/{patientId}/timeline` | `patients.view` | none |
+| 5.2 | `GET /v1/patients/{patientId}` (existing) gains `timeline`, and the phone's `POST /v1/patients/charts` `timeline` and `recentVisits` (as built, unit L6); `GET /v1/patients/{patientId}/timeline` | `patients.view` | none |
 | 5.3 | `POST /v1/encounters/{encounterId}/cosign` | `encounters.chart` | `sign` |
 | 5.4 | `GET /v1/team/cosign-queue`, `GET /v1/team/attestation-queue`, `POST /v1/encounters/{encounterId}/attest` | `encounters.chart` | `sign` for the first; `attest` for the other two |
 | 5.5 | `POST /v1/notes/{noteId}/assign` | `team.manage_users`, and a recent sign-in | none |
+| 5.5 | `GET /v1/notes/{noteId}/assignees` (unit L6) | `team.manage_users` | none |
 | 5.6 | `GET /v1/me/notes-to-finish`, `GET /v1/team/incomplete-notes`, `GET /v1/me/counts` | `encounters.chart`; `team.manage_users`; any member | none |
 | 5.7 | `GET /v1/encounters/{encounterId}/ems-handoff` | `patients.view`, and a recent sign-in | none |
 
@@ -2805,11 +2806,26 @@ As built (unit L2, with its review): `registerEncounterRoutes`, which `services/
 calls, holds the eleven operations, `getEncounter`, `getPatientTimeline`, `cosignEncounter`,
 `getCosignQueue`, `getAttestationQueue`, `attestEncounter`, `assignNote`, `getNotesToFinish`,
 `getIncompleteNotes`, `getHomeCounts` and `getEmsHandoff`; the phone's generated client has every
-one but the last, whose answer is a file (5.7). The team scope checks each key before the route's
+one but the last, whose answer is a file (5.7). Unit L6 added a twelfth, `getNoteAssignees` (5.5),
+for the portal's Assign picker. The team scope checks each key before the route's
 transaction and logs its refusal as `access.denied` with the key and the route's pattern; a route
 that needs a recent sign-in asks for it after the key. A credential is checked by the act's own
 rule (5.3, 5.4). Co-sign and attest read the caller's membership again once the team lock is
 theirs (5.3).
+
+As built for the portal (unit L6, its API job; the coordinator's decisions of Nov 19, with the
+review of the unit's earlier build): the routes answer what the portal's pages would otherwise
+work out, so a page holds no rule of its own. Who may co-sign or attest a note is decided in one
+module, `services/api/src/encounters/second-person.ts` (`actNote`, `cosignOf`, `attestOf`,
+`maySecondSign`, `secondPersonView`), which co-sign, attest, the queues' `canAct` and the visit
+read's `canCosign`, `canAttest` and `heldBecause` all ask (5.1, 5.3, 5.4). A patient is named by
+`preferredNames` (`read.ts`) wherever a list or the visit read names one: the chart's, or the
+chart's they were merged into, and only to a reader with `patients.view` (5.1, 5.4, 5.6). Each
+field added to an answer carries a default in the contract (a field a phone may hold from before
+it is optional there), so a chart's timeline or recent visit cached before it, and a scripted
+answer written before it, still reads (`encounters-read-actions.test.ts`, "the contract"). No
+page reads `GET /v1/forms/note-types`, which may install presets: each list gives each note's
+`title`.
 
 As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/encounter_api.dart`,
 with its review): `EncounterApi` calls, through the generated client and as the person in the open
@@ -2953,13 +2969,37 @@ As built (unit L2, with its review; `services/api/src/encounters/read.ts`, `getE
   an ID that is not a UUID 422; neither is logged.
 - **The audit**: one event per record returned, as the sync read logs it (10.1), each on its
   entity and ID, with its patient and `{ source }`: `phone` when the request comes from a
-  registered phone of the reader's, else `portal` (`chart` and `cache` for a chart's recent
-  visits, 5.2). The visit is `encounter.viewed`. Each note, sign-off, addendum, correction and
+  registered phone of the reader's, else `portal` (`cache` for the phone's cached chart's recent
+  visits, 5.2; `chart`, for the portal's chart read, went with unit L6). The visit is
+  `encounter.viewed`. Each note, sign-off, addendum, correction and
   attestation is `note.viewed`, on `encounter_note`, `note_signoff`, `note_addendum`,
   `note_correction` or `note_attestation`. Each record made at the visit is `patient.viewed` on
   its own entity and its own patient, which can be another chart's.
 - The visit read gives `locationText` to every reader; the Open above about a Medical visit's
   still stands.
+
+As built for the portal's visit page (unit L6, 9.11), `VisitRead` and `VisitNote` also answer:
+
+- **`preferredName`**: the patient's, from the chart they were merged into when they were, as a
+  queue row names them (`preferredNames`); null for a visit with no patient.
+- **`hasHandoff`**: a Red flags note the reader reads shows its `show_handoff` action, asked by the
+  export's own test (`showsHandoff`, `handoff.ts`) of every Red flags note the reader may read, so
+  the page offers Export EMS handoff (PDF) exactly when the route would give the file; false for a
+  reader who may not read that note, whom the export refuses `cannot_see_red_flags` (5.7).
+- **Each note's `medical`**, beside its `title`.
+- **`canCosign` and `canAttest`**: the act's own rule (`cosignOf`, `attestOf`) asked of the reader
+  as if the hash they would send matched, as a queue's `canAct` is, and false for a role without
+  `encounters.chart`, which the routes refuse. The page sends exactly the notes so marked, each with
+  its `contentHash` (5.3, 5.4).
+- **`heldBecause`**, for a note that waits for a co-signature or an attestation the reader may not
+  give, when the act's refusal is about the note and not their credential or role: `wrote` (they
+  wrote it), `acts_as_author` (it was assigned to them; an assignee is never told they wrote it),
+  `completed` (they completed it, as whoever acted as its author then), `signed` (its current
+  signature is theirs) or `cannot_see_all` (6.4 rule 4). Absent when the note waits for nothing,
+  the reader may act, or their credential or role does not do the act, which the page shows by
+  offering no action.
+
+None of these adds an audit event: the read logs each record it returns, as above.
 
 ### 5.2 The timeline, and recent visits
 
@@ -2985,8 +3025,9 @@ card L4-chart-cache adds `timeline`, `recentVisits` and the referral snapshots t
 As built (unit L2, with its review; `services/api/src/encounters/timeline.ts`):
 
 - **Where.** `GET /v1/patients/{patientId}` and the phone's `POST /v1/patients/charts` carry
-  both. Both are optional in `PatientChart`: a chart shown beside a decision (the duplicate pair
-  page, an identity correction's answer) shows no visit, so it carries neither and logs none.
+  the timeline, and the phone's alone the recent visits (unit L6, below). Both are optional in
+  `PatientChart`: a chart shown beside a decision (the duplicate pair page, an identity
+  correction's answer) shows no visit, so it carries neither and logs none.
 - **`timeline`** is `{ encounters, referrals }`. Each visit is `{ encounterId, startedAt, kind,
   status, notes }`, newest first by its start and then its ID, the first 50 (`TIMELINE_PAGE`).
   Also left out of a visit's notes: a phase 2 note with no version, and a note whose definition
@@ -2997,9 +3038,19 @@ As built (unit L2, with its review; `services/api/src/encounters/timeline.ts`):
   (7) sorts them itself.
 - **`recentVisits`** are the newest three visits of the timeline (`RECENT_VISITS`, PLAN-OPEN
   12.1 #17), each read and logged by the visit read for the same reader (5.1), with `source`
-  `chart` on `GET /v1/patients/{patientId}` and `cache` on `POST /v1/patients/charts`. So each of
-  their notes carries its recap as that reader may see it (D108), which the phone shows from its
-  cached chart offline (8.1, 9.7).
+  `cache`, on `POST /v1/patients/charts` alone (`cachedRecentVisits`). So each of their notes
+  carries its recap as that reader may see it (D108), which the phone shows from its cached chart
+  offline (8.1, 9.7). The portal's chart read, `GET /v1/patients/{patientId}`, carries the
+  timeline alone (`chartTimeline`), part of its own `patient.viewed`, and reads and logs no visit
+  in full: the portal opens a visit on its own page, and a read is logged where it is shown (unit
+  L6; the review of its earlier build found the portal's chart logging three visits' notes it never
+  showed). The visit read's `source` `chart` went with it.
+- **Each timeline note** also has `title` and `medical` (unit L6), so no page reads the note types
+  list to word it.
+- **A referral's snapshot** (the timeline's, the sync read's and the records made at a visit) names
+  who recorded it, `attributes.authorName` (unit L6), as an addendum names its author. A referral
+  keeps no name of its own and the unit added no migration, so it is the recorder's display name
+  now, as a note names who acts as its author (D108).
 - **Earlier visits** (`getPatientTimeline`) needs `patients.view` and answers `{ encounters }`:
   the next 50 after the visit named, by start and then ID, so a visit at the same time as the
   last one shown is not skipped; without `before`, the first page. A merged ID answers its group.
@@ -3129,6 +3180,9 @@ As built (unit L2, with its review; `queues.ts`, `attest.ts`):
 - **The audit**: `cosign_queue.viewed` and `attestation_queue.viewed` name no patient in the
   row's own column and list the patients shown in `details.patientIds`, with `resultCount` (D53;
   10.1).
+- **As built for the portal (unit L6)**: each queue note also has its type's `title`; `canAct` and
+  the act are `second-person.ts`'s, the same rule the visit read's `canCosign` and `canAttest` ask
+  (5.1), and a row's `preferredName` is `preferredNames`'s.
 - **Attest** (`attestEncounter`) takes co-sign's body and gives its answer, and runs as 5.3's
   as-built notes say: the caller read again under the team lock; a note of another visit, or one
   the caller may not read, answered `not_waiting`; a waiting note left out `content_changed`; the
@@ -3179,6 +3233,19 @@ As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `as
   the reason; and a `note_assigned` notice to the assignee, on entity `encounter_note` and the
   note.
 
+As built for the portal's picker (unit L6, 9.12): **`GET /v1/notes/{noteId}/assignees`**
+(`noteAssignees`, `assign.ts`) answers `NoteAssignees`, `{ assignees: [{ userId, displayName,
+credential }] }`, every active member, by name, for whom `mayAssign` allows the note, asked through
+the function the assign route asks (`assignDecision`), so the picker lists exactly the people the
+route takes and holds no copy of the credential ranks. It needs `team.manage_users` and no recent
+sign-in: it is a read, as the list of members and the team's incomplete notes are, and the
+assignment asks for one (decided as built; the job asked for the key alone). A note the team does not have, or
+the caller may not read (`noteAsRead`, as the visit read leaves one out), is 404; a note whose
+acting author is an active member is 409 `author_active`, as the act answers, so the page offers
+Assign only where the list answers 200. Neither is logged (10.1). The list is logged as one
+`note.assignees_viewed` on entity `encounter_note` and the note, with the visit's patient,
+`{ resultCount }`, no name.
+
 ### 5.6 Notes that are not complete
 
 - `GET /v1/me/notes-to-finish`: draft notes the caller acts as the author of. Each row: note and
@@ -3212,7 +3279,7 @@ As built (unit L2, with its review; `incomplete.ts`, `counts.ts`):
   row's own column and list the patients shown in `details.patientIds`, with `resultCount`, and
   the team's list the `author` filter's ID when there is one (10.1).
 - **The counts** (`getHomeCounts`) answer `{ notesToFinish?, notesOverdue?, cosignWaiting?,
-  attestationWaiting?, teamIncomplete? }`. Any member may ask, and a number for a list the caller
+  attestationWaiting?, teamIncomplete?, teamOverdue? }`. Any member may ask, and a number for a list the caller
   may not open is absent: the first two need `encounters.chart`, `cosignWaiting` that and a
   credential that signs, `attestationWaiting` that and one that attests, `teamIncomplete`
   `team.manage_users`. Each is the length of its list, built by the list's own function: the
@@ -3220,6 +3287,11 @@ As built (unit L2, with its review; `incomplete.ts`, `counts.ts`):
   without its audit event, so a number can never drift from its list (the coordinator's decision
   after the review). A queue's number counts every visit the queue shows, those whose notes all
   have `canAct` false included, and the counts write no audit event (both kept as built).
+- **As built for the portal (unit L6)**: `teamOverdue`, beside `teamIncomplete` and under the same
+  key, counts the team's drafts the list marks `overdue`, so Home's "4 notes not complete. 2 are
+  older than a day." (9.12) never disagrees with the list. Each row of the team's list also has its
+  type's `title` and the patient's `preferredName` (`preferredNames`: none without
+  `patients.view`); the caller's own notes to finish name no patient, as before.
 
 ### 5.7 The EMS handoff
 
@@ -3293,6 +3365,11 @@ As built (unit L2, with its review; `services/api/src/encounters/handoff.ts`, `g
 - **The phone never exports it.** The generated Dart client leaves out an operation whose success
   answer is not JSON, with a comment that names it, so no phone code decodes the PDF as JSON
   (review finding LPM-5).
+- **When the page offers it** (unit L6): the visit read's `hasHandoff` is the export's own test
+  (`showsHandoff`), asked of the reader (5.1). The end-to-end tests take the export through
+  `/reauth` with a test hook of the local identity provider, on only where the portal's Playwright
+  config sets `DEV_IDP_TEST_HOOKS=1`: `POST /test/stale-sign-in { email, minutes }` dates that
+  person's next sign-in back (`tools/dev-idp.mjs`; `services/api/test/dev-idp-hooks.test.ts`).
 - **The phone's full-screen summary follows the same rule** (decided Nov 18, D94). It is built for
   EMS's reader too, so it leaves out every note of a sensitive type and every sensitive exam's
   findings whoever shows it (9.8; card F7-handoff).
@@ -4279,12 +4356,13 @@ summary, a reason's text or an addendum's.
 
 | Action | As built |
 |---|---|
-| `encounter.viewed`, `note.viewed`, `patient.viewed` (the visit read, 5.1; a chart's recent visits, 5.2) | One per record returned, on its entity and ID, with its patient, and `{ source }`: `phone` or `portal` for the visit read, `chart` or `cache` for the recent visits a chart carries. A visit is `encounter.viewed`; a note, a sign-off, an addendum, a correction and an attestation are `note.viewed` (on `encounter_note`, `note_signoff`, `note_addendum`, `note_correction`, `note_attestation`); a record made at the visit is `patient.viewed`, on its own entity and its own patient. Not one per visit with `noteIds` |
+| `encounter.viewed`, `note.viewed`, `patient.viewed` (the visit read, 5.1; a cached chart's recent visits, 5.2) | One per record returned, on its entity and ID, with its patient, and `{ source }`: `phone` or `portal` for the visit read, `cache` for the recent visits the phone's cached chart carries (the portal's chart read carries none and logs none, unit L6). A visit is `encounter.viewed`; a note, a sign-off, an addendum, a correction and an attestation are `note.viewed` (on `encounter_note`, `note_signoff`, `note_addendum`, `note_correction`, `note_attestation`); a record made at the visit is `patient.viewed`, on its own entity and its own patient. Not one per visit with `noteIds` |
 | `chart.timeline_viewed` | On entity `patient` and the canonical ID: `resultCount`, and `before` when it was given. Not `count` |
 | `cosign_queue.viewed`, `attestation_queue.viewed`, `notes_to_finish.viewed`, `incomplete_notes.viewed` | No patient in the row's column; `patientIds` (each patient shown, once) and `resultCount`, not `count`; the team's list adds `author` when it is filtered |
 | `note.cosigned` | On entity `encounter_note` and the note, with the visit's patient: `signoffId`, `credential`, `needsAttestation` |
 | `note.attested` | The same entity: `attestationId`, `signoffId` |
 | `note.assigned` | The same entity: `fromUserId`, `toUserId`. Never the reason, which `note_assignments` keeps |
+| `note.assignees_viewed` | The assign picker's list (5.5, unit L6). The same entity, with the visit's patient: `resultCount`, how many people it names. No name, staff's or patient's |
 | `ems_handoff.exported` | On entity `encounter` and the visit, with its patient, as the offline `ems_handoff.shown`: `noteIds` (the notes the file holds, none of a sensitive type) and `source`. No `note.viewed` per note |
 | `access.denied` | A missing key: `permission`, `route`, from the team scope, or from co-sign and attest when the caller's role no longer charts once the team lock is theirs. A rule about the caller: `reason` and `route`, on entity `encounter` and the visit with its patient for co-sign and attest (with `noteIds`: `is_author`, `is_signer`, `cannot_sign`, `cannot_attest`, `cannot_see_all`) and for the handoff (`cannot_see_red_flags`); with no entity for the queues' `cannot_sign` and `cannot_attest`, and for a caller of co-sign or attest who is no longer an active member once the lock is theirs (`not_a_member`) |
 | Not logged | `reauth_required`, and every 409, 422 and 404. When a co-sign or an attest answers a 409 and a note it names was refused about the caller too, that refusal is logged (5.3). `GET /v1/me/counts` writes no event: it names no patient (5.6) |
@@ -4414,7 +4492,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | A visit as the server keeps it on the phone; its kind set back from Medical and its patient removed, refused here | 4.3, 4.8 | `apps/mobile/test/sync/store_encounters_test.dart`, group "the visit as the server keeps it (lifecycle 4.3)"; `apps/mobile/test/sync/local_store_test.dart` ("a fixed encounter create keeps fields cleared since, and the caller’s corrections win") |
 | A visit's `hasFinishedNote` and a note's `everSigned` in the sync read | 4.3, 4.4 | `services/api/test/sync-reads.test.ts` and `apps/mobile/test/sync/fake_reads_test.dart` ("a visit’s snapshot says whether a note the reader is shown is finished, as the envelope lock reads it", "a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names"); the visit's attribute keys in `sync-encounters.test.ts` and `fake_parity_test.dart` |
 | A note's `createdAt`, when the server made it (an admin's accept, for a held create), to the microsecond, in the visit read's order, and moved by no later change; who acts as a note's author named by their name now, a sign-off's signer and a correction's corrector by theirs then; no name with a record the reader is not shown (D108; review findings N2-R1, N2-R2) | 4.4, 4.6, 4.7, 6.4 | `services/api/test/sync-reads.test.ts` and `apps/mobile/test/sync/fake_reads_test.dart` ("a note’s snapshot says when the server made it, the order the visit read gives a visit’s notes in", "notes made within one millisecond keep the visit read’s order: a note’s createdAt is given to the microsecond", "a note whose create was held says it was made when an admin accepted it, not when its push was held", "a note names who acts as its author by their name now; a sign-off its signer and a correction its corrector by theirs then; none goes to a reader the record is not shown", and the attributes of "a note’s snapshot shows its state: attestation, who acts as its author, when it was finished and the signature it names"); a sign-off's and a correction's whole attributes in `fake_parity_test.dart` |
-| Each note's recap in the visit read and the chart's recent visits, the cached chart's included, over what the reader may see; nothing from a sensitive exam, for anyone (D108) | 5.1, 5.2, 6.4, 8.1 | `services/api/test/encounters-read.test.ts` ("each note carries its recap over what the reader may see: a section, a treatment record or a diagnosis hidden from them is in no line"); `encounters-timeline.test.ts` ("the last three visits in full, each as the visit read answers it"); on the phone, `apps/mobile/test/encounters/encounter_api_test.dart` ("each note’s recap lines, as the server worked them out for the reader, online and from the chart (D108)") |
+| Each note's recap in the visit read and the cached chart's recent visits, over what the reader may see; nothing from a sensitive exam, for anyone (D108) | 5.1, 5.2, 6.4, 8.1 | `services/api/test/encounters-read.test.ts` ("each note carries its recap over what the reader may see: a section, a treatment record or a diagnosis hidden from them is in no line"); `encounters-timeline.test.ts` ("the phone’s cached chart carries the last three visits in full, each as the visit read answers it"); on the phone, `apps/mobile/test/encounters/encounter_api_test.dart` ("each note’s recap lines, as the server worked them out for the reader, online and from the chart (D108)") |
 | A sign-off, an addendum and a correction are filed under their patient, and move with the visit's | 4.8 | `apps/mobile/test/sync/store_encounters_test.dart`, group "the patient of a new record (lifecycle 4.8)" |
 | Receipts settle the effect; Sent for review; the held sign-off's notice settles only that sign-off; `finished_differently`; the refresh takes a note's attributes | 4.6, 4.8, 4.10, 9.13 | `apps/mobile/test/sync/store_encounters_test.dart`, group "receipts settle the effect (lifecycle 4.6, 4.8)"; the sentences in `apps/mobile/test/features/sync_labels_test.dart` ("the notices of a note’s life are worded by their kind alone (lifecycle 3.4, 9.13)") |
 | The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
@@ -4429,9 +4507,15 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | The visit read: what each reader is given, the records made at the visit, the same notes and hashes as the sync read; a correction made while its entry held a sensitive diagnosis; who is given a hash; one event per record | 5.1, 6.4 | `services/api/test/encounters-read.test.ts` ("phase 4: read a visit online", "the records made at the visit (lifecycle 9.7, D91)", "phase 4: a correction made while its entry held a sensitive diagnosis", "phase 4: who is given a hash in the visit read"); on the fake, "a correction made while its entry held a sensitive diagnosis stays missing once the code is corrected away, in any order" (`fake_parity_test.dart`) and "no sign-off’s hash over a visit’s summary the reader may not read, their own included" (`fake_reads_test.dart`) |
 | The timeline, recent visits and earlier visits; a visit's status as the reader is shown it | 5.2 | `services/api/test/encounters-timeline.test.ts` ("on the chart", "GET /v1/patients/{patientId}/timeline: earlier visits", "phase 4: a visit’s status, as the reader is shown it"); on the fake, "a visit’s status in the sync read is worked out from the notes the reader may read" (`fake_parity_test.dart`) |
 | The queues: who may open them, what they list, `canAct`, who signed or attested before, the audit | 5.4 | `services/api/test/encounters-queues.test.ts` ("the co-sign queue", "the attestation queue", "phase 4: a queue row of a merged patient") |
+| What the visit read tells the portal's page (unit L6): the patient's preferred name, the chart's they were merged into; `hasHandoff` exactly when the export gives its file; each note's title and `medical`; `canCosign` and `canAttest` equal to the queues' `canAct` for every reader, and taken by the act; `heldBecause` worded truly (an assignee never told they wrote it); nothing to a role that does not chart; each field added with a default | 5, 5.1, 5.3, 5.4 | `services/api/test/encounters-read-actions.test.ts` ("the contract", "the patient and the notes", "whether the visit has an EMS handoff", "what the reader may do as a second person") |
+| Each list's note title and `medical` (unit L6) | 5.2, 5.4, 5.6 | `encounters-timeline.test.ts` ("the group’s visits newest first…"), `encounters-queues.test.ts` (each queue's first case), `encounters-incomplete.test.ts` ("lists every draft of the team…") |
+| The portal's chart read logs no visit or note read; only the phone's cached chart carries and logs the recent visits (unit L6) | 5.2, 10.1 | `encounters-timeline.test.ts` ("the portal’s chart read carries the timeline and no visit in full, and logs no visit or note read", "the recent visits the phone caches are logged as the visit read logs them, from the cache") |
 | Assigning a note | 3.8, 5.5 | `services/api/test/encounters-assign.test.ts` ("who may assign", "what is refused, and how", "what is logged of a refusal", "what an assignment writes, and what it changes") |
-| Overdue after 24 hours, worked out when read; the lists of notes not complete | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` ("notes to finish: the caller’s own drafts", "the team’s incomplete notes") |
-| Home's counts: each its list's length, absent for a list the caller may not open, no patient named or logged | 5.6 | `services/api/test/encounters-counts.test.ts` |
+| Who may be assigned a note: exactly the active members the assign route takes; `team.manage_users` without a recent sign-in; 409, 404 and 422 unlogged; `note.assignees_viewed` (unit L6) | 5.5, 10.1 | `services/api/test/encounters-assignees.test.ts`; its row in `permissions.test.ts` |
+| Overdue after 24 hours, worked out when read; the lists of notes not complete; the team's list names each patient, by the chart they were merged into and only with `patients.view` (unit L6) | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` ("notes to finish: the caller’s own drafts", "the team’s incomplete notes", "names a merged patient by the chart they were merged into, as the queues do") |
+| Home's counts: each its list's length, absent for a list the caller may not open, no patient named or logged; `teamOverdue` the team list's own overdue (unit L6) | 5.6 | `services/api/test/encounters-counts.test.ts` |
+| A referral's snapshot names who recorded it, by their name now (unit L6) | 5.2, 7 | `services/api/test/sync-referrals.test.ts` ("its snapshot names who recorded it, by their name now, wherever it is read"); on the fake, the parity case of the same name (`fake_parity_test.dart`) |
+| The local identity provider's test hook dates only the next sign-in back, and only with `DEV_IDP_TEST_HOOKS=1` (unit L6) | 5.7 | `services/api/test/dev-idp-hooks.test.ts` |
 | The EMS handoff PDF: who may export it, when a visit has one, what reaches EMS whoever exports it, the header, the time zone, each note's state, the stamp, the file's name, the audit | 5.7 | `services/api/test/encounters-handoff.test.ts` ("phase 4: export the EMS handoff as a PDF", through the route; "phase 4: the EMS handoff PDF", the file alone); the Dart client's leaving out of an operation that answers a file in `packages/contract/test/dart.test.ts` |
 | The seeded visits are what sync and the online attest write | 10.2 | `db/test/demo-encounters.test.ts` ("demo visits in the seed", "where the seed charts no visit") |
 | No patient: Non-Medical only. Switching kind | 3.10, 4.3 | `sync-encounters.test.ts` ("the note’s create", "the encounter’s fields"); parity case 3 |
@@ -4443,7 +4527,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | The Medical gate, and the gate of a `needs` section, hold a change for review | 4.2 | `sync-encounters.test.ts` ("the Medical gate"); `sync-reads.test.ts` ("the Medical gate", and the `needs` section that holds the author's create, set and correction); parity case 12 |
 | Every encounter-side change takes the team lock | 4.2 | `sync-encounters.test.ts` ("the team lock": every kind of change, and an encounter naming no patient); `services/api/test/sync-concurrency.test.ts` (two sign-offs and a kind change at once; a sign-off and a correction each wait for another writer) |
 | What is accepted with no effect, in place of a refusal | 4.1 | `sync-corrections.test.ts` ("what is accepted with no effect, in place of a refusal: each row of the second table of 4.1"); `sync-reads.test.ts` (from someone who does not act as the author, whatever their credential); parity case 17 |
-| Each route's permission, and its refusal logged; what is not logged | 5, 6.1, 10.1 | `services/api/test/permissions.test.ts` ("phase 4 encounter routes": each keyed route, the queues' credential refusals, a recent sign-in for assign and the handoff, Home's counts for any member); "what is logged of a refusal" in `encounters-cosign.test.ts`, `encounters-attest.test.ts` and `encounters-assign.test.ts`; a stale sign-in unlogged in `encounters-assign.test.ts` and `encounters-handoff.test.ts` |
+| Each route's permission, and its refusal logged; what is not logged | 5, 6.1, 10.1 | `services/api/test/permissions.test.ts` ("phase 4 encounter routes": each keyed route, the assign picker's list among them, the queues' credential refusals, a recent sign-in for assign and the handoff, Home's counts for any member); "what is logged of a refusal" in `encounters-cosign.test.ts`, `encounters-attest.test.ts` and `encounters-assign.test.ts`; a stale sign-in unlogged in `encounters-assign.test.ts` and `encounters-handoff.test.ts` |
 | Sensitive content is absent, not blanked | 6.4 | `services/api/test/encounters-read.test.ts`; the timeline in `encounters-timeline.test.ts`, the queues in `encounters-queues.test.ts`, the handoff in `encounters-handoff.test.ts`; the sync read in `services/api/test/sync-reads.test.ts` ("the sync read of a note", "what hangs off a note, and referrals"), held on the fake by `apps/mobile/test/sync/fake_reads_test.dart` |
 | A change the sender may not see, or of a note they may not read, is held; a retry is answered as they may see the field; the review queue shows only what the reviewer may read, and only such a reviewer accepts it | 4.4, 6.4 | `sync-reads.test.ts` ("a set of an answer the sender may not see", "a retry is answered from its receipt", "the review queue"); the same groups in `apps/mobile/test/sync/fake_parity_test.dart`, but the queue, which the fake has no route for; the queue page in `apps/portal/src/lib/quarantine.test.ts` and `apps/portal/e2e/phones.spec.ts` |
 | A held sign-off that will not reach the chart tells its sender, once per sign-off | 4.6 | `sync-signoffs.test.ts` ("a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed", "each held sign-off is told once, whether or not an earlier notice was read"); the parity cases of those names; against the real API, `apps/mobile/test/sync/live_api_test.dart` ("each held Complete is told on its own: rejected twice before the first notice’s read arrives"); the phone's half in `apps/mobile/test/sync/store_encounters_test.dart` (group "receipts settle the effect (lifecycle 4.6, 4.8)") |
