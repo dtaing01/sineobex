@@ -139,7 +139,70 @@ test('@responsive a resident’s signed note, attested the next day, opened from
   expect(csp).toEqual([]);
 });
 
-test('a corrected measurement shows the new value, and the old one struck through and read as replaced', async ({
+test('opening a chart logs no visit or note read, and following a visit’s link reads that visit once', async ({
+  page,
+}) => {
+  // The chart carries its timeline only: titles and states, nothing of a note's content. The earlier
+  // build's chart read logged three visits' notes the page never showed.
+  await signIn(page, 'clinician@example.com');
+  const count = (action: string) => audited('clinician@example.com', MARCUS, action);
+  const [charts, visits, notes] = [
+    await count('patient.viewed'),
+    await count('encounter.viewed'),
+    await count('note.viewed'),
+  ];
+  await page.goto(`/patients/${MARCUS}`);
+  const link = page
+    .getByRole('region', { name: 'Timeline' })
+    .getByRole('link', { name: 'Visit on Oct 20, 2026, 12:00 PM' });
+  await expect(link).toBeVisible();
+  expect(await count('patient.viewed')).toBeGreaterThan(charts);
+  expect(await count('encounter.viewed')).toBe(visits);
+  expect(await count('note.viewed')).toBe(notes);
+
+  await link.click();
+  await expect(page.getByRole('article', { name: 'Social needs' })).toBeVisible();
+  expect(await count('encounter.viewed')).toBe(visits + 1);
+  expect(await count('note.viewed')).toBeGreaterThan(notes);
+});
+
+test('@responsive every state the visit page comes back with is a status, accessible in every theme', async ({
+  page,
+}) => {
+  // Each act and each refusal loads the visit again with what to say (lifecycle 9.11, 9.12).
+  await signIn(page, 'clinician@example.com');
+  for (const [query, text] of [
+    ['signed=cosigned', 'Co-signed. Your co-signature is on each note below.'],
+    ['signed=attested', 'Attested. Your attestation is on each note below.'],
+    ['signed=changed', 'This visit changed. Read it again.'],
+    ['signed=cannot_sign', 'Your credential can’t co-sign notes now.'],
+    ['signed=cannot_attest', 'Your credential can’t attest notes now.'],
+    [
+      'assign=done',
+      'Assigned. The note names who acts as its author now, and they can finish or correct it.',
+    ],
+    ['assign=reauthed', 'You confirmed it’s you. Assign the note again.'],
+    ['assign=author_active', 'Someone on the team acts as this note’s author now, so it can’t be assigned.'],
+    ['assign=changed', 'Who may take this note changed. Choose again from the list.'],
+    ['handoff=reauthed', 'You confirmed it’s you. Export the handoff again.'],
+    ['handoff=no_handoff', 'This visit has no EMS handoff: EMS was not activated in it.'],
+    [
+      'handoff=cannot_see_red_flags',
+      'Only someone who may read the visit’s Red flags note may export its handoff.',
+    ],
+    ['handoff=failed', 'The handoff couldn’t be exported. Try again.'],
+  ] as const) {
+    await page.goto(`/encounters/${visit(1)}?${query}`);
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(text);
+    await expectAccessible(page, `visit page, ?${query}`);
+    await expectReflow(page, `visit page, ?${query}`);
+  }
+  // A state the page doesn't know says nothing.
+  await page.goto(`/encounters/${visit(1)}?signed=done`);
+  await expect(page.getByRole('main').getByRole('status')).toHaveCount(0);
+});
+
+test('@responsive a corrected measurement shows the new value, and the old one struck through and read as replaced', async ({
   page,
 }) => {
   // Billing/Data reads Medical notes and changes none.
@@ -178,7 +241,7 @@ test('a corrected measurement shows the new value, and the old one struck throug
   await expectAccessible(page, 'visit page, a corrected answer');
 });
 
-test('a role that reads no Medical notes sees a visit without them, and without its assessment', async ({
+test('@responsive a role that reads no Medical notes sees a visit without them, and without its assessment', async ({
   page,
 }) => {
   await signIn(page, 'chw@example.com');
@@ -364,7 +427,7 @@ test.describe('the EMS handoff', () => {
     );
   });
 
-  test('Export EMS handoff (PDF) asks for a fresh sign-in, sends the browser’s time zone and keeps the file’s name', async ({
+  test('@responsive Export EMS handoff (PDF) asks for a fresh sign-in, sends the browser’s time zone and keeps the file’s name', async ({
     page,
   }) => {
     // Billing/Data reads the Red flags note. Their sign-in is dated back an hour, so the export
@@ -418,7 +481,7 @@ test.describe('the EMS handoff', () => {
     expect(csp).toEqual([]);
   });
 
-  test('no_handoff and cannot_see_red_flags come back as states of the visit page, and another site can’t export', async ({
+  test('@responsive no_handoff and cannot_see_red_flags come back as states of the visit page, and another site can’t export', async ({
     page,
   }) => {
     // The CHW preset reads no Medical note: the page offers no export.
@@ -595,7 +658,7 @@ test.describe('notes not complete, and Assign', () => {
     expect(csp).toEqual([]);
   });
 
-  test('a note whose author left says so and has Assign: the picker lists exactly who the API answers, the act asks for a fresh sign-in, and the assignee is never told they wrote it', async ({
+  test('@responsive a note whose author left says so and has Assign: the picker lists exactly who the API answers, the act asks for a fresh sign-in, and the assignee is never told they wrote it', async ({
     page,
   }) => {
     test.slow();
@@ -775,7 +838,86 @@ test.describe('notes not complete, and Assign', () => {
     }
   });
 
-  test('a role without patients.view lists the team’s drafts with no patient named, no visit or chart link and no Assign', async ({
+  test('@responsive Assign refused: someone chosen who may no longer take the note, or an author back on the team, loads the visit again saying so', async ({
+    page,
+  }) => {
+    test.slow();
+    const phone = await phoneOf('resident@example.com');
+    const name = `Sage ${newSurname()}`;
+    const chart = newPatient({ preferredName: name }, 60);
+    const visitId = randomUUID();
+    await phone.send(
+      chart,
+      {
+        entity: 'encounter',
+        recordId: visitId,
+        op: 'create',
+        value: { kind: 'medical', patientId: chart.recordId },
+        minutesAgo: 50,
+      },
+      {
+        entity: 'encounter_note',
+        recordId: randomUUID(),
+        op: 'create',
+        value: {
+          encounterId: visitId,
+          noteTypeKey: 'outreach',
+          noteTypeVersion: 1,
+          data: { 'outreach.type': 'wellness_check' },
+        },
+        minutesAgo: 49,
+      },
+    );
+
+    let putBack: (() => Promise<void>) | null = await removeForAWhile('resident@example.com');
+    try {
+      await signIn(page, 'admin@example.com');
+      await page.goto(`/encounters/${visitId}`);
+      const note = page.getByRole('article', { name: 'Outreach' });
+      const jordan = 'Jordan Lee (demo), Attending physician';
+      const choose = async () => {
+        await note.getByLabel('Assign to').selectOption({ label: jordan });
+        await note.getByLabel('Reason').fill('Demo: Casey is away from the team');
+      };
+
+      // Jordan moves to a role that doesn't chart after the picker was loaded.
+      await choose();
+      await setRole('clinician@example.com', 'billing_data');
+      try {
+        await note.getByRole('button', { name: 'Assign' }).click();
+        await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=changed$`));
+        await expect(page.getByRole('main').getByRole('status')).toHaveText(
+          'Who may take this note changed. Choose again from the list.',
+        );
+        // The picker, loaded again, lists who may take the note now.
+        await expect(note.getByRole('heading', { name: 'Assign this note' })).toBeVisible();
+        expect(await note.locator('option').allTextContents()).not.toContain(jordan);
+        await expectAccessible(page, 'visit page, assign changed');
+      } finally {
+        await setRole('clinician@example.com', 'healthcare_staff');
+      }
+
+      // Casey is back on the team before the form is sent.
+      await page.goto(`/encounters/${visitId}`);
+      await choose();
+      await putBack();
+      putBack = null;
+      await note.getByRole('button', { name: 'Assign' }).click();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=author_active$`));
+      await expect(page.getByRole('main').getByRole('status')).toHaveText(
+        'Someone on the team acts as this note’s author now, so it can’t be assigned.',
+      );
+      await expect(page.getByRole('main').getByRole('heading', { name: 'Assign this note' })).toHaveCount(0);
+      await expect(note).toContainText('Written by Casey Nguyen (demo).');
+      await expect(note).not.toContainText('Assigned to');
+      await expectAccessible(page, 'visit page, author_active');
+      expect(await audited('admin@example.com', chart.recordId, 'note.assigned')).toBe(0);
+    } finally {
+      if (putBack) await putBack();
+    }
+  });
+
+  test('@responsive a role with team.manage_users and no patients.view lists the team’s drafts with no patient named, no visit or chart link and no Assign, and can’t open a visit', async ({
     page,
   }) => {
     const role = await customRole('Staff desk (demo)', ['team.manage_users']);
@@ -783,6 +925,12 @@ test.describe('notes not complete, and Assign', () => {
     try {
       await signIn(page, 'billing@example.com');
       await expect(portalNav(page).getByRole('link', { name: 'Patients' })).toHaveCount(0);
+      await expect(portalNav(page).getByRole('link', { name: /queue$/ })).toHaveCount(0);
+      // Home counts the one list this role opens.
+      const cards = page.getByRole('main').getByRole('listitem').getByRole('heading', { level: 2 });
+      await expect(cards.filter({ hasText: 'Notes not complete' })).toHaveCount(1);
+      await expect(cards.filter({ hasText: /queue$/ })).toHaveCount(0);
+
       await portalNav(page).getByRole('link', { name: 'Notes not complete' }).click();
       await expect(page).toHaveURL(/\/team\/incomplete-notes$/);
       await expect(page.getByRole('main')).toContainText(
@@ -791,6 +939,24 @@ test.describe('notes not complete, and Assign', () => {
       await expect(page.getByRole('columnheader')).toHaveText(['Note', 'Author', 'Visit started']);
       await expect(page.getByRole('main').getByRole('link')).toHaveCount(0);
       await expectAccessible(page, 'notes not complete, no patients.view');
+      await expectReflow(page, 'notes not complete, no patients.view');
+
+      // A visit or a chart typed in goes Home: the API refuses the read and logs the refusal.
+      for (const path of [`/encounters/${visit(1)}`, `/patients/${MARCUS}`]) {
+        await page.goto(path);
+        await expect(page).toHaveURL(/\/home\?denied=1$/);
+        await expect(page.getByRole('main').getByRole('alert')).toHaveText(
+          'Your role doesn’t allow that screen. The attempt was logged.',
+        );
+      }
+      await expectAccessible(page, 'Home, a visit refused');
+      // So does an export sent from a page loaded before the role changed.
+      const refused = await page.request.post(`/encounters/${visit(1)}/ems-handoff`, {
+        form: { timeZone: 'America/Chicago' },
+        maxRedirects: 0,
+      });
+      expect(refused.status()).toBe(303);
+      expect(refused.headers().location).toMatch(/\/home\?denied=1$/);
     } finally {
       await setRole('billing@example.com', 'billing_data');
     }
