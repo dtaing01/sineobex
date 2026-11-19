@@ -3913,6 +3913,31 @@ As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with i
   form each answer two people changed (forms 8.1 as built). A choice on a conflict is made in the
   store; the screen syncs after it, as Needs attention does (the coordinator's decision, L5).
 
+As built (the screens, unit L5, `apps/mobile/lib/features/encounters/note_screen.dart`):
+
+- **The frame.** A note opens at `/notes/<id>` under the fixed title "Note": the visit's patient by
+  their preferred name and phase 3's allergy badge (by phase 3's `allergyBadge`, from the records
+  the phone holds of the patient's merged group, else the team's index), then the note's type, its
+  state and, for a teammate's note, who acts as its author. A finished note opens as its read view;
+  a draft the person may not change now (sent for review, a Medical draft to a credential that
+  can't chart Medical) as the form with nothing to change. While charting is paused for the clock
+  the form is read-only and says why. Read through `openNote`, each read logging what it adds.
+- **Read-only answers (D92).** `NoteForm` takes no list of them yet, and the form is the forms
+  part's: an answer `readOnlyAt` says is read-only is refused by `saveAnswer` ("You can’t change
+  this answer.") and the form is drawn again from what the store holds, the refused answer's
+  section open. The field is not drawn read-only before it is tapped; that needs a `readOnly`
+  parameter on `NoteForm`.
+- **Save & Close** saves the box being typed in, pops the visit's screens to the patient's chart
+  (the chart under them when it is this patient's, else it opens; Home for a visit with no
+  patient) and asks for a sync; **Continue** opens the summary.
+- **The form's actions** (card F7-actions): `open_note_type` is offered where its type can be
+  started in the visit (the note types list offers it; a Medical type needs a Medical visit with a
+  patient) and opens `addNote`'s note; the Red flags note goes through `addRedFlagsNote`, and when
+  a teammate's finished one makes the person's needless, that one opens read-only. `add_referral`,
+  on a visit with a patient and to someone with `referrals.create`, opens Add referral
+  (`referrals_sheet.dart`: a date, today by default, and the details; the sheet's list and
+  Entered in error are card L5-referrals'). `show_handoff` opens the handoff (9.8).
+
 ### 9.6 The summary, and Complete
 
 "Every encounter ends on a summary screen" (PRD main 433). From top to bottom:
@@ -3974,6 +3999,25 @@ nothing of its own.
   answer.", where item 6 gives a hand-worded example. The clock's sentence is the store's
   (`ChartingPaused`), and hard stop 2's "Something about this visit waits in Needs attention. Fix it
   there first, then complete again.".
+
+As built (the screens, unit L5, `apps/mobile/lib/features/encounters/summary_screen.dart`):
+
+- The summary opens at `/encounters/<id>/summary`; the visit is read through `openVisit` and
+  Complete is planned again after every change. Item 1 draws the plan's notes, a note of the
+  person's own with no answer yet saying so; teammates' drafts and the person's notes sent for
+  review are named under them. **Not built**: the line above a recap for each answer someone else
+  changed since the person last had the note open. Nothing records when the person last had a note
+  open; the domain layer would have to keep it.
+- The locked assessment shows without who wrote it: the visit's read does not carry the summary's
+  author. What is added under it is kept in memory only and goes with Complete.
+- The assessment is in each note's hash (4.5), so a Complete pressed while it is being typed saves
+  it, plans again and goes ahead only when every recap shown is unchanged; otherwise it says "This
+  note changed. Read it again." and shows the new plan.
+- Item 5 reads the section or the field `follow_up` of the notes, the Red flags note's alone in a
+  Medical visit: the format marks no follow-up, so the summary reads those IDs.
+- Hard stop 5 with no note to open adds the person's Red flags note once, as the summary opens.
+- After Complete the visit's screens give way to the patient's chart (Home for a visit with no
+  patient), as Save & Close does, and a sync is asked for.
 
 ### 9.7 The visit
 

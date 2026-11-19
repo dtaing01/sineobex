@@ -71,12 +71,22 @@ void main() {
     final h = await signInToChart(tester);
     final visit = startVisit(h);
     await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    final r = h.encounters.repository;
+    await tester.runAsync(() => r.openNote(flags));
+    r
+      ..saveAnswer(flags, 'red_flags.emergency', 'no')
+      ..saveAnswer(flags, 'follow_up.when', 'specific_date');
     await openSummary(tester, visit);
-    await tapOn(tester, find.bySemanticsLabel(RegExp('^Red flags and disposition: Red flags,')));
-    final flags = noteOfType(h, visit, 'red_flags_disposition')!;
-    expectNoteOpened(tester, flags.id);
-    // The section is open: its question is there to answer.
-    await expectShown(tester, find.text('Does the patient require emergency evaluation?'));
+    // Its third section, not the one the form opens at.
+    await tapOn(
+      tester,
+      find.bySemanticsLabel('Red flags and disposition: Follow up, “Follow-up date” needs an answer.'),
+    );
+    expectNoteOpened(tester, flags);
+    await reveal(tester, find.bySemanticsLabel('Follow-up date'));
+    expect(find.bySemanticsLabel('Follow-up date'), findsOneWidget);
+    expect(find.text('Does the patient require emergency evaluation?'), findsNothing);
   });
 
   testWidgets('Complete and sign: the assessment typed, every note signed, the chart opens', (tester) async {
@@ -119,6 +129,28 @@ void main() {
     await expectShown(tester, find.text('Current needs: Housing'));
     expect(h.sync.store!.noteState(social)!.status, NoteStatus.draft);
     expect(location(tester), '/encounters/$visit/summary');
+  });
+
+  testWidgets('a Complete pressed while typing, when a note also changed: says so and finishes nothing', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await openSummary(tester, visit);
+    await expectShown(tester, find.text('Current needs: Food'));
+    // The assessment typed with no pause, and a note changed under the screen: the plan made again
+    // would sign a recap the person was not shown.
+    await tester.enterText(find.byKey(const ValueKey('phi.form.summary')), 'Demo: fed');
+    await tester.pump();
+    h.sync.store!.setField(social, 'data.needs.needs', ['housing']);
+    await tapOn(tester, button('Complete'));
+    await settle(tester);
+    await expectShown(tester, find.text('This note changed. Read it again.'));
+    expect(h.sync.store!.noteState(social)!.status, NoteStatus.draft);
+    await expectShown(tester, find.text('Current needs: Housing'));
   });
 
   testWidgets('the button is worded by what will happen (3.3)', (tester) async {
@@ -188,6 +220,11 @@ void main() {
     await tapOn(tester, find.text('Social needs'));
     final social = noteOfType(h, visit, 'social_needs')!;
     expectNoteOpened(tester, social.id);
+    // Once the visit has the note, nothing suggests it again.
+    h.encounters.repository.saveAnswer(social.id, 'needs.needs', ['food']);
+    await tester.pageBack();
+    await settle(tester);
+    expect(find.bySemanticsLabel('Add Social needs'), findsNothing);
     handle.dispose();
   });
 

@@ -103,6 +103,9 @@ void main() {
     await settle(tester);
     expect(location(tester), '/');
 
+    // Started from the Patients tab: Home all the same.
+    await openPatientsTab(tester);
+    expect(location(tester), '/patients');
     final none = startVisit(h, kind: VisitKind.nonMedical, noPatient: true);
     final theirs = await chart(tester, h, none, 'social_needs');
     await openNote(tester, theirs);
