@@ -28,11 +28,13 @@ import {
   type Json,
 } from './sync-fixtures.ts';
 
-// The chart's timeline and recent visits (lifecycle 5.2): GET /v1/patients/{patientId} gains
-// `timeline`, the merged group's visits newest first, the first 50, each with its notes as
-// { noteId, noteTypeKey, group, status, attestation } and the group's referrals; and
-// `recentVisits`, the last three visits in full, each as GET /v1/encounters/{id} answers it
-// (PLAN-OPEN 12.1 #17). A note the reader may not see is left out, and so is an empty draft.
+// The chart's timeline and recent visits (lifecycle 5.2): GET /v1/patients/{patientId} and the
+// phone's POST /v1/patients/charts carry `timeline`, the merged group's visits newest first, the
+// first 50, each with its notes as { noteId, noteTypeKey, title, medical, group, status,
+// attestation } and the group's referrals. Only the phone's cached chart carries `recentVisits`,
+// the last three visits in full, each as GET /v1/encounters/{id} answers it (PLAN-OPEN 12.1 #17),
+// which it reads offline; the portal's chart read shows no visit in full, so it reads and logs
+// none (unit L6). A note the reader may not see is left out, and so is an empty draft.
 // GET /v1/patients/{patientId}/timeline?before= gives the next 50, logged as chart.timeline_viewed.
 // Every person and value is made up.
 
@@ -54,6 +56,7 @@ interface TimelineVisit {
 interface Chart {
   canonicalId: string;
   timeline: { encounters: TimelineVisit[]; referrals: { id: string }[] };
+  /** On the phone's cached chart only. */
   recentVisits: {
     encounterId: string;
     notes: { noteId: string; recap: { section: string; text: string }[] }[];
@@ -142,6 +145,12 @@ describe('phase 4: the timeline and recent visits', () => {
     expect(r.status).toBe(200);
     return r.body as unknown as Chart & Json;
   };
+  /** The chart as the phone caches it (POST /v1/patients/charts). */
+  const cachedAs = async (token: string, patientId = w.patientId) => {
+    const r = await post(w, token, '/v1/patients/charts', { patientIds: [patientId], reason: 'opened' });
+    expect(r.status).toBe(200);
+    return ((r.body as Json).charts as Chart[])[0]!;
+  };
   const entryOf = (c: Chart, encounterId: string) =>
     c.timeline.encounters.find((e) => e.encounterId === encounterId);
   const noteIds = (e: { notes: { noteId: string }[] } | undefined) => e!.notes.map((n) => n.noteId).sort();
@@ -188,15 +197,15 @@ describe('phase 4: the timeline and recent visits', () => {
       expect(noteIds(kim)).toEqual([social.noteId]);
     });
 
-    it('the last three visits in full, each as the visit read answers it', async () => {
-      const c = await chartAs(w.vic.token);
+    it('the phone’s cached chart carries the last three visits in full, each as the visit read answers it', async () => {
+      const c = await cachedAs(w.vic.token);
       expect(c.recentVisits.map((v) => v.encounterId)).toEqual(
         c.timeline.encounters.slice(0, 3).map((e) => e.encounterId),
       );
       const full = await get(w, w.vic.token, `/v1/encounters/${visit.encounterId}`);
       expect(c.recentVisits[0]).toEqual(full.body);
       // As the reader may see it: the CHW preset's copy has the Non-Medical note alone, no summary.
-      const kim = await chartAs(w.kim.token);
+      const kim = await cachedAs(w.kim.token);
       expect(kim.recentVisits[0]!.notes.map((n) => n.noteId)).toEqual([social.noteId]);
       expect(kim.recentVisits[0]).not.toHaveProperty('summary');
       expectNoneOf(kim.recentVisits, ['Demo: rest and fluids', 'Demo: no lesions seen']);
@@ -211,21 +220,29 @@ describe('phase 4: the timeline and recent visits', () => {
         { section: 'care', text: 'Plan: Demo: rest and fluids' },
       ]);
       expectNoneOf(recaps, ['Demo: no lesions seen']);
-      const cached = await post(w, w.kim.token, '/v1/patients/charts', {
-        patientIds: [w.patientId],
-        reason: 'opened',
-      });
-      expect(cached.status).toBe(200);
-      const [kimCache] = (cached.body as Json).charts as Chart[];
-      expect(kimCache!.recentVisits[0]).toEqual(kim.recentVisits[0]);
     });
 
-    it('the recent visits shown are logged as the visit read logs them', async () => {
+    it('the recent visits the phone caches are logged as the visit read logs them, from the cache', async () => {
       const mark = await auditMark(h);
-      const c = await chartAs(w.kim.token);
+      const c = await cachedAs(w.kim.token);
       const viewed = (await eventsAfter(h, mark)).filter((e) => e.action === 'encounter.viewed');
       expect(viewed.map((e) => e.entityId).sort()).toEqual(c.recentVisits.map((v) => v.encounterId).sort());
       expect(viewed.every((e) => e.entity === 'encounter' && e.patientId === w.patientId)).toBe(true);
+      expect(viewed.every((e) => e.details.source === 'cache')).toBe(true);
+    });
+
+    it('the portal’s chart read carries the timeline and no visit in full, and logs no visit or note read', async () => {
+      // The earlier build logged three visits' notes the portal page never shows (the review of
+      // unit L6): a read is logged where it is shown, and the portal opens a visit on its own page.
+      const mark = await auditMark(h);
+      const c = await chartAs(w.vic.token);
+      expect(c.timeline.encounters.map((e) => e.encounterId)).toContain(visit.encounterId);
+      expect(c).not.toHaveProperty('recentVisits');
+      const events = await eventsAfter(h, mark);
+      expect(events.filter((e) => e.action === 'encounter.viewed' || e.action === 'note.viewed')).toEqual([]);
+      expect(events.map((e) => `${e.action} ${e.entity} ${e.entityId}`)).toEqual([
+        `patient.viewed patient ${w.patientId}`,
+      ]);
     });
 
     it('the first 50 visits only, and the phone’s chart cache carries the same', async () => {
@@ -233,17 +250,11 @@ describe('phase 4: the timeline and recent visits', () => {
       expect(c.timeline.encounters.map((e) => e.encounterId)).toEqual(
         busyVisits.slice(0, 50).map((v) => v.id),
       );
-      expect(c.recentVisits.map((v) => v.encounterId)).toEqual(busyVisits.slice(0, 3).map((v) => v.id));
-      const cached = await post(w, w.ana.token, '/v1/patients/charts', {
-        patientIds: [busy],
-        reason: 'opened',
-      });
-      expect(cached.status).toBe(200);
-      const [chart] = (cached.body as Json).charts as Chart[];
-      expect(chart!.timeline.encounters.map((e) => e.encounterId)).toEqual(
+      const chart = await cachedAs(w.ana.token, busy);
+      expect(chart.timeline.encounters.map((e) => e.encounterId)).toEqual(
         c.timeline.encounters.map((e) => e.encounterId),
       );
-      expect(chart!.recentVisits.map((v) => v.encounterId)).toEqual(c.recentVisits.map((v) => v.encounterId));
+      expect(chart.recentVisits.map((v) => v.encounterId)).toEqual(busyVisits.slice(0, 3).map((v) => v.id));
     });
   });
 
@@ -324,9 +335,13 @@ describe('phase 4: a visit’s status, as the reader is shown it', () => {
 
   async function shown(token: string) {
     const chart = (await get(w, token, `/v1/patients/${w.patientId}`)).body as unknown as Chart;
+    const cached = (
+      (await post(w, token, '/v1/patients/charts', { patientIds: [w.patientId], reason: 'opened' }))
+        .body as Json
+    ).charts as Chart[];
     const at = (id: string) => {
       const timeline = chart.timeline.encounters.find((e) => e.encounterId === id)!;
-      const recent = (chart.recentVisits as unknown as { encounterId: string; status: string }[]).find(
+      const recent = (cached[0]!.recentVisits as unknown as { encounterId: string; status: string }[]).find(
         (e) => e.encounterId === id,
       )!;
       return { timeline: timeline.status, recent: recent.status, notes: timeline.notes.map((n) => n.status) };

@@ -2070,7 +2070,7 @@ export interface components {
             problems?: components["schemas"]["RecordSnapshot"][];
             /** @description Which projection made this copy */
             projection: string;
-            /** @description The last three visits in full, read offline from the cache */
+            /** @description The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only */
             recentVisits?: components["schemas"]["VisitRead"][];
             /**
              * Format: uuid

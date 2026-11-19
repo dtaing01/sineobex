@@ -1,7 +1,7 @@
 import type { z } from '@hono/zod-openapi';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
-import { chartVisits } from '../encounters/timeline.ts';
+import { cachedRecentVisits, chartTimeline } from '../encounters/timeline.ts';
 import { notFound } from '../lib/errors.ts';
 import type { FieldMeta } from '../sync/records.ts';
 import type { FieldStateValue, RecordSnapshotValue } from '../sync/schemas.ts';
@@ -590,8 +590,8 @@ async function auditLinkViews(audit: AuditFn, chart: PatientChartValue, source: 
 /**
  * GET /v1/patients/{patientId}: the projected chart of the patient's group. A merged ID answers the
  * survivor's chart with `redirectedFrom`. Audited as `patient.viewed {source}` with the canonical ID.
- * With the group's timeline and its recent visits (phase 4 lifecycle 5.2), each visit shown logged
- * as the visit read logs it.
+ * With the group's timeline (phase 4 lifecycle 5.2), part of that read; no visit in full, which
+ * only the phone's cache carries (fetchCharts), so nothing is read or logged that is not shown.
  */
 export async function getChart(scope: TeamScope, patientId: string): Promise<PatientChartValue> {
   return scope.tx(async (tx, audit) => {
@@ -605,14 +605,14 @@ export async function getChart(scope: TeamScope, patientId: string): Promise<Pat
       details: { source: viewSource(scope) },
     });
     await auditLinkViews(audit, chart, viewSource(scope));
-    return { ...chart, ...(await chartVisits(tx, scope, audit, chart.canonicalId, 'chart')) };
+    return { ...chart, timeline: await chartTimeline(tx, scope, chart.canonicalId) };
   });
 }
 
 /**
  * POST /v1/patients/charts: charts for the phone's cache, with every live redirect into or out of
  * the requested IDs and the returned groups. One `patient.viewed {source: 'cache', reason}` per chart,
- * and the visits each carries logged as GET /v1/patients/{patientId} logs them.
+ * and the recent visits each carries logged as GET /v1/encounters/{id} logs them, from the cache.
  */
 export async function fetchCharts(scope: TeamScope, input: FetchChartsInput): Promise<ChartBundleValue> {
   return scope.tx(async (tx, audit) => {
@@ -638,7 +638,12 @@ export async function fetchCharts(scope: TeamScope, input: FetchChartsInput): Pr
       // visits follow a change of either at the chart's next refresh, and a phone offline keeps what
       // it holds until it syncs, at most 24 hours, as phase 3's charts do (the coordinator's decision
       // on review finding LPM-8).
-      charts.push({ ...projected, ...(await chartVisits(tx, scope, audit, id, 'cache')) });
+      const timeline = await chartTimeline(tx, scope, id);
+      charts.push({
+        ...projected,
+        timeline,
+        recentVisits: await cachedRecentVisits(tx, scope, audit, timeline),
+      });
     }
     return {
       charts,

@@ -272,9 +272,9 @@ export async function preferredNames(
 
 /**
  * Where a visit was read, for its audit events: a registered phone of this person, the portal, or
- * the chart (online or for the phone's cache) that carried it as a recent visit.
+ * the phone's cached chart that carried it as a recent visit.
  */
-export type ReadSource = 'phone' | 'portal' | 'chart' | 'cache';
+export type ReadSource = 'phone' | 'portal' | 'cache';
 
 /** GET /v1/encounters/{encounterId}: the visit as the reader may see it, logged in its transaction. */
 export async function readVisit(scope: TeamScope, encounterId: string): Promise<VisitReadValue> {

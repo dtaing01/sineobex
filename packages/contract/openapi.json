@@ -3132,7 +3132,7 @@
             "type": "string"
           },
           "recentVisits": {
-            "description": "The last three visits in full, read offline from the cache",
+            "description": "The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only",
             "items": {
               "$ref": "#/components/schemas/VisitRead"
             },

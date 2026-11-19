@@ -4114,7 +4114,7 @@ class PatientChart {
   final List<RecordSnapshot>? problems;
   /// Which projection made this copy
   final String projection;
-  /// The last three visits in full, read offline from the cache
+  /// The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only
   final List<VisitRead>? recentVisits;
   /// The merged ID that was asked for
   final String? redirectedFrom;

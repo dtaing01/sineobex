@@ -584,7 +584,8 @@ export const PatientChart = z
       description: 'On the chart and the phone’s cache; absent where a chart is shown beside a decision',
     }),
     recentVisits: z.array(VisitRead).optional().openapi({
-      description: 'The last three visits in full, read offline from the cache',
+      description:
+        'The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only',
     }),
   })
   .openapi('PatientChart');
