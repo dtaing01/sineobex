@@ -104,6 +104,14 @@ export function offersHandoff(type: ResolvedNoteType, answers: Answers): boolean
 }
 
 /**
+ * Whether the reader's read of a note is a Red flags note that offers the handoff: the export's
+ * test, and the visit read's hasHandoff, so the visit page offers the file exactly when the route
+ * would give it (9.11). Interpreter calls: a DefinitionError is the caller's.
+ */
+export const showsHandoff = (read: NoteRead & { type: ResolvedNoteType }) =>
+  isRedFlags(read.type) && byDefinition(() => offersHandoff(read.type, read.seen));
+
+/**
  * The shape of an IANA time zone's name (America/Detroit, America/Argentina/Buenos_Aires, Etc/GMT+5,
  * UTC): letters, digits, `_`, `+` and `-`, in up to three parts. The query string carries the
  * reader's, so the route takes nothing else there: no space, nothing a name or a search could be.
@@ -194,7 +202,7 @@ export async function exportHandoff(
       });
       return { refused: true as const };
     }
-    if (!flags.some((r) => byDefinition(() => offersHandoff(r.type, r.seen)))) throw noHandoff();
+    if (!flags.some(showsHandoff)) throw noHandoff();
 
     const lines = byDefinition(() =>
       handoffLines(

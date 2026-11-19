@@ -1877,6 +1877,11 @@ export interface components {
         };
         /** @enum {string} */
         NoteAttestation: "not_needed" | "waiting" | "attested";
+        /**
+         * @description Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act
+         * @enum {string}
+         */
+        NoteHeldBecause: "wrote" | "acts_as_author" | "completed" | "signed" | "cannot_see_all";
         /** @enum {string} */
         NoteStatus: "draft" | "completed" | "signed";
         NotesToFinish: {
@@ -2696,12 +2701,28 @@ export interface components {
             attestation: components["schemas"]["NoteAttestation"];
             attestations: components["schemas"]["AttestationView"][];
             author: components["schemas"]["UserRef"];
+            /**
+             * @description The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)
+             * @default false
+             */
+            canAttest: boolean;
+            /**
+             * @description The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)
+             * @default false
+             */
+            canCosign: boolean;
             /** Format: date-time */
             completedAt: string | null;
             /** @description The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one */
             contentHash?: string;
             corrections: components["schemas"]["CorrectionView"][];
             group: components["schemas"]["TimelineGroup"];
+            heldBecause?: components["schemas"]["NoteHeldBecause"];
+            /**
+             * @description A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+             * @default false
+             */
+            medical: boolean;
             /** Format: uuid */
             noteId: string;
             noteTypeKey: string;
@@ -2719,12 +2740,22 @@ export interface components {
             clockVerified: boolean;
             /** Format: uuid */
             encounterId: string;
+            /**
+             * @description The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)
+             * @default false
+             */
+            hasHandoff: boolean;
             kind: components["schemas"]["EncounterKind"];
             locationText: string | null;
             /** @description The notes the reader may see; no empty draft */
             notes: components["schemas"]["VisitNote"][];
             /** Format: uuid */
             patientId: string | null;
+            /**
+             * @description The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient
+             * @default null
+             */
+            preferredName: string | null;
             /** @description Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them */
             records: components["schemas"]["RecordSnapshot"][];
             /** Format: date-time */

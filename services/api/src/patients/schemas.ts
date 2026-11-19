@@ -442,6 +442,20 @@ export const AttestationView = z
   })
   .openapi('AttestationView');
 
+// Fields added after phone builds cached a chart's recent visits carry a default, so a copy cached
+// before them still reads (unit L6).
+const Medical = z.boolean().default(false).openapi({
+  description:
+    'A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)',
+});
+
+export const NoteHeldBecause = z
+  .enum(['wrote', 'acts_as_author', 'completed', 'signed', 'cannot_see_all'])
+  .openapi('NoteHeldBecause', {
+    description:
+      'Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act',
+  });
+
 export const VisitNote = z
   .object({
     noteId: Uuid,
@@ -449,6 +463,7 @@ export const VisitNote = z
     noteTypeVersion: z.number().int(),
     title: z.string(),
     group: TimelineGroup,
+    medical: Medical,
     status: NoteStatus,
     attestation: Attestation,
     completedAt: DateTime.nullable(),
@@ -467,6 +482,15 @@ export const VisitNote = z
       description:
         'The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one',
     }),
+    canCosign: z.boolean().default(false).openapi({
+      description:
+        'The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)',
+    }),
+    canAttest: z.boolean().default(false).openapi({
+      description:
+        'The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)',
+    }),
+    heldBecause: NoteHeldBecause.optional(),
   })
   .openapi('VisitNote');
 
@@ -479,6 +503,14 @@ export const VisitRead = z
     startedAt: DateTime,
     clockVerified: z.boolean(),
     locationText: z.string().nullable(),
+    preferredName: z.string().nullable().default(null).openapi({
+      description:
+        'The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient',
+    }),
+    hasHandoff: z.boolean().default(false).openapi({
+      description:
+        'The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)',
+    }),
     summary: z.string().nullable().optional().openapi({
       description: 'Absent for a Medical visit to a reader of no Medical notes',
     }),

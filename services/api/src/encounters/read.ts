@@ -25,7 +25,8 @@ import {
 import type { AnyRecordEntityName } from '../sync/schemas.ts';
 import { noteContentHash } from './content-hash.ts';
 import { encounterStatus, noteIsEmpty, type NoteStatus } from './rules.ts';
-import { actNote, maySecondSign } from './second-person.ts';
+import { showsHandoff } from './handoff.ts';
+import { actNote, maySecondSign, secondPersonView } from './second-person.ts';
 
 /**
  * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
@@ -245,6 +246,26 @@ export const signoffHashShown = (
   summaryHidden: boolean,
 ) => !summaryHidden && (read.reader.actsAsAuthor || signerUserId === userId || readsWhole(read.reader));
 
+/**
+ * The preferred name of each patient as a visit's reader is shown it: their chart's, or the chart's
+ * they were merged into, as the chart itself answers a merged ID. A preferred name is in every
+ * summary patients.view reads (phase 3 design 4.3), so a reader without it gets none. The visit
+ * read, the queues and the team's incomplete notes name a patient this way.
+ */
+export async function preferredNames(
+  tx: Tx,
+  scope: TeamScope,
+  patientIds: readonly (string | null)[],
+): Promise<Map<string, string | null>> {
+  const wanted = [...new Set(patientIds.filter((id) => id !== null))];
+  if (wanted.length === 0 || !scope.can('patients.view')) return new Map();
+  const rows = await tx<{ id: string; preferredName: string | null }[]>`
+    select p.id, c.preferred_name from sineobex.patients p
+    join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
+    where p.team_id = ${scope.team.teamId} and p.id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.preferredName]));
+}
+
 // ------------------------------------------------------------------------------------------------
 // GET /v1/encounters/{encounterId}
 // ------------------------------------------------------------------------------------------------
@@ -373,11 +394,15 @@ export async function visitAsRead(
     select id from sineobex.encounter_notes
     where team_id = ${visit.teamId} and encounter_id = ${visit.id} order by created_at, id`;
   const reads: (NoteRead & { type: ResolvedNoteType })[] = [];
+  let hasHandoff = false;
   for (const { id } of noteRows) {
     const read = await noteAsRead(tx, scope, await noteRules.load(tx, id, false));
     if (!read || read.type === undefined) continue;
+    const typed = read as NoteRead & { type: ResolvedNoteType };
+    // Asked of every Red flags note the reader reads, as the export asks it (handoff.ts).
+    hasHandoff ||= showsHandoff(typed);
     if (read.note.status === 'draft' && noteIsEmpty(read.answers)) continue;
-    reads.push(read as NoteRead & { type: ResolvedNoteType });
+    reads.push(typed);
   }
   const names = await displayNames(
     tx,
@@ -425,6 +450,7 @@ export async function visitAsRead(
       noteTypeVersion: attrs.noteTypeVersion,
       title: type.title,
       group: type.group,
+      medical: note.internal.medical === true,
       status: note.status as VisitNoteValue['status'],
       attestation: attrs.attestation,
       completedAt: attrs.completedAt,
@@ -482,6 +508,9 @@ export async function visitAsRead(
             ),
           }
         : {}),
+      // What the reader may do to it as a second person, and why not (second-person.ts), so the
+      // page sends exactly the notes the act takes and words a held note truly.
+      ...secondPersonView(scope, second),
     });
   }
 
@@ -500,6 +529,8 @@ export async function visitAsRead(
     startedAt: visit.attributes.startedAt as string,
     clockVerified: visit.attributes.clockVerified as boolean,
     locationText: visit.values.locationText as string | null,
+    preferredName: patientId ? ((await preferredNames(tx, scope, [patientId])).get(patientId) ?? null) : null,
+    hasHandoff,
     ...(hideMedical ? {} : { summary: visit.values.summary as string | null }),
     addenda: ownAddenda.map(addendumView),
     notes,

@@ -2598,6 +2598,17 @@
         ],
         "type": "string"
       },
+      "NoteHeldBecause": {
+        "description": "Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act",
+        "enum": [
+          "wrote",
+          "acts_as_author",
+          "completed",
+          "signed",
+          "cannot_see_all"
+        ],
+        "type": "string"
+      },
       "NoteStatus": {
         "enum": [
           "draft",
@@ -5353,6 +5364,16 @@
           "author": {
             "$ref": "#/components/schemas/UserRef"
           },
+          "canAttest": {
+            "default": false,
+            "description": "The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)",
+            "type": "boolean"
+          },
+          "canCosign": {
+            "default": false,
+            "description": "The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)",
+            "type": "boolean"
+          },
           "completedAt": {
             "format": "date-time",
             "type": [
@@ -5373,6 +5394,14 @@
           },
           "group": {
             "$ref": "#/components/schemas/TimelineGroup"
+          },
+          "heldBecause": {
+            "$ref": "#/components/schemas/NoteHeldBecause"
+          },
+          "medical": {
+            "default": false,
+            "description": "A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)",
+            "type": "boolean"
           },
           "noteId": {
             "format": "uuid",
@@ -5443,6 +5472,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "hasHandoff": {
+            "default": false,
+            "description": "The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/EncounterKind"
           },
@@ -5461,6 +5495,14 @@
           },
           "patientId": {
             "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preferredName": {
+            "default": null,
+            "description": "The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient",
             "type": [
               "string",
               "null"

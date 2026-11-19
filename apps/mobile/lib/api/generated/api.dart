@@ -745,6 +745,26 @@ enum NoteAttestation {
   String toJson() => wire;
 }
 
+/// Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act
+enum NoteHeldBecause {
+  wrote('wrote'),
+  actsAsAuthor('acts_as_author'),
+  completed('completed'),
+  signed('signed'),
+  cannotSeeAll('cannot_see_all'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteHeldBecause(this.wire);
+  final String wire;
+
+  static NoteHeldBecause fromJson(String value) =>
+      NoteHeldBecause.values.firstWhere((e) => e.wire == value, orElse: () => NoteHeldBecause.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteStatus {
   draft('draft'),
   completed('completed'),
@@ -6197,10 +6217,14 @@ class VisitNote {
     required this.attestation,
     required this.attestations,
     required this.author,
+    this.canAttest,
+    this.canCosign,
     required this.completedAt,
     this.contentHash,
     required this.corrections,
     required this.group,
+    this.heldBecause,
+    this.medical,
     required this.noteId,
     required this.noteTypeKey,
     required this.noteTypeVersion,
@@ -6216,11 +6240,18 @@ class VisitNote {
   final NoteAttestation attestation;
   final List<AttestationView> attestations;
   final UserRef author;
+  /// The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)
+  final bool? canAttest;
+  /// The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)
+  final bool? canCosign;
   final DateTime? completedAt;
   /// The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one
   final String? contentHash;
   final List<CorrectionView> corrections;
   final TimelineGroup group;
+  final NoteHeldBecause? heldBecause;
+  /// A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+  final bool? medical;
   final String noteId;
   final String noteTypeKey;
   final int noteTypeVersion;
@@ -6237,10 +6268,14 @@ class VisitNote {
         attestation: NoteAttestation.fromJson(json['attestation'] as String),
         attestations: (json['attestations'] as List<dynamic>).map((e) => AttestationView.fromJson(e as Map<String, dynamic>)).toList(),
         author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
+        canAttest: json['canAttest'] == null ? null : json['canAttest'] as bool,
+        canCosign: json['canCosign'] == null ? null : json['canCosign'] as bool,
         completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
         contentHash: json['contentHash'] == null ? null : json['contentHash'] as String,
         corrections: (json['corrections'] as List<dynamic>).map((e) => CorrectionView.fromJson(e as Map<String, dynamic>)).toList(),
         group: TimelineGroup.fromJson(json['group'] as String),
+        heldBecause: json['heldBecause'] == null ? null : NoteHeldBecause.fromJson(json['heldBecause'] as String),
+        medical: json['medical'] == null ? null : json['medical'] as bool,
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         noteTypeVersion: (json['noteTypeVersion'] as num).toInt(),
@@ -6257,10 +6292,14 @@ class VisitNote {
         'attestation': attestation.toJson(),
         'attestations': attestations.map((e) => e.toJson()).toList(),
         'author': author.toJson(),
+        if (canAttest != null) 'canAttest': canAttest!,
+        if (canCosign != null) 'canCosign': canCosign!,
         'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
         if (contentHash != null) 'contentHash': contentHash!,
         'corrections': corrections.map((e) => e.toJson()).toList(),
         'group': group.toJson(),
+        if (heldBecause != null) 'heldBecause': heldBecause!.toJson(),
+        if (medical != null) 'medical': medical!,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'noteTypeVersion': noteTypeVersion,
@@ -6277,10 +6316,12 @@ class VisitRead {
     required this.addenda,
     required this.clockVerified,
     required this.encounterId,
+    this.hasHandoff,
     required this.kind,
     required this.locationText,
     required this.notes,
     required this.patientId,
+    this.preferredName,
     required this.records,
     required this.startedAt,
     required this.status,
@@ -6291,11 +6332,15 @@ class VisitRead {
   final List<AddendumView> addenda;
   final bool clockVerified;
   final String encounterId;
+  /// The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)
+  final bool? hasHandoff;
   final EncounterKind kind;
   final String? locationText;
   /// The notes the reader may see; no empty draft
   final List<VisitNote> notes;
   final String? patientId;
+  /// The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient
+  final String? preferredName;
   /// Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them
   final List<RecordSnapshot> records;
   final DateTime startedAt;
@@ -6307,10 +6352,12 @@ class VisitRead {
         addenda: (json['addenda'] as List<dynamic>).map((e) => AddendumView.fromJson(e as Map<String, dynamic>)).toList(),
         clockVerified: json['clockVerified'] as bool,
         encounterId: json['encounterId'] as String,
+        hasHandoff: json['hasHandoff'] == null ? null : json['hasHandoff'] as bool,
         kind: EncounterKind.fromJson(json['kind'] as String),
         locationText: json['locationText'] == null ? null : json['locationText'] as String,
         notes: (json['notes'] as List<dynamic>).map((e) => VisitNote.fromJson(e as Map<String, dynamic>)).toList(),
         patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
         records: (json['records'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
         startedAt: DateTime.parse(json['startedAt'] as String),
         status: NoteStatus.fromJson(json['status'] as String),
@@ -6321,10 +6368,12 @@ class VisitRead {
         'addenda': addenda.map((e) => e.toJson()).toList(),
         'clockVerified': clockVerified,
         'encounterId': encounterId,
+        if (hasHandoff != null) 'hasHandoff': hasHandoff!,
         'kind': kind.toJson(),
         'locationText': locationText == null ? null : locationText!,
         'notes': notes.map((e) => e.toJson()).toList(),
         'patientId': patientId == null ? null : patientId!,
+        if (preferredName != null) 'preferredName': preferredName == null ? null : preferredName!,
         'records': records.map((e) => e.toJson()).toList(),
         'startedAt': startedAt.toUtc().toIso8601String(),
         'status': status.toJson(),

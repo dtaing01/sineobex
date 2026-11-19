@@ -121,3 +121,37 @@ export const maySecondSign = (scope: TeamScope) => {
   const can = CAPABILITIES[scope.team.credential];
   return scope.can('encounters.chart') && (can.sign || can.attest);
 };
+
+/**
+ * Why a note that waits for a second person waits for someone other than the reader, so a page
+ * words it truly: they wrote it, act as its author (an assignee is never told they wrote it),
+ * completed it, made its current signature, or cannot see all of it (6.4 rule 4).
+ */
+export type HeldBecause = Authorship | 'signed' | 'cannot_see_all';
+
+export interface SecondPersonView {
+  canCosign: boolean;
+  canAttest: boolean;
+  heldBecause?: HeldBecause;
+}
+
+/**
+ * What the reader may do to a note as a second person, as the acts would answer if the hash they
+ * send matched: the queues' canAct, for each act. A note waits for one act at most, so heldBecause is
+ * that act's refusal of the reader for this note, when it is about the note and not their credential
+ * (which the page shows by offering no action at all). Nothing to a role that does not chart, which
+ * the routes refuse.
+ */
+export function secondPersonView(scope: TeamScope, n: ActNote): SecondPersonView {
+  if (!scope.can('encounters.chart')) return { canCosign: false, canAttest: false };
+  const cosign = cosignOf(scope, n, true);
+  const attest = attestOf(scope, n, true);
+  const view: SecondPersonView = { canCosign: !('refuse' in cosign), canAttest: !('refuse' in attest) };
+  const refusal = [cosign, attest]
+    .map((effect) => ('refuse' in effect ? effect.refuse : null))
+    .find((r) => r !== null && r !== 'not_waiting');
+  if (refusal === 'is_author') view.heldBecause = n.authorship!;
+  else if (refusal === 'is_signer') view.heldBecause = 'signed';
+  else if (refusal === 'cannot_see_all') view.heldBecause = 'cannot_see_all';
+  return view;
+}
