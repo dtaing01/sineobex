@@ -389,6 +389,130 @@ const neededTooHeading = 'Needed with this change';
 /// An answer whose field this phone can't draw: its form is a newer one.
 const cantChangeHere = 'This answer can’t be changed on this phone.';
 
+// ---- Referrals (7, 9.10) ----
+
+const referralsHeading = 'Referrals';
+const noReferrals = 'No referrals recorded.';
+
+/// Who recorded a referral: a name only where the phone knows one (7 as built), else "a teammate".
+String recordedByText(PersonRef person) => 'Recorded by ${personText(person)}';
+
+/// A referral made at a visit of this chart's patient (8.4 as built).
+const atAVisit = 'At a visit';
+const referralInErrorAction = 'Entered in error';
+
+/// [referralInErrorAction], read with the referral's date.
+String referralInErrorSpoken(String date) => 'Mark the referral of $date entered in error';
+const referralInErrorTitle = 'Mark this referral entered in error?';
+const referralInErrorBody = 'It stays in the list, struck through, with your reason.';
+const referralInErrorYes = 'Mark entered in error';
+const referralInErrorQuick = ['Wrong patient', 'Typed by mistake', 'Not referred after all'];
+const referralMarked = 'Marked entered in error';
+
+/// A referral's mark, under it, as phase 3 words an allergy's.
+String inErrorText(String reason) => 'Entered in error: $reason';
+
+/// A referral as one row reads it: its date, its details, then the rest.
+String referralSpoken({required String date, required String details, required List<String> rest}) =>
+    ['Referral, $date: $details', ...rest].join('. ');
+
+// ---- The profile: + Encounter, + Referral and the timeline (9.1) ----
+
+/// The quick actions' words; each is read as what it opens.
+const encounterQuickAction = 'Encounter';
+const encounterQuickSpoken = 'New encounter';
+const referralQuickAction = 'Referral';
+const referralQuickSpoken = 'Add a referral';
+
+const timelineHeading = 'Timeline';
+
+/// The type filter's chips, in the PRD's order (PRD main 725).
+String timelineGroupText(String group) => switch (group) {
+  'clinical' => 'Clinical',
+  'psych' => 'Psych',
+  'social' => 'Social',
+  'referrals' => 'Referrals',
+  'outreach' => 'Outreach',
+  'harm_reduction' => 'Harm reduction',
+  'wound' => 'Wound',
+  _ => group,
+};
+const timelineFilterSpoken = 'Show only';
+const noTimeline = 'No visits or referrals yet.';
+const noTimelineFiltered = 'Nothing of these types.';
+
+/// A chart opened from the team's list, with no timeline of its own (5.2 as built).
+const timelineNeedsChart = 'Visits recorded elsewhere show with the full chart.';
+const showEarlierVisits = 'Show earlier visits';
+
+/// A visit made here whose time the phone hasn't learned yet.
+const startedHere = 'Started on this phone';
+
+/// A note of a visit's row: its type and its state in words (9.1).
+String noteChipText(String title, String state) => '$title: $state';
+
+/// A visit's row opens the visit (9.7).
+const visitOpensHint = 'Opens the visit';
+
+/// A referral's row opens the Referrals sheet, where it can be entered in error.
+const referralOpensHint = 'Opens the referrals';
+
+// ---- Home's tiles (9.9) ----
+
+const notesToFinishTitle = 'Notes to finish';
+
+/// "3 notes to finish. 1 is older than a day." (9.9).
+String notesToFinishText(int notes, int overdue) {
+  final first = '$notes ${notes == 1 ? 'note' : 'notes'} to finish.';
+  if (overdue == 0) return first;
+  return '$first $overdue ${overdue == 1 ? 'is' : 'are'} older than a day.';
+}
+
+const cosignQueueTitle = 'Waiting for your co-signature';
+const attestationQueueTitle = 'Waiting for attestation';
+
+/// A queue's number on its tile: visits, as the server counts them (5.6).
+String visitsWaitingText(int visits) => switch (visits) {
+  0 => 'None waiting',
+  1 => '1 visit',
+  _ => '$visits visits',
+};
+
+/// A queue's tile offline (9.9).
+const connectForQueueTile = 'Connect to see notes waiting for you';
+
+// ---- Notes to finish (9.9) ----
+
+/// When the note's visit started; the phone's clock, as the read view words a time.
+String visitStartedText(String when) => 'Visit started $when';
+const startNotKnown = 'Start not known yet';
+const olderThanADay = 'Older than a day';
+
+/// A draft the server listed that isn't on this phone: it opens only with signal (9.9).
+const opensWithConnection = 'Opens with a connection';
+const noNotesToFinish = 'No notes to finish.';
+
+/// The server's list wasn't merged in: drafts kept on another phone aren't counted.
+const onlyThisPhone = 'Showing the notes on this phone. Connect to see the rest.';
+
+// ---- The queues (5.4, 9.9) ----
+
+const noVisitsWaiting = 'No visits waiting.';
+const tryAgainAction = 'Try again';
+
+/// A waiting note in a queue row: its type, by whom, when completed.
+String queueNoteText(String title, PersonRef author) => '$title, by ${personText(author)}';
+
+/// Who signed it before a correction sent it back (3.7).
+String signedBeforeText(PersonRef person) => 'Signed before by ${personText(person)}';
+
+/// Who attested it before.
+String attestedBeforeText(PersonRef person) => 'Attested before by ${personText(person)}';
+
+/// A note the person can't act on (`canAct` false, 5.4): theirs, or one with a part they can't open.
+const youWroteThis = 'You wrote this note.';
+String cantActText(String act) => 'You can’t ${act.toLowerCase()} this note. Open the visit to see why.';
+
 // ---- A note's state (lifecycle 3.1, 9.1) ----
 
 /// Lifecycle 3.1's first column, as the timeline words it (9.1).

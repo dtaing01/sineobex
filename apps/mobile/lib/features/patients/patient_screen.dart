@@ -14,6 +14,7 @@ import '../../design/tokens.dart';
 import '../../design/widgets/allergy_badge.dart';
 import '../../design/widgets/form_bits.dart';
 import '../../design/widgets/status_chip.dart';
+import '../../encounters/encounter_services.dart';
 import '../../patients/consent_script.dart';
 import '../../patients/display.dart';
 import '../../patients/id_links.dart';
@@ -22,13 +23,19 @@ import '../../patients/patient_repository.dart';
 import '../../patients/problems.dart';
 import '../../security/secure_copy.dart' show secureCopyLifetime;
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
+import '../encounters/encounter_labels.dart'
+    show encounterQuickAction, encounterQuickSpoken, referralQuickAction, referralQuickSpoken;
+import '../encounters/encounter_widgets.dart' show encountersOpen;
+import '../encounters/referrals_sheet.dart' show showReferrals;
+import '../encounters/timeline_section.dart';
 import 'field_review_sheet.dart';
 import 'patient_labels.dart';
 import 'patient_widgets.dart';
 
 /// A patient's profile (design 12.1): the header read first as one summary, the banners most urgent
-/// first, the quick actions, then problems, allergies, street names, consent, the ID card and, when
-/// online, history. The app bar never names the patient (the app switcher shows it).
+/// first, the quick actions (phase 4's **+ Encounter** and **+ Referral** first, lifecycle 9.1), then
+/// problems, the timeline of visits and referrals, allergies, street names, consent, the ID card and,
+/// when online, history. The app bar never names the patient (the app switcher shows it).
 class PatientScreen extends StatelessWidget {
   const PatientScreen({super.key, required this.patientId, this.typed});
   final String patientId;
@@ -295,6 +302,9 @@ class _ProfileState extends ConsumerState<_Profile> {
   Widget build(BuildContext context) {
     final sync = ref.watch(syncControllerProvider);
     final session = ref.watch(sessionProvider);
+    final watched = ref.watch(encounterServicesProvider);
+    // Services whose database a lock or a team switch just closed offer nothing.
+    final encounters = watched != null && encountersOpen(sync, watched) ? watched : null;
     final teamName = switch (session.state) {
       Unlocked(:final user) => user.team?.name,
       _ => null,
@@ -314,13 +324,20 @@ class _ProfileState extends ConsumerState<_Profile> {
               child: NoticeMessage('This patient isn’t on this phone. Search again when the phone is back online.'),
             );
           }
-          return _body(context, view, sync.snapshot.offline, sync.snapshot.clock.paused, teamName);
+          return _body(context, view, sync.snapshot.offline, sync.snapshot.clock.paused, teamName, encounters);
         },
       ),
     );
   }
 
-  Widget _body(BuildContext context, PatientView v, bool offline, bool paused, String? teamName) {
+  Widget _body(
+    BuildContext context,
+    PatientView v,
+    bool offline,
+    bool paused,
+    String? teamName,
+    EncounterServices? encounters,
+  ) {
     final today = todayOf(ref);
     final text = Theme.of(context).textTheme;
     final c = context.field;
@@ -512,6 +529,27 @@ class _ProfileState extends ConsumerState<_Profile> {
           spacing: FieldSpace.s2,
           runSpacing: FieldSpace.s2,
           children: [
+            // Lifecycle 9.1: + Encounter with `encounters.chart`, + Referral with `referrals.create`.
+            if (encounters != null && encounters.user.charts && !merged)
+              FilledButton.icon(
+                onPressed: () => unawaited(context.push('/patients/${v.canonicalId}/encounters/new')),
+                icon: const Icon(LucideIcons.plus),
+                label: Semantics(
+                  label: encounterQuickSpoken,
+                  excludeSemantics: true,
+                  child: const Text(encounterQuickAction),
+                ),
+              ),
+            if (encounters != null && encounters.referrals.mayAdd && !merged)
+              OutlinedButton.icon(
+                onPressed: () => unawaited(showReferrals(context, encounters, patientId: v.canonicalId)),
+                icon: const Icon(LucideIcons.plus),
+                label: Semantics(
+                  label: referralQuickSpoken,
+                  excludeSemantics: true,
+                  child: const Text(referralQuickAction),
+                ),
+              ),
             if (copyable.isNotEmpty && _s.mayEdit)
               FilledButton.icon(
                 onPressed: () => unawaited(_copy(v)),
@@ -560,6 +598,10 @@ class _ProfileState extends ConsumerState<_Profile> {
               ),
           ],
         ],
+
+        // ---- the timeline: visits and referrals (lifecycle 9.1) ----
+        if (encounters != null)
+          TimelineSection(key: ValueKey((v.canonicalId, encounters)), services: encounters, patientId: v.canonicalId),
 
         // ---- allergies ----
         SectionHeading(

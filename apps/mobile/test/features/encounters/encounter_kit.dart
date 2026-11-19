@@ -1,7 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:sineobex_field/api/generated/api.dart' show SineobexApi;
+import 'package:sineobex_field/api/generated/api.dart' show PatientChart, SineobexApi;
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' hide Expanded;
@@ -10,6 +12,7 @@ import 'package:sineobex_field/features/encounters/encounter_screen.dart';
 import 'package:sineobex_field/features/encounters/note_screen.dart';
 import 'package:sineobex_field/features/encounters/visit_screen.dart';
 import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/patients/chart_cache.dart' show importChart;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart' show OpenTeam;
 
@@ -310,3 +313,72 @@ Future<void> tapInSheet(WidgetTester tester, Finder finder) async {
   await tester.tapAt(rect.topLeft + Offset(16, rect.height < 48 ? rect.height / 2 : 24));
   await settle(tester);
 }
+
+/// [patientId]'s chart as the server reads it for the person, kept on the phone as opening it online
+/// keeps it, with [extra] in the answer: the API's `timeline` and `recentVisits` (5.2), which the
+/// phone's test server leaves out.
+Future<void> cacheChart(WidgetTester tester, AppHarness h, String patientId, Map<String, Object?> extra) async {
+  final offline = h.server.offline;
+  h.server.offline = false;
+  final read = await tester.runAsync(
+    () => h.server.transportFor(me, h.sync.engine!.teamId).send('GET', '/v1/patients/$patientId'),
+  );
+  h.server.offline = offline;
+  final json = jsonDecode(jsonEncode({...read! as Map<String, Object?>, ...extra})) as Map<String, dynamic>;
+  importChart(h.sync.store!, PatientChart.fromJson(json), opened: true, now: h.wall);
+  h.patients.changed();
+  await settle(tester);
+}
+
+/// A visit of the chart's timeline (`TimelineVisit`, 5.2).
+Map<String, Object?> timelineVisit(
+  String id,
+  String startedAt, {
+  String kind = 'medical',
+  String status = 'completed',
+  List<Map<String, Object?>> notes = const [],
+}) => {'encounterId': id, 'startedAt': startedAt, 'kind': kind, 'status': status, 'notes': notes};
+
+/// A note of a timeline visit (`TimelineNote`).
+Map<String, Object?> timelineNote(
+  String id,
+  String key, {
+  String status = 'completed',
+  String attestation = 'not_needed',
+  String group = 'clinical',
+}) => {'noteId': id, 'noteTypeKey': key, 'group': group, 'status': status, 'attestation': attestation};
+
+/// A referral as the chart's timeline lists it (`RecordSnapshot`), recorded by [by].
+Map<String, Object?> referralSnapshot(
+  String id,
+  String patientId, {
+  required String referredOn,
+  required String details,
+  String by = blair,
+  String? encounterId,
+  String? enteredInError,
+}) => {
+  'entity': 'referral',
+  'id': id,
+  'status': 'active',
+  'authorUserId': by,
+  'createdAt': '${referredOn}T16:00:00.000Z',
+  'updatedAt': '${referredOn}T16:00:00.000Z',
+  'version': 1,
+  'attributes': {
+    'patientId': patientId,
+    'referredOn': referredOn,
+    'details': details,
+    'encounterId': encounterId,
+    'recordedAt': '${referredOn}T16:00:00.000Z',
+    'clockVerified': true,
+  },
+  'fields': {
+    'enteredInError': {
+      'value': enteredInError == null ? null : {'reason': enteredInError},
+      'version': enteredInError == null ? 0 : 1,
+      'changedBy': enteredInError == null ? null : by,
+      'changedAt': enteredInError == null ? null : '${referredOn}T17:00:00.000Z',
+    },
+  },
+};
