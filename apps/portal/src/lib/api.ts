@@ -4,6 +4,7 @@ import { getIronSession } from 'iron-session';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiBaseUrl } from './env';
+import { refusalRedirect } from './refusals';
 import { sessionOptions, type SessionData } from './session';
 
 export async function getSession() {
@@ -53,25 +54,10 @@ export async function unwrap<T>(call: Promise<Result<T>>): Promise<T> {
     error as { error?: { code?: string; message?: string; details?: Record<string, unknown> } } | undefined
   )?.error;
   const code = body?.code ?? 'error';
-  switch (code) {
-    case 'unauthorized':
-      return redirect('/sign-in?ended=expired');
-    case 'mfa_required':
-      return redirect('/sign-in/mfa');
-    case 'acknowledgement_required':
-      return redirect('/acknowledge');
-    case 'team_required':
-    case 'not_a_member':
-    case 'team_suspended':
-      return redirect(`/select-team?problem=${code}`);
-    case 'forbidden':
-      // A typed URL to a screen the role can't use. The API has already logged the refusal.
-      return redirect('/home?denied=1');
-    case 'reauth_required': {
-      const path = (await headers()).get('x-pathname');
-      return redirect(`/reauth?next=${encodeURIComponent(safeNext(path))}`);
-    }
-  }
+  // After a fresh sign-in, back to the page that asked for it.
+  const next = code === 'reauth_required' ? safeNext((await headers()).get('x-pathname')) : '/home';
+  const to = refusalRedirect(code, next);
+  if (to) return redirect(to);
   throw new PortalApiError(
     response.status,
     code,
