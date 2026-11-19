@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../api/generated/api.dart' as wire;
-import '../../api/transport.dart' show NetworkException;
 import '../../app_providers.dart' show syncControllerProvider;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
@@ -15,7 +14,7 @@ import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_api.dart' show EncounterRequestFailed;
 import '../../encounters/encounter_services.dart';
 import '../../encounters/notes_to_finish.dart';
-import '../../sync/local_store.dart' show ChartingPaused, entityEncounter, entityNote;
+import '../../sync/local_store.dart' show ChartingPaused;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_labels.dart' show longDate;
 import '../patients/patient_widgets.dart' show FrozenNotice;
@@ -137,24 +136,12 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
   /// Opens [row]'s note; one that is not on this phone is brought from the server first, with its
   /// visit, as the visit screen brings one (9.9: it needs a connection).
   Future<void> _open(NoteToFinishRow row) async {
-    final store = _s.store;
-    if (store.record(row.noteId) == null) {
-      final fetch = _s.repository.openServerRecord;
+    if (_s.store.record(row.noteId) == null) {
       setState(() {
         _opening = true;
         _problem = null;
       });
-      var found = false;
-      try {
-        if (fetch != null) {
-          found = store.record(row.encounterId) != null || await fetch(entityEncounter, row.encounterId);
-          if (found) found = await fetch(entityNote, row.noteId);
-        }
-      } on NetworkException {
-        found = false;
-      } on Exception {
-        found = false;
-      }
+      final found = await fetchNote(_s, row.noteId, encounterId: row.encounterId);
       if (!mounted) return;
       setState(() => _opening = false);
       if (!found) return setState(() => _problem = noteNotOnPhone);

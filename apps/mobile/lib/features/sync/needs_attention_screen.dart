@@ -10,8 +10,14 @@ import '../../auth/session_controller.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/status_chip.dart';
+import '../../encounters/encounter_repository.dart' show NoteActions;
+import '../../encounters/encounter_services.dart';
 import '../../patients/patient_providers.dart';
+import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
+import '../encounters/encounter_labels.dart' show encounterErrorText, noteNotOnPhone, openNoteAction;
+import '../encounters/encounter_widgets.dart' show encountersOpen, fetchNote;
+import '../encounters/note_type_list.dart' show noteLocation;
 import '../patients/patient_labels.dart' show problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
 import '../patients/patient_widgets.dart' show errorText, todayOf;
@@ -28,18 +34,22 @@ class NeedsAttentionScreen extends ConsumerWidget {
     final sync = ref.watch(syncControllerProvider);
     final session = ref.watch(sessionProvider);
     final watched = ref.watch(patientServicesProvider);
+    final watchedEncounters = ref.watch(encounterServicesProvider);
     final me = switch (session.state) {
       Unlocked(:final user) => user.userId,
       _ => null,
     };
     return ListenableBuilder(
-      listenable: Listenable.merge([sync, ?watched]),
+      listenable: Listenable.merge([sync, ?watched, ?watchedEncounters]),
       builder: (context, _) {
         final snapshot = sync.snapshot;
         final items = snapshot.attention;
         final store = sync.store;
         // Services whose database a lock or a team switch just closed read nothing.
         final services = watched != null && identical(watched.store, store) ? watched : null;
+        final encounters = watchedEncounters != null && encountersOpen(sync, watchedEncounters)
+            ? watchedEncounters
+            : null;
         final notices = store?.notices(unreadOnly: true) ?? const <LocalNotice>[];
         final messenger = ScaffoldMessenger.of(context);
         void outOfDate() =>
@@ -91,7 +101,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
                       }),
               )
             else
-              _RejectionCard(entry: e, services: services, paused: snapshot.clock.paused),
+              _RejectionCard(entry: e, services: services, encounters: encounters, paused: snapshot.clock.paused),
           if (snapshot.held > 0)
             Text(
               '${plural(snapshot.held, 'later change waits', 'later changes wait')} until these are resolved.',
@@ -102,6 +112,10 @@ class NeedsAttentionScreen extends ConsumerWidget {
             for (final n in notices)
               _NoticeCard(
                 notice: n,
+                onOpenNote: switch (_noteOf(n)) {
+                  final note? when encounters != null => () => unawaited(_openNote(context, encounters, note)),
+                  _ => null,
+                },
                 onOpen: _opener(context, n, services),
                 // Read here now, and on the server at the next contact.
                 onDone: () => services != null ? services.notices.markRead(n.id) : store!.markNoticeRead(n.id),
@@ -124,6 +138,27 @@ class NeedsAttentionScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+/// The note a notice of a note's life asks the person to open (lifecycle 9.13): the one a
+/// `signoff_not_applied` names beside its sign-off (D104), the one `finished_differently` is about.
+String? _noteOf(LocalNotice n) => switch (n.kind) {
+  noticeSignoffNotApplied => n.noteId,
+  noticeFinishedDifferently => n.recordId,
+  _ => null,
+};
+
+/// **Open the note** (lifecycle 9.13): the note's form, or its read view once finished, fetched
+/// first when this phone does not hold it (a second phone, or one a synced sign-out erased; 4.8). It
+/// settles nothing: completing it again does.
+Future<void> _openNote(BuildContext context, EncounterServices services, String noteId) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final router = GoRouter.of(context);
+  if (!await fetchNote(services, noteId)) {
+    messenger.showSnackBar(const SnackBar(content: Text(noteNotOnPhone)));
+    return;
+  }
+  unawaited(router.push(noteLocation(noteId)));
 }
 
 /// Where a notice's "Open" goes, from this phone's own data: the patient it names, or the problem
@@ -299,9 +334,10 @@ class _ProblemConflictCard extends StatelessWidget {
 }
 
 class _RejectionCard extends ConsumerWidget {
-  const _RejectionCard({required this.entry, required this.services, required this.paused});
+  const _RejectionCard({required this.entry, required this.services, required this.encounters, required this.paused});
   final OutboxEntry entry;
   final PatientServices? services;
+  final EncounterServices? encounters;
   final bool paused;
 
   @override
@@ -319,6 +355,39 @@ class _RejectionCard extends ConsumerWidget {
         (problem == 'patient_missing') &&
         const {entityAlias, entityAllergy, entityConsent, entityProblem}.contains(e.entity);
     final messenger = ScaffoldMessenger.of(context);
+    final n = encounters;
+    // A note's life (lifecycle 9.13): the note a refused sign-off, correction or answer is about.
+    final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
+    final noteId = switch (e.entity) {
+      entityNote => e.recordId,
+      entitySignoff || entityCorrection => value['noteId'] as String?,
+      _ => null,
+    };
+    final opensNote =
+        n != null &&
+        noteId != null &&
+        problem != 'definition_error' &&
+        problem != 'unknown_note_type' &&
+        (e.entity != entitySignoff || const {'content_changed', 'incomplete', 'red_flags_first'}.contains(problem));
+    // A refused correction: Correct again sends it at the versions now seen; Leave it abandons it,
+    // changing nothing, so the refusal settles (3.6, D109). Correct again only where someone else's
+    // correction got there first; one that left the note missing something needs other answers.
+    final correction = n != null && e.entity == entityCorrection && e.op == 'create';
+    final visitId = switch (e.entity) {
+      entityEncounter => e.recordId,
+      entityNote =>
+        value['encounterId'] as String? ?? n?.store.record(e.recordId)?.attributes['encounterId'] as String?,
+      _ => null,
+    };
+
+    Future<void> settle(Future<void> Function() fix) async {
+      try {
+        await fix();
+        await ref.read(syncControllerProvider).syncNow();
+      } on Exception catch (x) {
+        messenger.showSnackBar(SnackBar(content: Text(encounterErrorText(x))));
+      }
+    }
 
     Future<void> makeCard() async {
       try {
@@ -362,7 +431,40 @@ class _RejectionCard extends ConsumerWidget {
                 : 'It stays on this phone until it is fixed. Open the record to fix it.',
             style: text.bodyMedium,
           ),
-          if (s != null && patientSide) ...[
+          if (opensNote || correction || (n != null && visitId != null && problem == 'unknown_note_type')) ...[
+            const SizedBox(height: FieldSpace.s2),
+            Wrap(
+              spacing: FieldSpace.s2,
+              runSpacing: FieldSpace.s2,
+              children: [
+                if (correction && problem == 'field_changed')
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(settle(() => n.repository.correctAgain(e.changeId))),
+                    child: const Text(correctAgainAction),
+                  ),
+                if (opensNote)
+                  OutlinedButton(
+                    onPressed: () => unawaited(_openNote(context, n, noteId)),
+                    child: const Text(openNoteAction),
+                  ),
+                if (visitId != null && problem == 'unknown_note_type')
+                  OutlinedButton(
+                    onPressed: () => unawaited(context.push('/encounters/$visitId/note-types')),
+                    child: const Text(chooseNoteTypeAction),
+                  ),
+                if (correction)
+                  OutlinedButton(
+                    onPressed: paused ? null : () => unawaited(settle(() => n.repository.leaveIt(e.changeId))),
+                    child: const Text(leaveItAction),
+                  ),
+              ],
+            ),
+            if (correction && paused) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            ],
+          ],
+          if (s != null && patientSide && !opensNote && !correction) ...[
             const SizedBox(height: FieldSpace.s2),
             Wrap(
               spacing: FieldSpace.s2,
@@ -396,8 +498,11 @@ class _RejectionCard extends ConsumerWidget {
 }
 
 class _NoticeCard extends StatelessWidget {
-  const _NoticeCard({required this.notice, required this.onOpen, required this.onDone});
+  const _NoticeCard({required this.notice, required this.onOpenNote, required this.onOpen, required this.onDone});
   final LocalNotice notice;
+
+  /// **Open the note**, for a notice of a note's life (lifecycle 9.13).
+  final VoidCallback? onOpenNote;
   final VoidCallback? onOpen;
   final VoidCallback onDone;
 
@@ -410,7 +515,9 @@ class _NoticeCard extends StatelessWidget {
       spacing: FieldSpace.s2,
       runSpacing: FieldSpace.s2,
       children: [
-        if (onOpen != null)
+        if (onOpenNote != null)
+          OutlinedButton(onPressed: onOpenNote, child: const Text(openNoteAction))
+        else if (onOpen != null)
           OutlinedButton(
             onPressed: onOpen,
             child: Text(notice.patientId == null ? 'Open the problem' : 'Open the chart'),
@@ -420,3 +527,7 @@ class _NoticeCard extends StatelessWidget {
     ),
   );
 }
+
+const correctAgainAction = 'Correct again';
+const leaveItAction = 'Leave it';
+const chooseNoteTypeAction = 'Choose a note type';

@@ -19,7 +19,7 @@ import '../../patients/chart_cache.dart' show ChartMeta, chartMetaField, patient
 import '../../patients/display.dart';
 import '../../patients/patient_providers.dart';
 import '../../patients/patient_search.dart';
-import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityAllergy;
+import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityAllergy, entityEncounter, entityNote;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_row.dart' show PatientRow;
 import '../patients/patient_widgets.dart' show FrozenNotice, PhiField, WideButton, todayOf;
@@ -522,4 +522,27 @@ void leaveVisit(BuildContext context, LocalStore store, String? patientId) {
     _ => false,
   };
   if (!onChart) unawaited(router.push('/patients/$patientId'));
+}
+
+/// Brings the note [noteId] onto the phone when it is not there, with its visit ([encounterId] when
+/// known, else the one the note names), as the visit screen brings one (8.2): Notes to finish's draft
+/// that another phone made, and the note a Needs attention notice names (9.9, 9.13). False without
+/// signal, or when the server has no such note for the person: the screen says the note needs a
+/// connection.
+Future<bool> fetchNote(EncounterServices services, String noteId, {String? encounterId}) async {
+  final store = services.store;
+  if (store.record(noteId) != null) return true;
+  final fetch = services.repository.openServerRecord;
+  if (fetch == null) return false;
+  try {
+    if (encounterId != null && store.record(encounterId) == null && !await fetch(entityEncounter, encounterId)) {
+      return false;
+    }
+    if (!await fetch(entityNote, noteId)) return false;
+    final visit = store.record(noteId)?.attributes['encounterId'];
+    if (visit is String && store.record(visit) == null) await fetch(entityEncounter, visit);
+    return true;
+  } on Exception {
+    return false;
+  }
 }

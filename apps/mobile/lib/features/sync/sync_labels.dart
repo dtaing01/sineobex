@@ -81,6 +81,25 @@ String? problemLabel(String? problem) => switch (problem) {
   'encounter_missing' => 'The visit this names isn’t on the team’s list.',
   'record_missing' => 'The record this changes isn’t on the team’s list.',
   'patient_merged' => 'This chart was merged. Make a new card from the kept chart.',
+  // Phase 4 (lifecycle 4.1, 9.13): the problems a worker can fix, in the design's words.
+  'content_changed' => 'This note changed after you completed it. Open it, read it and complete it again.',
+  'incomplete' => 'This is missing something the note needs. Open the note and try again.',
+  'red_flags_first' => 'Answer the red-flag question first, then complete again.',
+  'field_changed' => 'Someone corrected this answer first. Open the note and check it.',
+  'medical_note_needs_patient' => 'A clinical note needs a patient. Choose who this visit is for.',
+  'unknown_note_type' => 'This note type isn’t on your team’s list. Choose the note type again.',
+  'definition_error' => 'This couldn’t be checked. Tell a Program Admin.',
+  'encounter_note_missing' || 'note_signoff_missing' => 'The note this belongs to isn’t on the team’s list.',
+  'encounter_other_patient' => 'The visit this names belongs to someone else.',
+  // An answer its note type refuses (forms 7.1): the design gives no sentence of its own.
+  'unknown_path' ||
+  'wrong_type' ||
+  'unknown_option' ||
+  'out_of_range' ||
+  'too_long' ||
+  'excluded_pair' ||
+  'exclusive_with_others' => 'This answer doesn’t fit the note’s form. Open the note and change it.',
+  'referral_in_future' => 'A referral can’t be dated in the future.',
   _ => null,
 };
 
@@ -104,6 +123,14 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   // Lifecycle 3.4 asks for this, and 9.13 has no sentence for it: the coordinator's wording.
   'finished_differently' =>
     'This note was already finished with different content. Open it and read what was finished.',
+  'note_saved_unsigned' => 'Your credential can’t sign this note type. It was saved unsigned for a co-signer.',
+  'late_change_kept' =>
+    'The note was already finished. Your change was kept in its history. Add an addendum if it matters.',
+  'note_corrected' => 'A note you signed was corrected. It needs your review again.',
+  // Lifecycle 4.10 names these and 9.13 gives them no sentence: words of the screens' own.
+  'note_cosigned' => 'A visit you charted was co-signed.',
+  'note_attested' => 'A visit you signed was attested.',
+  'note_assigned' => 'A note was assigned to you to finish.',
   _ => 'Something changed after it synced.',
 };
 
