@@ -211,7 +211,7 @@ const completeAndSendAction = 'Complete and send for co-signature';
 // ---- The EMS handoff (9.8) ----
 
 const handoffDone = 'Done';
-const handoffNotesHeading = 'Notes';
+const handoffRecapHeading = 'Recap';
 
 /// Who the handoff is about, as the portal's file words it (lifecycle 5.7, 12.1 #27).
 const handoffNoPatient = 'No patient recorded';

@@ -4066,6 +4066,17 @@ bottom. It has no copy and no share (PRD main 413), and its text cannot be selec
 is logged (`ems_handoff.shown`). It works offline. It is built for EMS's reader, as the file is
 (5.7, D94): no note of a sensitive type and no sensitive exam's findings, whoever shows it.
 
+As built (unit L5, `apps/mobile/lib/features/encounters/handoff_screen.dart`): **Show handoff** opens
+`/encounters/<id>/handoff`, full screen over the visit's screens. Its lines are `handoffLines` over
+each note as `emsReader` (the server's `EMS_READER`) sees it, of what the person showing it sees too
+(`sentToEms`, the server's rule), so a note of a sensitive type is neither shown nor named; each
+note's lines sit under its title and state, as the file has them. It is headed by the patient's
+preferred name, age in years and allergies, worded as the file words them (12.1 #27). The visit is
+read from the phone's copy (a visit read, logged as one), then `ems_handoff.shown` is written on the
+visit with its patient before anything shows. Day draws it in the High contrast theme and Night run
+in its own, every word in full ink; there is no back arrow and no action, only **Done**, and no text
+can be selected.
+
 ### 9.9 Home: notes to finish, and the queues
 
 `apps/mobile/lib/features/home/home_screen.dart` gains tiles under Needs attention (PRD main 744):
@@ -4537,7 +4548,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 26 | Does the review queue name the rule that held a change? | No. A change held by a rule shows the reason `permission` alone: which rule held it (the Medical gate, a section's `needs`, the sensitive set check, a note the sender may not read) is not stored, and `sync.quarantined` names none (6.4, 10.1). Open for the portal's queues (L6) | The team |
 | 27 | What of the patient does the EMS handoff PDF's header carry? (forms 10.1 #6 says the summary's comes from the chart) | Their preferred name, their age in years and their allergies, from their chart as the exporter may see it, the allergies worded as the phone's allergy badge words them; never the legal name or the birth date. The file's name and metadata name no patient (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
-| 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
+| 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is held to the same reader (9.8, card F7-handoff) (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's), on the phone or in the visit read online or from the cached chart, opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
@@ -4548,7 +4559,8 @@ correction's rules (`note-correction.ts`).
 
 Rows 27 to 29 came from unit L2's review, the coordinator's decisions on the handoff. Their
 `PLAN-OPEN:` comments are in `services/api/src/encounters/handoff.ts`: row 27's at the head of
-the file, row 28's above `zoned`, row 29's on `EMS_READER`. Rows 7, 12, 17 and 18, built with the
+the file, row 28's above `zoned`, row 29's on `EMS_READER` and, for the phone's full-screen
+summary, on `emsReader` (`apps/mobile/lib/features/encounters/handoff_screen.dart`). Rows 7, 12, 17 and 18, built with the
 online routes, have theirs at the head of `assign.ts` and of `handoff.ts`, on `RECENT_VISITS`
 (`timeline.ts`) and on `exportHandoff`.
 

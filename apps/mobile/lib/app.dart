@@ -12,6 +12,7 @@ import 'design/tokens.dart';
 import 'design/widgets/demo_banner.dart';
 import 'features/encounters/encounter_labels.dart' show startTabLabel;
 import 'features/encounters/encounter_screen.dart';
+import 'features/encounters/handoff_screen.dart';
 import 'features/encounters/new_encounter_screen.dart';
 import 'features/encounters/note_screen.dart';
 import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
@@ -138,6 +139,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/encounters/:id/summary',
         builder: (_, state) => SummaryScreen(encounterId: state.pathParameters['id']!),
+      ),
+      // The EMS handoff (9.8): full screen, over the visit's screens.
+      GoRoute(
+        path: '/encounters/:id/handoff',
+        pageBuilder: (_, state) => MaterialPage(
+          key: state.pageKey,
+          name: state.path,
+          arguments: state.pathParameters,
+          fullscreenDialog: true,
+          child: HandoffScreen(encounterId: state.pathParameters['id']!),
+        ),
       ),
       // A note's form, or its read view once finished (9.5, 9.7). The section to open, the summary's
       // jump (9.6), is a section's ID and travels in `extra`, never in the location.
