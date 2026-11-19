@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/rules.dart' show NoteStatus;
+import 'package:sineobex_field/sync/entities.dart' show entityNote;
 import 'package:sineobex_field/features/encounters/visit_screen.dart';
 
 import 'encounter_kit.dart';
@@ -94,23 +95,46 @@ void main() {
     expect(auditEvents(store).skip(shown), ['note.viewed']);
   });
 
-  testWidgets('a draft the person may change opens as its form; a teammate’s draft reads as it is', (tester) async {
+  testWidgets('a draft the person may change opens as its form, a teammate’s as well as their own', (tester) async {
     final h = await signInToChart(tester);
     final visit = startVisit(h, kind: VisitKind.nonMedical);
     final mine = await chart(tester, h, visit, 'outreach', {'outreach.type': 'outreach'});
-    await teammatesNote(tester, h, visit);
+    final theirs = await teammatesNote(tester, h, visit);
     await openVisitScreen(tester, visit);
-
-    // The teammate's: who acts as its author, its answers read-only, nothing to change or add.
-    await expectShown(tester, find.text('Social needs'));
     await expectShown(tester, find.text('By Demo Blair'));
     await expectShown(tester, find.text('Current needs: Food'));
+    // Drafts: nothing to correct or add to yet.
     expect(find.bySemanticsLabel(RegExp('^Correct ')), findsNothing);
     expect(find.bySemanticsLabel(RegExp('^Add addendum')), findsNothing);
-
-    // The person's own: its form.
     await tapOn(tester, find.bySemanticsLabel('Open the note, Outreach'));
     expectNoteOpened(tester, mine);
+    await back(tester);
+    await tapOn(tester, find.bySemanticsLabel('Open the note, Social needs'));
+    expectNoteOpened(tester, theirs);
+  });
+
+  testWidgets('a teammate’s draft the person may not change reads as it is', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.credentials[blair] = 'student';
+    final theirs = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {'reason.concern': 'Demo: cough'},
+    }, by: blair);
+    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirs)), isTrue);
+    h.server.offline = true;
+    // A credential that doesn't chart Medical notes reads a Medical draft, and can't change it (6.2).
+    await asCredential(tester, h, 'chw');
+    await openVisitScreen(tester, visit);
+    await expectShown(tester, find.text('By Demo Blair'));
+    await expectShown(tester, find.byKey(const ValueKey('read.reason.concern')));
+    expect(find.bySemanticsLabel(RegExp('^Open the note')), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('^Correct ')), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('^Add addendum')), findsNothing);
   });
 
   testWidgets('Reopen: a student’s note waiting for a co-signer goes back to a draft, asked first, and opens', (

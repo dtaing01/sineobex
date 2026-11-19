@@ -4101,6 +4101,46 @@ with its review):
 - **The actions**: reopen, addenda and corrections as 3.6 as built; Co-sign and Attest as 5 as
   built, on a visit read from the server.
 
+As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_screen.dart`,
+`correction_sheet.dart` and `addendum_sheet.dart`):
+
+- The visit opens at `/encounters/<id>/visit` (fixed title "Visit"), read by `EncounterApi.openVisit`
+  with the recent visits of every chart the phone keeps, looked through only when the phone holds no
+  copy. A visit read from the phone is read again after every change, logging only what a read adds;
+  its records made at the visit are `VisitRecords.madeAt`, logged in their own read. A visit read from
+  the server or a chart is not asked for again at a change: the server is asked when the screen
+  opens, after the person added to the visit (once a sync has sent it), and for Co-sign and Attest.
+  What the person made of it that has not reached the server (an addendum, a correction, waiting or
+  refused) shows beside that read, from the phone's copy (`withWaiting`); nothing else of a phone
+  copy is shown over it, since `_hold` brings only the records an action needs and the phone may then
+  hold part of the visit.
+- The envelope is one heading (who, the kind, "Started …", "time not verified", the place), then the
+  assessment and the visit's own addenda. A patient the phone knows nothing of is named "No name
+  recorded": the visit read carries no name (a queue's row does).
+- Each note shows its state, recap and read view; a draft the person may change is a button to its
+  form. Below it, in the order made: sign-offs (Completed, Signed, Co-signed by …, with the credential
+  in words), attestations (Attested by …), addenda and corrections, each "Waiting to send" or "In
+  Needs attention" while it is the phone's own. A correction's line names its answers and its reason;
+  the old values are struck through in the read view itself, which marks only `corrected` ones.
+- Records made at the visit: a problem and a problem's note open the problem's screen, an allergy the
+  chart's Allergies. **A referral opens its patient's chart** until card L5-referrals gives the sheet
+  with Entered in error. A server snapshot is "On another chart now" when its patient is not in the
+  visit's patient's merged group as the phone knows it.
+- **Reopen** is asked first ("Reopen this note?") and opens the form. **Correct** brings a note that
+  has left the phone back first (the visit and the note, as the correction itself would), so the
+  sheet starts from its answers and the versions the person reads; offline that says the action needs
+  a connection.
+- The correction sheet draws each answer with the renderer's own field (`FieldHost`, a grid's cell
+  bare), adds others from the note's read view, up to ten, and, when `correct` refuses `incomplete`,
+  asks for the answers it names under "Needed with this change". With "The patient asked for this
+  change" on, its button becomes **Make the change** and **Record that it was declined**.
+- **Co-sign** and **Attest** are decided in one function, `secondActOffers`: today the domain layer's
+  `cosignPlan` and `attestPlan`; the visit read's own answer for the reader replaces them there. They
+  sit at the end of the visit, the sentence of 3.5 above the button. On a visit not read from the
+  server the first tap reads it there, the screen says "This is the visit as it is now. Read it, then
+  co-sign." and the next tap signs; offline (the last sync found no signal) the button is greyed,
+  "Connect to co-sign". A note the person may not act on for a part they can't open says so under it.
+
 ### 9.8 The EMS handoff
 
 Red flags answered Yes opens the EMS branch in the form (forms part). When EMS is activated, the
