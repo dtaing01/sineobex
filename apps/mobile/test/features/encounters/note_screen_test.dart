@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/design/tokens.dart' show FieldTheme;
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
 import 'package:sineobex_field/features/encounters/note_screen.dart';
@@ -62,6 +63,11 @@ void main() {
       expect(find.text('Waiting to send'), findsWidgets);
       await expectShown(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
       await expectShown(tester, find.widgetWithText(FilledButton, 'Continue'));
+      // In a bar under the form; at large text at the end of the list, so the form keeps the screen.
+      expect(
+        find.descendant(of: find.byType(ListView), matching: find.widgetWithText(FilledButton, 'Continue')),
+        run.scale == 1 ? findsNothing : findsOneWidget,
+      );
       await expectScreenOk(tester);
       // The read is logged once; a save reads again and logs nothing new.
       expect(auditEvents(store).skip(before), ['note.viewed']);
@@ -204,6 +210,44 @@ void main() {
     await settle(tester);
     expect(answersOf(h, theirs)['reason.reasons'], ['follow_up']);
     expect(find.text('You can’t change this answer.'), findsNothing);
+  });
+
+  testWidgets('at large text a refusal stays in sight under the form while the buttons end the list', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester, run: (theme: FieldTheme.day, scale: 2.0, narrow: true));
+    final visit = startVisit(h);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final theirs = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {
+        'exam.systems': ['skin'],
+      },
+    }, by: blair);
+    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirs)), isTrue);
+    h.server.offline = true;
+    await openNote(tester, theirs);
+    await openSection(tester, 'exam');
+    await tapOn(tester, chip('Pulmonary'));
+    final refused = find.text('You can’t change this answer.');
+    // In sight under the form wherever it is scrolled to, not at the list's end with the buttons,
+    // and never more than a third of the screen: the form keeps the rest.
+    final form = find.byType(ListView);
+    Future<void> inSight() async {
+      expect(find.descendant(of: form, matching: refused), findsNothing);
+      final bottom = tester.getRect(find.byType(NoteScreen)).bottom;
+      expect(tester.getRect(refused).top, lessThan(bottom));
+      expect(tester.getRect(refused).top, greaterThan(tester.getRect(form).bottom - 1));
+      expect(tester.getSize(form).height, greaterThan(tester.getSize(find.byType(NoteScreen)).height / 3));
+    }
+
+    await inSight();
+    await expectShown(tester, find.descendant(of: form, matching: find.widgetWithText(FilledButton, 'Continue')));
+    await inSight();
+    await expectScreenOk(tester);
+    handle.dispose();
   });
 
   testWidgets('Expand carries a quick part into its full note, which opens', (tester) async {

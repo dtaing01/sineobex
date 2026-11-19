@@ -448,7 +448,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
             runSpacing: FieldSpace.s1,
             children: [
               NoteStateChip(note: note),
-              if (note.notSynced)
+              if (showsOnThisPhoneOnly(note))
                 const StatusChip(label: onThisPhoneOnly, icon: LucideIcons.smartphone, tone: ChipTone.info),
             ],
           ),

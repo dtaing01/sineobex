@@ -3961,7 +3961,10 @@ As built (the screens, unit L5, `apps/mobile/lib/features/encounters/note_screen
   parameter on `NoteForm`.
 - **Save & Close** saves the box being typed in, pops the visit's screens to the patient's chart
   (the chart under them when it is this patient's, else it opens; Home for a visit with no
-  patient) and asks for a sync; **Continue** opens the summary.
+  patient) and asks for a sync; **Continue** opens the summary. Both stand in a bar under the form,
+  with what was last refused; at large text on a short screen (two times on most phones) they end
+  the note's list instead, and only a refusal stays in the bar. The bar never takes more than a
+  third of the screen; a longer refusal scrolls in it.
 - **The form's actions** (card F7-actions): `open_note_type` is offered where its type can be
   started in the visit (the note types list offers it; a Medical type needs a Medical visit with a
   patient) and opens `addNote`'s note; the Red flags note goes through `addRedFlagsNote`, and when

@@ -407,36 +407,52 @@ class _NoteState extends ConsumerState<_Note> {
     return const Padding(padding: EdgeInsets.all(FieldSpace.s4), child: NoticeMessage(noteNotOnPhone));
   }
 
+  /// Whether Save & Close and Continue close the note's list instead of standing in a bar: at large
+  /// text on a short screen (two times on most phones), where a bar would hold a fifth of the screen
+  /// or more and leave the form little room. What was last refused stays in a bar, to be seen.
+  bool get _actionsInList => MediaQuery.sizeOf(context).height / MediaQuery.textScalerOf(context).scale(1) < 480;
+
   /// Save & Close and Continue, under a draft the person may change, with what was last refused.
   Widget? _bar() {
     final note = _note;
     if (note == null || _instead() != null || !note.editable) return null;
+    final inList = _actionsInList;
+    if (inList && _problem == null) return null;
     return SafeArea(
       child: Material(
         color: context.field.surface,
         elevation: 4,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(FieldSpace.s4, FieldSpace.s2, FieldSpace.s4, FieldSpace.s3),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s2)],
-              _Buttons(
-                left: WideButton(label: saveAndCloseAction, onPressed: () => unawaited(_saveAndClose(note))),
-                right: WideButton(
-                  label: continueAction,
-                  icon: LucideIcons.arrowRight,
-                  filled: true,
-                  onPressed: () => unawaited(_continue(note)),
-                ),
-              ),
-            ],
+        // Never more than a third of the screen, whatever the text size or the sentence: the form
+        // keeps the rest, and a long refusal scrolls in its place.
+        child: LayoutBuilder(
+          builder: (context, space) => ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: space.maxHeight / 3),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(FieldSpace.s4, FieldSpace.s2, FieldSpace.s4, FieldSpace.s3),
+              child: inList ? ErrorMessage(_problem!) : _actions(note),
+            ),
           ),
         ),
       ),
     );
   }
+
+  Widget _actions(NoteView note) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_problem != null && !_actionsInList) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s2)],
+      _Buttons(
+        left: WideButton(label: saveAndCloseAction, onPressed: () => unawaited(_saveAndClose(note))),
+        right: WideButton(
+          label: continueAction,
+          icon: LucideIcons.arrowRight,
+          filled: true,
+          onPressed: () => unawaited(_continue(note)),
+        ),
+      ),
+    ],
+  );
 
   Widget _body(BuildContext context, NoteView note) {
     final text = Theme.of(context).textTheme;
@@ -485,6 +501,7 @@ class _NoteState extends ConsumerState<_Note> {
             ),
           ),
         ],
+        if (note.editable && _actionsInList) ...[const SizedBox(height: FieldSpace.s4), _actions(note)],
       ],
     );
   }

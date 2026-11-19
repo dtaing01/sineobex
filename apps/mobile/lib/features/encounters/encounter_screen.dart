@@ -183,7 +183,13 @@ class _NoteRow extends StatelessWidget {
     // The recap (lifecycle 8.1): a line per section with an answer that counts, each naming its
     // answers; nothing from a sensitive exam, and only what the reader may see.
     final recap = [for (final l in note.recap) l.text];
-    final spoken = [title, noteStateText(note), ?by, if (note.notSynced) onThisPhoneOnly, ...recap].join(', ');
+    final spoken = [
+      title,
+      noteStateText(note),
+      ?by,
+      if (showsOnThisPhoneOnly(note)) onThisPhoneOnly,
+      ...recap,
+    ].join(', ');
     return Material(
       color: c.surface,
       shape: RoundedRectangleBorder(
@@ -217,7 +223,7 @@ class _NoteRow extends StatelessWidget {
                           runSpacing: FieldSpace.s1,
                           children: [
                             NoteStateChip(note: note),
-                            if (note.notSynced)
+                            if (showsOnThisPhoneOnly(note))
                               const StatusChip(
                                 label: onThisPhoneOnly,
                                 icon: LucideIcons.smartphone,

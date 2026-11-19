@@ -38,6 +38,8 @@ void main() {
       await expectShown(tester, find.text('Demo: viral, rest and fluids'));
       expectNoLegalName(tester);
 
+      // Never sent, the visit says so once; a note waiting to send says that alone, not both.
+      await expectShown(tester, find.text('On this phone only'));
       // Each note: its state, its recap, then its sections, each answer with Correct under it.
       await expectShown(tester, find.text('General / primary care'));
       await expectShown(tester, find.text('Chief concern: Demo: cough'));

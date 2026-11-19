@@ -196,6 +196,10 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 }
 
+/// Whether "On this phone only" goes beside a note's state: never where the state says "Waiting to
+/// send", which says the same thing.
+bool showsOnThisPhoneOnly(NoteView note) => note.notSynced && !note.waitingToSend;
+
 /// A note's state in words with an icon (lifecycle 9.1): never colour alone.
 class NoteStateChip extends StatelessWidget {
   const NoteStateChip({super.key, required this.note});
