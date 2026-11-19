@@ -928,6 +928,32 @@ test.describe('notes not complete, and Assign', () => {
   test('@responsive a role with team.manage_users and no patients.view lists the team’s drafts with no patient named, no visit or chart link and no Assign, and can’t open a visit', async ({
     page,
   }) => {
+    // A draft of its own, so the list has a row whichever tests ran before.
+    const phone = await phoneOf('clinician@example.com');
+    const chart = newPatient({ preferredName: `Reed ${newSurname()}` }, 30);
+    const visitId = randomUUID();
+    await phone.send(
+      chart,
+      {
+        entity: 'encounter',
+        recordId: visitId,
+        op: 'create',
+        value: { kind: 'non_medical', patientId: chart.recordId },
+        minutesAgo: 20,
+      },
+      {
+        entity: 'encounter_note',
+        recordId: randomUUID(),
+        op: 'create',
+        value: {
+          encounterId: visitId,
+          noteTypeKey: 'outreach',
+          noteTypeVersion: 1,
+          data: { 'outreach.type': 'wellness_check' },
+        },
+        minutesAgo: 19,
+      },
+    );
     const role = await customRole('Staff desk (demo)', ['team.manage_users']);
     await setRole('billing@example.com', role);
     try {
