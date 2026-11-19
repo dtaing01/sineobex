@@ -8,6 +8,7 @@ import '../../app_providers.dart';
 import '../../auth/session_controller.dart';
 import '../../design/tokens.dart';
 import '../../patients/patient_providers.dart';
+import '../encounters/home_tiles.dart';
 import '../patients/patient_labels.dart' show ago;
 import '../sync/sign_out_dialog.dart';
 import '../sync/sync_cards.dart';
@@ -53,6 +54,8 @@ class HomeScreen extends ConsumerWidget {
                 NeedsAttentionTile(count: waiting, onOpen: () => context.push('/attention')),
                 const SizedBox(height: FieldSpace.s4),
               ],
+              // Phase 4 (lifecycle 9.9): notes to finish and the queues, under Needs attention.
+              const EncounterTiles(),
               if (snapshot.open) ...[
                 SyncStatusCard(snapshot: snapshot, onSyncNow: () => unawaited(sync.syncNow())),
                 if (index != null && index.eligible) ...[

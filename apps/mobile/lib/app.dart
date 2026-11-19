@@ -10,12 +10,15 @@ import 'auth/session_controller.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'design/widgets/demo_banner.dart';
+import 'encounters/encounter_api.dart' show SecondAct;
 import 'features/encounters/encounter_labels.dart' show startTabLabel;
 import 'features/encounters/encounter_screen.dart';
 import 'features/encounters/handoff_screen.dart';
 import 'features/encounters/new_encounter_screen.dart';
 import 'features/encounters/note_screen.dart';
 import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
+import 'features/encounters/notes_to_finish_screen.dart';
+import 'features/encounters/queue_screen.dart';
 import 'features/encounters/start_sheet.dart';
 import 'features/encounters/summary_screen.dart';
 import 'features/encounters/visit_screen.dart';
@@ -157,6 +160,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: HandoffScreen(encounterId: state.pathParameters['id']!),
         ),
       ),
+      // Home's tiles (9.9): the person's notes to finish and the two queues, by fixed locations.
+      GoRoute(path: notesToFinishLocation, builder: (_, _) => const NotesToFinishScreen()),
+      for (final act in SecondAct.values)
+        GoRoute(
+          path: queueLocation(act),
+          builder: (_, _) => QueueScreen(act: act),
+        ),
       // A note's form, or its read view once finished (9.5, 9.7). The section to open, the summary's
       // jump (9.6), is a section's ID and travels in `extra`, never in the location.
       GoRoute(
