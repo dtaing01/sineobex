@@ -2,13 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
+import type { Schemas } from '@sineobex/contract';
 import {
   apiCall,
+  customRole,
   expectAccessible,
   expectNothingStored,
   expectReflow,
   IDP,
   MFA_CODE,
+  portalNav,
+  setRole,
   signIn,
   staffToken,
   watchCsp,
@@ -48,7 +52,7 @@ async function audited(email: string, patientId: string, action: string): Promis
 function expectOnlyIds(addresses: string[]) {
   for (const address of addresses)
     expect(address).toMatch(
-      /\/(patients|encounters)\/[0-9a-f-]{36}(\?handoff=[a-z_]+)?$|\/(home|sign-in.*|reauth.*)$/,
+      /\/(patients|encounters)\/[0-9a-f-]{36}(\?(handoff|assign)=[a-z_]+)?(#assign-[0-9a-f-]{36})?$|\/team\/incomplete-notes$|\/(home|sign-in.*|reauth.*)$/,
     );
 }
 
@@ -461,5 +465,331 @@ test.describe('the EMS handoff', () => {
       (await page.request.get(`/encounters/${emsVisit}/ems-handoff`, { maxRedirects: 0 })).status(),
     ).toBe(405);
     expect(await audited('chw@example.com', emsPatient, 'ems_handoff.exported')).toBe(exports);
+  });
+});
+
+test.describe('notes not complete, and Assign', () => {
+  /** The team's members, as the members page lists them. */
+  async function members(): Promise<Schemas['Member'][]> {
+    const res = await apiCall(await staffToken('admin@example.com'), 'GET', '/v1/team/members');
+    expect(res.status).toBe(200);
+    return (await res.json()) as Schemas['Member'][];
+  }
+
+  /**
+   * Removes a seeded staff member from the team, as the members page does, and gives back what puts
+   * them back as they were: specs share the database.
+   */
+  async function removeForAWhile(email: string): Promise<() => Promise<void>> {
+    const member = (await members()).find((m) => m.email === email)!;
+    const removed = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      `/v1/team/members/${member.membershipId}/remove`,
+      { reason: 'Demo: away from the team for a while' },
+    );
+    expect(removed.status, 'removed').toBeLessThan(300);
+    return async () => {
+      const back = await apiCall(await staffToken('admin@example.com'), 'POST', '/v1/team/members', {
+        email: member.email,
+        displayName: member.displayName,
+        roleId: member.role.id,
+        credential: member.credential,
+        credentialFields: member.credentialFields,
+      });
+      expect(back.status, 'restored').toBeLessThan(300);
+    };
+  }
+
+  async function countsOf(email: string): Promise<Schemas['HomeCounts']> {
+    return (await (
+      await apiCall(await staffToken(email), 'GET', '/v1/me/counts')
+    ).json()) as Schemas['HomeCounts'];
+  }
+
+  test('@responsive Notes not complete lists every draft by the API’s titles and names, marks one older than a day, and Home counts them as the list does', async ({
+    page,
+  }) => {
+    const phone = await phoneOf('clinician@example.com');
+    const name = `Fern ${newSurname()}`;
+    const chart = newPatient({ preferredName: name }, 3000);
+    const [old, fresh] = [randomUUID(), randomUUID()];
+    const [oldNote, freshNote] = [randomUUID(), randomUUID()];
+    const outreach = (encounterId: string, recordId: string, minutesAgo: number) => ({
+      entity: 'encounter_note',
+      recordId,
+      op: 'create' as const,
+      value: {
+        encounterId,
+        noteTypeKey: 'outreach',
+        noteTypeVersion: 1,
+        data: { 'outreach.type': 'wellness_check' },
+      },
+      minutesAgo,
+    });
+    await phone.send(
+      chart,
+      // Two days ago: past the 24 hours of lifecycle 3.9.
+      {
+        entity: 'encounter',
+        recordId: old,
+        op: 'create',
+        value: { kind: 'non_medical', patientId: chart.recordId },
+        minutesAgo: 2900,
+      },
+      outreach(old, oldNote, 2899),
+      {
+        entity: 'encounter',
+        recordId: fresh,
+        op: 'create',
+        value: { kind: 'non_medical', patientId: chart.recordId },
+        minutesAgo: 20,
+      },
+      outreach(fresh, freshNote, 19),
+    );
+
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    const counts = await countsOf('admin@example.com');
+    const list = (await (
+      await apiCall(await staffToken('admin@example.com'), 'GET', '/v1/team/incomplete-notes')
+    ).json()) as Schemas['IncompleteNotes'];
+    // The count is the list's, overdue and all.
+    expect(counts.teamIncomplete).toBe(list.notes.length);
+    expect(counts.teamOverdue).toBe(list.notes.filter((n) => n.overdue).length);
+    const n = counts.teamIncomplete!;
+    const o = counts.teamOverdue!;
+    const card = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Notes not complete' });
+    await expect(card.locator('p')).toHaveText(
+      `${n} ${n === 1 ? 'note' : 'notes'} not complete.${o > 0 ? ` ${o} ${o === 1 ? 'is' : 'are'} older than a day.` : ''}`,
+    );
+
+    await card.getByRole('link', { name: 'Notes not complete' }).click();
+    await expect(page).toHaveURL(/\/team\/incomplete-notes$/);
+    await expect(page).toHaveTitle('Notes not complete · Sineobex');
+    await expect(page.getByRole('table')).toContainText(`Draft notes, oldest visit first: ${n} `);
+    const rows = page.getByRole('row').filter({ hasText: name });
+    await expect(rows).toHaveCount(2);
+    // Oldest visit first.
+    const [older, newer] = [rows.first(), rows.last()];
+    await expect(older.getByRole('rowheader')).toHaveText('Outreach');
+    await expect(older).toContainText('Jordan Lee (demo)');
+    await expect(older).toContainText('Older than a day');
+    await expect(newer).not.toContainText('Older than a day');
+    await expect(older).not.toContainText('No longer on the team');
+    await expect(older.getByRole('link', { name: /^Open the visit/ })).toHaveAttribute(
+      'href',
+      `/encounters/${old}`,
+    );
+    await expect(older.getByRole('link', { name: /^Open the chart/ })).toHaveAttribute(
+      'href',
+      `/patients/${chart.recordId}`,
+    );
+    // Its author is on the team: nothing to assign.
+    await expect(older.getByRole('link', { name: /^Assign/ })).toHaveCount(0);
+    await expectAccessible(page, 'notes not complete');
+    await expectReflow(page, 'notes not complete');
+    await expectNothingStored(page, 'notes not complete');
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('a note whose author left says so and has Assign: the picker lists exactly who the API answers, the act asks for a fresh sign-in, and the assignee is never told they wrote it', async ({
+    page,
+  }) => {
+    test.slow();
+    // Casey charts a Medical visit: a Red flags note completed for a co-signer, and an Outreach draft.
+    const phone = await phoneOf('resident@example.com');
+    const name = `Moss ${newSurname()}`;
+    const chart = newPatient({ preferredName: name }, 60);
+    const visitId = randomUUID();
+    const [flags, draft] = [randomUUID(), randomUUID()];
+    await phone.send(
+      chart,
+      {
+        entity: 'encounter',
+        recordId: visitId,
+        op: 'create',
+        value: { kind: 'medical', patientId: chart.recordId },
+        minutesAgo: 50,
+      },
+      {
+        entity: 'encounter_note',
+        recordId: flags,
+        op: 'create',
+        value: {
+          encounterId: visitId,
+          noteTypeKey: 'red_flags_disposition',
+          noteTypeVersion: 1,
+          data: {
+            'red_flags.emergency': 'no',
+            'disposition.disposition': ['follow_up'],
+            'follow_up.when': 'prn',
+          },
+        },
+        minutesAgo: 49,
+      },
+      {
+        entity: 'encounter_note',
+        recordId: draft,
+        op: 'create',
+        value: {
+          encounterId: visitId,
+          noteTypeKey: 'outreach',
+          noteTypeVersion: 1,
+          data: { 'outreach.type': 'wellness_check' },
+        },
+        minutesAgo: 48,
+      },
+    );
+    const read = (await (
+      await apiCall(phone.token, 'GET', `/v1/encounters/${visitId}`)
+    ).json()) as Schemas['VisitRead'];
+    await phone.send({
+      entity: 'note_signoff',
+      recordId: randomUUID(),
+      op: 'create',
+      value: {
+        noteId: flags,
+        act: 'complete',
+        contentHash: read.notes.find((x) => x.noteId === flags)!.contentHash,
+        claimedCredential: null,
+        statementVersion: 'complete-2026-11',
+      },
+      minutesAgo: 40,
+    });
+
+    const putBack = await removeForAWhile('resident@example.com');
+    try {
+      // Alex's sign-in is dated back an hour, so the assignment goes through /reauth first.
+      const stale = await fetch(`${IDP}/test/stale-sign-in`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'admin@example.com', minutes: 60 }),
+      });
+      expect(stale.status).toBe(200);
+      await signIn(page, 'admin@example.com');
+      const csp = watchCsp(page);
+      const traffic = watchTraffic(page);
+
+      await portalNav(page).getByRole('link', { name: 'Notes not complete' }).click();
+      const row = page.getByRole('row').filter({ hasText: name });
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText('Casey Nguyen (demo)No longer on the team');
+      const assign = row.getByRole('link', { name: /^Assign/ });
+      await expect(assign).toHaveAttribute('href', `/encounters/${visitId}#assign-${draft}`);
+      await expectAccessible(page, 'notes not complete, an author who left');
+      await assign.click();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}#assign-${draft}$`));
+
+      // The picker is the assignees route's answer, exactly: Sam, whose credential is lower than
+      // Casey's, is not in it.
+      const assignees = (await (
+        await apiCall(await staffToken('admin@example.com'), 'GET', `/v1/notes/${draft}/assignees`)
+      ).json()) as Schemas['NoteAssignees'];
+      const form = page.getByRole('article', { name: 'Outreach' }).locator(`#assign-${draft}`);
+      const picker = form.getByLabel('Assign to');
+      const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      await expect(picker.locator('option')).toHaveText([
+        'Choose a clinician',
+        // Each person, with their credential in words when they hold one.
+        ...assignees.assignees.map(
+          (a) => new RegExp(`^${escape(a.displayName)}${a.credential === 'none' ? '' : ', .+'}$`),
+        ),
+      ]);
+      expect(assignees.assignees.map((a) => a.displayName)).toContain('Jordan Lee (demo)');
+      expect(assignees.assignees.map((a) => a.displayName)).not.toContain('Sam Okafor (demo)');
+      // The Red flags note's author left too: it has its own form.
+      await expect(
+        page
+          .getByRole('article', { name: 'Red flags and disposition' })
+          .getByRole('button', { name: 'Assign' }),
+      ).toBeVisible();
+      await expectAccessible(page, 'visit page with Assign');
+      await expectReflow(page, 'visit page with Assign');
+
+      // Nothing chosen: a summary that takes focus and links to each field.
+      await form.getByRole('button', { name: 'Assign' }).click();
+      const alert = form.getByRole('alert');
+      await expect(alert).toBeFocused();
+      await expect(
+        alert.getByRole('link', { name: 'Choose who will act as the note’s author.' }),
+      ).toBeVisible();
+      await expect(
+        alert.getByRole('link', { name: 'Give a reason of at least 3 characters.' }),
+      ).toBeVisible();
+      await expectAccessible(page, 'Assign, with problems', { inPlace: true });
+
+      const fill = async () => {
+        const f = page.getByRole('article', { name: 'Outreach' });
+        await f.getByLabel('Assign to').selectOption({ label: 'Jordan Lee (demo), Attending physician' });
+        await f.getByLabel('Reason').fill('Demo: Casey is away from the team');
+        await f.getByRole('button', { name: 'Assign' }).click();
+      };
+      await fill();
+      await expect(page).toHaveURL(/\/reauth\?next=/);
+      await page.getByLabel('6-digit code').fill(MFA_CODE);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=reauthed$`));
+      await expect(page.getByRole('main').getByRole('status')).toHaveText(
+        'You confirmed it’s you. Assign the note again.',
+      );
+      await fill();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=done$`));
+      await expect(page.getByRole('main').getByRole('status')).toHaveText(
+        'Assigned. The note names who acts as its author now, and they can finish or correct it.',
+      );
+      await expect(page.getByRole('article', { name: 'Outreach' })).toContainText(
+        'Written by Casey Nguyen (demo). Assigned to Jordan Lee (demo), who acts as its author now.',
+      );
+      await expect(page.getByRole('article', { name: 'Outreach' }).locator('form')).toHaveCount(0);
+
+      // The Red flags note, waiting for a co-signer, to Jordan too.
+      const flagsForm = page.getByRole('article', { name: 'Red flags and disposition' });
+      await flagsForm
+        .getByLabel('Assign to')
+        .selectOption({ label: 'Jordan Lee (demo), Attending physician' });
+      await flagsForm.getByLabel('Reason').fill('Demo: Casey is away from the team');
+      await flagsForm.getByRole('button', { name: 'Assign' }).click();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=done$`));
+      await expect(page.getByRole('main').locator('form')).toHaveCount(0);
+      await expectAccessible(page, 'visit page after Assign');
+      expect(await audited('admin@example.com', chart.recordId, 'note.assigned')).toBe(2);
+      expectOnlyIds(traffic.addresses);
+      expect(csp).toEqual([]);
+
+      // Jordan acts as the author of a note Casey wrote: told so, never that they wrote it, and
+      // offered no Co-sign.
+      await signIn(page, 'clinician@example.com');
+      await page.goto(`/encounters/${visitId}`);
+      const note = page.getByRole('article', { name: 'Red flags and disposition' });
+      await expect(note).toContainText('This note was assigned to you, so someone else has to co-sign it.');
+      await expect(note).not.toContainText('You wrote');
+      await expect(page.getByRole('region', { name: 'Co-sign' })).toHaveCount(0);
+    } finally {
+      await putBack();
+    }
+  });
+
+  test('a role without patients.view lists the team’s drafts with no patient named, no visit or chart link and no Assign', async ({
+    page,
+  }) => {
+    const role = await customRole('Staff desk (demo)', ['team.manage_users']);
+    await setRole('billing@example.com', role);
+    try {
+      await signIn(page, 'billing@example.com');
+      await expect(portalNav(page).getByRole('link', { name: 'Patients' })).toHaveCount(0);
+      await portalNav(page).getByRole('link', { name: 'Notes not complete' }).click();
+      await expect(page).toHaveURL(/\/team\/incomplete-notes$/);
+      await expect(page.getByRole('main')).toContainText(
+        'Your role doesn’t open patients’ charts, so patients aren’t named here.',
+      );
+      await expect(page.getByRole('columnheader')).toHaveText(['Note', 'Author', 'Visit started']);
+      await expect(page.getByRole('main').getByRole('link')).toHaveCount(0);
+      await expectAccessible(page, 'notes not complete, no patients.view');
+    } finally {
+      await setRole('billing@example.com', 'billing_data');
+    }
   });
 });
