@@ -5593,6 +5593,15 @@
             },
             "type": "array"
           },
+          "recordsOnAnotherChart": {
+            "default": [],
+            "description": "The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "startedAt": {
             "format": "date-time",
             "type": "string"

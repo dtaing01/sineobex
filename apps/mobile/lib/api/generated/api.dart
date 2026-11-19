@@ -6398,6 +6398,7 @@ class VisitRead {
     required this.patientId,
     this.preferredName,
     required this.records,
+    this.recordsOnAnotherChart,
     required this.startedAt,
     required this.status,
     this.summary,
@@ -6418,6 +6419,8 @@ class VisitRead {
   final String? preferredName;
   /// Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them
   final List<RecordSnapshot> records;
+  /// The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another
+  final List<String>? recordsOnAnotherChart;
   final DateTime startedAt;
   final NoteStatus status;
   /// Absent for a Medical visit to a reader of no Medical notes
@@ -6434,6 +6437,7 @@ class VisitRead {
         patientId: json['patientId'] == null ? null : json['patientId'] as String,
         preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
         records: (json['records'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+        recordsOnAnotherChart: json['recordsOnAnotherChart'] == null ? null : (json['recordsOnAnotherChart'] as List<dynamic>).map((e) => e as String).toList(),
         startedAt: DateTime.parse(json['startedAt'] as String),
         status: NoteStatus.fromJson(json['status'] as String),
         summary: json['summary'] == null ? null : json['summary'] as String,
@@ -6450,6 +6454,7 @@ class VisitRead {
         'patientId': patientId == null ? null : patientId!,
         if (preferredName != null) 'preferredName': preferredName == null ? null : preferredName!,
         'records': records.map((e) => e.toJson()).toList(),
+        if (recordsOnAnotherChart != null) 'recordsOnAnotherChart': recordsOnAnotherChart!.map((e) => e).toList(),
         'startedAt': startedAt.toUtc().toIso8601String(),
         'status': status.toJson(),
         if (summary != null) 'summary': summary == null ? null : summary!,

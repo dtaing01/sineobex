@@ -520,6 +520,8 @@ export async function visitAsRead(
 
   const records = await recordsMadeAt(tx, scope, visit);
   for (const r of records) await viewed('patient.viewed', r.entity, r.record.id, r.record.patientId);
+  const charts = await chartsOf(tx, visit.teamId, [patientId, ...records.map((r) => r.record.patientId)]);
+  const chartOf = (id: string | null) => (id === null ? null : (charts.get(id) ?? id));
 
   return {
     encounterId: visit.id,
@@ -535,7 +537,28 @@ export async function visitAsRead(
     addenda: ownAddenda.map(addendumView),
     notes,
     records: records.map((r) => snapshot(r.record)),
+    recordsOnAnotherChart: records
+      .filter((r) => chartOf(r.record.patientId) !== chartOf(patientId))
+      .map((r) => r.record.id),
   };
+}
+
+/**
+ * The chart each patient ID is on now: its canonical record, the end of its merge chain, as the
+ * chart itself answers a merged ID. So a record made at a visit is on another chart when its
+ * patient's chart is not the visit patient's (lifecycle 9.7), and one kept under a merged ID of the
+ * visit's own patient is on the visit's chart (the review of unit L6).
+ */
+async function chartsOf(
+  tx: Tx,
+  teamId: string,
+  ids: readonly (string | null)[],
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id) => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = await tx<{ id: string; canonicalId: string }[]>`
+    select id, canonical_id from sineobex.patients where team_id = ${teamId} and id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.canonicalId]));
 }
 
 const asNoteCorrection = (c: CorrectionRow): NoteCorrection => ({

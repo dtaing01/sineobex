@@ -111,7 +111,7 @@ describe('phase 4: what the visit read tells the visit page', () => {
         };
       };
       const added: Record<string, string[]> = {
-        VisitRead: ['preferredName', 'hasHandoff'],
+        VisitRead: ['preferredName', 'hasHandoff', 'recordsOnAnotherChart'],
         VisitNote: ['medical', 'canCosign', 'canAttest', 'heldBecause'],
         TimelineNote: ['title', 'medical'],
         QueueNote: ['title', 'heldBecause'],
@@ -130,6 +130,7 @@ describe('phase 4: what the visit read tells the visit page', () => {
         flat(doc.components.schemas[name]!).properties[field]!.default;
       expect(defaultOf('VisitNote', 'canCosign')).toBe(false);
       expect(defaultOf('VisitRead', 'hasHandoff')).toBe(false);
+      expect(defaultOf('VisitRead', 'recordsOnAnotherChart')).toEqual([]);
       expect(defaultOf('TimelineNote', 'title')).toBe('');
       expect(defaultOf('IncompleteNote', 'preferredName')).toBe(null);
     });

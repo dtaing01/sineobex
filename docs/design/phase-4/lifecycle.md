@@ -2986,6 +2986,11 @@ As built for the portal's visit page (unit L6, 9.11), `VisitRead` and `VisitNote
   export's own test (`showsHandoff`, `handoff.ts`) of every Red flags note the reader may read, so
   the page offers Export EMS handoff (PDF) exactly when the route would give the file; false for a
   reader who may not read that note, whom the export refuses `cannot_see_red_flags` (5.7).
+- **`recordsOnAnotherChart`**: the IDs of the records made at the visit that are on a chart other
+  than the visit's now, by the patients' canonical charts, so a record kept under a merged ID of the
+  visit's own patient is on its chart, and every record of a visit with no patient is on another.
+  The page says "On another chart now" from it rather than comparing patient IDs (the coordinator's
+  decision on the review of unit L6); the phone's screens read the same field.
 - **Each note's `medical`**, beside its `title`.
 - **`canCosign` and `canAttest`**: the act's own rule (`cosignOf`, `attestOf`) asked of the reader
   as if the hash they would send matched, as a queue's `canAct` is, and false for a role without

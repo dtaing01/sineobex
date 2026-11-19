@@ -315,6 +315,81 @@ test('@responsive long typed text wraps at 320 px: a recap answer, the assessmen
   await expectReflow(page, 'visit page, long typed text');
 });
 
+test('@responsive the records made at a visit: one on another chart since the visit moved, one entered in error, as the API says', async ({
+  page,
+}) => {
+  // PAX-6: neither state was drawn by any spec. Which chart a record is on is the API's answer
+  // (recordsOnAnotherChart), not a comparison of IDs on the page.
+  const phone = await phoneOf('clinician@example.com');
+  const first = newPatient({ preferredName: `Bay ${newSurname()}` }, 300);
+  const now = newPatient({ preferredName: `Elm ${newSurname()}` }, 300);
+  const id = randomUUID();
+  const [left, kept, wrong] = [randomUUID(), randomUUID(), randomUUID()];
+  const referral = (recordId: string, patientId: string, details: string, minutesAgo: number) => ({
+    entity: 'referral',
+    recordId,
+    op: 'create' as const,
+    value: { patientId, referredOn: '2026-10-02', details, encounterId: id },
+    minutesAgo,
+  });
+  await phone.send(
+    first,
+    now,
+    {
+      entity: 'encounter',
+      recordId: id,
+      op: 'create',
+      value: { kind: 'non_medical', patientId: first.recordId },
+      minutesAgo: 90,
+    },
+    referral(left, first.recordId, 'Demo: dental van', 80),
+    // The visit was for someone else: it moves, and its referral stays with the first chart (12.1 #25).
+    {
+      entity: 'encounter',
+      recordId: id,
+      op: 'set',
+      field: 'patientId',
+      value: now.recordId,
+      baseVersion: 1,
+      minutesAgo: 70,
+    },
+    referral(kept, now.recordId, 'Demo: food bank', 60),
+    referral(wrong, now.recordId, 'Demo: shelter beds', 50),
+    {
+      entity: 'referral',
+      recordId: wrong,
+      op: 'set',
+      field: 'enteredInError',
+      value: { reason: 'Demo: meant for someone else' },
+      baseVersion: 1,
+      minutesAgo: 40,
+    },
+  );
+
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/encounters/${id}`);
+  const rows = page.getByRole('region', { name: 'Recorded at this visit' }).getByRole('listitem');
+  await expect(rows).toHaveCount(3);
+  const moved = rows.filter({ hasText: 'Demo: dental van' });
+  await expect(moved).toContainText('On another chart now');
+  await expect(moved.getByRole('link', { name: /^Open that chart/ })).toHaveAttribute(
+    'href',
+    `/patients/${first.recordId}`,
+  );
+  const here = rows.filter({ hasText: 'Demo: food bank' });
+  await expect(here).not.toContainText('On another chart now');
+  await expect(here.getByRole('link', { name: /^Open the chart/ })).toHaveAttribute(
+    'href',
+    `/patients/${now.recordId}`,
+  );
+  const struck = rows.filter({ hasText: 'Demo: shelter beds' });
+  await expect(struck.locator('del')).toHaveText('Referral, Oct 2, 2026: Demo: shelter beds');
+  await expect(struck).toContainText('Entered in error');
+  await expect(struck).not.toContainText('On another chart now');
+  await expectAccessible(page, 'visit page, records on another chart and entered in error');
+  await expectReflow(page, 'visit page, records on another chart and entered in error');
+});
+
 test('@responsive a role that reads no Medical notes sees a visit without them, and without its assessment', async ({
   page,
 }) => {

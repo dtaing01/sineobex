@@ -83,7 +83,7 @@ export default async function VisitPage({
         : null;
   const patient = visit.patientId ? (visit.preferredName ?? 'No name recorded') : 'No patient recorded';
   const started = startedText(visit.startedAt, visit.clockVerified);
-  const records = madeAtRows(visit.records, visit.patientId);
+  const records = madeAtRows(visit.records, visit.recordsOnAnotherChart);
 
   return (
     <>

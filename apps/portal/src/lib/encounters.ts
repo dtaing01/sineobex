@@ -243,7 +243,7 @@ export interface MadeAtRow {
   enteredInError: boolean;
   /** The chart it is on: a visit moved to someone else leaves its records with the first (12.1 #25). */
   patientId: string | null;
-  /** On a chart other than the visit's own now. */
+  /** On a chart other than the visit's own now, as the API says (`recordsOnAnotherChart`). */
   elsewhere: boolean;
 }
 
@@ -273,9 +273,14 @@ function madeAtText(r: Schemas['RecordSnapshot']): string {
 /**
  * The referrals, problems, allergies and problems' notes made at the visit, whichever chart they
  * are on, as the API gives them to this reader. Each names the chart it is on, so the person can
- * open it there.
+ * open it there, and says when that is another chart than the visit's: the API decides it by the
+ * patients' charts, so a record kept under a merged ID of the visit's own patient is on its chart
+ * (the review of unit L6), which comparing the IDs here could not tell.
  */
-export function madeAtRows(records: Schemas['RecordSnapshot'][], visitPatientId: string | null): MadeAtRow[] {
+export function madeAtRows(
+  records: Schemas['RecordSnapshot'][],
+  onAnotherChart: readonly string[],
+): MadeAtRow[] {
   const rank = (entity: string) => {
     const i = MADE_AT_ORDER.indexOf(entity);
     return i === -1 ? MADE_AT_ORDER.length : i;
@@ -290,7 +295,7 @@ export function madeAtRows(records: Schemas['RecordSnapshot'][], visitPatientId:
         text: madeAtText(r),
         enteredInError: r.status === 'entered_in_error' || !!r.fields.enteredInError?.value,
         patientId,
-        elsewhere: patientId !== null && patientId !== visitPatientId,
+        elsewhere: onAnotherChart.includes(r.id),
       };
     });
 }

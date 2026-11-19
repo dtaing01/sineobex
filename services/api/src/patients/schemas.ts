@@ -524,6 +524,10 @@ export const VisitRead = z
       description:
         'Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them',
     }),
+    recordsOnAnotherChart: z.array(Uuid).default([]).openapi({
+      description:
+        'The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another',
+    }),
   })
   .openapi('VisitRead');
 

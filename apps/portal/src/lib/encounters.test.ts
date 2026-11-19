@@ -410,7 +410,7 @@ describe('the records made at a visit', () => {
         record('referral', 'r1', { referredOn: '2026-10-24', details: 'Demo: wound clinic' }),
         record('problem', 'p2', { title: 'Demo: sore heel', code: null }),
       ],
-      VISIT_PATIENT,
+      [],
     );
     expect(rows.map((r) => r.text)).toEqual([
       'Referral, Oct 24, 2026: Demo: wound clinic',
@@ -422,7 +422,7 @@ describe('the records made at a visit', () => {
     expect(rows.every((r) => !r.elsewhere && !r.enteredInError)).toBe(true);
   });
 
-  it('says when a record is on another chart now, and when it was entered in error', () => {
+  it('says when a record is on another chart now, as the API says, and when it was entered in error', () => {
     const [moved, wrong] = madeAtRows(
       [
         record('referral', 'r1', {
@@ -432,9 +432,24 @@ describe('the records made at a visit', () => {
         }),
         record('patient_allergy', 'a1', { substance: 'Demo: latex' }, { status: 'entered_in_error' }),
       ],
-      VISIT_PATIENT,
+      ['r1'],
     );
     expect(moved).toMatchObject({ elsewhere: true, patientId: 'e0000000-0000-4000-8000-000000000002' });
     expect(wrong).toMatchObject({ elsewhere: false, enteredInError: true });
+  });
+
+  it('takes the API’s word for the chart: a record under a merged ID of the visit’s patient is on its chart', () => {
+    // The review of unit L6: comparing patient IDs here called such a record "on another chart".
+    const [kept] = madeAtRows(
+      [
+        record('referral', 'r1', {
+          referredOn: '2026-10-24',
+          details: 'Demo: wound clinic',
+          patientId: 'e0000000-0000-4000-8000-000000000003',
+        }),
+      ],
+      [],
+    );
+    expect(kept).toMatchObject({ elsewhere: false, patientId: 'e0000000-0000-4000-8000-000000000003' });
   });
 });
