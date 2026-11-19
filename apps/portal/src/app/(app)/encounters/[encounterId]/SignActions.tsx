@@ -32,14 +32,23 @@ export function SignActions({
   const [read] = useState(plan);
   const [problem, setProblem] = useState('');
   const [sending, startSending] = useTransition();
+  // Set once an answer says where to go: the transition ends as the browser starts to load the next
+  // page, and the button must not come back while it loads (review finding PAC-1).
+  const [leaving, setLeaving] = useState(false);
+  const busy = sending || leaving;
   const words = SIGN_ACTS[act];
   const heading = `${act}-heading`;
   const changed = !samePlan(read?.notes ?? [], plan?.notes ?? []);
   if (!read && !plan) return null;
 
+  function leave(to: string) {
+    setLeaving(true);
+    window.location.assign(to);
+  }
+
   function press() {
     if (!read || changed) {
-      window.location.assign(visitAfter(encounterId, 'changed'));
+      leave(visitAfter(encounterId, 'changed'));
       return;
     }
     startSending(async () => {
@@ -54,6 +63,7 @@ export function SignActions({
         });
         // Sent to sign-in on the way (the session ended): the page itself goes there.
         if (response.type === 'opaqueredirect' || !response.headers.get('content-type')?.includes('json')) {
+          setLeaving(true);
           window.location.reload();
           return;
         }
@@ -63,7 +73,7 @@ export function SignActions({
         return;
       }
       if ('go' in answer) {
-        window.location.assign(answer.go);
+        leave(answer.go);
         return;
       }
       setProblem(answer.problem);
@@ -103,10 +113,10 @@ export function SignActions({
           type="button"
           className="sx-btn sx-btn--primary"
           onClick={press}
-          disabled={sending}
-          aria-disabled={sending}
+          disabled={busy}
+          aria-disabled={busy}
         >
-          {sending ? 'Working…' : words.heading}
+          {busy ? 'Working…' : words.heading}
         </button>
       </div>
     </section>

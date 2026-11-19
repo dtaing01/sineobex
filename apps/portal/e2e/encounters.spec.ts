@@ -806,8 +806,33 @@ test.describe('notes not complete, and Assign', () => {
       await expect(page.getByRole('main').getByRole('status')).toHaveText(
         'You confirmed it’s you. Assign the note again.',
       );
-      await fill();
+      // The visit is slow to load again after the act: the button stays off while it loads, and a
+      // second press goes nowhere (review finding PAC-1).
+      const held = /\?assign=done$/;
+      await page.route(held, async (route) => {
+        await new Promise((r) => setTimeout(r, 4000));
+        await route.continue().catch(() => undefined);
+      });
+      const outreach = page.getByRole('article', { name: 'Outreach' });
+      await outreach
+        .getByLabel('Assign to')
+        .selectOption({ label: 'Jordan Lee (demo), Attending physician' });
+      await outreach.getByLabel('Reason').fill('Demo: Casey is away from the team');
+      // Watched in the page itself: a locator waits for the load the answer started.
+      const seen = await outreach.getByRole('button', { name: 'Assign' }).evaluate(async (button) => {
+        const b = button as HTMLButtonElement;
+        const pause = () => new Promise((r) => setTimeout(r, 10));
+        const start = performance.now();
+        b.click();
+        while (!b.disabled && performance.now() - start < 2000) await pause();
+        while (b.disabled && performance.now() - start < 2500) await pause();
+        const state = { enabled: !b.disabled, text: b.textContent };
+        b.click();
+        return state;
+      });
+      expect(seen).toEqual({ enabled: false, text: 'Working…' });
       await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=done$`));
+      await page.unroute(held);
       await expect(page.getByRole('main').getByRole('status')).toHaveText(
         'Assigned. The note names who acts as its author now, and they can finish or correct it.',
       );

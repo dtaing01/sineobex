@@ -721,6 +721,48 @@ test('@responsive an attending attests what they read whole; a note with a GU ex
   expect(await audited('admin@example.com', sensitive.patient, 'note.attested')).toBe(1);
 });
 
+test('a second press while the visit loads again after Co-sign sends nothing: the button stays disabled', async ({
+  page,
+}) => {
+  // Review finding PAC-1: the button came back as soon as the answer said where to go, while the
+  // visit was still loading, and a second press was answered "This visit changed".
+  const v = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS]]);
+  await signIn(page, 'clinician@example.com');
+  const presses = watchPresses(page);
+  await page.goto(`/encounters/${v.id}`);
+  // The visit is slow to load again after the act.
+  const held = /\?signed=cosigned$/;
+  await page.route(held, async (route) => {
+    await new Promise((r) => setTimeout(r, 4000));
+    await route.continue().catch(() => undefined);
+  });
+  // Watched in the page itself: a locator waits for the load the answer started.
+  const seen = await page.evaluate(async () => {
+    const button = document.querySelector<HTMLButtonElement>(
+      'section[aria-labelledby="cosign-heading"] button',
+    )!;
+    const pause = () => new Promise((r) => setTimeout(r, 10));
+    const start = performance.now();
+    button.click();
+    while (!button.disabled && performance.now() - start < 2000) await pause();
+    // The answer comes, and the visit starts to load again; the button must stay as it is.
+    while (button.disabled && performance.now() - start < 2500) await pause();
+    const enabled = !button.disabled;
+    const text = button.textContent;
+    // A second press, which a disabled button doesn't take.
+    button.click();
+    return { enabled, text };
+  });
+  expect(seen).toEqual({ enabled: false, text: 'Working…' });
+  await expect(page).toHaveURL(new RegExp(`/encounters/${v.id}\\?signed=cosigned$`));
+  await page.unroute(held);
+  await expect(page.getByRole('main').getByRole('status')).toHaveText(
+    'Co-signed. Your co-signature is on each note below.',
+  );
+  expect(presses).toHaveLength(1);
+  expect(await audited('clinician@example.com', v.patient, 'note.cosigned')).toBe(1);
+});
+
 test('an act refused for the person: a credential changed since the page was read loads the visit again and says so, and a dropped connection sends nothing', async ({
   page,
 }) => {

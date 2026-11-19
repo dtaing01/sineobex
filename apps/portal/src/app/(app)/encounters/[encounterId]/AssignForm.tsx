@@ -27,6 +27,10 @@ export function AssignForm({
   const [problem, setProblem] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
   const [sending, startSending] = useTransition();
+  // Set once an answer says where to go, so the button stays off while the next page loads, as
+  // SignActions' does (review finding PAC-1).
+  const [leaving, setLeaving] = useState(false);
+  const busy = sending || leaving;
   const summary = useRef<HTMLDivElement>(null);
   const id = `assign-${noteId}`;
 
@@ -60,6 +64,7 @@ export function AssignForm({
         });
         // Sent to sign-in on the way (the session ended): the page itself goes there.
         if (response.type === 'opaqueredirect' || !response.headers.get('content-type')?.includes('json')) {
+          setLeaving(true);
           window.location.reload();
           return;
         }
@@ -69,6 +74,7 @@ export function AssignForm({
         return;
       }
       if ('go' in answer) {
+        setLeaving(true);
         window.location.assign(answer.go);
         return;
       }
@@ -158,13 +164,8 @@ export function AssignForm({
             </div>
           </div>
           <div className="px-actions">
-            <button
-              type="submit"
-              className="sx-btn sx-btn--primary"
-              disabled={sending}
-              aria-disabled={sending}
-            >
-              {sending ? 'Working…' : 'Assign'}
+            <button type="submit" className="sx-btn sx-btn--primary" disabled={busy} aria-disabled={busy}>
+              {busy ? 'Working…' : 'Assign'}
             </button>
           </div>
         </form>
