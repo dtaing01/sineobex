@@ -6,6 +6,7 @@ import { IdCardPanel, type CardView } from '@/components/IdCardPanel';
 import { chartValue, PatientHeader } from '@/components/PatientHeader';
 import { ReviewForm } from '@/components/ReviewForm';
 import { teamToday } from '@/lib/dob';
+import { referralRows, TIMELINE_PAGE, visitRow } from '@/lib/encounters';
 import { formatDateTime, PROBLEM_STATUS, syncFieldLabel } from '@/lib/labels';
 import { can, currentUser } from '@/lib/me';
 import { loadChart } from '../chart';
@@ -18,6 +19,7 @@ import {
   formatDayOf,
 } from '../format';
 import styles from '../patients.module.css';
+import { Timeline } from './Timeline';
 
 // Never a name: titles land in the history and on screen shares (module 9).
 export const metadata: Metadata = { title: 'Patient' };
@@ -287,6 +289,20 @@ export default async function PatientPage({
             Problems
           </h2>
           <Problems chart={chart} />
+        </section>
+      )}
+
+      {chart.timeline && (
+        <section aria-labelledby="timeline-heading" className="px-panel">
+          <h2 id="timeline-heading" className="px-h2">
+            Timeline
+          </h2>
+          <Timeline
+            patientId={id}
+            visits={chart.timeline.encounters.map(visitRow)}
+            more={chart.timeline.encounters.length === TIMELINE_PAGE}
+            referrals={referralRows(chart.timeline.referrals)}
+          />
         </section>
       )}
 
