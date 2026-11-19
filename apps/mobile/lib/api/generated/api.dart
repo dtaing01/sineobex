@@ -745,7 +745,7 @@ enum NoteAttestation {
   String toJson() => wire;
 }
 
-/// Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act
+/// Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart
 enum NoteHeldBecause {
   wrote('wrote'),
   actsAsAuthor('acts_as_author'),
@@ -4759,6 +4759,7 @@ class QueueNote {
     required this.author,
     required this.canAct,
     required this.completedAt,
+    this.heldBecause,
     required this.noteId,
     required this.noteTypeKey,
     required this.signedBefore,
@@ -4771,6 +4772,7 @@ class QueueNote {
   /// False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed
   final bool canAct;
   final DateTime? completedAt;
+  final Object? heldBecause;
   final String noteId;
   final String noteTypeKey;
   /// Who signed it before, when a correction sent it back; null otherwise
@@ -4783,6 +4785,7 @@ class QueueNote {
         author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
         canAct: json['canAct'] as bool,
         completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
+        heldBecause: json['heldBecause'],
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         signedBefore: json['signedBefore'] == null ? null : UserRef.fromJson(json['signedBefore'] as Map<String, dynamic>),
@@ -4794,6 +4797,7 @@ class QueueNote {
         'author': author.toJson(),
         'canAct': canAct,
         'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
+        'heldBecause': heldBecause,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'signedBefore': signedBefore == null ? null : signedBefore!.toJson(),

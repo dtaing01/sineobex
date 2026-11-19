@@ -2992,12 +2992,15 @@ As built for the portal's visit page (unit L6, 9.11), `VisitRead` and `VisitNote
   `encounters.chart`, which the routes refuse. The page sends exactly the notes so marked, each with
   its `contentHash` (5.3, 5.4).
 - **`heldBecause`**, for a note that waits for a co-signature or an attestation the reader may not
-  give, when the act's refusal is about the note and not their credential or role: `wrote` (they
-  wrote it), `acts_as_author` (it was assigned to them; an assignee is never told they wrote it),
-  `completed` (they completed it, as whoever acted as its author then), `signed` (its current
-  signature is theirs) or `cannot_see_all` (6.4 rule 4). Absent when the note waits for nothing,
-  the reader may act, or their credential or role does not do the act, which the page shows by
-  offering no action.
+  give, whenever the act's first refusal of them, in the rule's order, is about the note, whatever
+  their credential: `wrote` (they wrote it), `acts_as_author` (it was assigned to them; an assignee
+  is never told they wrote it), `completed` (they completed it, as whoever acted as its author
+  then), `signed` (its current signature is theirs) or `cannot_see_all` (6.4 rule 4). So a
+  resident or a student is told of a note they wrote, though their credential could not co-sign it
+  either: the sentence is true, and the refusal it gives comes first (the coordinator's decision on
+  the review of unit L6). Absent when the note waits for nothing, the reader may act, the first
+  refusal is about their credential, or their role does not chart, which the page shows by
+  offering no action. The queues give it on each note too (5.4).
 
 None of these adds an audit event: the read logs each record it returns, as above.
 
@@ -3182,7 +3185,11 @@ As built (unit L2, with its review; `queues.ts`, `attest.ts`):
   10.1).
 - **As built for the portal (unit L6)**: each queue note also has its type's `title`; `canAct` and
   the act are `second-person.ts`'s, the same rule the visit read's `canCosign` and `canAttest` ask
-  (5.1), and a row's `preferredName` is `preferredNames`'s.
+  (5.1), and a row's `preferredName` is `preferredNames`'s. A note listed with `canAct` false has
+  the visit read's `heldBecause` (5.1), by the same rule, so the queue says why the person cannot
+  sign it in the visit page's words (the coordinator's decision on the review of unit L6). It adds
+  no inference D97 does not already accept: such a reader can tell from a note they did not write
+  being listed as not theirs that it holds something they may not see.
 - **Attest** (`attestEncounter`) takes co-sign's body and gives its answer, and runs as 5.3's
   as-built notes say: the caller read again under the team lock; a note of another visit, or one
   the caller may not read, answered `not_waiting`; a waiting note left out `content_changed`; the

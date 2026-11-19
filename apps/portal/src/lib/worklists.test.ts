@@ -65,7 +65,23 @@ describe('a note waiting in a queue', () => {
     );
   });
 
-  it('says someone else has to act on a note the API says this person may not', () => {
+  it('says why someone else has to act on it, in the visit page’s words, when the API says why (5.4)', () => {
+    expect(queueNoteLines(queued({ canAct: false, heldBecause: 'wrote' }), 'cosign').lines.at(-1)).toBe(
+      'You wrote this note, so someone else has to co-sign it.',
+    );
+    expect(queueNoteLines(queued({ canAct: false, heldBecause: 'signed' }), 'attest').lines.at(-1)).toBe(
+      'You signed this note, so someone else has to attest it.',
+    );
+    expect(
+      queueNoteLines(queued({ canAct: false, heldBecause: 'cannot_see_all' }), 'attest').lines.at(-1),
+    ).toBe('This note has a part you can’t open. Ask a Program Admin.');
+    // An assignee is never told they wrote it.
+    const assigned = queueNoteLines(queued({ canAct: false, heldBecause: 'acts_as_author' }), 'cosign');
+    expect(assigned.lines.at(-1)).toBe('This note was assigned to you, so someone else has to co-sign it.');
+    expect(assigned.lines.join(' ')).not.toMatch(/You wrote/);
+  });
+
+  it('says someone else has to act on a note the API says this person may not, when it gives no reason', () => {
     expect(queueNoteLines(queued({ canAct: false }), 'cosign').lines.at(-1)).toBe(
       'Someone else has to co-sign it.',
     );

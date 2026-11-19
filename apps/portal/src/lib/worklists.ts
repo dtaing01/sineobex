@@ -1,4 +1,5 @@
 import type { Schemas } from '@sineobex/contract';
+import { heldReasonText } from './encounters';
 import { formatDateTime } from './labels';
 import type { SignAct } from './sign';
 
@@ -32,7 +33,8 @@ export function patientName(preferredName: string | null, patientId: string | nu
 /**
  * A note in a queue (5.4): its title, then who signed or attested it before when a correction sent
  * it back, first (3.7), who wrote it and when it was completed, and, when the API says this person
- * may not act on it, that someone else has to. Why is the visit page's to say (`heldBecause`).
+ * may not act on it, why someone else has to, in the visit page's words (`heldBecause`), so an
+ * assignee is never told they wrote it.
  */
 export function queueNoteLines(note: Schemas['QueueNote'], act: SignAct): { title: string; lines: string[] } {
   const lines: string[] = [];
@@ -50,6 +52,10 @@ export function queueNoteLines(note: Schemas['QueueNote'], act: SignAct): { titl
   lines.push(
     `Written by ${note.author.displayName}${note.completedAt ? `, completed ${formatDateTime(note.completedAt)}` : ''}.`,
   );
-  if (!note.canAct) lines.push(`Someone else has to ${act === 'cosign' ? 'co-sign' : 'attest'} it.`);
+  if (!note.canAct)
+    lines.push(
+      heldReasonText(note.heldBecause, act) ??
+        `Someone else has to ${act === 'cosign' ? 'co-sign' : 'attest'} it.`,
+    );
   return { title: note.title || 'Note', lines };
 }

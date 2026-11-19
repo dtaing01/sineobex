@@ -38,6 +38,7 @@ interface QueueNote {
   signedBefore: { userId: string; displayName: string } | null;
   attestedBefore: { userId: string; displayName: string } | null;
   canAct: boolean;
+  heldBecause?: string;
 }
 interface QueueRow {
   encounterId: string;
@@ -192,6 +193,30 @@ describe('phase 4: the co-sign and attestation queues', () => {
       expectNoneOf(anas.body, ['Demo: no lesions seen', 'exam.findings']);
     });
 
+    it('a note listed with canAct false says why, as the visit read says it under the note (heldBecause)', async () => {
+      // Lifecycle 5.4: the queue lists such a note "so the queue can say why the person cannot sign
+      // it", in the visit page's words (the coordinator's decision on the review of unit L6).
+      const anas = await queue(w.ana, 'cosign');
+      expect(noteIn(rowOf(anas.rows, newest), newest.note)!.heldBecause).toBe('cannot_see_all');
+      expect(rowOf(anas.rows, middle)!.notes.map((n) => n.heldBecause)).toEqual(['wrote', 'wrote']);
+      expect(noteIn(rowOf(anas.rows, newest), newest.flags)).not.toHaveProperty('heldBecause');
+      // Each note's reason is the visit read's, for every reader, and absent where the note may be acted on.
+      for (const c of [w.ana, w.rae, w.vic, w.sol]) {
+        const r = await queue(c, 'cosign');
+        if (r.status !== 200) continue;
+        for (const row of r.rows) {
+          const read = (await get(w, c.token, `/v1/encounters/${row.encounterId}`)).body as {
+            notes: { noteId: string; heldBecause?: string }[];
+          };
+          for (const n of row.notes) {
+            const shown = read.notes.find((x) => x.noteId === n.noteId)!;
+            expect(n.heldBecause, `${c.displayName} ${n.noteId}`).toBe(shown.heldBecause);
+            if (n.canAct) expect(n.heldBecause).toBeUndefined();
+          }
+        }
+      }
+    });
+
     it('a note the caller may not read is absent, as on the timeline, and so is a visit left with none', async () => {
       // Eli charts and signs, but without patients.view reads no Medical note (lifecycle 6.4 row 1).
       for (const which of ['cosign', 'attestation'] as const) {
@@ -289,6 +314,7 @@ describe('phase 4: the co-sign and attestation queues', () => {
         canAct: true,
       });
       expect(noteIn(rowOf(r.rows, hidden), hidden.note)!.canAct).toBe(false);
+      expect(noteIn(rowOf(r.rows, hidden), hidden.note)!.heldBecause).toBe('cannot_see_all');
       expect(noteIn(rowOf(r.rows, hidden), hidden.flags)!.canAct).toBe(true);
       const vics = await queue(w.vic, 'attestation');
       expect(noteIn(rowOf(vics.rows, hidden), hidden.note)!.canAct).toBe(true);

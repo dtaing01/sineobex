@@ -200,6 +200,9 @@ async function credentialForAWhile(
   return () => change(was.credential, was.credentialFields);
 }
 
+/** What a queue says of a note the person may not act on, whichever reason it gives (5.4). */
+const NOT_YOURS = /someone else has to|a part you can’t open/i;
+
 /** A queue's row for a visit, found by its patient's name. */
 function queueRow(page: Page, name: string): Locator {
   return page.getByRole('row').filter({ has: page.getByRole('rowheader', { name }) });
@@ -408,7 +411,7 @@ test('@responsive the co-sign queue lists a visit by the API’s titles, and Co-
   const notes = row.getByRole('cell').last().getByRole('listitem');
   await expect(notes.locator('strong')).toHaveText(['Red flags and disposition', 'Quick encounter']);
   await expect(notes.first()).toContainText('Written by Casey Nguyen (demo), completed ');
-  await expect(row).not.toContainText('Someone else');
+  await expect(row).not.toContainText(NOT_YOURS);
   await expectAccessible(page, 'co-sign queue');
   await expectReflow(page, 'co-sign queue');
 
@@ -461,7 +464,8 @@ test('whoever wrote a note is told someone else has to co-sign it, and is offere
   await signIn(page, 'resident@example.com');
   await portalNav(page).getByRole('link', { name: 'Co-sign queue' }).click();
   const row = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: stay.name }) });
-  await expect(row).toContainText('Someone else has to co-sign it.');
+  // Why, in the visit page's words (5.4).
+  await expect(row).toContainText('You wrote this note, so someone else has to co-sign it.');
   await expectAccessible(page, 'co-sign queue, a note of my own');
 
   await row.getByRole('link').click();
@@ -524,7 +528,7 @@ test('@responsive the Done when, its portal half: an attending opens the attesta
   await expect(row).toHaveCount(1);
   await expect(row.locator('strong')).toHaveText(medical);
   await expect(row).not.toContainText('Social needs');
-  await expect(row).not.toContainText('Someone else');
+  await expect(row).not.toContainText(NOT_YOURS);
   expect(await audited('clinician@example.com', story.patient, 'attestation_queue.viewed')).toBe(viewed + 1);
 
   await row.getByRole('link').click();
@@ -659,9 +663,11 @@ test('@responsive an attending attests what they read whole; a note with a GU ex
     'Behavioral health',
     'General / primary care',
   ]);
-  await expect(row.getByRole('listitem').last()).toContainText('Someone else has to attest it.');
-  await expect(row.getByRole('listitem').first()).not.toContainText('Someone else');
-  await expect(row.getByRole('listitem').nth(1)).not.toContainText('Someone else');
+  await expect(row.getByRole('listitem').last()).toContainText(
+    'This note has a part you can’t open. Ask a Program Admin.',
+  );
+  await expect(row.getByRole('listitem').first()).not.toContainText(NOT_YOURS);
+  await expect(row.getByRole('listitem').nth(1)).not.toContainText(NOT_YOURS);
 
   await row.getByRole('link').click();
   const general = page.getByRole('article', { name: 'General / primary care' });
@@ -701,7 +707,7 @@ test('@responsive an attending attests what they read whole; a note with a GU ex
   await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
   const waiting = queueRow(page, sensitive.name);
   await expect(waiting.locator('strong')).toHaveText(['General / primary care']);
-  await expect(waiting).not.toContainText('Someone else');
+  await expect(waiting).not.toContainText(NOT_YOURS);
   await waiting.getByRole('link').click();
   const whole = page.getByRole('article', { name: 'General / primary care' });
   await expect(whole.getByRole('heading', { name: 'Genitourinary (GU)' })).toBeVisible();

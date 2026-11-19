@@ -457,7 +457,7 @@ export const NoteHeldBecause = z
   .enum(['wrote', 'acts_as_author', 'completed', 'signed', 'cannot_see_all'])
   .openapi('NoteHeldBecause', {
     description:
-      'Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Absent when the note waits for nothing, the reader may act, or their credential or role does not do the act',
+      'Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart',
   });
 
 export const VisitNote = z

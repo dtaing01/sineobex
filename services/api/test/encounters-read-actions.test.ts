@@ -114,7 +114,7 @@ describe('phase 4: what the visit read tells the visit page', () => {
         VisitRead: ['preferredName', 'hasHandoff'],
         VisitNote: ['medical', 'canCosign', 'canAttest', 'heldBecause'],
         TimelineNote: ['title', 'medical'],
-        QueueNote: ['title'],
+        QueueNote: ['title', 'heldBecause'],
         IncompleteNote: ['title', 'preferredName'],
         HomeCounts: ['teamOverdue'],
       };

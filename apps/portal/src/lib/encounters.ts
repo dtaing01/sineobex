@@ -36,8 +36,19 @@ export function noteState(note: {
  * offers no action, as the API decides.
  */
 export function heldBecauseText(note: Pick<VisitNote, 'status' | 'heldBecause'>): string | null {
-  const act = note.status === 'completed' ? 'co-sign' : 'attest';
-  switch (note.heldBecause) {
+  return heldReasonText(note.heldBecause, note.status === 'completed' ? 'cosign' : 'attest');
+}
+
+/**
+ * The same sentence for a note known to wait for [act]: a queue's note, which says why in the visit
+ * page's words (lifecycle 5.4).
+ */
+export function heldReasonText(
+  reason: VisitNote['heldBecause'],
+  signAct: 'cosign' | 'attest',
+): string | null {
+  const act = signAct === 'cosign' ? 'co-sign' : 'attest';
+  switch (reason) {
     case 'wrote':
       return `You wrote this note, so someone else has to ${act} it.`;
     case 'acts_as_author':
