@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/patients/chart_cache.dart' show chartMetaField;
 import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityEncounter, entityNote;
+import 'package:sineobex_field/sync/local_store.dart' show ServerField, ServerRecord, entityPatient;
 
 import '../../encounters/scripted_api.dart' show signoffJson, userRef, visitJson, visitNoteJson;
 import 'encounter_kit.dart';
@@ -460,6 +462,170 @@ void main() {
       find.textContaining(RegExp('^Attested by ${RegExp.escape(myName)}, October 22, 2026 at ')),
     );
     expect(find.widgetWithText(FilledButton, 'Attest'), findsNothing);
+  });
+
+  testWidgets('a visit the server doesn’t give is not asked for again at every change', (tester) async {
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    h.server.offline = false;
+    routes.refuse('GET', '/v1/encounters/$visit', 404, 'not_found');
+    await openVisitScreen(tester, visit);
+    await expectShown(tester, find.text('This visit can’t be found.'));
+    h.encounters.changed();
+    await syncAndRefresh(tester, h);
+    await settle(tester);
+    expect(routes.asked, hasLength(1));
+  });
+
+  testWidgets('what the person added to a visit read from the server shows, waiting, until it is sent', (tester) async {
+    final h = await signInToChart(tester);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final routes = await withEncounterRoutes(tester, h);
+    final serverVisit = h.server.seed(entityEncounter, {'kind': 'non_medical', 'patientId': p1Id}, by: blair);
+    final serverNote = h.server.seed(entityNote, {
+      'encounterId': serverVisit,
+      'noteTypeKey': 'social_needs',
+      'noteTypeVersion': 1,
+      'data': {
+        'needs.needs': ['food'],
+      },
+    }, by: blair);
+    h.server.finishNote(serverNote);
+    routes.on(
+      'GET',
+      '/v1/encounters/$serverVisit',
+      (_) => visitJson(
+        encounterId: serverVisit,
+        patientId: p1Id,
+        kind: 'non_medical',
+        notes: [
+          visitNoteJson(
+            noteId: serverNote,
+            author: blairRef,
+            key: 'social_needs',
+            title: 'Social needs',
+            group: 'social',
+            signoffs: [signoffJson(id: signoff, signer: blairRef, credential: 'chw')],
+          ),
+        ],
+      ),
+    );
+    await openVisitScreen(tester, serverVisit);
+    // The push is lost on the way back: the addendum waits on the phone, and the server's read
+    // doesn't have it.
+    h.server.dropPushResponses = 1;
+    await tapOn(tester, find.bySemanticsLabel('Add addendum to Social needs'));
+    await revealInSheet(tester, find.byKey(const ValueKey('phi.addendum')));
+    await tester.enterText(find.byKey(const ValueKey('phi.addendum')), 'Demo: food bank card given');
+    await tester.pump();
+    await tapInSheet(tester, find.widgetWithText(FilledButton, 'Add addendum'));
+    await settle(tester);
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityAddendum), hasLength(1));
+    expect(routes.asked.where((a) => a.method == 'GET'), hasLength(2));
+    await expectShown(tester, find.text('Demo: food bank card given'));
+    await expectShown(tester, find.text('Waiting to send'));
+    await expectShown(tester, find.textContaining(RegExp('^Completed by Demo Blair, Community health worker, ')));
+  });
+
+  testWidgets('Correct on the person’s own note read from the server starts from its answers', (tester) async {
+    final h = await signInToChart(tester);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final routes = await withEncounterRoutes(tester, h);
+    final serverVisit = h.server.seed(entityEncounter, {'kind': 'medical', 'patientId': p1Id}, by: me);
+    final serverNote = h.server.seed(entityNote, {
+      'encounterId': serverVisit,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {'reason.concern': 'Demo: cough'},
+    }, by: me);
+    h.server.finishNote(serverNote, status: 'signed');
+    routes.on(
+      'GET',
+      '/v1/encounters/$serverVisit',
+      (_) => visitJson(
+        encounterId: serverVisit,
+        patientId: p1Id,
+        status: 'signed',
+        notes: [
+          visitNoteJson(
+            noteId: serverNote,
+            author: meRef,
+            key: 'general_primary_care',
+            title: 'General / primary care',
+            status: 'signed',
+            sections: [
+              {
+                'id': 'reason',
+                'title': 'Reason for encounter',
+                'items': [
+                  {
+                    'path': 'reason.concern',
+                    'labels': ['Chief concern'],
+                    'value': 'Demo: cough',
+                    'corrections': <Object?>[],
+                  },
+                ],
+              },
+            ],
+            signoffs: [signoffJson(id: signoff, signer: meRef, act: 'sign', effect: 'signed', credential: 'attending')],
+          ),
+        ],
+      ),
+    );
+    await openVisitScreen(tester, serverVisit);
+    expect(h.sync.store!.record(serverNote), isNull);
+    await tapOn(tester, find.bySemanticsLabel('Correct Chief concern'));
+    // Brought to the phone, with the visit: the input starts from what the note says.
+    expect(h.sync.store!.record(serverNote), isNotNull);
+    final box = find.descendant(of: find.byType(BottomSheet), matching: find.byKey(const ValueKey('phi.form.concern')));
+    await revealInSheet(tester, box);
+    expect(tester.widget<TextField>(box).controller!.text, 'Demo: cough');
+  });
+
+  testWidgets('one of the chart’s recent visits opens offline, logged here, and Co-sign waits for a connection', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    await withEncounterRoutes(tester, h);
+    // The chart the phone keeps carries its last visits in full (lifecycle 5.2), as a chart read online
+    // leaves it.
+    final store = h.sync.store!;
+    final p = h.server.records[p1Id]!;
+    store.importServerRecord(
+      ServerRecord(
+        entity: entityPatient,
+        id: p1Id,
+        status: p.status,
+        authorUserId: p.author,
+        attributes: p.attributes,
+        fields: {
+          for (final MapEntry(:key, :value) in p.fields.entries)
+            key: ServerField(value: value.value, version: value.version),
+          chartMetaField: ServerField(
+            value: {
+              'partial': false,
+              'downloadedAt': fixtureNow.toIso8601String(),
+              'recentVisits': [waitingVisit()],
+            },
+            version: 0,
+          ),
+        },
+      ),
+      open: false,
+    );
+    await tester.runAsync(() => h.sync.syncNow());
+    final before = auditEvents(store).length;
+    await openVisitScreen(tester, visit);
+    await expectShown(tester, find.text('General / primary care'));
+    await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Replaced: Demo: cough\n')));
+    // Logged here, as the server logs a read: the visit, the note and its sign-off.
+    expect(auditEvents(store).skip(before), ['encounter.viewed', 'note.viewed', 'note.viewed']);
+    // Nothing is signed from a chart's copy: it is read from the server first, which needs signal.
+    final greyed = find.widgetWithText(FilledButton, 'Connect to co-sign');
+    await expectShown(tester, greyed);
+    expect(tester.widget<FilledButton>(greyed).onPressed, isNull);
   });
 
   group('a visit read from the phone, which holds a teammate’s note waiting for a co-signer', () {

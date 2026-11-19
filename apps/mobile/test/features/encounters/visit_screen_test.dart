@@ -80,9 +80,11 @@ void main() {
   testWidgets('a read again logs only what it adds', (tester) async {
     final h = await signInToChart(tester);
     final v = await finishedVisit(tester, h);
+    h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic', encounterId: v.visit);
     final store = h.sync.store!;
     await openVisitScreen(tester, v.visit);
     final shown = auditEvents(store).length;
+    expect(auditEvents(store).where((e) => e == 'patient.viewed'), hasLength(1));
     h.encounters.changed();
     await settle(tester);
     expect(auditEvents(store), hasLength(shown));

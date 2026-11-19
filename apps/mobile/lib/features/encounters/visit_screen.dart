@@ -166,8 +166,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   /// read elsewhere carries the server's ([VisitView.records]).
   List<MadeAtVisit> _madeAt = const [];
 
-  /// The last refusal and where it shows: under a note (its ID), on the visit (its ID), or above a
-  /// second act (its name).
+  /// The last refusal and where it shows: under a note (its ID), or above a second act (its name).
   ({String at, String message})? _problem;
 
   /// The second act the visit was read from the server for, until it is done.
@@ -206,10 +205,10 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
     return read;
   }
 
-  /// A visit read from the server is not asked for again at every change: only what the phone holds
-  /// of it is read again.
+  /// Only what the phone holds of the visit is read again at a change: the server is asked when the
+  /// screen opens, and again only after the person acted on what it read.
   @override
-  bool get rereadsOnChange => _base == null || services.store.record(encounterId) != null;
+  bool get rereadsOnChange => services.store.record(encounterId) != null;
 
   // ---- reading from the server ----
 
@@ -366,10 +365,6 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         if (visitAddenda) ...[
           const SectionHeading(visitAddendaHeading),
           for (final a in visit.addenda) ...[_addendum(context, a), const SizedBox(height: FieldSpace.s2)],
-          if (_problem case (at: final at, :final message) when at == encounterId) ...[
-            ErrorMessage(message),
-            const SizedBox(height: FieldSpace.s2),
-          ],
           if (repo.mayAddVisitAddendum(visit))
             _SpokenButton(
               label: addAddendumAction,
