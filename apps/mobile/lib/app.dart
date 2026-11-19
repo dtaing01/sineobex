@@ -10,8 +10,11 @@ import 'auth/session_controller.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'design/widgets/demo_banner.dart';
+import 'features/encounters/encounter_labels.dart' show startTabLabel;
 import 'features/encounters/encounter_screen.dart';
+import 'features/encounters/new_encounter_screen.dart';
 import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
+import 'features/encounters/start_sheet.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/lock_screens.dart';
 import 'features/patients/add_problem_screen.dart';
@@ -73,7 +76,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/pin', builder: (_, _) => const PinSetupScreen()),
       GoRoute(path: '/unlock', builder: (_, _) => const UnlockScreen()),
       GoRoute(path: '/team', builder: (_, _) => const TeamPickerScreen()),
-      // The tabs (design 12.1). Start, Schedule and Resources arrive with their phases.
+      // The tabs (design 12.1). Start opens a sheet (phase 4); Schedule and Resources arrive with
+      // their phases.
       ShellRoute(
         builder: (context, state, child) => TabShell(location: state.matchedLocation, child: child),
         routes: [
@@ -116,6 +120,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             ProblemScreen(patientId: state.pathParameters['id']!, problemId: state.pathParameters['problemId']!),
       ),
       // Visits (lifecycle 9.2 to 9.4): UUIDs only, as the patient routes (10.2).
+      GoRoute(
+        path: '/patients/:id/encounters/new',
+        builder: (_, state) => NewEncounterScreen(patientId: state.pathParameters['id']),
+      ),
+      GoRoute(path: '/encounters/new', builder: (_, _) => const NewEncounterScreen()),
       GoRoute(
         path: '/encounters/:id',
         builder: (_, state) => EncounterScreen(encounterId: state.pathParameters['id']!),
@@ -188,7 +197,8 @@ class _SineobexAppState extends ConsumerState<SineobexApp> {
   }
 }
 
-/// The bottom navigation: Home and Patients. Opening Patients from the bar focuses its search.
+/// The bottom navigation: Home, Patients and Start (lifecycle 9.2). Opening Patients from the bar
+/// focuses its search; Start opens its sheet over the tab that is showing.
 class TabShell extends StatelessWidget {
   const TabShell({super.key, required this.location, required this.child});
   final String location;
@@ -202,6 +212,10 @@ class TabShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
+          if (i == 2) {
+            unawaited(showStartSheet(context));
+            return;
+          }
           if (i == index) return;
           if (i == 0) {
             context.go('/');
@@ -212,6 +226,7 @@ class TabShell extends StatelessWidget {
         destinations: const [
           NavigationDestination(icon: Icon(LucideIcons.house), label: 'Home'),
           NavigationDestination(icon: Icon(LucideIcons.users), label: 'Patients'),
+          NavigationDestination(icon: Icon(LucideIcons.circlePlus), label: startTabLabel),
         ],
       ),
     );
