@@ -172,7 +172,10 @@ export function mayAssign(i: {
   assigneeRank: number;
   /** The rank the note was signed under; for an unsigned note, of its author's last credential. */
   neededRank: number;
-  /** The note holds an answer that counts in a section the assignee's role cannot see today. */
+  /**
+   * A note of its type could hold an answer the assignee's role cannot see today: asked of the
+   * definition and their keys, never of what the note holds (assign.ts hidesFrom).
+   */
   noteHasHiddenSection: boolean;
 }): 'ok' | { refuse: AssignRefusal } {
   if (i.actingAuthorActive) return { refuse: 'author_active' };

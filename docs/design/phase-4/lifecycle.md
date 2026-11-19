@@ -3206,8 +3206,8 @@ needs a recent sign-in (`services/api/src/routes/members.ts:157`). Checked by `m
 acting author is not an active member, else `409 author_active`; the assignee is an active
 member with `encounters.chart`; the assignee's credential rank is at least the rank the note was
 signed under, or for an unsigned note the author's last credential, else `422
-credential_too_low`; the note holds no answer that counts in a section the assignee could not
-see (6.4), else `422 cannot_see_all`. Then a `note_assignments` row and `assigned_user_id`.
+credential_too_low`; a note of its type could hold no answer the assignee could not see (6.4),
+else `422 cannot_see_all`. Then a `note_assignments` row and `assigned_user_id`.
 Audit: `note.assigned`. Notice to the assignee: `note_assigned`.
 
 As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `assignNote`):
@@ -3221,9 +3221,16 @@ As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `as
   note's current signature was recorded under, else from its writer's credential on their
   membership, which is kept when they are removed, else, for a writer with no membership, the
   highest rank; and whether the note hides something from the assignee, asked of their role as
-  co-sign asks it of its caller, as if they were not the author: true when the role may not read
-  the note at all or a Medical visit's summary, when it sees less than every answer that counts,
-  and when the definition cannot be read. A phase 2 note with no version hides nothing.
+  if they were not the author: true when the role may not read a Medical visit's summary, when
+  any answer a note of its type could hold is one the role could not see (`mayHoldHidden`, asked
+  of every path of the definition: a note of a type the role may not read, a sensitive exam's
+  section or marked option, a treatment record, a section with a diagnosis), and when the
+  definition cannot be read. A phase 2 note with no version hides nothing. It is asked of the
+  definition and the assignee's keys alone, never of what the note holds, as a hold is (D88):
+  the picker's list is read with every visit page, and one that left out whoever could not see a
+  sensitive exam or a treatment record the note holds would tell its reader that the note holds
+  one (review finding PRD-1, the coordinator's decision of Nov 19). A note no active member
+  qualifies for stays in Notes not complete (PLAN-OPEN 12.1 #31).
 - **Refusals**: 409 `author_active`; 422 `assignee_not_member`, `assignee_cannot_chart`,
   `credential_too_low` and `cannot_see_all`, each a person the picker should not have offered.
   None writes anything, and none is logged (10.1). A note whose assignee is active is theirs, so
@@ -4623,6 +4630,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's), on the phone or in the visit read online or from the cached chart, opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
+| 31 | Who may be assigned a note whose author left, when its type could hold a sensitive exam, a treatment record or a sensitive diagnosis? | Only someone whose role would see each of them, decided from the type and their keys, never from what the note holds (5.5; review finding PRD-1). A note no active member qualifies for, such as a General / primary care note on a team whose attendings hold no `patients.view_sensitive_exams`, stays in Notes not complete | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -4638,6 +4646,9 @@ online routes, have theirs at the head of `assign.ts` and of `handoff.ts`, on `R
 
 Row 30 came from unit F7, Expand on the phone. Its `PLAN-OPEN:` comment is on `expand`
 (`apps/mobile/lib/encounters/expand_quick.dart`).
+
+Row 31 came from unit L6's review (finding PRD-1). Its `PLAN-OPEN:` comment is on `hidesFrom`
+(`services/api/src/encounters/assign.ts`).
 
 Rows 3, 4, 5, 9, 10, 11, 15, 16 and 30 were built with the phone's domain layer (units L4 and F7),
 and each now has its row in the plan's section 6, as every built default does. Their `PLAN-OPEN:`

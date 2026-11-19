@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { effectiveAnswers, visibleAnswers } from '@sineobex/forms';
+import { definitionModel, type ResolvedNoteType } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import {
   CAPABILITIES,
@@ -12,9 +12,15 @@ import type { Tx } from '../db/database.ts';
 import { conflict, invalid, notFound } from '../lib/errors.ts';
 import { Credential as CredentialSchema, Reason, Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
-import { actingAuthor, answersOf, noteRules, noteTypeOf } from '../sync/entities/note.ts';
+import { actingAuthor, noteRules, noteTypeOf } from '../sync/entities/note.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
-import { byDefinition, DefinitionError, noteReader, sameValue, type StoredRecord } from '../sync/records.ts';
+import {
+  byDefinition,
+  DefinitionError,
+  mayHoldHidden,
+  noteReader,
+  type StoredRecord,
+} from '../sync/records.ts';
 import { medicalHidden, noteAsRead } from './read.ts';
 import { mayAssign, type AssignRefusal } from './rules.ts';
 
@@ -105,11 +111,44 @@ async function neededRank(tx: Tx, note: StoredRecord): Promise<number> {
 }
 
 /**
- * Whether the note holds an answer that counts which the assignee's role could not see if they were
+ * An entry's ID that stands for every entry of a repeating section: mayHoldHidden asks of a path,
+ * and every path of such a section carries an entry's ID second (forms 2.3).
+ */
+const ANY_ENTRY = 'e0000000';
+
+/**
+ * Every path a note of [type] can hold an answer at, an entry's ID put in where its section repeats,
+ * with each repeating section's own entry paths; first the empty path, which names nothing, so
+ * mayHoldHidden asks of it only whether the reader may read a note of the type at all.
+ */
+function answerPaths(type: ResolvedNoteType): string[] {
+  const model = definitionModel(type);
+  const repeats = new Set(model.sections.filter((s) => s.section.repeat).map((s) => s.section.id));
+  const at = (key: string) => {
+    const [section = '', ...rest] = key.split('.');
+    return repeats.has(section) ? [section, ANY_ENTRY, ...rest].join('.') : key;
+  };
+  return [
+    '',
+    ...[...model.leaves.values()].map((leaf) => at(leaf.key)),
+    ...[...repeats].map((section) => `${section}.${ANY_ENTRY}.entryAt`),
+  ];
+}
+
+/**
+ * Whether a note of this type could hold an answer the assignee's role could not see if they were
  * not its author (6.4 rule 4, design 3.12): whoever acts as the author sees all of it, so the
- * question is what their role allows today. It is the question co-sign asks of its caller
- * (cosign.ts actNote), asked of another person; a note they may not read at all, the summary of a
- * Medical visit they may not read, or a definition the server cannot read, all hide something.
+ * question is what their role allows today. Decided from the note's definition and the assignee's
+ * keys alone, never from what the note holds, as a hold is (D88, mayHoldHidden): the picker's list
+ * is read on every visit page, and a list that left out whoever could not see a sensitive exam or
+ * a treatment record the note holds would tell the person reading it that the note holds one
+ * (review finding PRD-1). The summary of a Medical visit they may not read, or a definition the
+ * server cannot read, hides something too.
+ *
+ * PLAN-OPEN: a note of a type that could hold a sensitive exam, a treatment record or a sensitive
+ * diagnosis goes only to someone whose role would see them, so a team whose attendings hold no
+ * patients.view_sensitive_exams has nobody to take a General / primary care note whose author
+ * left, and it stays in Notes not complete (lifecycle 12.1 #31). Is that acceptable?
  */
 async function hidesFrom(
   tx: Tx,
@@ -120,15 +159,11 @@ async function hidesFrom(
 ): Promise<boolean> {
   if (medicalHidden(permissions, visit.values.kind)) return true;
   const reader = noteReader(permissions, credential, false);
-  const answers = answersOf(note);
   try {
     const type = await noteTypeOf(tx, note);
     // A phase 2 note with no version has no definition, and the sync read gives it whole.
     if (type === undefined) return false;
-    return byDefinition(() => {
-      const seen = visibleAnswers(type, answers, reader);
-      return seen === null || !sameValue(seen, effectiveAnswers(type, answers));
-    });
+    return byDefinition(() => answerPaths(type).some((path) => mayHoldHidden(type, path, reader)));
   } catch (err) {
     if (err instanceof DefinitionError) return true;
     throw err;

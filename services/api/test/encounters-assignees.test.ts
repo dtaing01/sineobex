@@ -14,13 +14,22 @@ import {
   SECRETS,
   staleToken,
   TEST_MEDICAL_EXAM_TYPE,
+  visitAt,
   WITH_EXAM,
+  WITHOUT_EXAM,
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import type { Credential } from '../src/auth/permissions.ts';
-import { addMember, clinician, type Json } from './sync-fixtures.ts';
+import {
+  addMember,
+  clinician,
+  noteOn,
+  TEST_RESTRICTED_TYPE,
+  type HeldNote,
+  type Json,
+} from './sync-fixtures.ts';
 
 // GET /v1/notes/{noteId}/assignees (lifecycle 3.8, 5.5, 9.12; unit L6): who may be put in the place
 // of a note's author who has left the team, so the portal's picker lists exactly the people the
@@ -114,11 +123,52 @@ describe('phase 4: who may be assigned a note', () => {
     expect((await assign(v.note.noteId, w.nia.id)).status).toBe(200);
   });
 
-  it('a signed note lists only those of the rank it was signed under, and one with a hidden answer only those who see it', async () => {
+  it('a signed note lists only those of the rank it was signed under, and one of a type that could hold an answer someone may not see only those who would see it', async () => {
     const signed = await departed('attending', { sign: true });
     expect(await listed(signed.note.noteId)).toEqual([w.ana.id, w.vic.id].sort());
     const exam = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
     expect(await listed(exam.note.noteId)).toEqual([w.vic.id]);
+  });
+
+  describe('decided from the note’s type and each person’s keys, never from what the note holds (review finding PRD-1)', () => {
+    it('a note with a sensitive exam and one without give the same list, and the route the same refusal', async () => {
+      // Ana's role reads no sensitive exam: told by who is missing, the list would say which note holds one.
+      const withExam = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
+      const without = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITHOUT_EXAM });
+      expect(await listed(without.note.noteId)).toEqual(await listed(withExam.note.noteId));
+      expect(await listed(without.note.noteId)).toEqual([w.vic.id]);
+      for (const v of [withExam, without]) {
+        const r = await assign(v.note.noteId, w.ana.id);
+        expect(r.status).toBe(422);
+        expect((r.body as Json).error?.code).toBe('cannot_see_all');
+        expect((await noteRow(h, v.note.noteId)).assignedUserId).toBeNull();
+      }
+    });
+
+    it('a note with a treatment record and one without give the same list, and the route the same refusal', async () => {
+      // The probe's: two people with no credential write a test_restricted note on a Non-Medical
+      // visit and leave, one with a dose in its treatment record section. A Program Admin with no
+      // credential reads neither's treatment record.
+      const notes = [];
+      for (const answers of [
+        { 'general.notes': 'Demo: a chat', 'moud.dose': 'Demo: 8 mg' },
+        { 'general.notes': 'Demo: a chat' },
+      ]) {
+        const n = ++count;
+        const c = await clinician(h, w.t, `gone-${n}@example.com`, `Gone ${n} (demo)`, 'none');
+        const visit = await visitAt(c, w.patientId, { kind: 'non_medical' });
+        notes.push(await noteOn(c, visit, TEST_RESTRICTED_TYPE, answers));
+        await removeMember(w, c.membershipId);
+      }
+      const [moud, plain] = notes as [HeldNote, HeldNote];
+      expect(await listed(plain.noteId)).toEqual(await listed(moud.noteId));
+      expect(await listed(plain.noteId)).toEqual([w.vic.id]);
+      for (const note of [moud, plain]) {
+        const r = await assign(note.noteId, w.nia.id);
+        expect(r.status).toBe(422);
+        expect((r.body as Json).error?.code).toBe('cannot_see_all');
+      }
+    });
   });
 
   it('a note whose acting author is an active member: 409 author_active, not logged', async () => {
