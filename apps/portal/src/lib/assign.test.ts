@@ -64,18 +64,18 @@ describe('what the route handler takes', () => {
 
 describe('where an answer sends the person', () => {
   it('loads the visit again after the assignment, which names who acts as the author now', () => {
-    expect(assignAnswer(VISIT, 201, '')).toEqual({ go: `/encounters/${VISIT}?assign=done` });
-    expect(assignAnswer(VISIT, 200, '')).toEqual({ go: `/encounters/${VISIT}?assign=done` });
+    expect(assignAnswer(VISIT, NOTE, 201, '')).toEqual({ go: `/encounters/${VISIT}?assign=done` });
+    expect(assignAnswer(VISIT, NOTE, 200, '')).toEqual({ go: `/encounters/${VISIT}?assign=done` });
   });
 
-  it('goes through /reauth when the API asks for a recent sign-in, and back to the visit', () => {
-    expect(assignAnswer(VISIT, 403, 'reauth_required')).toEqual({
-      go: `/reauth?next=${encodeURIComponent(`/encounters/${VISIT}?assign=reauthed`)}`,
+  it('goes through /reauth when the API asks for a recent sign-in, and back to the note’s own form (review finding PAX-3)', () => {
+    expect(assignAnswer(VISIT, NOTE, 403, 'reauth_required')).toEqual({
+      go: `/reauth?next=${encodeURIComponent(`/encounters/${VISIT}?assign=reauthed&note=${NOTE}#assign-${NOTE}`)}`,
     });
   });
 
-  it('loads the visit again when the note is someone’s again, or the list changed', () => {
-    expect(assignAnswer(VISIT, 409, 'author_active')).toEqual({
+  it('loads the visit again when the note is someone’s again, or at the note’s form when the list changed', () => {
+    expect(assignAnswer(VISIT, NOTE, 409, 'author_active')).toEqual({
       go: `/encounters/${VISIT}?assign=author_active`,
     });
     for (const code of [
@@ -84,20 +84,22 @@ describe('where an answer sends the person', () => {
       'credential_too_low',
       'cannot_see_all',
     ])
-      expect(assignAnswer(VISIT, 422, code)).toEqual({ go: `/encounters/${VISIT}?assign=changed` });
-    expect(assignAnswer(VISIT, 404, 'not_found')).toEqual({ go: `/encounters/${VISIT}` });
+      expect(assignAnswer(VISIT, NOTE, 422, code)).toEqual({
+        go: `/encounters/${VISIT}?assign=changed&note=${NOTE}#assign-${NOTE}`,
+      });
+    expect(assignAnswer(VISIT, NOTE, 404, 'not_found')).toEqual({ go: `/encounters/${VISIT}` });
   });
 
   it('signs in again, or leaves a screen the role can’t use, as every page does', () => {
-    expect(assignAnswer(VISIT, 401, 'unauthorized')).toEqual({ go: '/sign-in?ended=expired' });
-    expect(assignAnswer(VISIT, 403, 'forbidden')).toEqual({ go: '/home?denied=1' });
+    expect(assignAnswer(VISIT, NOTE, 401, 'unauthorized')).toEqual({ go: '/sign-in?ended=expired' });
+    expect(assignAnswer(VISIT, NOTE, 403, 'forbidden')).toEqual({ go: '/home?denied=1' });
   });
 
   it('keeps the form, with a sentence, for a request the API couldn’t take or a failure', () => {
-    expect(assignAnswer(VISIT, 422, 'validation_failed')).toEqual({
+    expect(assignAnswer(VISIT, NOTE, 422, 'validation_failed')).toEqual({
       problem: 'Something about this request was wrong. Load the visit again.',
     });
-    expect(assignAnswer(VISIT, 500, 'error')).toEqual({ problem: 'Something went wrong. Try again.' });
+    expect(assignAnswer(VISIT, NOTE, 500, 'error')).toEqual({ problem: 'Something went wrong. Try again.' });
   });
 
   it('shows only the states it knows', () => {

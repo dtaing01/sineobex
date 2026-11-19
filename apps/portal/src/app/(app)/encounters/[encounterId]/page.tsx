@@ -74,11 +74,14 @@ export default async function VisitPage({
   const handoff = handoffState(query.handoff);
   const signed = signedState(query.signed);
   const assigned = assignedState(query.assign);
+  // Said at the note's own form when the address names a note the page offers Assign on (review
+  // finding PAX-3), else at the top.
+  const atNote = assigned && typeof query.note === 'string' && assignees.has(query.note) ? query.note : null;
   const notice = handoff
     ? HANDOFF_STATES[handoff]
     : signed
       ? SIGNED_STATES[signed]
-      : assigned
+      : assigned && !atNote
         ? ASSIGNED_STATES[assigned]
         : null;
   const patient = visit.patientId ? (visit.preferredName ?? 'No name recorded') : 'No patient recorded';
@@ -172,6 +175,7 @@ export default async function VisitPage({
                   encounterId={visit.encounterId}
                   noteId={note.noteId}
                   options={assigneeOptions(offered)}
+                  notice={assigned && note.noteId === atNote ? ASSIGNED_STATES[assigned] : undefined}
                 />
               )}
             </NoteView>

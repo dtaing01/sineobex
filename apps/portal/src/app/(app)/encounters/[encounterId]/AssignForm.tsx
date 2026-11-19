@@ -18,11 +18,17 @@ export function AssignForm({
   encounterId,
   noteId,
   options,
+  notice,
 }: {
   encounterId: string;
   noteId: string;
   /** The assignees route's answer, as the picker words it (`assigneeOptions`). */
   options: { value: string; label: string }[];
+  /**
+   * What the page came back to say of this note's assignment (`?assign=reauthed` or `changed` with
+   * `note=`): said here, and the form takes focus, so the person picks up at the note they were on.
+   */
+  notice?: { tone: string; text: string };
 }) {
   const [problem, setProblem] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
@@ -35,7 +41,14 @@ export function AssignForm({
   const [unsure, setUnsure] = useState(false);
   const busy = sending || leaving;
   const summary = useRef<HTMLDivElement>(null);
+  const block = useRef<HTMLDivElement>(null);
   const id = `assign-${noteId}`;
+
+  useEffect(() => {
+    if (notice) block.current?.focus();
+    // On the page's first render only: a later one keeps focus where the person is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (problem) summary.current?.focus();
@@ -100,8 +113,13 @@ export function AssignForm({
   return (
     // Not a landmark: two notes of one type would give two of the same name. It sits in its note's
     // article, which the note's title names.
-    <div id={id} tabIndex={-1} className={styles.section}>
+    <div ref={block} id={id} tabIndex={-1} className={styles.section}>
       <h3 className="px-h3">Assign this note</h3>
+      {notice && (
+        <p role="status" className={`px-alert px-alert--${notice.tone}`}>
+          {notice.text}
+        </p>
+      )}
       <p className="sx-help">
         Whoever acts as this note’s author has left the team. Choose a clinician to act as its author: they
         can finish or correct it. Only people who may take this note are listed.

@@ -67,22 +67,31 @@ export function assignedState(value: unknown): AssignedState | null {
 }
 
 /**
+ * The visit, loaded again at the note's own form with what to say there: a visit can have several
+ * notes to assign, and the person picks up where they were (review finding PAX-3).
+ */
+const atForm = (visit: string, state: AssignedState, noteId: string) =>
+  `${visit}?assign=${state}&note=${noteId}#assign-${noteId}`;
+
+/**
  * Where the API's answer sends the person. Like every `team.manage_users` act, an assignment asks
- * for a recent sign-in: /reauth, then back to the visit. A refusal that names the person chosen is
- * one the picker would not have offered had it been loaded now, so the visit is loaded again.
+ * for a recent sign-in: /reauth, then back to the note's form. A refusal that names the person
+ * chosen is one the picker would not have offered had it been loaded now, so the visit is loaded
+ * again, at the note's form.
  */
 export function assignAnswer(
   encounterId: string,
+  noteId: string,
   status: number,
   code: string,
 ): { go: string } | { problem: string } {
   const visit = `/encounters/${encounterId}`;
   if (status >= 200 && status < 300) return { go: `${visit}?assign=done` };
-  const to = refusalRedirect(code, `${visit}?assign=reauthed`);
+  const to = refusalRedirect(code, atForm(visit, 'reauthed', noteId));
   if (to) return { go: to };
   if (code === 'author_active') return { go: `${visit}?assign=author_active` };
   if (['assignee_not_member', 'assignee_cannot_chart', 'credential_too_low', 'cannot_see_all'].includes(code))
-    return { go: `${visit}?assign=changed` };
+    return { go: atForm(visit, 'changed', noteId) };
   if (status === 404) return { go: visit };
   if (status === 400 || status === 422)
     return { problem: 'Something about this request was wrong. Load the visit again.' };

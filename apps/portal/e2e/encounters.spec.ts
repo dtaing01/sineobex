@@ -52,7 +52,7 @@ async function audited(email: string, patientId: string, action: string): Promis
 function expectOnlyIds(addresses: string[]) {
   for (const address of addresses)
     expect(address).toMatch(
-      /\/(patients|encounters)\/[0-9a-f-]{36}(\?(handoff|assign)=[a-z_]+)?(#assign-[0-9a-f-]{36})?$|\/team\/incomplete-notes$|\/(home|sign-in.*|reauth.*)$/,
+      /\/(patients|encounters)\/[0-9a-f-]{36}(\?(handoff|assign)=[a-z_]+(&note=[0-9a-f-]{36})?)?(#assign-[0-9a-f-]{36})?$|\/team\/incomplete-notes$|\/(home|sign-in.*|reauth.*)$/,
     );
 }
 
@@ -966,10 +966,15 @@ test.describe('notes not complete, and Assign', () => {
       await expect(page).toHaveURL(/\/reauth\?next=/);
       await page.getByLabel('6-digit code').fill(MFA_CODE);
       await page.getByRole('button', { name: 'Continue' }).click();
-      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=reauthed$`));
-      await expect(page.getByRole('main').getByRole('status')).toHaveText(
-        'You confirmed it’s you. Assign the note again.',
+      // Back at the note's own form, which says so and takes focus (review finding PAX-3): this
+      // visit has two notes to assign.
+      await expect(page).toHaveURL(
+        new RegExp(`/encounters/${visitId}\\?assign=reauthed&note=${draft}#assign-${draft}$`),
       );
+      await expect(form).toBeFocused();
+      await expect(form.getByRole('status')).toHaveText('You confirmed it’s you. Assign the note again.');
+      await expect(page.getByRole('main').getByRole('status')).toHaveCount(1);
+      await expectAccessible(page, 'visit page, Assign again after a fresh sign-in', { inPlace: true });
       // The visit is slow to load again after the act: the button stays off while it loads, and a
       // second press goes nowhere (review finding PAC-1).
       const held = /\?assign=done$/;
@@ -1043,6 +1048,7 @@ test.describe('notes not complete, and Assign', () => {
     const name = `Sage ${newSurname()}`;
     const chart = newPatient({ preferredName: name }, 60);
     const visitId = randomUUID();
+    const noteId = randomUUID();
     await phone.send(
       chart,
       {
@@ -1054,7 +1060,7 @@ test.describe('notes not complete, and Assign', () => {
       },
       {
         entity: 'encounter_note',
-        recordId: randomUUID(),
+        recordId: noteId,
         op: 'create',
         value: {
           encounterId: visitId,
@@ -1100,10 +1106,15 @@ test.describe('notes not complete, and Assign', () => {
       await setRole('clinician@example.com', 'billing_data');
       try {
         await note.getByRole('button', { name: 'Assign' }).click();
-        await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=changed$`));
-        await expect(page.getByRole('main').getByRole('status')).toHaveText(
+        // At the note's own form, which says so and takes focus (review finding PAX-3).
+        await expect(page).toHaveURL(
+          new RegExp(`/encounters/${visitId}\\?assign=changed&note=${noteId}#assign-${noteId}$`),
+        );
+        await expect(note.locator(`#assign-${noteId}`)).toBeFocused();
+        await expect(note.getByRole('status')).toHaveText(
           'Who may take this note changed. Choose again from the list.',
         );
+        await expect(page.getByRole('main').getByRole('status')).toHaveCount(1);
         // The picker, loaded again, lists who may take the note now.
         await expect(note.getByRole('heading', { name: 'Assign this note' })).toBeVisible();
         expect(await note.locator('option').allTextContents()).not.toContain(jordan);

@@ -28,5 +28,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     params: { path: { noteId: input.noteId } },
     body: { toUserId: input.toUserId, reason: input.reason },
   });
-  return answer(assignAnswer(encounterId, response.status, errorCode(error)));
+  return answer(assignAnswer(encounterId, input.noteId, response.status, errorCode(error)));
 }
