@@ -309,7 +309,8 @@ export function cosignVisit(scope: TeamScope, encounterId: string, input: NoteAc
     messages: {
       not_waiting: 'A note isn’t waiting for a co-signature any more. Load the visit again.',
       content_changed: 'The visit changed since you read it. Read it again before you co-sign.',
-      is_author: 'You can’t co-sign a note you wrote.',
+      // Worded for everyone it covers: whoever wrote, completed or acts as the author of a note.
+      is_author: 'You can’t co-sign a note you wrote, completed or act as the author of.',
       cannot_sign: 'Your credential can’t sign notes.',
       cannot_see_all:
         'Your role can’t see every part of this note, so you can’t co-sign it. Someone who can see all of it must.',

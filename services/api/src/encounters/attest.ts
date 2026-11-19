@@ -37,7 +37,8 @@ export function attestVisit(scope: TeamScope, encounterId: string, input: NoteAc
     messages: {
       not_waiting: 'A note isn’t waiting for attestation any more. Load the visit again.',
       content_changed: 'The visit changed since you read it. Read it again before you attest.',
-      is_author: 'You can’t attest a note you wrote.',
+      // Worded for everyone it covers: whoever wrote, completed or acts as the author of a note.
+      is_author: 'You can’t attest a note you wrote, completed or act as the author of.',
       is_signer: 'You can’t attest a note you signed.',
       cannot_attest: 'Your credential can’t attest notes.',
       cannot_see_all:
