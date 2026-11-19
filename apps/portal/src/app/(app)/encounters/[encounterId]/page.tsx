@@ -6,9 +6,11 @@ import { UUID } from '@/app/(app)/patients/chart';
 import { api, PortalApiError, unwrap } from '@/lib/api';
 import { addendumEntry, ENCOUNTER_KIND, madeAtRows, startedText } from '@/lib/encounters';
 import { HANDOFF_STATES, handoffState } from '@/lib/handoff';
+import { SIGNED_STATES, signedState, signPlan } from '@/lib/sign';
 import styles from '../encounters.module.css';
 import { HandoffExport } from './HandoffExport';
 import { NoteView, Trail } from './NoteView';
+import { SignActions } from './SignActions';
 
 // Never a name: titles land in the history and on screen shares (lifecycle 10.2).
 export const metadata: Metadata = { title: 'Visit' };
@@ -32,7 +34,9 @@ async function loadVisit(encounterId: string): Promise<Schemas['VisitRead']> {
 /**
  * The visit page (lifecycle 9.7, 9.11), read-only: the envelope, each note the reader may see with
  * its recap, its sections and what hangs off it, and the records made at the visit. Export EMS
- * handoff (PDF) shows when the API says the export would give the file (`hasHandoff`).
+ * handoff (PDF) shows when the API says the export would give the file (`hasHandoff`); Co-sign and
+ * Attest, at the bottom, when it marks a note the reader may act on (`canCosign`, `canAttest`). Each
+ * act loads the page again after it.
  */
 export default async function VisitPage({
   params,
@@ -43,8 +47,10 @@ export default async function VisitPage({
 }) {
   const { encounterId } = await params;
   const visit = await loadVisit(encounterId);
-  const handoff = handoffState((await searchParams).handoff);
-  const notice = handoff ? HANDOFF_STATES[handoff] : null;
+  const query = await searchParams;
+  const handoff = handoffState(query.handoff);
+  const signed = signedState(query.signed);
+  const notice = handoff ? HANDOFF_STATES[handoff] : signed ? SIGNED_STATES[signed] : null;
   const patient = visit.patientId ? (visit.preferredName ?? 'No name recorded') : 'No patient recorded';
   const started = startedText(visit.startedAt, visit.clockVerified);
   const records = madeAtRows(visit.records, visit.patientId);
@@ -160,6 +166,13 @@ export default async function VisitPage({
           </ul>
         </section>
       )}
+
+      {(['cosign', 'attest'] as const).map((act) => {
+        const plan = signPlan(visit.notes, act);
+        // Keyed by the act alone: a later render's plan must reach the same component, which keeps
+        // the one the person read.
+        return plan && <SignActions key={act} encounterId={visit.encounterId} act={act} plan={plan} />;
+      })}
     </>
   );
 }
