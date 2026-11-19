@@ -89,6 +89,52 @@ describe('phase 4: what the visit read tells the visit page', () => {
     heldBecause,
   });
 
+  describe('the contract', () => {
+    it('gives each field added for the portal a default, so a copy a phone cached before it still reads', async () => {
+      // The phone keeps a chart's timeline and recent visits for 24 hours (lifecycle 5.2), and its
+      // generated client takes a field the contract requires as required (unit L6, rule 7).
+      interface Schema {
+        required?: string[];
+        properties?: Record<string, { default?: unknown }>;
+        allOf?: (Schema & { $ref?: string })[];
+      }
+      const doc = (await (await h.request('/openapi.json')).json()) as {
+        components: { schemas: Record<string, Schema> };
+      };
+      // An extended schema is an allOf of what it extends and what it adds.
+      const flat = (s: Schema & { $ref?: string }): Required<Pick<Schema, 'required' | 'properties'>> => {
+        if (s.$ref) return flat(doc.components.schemas[s.$ref.split('/').at(-1)!]!);
+        const parts = (s.allOf ?? []).map(flat);
+        return {
+          required: [...(s.required ?? []), ...parts.flatMap((p) => p.required)],
+          properties: Object.assign({}, ...parts.map((p) => p.properties), s.properties ?? {}),
+        };
+      };
+      const added: Record<string, string[]> = {
+        VisitRead: ['preferredName', 'hasHandoff'],
+        VisitNote: ['medical', 'canCosign', 'canAttest', 'heldBecause'],
+        TimelineNote: ['title', 'medical'],
+        QueueNote: ['title'],
+        IncompleteNote: ['title', 'preferredName'],
+        HomeCounts: ['teamOverdue'],
+      };
+      for (const [name, fields] of Object.entries(added)) {
+        const schema = flat(doc.components.schemas[name]!);
+        for (const field of fields) {
+          expect(schema.properties, `${name}.${field}`).toHaveProperty(field);
+          expect(schema.required, `${name}.${field}`).not.toContain(field);
+        }
+      }
+      // Each that a page reads as a value has the default it reads when it is missing.
+      const defaultOf = (name: string, field: string) =>
+        flat(doc.components.schemas[name]!).properties[field]!.default;
+      expect(defaultOf('VisitNote', 'canCosign')).toBe(false);
+      expect(defaultOf('VisitRead', 'hasHandoff')).toBe(false);
+      expect(defaultOf('TimelineNote', 'title')).toBe('');
+      expect(defaultOf('IncompleteNote', 'preferredName')).toBe(null);
+    });
+  });
+
   describe('the patient and the notes', () => {
     it('each note’s title and whether it is Medical', async () => {
       const v = await chartedVisit(w, w.rae);
