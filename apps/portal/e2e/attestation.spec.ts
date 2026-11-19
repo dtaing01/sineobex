@@ -263,6 +263,17 @@ function watchPresses(page: Page): Request[] {
   return presses;
 }
 
+/**
+ * Stay signed in, from the idle warning: a server action, so the page renders again from a fresh
+ * read of the visit. The warning runs on the browser's clock, which the test installs and moves on.
+ */
+async function staySignedIn(page: Page) {
+  await page.clock.fastForward('13:05');
+  const idle = page.getByRole('dialog', { name: 'Still there?' });
+  await idle.getByRole('button', { name: 'Stay signed in' }).click();
+  await expect(idle).toBeHidden();
+}
+
 /** The plan the visit read marks for an act: what a press must send, exactly. */
 function planOf(visit: Schemas['VisitRead'], act: 'cosign' | 'attest') {
   return visit.notes
@@ -789,14 +800,19 @@ test.describe('the plan sent is the one the person read', () => {
     expect(after[0]!.contentHash).not.toBe(before[0]!.contentHash);
 
     // Stay signed in is a server action: the page renders again from a fresh read of the visit.
-    await page.clock.fastForward('13:05');
-    const idle = page.getByRole('dialog', { name: 'Still there?' });
-    await idle.getByRole('button', { name: 'Stay signed in' }).click();
-    await expect(idle).toBeHidden();
+    await staySignedIn(page);
     await expect(note).toContainText('Replaced: 14:05');
 
-    // The new hashes are on the page now, but nobody read them: Co-sign sends nothing.
-    await page.getByRole('region', { name: 'Co-sign' }).getByRole('button', { name: 'Co-sign' }).click();
+    // The new hashes are on the page now, but nobody read them: the section says so at once, and
+    // Co-sign sends nothing.
+    const section = page.getByRole('region', { name: 'Co-sign' });
+    await expect(section.getByRole('status')).toHaveText('This visit changed. Read it again.');
+    await expect(section.getByRole('link', { name: 'Read it again' })).toHaveAttribute(
+      'href',
+      `/encounters/${stay.id}`,
+    );
+    await expectAccessible(page, 'Co-sign, the visit changed', { inPlace: true });
+    await section.getByRole('button', { name: 'Co-sign' }).click();
     await expect(page).toHaveURL(new RegExp(`/encounters/${stay.id}\\?signed=changed$`));
     await expect(page.getByRole('main').getByRole('status')).toHaveText('This visit changed. Read it again.');
     expect(presses).toHaveLength(0);
@@ -807,6 +823,85 @@ test.describe('the plan sent is the one the person read', () => {
     await page.getByRole('region', { name: 'Co-sign' }).getByRole('button', { name: 'Co-sign' }).click();
     await expect(page).toHaveURL(new RegExp(`/encounters/${stay.id}\\?signed=cosigned$`));
     expect(presses.map((p) => p.postDataJSON())).toEqual([{ act: 'cosign', notes: after }]);
+  });
+
+  test('read, attested by someone else, corrected, with Stay signed in after each: Attest sends nothing anybody here read', async ({
+    page,
+  }) => {
+    // Review finding PRD-2: the section went away when a re-render had nothing to attest, and came
+    // back holding the corrected note's hash as if it were the one the person read.
+    const v = await residentVisit('sign', [['red_flags_disposition', RED_FLAGS_EMS]]);
+    const noteId = v.notes.red_flags_disposition!;
+    await page.clock.install();
+    await signIn(page, 'clinician@example.com');
+    const presses = watchPresses(page);
+    await page.goto(`/encounters/${v.id}`);
+    const note = page.getByRole('article', { name: 'Red flags and disposition' });
+    await expect(note).toContainText('14:05');
+    const section = page.getByRole('region', { name: 'Attest' });
+    await expect(section.getByRole('status')).toHaveCount(0);
+
+    // Alex attests it through the API; Stay signed in renders a read with nothing to attest.
+    const alexs = planOf(await visitAs('admin@example.com', v.id), 'attest');
+    const attested = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      `/v1/encounters/${v.id}/attest`,
+      {
+        notes: alexs,
+        statementVersion: 'attest-2026-11',
+      },
+    );
+    expect(attested.status).toBe(200);
+    await staySignedIn(page);
+    await expect(note.locator('.sx-pill')).toHaveText('Signed and attested');
+    await expect(section.getByRole('status')).toHaveText('This visit changed. Read it again.');
+
+    // Casey corrects it, so it waits again with other content; Stay signed in renders that.
+    await correct(noteId, 'red_flags.ems_time', '14:20');
+    await staySignedIn(page);
+    await expect(note).toContainText('Replaced: 14:05');
+    await expect(section.getByRole('status')).toHaveText('This visit changed. Read it again.');
+    await section.getByRole('button', { name: 'Attest' }).click();
+    await expect(page).toHaveURL(new RegExp(`/encounters/${v.id}\\?signed=changed$`));
+    expect(presses).toHaveLength(0);
+    expect((await visitAs('admin@example.com', v.id)).notes[0]!.attestations).toHaveLength(1);
+  });
+
+  test('read with nothing to attest, then corrected, then Stay signed in: the section says the visit changed, and sends nothing', async ({
+    page,
+  }) => {
+    const v = await residentVisit('sign', [['red_flags_disposition', RED_FLAGS_EMS]]);
+    const alexs = planOf(await visitAs('admin@example.com', v.id), 'attest');
+    const attested = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      `/v1/encounters/${v.id}/attest`,
+      {
+        notes: alexs,
+        statementVersion: 'attest-2026-11',
+      },
+    );
+    expect(attested.status).toBe(200);
+    await page.clock.install();
+    await signIn(page, 'clinician@example.com');
+    const presses = watchPresses(page);
+    await page.goto(`/encounters/${v.id}`);
+    const note = page.getByRole('article', { name: 'Red flags and disposition' });
+    await expect(note).toContainText('14:05');
+    const section = page.getByRole('region', { name: 'Attest' });
+    await expect(section).toHaveCount(0);
+
+    await correct(v.notes.red_flags_disposition!, 'red_flags.ems_time', '14:25');
+    await staySignedIn(page);
+    await expect(note).toContainText('Replaced: 14:05');
+    // Nobody here read an Attest section: it says only that the visit changed.
+    await expect(section.getByRole('status')).toHaveText('This visit changed. Read it again.');
+    await expect(section.getByRole('listitem')).toHaveCount(0);
+    await section.getByRole('button', { name: 'Attest' }).click();
+    await expect(page).toHaveURL(new RegExp(`/encounters/${v.id}\\?signed=changed$`));
+    expect(presses).toHaveLength(0);
+    expect((await visitAs('admin@example.com', v.id)).notes[0]!.attestation).toBe('waiting');
   });
 
   test('a note corrected elsewhere, then the export, then Co-sign: the API refuses the old hash and the visit loads again, changed', async ({

@@ -210,12 +210,12 @@ export default async function VisitPage({
         </section>
       )}
 
-      {(['cosign', 'attest'] as const).map((act) => {
-        const plan = signPlan(visit.notes, act);
-        // Keyed by the act alone: a later render's plan must reach the same component, which keeps
-        // the one the person read.
-        return plan && <SignActions key={act} encounterId={visit.encounterId} act={act} plan={plan} />;
-      })}
+      {/* Rendered for each act on every render, keyed by the act alone, with or without a plan: a
+          later render's plan must reach the same component, which keeps the one the person read
+          (review finding PRD-2). It draws nothing while neither has a plan. */}
+      {(['cosign', 'attest'] as const).map((act) => (
+        <SignActions key={act} encounterId={visit.encounterId} act={act} plan={signPlan(visit.notes, act)} />
+      ))}
     </>
   );
 }

@@ -10,11 +10,13 @@ import styles from '../encounters.module.css';
  * of 3.5 above the button. The browser then loads the visit again, whole, to show what the API
  * holds now.
  *
- * The plan sent is the one the person read: the notes and hashes of the first render. A server
- * action anywhere on the page (Stay signed in, say) renders it again from a fresh read of the
- * visit, so a later render can carry the hashes of notes changed since, which nobody here read. Then
- * the press sends nothing and the visit is loaded again, saying it changed (the review of unit L6's
- * earlier build).
+ * The plan sent is the one the person read: the notes and hashes of the first render, or none. A
+ * server action anywhere on the page (Stay signed in, say) renders it again from a fresh read of
+ * the visit, so a later render can carry the hashes of notes changed since, which nobody here read,
+ * or none where the person read some. The page renders this section for each act on every render,
+ * with or without a plan, so the first plan lives as long as the page does (review finding PRD-2).
+ * When a later render's plan is not the first one, the section says at once that the visit changed,
+ * and a press sends nothing: the visit is loaded again, saying so.
  */
 export function SignActions({
   encounterId,
@@ -23,18 +25,20 @@ export function SignActions({
 }: {
   encounterId: string;
   act: SignAct;
-  /** The notes of this render's read the API marks for the act (`signPlan`). */
-  plan: SignPlan;
+  /** The notes of this render's read the API marks for the act (`signPlan`), or null for none. */
+  plan: SignPlan | null;
 }) {
-  // Kept from the first render: later props are never sent.
+  // Kept from the first render, null included: later props are never sent.
   const [read] = useState(plan);
   const [problem, setProblem] = useState('');
   const [sending, startSending] = useTransition();
   const words = SIGN_ACTS[act];
   const heading = `${act}-heading`;
+  const changed = !samePlan(read?.notes ?? [], plan?.notes ?? []);
+  if (!read && !plan) return null;
 
   function press() {
-    if (!samePlan(read.notes, plan.notes)) {
+    if (!read || changed) {
       window.location.assign(visitAfter(encounterId, 'changed'));
       return;
     }
@@ -71,13 +75,24 @@ export function SignActions({
       <h2 id={heading} className="px-h2">
         {words.heading}
       </h2>
-      <p>{words.lead(read.titles.length)}</p>
-      <ul className="px-list">
-        {read.titles.map((title, i) => (
-          <li key={read.notes[i]!.noteId}>{title}</li>
-        ))}
-      </ul>
-      <p className={styles.statement}>{words.statement}</p>
+      {read && (
+        <>
+          <p>{words.lead(read.titles.length)}</p>
+          <ul className="px-list">
+            {read.titles.map((title, i) => (
+              <li key={read.notes[i]!.noteId}>{title}</li>
+            ))}
+          </ul>
+          <p className={styles.statement}>{words.statement}</p>
+        </>
+      )}
+      {changed && (
+        // The design's sentence (lifecycle 9.9). A full load, not a client navigation: this section
+        // would keep the plan it holds through one.
+        <p role="status" className="px-alert px-alert--info">
+          This visit changed. <a href={`/encounters/${encounterId}`}>Read it again</a>.
+        </p>
+      )}
       {problem && (
         <p role="alert" className="px-alert px-alert--error">
           {problem}
