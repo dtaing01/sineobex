@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { teamScope } from '../auth/context.ts';
-import { AssignInput, assignNote, NoteAssigned } from '../encounters/assign.ts';
+import { AssignInput, assignNote, NoteAssigned, NoteAssignees, noteAssignees } from '../encounters/assign.ts';
 import { attestVisit } from '../encounters/attest.ts';
 import {
   incompleteNotes,
@@ -147,6 +147,25 @@ const assignRoute = createRoute({
   },
 });
 
+const assigneesRoute = createRoute({
+  method: 'get',
+  path: '/v1/notes/{noteId}/assignees',
+  operationId: 'getNoteAssignees',
+  tags: ['encounters'],
+  summary: 'Who may be put in the place of a note’s author who has left the team',
+  description:
+    'Lifecycle 3.8, 5.5, 9.12. Needs team.manage_users; a read, so no recent sign-in (the assignment asks for one). ' +
+    'Every active member the assign route would take, by its own rule (mayAssign), so a picker lists exactly them. ' +
+    '409 author_active while whoever acts as the author is an active member; 404 for a note the team does not ' +
+    'have or the caller may not read. Logged as note.assignees_viewed on the note.',
+  security: [{ bearer: [] }],
+  request: { params: NoteParam },
+  responses: {
+    200: { description: 'The people the note may be assigned to', ...json(NoteAssignees) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
 const notesToFinishRoute = createRoute({
   method: 'get',
   path: '/v1/me/notes-to-finish',
@@ -265,6 +284,11 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
   app.openapi(assignRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['team.manage_users'], recentAuth: true });
     return c.json(await assignNote(scope, c.req.valid('param').noteId, c.req.valid('json')), 200);
+  });
+
+  app.openapi(assigneesRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['team.manage_users'] });
+    return c.json(await noteAssignees(scope, c.req.valid('param').noteId), 200);
   });
 
   app.openapi(notesToFinishRoute, async (c) => {

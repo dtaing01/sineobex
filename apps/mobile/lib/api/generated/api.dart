@@ -3672,6 +3672,47 @@ class NoteAssigned {
       };
 }
 
+class NoteAssignee {
+  const NoteAssignee({
+    required this.credential,
+    required this.displayName,
+    required this.userId,
+  });
+
+  final Credential credential;
+  final String displayName;
+  final String userId;
+
+  factory NoteAssignee.fromJson(Map<String, dynamic> json) => NoteAssignee(
+        credential: Credential.fromJson(json['credential'] as String),
+        displayName: json['displayName'] as String,
+        userId: json['userId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'credential': credential.toJson(),
+        'displayName': displayName,
+        'userId': userId,
+      };
+}
+
+/// Every active member the assign route would take for this note, by name
+class NoteAssignees {
+  const NoteAssignees({
+    required this.assignees,
+  });
+
+  final List<NoteAssignee> assignees;
+
+  factory NoteAssignees.fromJson(Map<String, dynamic> json) => NoteAssignees(
+        assignees: (json['assignees'] as List<dynamic>).map((e) => NoteAssignee.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'assignees': assignees.map((e) => e.toJson()).toList(),
+      };
+}
+
 class NoteToFinish {
   const NoteToFinish({
     required this.encounterId,
@@ -6613,6 +6654,12 @@ class SineobexApi {
   Future<List<MembershipChange>> getMemberHistory({required String membershipId}) async {
     final json = await _transport.send('GET', '/v1/team/members/${Uri.encodeComponent(membershipId)}/history');
     return (json as List<dynamic>).map((e) => MembershipChange.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Who may be put in the place of a note’s author who has left the team
+  Future<NoteAssignees> getNoteAssignees({required String noteId}) async {
+    final json = await _transport.send('GET', '/v1/notes/${Uri.encodeComponent(noteId)}/assignees');
+    return NoteAssignees.fromJson(json as Map<String, dynamic>);
   }
 
   /// The drafts the caller acts as the author of, with whether each is overdue

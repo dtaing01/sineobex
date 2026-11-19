@@ -10,12 +10,12 @@ import {
 } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { conflict, invalid, notFound } from '../lib/errors.ts';
-import { Reason, Uuid } from '../routes/schemas.ts';
+import { Credential as CredentialSchema, Reason, Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
 import { actingAuthor, answersOf, noteRules, noteTypeOf } from '../sync/entities/note.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
 import { byDefinition, DefinitionError, noteReader, sameValue, type StoredRecord } from '../sync/records.ts';
-import { medicalHidden } from './read.ts';
+import { medicalHidden, noteAsRead } from './read.ts';
 import { mayAssign, type AssignRefusal } from './rules.ts';
 
 /**
@@ -43,8 +43,21 @@ export const NoteAssigned = z
   })
   .openapi('NoteAssigned');
 
+export const NoteAssignees = z
+  .object({
+    assignees: z.array(
+      z
+        .object({ userId: Uuid, displayName: z.string(), credential: CredentialSchema })
+        .openapi('NoteAssignee'),
+    ),
+  })
+  .openapi('NoteAssignees', {
+    description: 'Every active member the assign route would take for this note, by name',
+  });
+
 export type AssignInputValue = z.infer<typeof AssignInput>;
 export type NoteAssignedValue = z.infer<typeof NoteAssigned>;
+export type NoteAssigneesValue = z.infer<typeof NoteAssignees>;
 
 const MESSAGES: Record<AssignRefusal, string> = {
   author_active: 'The note’s author is still on the team, so it stays theirs.',
@@ -122,6 +135,43 @@ async function hidesFrom(
   }
 }
 
+/** What mayAssign asks of a note whatever the assignee: who acts as its author, and the rank it needs. */
+interface AssignedNote {
+  visit: StoredRecord;
+  note: StoredRecord;
+  fromUserId: string;
+  actingAuthorActive: boolean;
+  neededRank: number;
+}
+
+async function assignedNote(tx: Tx, visit: StoredRecord, note: StoredRecord): Promise<AssignedNote> {
+  const fromUserId = actingAuthor(note);
+  return {
+    visit,
+    note,
+    fromUserId,
+    actingAuthorActive: (await memberOf(tx, note.teamId, fromUserId))?.status === 'active',
+    neededRank: await neededRank(tx, note),
+  };
+}
+
+/**
+ * mayAssign asked of [assignee] for the note: the one rule the assign route and its picker's list
+ * (GET /v1/notes/{noteId}/assignees) both ask, so the picker never offers someone the route refuses.
+ */
+async function assignDecision(tx: Tx, a: AssignedNote, assignee: Member | undefined) {
+  const credential = credentialOf(assignee) ?? 'none';
+  const permissions = new Set((assignee?.permissions ?? []).filter(isPermission));
+  return mayAssign({
+    actingAuthorActive: a.actingAuthorActive,
+    assigneeActive: assignee?.status === 'active',
+    assigneeCanChart: permissions.has('encounters.chart'),
+    assigneeRank: CAPABILITIES[credential].rank,
+    neededRank: a.neededRank,
+    noteHasHiddenSection: await hidesFrom(tx, a.visit, a.note, permissions, credential),
+  });
+}
+
 /**
  * POST /v1/notes/{noteId}/assign. The route has checked team.manage_users and a recent sign-in.
  * The team lock is the first statement, then the note is loaded for update, as every online writer
@@ -143,19 +193,9 @@ export function assignNote(
     const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
     if (!visit) throw notFound('note');
 
-    const fromUserId = actingAuthor(note);
-    const author = await memberOf(tx, teamId, fromUserId);
-    const assignee = await memberOf(tx, teamId, input.toUserId);
-    const credential = credentialOf(assignee) ?? 'none';
-    const permissions = new Set((assignee?.permissions ?? []).filter(isPermission));
-    const decision = mayAssign({
-      actingAuthorActive: author?.status === 'active',
-      assigneeActive: assignee?.status === 'active',
-      assigneeCanChart: permissions.has('encounters.chart'),
-      assigneeRank: CAPABILITIES[credential].rank,
-      neededRank: await neededRank(tx, note),
-      noteHasHiddenSection: await hidesFrom(tx, visit, note, permissions, credential),
-    });
+    const assigned = await assignedNote(tx, visit, note);
+    const { fromUserId } = assigned;
+    const decision = await assignDecision(tx, assigned, await memberOf(tx, teamId, input.toUserId));
     if (decision !== 'ok') {
       const { refuse } = decision;
       throw refuse === 'author_active'
@@ -181,5 +221,52 @@ export function assignNote(
       insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
       values (${teamId}, ${input.toUserId}, 'note_assigned', 'encounter_note', ${note.id})`;
     return { assignmentId: assignment!.id, noteId: note.id, fromUserId, toUserId: input.toUserId };
+  });
+}
+
+/**
+ * GET /v1/notes/{noteId}/assignees: every active member the assign route would take for the note,
+ * by name and credential, so the portal's picker lists exactly them (lifecycle 5.5, 9.12). The
+ * route has checked team.manage_users; it is a read, as the list of members is, so it asks for no
+ * recent sign-in, and the assignment itself does. A note the team does not have, or the caller may
+ * not read (noteAsRead, as the visit read leaves it out), is 404; one whose acting author is active
+ * is 409 author_active, as the act answers, so the page offers Assign only where this answers 200.
+ * Neither is logged (lifecycle 10.1). The list is logged as one note.assignees_viewed on the note,
+ * with its patient and how many it names: names are staff, and no event holds one.
+ */
+export function noteAssignees(scope: TeamScope, noteId: string): Promise<NoteAssigneesValue> {
+  return scope.tx(async (tx, audit) => {
+    const teamId = scope.team.teamId;
+    const note = await noteRules.load(tx, noteId, false);
+    if (!note || note.teamId !== teamId || !(await noteAsRead(tx, scope, note))) throw notFound('note');
+    const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
+    if (!visit) throw notFound('note');
+    const assigned = await assignedNote(tx, visit, note);
+    if (assigned.actingAuthorActive) throw conflict('author_active', MESSAGES.author_active);
+
+    const active = await tx<(Member & { userId: string; displayName: string })[]>`
+      select m.user_id, u.display_name, m.status, m.credential, r.permissions
+      from sineobex.team_memberships m
+      join sineobex.roles r on r.id = m.role_id
+      join sineobex.users u on u.id = m.user_id
+      where m.team_id = ${teamId} and m.status = 'active'
+      order by u.display_name, m.user_id`;
+    const assignees: NoteAssigneesValue['assignees'] = [];
+    for (const member of active) {
+      if ((await assignDecision(tx, assigned, member)) !== 'ok') continue;
+      assignees.push({
+        userId: member.userId,
+        displayName: member.displayName,
+        credential: credentialOf(member) ?? 'none',
+      });
+    }
+    await audit({
+      action: 'note.assignees_viewed',
+      entity: 'encounter_note',
+      entityId: note.id,
+      patientId: visit.patientId,
+      details: { resultCount: assignees.length },
+    });
+    return { assignees };
   });
 }

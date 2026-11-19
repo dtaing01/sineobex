@@ -308,6 +308,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notes/{noteId}/assignees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who may be put in the place of a note’s author who has left the team
+         * @description Lifecycle 3.8, 5.5, 9.12. Needs team.manage_users; a read, so no recent sign-in (the assignment asks for one). Every active member the assign route would take, by its own rule (mayAssign), so a picker lists exactly them. 409 author_active while whoever acts as the author is an active member; 404 for a note the team does not have or the caller may not read. Logged as note.assignees_viewed on the note.
+         */
+        get: operations["getNoteAssignees"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/owner/teams": {
         parameters: {
             query?: never;
@@ -1886,6 +1906,16 @@ export interface components {
             noteId: string;
             /** Format: uuid */
             toUserId: string;
+        };
+        NoteAssignee: {
+            credential: components["schemas"]["Credential"];
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description Every active member the assign route would take for this note, by name */
+        NoteAssignees: {
+            assignees: components["schemas"]["NoteAssignee"][];
         };
         /** @enum {string} */
         NoteAttestation: "not_needed" | "waiting" | "attested";
@@ -3599,6 +3629,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoteAssigned"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getNoteAssignees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The people the note may be assigned to */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteAssignees"];
                 };
             };
             /** @description Not signed in, or the session expired */

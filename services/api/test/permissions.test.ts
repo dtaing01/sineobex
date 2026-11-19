@@ -477,6 +477,14 @@ const ENCOUNTER_ROUTES: RouteCase[] = [
     logged: { permission: 'team.manage_users' },
   },
   {
+    // The assign picker's list (unit L6): a read, so no recent sign-in.
+    method: 'GET',
+    path: `/v1/notes/${id()}/assignees`,
+    allowed: ['team.manage_users'],
+    refused: ['encounters.chart', 'patients.view', 'quarantine.review'],
+    logged: { permission: 'team.manage_users' },
+  },
+  {
     method: 'GET',
     path: '/v1/me/notes-to-finish',
     allowed: ['encounters.chart'],
@@ -520,7 +528,7 @@ describe('phase 4 encounter routes', () => {
   // Assigning a note and exporting a file are admin and export actions: a sign-in this recent
   // (RECENT_AUTH_MINUTES), as every such route asks (PRD main 602).
   for (const r of ENCOUNTER_ROUTES.filter(
-    (c) => c.path.includes('/assign') || c.path.endsWith('/ems-handoff'),
+    (c) => c.path.endsWith('/assign') || c.path.endsWith('/ems-handoff'),
   )) {
     const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}');
     it(`${r.method} ${route} needs a recent sign-in`, async () => {
