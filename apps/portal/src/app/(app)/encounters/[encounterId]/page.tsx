@@ -171,7 +171,6 @@ export default async function VisitPage({
                 <AssignForm
                   encounterId={visit.encounterId}
                   noteId={note.noteId}
-                  title={note.title || 'Note'}
                   options={assigneeOptions(offered)}
                 />
               )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react';
 import { assignProblems, REASON_MAX } from '@/lib/assign';
+import styles from '../encounters.module.css';
 
 type Field = 'toUserId' | 'reason';
 
@@ -16,13 +17,10 @@ type Field = 'toUserId' | 'reason';
 export function AssignForm({
   encounterId,
   noteId,
-  title,
   options,
 }: {
   encounterId: string;
   noteId: string;
-  /** The note's title: names this form apart from another note's on the page. */
-  title: string;
   /** The assignees route's answer, as the picker words it (`assigneeOptions`). */
   options: { value: string; label: string }[];
 }) {
@@ -31,7 +29,6 @@ export function AssignForm({
   const [sending, startSending] = useTransition();
   const summary = useRef<HTMLDivElement>(null);
   const id = `assign-${noteId}`;
-  const heading = `${id}-heading`;
 
   useEffect(() => {
     if (problem) summary.current?.focus();
@@ -84,10 +81,10 @@ export function AssignForm({
   const errors = Object.entries(fieldErrors) as [Field, string][];
 
   return (
-    <section id={id} aria-labelledby={heading} tabIndex={-1}>
-      <h3 id={heading} className="px-h3">
-        Assign this note
-      </h3>
+    // Not a landmark: two notes of one type would give two of the same name. It sits in its note's
+    // article, which the note's title names.
+    <div id={id} tabIndex={-1} className={styles.section}>
+      <h3 className="px-h3">Assign this note</h3>
       <p className="sx-help">
         Whoever acts as this note’s author has left the team. Choose a clinician to act as its author: they
         can finish or correct it. Only people who may take this note are listed.
@@ -98,7 +95,7 @@ export function AssignForm({
           credential, whose role can see all of it.
         </p>
       ) : (
-        <form className="px-form" aria-label={`Assign ${title}`} onSubmit={submit} noValidate>
+        <form className="px-form" onSubmit={submit} noValidate>
           {problem && (
             <div ref={summary} tabIndex={-1} role="alert" className="px-alert px-alert--error">
               <p className="px-alert__title">{problem}</p>
@@ -123,7 +120,7 @@ export function AssignForm({
             <select
               id={`${id}-toUserId`}
               name="toUserId"
-              className="px-select"
+              className={`px-select ${styles.picker}`}
               defaultValue=""
               aria-invalid={fieldErrors.toUserId ? true : undefined}
               aria-describedby={described('toUserId')}
@@ -172,6 +169,6 @@ export function AssignForm({
           </div>
         </form>
       )}
-    </section>
+    </div>
   );
 }

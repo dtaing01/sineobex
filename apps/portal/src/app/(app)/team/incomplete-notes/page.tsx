@@ -27,8 +27,8 @@ export default async function IncompleteNotesPage() {
     <>
       <h1 className="px-h1">Notes not complete</h1>
       <p className="sx-help">
-        Every draft note the server holds, oldest visit first. A note started more than a day ago is marked.
-        When a note’s author has left the team, assign it to another clinician from its visit.
+        Every draft note the server holds, oldest visit first. A note whose visit started more than a day ago
+        is marked. When a note’s author has left the team, assign it to another clinician from its visit.
         {views ? '' : ' Your role doesn’t open patients’ charts, so patients aren’t named here.'} Opening this
         page is logged.
       </p>
@@ -36,7 +36,7 @@ export default async function IncompleteNotesPage() {
         <p className="px-panel">No notes are incomplete.</p>
       ) : (
         <table className={STACKED_TABLE}>
-          <caption>
+          <caption className={styles.caption}>
             Draft notes, oldest visit first: {notes.length} {notes.length === 1 ? 'note' : 'notes'}, {overdue}{' '}
             older than a day.
           </caption>

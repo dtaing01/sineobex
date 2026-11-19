@@ -107,3 +107,16 @@
   border-left: 3px solid var(--accent);
   font-weight: 700;
 }
+
+/* The Assign picker fills its field. At its own width, its longest option would widen the page at
+   320 px, as a select's max-width does not stop. */
+.picker {
+  width: 100%;
+}
+
+/* A stacked table's caption runs the width of the page at 320 px, not the width of one word. */
+@media (max-width: 639.98px) {
+  .caption {
+    display: block;
+  }
+}

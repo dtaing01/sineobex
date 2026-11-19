@@ -58,7 +58,7 @@ export function SignatureQueue({ act, rows }: { act: SignAct; rows: Schemas['Que
         <p className="px-panel">{words.empty}</p>
       ) : (
         <table className={STACKED_TABLE}>
-          <caption>
+          <caption className={styles.caption}>
             {words.caption}: {rows.length} {rows.length === 1 ? 'visit' : 'visits'}.
           </caption>
           <thead>
