@@ -18,6 +18,7 @@ import 'features/encounters/note_screen.dart';
 import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
 import 'features/encounters/start_sheet.dart';
 import 'features/encounters/summary_screen.dart';
+import 'features/encounters/visit_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/lock_screens.dart';
 import 'features/patients/add_problem_screen.dart';
@@ -139,6 +140,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/encounters/:id/summary',
         builder: (_, state) => SummaryScreen(encounterId: state.pathParameters['id']!),
+      ),
+      // The visit as it is read (9.7): from the timeline, Notes to finish or a queue.
+      GoRoute(
+        path: '/encounters/:id/visit',
+        builder: (_, state) => VisitScreen(encounterId: state.pathParameters['id']!),
       ),
       // The EMS handoff (9.8): full screen, over the visit's screens.
       GoRoute(

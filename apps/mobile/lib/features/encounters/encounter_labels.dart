@@ -220,6 +220,175 @@ const ageNotRecorded = 'Age not recorded';
 /// Nothing for EMS: no note of this visit has an answer EMS may be shown.
 const handoffNothing = 'Nothing in this visit is for EMS yet.';
 
+// ---- The visit (9.7) ----
+
+const visitTitle = 'Visit';
+
+/// When the visit started, on this phone's clock, as the read view words a time ("November 2, 2026
+/// at 10:00 AM"), and "time not verified" when the phone's clock wasn't checked (3.11).
+String startedText(String when) => 'Started $when';
+const timeNotVerified = 'time not verified';
+
+/// A time a record carries, with "time not verified" when it wasn't checked.
+String whenText(String date, String time, {required bool verified}) =>
+    '$date at $time${verified ? '' : ', $timeNotVerified'}';
+
+const visitAddendaHeading = 'Added to the visit';
+
+/// A draft the person may change opens as its form (9.7).
+const openNoteAction = 'Open the note';
+
+/// [openNoteAction], read with its note type.
+String openNoteSpoken(String title) => 'Open the note, $title';
+
+const addAddendumAction = 'Add addendum';
+
+/// [addAddendumAction], read with what it is added to.
+String addAddendumSpoken(String title) => 'Add addendum to $title';
+const addVisitAddendumSpoken = 'Add addendum to the visit';
+const reopenAction = 'Reopen';
+
+/// [reopenAction], read with its note type.
+String reopenSpoken(String title) => 'Reopen $title';
+const reopenTitle = 'Reopen this note?';
+const reopenBody = 'It goes back to a draft you can change. Complete it again when it’s ready.';
+const reopenYes = 'Reopen';
+const correctAction = 'Correct';
+
+/// [correctAction] under an answer, read with the answer's labels.
+String correctSpoken(String labels) => 'Correct $labels';
+
+/// Who a record names, and their credential in words where this app knows it.
+String whoText(PersonRef person, String? credentialWords) => [personText(person), ?credentialWords].join(', ');
+
+/// A sign-off below its note (9.7): Complete, a signature, a co-signature, by what it did as the
+/// server stored it, or by what was asked while it waits here.
+String signoffText({required String act, required String? effect, required String who, required String? when}) {
+  final at = when == null ? '' : ', $when';
+  return switch ((act, effect)) {
+    (_, 'none') => 'Completed again by $who$at. The note was already finished, so nothing changed.',
+    ('cosign', _) => 'Co-signed by $who$at',
+    (_, 'signed') || ('sign', null) => 'Signed by $who$at',
+    _ => 'Completed by $who$at',
+  };
+}
+
+/// An attending's attestation below the signature it attests (9.7).
+String attestedText({required String who, required String when}) => 'Attested by $who, $when';
+
+/// An addendum's line, above its text.
+String addendumByText({required String who, required String? when}) =>
+    'Addendum by $who${when == null ? '' : ', $when'}';
+
+/// A correction below its note (3.6, 9.7): the old values are struck through in the note itself;
+/// this says who, when, what and why, by what the server decided, or as asked while it waits here.
+String correctionText({
+  required String? outcome,
+  required bool requestedByPatient,
+  required bool declined,
+  required String who,
+  required String? when,
+  required List<String> answers,
+}) {
+  final at = when == null ? '' : ', $when';
+  final what = answers.isEmpty ? '' : ': ${answers.join('; ')}';
+  if (declined || outcome == 'declined') {
+    final asked = answers.isEmpty ? 'an answer' : answers.join('; ');
+    return 'The patient asked to change $asked. Declined by $who$at.';
+  }
+  return switch (outcome) {
+    'no_change' => 'Correction by $who$at: nothing changed.',
+    'draft_edit' => 'Changed in the draft by $who$at$what',
+    'not_author' => 'Correction by $who$at: not made, as only the note’s author can correct it.',
+    _ when requestedByPatient => 'Corrected at the patient’s request by $who$at$what',
+    _ => 'Corrected by $who$at$what',
+  };
+}
+
+/// A correction's reason, or an addendum's text, below its line.
+String reasonText(String reason) => 'Reason: $reason';
+
+/// A record made here that the server refused: it waits in Needs attention.
+const inNeedsAttention = 'In Needs attention';
+
+const madeAtVisitHeading = 'Made at this visit';
+
+/// A record made at the visit whose visit has moved to someone else since (8.4, 12.1 #25): it stays
+/// on the first chart, where it can be entered in error.
+const onAnotherChartNow = 'On another chart now';
+const enteredInErrorText = 'Entered in error';
+String referralMadeText(String date, String details) => 'Referral, $date: $details';
+String problemMadeText(String title) => 'Problem: $title';
+String allergyMadeText(String substance) => 'Allergy: $substance';
+String problemNoteMadeText(String problem, String text) => 'Note on $problem: $text';
+
+/// A problem's note whose problem the read doesn't name.
+const aProblem = 'a problem';
+
+/// A record row opens where it can be entered in error.
+const recordOpensHint = 'Opens where it can be entered in error';
+
+// ---- Co-sign and Attest (3.7, 9.7, 9.9) ----
+
+const cosignAction = 'Co-sign';
+const attestAction = 'Attest';
+
+/// Offline, the button greyed (9.7).
+const connectToCosign = 'Connect to co-sign';
+const connectToAttest = 'Connect to attest';
+const cosignedDone = 'Co-signed';
+const attestedDone = 'Attested';
+
+/// After the visit was read from the server for a co-sign or an attestation: what is signed is what
+/// the person now reads (lifecycle 5 as built).
+String readThenText(String act) => 'This is the visit as it is now. Read it, then ${act.toLowerCase()}.';
+
+// ---- The addendum sheet (3.6, 9.7) ----
+
+/// Most characters an addendum holds (3.6).
+const addendumMax = 4000;
+const addendumLabel = 'Addendum';
+
+/// What the addendum goes below.
+String addendumToText(String title) => 'To $title';
+const addendumToVisit = 'To the visit';
+const addendumAdded = 'Addendum added';
+
+/// A box's count, as the referral sheet counts its details.
+String charactersText(String count, String of) => '$count of $of characters';
+
+// ---- The correction sheet (3.6, 9.7) ----
+
+const correctionTitle = 'Correct this note';
+
+/// The answer as the note has it now, or none.
+String nowText(String? value) => 'Now: ${value ?? noAnswerNow}';
+const noAnswerNow = 'No answer';
+const correctionReasonLabel = 'Reason';
+
+/// Most characters a correction's reason holds (3.6).
+const correctionReasonMax = 500;
+const correctAnotherAction = 'Correct another answer';
+const whichAnswerHeading = 'Which answer?';
+const removeAnswerAction = 'Remove';
+
+/// [removeAnswerAction], read with the answer it takes out of the correction.
+String removeAnswerSpoken(String labels) => 'Remove $labels from this correction';
+const patientAskedLabel = 'The patient asked for this change';
+const saveCorrectionAction = 'Save the correction';
+const makeChangeAction = 'Make the change';
+const recordDeclinedAction = 'Record that it was declined';
+const correctionSaved = 'Correction saved';
+const declinedRecorded = 'Declined request recorded';
+const changeAnAnswerFirst = 'Change an answer first.';
+String tooManyChanges(int max) => 'A correction can change up to $max answers.';
+
+/// Answers the domain layer named as needed once the change is made (`incomplete`).
+const neededTooHeading = 'Needed with this change';
+
+/// An answer whose field this phone can't draw: its form is a newer one.
+const cantChangeHere = 'This answer can’t be changed on this phone.';
+
 // ---- A note's state (lifecycle 3.1, 9.1) ----
 
 /// Lifecycle 3.1's first column, as the timeline words it (9.1).

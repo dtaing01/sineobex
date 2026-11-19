@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sineobex_field/api/generated/api.dart' show SineobexApi;
+import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
+import 'package:sineobex_field/encounters/encounter_repository.dart' hide Expanded;
 import 'package:sineobex_field/encounters/encounter_services.dart';
 import 'package:sineobex_field/features/encounters/encounter_screen.dart';
 import 'package:sineobex_field/features/encounters/note_screen.dart';
+import 'package:sineobex_field/features/encounters/visit_screen.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart' show OpenTeam;
@@ -193,4 +197,92 @@ Future<void> openVisit(WidgetTester tester, String visit) async {
 Future<void> back(WidgetTester tester) async {
   GoRouter.of(tester.element(find.byType(Navigator).first)).pop();
   await settle(tester);
+}
+
+/// The visit screen of [visit] (lifecycle 9.7), opened as the timeline opens it.
+Future<void> openVisitScreen(WidgetTester tester, String visit) async {
+  await go(tester, '/encounters/$visit/visit');
+  expect(location(tester), '/encounters/$visit/visit');
+  expect(find.byType(VisitScreen), findsOneWidget);
+}
+
+/// A Medical visit for P1 charted and completed by the person, offline: General / primary care with
+/// its chief concern, and the Red flags note the app adds, its follow-up at the next street clinic.
+Future<({String visit, String general, String flags})> finishedVisit(
+  WidgetTester tester,
+  AppHarness h, {
+  String concern = 'Demo: cough',
+  String? summary = 'Demo: viral, rest and fluids',
+}) async {
+  final r = h.encounters.repository;
+  final visit = startVisit(h);
+  final general = await chart(tester, h, visit, 'general_primary_care', {'reason.concern': concern});
+  final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+  await tester.runAsync(() => r.openNote(flags));
+  r
+    ..saveAnswer(flags, 'red_flags.emergency', 'no')
+    ..saveAnswer(flags, 'follow_up.when', 'next_street_clinic');
+  if (summary != null) r.saveSummary(visit, summary);
+  r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+  return (visit: visit, general: general, flags: flags);
+}
+
+/// The API's online encounter routes, which the phone's test server lacks (lifecycle 5): the visit
+/// read, co-sign and attest, each answered as a test scripts it, in front of the test server and the
+/// forms routes, and without signal whenever the test server has none.
+class EncounterRoutes implements ApiTransport {
+  EncounterRoutes(this.h, this.inner);
+  final AppHarness h;
+  final ApiTransport inner;
+  final _answers = <(String, String), Object? Function(Object? body)>{};
+
+  /// What the scripted routes were asked, in order.
+  final asked = <({String method, String path, Object? body})>[];
+
+  void on(String method, String path, Object? Function(Object? body) answer) => _answers[(method, path)] = answer;
+
+  /// Answers [method] [path] with the API's refusal.
+  void refuse(String method, String path, int status, String code, {Map<String, Object?>? details}) =>
+      on(method, path, (_) => throw ApiException(status, code, 'Refused.', details: details));
+
+  @override
+  Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    final answer = _answers[(method, path)];
+    if (answer == null) return inner.send(method, path, query: query, body: body);
+    if (h.server.offline) throw const NetworkException('offline');
+    asked.add((method: method, path: path, body: body));
+    return answer(body);
+  }
+}
+
+/// The open team's encounter services made again with [EncounterRoutes] in front of the test server,
+/// as the app makes them, for a person with [credential] (the harness's attending's unless given).
+Future<EncounterRoutes> withEncounterRoutes(WidgetTester tester, AppHarness h, {String? credential}) async {
+  final engine = h.sync.engine!;
+  final routes = EncounterRoutes(h, h.forms.transportFor(engine.teamId, h.server.transportFor(me, engine.teamId)));
+  final before = h.encounters.user;
+  if (credential != null) h.server.credentials[me] = credential;
+  final services = EncounterServices(
+    OpenTeam(
+      userId: me,
+      teamId: engine.teamId,
+      store: engine.store,
+      api: SineobexApi(routes),
+      clock: engine.clock,
+      permissions: before.permissions.toList(),
+    ),
+    credential: credential ?? before.credential,
+    displayName: before.displayName,
+    definitionStore: h.sync.definitions,
+    openServerRecord: engine.openServerRecord,
+  );
+  await syncAndRefresh(tester, h);
+  expect(identical(h.encounters, services), isTrue);
+  return routes;
+}
+
+/// The repository's note actions, for a test to set a scene with.
+extension KitNoteActions on EncounterRepository {
+  Future<String> addendumTo(WidgetTester tester, String visit, String? note, String text) async =>
+      (await tester.runAsync(() => addAddendum(visit, noteId: note, text: text)))!;
 }

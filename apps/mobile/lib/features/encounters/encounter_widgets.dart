@@ -12,6 +12,7 @@ import '../../design/tokens.dart';
 import '../../design/widgets/allergy_badge.dart';
 import '../../design/widgets/form_bits.dart' show ErrorMessage, NoticeMessage;
 import '../../design/widgets/status_chip.dart';
+import '../../encounters/encounter_api.dart' show EncounterRequestFailed;
 import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_services.dart';
 import '../../patients/chart_cache.dart' show ChartMeta, chartMetaField, patientGroup;
@@ -75,14 +76,31 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   EncounterServices get services;
   String get encounterId;
 
+  /// One read of the visit, logging what is not in [shownBefore]: the phone's copy here; the visit
+  /// screen reads wherever the visit is (9.7). An [EncounterRequestFailed] says why there is none.
+  Future<VisitView?> readOnce(Set<String> shownBefore) =>
+      services.repository.openVisit(encounterId, shownBefore: shownBefore);
+
+  /// Whether a change the services or a sync make calls for reading again: a read of the phone's
+  /// copy, never a request of the server's at each change.
+  bool get rereadsOnChange => true;
+
   /// The visit as the person may see it; null before the first read, or when the phone holds no such
   /// visit ([visitMissing]).
   VisitView? visit;
   bool opening = true;
   bool visitMissing = false;
 
+  /// Why there is no visit to show, in the domain layer's words, when it gave some ("This visit
+  /// isn't on this phone. Connect to open it.").
+  String? missingText;
+
   /// Why the read was refused (a frozen store: it couldn't be logged, so nothing is shown).
   String? readRefused;
+
+  /// Every record the screen's reads logged, so a read logs only what it adds; a screen that reads
+  /// more for what it shows (the records made at the visit) adds theirs.
+  Set<String> get shownSoFar => _shown;
 
   final _shown = <String>{};
   int _seq = 0;
@@ -121,7 +139,7 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   void _reload() {
-    if (!mounted) return;
+    if (!mounted || !rereadsOnChange) return;
     if (!(_route?.isCurrent ?? true)) {
       _stale = true;
       return;
@@ -137,14 +155,23 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     // Nothing can be logged: what was read before goes ([instead] says why).
     if (services.store.frozen) return setState(() => visit = null);
     try {
-      final view = await services.repository.openVisit(encounterId, shownBefore: {..._shown});
+      final view = await readOnce({..._shown});
       if (!mounted || seq != _seq) return;
       if (view != null) _shown.addAll(view.shownIds);
       setState(() {
         visit = view;
         visitMissing = view == null;
+        missingText = null;
         opening = false;
         readRefused = null;
+      });
+    } on EncounterRequestFailed catch (e) {
+      if (!mounted || seq != _seq) return;
+      setState(() {
+        visit = null;
+        visitMissing = true;
+        missingText = e.message;
+        opening = false;
       });
     } on ChartingPaused catch (e) {
       if (!mounted || seq != _seq) return;
@@ -165,7 +192,7 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     if (readRefused case final message?) return FrozenNotice(message);
     if (visit != null) return null;
     if (opening) return const Center(child: CircularProgressIndicator());
-    return const Padding(padding: EdgeInsets.all(FieldSpace.s4), child: NoticeMessage(visitNotOnPhone));
+    return Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: NoticeMessage(missingText ?? visitNotOnPhone));
   }
 }
 
