@@ -246,6 +246,75 @@ test('@responsive a corrected measurement shows the new value, and the old one s
   await expectAccessible(page, 'visit page, a corrected answer');
 });
 
+test('@responsive long typed text wraps at 320 px: a recap answer, the assessment, the visit’s and a note’s addenda, and a referral', async ({
+  page,
+}) => {
+  // Review finding PAX-2: the recap was the one block of typed text that never wrapped.
+  const phone = await phoneOf('clinician@example.com');
+  const chart = newPatient({ preferredName: `Ash ${newSurname()}` }, 300);
+  const id = randomUUID();
+  const note = randomUUID();
+  const url = 'https://demo.example.org/eastern-market/shed-hours?day=tuesday&slot=morning';
+  const token = `Demo:${'x'.repeat(140)}`;
+  await phone.send(
+    chart,
+    {
+      entity: 'encounter',
+      recordId: id,
+      op: 'create',
+      value: { kind: 'medical', patientId: chart.recordId, locationText: `Demo: by ${url}` },
+      minutesAgo: 90,
+    },
+    {
+      entity: 'encounter_note',
+      recordId: note,
+      op: 'create',
+      value: {
+        encounterId: id,
+        noteTypeKey: 'quick_encounter',
+        noteTypeVersion: 1,
+        data: { 'visit.parts': ['general'], 'general.concern': `Demo: shelter intake at ${url}` },
+      },
+      minutesAgo: 89,
+    },
+    { entity: 'encounter', recordId: id, op: 'set', field: 'summary', value: token, minutesAgo: 80 },
+    {
+      entity: 'note_addendum',
+      recordId: randomUUID(),
+      op: 'create',
+      value: { encounterId: id, noteId: null, text: `Demo: about the visit ${token}`, signoffId: null },
+      minutesAgo: 70,
+    },
+    {
+      entity: 'note_addendum',
+      recordId: randomUUID(),
+      op: 'create',
+      value: { encounterId: id, noteId: note, text: `Demo: about the note ${token}`, signoffId: null },
+      minutesAgo: 69,
+    },
+    {
+      entity: 'referral',
+      recordId: randomUUID(),
+      op: 'create',
+      value: { patientId: chart.recordId, referredOn: '2026-10-02', details: token, encounterId: id },
+      minutesAgo: 60,
+    },
+  );
+
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/encounters/${id}`);
+  const quick = page.getByRole('article', { name: 'Quick encounter' });
+  await expect(quick.getByRole('heading', { name: 'Recap' })).toBeVisible();
+  await expect(quick).toContainText(url);
+  const about = page.getByRole('region', { name: 'About the visit' });
+  await expect(about.getByRole('heading', { name: 'Addenda to the visit' })).toBeVisible();
+  await expect(about).toContainText(`Demo: about the visit ${token}`);
+  await expect(quick).toContainText(`Demo: about the note ${token}`);
+  await expect(page.getByRole('region', { name: 'Recorded at this visit' })).toContainText(token);
+  await expectAccessible(page, 'visit page, long typed text');
+  await expectReflow(page, 'visit page, long typed text');
+});
+
 test('@responsive a role that reads no Medical notes sees a visit without them, and without its assessment', async ({
   page,
 }) => {

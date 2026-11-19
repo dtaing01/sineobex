@@ -89,6 +89,12 @@
   overflow-wrap: anywhere;
 }
 
+/* A note's recap: each line holds an answer as typed, so it wraps anywhere too (review finding
+   PAX-2). */
+.recap > li {
+  overflow-wrap: anywhere;
+}
+
 /* A visit's notes on the timeline: "Wound care: Signed". */
 .notes {
   margin: var(--space-1) 0 0;

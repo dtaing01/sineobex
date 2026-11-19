@@ -116,7 +116,7 @@ export function NoteView({ note, children }: { note: Schemas['VisitNote']; child
       {note.recap.length > 0 && (
         <div className={styles.section}>
           <h3 className="px-h3">Recap</h3>
-          <ul className="px-list">
+          <ul className={`px-list ${styles.recap}`}>
             {note.recap.map((line, i) => (
               <li key={i}>{line.text}</li>
             ))}
