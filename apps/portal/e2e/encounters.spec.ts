@@ -1143,6 +1143,72 @@ test.describe('notes not complete, and Assign', () => {
     }
   });
 
+  test('@responsive two drafts of one type by one author at one visit are told apart, in their rows and in their links’ names', async ({
+    page,
+  }) => {
+    // Review finding PAX-5: both rows said "Outreach", and both links "Assign: Outreach, Ivy …".
+    const phone = await phoneOf('resident@example.com');
+    const ivy = `Ivy ${newSurname()}`;
+    const chart = newPatient({ preferredName: ivy }, 60);
+    const visitId = randomUUID();
+    const [draft, second] = [randomUUID(), randomUUID()];
+    const outreach = (recordId: string, minutesAgo: number) => ({
+      entity: 'encounter_note',
+      recordId,
+      op: 'create' as const,
+      value: {
+        encounterId: visitId,
+        noteTypeKey: 'outreach',
+        noteTypeVersion: 1,
+        data: { 'outreach.type': 'wellness_check' },
+      },
+      minutesAgo,
+    });
+    await phone.send(
+      chart,
+      {
+        entity: 'encounter',
+        recordId: visitId,
+        op: 'create',
+        value: { kind: 'non_medical', patientId: chart.recordId },
+        minutesAgo: 50,
+      },
+      outreach(draft, 48),
+      outreach(second, 47),
+    );
+    const putBack = await removeForAWhile('resident@example.com');
+    try {
+      await signIn(page, 'admin@example.com');
+      await page.goto('/team/incomplete-notes');
+      const rows = page.getByRole('row').filter({ hasText: ivy });
+      await expect(rows).toHaveCount(2);
+      await expect(rows.getByRole('rowheader')).toHaveText(['Outreach (1 of 2)', 'Outreach (2 of 2)']);
+      const names = await rows
+        .getByRole('link', { name: /^Assign/ })
+        .evaluateAll((links) => links.map((a) => a.textContent ?? ''));
+      expect(names).toHaveLength(2);
+      expect(new Set(names).size).toBe(2);
+      expect(names[0]).toMatch(
+        new RegExp(`^Assign: Outreach \\(1 of 2\\) by Casey Nguyen \\(demo\\), ${ivy}, visit on `),
+      );
+      expect(names[1]).toMatch(
+        new RegExp(`^Assign: Outreach \\(2 of 2\\) by Casey Nguyen \\(demo\\), ${ivy}, visit on `),
+      );
+      await expect(rows.first().getByRole('link', { name: /^Assign/ })).toHaveAttribute(
+        'href',
+        `/encounters/${visitId}#assign-${draft}`,
+      );
+      await expect(rows.last().getByRole('link', { name: /^Assign/ })).toHaveAttribute(
+        'href',
+        `/encounters/${visitId}#assign-${second}`,
+      );
+      await expectAccessible(page, 'notes not complete, two drafts of one type');
+      await expectReflow(page, 'notes not complete, two drafts of one type');
+    } finally {
+      await putBack();
+    }
+  });
+
   test('@responsive a role with team.manage_users and no patients.view lists the team’s drafts with no patient named, no visit or chart link and no Assign, and can’t open a visit', async ({
     page,
   }) => {
@@ -1188,6 +1254,12 @@ test.describe('notes not complete, and Assign', () => {
       await expect(page.getByRole('main')).toContainText(
         'Your role doesn’t open patients’ charts, so patients aren’t named here.',
       );
+      // Told who can assign a note, not to do what no page lets this role do (review finding PAX-4).
+      const help = page.getByRole('main').locator('.sx-help').first();
+      await expect(help).toContainText(
+        'When a note’s author has left the team, someone whose role opens patients’ charts can assign it to another clinician from its visit.',
+      );
+      await expect(help).not.toContainText('left the team, assign it');
       await expect(page.getByRole('columnheader')).toHaveText(['Note', 'Author', 'Visit started']);
       await expect(page.getByRole('main').getByRole('link')).toHaveCount(0);
       await expectAccessible(page, 'notes not complete, no patients.view');
