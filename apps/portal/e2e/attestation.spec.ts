@@ -801,7 +801,39 @@ test('a press the route answers with a problem: the alert takes focus, and a sec
   expect((await visitAsJordan(v.id)).notes[0]!.status).toBe('completed');
 });
 
-test('an act refused for the person: a credential changed since the page was read loads the visit again and says so, and a dropped connection sends nothing', async ({
+test('the connection drops after the press reached the server: the page can’t tell, and the visit read again shows the co-signature', async ({
+  page,
+}) => {
+  // Review finding PAC-4: the page said "Nothing was sent", and a second press was told the visit changed.
+  const v = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS]]);
+  await signIn(page, 'clinician@example.com');
+  const presses = watchPresses(page);
+  const sign = /\/encounters\/[0-9a-f-]{36}\/sign$/;
+  await page.route(sign, async (route) => {
+    // The server takes it and answers; the answer never comes back.
+    expect((await route.fetch()).status()).toBe(200);
+    await route.abort('connectionreset');
+  });
+  await page.goto(`/encounters/${v.id}`);
+  const section = page.getByRole('region', { name: 'Co-sign' });
+  await section.getByRole('button', { name: 'Co-sign' }).click();
+  await expect(section.getByRole('alert')).toHaveText(
+    'The connection dropped, so we can’t tell whether your co-signature went through. Read the visit again to see.',
+  );
+  await expect(section.getByRole('alert')).toBeFocused();
+  await expect(section.getByRole('button', { name: 'Co-sign' })).toHaveCount(0);
+  await page.unroute(sign);
+  await section.getByRole('button', { name: 'Read the visit again' }).click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${v.id}$`));
+  const note = page.getByRole('article', { name: 'Red flags and disposition' });
+  await expect(note.locator('.sx-pill')).toHaveText('Signed');
+  await expect(note).toContainText(/Co-signed by Jordan Lee \(demo\), /);
+  await expect(page.getByRole('region', { name: 'Co-sign' })).toHaveCount(0);
+  expect(presses).toHaveLength(1);
+  expect(await audited('clinician@example.com', v.patient, 'note.cosigned')).toBe(1);
+});
+
+test('an act refused for the person: a credential changed since the page was read loads the visit again and says so; a dropped connection says it can’t tell, and offers to read the visit again', async ({
   page,
 }) => {
   const attestIt = await residentVisit('sign', [['red_flags_disposition', RED_FLAGS]]);
@@ -810,17 +842,22 @@ test('an act refused for the person: a credential changed since the page was rea
   await page.goto(`/encounters/${attestIt.id}`);
   const section = page.getByRole('region', { name: 'Attest' });
 
-  // The connection drops on the press: the section says nothing was sent, in place.
+  // The connection drops on the press. The page can't tell whether the act went through, so it
+  // says so in place and offers the visit again, not a second press (review finding PAC-4).
   const sign = /\/encounters\/[0-9a-f-]{36}\/sign$/;
   await page.route(sign, (route) => route.abort('internetdisconnected'));
   await section.getByRole('button', { name: 'Attest' }).click();
   await expect(section.getByRole('alert')).toHaveText(
-    'Nothing was sent. Check the connection and try again.',
+    'The connection dropped, so we can’t tell whether your attestation went through. Read the visit again to see.',
   );
-  await expect(section.getByRole('button', { name: 'Attest' })).toBeEnabled();
-  await expectAccessible(page, 'Attest, nothing sent', { inPlace: true });
+  await expect(section.getByRole('alert')).toBeFocused();
+  await expect(section.getByRole('button', { name: 'Attest' })).toHaveCount(0);
+  await expectAccessible(page, 'Attest, the connection dropped', { inPlace: true });
   await page.unroute(sign);
   expect((await visitAsJordan(attestIt.id)).notes[0]!.attestation).toBe('waiting');
+  await section.getByRole('button', { name: 'Read the visit again' }).click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${attestIt.id}$`));
+  await expect(section.getByRole('alert')).toHaveCount(0);
 
   // Jordan's credential is moved to resident while the page is open: the API refuses the attestation
   // for who is asking, and the visit loads again without the act.

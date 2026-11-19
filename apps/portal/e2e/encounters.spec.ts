@@ -1077,6 +1077,24 @@ test.describe('notes not complete, and Assign', () => {
         await note.getByLabel('Reason').fill('Demo: Casey is away from the team');
       };
 
+      // The connection drops on the press: the page can't tell whether the note was assigned, so it
+      // says so and offers the visit again, not a second press (review finding PAC-4).
+      const assignRoute = /\/encounters\/[0-9a-f-]{36}\/assign$/;
+      await page.route(assignRoute, (route) => route.abort('internetdisconnected'));
+      await choose();
+      await note.getByRole('button', { name: 'Assign' }).click();
+      const dropped = note.getByRole('alert');
+      await expect(dropped).toHaveText(
+        'The connection dropped, so we can’t tell whether the note was assigned. Read the visit again to see.',
+      );
+      await expect(dropped).toBeFocused();
+      await expect(note.getByRole('button', { name: 'Assign' })).toHaveCount(0);
+      await expectAccessible(page, 'Assign, the connection dropped', { inPlace: true });
+      await page.unroute(assignRoute);
+      await note.getByRole('button', { name: 'Read the visit again' }).click();
+      await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}$`));
+      await expect(note.getByRole('alert')).toHaveCount(0);
+
       // Jordan moves to a role that doesn't chart after the picker was loaded.
       await choose();
       await setRole('clinician@example.com', 'billing_data');

@@ -35,6 +35,10 @@ export function SignActions({
   // Set once an answer says where to go: the transition ends as the browser starts to load the next
   // page, and the button must not come back while it loads (review finding PAC-1).
   const [leaving, setLeaving] = useState(false);
+  // The connection dropped on the way: the act may have been recorded or not, which only the visit,
+  // read again, can say. A second press could act twice or be told the visit changed, so none is
+  // offered (review finding PAC-4).
+  const [unsure, setUnsure] = useState(false);
   const busy = sending || leaving;
   // A problem takes focus, which fell to the page while the button was off, each time it comes
   // (review finding PAX-1). Cleared at each press, so the same problem again is a new alert.
@@ -82,7 +86,10 @@ export function SignActions({
         }
         answer = (await response.json()) as SignAnswer;
       } catch {
-        fail('Nothing was sent. Check the connection and try again.');
+        setUnsure(true);
+        fail(
+          `The connection dropped, so we can’t tell whether ${act === 'cosign' ? 'your co-signature' : 'your attestation'} went through. Read the visit again to see.`,
+        );
         return;
       }
       if ('go' in answer) {
@@ -122,15 +129,27 @@ export function SignActions({
         </p>
       )}
       <div className="px-actions">
-        <button
-          type="button"
-          className="sx-btn sx-btn--primary"
-          onClick={press}
-          disabled={busy}
-          aria-disabled={busy}
-        >
-          {busy ? 'Working…' : words.heading}
-        </button>
+        {unsure ? (
+          <button
+            type="button"
+            className="sx-btn sx-btn--primary"
+            onClick={() => leave(`/encounters/${encounterId}`)}
+            disabled={busy}
+            aria-disabled={busy}
+          >
+            {busy ? 'Working…' : 'Read the visit again'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="sx-btn sx-btn--primary"
+            onClick={press}
+            disabled={busy}
+            aria-disabled={busy}
+          >
+            {busy ? 'Working…' : words.heading}
+          </button>
+        )}
       </div>
     </section>
   );

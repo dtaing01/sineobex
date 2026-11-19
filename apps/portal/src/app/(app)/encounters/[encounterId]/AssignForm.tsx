@@ -30,6 +30,9 @@ export function AssignForm({
   // Set once an answer says where to go, so the button stays off while the next page loads, as
   // SignActions' does (review finding PAC-1).
   const [leaving, setLeaving] = useState(false);
+  // The connection dropped on the way: whether the note was assigned only the visit, read again,
+  // can say, so no second press is offered (review finding PAC-4).
+  const [unsure, setUnsure] = useState(false);
   const busy = sending || leaving;
   const summary = useRef<HTMLDivElement>(null);
   const id = `assign-${noteId}`;
@@ -37,6 +40,12 @@ export function AssignForm({
   useEffect(() => {
     if (problem) summary.current?.focus();
   }, [problem, fieldErrors]);
+
+  /** A full load of the next page, not a client navigation: the visit is read again, whole. */
+  function leave(to: string) {
+    setLeaving(true);
+    window.location.assign(to);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,12 +79,14 @@ export function AssignForm({
         }
         answer = (await response.json()) as typeof answer;
       } catch {
-        setProblem('Nothing was sent. Check the connection and try again.');
+        setUnsure(true);
+        setProblem(
+          'The connection dropped, so we can’t tell whether the note was assigned. Read the visit again to see.',
+        );
         return;
       }
       if ('go' in answer) {
-        setLeaving(true);
-        window.location.assign(answer.go);
+        leave(answer.go);
         return;
       }
       setProblem(answer.problem);
@@ -164,9 +175,21 @@ export function AssignForm({
             </div>
           </div>
           <div className="px-actions">
-            <button type="submit" className="sx-btn sx-btn--primary" disabled={busy} aria-disabled={busy}>
-              {busy ? 'Working…' : 'Assign'}
-            </button>
+            {unsure ? (
+              <button
+                type="button"
+                className="sx-btn sx-btn--primary"
+                onClick={() => leave(`/encounters/${encounterId}`)}
+                disabled={busy}
+                aria-disabled={busy}
+              >
+                {busy ? 'Working…' : 'Read the visit again'}
+              </button>
+            ) : (
+              <button type="submit" className="sx-btn sx-btn--primary" disabled={busy} aria-disabled={busy}>
+                {busy ? 'Working…' : 'Assign'}
+              </button>
+            )}
           </div>
         </form>
       )}
