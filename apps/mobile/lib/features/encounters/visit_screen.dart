@@ -33,6 +33,7 @@ import 'correction_sheet.dart';
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'note_type_list.dart' show noteLocation;
+import 'referrals_sheet.dart' show showReferrals;
 
 /// Where the visit screen of [encounterId] is: UUIDs only (10.2).
 String visitLocation(String encounterId) => '/encounters/$encounterId/visit';
@@ -629,7 +630,8 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
               text: referralMadeText(_day(referral.referredOn), referral.details),
               onAnotherChart: r.onAnotherChart,
               enteredInError: referral.enteredInError != null,
-              onOpen: () => _open('/patients/${referral.patientId}'),
+              // The Referrals sheet of its chart, which lists it and marks it entered in error (9.10).
+              onOpen: () => unawaited(showReferrals(context, services, patientId: referral.patientId)),
             ),
             ProblemMadeAt(:final problem) => _RecordRow(
               text: problemMadeText(problem.title),

@@ -3784,6 +3784,24 @@ here whose time the phone has not learned yet comes first. The timeline logs not
 is part of the chart's logged read, as phase 3's chart lists its problems; opening a visit from it
 is a visit read, which logs (9.7).
 
+As built (the screens, unit L5, `apps/mobile/lib/features/patients/patient_screen.dart` and
+`apps/mobile/lib/features/encounters/timeline_section.dart`):
+
+- **+ Encounter** (to a role with `encounters.chart`) and **+ Referral** (with `referrals.create`)
+  come first among the quick actions, neither on a merged chart. Each is read as what it opens ("New
+  encounter", "Add a referral"); + Encounter opens New encounter with the patient chosen
+  (`/patients/<id>/encounters/new`), + Referral the Referrals sheet (9.10).
+- The **Timeline** section sits after Problems, before Allergies (the design does not place it). The
+  filter's seven chips wrap onto more lines at large text or on a narrow phone rather than scrolling
+  sideways in one row; with none on every row shows, with some on the rows of any of them. A visit's
+  row reads its date and time, Medical or Non-Medical, "Waiting to send" and each note as "{type}:
+  {state}", and opens the visit (9.7). A referral's row reads as the Referrals sheet reads it and
+  opens the sheet. A chart opened from the team's list (no timeline of its own) lists the phone's
+  visits and says "Visits recorded elsewhere show with the full chart." **Show earlier visits**
+  appears under a full page, keeps the pages it fetched while the profile is open, and offline says
+  the domain layer's "Connect to see earlier visits." The section reads the chart's cached timeline
+  again after every change or sync, and logs nothing of its own.
+
 ### 9.2 Start
 
 The tab bar gains **Start (+)** between Patients and the tabs to come (PRD main 743;
@@ -4123,8 +4141,8 @@ As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_scree
   Needs attention" while it is the phone's own. A correction's line names its answers and its reason;
   the old values are struck through in the read view itself, which marks only `corrected` ones.
 - Records made at the visit: a problem and a problem's note open the problem's screen, an allergy the
-  chart's Allergies. **A referral opens its patient's chart** until card L5-referrals gives the sheet
-  with Entered in error. A server snapshot is "On another chart now" when its patient is not in the
+  chart's Allergies, a referral the phone holds or a kept chart lists the Referrals sheet of its
+  patient's chart (9.10), where it is entered in error; one only a server read gives opens its chart. A server snapshot is "On another chart now" when its patient is not in the
   visit's patient's merged group as the phone knows it.
 - **Reopen** is asked first ("Reopen this note?") and opens the form. **Correct** brings a note that
   has left the phone back first (the visit and the note, as the correction itself would), so the
@@ -4202,6 +4220,31 @@ As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/notes_t
 - **The co-sign and attestation tiles** show to a role that charts with a credential that signs, or
   attests, with the server's numbers, and none offline (the table above).
 
+As built (the screens, unit L5, `notes_to_finish_screen.dart`, `queue_screen.dart`, `home_tiles.dart`
+and `apps/mobile/lib/features/home/home_screen.dart`):
+
+- **The tiles** (`EncounterTiles`) sit under Needs attention. Notes to finish's reads "1 note to
+  finish." or "3 notes to finish. 1 is older than a day." and shows while there is one; the queues'
+  read their title over "2 visits" ("None waiting" at none), or "Connect to see notes waiting for you"
+  offline. The server's counts are asked when Home shows, at the end of each sync and when Home is on
+  top again; a change made here counts the person's drafts again against the server's last answer.
+  Nothing shows while the store is frozen.
+- **Notes to finish** (`/notes-to-finish`, title "Notes to finish"): each row reads the patient's
+  preferred name ("No patient" for a visit with none), the note type, "Visit started …" and "Older
+  than a day", "On this phone only" or "Opens with a connection" where they apply. The server's list
+  is asked when the screen opens and when it is on top again; a change or a sync reads the phone's
+  copy again with the server's last answer. Offline the list says "Showing the notes on this phone.
+  Connect to see the rest." A draft not on this phone is brought from the server first (its visit,
+  then the note, `fetchNote`), and without signal the screen says "This note isn’t on this phone.
+  Connect to open it."
+- **The queues** (`/queues/cosign` "Waiting for your co-signature", `/queues/attestation` "Waiting for
+  attestation"): each row reads the patient, "Visit started …" and each waiting note as "{type}, by
+  {author}", with "Signed before by …" or "Attested before by …" after a correction, and, for a note
+  the person can't act on, "You wrote this note." when it is theirs, else "You can’t co-sign this
+  note. Open the visit to see why." (the queue does not say which rule). A row opens the visit (9.7).
+  Asked when the screen opens, when it is on top again and on pull to refresh; offline it shows the
+  domain layer's sentence and **Try again**.
+
 ### 9.10 Referrals (phone)
 
 A sheet from the profile or the summary screen: the past referrals (7), then **Add referral**: a
@@ -4211,6 +4254,17 @@ in error**, which asks for a reason.
 As built (unit L4): the sheet's list, **Add referral** and **Entered in error** are `Referrals`
 (7 as built), whose `mayAdd` and `mayEnterInError` say what the sheet offers and whose refusals
 are worded there; the sheet itself is L5's.
+
+As built (the screens, unit L5, `referrals_sheet.dart`): `showReferrals` opens the sheet from the
+profile's + Referral, a referral's row on the timeline and one at the visit (9.7). Each row reads its
+date, its details, "Recorded by …" ("a teammate" where the phone knows no name: the sync snapshot
+carries none yet), "At a visit", and "Waiting to send" or "In Needs attention" while it is the
+phone's own; one entered in error stays, struck through, with "Entered in error: {reason}". **Entered
+in error** asks for the reason in a dialog of its own that scrolls at 200% text (phase 3's reason
+dialog does not), marks the referral from there and shows a refusal there. **Add referral** is
+below the list, to a role that may add one, and the sheet stays open on the list after it. Add
+referral from a note's action or the summary keeps its own sheet (`showAddReferral`), which closes
+once the referral is added.
 
 ### 9.11 Portal: the visit page
 
@@ -4296,6 +4350,27 @@ names (D107, 4.8), so it leaves Needs attention wherever the person did what it 
 that fetches such a notice only after it was read elsewhere keeps it read, and it still settles
 the held sign-off it names there (4.8).
 `finished_differently` names the note.
+
+As built (the screens, unit L5, `needs_attention_screen.dart` and `sync_labels.dart`): every problem
+of the first table has its sentence, and an answer its form refuses (forms 7.1's problems) reads
+"This answer doesn’t fit the note’s form. Open the note and change it." Every notice of 4.10 has a
+sentence: `note_cosigned`, `note_attested` and `note_assigned`, which this design gives none, read "A
+visit you charted was co-signed.", "A visit you signed was attested." and "A note was assigned to
+you to finish." The buttons:
+
+- A refused sign-off (`content_changed`, `incomplete`, `red_flags_first`) and a refused change to a
+  note (but `definition_error`) offer **Open the note**, the note's form or read view.
+- A refused correction offers **Leave it**, and **Open the note** unless it is `definition_error`;
+  `field_changed` also offers **Correct again**. Leave it is offered for any refused correction: sent
+  again as it was, one refused `incomplete` would be refused again. Both write, so both wait for the
+  clock, and a refusal of the domain layer shows in its words.
+- `unknown_note_type` offers **Choose a note type**, the visit's note types; the refused create stays
+  until a fix the domain layer does not have yet. `medical_note_needs_patient`'s **Choose a patient**
+  and `encounter_other_patient`'s **Send without the visit** and **Choose a visit** are not built: the
+  domain layer gives no call for them yet. Those cards keep phase 3's **Open the chart**.
+- The notices `signoff_not_applied` (by the note it names, D104) and `finished_differently` (by its
+  record) offer **Open the note** in place of Open the chart, the note fetched first when this phone
+  holds none of it; without signal the screen says the note needs a connection.
 
 ### 9.14 Portal: the queues
 

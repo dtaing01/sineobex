@@ -74,6 +74,10 @@ void main() {
       // Two notes, their two signatures and the addendum; the referral on its chart.
       expect(logged.where((e) => e == 'note.viewed'), hasLength(5));
       expect(logged.where((e) => e == 'patient.viewed'), hasLength(1));
+
+      // The referral's row opens the Referrals sheet of its chart, where it is entered in error.
+      await tapOn(tester, referral);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Referrals')), findsOneWidget);
       handle.dispose();
     });
   }
