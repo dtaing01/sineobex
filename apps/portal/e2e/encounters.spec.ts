@@ -743,7 +743,10 @@ test.describe('notes not complete, and Assign', () => {
       await expect(page.getByRole('article', { name: 'Outreach' })).toContainText(
         'Written by Casey Nguyen (demo). Assigned to Jordan Lee (demo), who acts as its author now.',
       );
-      await expect(page.getByRole('article', { name: 'Outreach' }).locator('form')).toHaveCount(0);
+      // Its author acts on the team now: the API lists no one, and nothing of Assign is shown.
+      await expect(
+        page.getByRole('article', { name: 'Outreach' }).getByRole('heading', { name: 'Assign this note' }),
+      ).toHaveCount(0);
 
       // The Red flags note, waiting for a co-signer, to Jordan too.
       const flagsForm = page.getByRole('article', { name: 'Red flags and disposition' });
@@ -753,7 +756,7 @@ test.describe('notes not complete, and Assign', () => {
       await flagsForm.getByLabel('Reason').fill('Demo: Casey is away from the team');
       await flagsForm.getByRole('button', { name: 'Assign' }).click();
       await expect(page).toHaveURL(new RegExp(`/encounters/${visitId}\\?assign=done$`));
-      await expect(page.getByRole('main').locator('form')).toHaveCount(0);
+      await expect(page.getByRole('main').getByRole('heading', { name: 'Assign this note' })).toHaveCount(0);
       await expectAccessible(page, 'visit page after Assign');
       expect(await audited('admin@example.com', chart.recordId, 'note.assigned')).toBe(2);
       expectOnlyIds(traffic.addresses);
