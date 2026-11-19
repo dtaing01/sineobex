@@ -286,3 +286,27 @@ extension KitNoteActions on EncounterRepository {
   Future<String> addendumTo(WidgetTester tester, String visit, String? note, String text) async =>
       (await tester.runAsync(() => addAddendum(visit, noteId: note, text: text)))!;
 }
+
+/// The open bottom sheet's own list, which scrolls apart from the screen under it.
+Finder get sheetList => find.descendant(of: find.byType(BottomSheet), matching: find.byType(Scrollable)).first;
+
+/// Scrolls the open sheet until [finder] is built, then into view.
+Future<void> revealInSheet(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    try {
+      await tester.scrollUntilVisible(finder, 200, scrollable: sheetList, maxScrolls: 30);
+    } on StateError {
+      await tester.scrollUntilVisible(finder, -200, scrollable: sheetList, maxScrolls: 30);
+    }
+  }
+  await tester.ensureVisible(finder.first);
+  await tester.pumpAndSettle();
+}
+
+/// Scrolls the open sheet to [finder] and taps it.
+Future<void> tapInSheet(WidgetTester tester, Finder finder) async {
+  await revealInSheet(tester, finder);
+  final rect = tester.getRect(finder.first);
+  await tester.tapAt(rect.topLeft + Offset(16, rect.height < 48 ? rect.height / 2 : 24));
+  await settle(tester);
+}
