@@ -426,7 +426,7 @@ One row is one correction: one reason, and one to ten answers changed together (
 |---|---|---|
 | `id` | `uuid primary key` | Made on the phone |
 | `team_id`, `note_id` | `uuid not null` | Foreign key to `encounter_notes (team_id, id)` |
-| `changes` | `jsonb not null`, an array of 1 to 10 | Each `{ field, oldValue, newValue, historyId }`. `field` starts with `data.`. `historyId` is the `corrected` row in `field_history`, or null when nothing was written. |
+| `changes` | `jsonb not null`, an array of 1 to 10 | Each `{ field, oldValue, newValue, historyId }`. `field` starts with `data.`. `historyId` is the `corrected` row in `field_history`, or null when nothing was written. A `corrected` correction names only the answers it wrote, since the note's read strikes through the old value of each answer it names (4.7 step 7, review finding R1); the other outcomes name every answer asked for. |
 | `outcome` | `text`, one of `corrected`, `declined`, `no_change`, `draft_edit`, `not_author` | `declined`: an amendment request refused, the note unchanged. `no_change`: the note already held those values. `draft_edit`: the note was a draft again, and the changes were applied as edits. `not_author`: the sender does not act as the note's author; nothing changed. |
 | `reason` | `text`, 3 to 500 characters | |
 | `requested_by_patient` | `boolean not null default false` | A HIPAA §164.526 amendment request |
@@ -935,7 +935,9 @@ when" (PRD main 460).
   with the old values, the reason and who.
 - If every answer already holds its new value, the correction is stored as `no_change`. So is one
   that changes nothing the note shows: every answer it changes is hidden by a condition before it
-  and after it (4.7 step 7). Such an answer is not written beside others that show, either.
+  and after it (4.7 step 7). Beside a change that shows, such an answer is written when the person
+  held its version, which has not moved: they saw it and changed it. One they never held is left
+  as it is, and the correction does not name it (review finding R1).
 - If an answer changed since the person looked (another correction got there first), it is
   refused with `field_changed`. The fix is to look again and correct again, or leave it (4.1). An
   answer the note's read never sent the person has not changed for them, when they held no version
@@ -1037,15 +1039,33 @@ is frozen or the clock check fails (3.11):
   finished note's read leaves it out, since it does not count, so the phone holds no row of it. A
   later correction that shows it again sent `baseVersion` 0 and was refused `field_changed` for
   good, as above. Step 6 now also takes a change at version 0 to an answer that does not count as
-  the note stands; its old value goes to history, so the note shows it struck through. Step 7
-  writes only an answer that shows before the correction or after it, so a hidden answer is written
-  from 0 only by a correction that shows it again, and a correction of hidden answers alone is
-  `no_change`, with none of the table's effects (review finding F4). The phone leaves such an
-  answer out of what it sends.
+  the note stands; its old value goes to history, so the note shows it struck through. At step 7 a
+  correction whose changes are all to answers hidden before it and after it is `no_change`, with
+  none of the table's effects (review finding F4). Beside a change that shows, a hidden answer is
+  written when the person held its version (two corrections made offline in a row on one phone,
+  the first hiding an answer the second changes, as the phone still shows it), and one they never
+  held is written only by a correction that shows it again; a `corrected` correction names only
+  the answers it wrote, in its row, its audit event and the reads (review finding R1). The phone
+  holds no row of a hidden answer, so it leaves one hidden before and after out of what it sends.
+  A correction of only an answer that a correction still waiting on the same phone will hide is
+  sent, as the phone still shows it, and the server stores it as `no_change`, telling nobody (open,
+  the coordinator's: whether Correct should read the note with the phone's waiting corrections
+  applied, and refuse it here).
 - **Correct again** (`correctAgain`, for Needs attention, 9.13) sends a refused correction again
   as the fix of its refusal (the store's `fixRejected`): the same record, answers and reason, each
   answer at the version the person reads now by the rule above, 0 for one the phone holds no row
-  of. Needs attention holds no version rule of its own.
+  of. It refuses, sending nothing, what **Correct** refuses of the note as the phone now holds it:
+  `not_author`, `sent_for_review`, `draft` for a note reopened since, which the server would edit
+  as a draft the person never saw, and `read_only` (review finding R3).
+- **Leave it** (`leaveIt`, 9.13) sends the same record as the fix of its refusal with each answer
+  at the value and version the phone now holds, so the server stores it as no change and the
+  refusal settles. An answer the phone holds no row of (blank, or hidden as the note stands) is
+  left out, so the server keeps its value: sent blank from 0 beside an answer that shows it again,
+  step 6 would take it and step 7 clear it (review finding R2). With no answer held, the first
+  goes alone, blank from 0, which counts neither before nor after. It is sent in any state of the
+  note, since it changes nothing: on a note reopened since it is a draft edit that writes nothing,
+  and from someone who no longer acts as the author it is stored as `not_author`. Needs attention
+  holds no rule of its own for either button.
 
 ### 3.7 Co-sign and attest
 
@@ -1380,7 +1400,7 @@ the person is told. That leaves seven problems, each with the store call that se
 | `content_changed` | a sign-off whose hash differs from the note the server holds | Open the note, read it, Complete again. `finishNotes` sends the same sign-off record again (4.8), even for a note finished or removed since, which it then leaves as it is (3.4). |
 | `incomplete` | a sign-off on a note that fails the finish check; a correction that would leave the note failing it | Fill in what is missing and complete, or correct, again. The same record is sent again. |
 | `red_flags_first` | a sign-off of a Medical note on a visit with no finished Red flags note | Complete again: the Red flags note goes first (4.6). |
-| `field_changed` | a correction whose answer changed since the person looked | Look again. **Correct again** sends the same correction record with the value and version now seen; **Leave it** sends it with the answer's current value, which the server stores as no change. |
+| `field_changed` | a correction whose answer changed since the person looked | Look again. **Correct again** sends the same correction record, its answers as they were, each at the version now seen. **Leave it** sends it with each answer at the value and version the phone now holds, which the server stores as no change; an answer the phone holds no row of (blank, or hidden as the note stands) is left out, so the server keeps its value, and with none held the first goes alone, blank from version 0, which changes nothing (3.6, review finding R2). |
 | `medical_note_needs_patient` | a Medical note on a visit with no patient | Name the patient (always possible, 3.1). The store then sends the note's create again, and what waited behind it (D49). |
 | `unknown_note_type` | a note on a key or version the team does not have | Choose the note type again. The phone only offers listed versions (forms 3.4), so this is a build fault. |
 | a problem of `checkAnswer` (`wrong_type`, `unknown_option`, `out_of_range`, and the rest, forms 7.1) | an answer that breaks its definition | Correct the value: phase 2's fix for a refused set. |
@@ -2128,12 +2148,15 @@ fails its own finish check.
      condition hiding it (a correction that hides an answer keeps it at its version). A sender who
      held a version of an answer that moved since is still refused `field_changed`, which tells
      them someone corrected it first.
-  7. Nothing the note shows changes: stored with `outcome: 'no_change'`. Only an answer whose
-     `newValue` differs from what it holds, and that shows before the correction or after it, is
-     written. One hidden by a condition throughout changes nothing the note shows: alone, it makes
-     the correction `no_change`, which clears no co-sign, undoes no attestation and tells nobody
-     (3.6); beside others, it is left as it is. So a hidden answer is written from version 0 only by
-     a correction that makes it count again.
+  7. Nothing the note shows changes: stored with `outcome: 'no_change'`. An answer whose
+     `newValue` is what it holds is not written. One hidden by a condition before the correction
+     and after it changes nothing the note shows: when every changed answer is such, the
+     correction is `no_change`, which clears no co-sign, undoes no attestation and tells nobody
+     (3.6). Beside a change that shows, a hidden answer is written when the sender held its
+     version (step 6 found it has not moved), and left as it is when they held none
+     (`baseVersion` 0). So a hidden answer is written from version 0 only by a correction that
+     makes it count again. A `corrected` correction's row and audit event name only the answers
+     it wrote (review finding R1).
   8. The forms part's `finishCheck` passes on the answers as they would be, else `incomplete`. A
      correction can never leave a signed note without, say, the consent a sensitive exam needs.
   9. Otherwise: `set_config('app.note_correction', noteId, true)`, each answer is written with
@@ -2203,9 +2226,10 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
   `{ problem, field }`); the 1,000-answer bound (`too_many_fields`); step 2 (the draft edit);
   step 6 (`field_changed` `{ field }`, an answer never held by the sender taken when it is blank
   or hidden as the note stands, D109); step 7 (`no_change`, when no answer that changes shows
-  before or after; whether an answer would count, its field showing in an entry that is there, is
-  the interpreter's `NoteReading.counts`, asked of the note before and after); step 8
-  (`incomplete`, on the note with the answers step 7 writes); step 9. The gates and a declined
+  before or after; beside one that does, a hidden answer is written only from a version the
+  sender held, review finding R1; whether an answer would count, its field showing in an entry
+  that is there, is the interpreter's `NoteReading.counts`, asked of the note before and after);
+  step 8 (`incomplete`, on the note with the answers step 7 writes); step 9. The gates and a declined
   request come before the draft edit, unlike the order written above: a draft edit changes a
   Medical note as any set of it does, and a declined request must never edit a reopened note.
 - **The draft edit** cannot answer a conflict, being part of a create. Each answer the person saw
@@ -4135,7 +4159,7 @@ As built on the server (unit L2), what the page has to work with; the page is un
 | `content_changed` | "This note changed after you completed it. Open it, read it and complete it again." | Open the note |
 | `incomplete` | "This is missing something the note needs. Open the note and try again." | Open the note |
 | `red_flags_first` | "Answer the red-flag question first, then complete again." | Open the note |
-| `field_changed` | "Someone corrected this answer first. Open the note and check it." | Correct again; Leave it |
+| `field_changed` | "Someone corrected this answer first. Open the note and check it." | Correct again (`correctAgain`); Leave it (`leaveIt`), both the domain layer's (3.6) |
 | `medical_note_needs_patient` | "A clinical note needs a patient. Choose who this visit is for." | Choose a patient |
 | `unknown_note_type` | "This note type isn’t on your team’s list. Choose the note type again." | Choose a note type |
 | `definition_error` | "This couldn’t be checked. Tell a Program Admin." | none: a fault in a note type, which a new version fixes |
@@ -4235,7 +4259,7 @@ there is one, in the row's patient column. None holds a value, a reason's text o
 | `note.completed` | `signoffId`, `act`, `effect`, `clockVerified`, on the note |
 | `note.signed`, `note.saved_unsigned` | The same, plus `credential`, `needsAttestation`, and `claimedCredential` when it differs |
 | `note.signoff_repeated` | `signoffId`, `reason` (`already_finished`, `not_author`, or since the phone's store `empty`, 3.4), `hashMatches`. The event keeps `hashMatches` for every sender, though the receipt gives it only to the acting author (4.6) |
-| `note.corrected`, `note.amendment_declined` | One per correction, whatever its outcome: `note.amendment_declined` for `declined`, `note.corrected` for the rest, `not_author`, `no_change` and `draft_edit` included. `correctionId`, `fields` (every field the correction names, a list, since it holds up to ten), `outcome`, `requestedByPatient`, `credential`, `claimedCredential` when it differs, `statusAfter`, `attestationAfter`, `clockVerified`, on the note. A draft edit writes no `note.updated` for each answer |
+| `note.corrected`, `note.amendment_declined` | One per correction, whatever its outcome: `note.amendment_declined` for `declined`, `note.corrected` for the rest, `not_author`, `no_change` and `draft_edit` included. `correctionId`, `fields` (every field the correction names, a list, since it holds up to ten; for `corrected`, the fields it wrote, review finding R1), `outcome`, `requestedByPatient`, `credential`, `claimedCredential` when it differs, `statusAfter`, `attestationAfter`, `clockVerified`, on the note. A draft edit writes no `note.updated` for each answer |
 | `addendum.added` | `encounterId`, `noteId`, on the addendum |
 | `referral.created` | `encounterId`, on the referral |
 | `referral.entered_in_error` | `field`, `kind`, `version`, and `encounterId` (review finding REC-5) |
@@ -4396,7 +4420,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | The credential a signature is recorded under | 3.5 | `signed-under.json` through `services/api/test/encounter-rules.test.ts`, and through the fake's copy in `fake_parity_test.dart`; `sync-signoffs.test.ts` ("the credential a sign-off is recorded under, and the Medical gate": signed Monday, promoted Tuesday, synced Wednesday; a held create believed from its receipt; the clock-corrected time; a removed signer's sign-off accepted by an admin) |
 | A late change is kept, not refused | 3.6, 4.3, 4.4 | `services/api/test/sync-encounters.test.ts` ("the encounter’s fields", "a finished note, and its reopen"); parity cases 2 and 5 |
 | Reopen | 3.6, 4.4 | `sync-encounters.test.ts` ("the reopen: a set of status to draft"); parity case 6 |
-| Corrections, and what happens to the signature after one; an answer never held by the sender is taken when it is blank or hidden as the note stands, one held that moved is `field_changed` (D109, review F2); a correction whose answers stay hidden is `no_change`, with no effect on the signature and nobody told, and a hidden answer beside one that shows is not written (review F4) | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7", with "6. an answer Complete dropped, blank now, is corrected from blank by someone who held no version of it; one who held one is still told field_changed (D109)", "6. an answer a correction hid, kept at its version, is shown again by someone who held no version of it; one who held one that moved is still told field_changed (D109, review F2)" and "7. a correction whose changed answers stay hidden changes nothing the note shows: no change, the signature as it was, nobody told (review F4)"); parity case 10, and the parity cases of those names; a correction of an answer that stays hidden, stored as no change and still hidden from a reader who may not see where it is, in `sync-reads.test.ts` and `fake_parity_test.dart` ("an answer that does not count is hidden by where it is") |
+| Corrections, and what happens to the signature after one; an answer never held by the sender is taken when it is blank or hidden as the note stands, one held that moved is `field_changed` (D109, review F2); a correction whose answers stay hidden is `no_change`, with no effect on the signature and nobody told (review F4); beside one that shows, a hidden answer is written from a version the sender held and not from none, and a corrected correction names only what it wrote, in its row, its audit event and the visit read (review R1) | 3.6, 4.7 | `services/api/test/sync-corrections.test.ts` ("corrections", and "each step, in the order of 4.7", with "6. an answer Complete dropped, blank now, is corrected from blank by someone who held no version of it; one who held one is still told field_changed (D109)", "6. an answer a correction hid, kept at its version, is shown again by someone who held no version of it; one who held one that moved is still told field_changed (D109, review F2)", "7. a correction whose changed answers stay hidden changes nothing the note shows: no change, the signature as it was, nobody told (review F4)" and "7. beside an answer that shows, a hidden answer the sender held at its version is written; one they never held is not, and the correction names only what it wrote (review R1)"); parity case 10, and the parity cases of those names; a correction of an answer that stays hidden, stored as no change and still hidden from a reader who may not see where it is, in `sync-reads.test.ts` and `fake_parity_test.dart` ("an answer that does not count is hidden by where it is") |
 | Addenda | 3.6, 4.7 | `sync-corrections.test.ts` ("addenda"); parity case 9 |
 | What an addendum and a correction name: a note of the visit, a sign-off of the note | 4.1, 4.7 | `sync-corrections.test.ts`; parity "what an addendum and a correction name" |
 | Referrals, and a visit of another patient | 4.7, 8.3 | `services/api/test/sync-referrals.test.ts`; `sync-encounters.test.ts` ("an allergy and a problem’s note made at a visit", "a problem made at a visit"); parity case 11 |
@@ -4436,7 +4460,7 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | Start, Switch to Medical, the note types offered, a draft of the type opened, but not a removed note whose fix waits to send, nor, once the fix has settled, before a draft of theirs with answers; Remove this note all or nothing | 3.3, 3.10, 9.2 to 9.4 | `start_test.dart` (groups "Start (lifecycle 9.2, 9.3)", "Switch to Medical (lifecycle 3.10, 9.3)", "Note types (lifecycle 6.2, 9.4)", "Remove this note (lifecycle 3.1, 3.4, 9.4)"); `expand_quick_test.dart` ("once a removed note’s fix has settled, Add note and Expand open the draft with answers made after it, not the removed empty one (lifecycle 3.3, 12.1 #30)") |
 | An answer checked, saved, and not sent when it changes nothing; read-only where the server would hold it, an ordering credential's section to its author too; a cleared answer waiting to send; a conflict's values, the one Use my value sends, and none the reader may not see | 9.5; forms 8.1 | `note_answers_test.dart` (groups "what the person may not change is read-only to them (lifecycle 6.4 rule 5, 9.5)" and "two people changed one answer (forms 8.1, lifecycle 9.5)"; "a teammate helping on a draft sees their own cleared answer waiting to send (review LFM-3)", "Keep theirs, then a new conflict: “Your value” is the value the choice carried, which Use my value sends (review LFM-1)"); the field host's side in `apps/mobile/test/features/forms/field_host_test.dart` ("“Your value” is the value the choice would send, when the domain layer gives one (review LFM-1)", "a diagnosis’s one choice shows the values the choices would send (review LFM-1)") |
 | Complete's plan and call: what it finishes, the act and the button by credential, the signing sentence, settle-only notes, each stop, each refusal worded, the recap from the read that hashed it; the assessment | 3.3, 3.5, 9.6 | `complete_test.dart` (groups "what Complete finishes, and how (lifecycle 3.3, 3.5)", "what stops Complete (lifecycle 3.3, 9.6)", "Complete, and each refusal worded for the summary (lifecycle 4.8, 9.6)", "the assessment (lifecycle 3.1, 9.6)"; "the summary draws each note’s recap from the read that hashed it (review LCM-7)") |
-| Reopen, addenda and corrections, offered and refused as the server would take them; a correction's version, after Keep theirs and on a note expanded before its sync; an answer Complete dropped, corrected back, and a refusal of one made before D109 settled by Correct again (`correctAgain`); an answer a correction hid, shown again by a later correction from no version (review F2, the reviewer's probes B and C); a change to an answer that stays hidden left out, alone refused as no change (review F4, probe D); Correct again with the version now seen after a correction made elsewhere first; a teammate's note the reader may not read; a note that has left the phone | 3.6, 4.7 | `note_actions_test.dart` (groups "Reopen (lifecycle 3.6, 4.4)", "Addenda (lifecycle 3.6, 4.7)", "a teammate’s note the person may not read (lifecycle 6.4)", "Corrections (lifecycle 3.6, 4.7)", "a note that has left the phone (lifecycle 4.8, 8.2)"); `expand_quick_test.dart` ("a correction of the full note before its sync reads each answer at the version its create gave it (review LCM-5)") |
+| Reopen, addenda and corrections, offered and refused as the server would take them; a correction's version, after Keep theirs and on a note expanded before its sync; an answer Complete dropped, corrected back, and a refusal of one made before D109 settled by Correct again (`correctAgain`); an answer a correction hid, shown again by a later correction from no version (review F2, the reviewer's probes B and C); a change to an answer that stays hidden left out, alone refused as no change (review F4, probe D); two corrections made offline in a row, the first hiding the detail the second changes beside the pulse, and a never-held hidden detail beside the pulse that the read leaves alone (review R1); Correct again with the version now seen after a correction made elsewhere first; Correct again refused on a note reopened since or one someone else now acts as the author of, each settled by Leave it (review R3); Leave it leaving out an answer the phone holds no row of (review R2); a teammate's note the reader may not read; a note that has left the phone | 3.6, 4.7 | `note_actions_test.dart` (groups "Reopen (lifecycle 3.6, 4.4)", "Addenda (lifecycle 3.6, 4.7)", "a teammate’s note the person may not read (lifecycle 6.4)", "Corrections (lifecycle 3.6, 4.7)", "a note that has left the phone (lifecycle 4.8, 8.2)"); `expand_quick_test.dart` ("a correction of the full note before its sync reads each answer at the version its create gave it (review LCM-5)") |
 | The close sweep: what leaves the phone and what stays, a Medical visit's finished notes while a draft of it stays, the 7 days by a verified clock; the services made for each team, the sweep after every sync | 3.2, 8.2 | `close_sweep_test.dart` (groups "a finished note leaves the phone (lifecycle 8.2)" and "a draft stays until it is finished, or untouched for 7 days (lifecycle 3.2)"); `encounter_services_test.dart`; the shared app harness in `app_wiring_test.dart` |
 | The Red flags note: added with a person's Medical note in the same change, and when their Medical draft opens again; never a second; none for a teammate's draft; added by the summary at hard stop 5; shown last | 3.3; forms 6.2 | `red_flags_test.dart` (groups "the app adds the Red flags note (forms 6.2)", "hard stop 5 (lifecycle 3.3)", "where it shows (forms 6.2)") |
 | Expand: the parts offered, what is written and what is left out, an ordering credential's part not carried, a draft of the type opened as it is and a finished one read-only, the phone's or one the visit read shows (12.1 #30), but not a teammate's the person may not read, the Red flags note it brings, and none when the visit read shows a finished one, what it refuses; the control and its words | forms 6.4 | `expand_quick_test.dart` (groups "the parts a quick form offers to expand (forms 6.4)" and "Expand (forms 6.4)"); `apps/mobile/test/features/forms/note_form_expand_test.dart` |
