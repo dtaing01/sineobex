@@ -37,6 +37,7 @@ interface ReferralRow {
   recordedAt: Date;
   clockVerified: boolean;
   authorUserId: string;
+  authorName: string;
   version: number;
   fieldVersions: Record<string, number>;
   fieldMeta: Record<string, FieldMeta>;
@@ -82,12 +83,15 @@ export const referralRules: EntityRules<Value> = {
   fieldSchema: (field) => (field === 'enteredInError' ? Retraction : null),
 
   async load(tx, id, lock) {
+    // Who recorded it, by their name now: a referral keeps no name of its own, so it is named as a
+    // note names who acts as its author (D108), where an addendum keeps its author's then (unit L6).
     const rows = await tx<ReferralRow[]>`
-      select id, team_id, patient_id, to_char(referred_on, 'YYYY-MM-DD') as referred_on, details, encounter_id,
-             status, error_reason, recorded_at, clock_verified, author_user_id, version, field_versions, field_meta,
-             created_at, updated_at
-      from sineobex.referrals where id = ${id}
-      ${lock ? tx`for no key update` : tx``}`;
+      select r.id, r.team_id, r.patient_id, to_char(r.referred_on, 'YYYY-MM-DD') as referred_on, r.details,
+             r.encounter_id, r.status, r.error_reason, r.recorded_at, r.clock_verified, r.author_user_id,
+             u.display_name as author_name, r.version, r.field_versions, r.field_meta, r.created_at, r.updated_at
+      from sineobex.referrals r join sineobex.users u on u.id = r.author_user_id
+      where r.id = ${id}
+      ${lock ? tx`for no key update of r` : tx``}`;
     const r = rows[0];
     if (!r) return null;
     return {
@@ -108,6 +112,7 @@ export const referralRules: EntityRules<Value> = {
         encounterId: r.encounterId,
         recordedAt: r.recordedAt.toISOString(),
         clockVerified: r.clockVerified,
+        authorName: r.authorName,
       },
       internal: {},
       createdAt: r.createdAt,
