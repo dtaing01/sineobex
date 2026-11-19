@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
 import 'package:sineobex_field/features/encounters/note_screen.dart';
+import 'package:sineobex_field/features/encounters/summary_screen.dart';
 import 'package:sineobex_field/features/forms/note_read_view.dart';
 import 'package:sineobex_field/patients/problems.dart' show Problems;
 import 'package:sineobex_field/sync/local_store.dart' show entityNote;
@@ -118,7 +119,7 @@ void main() {
     await openNote(tester, social);
     await tapOn(tester, find.widgetWithText(FilledButton, 'Continue'));
     expect(location(tester), '/encounters/$visit/summary');
-    while (tester.takeException() != null) {}
+    expect(find.byType(SummaryScreen), findsOneWidget);
   });
 
   testWidgets('a finished note opens read-only, as its read view', (tester) async {
