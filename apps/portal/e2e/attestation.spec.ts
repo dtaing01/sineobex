@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
+import {
+  expect,
+  request as playwrightRequest,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+} from '@playwright/test';
+import { sealData, unsealData } from 'iron-session';
 import type { Schemas } from '@sineobex/contract';
 import {
   apiCall,
@@ -831,6 +839,47 @@ test('the connection drops after the press reached the server: the page can’t 
   await expect(page.getByRole('region', { name: 'Co-sign' })).toHaveCount(0);
   expect(presses).toHaveLength(1);
   expect(await audited('clinician@example.com', v.patient, 'note.cosigned')).toBe(1);
+});
+
+test('a session idle past 15 minutes reads no visit and co-signs nothing, even on a request that says it is a prefetch', async ({
+  page,
+  context,
+}) => {
+  // Review finding PAC-2: the proxy's session gate skips a prefetch, and the pages and route
+  // handlers checked only that the session held tokens.
+  const v = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS]]);
+  await signIn(page, 'clinician@example.com');
+  const plan = planOf(await visitAsJordan(v.id), 'cosign');
+  const cookie = (await context.cookies()).find((c) => c.name === 'sx-session')!;
+  // The test environment's session secret (lib/session.ts).
+  const sealing = { password: 'local-only-session-secret-not-for-deploy-0000', ttl: 12 * 3600 };
+  const session = await unsealData<Record<string, unknown>>(cookie.value, sealing);
+  session.lastActivity = Date.now() - 20 * 60_000;
+  const idle = await sealData(session, sealing);
+  const outside = await playwrightRequest.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    for (const prefetch of [{ purpose: 'prefetch' }, { 'next-router-prefetch': '1' }] as Record<
+      string,
+      string
+    >[]) {
+      const headers = { cookie: `sx-session=${idle}`, 'sec-fetch-site': 'same-origin', ...prefetch };
+      const read = await outside.get(`/encounters/${v.id}`, { headers, maxRedirects: 0 });
+      expect(read.status(), JSON.stringify(prefetch)).toBe(307);
+      expect(read.headers()['location']).toMatch(/\/sign-in\?ended=idle$/);
+      expect(await read.text()).not.toContain('Red flags and disposition');
+      const press = await outside.post(`/encounters/${v.id}/sign`, {
+        headers,
+        data: { act: 'cosign', notes: plan },
+        maxRedirects: 0,
+      });
+      expect(press.status(), JSON.stringify(prefetch)).toBe(307);
+      expect(press.headers()['location']).toMatch(/\/sign-in\?ended=idle$/);
+    }
+  } finally {
+    await outside.dispose();
+  }
+  expect((await visitAsJordan(v.id)).notes[0]!.status).toBe('completed');
+  expect(await audited('clinician@example.com', v.patient, 'note.cosigned')).toBe(0);
 });
 
 test('an act refused for the person: a credential changed since the page was read loads the visit again and says so; a dropped connection says it can’t tell, and offers to read the visit again', async ({

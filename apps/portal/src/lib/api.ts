@@ -5,7 +5,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiBaseUrl } from './env';
 import { refusalRedirect } from './refusals';
-import { sessionOptions, type SessionData } from './session';
+import { idleState, sessionOptions, type SessionData } from './session';
 
 export async function getSession() {
   return getIronSession<SessionData>(await cookies(), sessionOptions());
@@ -24,9 +24,18 @@ export class PortalApiError extends Error {
   }
 }
 
+/**
+ * The API, as the signed-in person. A session idle past its 15 minutes, or older than a working
+ * day, is refused here as the proxy's gate refuses it: the gate skips a request that says it is a
+ * prefetch, and every page, action and route handler that reads or acts on the person's behalf
+ * comes through here (review finding PAC-2). A request the gate let through has just set
+ * lastActivity, so it is never refused twice.
+ */
 export async function api(options: { team?: boolean } = {}): Promise<ApiClient> {
   const session = await getSession();
   if (!session.tokens) redirect('/sign-in');
+  const state = idleState(session, Date.now());
+  if (state !== 'active') redirect(`/sign-in?ended=${state}`);
   if (options.team !== false && !session.teamId) redirect('/select-team');
   return createApiClient({
     baseUrl: apiBaseUrl(),
