@@ -117,8 +117,8 @@ extension NoteActions on EncounterRepository {
   /// (the phone's copy), so a correction made elsewhere first is refused `field_changed` rather than
   /// overwritten; one the phone holds no row of goes at 0 (Complete dropped it, or a correction hid
   /// it: D107, D109). An answer that already holds its new value is not sent, nor one hidden before
-  /// the correction and after it, which changes nothing the note shows and which the server would not
-  /// write (4.7 step 7). [requestedByPatient] marks a patient's amendment request; [declined] records
+  /// the correction and after it, which changes nothing the note shows: the phone holds no row of
+  /// it, and the server writes none from 0 (4.7 step 7). [requestedByPatient] marks a patient's amendment request; [declined] records
   /// that request as declined, the note unchanged. The credential the saved profile shows is claimed,
   /// as for a signature (3.5). While a sign-off this phone made of the note waits, the correction
   /// names it and waits behind it. A note that has left the phone is opened from the server first.
@@ -157,16 +157,7 @@ extension NoteActions on EncounterRepository {
     final definition = await _definitionOf(_noteOf(encounterId, noteId));
     _guardFrozen();
     final rec = _noteOf(encounterId, noteId);
-    if (!_actsAsAuthor(rec)) throw _correctNotAuthor;
-    _mayChart(medical: isMedicalType(definition));
-    final state = store.noteState(noteId)!;
-    if (state.sentForReview) throw _heldForReview;
-    if (state.status == NoteStatus.draft) throw _correctDraft;
-    for (final path in changes.keys) {
-      if (_heldFromPerson(definition, path, actsAsAuthor: true)) {
-        throw LocalValidationError(EncounterRepository._readOnly.message, problem: 'read_only', paths: {path});
-      }
-    }
+    _mayCorrect(rec, definition, changes.keys);
     final stored = EncounterRepository._answersOf(rec);
     // A declined request leaves the note as it is, so the server takes what was asked for as it was
     // asked (4.7, step 4 before step 5).
@@ -180,8 +171,8 @@ extension NoteActions on EncounterRepository {
         final problem = checkAnswer(definition, path, value);
         if (problem != null) throw LocalValidationError(_cantSave, problem: problem.code, paths: {path});
       }
-      // An answer hidden before the correction and after it changes nothing the note shows, and the
-      // server writes none (4.7 step 7).
+      // An answer hidden before the correction and after it changes nothing the note shows. The read
+      // leaves it out, so it goes at 0, and the server writes none from 0 (4.7 step 7).
       final before = NoteReading(definition, stored), after = NoteReading(definition, {...stored, ...asked});
       sent = {
         for (final MapEntry(key: path, :value) in asked.entries)
@@ -223,10 +214,66 @@ extension NoteActions on EncounterRepository {
   /// finished note's read never sends (D107) and the server takes from 0 (D109). Needs attention
   /// holds no version rule of its own.
   ///
-  /// Throws, sending nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
-  /// [correct]. A [StateError] for a change that is not a refused correction, or a note not on the
-  /// phone (a refusal keeps its visit on the phone).
+  /// Throws, sending nothing, what [correct] refuses of the note as the phone now holds it (review
+  /// R3): [ChartingPaused]; `not_charting` and `medical_credential`; `not_author`; `sent_for_review`;
+  /// `draft` for a note reopened since, which the server would edit as a draft the person never saw;
+  /// `read_only`. **Leave it** ([leaveIt]) settles the refusal then. A [StateError] for a change
+  /// that is not a refused correction, or a note not on the phone (a refusal keeps its visit on the
+  /// phone).
   Future<void> correctAgain(String changeId) async {
+    final (:sent, :rec, :definition) = await _refusedCorrection(changeId);
+    final asked = _changesOf(sent);
+    _mayCorrect(rec, definition, asked.map(_pathOf));
+    store.fixRejected(changeId, {
+      ...sent,
+      'changes': [
+        for (final c in asked) {...c, 'baseVersion': _versionSeen(rec, _pathOf(c))},
+      ],
+    });
+    onChanged?.call();
+  }
+
+  /// **Leave it** on a correction the server refused `field_changed` (4.1, 9.13): the note stays as
+  /// the change that got there first left it. The same record is sent again as the fix of the
+  /// refusal (the store's `fixRejected`), each answer at the value and the version the phone now
+  /// holds, so the server stores it as no change and the refusal settles. An answer the phone holds
+  /// no row of, which the note's read left out (blank, or hidden as the note stands: D107), is left
+  /// out, so the server keeps its value: sent blank from 0 beside an answer that shows it again, it
+  /// would be cleared (review R2). With no answer held, the first goes alone, blank from 0: the read
+  /// left it out, so it does not count now, and blank on its own it counts no more after, so the
+  /// server changes nothing (4.7 steps 6 and 7).
+  ///
+  /// It changes nothing in any state of the note, so it is sent whatever the note's state: on a
+  /// note reopened since it is a draft edit that writes nothing, and from someone who no longer acts
+  /// as the author it is stored as `not_author`.
+  ///
+  /// Throws, sending nothing: [ChartingPaused]; `not_charting` and `medical_credential` as
+  /// [correct]. A [StateError] as [correctAgain].
+  Future<void> leaveIt(String changeId) async {
+    final (:sent, :rec, :definition) = await _refusedCorrection(changeId);
+    _mayChart(medical: isMedicalType(definition));
+    final asked = _changesOf(sent);
+    final held = [
+      for (final c in asked)
+        if (rec.fields[c['field']] case final field?)
+          {'field': c['field'], 'newValue': field.value, 'baseVersion': _versionSeen(rec, _pathOf(c))},
+    ];
+    store.fixRejected(changeId, {
+      ...sent,
+      'changes': held.isNotEmpty
+          ? held
+          : [
+              {'field': asked.first['field'], 'newValue': null, 'baseVersion': 0},
+            ],
+    });
+    onChanged?.call();
+  }
+
+  /// The correction refused as [changeId], what it sent, and its note and the note's definition as
+  /// the phone holds them; [ChartingPaused] while the store is frozen.
+  Future<({Map<String, Object?> sent, LocalRecord rec, NoteTypeDef definition})> _refusedCorrection(
+    String changeId,
+  ) async {
     _guardFrozen();
     final refused = store.entry(changeId);
     if (refused == null ||
@@ -239,16 +286,29 @@ extension NoteActions on EncounterRepository {
     final noteId = sent['noteId']! as String;
     final definition = await _definitionOf(_noteRecord(noteId));
     _guardFrozen();
+    return (sent: sent, rec: _noteRecord(noteId), definition: definition);
+  }
+
+  static List<Map<String, Object?>> _changesOf(Map<String, Object?> sent) =>
+      (sent['changes']! as List<Object?>).cast<Map<String, Object?>>();
+
+  /// The `data` path of a correction's change.
+  static String _pathOf(Map<String, Object?> change) => (change['field']! as String).substring(_data.length);
+
+  /// What [correct] and [correctAgain] refuse of the note [rec] and the answers at [paths]: someone
+  /// else's note; a role or credential that can't chart it; one sent for review; a draft; an answer
+  /// the server would hold from them (a section that needs an ordering credential, 6.4 rule 5).
+  void _mayCorrect(LocalRecord rec, NoteTypeDef definition, Iterable<String> paths) {
+    if (!_actsAsAuthor(rec)) throw _correctNotAuthor;
     _mayChart(medical: isMedicalType(definition));
-    final rec = _noteRecord(noteId);
-    store.fixRejected(changeId, {
-      ...sent,
-      'changes': [
-        for (final c in (sent['changes']! as List<Object?>).cast<Map<String, Object?>>())
-          {...c, 'baseVersion': _versionSeen(rec, (c['field']! as String).substring(_data.length))},
-      ],
-    });
-    onChanged?.call();
+    final state = store.noteState(rec.id)!;
+    if (state.sentForReview) throw _heldForReview;
+    if (state.status == NoteStatus.draft) throw _correctDraft;
+    for (final path in paths) {
+      if (_heldFromPerson(definition, path, actsAsAuthor: true)) {
+        throw LocalValidationError(EncounterRepository._readOnly.message, problem: 'read_only', paths: {path});
+      }
+    }
   }
 
   /// Brings the visit [encounterId] and the note [noteId] onto the phone when it lacks them (4.8,

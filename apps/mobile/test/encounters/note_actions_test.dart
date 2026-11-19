@@ -9,7 +9,8 @@ import 'package:sineobex_field/encounters/note_definitions.dart';
 import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/forms/read_model.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entitySignoff;
+import 'package:sineobex_field/sync/entities.dart'
+    show entityAddendum, entityCorrection, entityEncounter, entityNote, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -944,6 +945,175 @@ void main() {
       serverTookAll(p);
       expect([server.records[id]!.status, server.receipts[refusal.changeId]!.resolved], ['corrected', true]);
       expect([serverAnswer(n, 'vitals.pulse'), serverAnswer(n, 'care.plan')], [86, 'Demo: fluids']);
+    });
+
+    test('Correct again refuses what Correct refuses, sending nothing: a note reopened since, or one someone else '
+        'now acts as the author of; Leave it settles each, changing nothing (review R3)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final (visit, [_, n, other]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 88, 'care.plan': 'Demo: rest'}),
+        (testMedical, {'vitals.pulse': 70, 'care.plan': 'Demo: rest'}),
+      ]);
+      await sync(p);
+      // Each pulse is corrected first on another phone of theirs; this one's corrections are refused.
+      server
+        ..serverEdit(n, 'data.vitals.pulse', 90, by: alex)
+        ..serverEdit(other, 'data.vitals.pulse', 72, by: alex);
+      final id = await r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: counted twice');
+      final otherId = await r.correct(visit, other, changes: {'vitals.pulse': 74}, reason: 'Demo: counted twice');
+      await sync(p);
+      final [refusal, otherRefusal] = p.store.needsAttention();
+      expect(
+        [
+          for (final x in [refusal, otherRefusal]) [x.recordId, x.details],
+        ],
+        [
+          [
+            id,
+            {'problem': 'field_changed', 'field': 'data.vitals.pulse'},
+          ],
+          [
+            otherId,
+            {'problem': 'field_changed', 'field': 'data.vitals.pulse'},
+          ],
+        ],
+      );
+
+      // The other phone reopens the first note, which this one then reads as a draft: the correction
+      // would be applied as a draft edit the person never saw.
+      final p2 = phone(alex);
+      final r2 = repo(p2, credential: 'student');
+      expect(await p2.engine.openServerRecord(entityEncounter, visit), isTrue);
+      expect(await p2.engine.openServerRecord(entityNote, n), isTrue);
+      expect(await r2.reopen(n), ReopenEffect.apply);
+      await sync(p2);
+      await sync(p);
+      expect(p.store.noteState(n)!.status, NoteStatus.draft);
+      // A Program Admin gives the other note to a teammate to act as its author (3.8).
+      server.records[other]!.assignedTo = blair;
+      expect(await p.engine.openServerRecord(entityNote, other), isTrue);
+      final outbox = p.store.outbox().length;
+      await expectLater(r.correctAgain(refusal.changeId), refused('draft'));
+      await expectLater(r.correctAgain(otherRefusal.changeId), refused('not_author'));
+      expect(p.store.outbox(), hasLength(outbox));
+      expect(p.store.needsAttention(), hasLength(2));
+
+      // Leave it keeps each note as it is: a draft edit that writes nothing, and a correction from
+      // someone who no longer acts as the author, stored as such.
+      await r.leaveIt(refusal.changeId);
+      await r.leaveIt(otherRefusal.changeId);
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.records[otherId]!.status], ['draft_edit', 'not_author']);
+      expect([serverAnswer(n, 'vitals.pulse'), serverAnswer(other, 'vitals.pulse')], [90, 72]);
+      expect(
+        [server.receipts[refusal.changeId]!.resolved, server.receipts[otherRefusal.changeId]!.resolved],
+        [true, true],
+      );
+    });
+
+    test('Leave it sends the refused correction again with each answer as the phone now holds it, leaving out an '
+        'answer it holds no row of, so the server keeps that answer and stores no change (review R2)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'};
+      final (visit, [n, alone]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, answers),
+        (testNote, answers),
+      ]);
+      await sync(p);
+      serverTookAll(p);
+      // Elsewhere, each detail is corrected, then "Nothing more" hides it.
+      for (final note in [n, alone]) {
+        server
+          ..serverEdit(note, 'data.more.detail', 'Demo: uses a stick', by: alex)
+          ..serverEdit(note, 'data.more.none', true, by: alex);
+      }
+      // This phone, from its old copy: one correction that would show the detail again with a new value,
+      // as an API client could send it (Correct leaves out an answer whose value it already holds), and
+      // one of the detail alone.
+      final shows = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.more.none', 'newValue': null, 'baseVersion': 1},
+          {'field': 'data.more.detail', 'newValue': 'Demo: uses a walker', 'baseVersion': 1},
+        ],
+        'reason': 'Demo: there was more',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+      final detail = await r.correct(
+        visit,
+        alone,
+        changes: {'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: a walker now',
+      );
+      await sync(p);
+      final refusals = p.store.needsAttention();
+      expect(
+        [
+          for (final x in refusals) [x.recordId, x.details],
+        ],
+        [
+          [
+            shows,
+            {'problem': 'field_changed', 'field': 'data.more.detail'},
+          ],
+          [
+            detail,
+            {'problem': 'field_changed', 'field': 'data.more.detail'},
+          ],
+        ],
+      );
+      // The phone now reads the detail as hidden, and holds no row of it.
+      for (final note in [n, alone]) {
+        expect(p.store.record(note)!.fields['data.more.detail'], isNull);
+      }
+
+      var changed = 0;
+      r.onChanged = () => changed++;
+      for (final x in refusals) {
+        await r.leaveIt(x.changeId);
+      }
+      expect(changed, 2);
+      final fixes = [for (final x in refusals) p.store.outbox().singleWhere((e) => e.supersedes == x.changeId)];
+      expect(
+        [
+          for (final f in fixes) [f.recordId, (f.value! as Map)['changes']],
+        ],
+        [
+          // "Nothing more" as the phone holds it; the detail left out.
+          [
+            shows,
+            [
+              {'field': 'data.more.none', 'newValue': true, 'baseVersion': 1},
+            ],
+          ],
+          // None held: the detail alone, blank from no version, which changes nothing the note shows.
+          [
+            detail,
+            [
+              {'field': 'data.more.detail', 'newValue': null, 'baseVersion': 0},
+            ],
+          ],
+        ],
+      );
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[shows]!.status, server.records[detail]!.status], ['no_change', 'no_change']);
+      for (final note in [n, alone]) {
+        expect([serverAnswer(note, 'more.none'), serverAnswer(note, 'more.detail')], [true, 'Demo: uses a stick']);
+      }
+      expect([for (final x in refusals) server.receipts[x.changeId]!.resolved], [true, true]);
+      // Only a refused correction is left as it is.
+      await expectLater(r.leaveIt(fixes.first.changeId), throwsStateError);
     });
 
     test('a change to an answer that stays hidden is left out: alone, it is refused as no change, and nothing '
