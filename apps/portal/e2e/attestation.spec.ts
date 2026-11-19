@@ -14,9 +14,10 @@ import {
 } from './helpers';
 import { newPatient, newSurname, phoneOf } from './phone-records';
 
-// Phase 4 design, lifecycle 3.5, 3.7, 5.3, 5.4, 9.11 and 9.14: the co-sign and attestation queues,
-// and Co-sign and Attest on the visit page, against the real API, with made-up visits Casey (the
-// resident) charts on a phone here. Jordan, an attending, co-signs and attests.
+// Phase 4 design, lifecycle 3.5, 3.7, 5.3, 5.4, 6.4, 9.11, 9.14 and 11.1: the co-sign and
+// attestation queues, and Co-sign and Attest on the visit page, against the real API, with made-up
+// visits Casey (the resident) charts on a phone here. Jordan, an attending, co-signs and attests;
+// Alex, a Program Admin and an attending, attests what Jordan's role may not read whole.
 test.describe.configure({ mode: 'serial' });
 
 type Answers = Record<string, unknown>;
@@ -33,7 +34,32 @@ const RED_FLAGS_EMS: Answers = {
 };
 const QUICK: Answers = { 'visit.parts': ['general'], 'general.concern': 'Demo: a cough for a week' };
 const SOCIAL: Answers = { 'needs.needs': ['food'], 'needs.housing': 'unsheltered' };
-const MEDICAL = new Set(['red_flags_disposition', 'quick_encounter']);
+const GENERAL: Answers = { 'reason.concern': 'Demo: a cough for a week', 'exam.systems': ['pulmonary'] };
+/** A wound entry, as the phone adds one: `e` and seven characters. */
+const WOUND_CARE: Answers = {
+  'wound.edone001.entryAt': new Date(Date.now() - 70 * 60_000).toISOString(),
+  'wound.edone001.location.region': 'lower_body',
+  'wound.edone001.location.surface': 'posterior',
+  'wound.edone001.type': 'pressure',
+  'wound.edone001.measurements.length': 3,
+  'wound.edone001.treatment.dressing': ['mepilex'],
+};
+/** A GU exam: a sensitive exam section, which only patients.view_sensitive_exams reads (6.4). */
+const GU_EXAM: Answers = {
+  'reason.concern': 'Demo: burning when passing water',
+  'exam.systems': ['gu'],
+  'gu.general': ['dysuria'],
+  'gu.cva': 'no_tenderness',
+};
+/** A sensitive note type, which only patients.view_sensitive reads (6.4). */
+const PSYCH: Answers = { 'mse.notes': 'Demo: calm and talking easily', 'safety.suicidal': 'denies' };
+const MEDICAL = new Set([
+  'red_flags_disposition',
+  'quick_encounter',
+  'general_primary_care',
+  'wound_care',
+  'psychological',
+]);
 
 interface Charted {
   id: string;
@@ -47,9 +73,13 @@ interface Charted {
  * A Medical visit Casey charts on the phone and finishes as Complete does, the Red flags note first:
  * each Medical note signed (then it waits for an attending's attestation) or completed for a
  * co-signer, and a Non-Medical note completed. Each sign-off carries the hash the visit read gives
- * the note's author.
+ * the note's author, over the assessment too when the visit has one (lifecycle 4.5).
  */
-async function residentVisit(act: 'sign' | 'complete', ...notes: [string, Answers][]): Promise<Charted> {
+async function residentVisit(
+  act: 'sign' | 'complete',
+  notes: [string, Answers][],
+  assessment?: string,
+): Promise<Charted> {
   const phone = await phoneOf('resident@example.com');
   const name = `Lark ${newSurname()}`;
   const chart = newPatient({ preferredName: name }, 90);
@@ -75,6 +105,18 @@ async function residentVisit(act: 'sign' | 'complete', ...notes: [string, Answer
       value: { encounterId: id, noteTypeKey: type, noteTypeVersion: 1, data },
       minutesAgo: 79 - i,
     })),
+    ...(assessment === undefined
+      ? []
+      : [
+          {
+            entity: 'encounter',
+            recordId: id,
+            op: 'set' as const,
+            field: 'summary',
+            value: assessment,
+            minutesAgo: 65,
+          },
+        ]),
   );
   const read = (await (
     await apiCall(phone.token, 'GET', `/v1/encounters/${id}`)
@@ -126,11 +168,73 @@ async function correct(noteId: string, field: string, newValue: unknown) {
   });
 }
 
-/** The visit as the API holds it now, read as Jordan. */
-async function visitAsJordan(id: string): Promise<Schemas['VisitRead']> {
-  const res = await apiCall(await staffToken('clinician@example.com'), 'GET', `/v1/encounters/${id}`);
+/** The visit as the API holds it now, read as that person. */
+async function visitAs(email: string, id: string): Promise<Schemas['VisitRead']> {
+  const res = await apiCall(await staffToken(email), 'GET', `/v1/encounters/${id}`);
   expect(res.status).toBe(200);
   return (await res.json()) as Schemas['VisitRead'];
+}
+
+const visitAsJordan = (id: string) => visitAs('clinician@example.com', id);
+
+/**
+ * Moves a seeded staff member to another credential, as the members page does, and gives back what
+ * puts them back as they were, fields and all: specs share the database.
+ */
+async function credentialForAWhile(
+  email: string,
+  credential: Schemas['Credential'],
+): Promise<() => Promise<void>> {
+  const list = await apiCall(await staffToken('admin@example.com'), 'GET', '/v1/team/members');
+  const was = ((await list.json()) as Schemas['Member'][]).find((m) => m.email === email)!;
+  const change = async (to: Schemas['Credential'], fields: Schemas['Member']['credentialFields']) => {
+    const res = await apiCall(
+      await staffToken('admin@example.com'),
+      'PUT',
+      `/v1/team/members/${was.membershipId}/credential`,
+      { credential: to, credentialFields: fields, reason: 'Demo: covering another desk for a day' },
+    );
+    expect(res.status, `credential ${to}`).toBe(200);
+  };
+  await change(credential, {});
+  return () => change(was.credential, was.credentialFields);
+}
+
+/** A queue's row for a visit, found by its patient's name. */
+function queueRow(page: Page, name: string): Locator {
+  return page.getByRole('row').filter({ has: page.getByRole('rowheader', { name }) });
+}
+
+/**
+ * Co-signs and attests every note the team's queues hold, as Alex and Jordan may, so a queue can be
+ * seen empty: specs share the database, and every visit charted before this one may still wait.
+ * Between the two attendings every note is someone's to act on (neither wrote one; Alex reads
+ * everything; a note one of them signed or acts as the author of, the other may take).
+ */
+async function emptyQueues() {
+  const acts = { cosign: '/v1/team/cosign-queue', attest: '/v1/team/attestation-queue' } as const;
+  const versions = { cosign: 'cosign-2026-11', attest: 'attest-2026-11' } as const;
+  for (let round = 0; round < 3; round++) {
+    let waiting = 0;
+    for (const act of ['cosign', 'attest'] as const) {
+      for (const email of ['admin@example.com', 'clinician@example.com']) {
+        const token = await staffToken(email);
+        const queue = (await (await apiCall(token, 'GET', acts[act])).json()) as Schemas['SignatureQueue'];
+        waiting += queue.rows.length;
+        for (const row of queue.rows) {
+          const notes = planOf(await visitAs(email, row.encounterId), act);
+          if (notes.length === 0) continue;
+          const res = await apiCall(token, 'POST', `/v1/encounters/${row.encounterId}/${act}`, {
+            notes,
+            statementVersion: versions[act],
+          });
+          expect(res.status, `${act} ${row.encounterId} as ${email}`).toBe(200);
+        }
+      }
+    }
+    if (waiting === 0) return;
+  }
+  throw new Error('The queues still hold notes nobody here may act on.');
 }
 
 /** How many audit events of [action] the person wrote on the patient's chart. */
@@ -188,37 +292,68 @@ let cosign: Charted;
 let attest: Charted;
 let stay: Charted;
 let exported: Charted;
+let story: Charted;
+let sensitive: Charted;
 
 test.beforeAll(async () => {
   // Two Medical notes and a Social needs note: Co-sign covers the two, and the third waits for no one.
-  cosign = await residentVisit(
-    'complete',
+  cosign = await residentVisit('complete', [
     ['red_flags_disposition', RED_FLAGS],
     ['quick_encounter', QUICK],
     ['social_needs', SOCIAL],
+  ]);
+  attest = await residentVisit('sign', [['red_flags_disposition', RED_FLAGS]]);
+  stay = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS_EMS]]);
+  exported = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS_EMS]]);
+  // The Done when's visit (lifecycle 11.1): General / primary care, Wound care and Social needs, with
+  // the Red flags note the app adds by itself and an assessment, signed and completed at Complete.
+  story = await residentVisit(
+    'sign',
+    [
+      ['red_flags_disposition', RED_FLAGS],
+      ['general_primary_care', GENERAL],
+      ['wound_care', WOUND_CARE],
+      ['social_needs', SOCIAL],
+    ],
+    'Demo: cough settling; wound clean; housing worker to follow up.',
   );
-  attest = await residentVisit('sign', ['red_flags_disposition', RED_FLAGS]);
-  stay = await residentVisit('complete', ['red_flags_disposition', RED_FLAGS_EMS]);
-  exported = await residentVisit('complete', ['red_flags_disposition', RED_FLAGS_EMS]);
+  // A sensitive note type, a note with a GU exam, and a Social needs note (6.4), beside the Red flags
+  // note every Medical visit has.
+  sensitive = await residentVisit('sign', [
+    ['red_flags_disposition', RED_FLAGS],
+    ['psychological', PSYCH],
+    ['general_primary_care', GU_EXAM],
+    ['social_needs', SOCIAL],
+  ]);
 });
 
-test('each queue link shows to a credential that may act, one line each in the 240 px sidebar', async ({
+test('each queue link and Home card shows to a credential that may act, one line each in the 240 px sidebar', async ({
   page,
 }) => {
   for (const [email, links] of [
     ['clinician@example.com', ['Co-sign queue', 'Attestation queue']],
     ['admin@example.com', ['Co-sign queue', 'Attestation queue', 'Notes not complete']],
     ['resident@example.com', ['Co-sign queue']],
+    // Logistics charts, but a credential of none signs and attests nothing.
+    ['logistics@example.com', []],
     ['billing@example.com', []],
     ['chw@example.com', []],
   ] as const) {
     await signIn(page, email);
     const nav = portalNav(page);
     expect((await nav.boundingBox())!.width, 'the sidebar').toBe(240);
+    const cards = page.getByRole('main').getByRole('listitem').getByRole('heading', { level: 2 });
     for (const name of ['Co-sign queue', 'Attestation queue', 'Notes not complete']) {
       const link = nav.getByRole('link', { name, exact: true });
-      if ((links as readonly string[]).includes(name)) await expectOneLine(link);
-      else await expect(link, `${email}: ${name}`).toHaveCount(0);
+      const card = cards.filter({ hasText: name });
+      if ((links as readonly string[]).includes(name)) {
+        await expectOneLine(link);
+        // Home counts exactly the lists the person may open.
+        await expect(card, `${email}: the ${name} card`).toHaveCount(1);
+      } else {
+        await expect(link, `${email}: ${name}`).toHaveCount(0);
+        await expect(card, `${email}: the ${name} card`).toHaveCount(0);
+      }
     }
   }
 
@@ -357,6 +492,282 @@ test('@responsive the attestation queue lists a resident’s signed note, and At
   await expect(note.locator('.sx-pill')).toHaveText('Signed and attested');
   await expect(note).toContainText(/Attested by Jordan Lee \(demo\), /);
   expect(await audited('clinician@example.com', attest.patient, 'note.attested')).toBe(1);
+  await expectAccessible(page, 'visit page after Attest');
+});
+
+test('@responsive the Done when, its portal half: an attending opens the attestation queue and attests a resident’s visit in one action', async ({
+  page,
+}) => {
+  // Lifecycle 11.1, step 7. Steps 1 to 6 are the phone's; Casey's phone has sent what they leave
+  // on the server: three Medical notes signed, each waiting for an attending, and Social needs
+  // completed.
+  const medical = ['Red flags and disposition', 'General / primary care', 'Wound care'];
+  await signIn(page, 'clinician@example.com');
+  const csp = watchCsp(page);
+  const traffic = watchTraffic(page);
+  const presses = watchPresses(page);
+  const viewed = await audited('clinician@example.com', story.patient, 'attestation_queue.viewed');
+  await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
+  // The queue lists one visit with three notes.
+  const row = queueRow(page, story.name);
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('strong')).toHaveText(medical);
+  await expect(row).not.toContainText('Social needs');
+  await expect(row).not.toContainText('Someone else');
+  expect(await audited('clinician@example.com', story.patient, 'attestation_queue.viewed')).toBe(viewed + 1);
+
+  await row.getByRole('link').click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${story.id}$`));
+  await expect(page.getByRole('region', { name: 'About the visit' })).toContainText(
+    'Demo: cough settling; wound clean; housing worker to follow up.',
+  );
+  const section = page.getByRole('region', { name: 'Attest' });
+  await expect(section.getByRole('listitem')).toHaveText(medical);
+  await expect(section).toContainText(
+    'Attest adds your dated attestation below these 3 notes, and changes nothing in them:',
+  );
+  await expect(page.getByRole('article', { name: 'Social needs' }).locator('.sx-pill')).toHaveText(
+    'Complete',
+  );
+  await expect(page.getByRole('region', { name: 'Co-sign' })).toHaveCount(0);
+  await expectAccessible(page, 'visit page, the Done when’s visit');
+  await expectReflow(page, 'visit page, the Done when’s visit');
+
+  // One action attests the three.
+  const plan = planOf(await visitAsJordan(story.id), 'attest');
+  await section.getByRole('button', { name: 'Attest' }).click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${story.id}\\?signed=attested$`));
+  expect(presses.map((p) => p.postDataJSON())).toEqual([{ act: 'attest', notes: plan }]);
+  for (const title of medical) {
+    const note = page.getByRole('article', { name: title });
+    await expect(note.locator('.sx-pill')).toHaveText('Signed and attested');
+    await expect(note).toContainText(/Attested by Jordan Lee \(demo\), /);
+  }
+  await expect(page.getByRole('region', { name: 'Attest' })).toHaveCount(0);
+
+  // What the step asserts on the server: three attestations, each logged, and one notice to Casey.
+  const after = await visitAsJordan(story.id);
+  expect(after.status).toBe('signed');
+  expect(after.notes.map((n) => [n.title, n.status, n.attestation])).toEqual([
+    ['Red flags and disposition', 'signed', 'attested'],
+    ['General / primary care', 'signed', 'attested'],
+    ['Wound care', 'signed', 'attested'],
+    ['Social needs', 'completed', 'not_needed'],
+  ]);
+  expect(await audited('clinician@example.com', story.patient, 'note.attested')).toBe(3);
+  const notices = (await (
+    await apiCall(await staffToken('resident@example.com'), 'GET', '/v1/team/notices')
+  ).json()) as Schemas['Notice'][];
+  expect(notices.filter((n) => n.kind === 'note_attested' && n.recordId === story.id)).toHaveLength(1);
+
+  // Then none.
+  await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Attestation queue');
+  await expect(queueRow(page, story.name)).toHaveCount(0);
+  expectOnlyIds(traffic.addresses);
+  expect(csp).toEqual([]);
+});
+
+test('@responsive each reader sees a visit’s notes and sections as their role allows, and no act their credential doesn’t', async ({
+  page,
+}) => {
+  const titles = () => page.getByRole('main').getByRole('article').getByRole('heading', { level: 2 });
+  const main = page.getByRole('main');
+
+  // Billing/Data reads Medical notes but neither sensitive note types nor sensitive exams, and
+  // charts nothing: no Behavioral health note, no GU exam, no act and no reason why not.
+  await signIn(page, 'billing@example.com');
+  await page.goto(`/encounters/${sensitive.id}`);
+  await expect(titles()).toHaveText(['Red flags and disposition', 'General / primary care', 'Social needs']);
+  const general = page.getByRole('article', { name: 'General / primary care' });
+  await expect(general).toContainText('Demo: burning when passing water');
+  await expect(general.getByRole('heading', { name: 'Genitourinary (GU)' })).toHaveCount(0);
+  await expect(main).not.toContainText('Dysuria');
+  await expect(main).not.toContainText('Demo: calm and talking easily');
+  await expect(main).not.toContainText('Ask a Program Admin');
+  await expect(main.getByRole('button')).toHaveCount(0);
+  await expectAccessible(page, 'visit page, Billing/Data');
+  // The chart's timeline lists the same notes.
+  await page.goto(`/patients/${sensitive.patient}`);
+  const timeline = page.getByRole('region', { name: 'Timeline' });
+  await expect(timeline.locator('ol > li').first().getByRole('listitem')).toHaveText([
+    'Red flags and disposition: Signed, waiting for attestation',
+    'General / primary care: Signed, waiting for attestation',
+    'Social needs: Complete',
+  ]);
+  await expect(timeline).not.toContainText('Behavioral health');
+
+  // Logistics reads sensitive note types and charts, but not sensitive exams, and its credential
+  // attests nothing: no act is offered, and none is explained.
+  await signIn(page, 'logistics@example.com');
+  await page.goto(`/encounters/${sensitive.id}`);
+  await expect(titles()).toHaveText([
+    'Red flags and disposition',
+    'Behavioral health',
+    'General / primary care',
+    'Social needs',
+  ]);
+  await expect(main).toContainText('Demo: calm and talking easily');
+  await expect(main).not.toContainText('Dysuria');
+  await expect(main).not.toContainText('Ask a Program Admin');
+  await expect(main.getByRole('region', { name: 'Attest' })).toHaveCount(0);
+  await expectAccessible(page, 'visit page, Logistics');
+
+  // The CHW preset reads no Medical note at all.
+  await signIn(page, 'chw@example.com');
+  await page.goto(`/encounters/${sensitive.id}`);
+  await expect(titles()).toHaveText(['Social needs']);
+  await expect(main.getByRole('heading', { name: 'Assessment' })).toHaveCount(0);
+
+  // Casey wrote every note: all of them, the GU exam too, and nothing to act on.
+  await signIn(page, 'resident@example.com');
+  await page.goto(`/encounters/${sensitive.id}`);
+  await expect(titles()).toHaveText([
+    'Red flags and disposition',
+    'Behavioral health',
+    'General / primary care',
+    'Social needs',
+  ]);
+  await expect(page.getByRole('heading', { name: 'Genitourinary (GU)' })).toBeVisible();
+  await expect(main.getByRole('button')).toHaveCount(0);
+  await expect(page.getByRole('article', { name: 'Behavioral health' })).toContainText(
+    'You wrote this note, so someone else has to attest it.',
+  );
+});
+
+test('@responsive an attending attests what they read whole; a note with a GU exam waits, says why, and a Program Admin attests it', async ({
+  page,
+}) => {
+  // Lifecycle 6.4 rule 4 and 11.1's shorter test: Healthcare Staff doesn't read sensitive exams.
+  await signIn(page, 'clinician@example.com');
+  const presses = watchPresses(page);
+  await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
+  const row = queueRow(page, sensitive.name);
+  await expect(row.locator('strong')).toHaveText([
+    'Red flags and disposition',
+    'Behavioral health',
+    'General / primary care',
+  ]);
+  await expect(row.getByRole('listitem').last()).toContainText('Someone else has to attest it.');
+  await expect(row.getByRole('listitem').first()).not.toContainText('Someone else');
+  await expect(row.getByRole('listitem').nth(1)).not.toContainText('Someone else');
+
+  await row.getByRole('link').click();
+  const general = page.getByRole('article', { name: 'General / primary care' });
+  await expect(general).toContainText('This note has a part you can’t open. Ask a Program Admin.');
+  await expect(general.getByRole('heading', { name: 'Genitourinary (GU)' })).toHaveCount(0);
+  await expect(page.getByRole('main')).not.toContainText('Dysuria');
+  // The behavioral health note is Jordan's to attest: Healthcare Staff reads sensitive note types.
+  await expect(page.getByRole('article', { name: 'Behavioral health' })).toContainText(
+    'Demo: calm and talking easily',
+  );
+  const section = page.getByRole('region', { name: 'Attest' });
+  await expect(section.getByRole('listitem')).toHaveText(['Red flags and disposition', 'Behavioral health']);
+  await expect(section).toContainText(
+    'Attest adds your dated attestation below these 2 notes, and changes nothing in them:',
+  );
+  await expectAccessible(page, 'visit page, a note with a part the reader can’t open');
+  await expectReflow(page, 'visit page, a note with a part the reader can’t open');
+
+  const jordans = planOf(await visitAsJordan(sensitive.id), 'attest');
+  expect(jordans.map((n) => n.noteId)).toEqual([
+    sensitive.notes.red_flags_disposition,
+    sensitive.notes.psychological,
+  ]);
+  await section.getByRole('button', { name: 'Attest' }).click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${sensitive.id}\\?signed=attested$`));
+  expect(presses.map((p) => p.postDataJSON())).toEqual([{ act: 'attest', notes: jordans }]);
+  await expect(page.getByRole('article', { name: 'Behavioral health' }).locator('.sx-pill')).toHaveText(
+    'Signed and attested',
+  );
+  await expect(general.locator('.sx-pill')).toHaveText('Signed, waiting for attestation');
+  await expect(general).toContainText('This note has a part you can’t open. Ask a Program Admin.');
+  await expect(page.getByRole('region', { name: 'Attest' })).toHaveCount(0);
+
+  // Alex reads the GU exam, and attests the note from the queue.
+  await signIn(page, 'admin@example.com');
+  const alexPresses = watchPresses(page);
+  await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
+  const waiting = queueRow(page, sensitive.name);
+  await expect(waiting.locator('strong')).toHaveText(['General / primary care']);
+  await expect(waiting).not.toContainText('Someone else');
+  await waiting.getByRole('link').click();
+  const whole = page.getByRole('article', { name: 'General / primary care' });
+  await expect(whole.getByRole('heading', { name: 'Genitourinary (GU)' })).toBeVisible();
+  await expect(whole).toContainText('Dysuria');
+  await expect(whole).not.toContainText('Ask a Program Admin');
+  await expect(page.getByRole('region', { name: 'Attest' }).getByRole('listitem')).toHaveText([
+    'General / primary care',
+  ]);
+  await expectAccessible(page, 'visit page, a Program Admin reads a GU exam');
+  const alexs = planOf(await visitAs('admin@example.com', sensitive.id), 'attest');
+  await page.getByRole('region', { name: 'Attest' }).getByRole('button', { name: 'Attest' }).click();
+  await expect(page).toHaveURL(new RegExp(`/encounters/${sensitive.id}\\?signed=attested$`));
+  expect(alexPresses.map((p) => p.postDataJSON())).toEqual([{ act: 'attest', notes: alexs }]);
+  await expect(whole.locator('.sx-pill')).toHaveText('Signed and attested');
+  await expect(whole).toContainText(/Attested by Alex Rivera \(demo\), /);
+  expect(await audited('clinician@example.com', sensitive.patient, 'note.attested')).toBe(2);
+  expect(await audited('admin@example.com', sensitive.patient, 'note.attested')).toBe(1);
+});
+
+test('an act refused for the person: a credential changed since the page was read loads the visit again and says so, and a dropped connection sends nothing', async ({
+  page,
+}) => {
+  const attestIt = await residentVisit('sign', [['red_flags_disposition', RED_FLAGS]]);
+  const cosignIt = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS]]);
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/encounters/${attestIt.id}`);
+  const section = page.getByRole('region', { name: 'Attest' });
+
+  // The connection drops on the press: the section says nothing was sent, in place.
+  const sign = /\/encounters\/[0-9a-f-]{36}\/sign$/;
+  await page.route(sign, (route) => route.abort('internetdisconnected'));
+  await section.getByRole('button', { name: 'Attest' }).click();
+  await expect(section.getByRole('alert')).toHaveText(
+    'Nothing was sent. Check the connection and try again.',
+  );
+  await expect(section.getByRole('button', { name: 'Attest' })).toBeEnabled();
+  await expectAccessible(page, 'Attest, nothing sent', { inPlace: true });
+  await page.unroute(sign);
+  expect((await visitAsJordan(attestIt.id)).notes[0]!.attestation).toBe('waiting');
+
+  // Jordan's credential is moved to resident while the page is open: the API refuses the attestation
+  // for who is asking, and the visit loads again without the act.
+  let putBack = await credentialForAWhile('clinician@example.com', 'resident');
+  try {
+    await section.getByRole('button', { name: 'Attest' }).click();
+    await expect(page).toHaveURL(new RegExp(`/encounters/${attestIt.id}\\?signed=cannot_attest$`));
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(
+      'Your credential can’t attest notes now.',
+    );
+    await expect(page.getByRole('region', { name: 'Attest' })).toHaveCount(0);
+    await expect(
+      page.getByRole('article', { name: 'Red flags and disposition' }).locator('.sx-pill'),
+    ).toHaveText('Signed, waiting for attestation');
+    await expect(portalNav(page).getByRole('link', { name: 'Attestation queue' })).toHaveCount(0);
+    await expect(portalNav(page).getByRole('link', { name: 'Co-sign queue' })).toHaveCount(1);
+    await expectAccessible(page, 'visit page, cannot_attest');
+    expect(await audited('clinician@example.com', attestIt.patient, 'note.attested')).toBe(0);
+  } finally {
+    await putBack();
+  }
+
+  // ...and to none while a co-sign is open.
+  await page.goto(`/encounters/${cosignIt.id}`);
+  putBack = await credentialForAWhile('clinician@example.com', 'none');
+  try {
+    await page.getByRole('region', { name: 'Co-sign' }).getByRole('button', { name: 'Co-sign' }).click();
+    await expect(page).toHaveURL(new RegExp(`/encounters/${cosignIt.id}\\?signed=cannot_sign$`));
+    await expect(page.getByRole('main').getByRole('status')).toHaveText(
+      'Your credential can’t co-sign notes now.',
+    );
+    await expect(page.getByRole('region', { name: 'Co-sign' })).toHaveCount(0);
+    await expect(portalNav(page).getByRole('link', { name: /queue$/ })).toHaveCount(0);
+    await expectAccessible(page, 'visit page, cannot_sign');
+    expect((await visitAs('admin@example.com', cosignIt.id)).notes[0]!.status).toBe('completed');
+  } finally {
+    await putBack();
+  }
 });
 
 test.describe('the plan sent is the one the person read', () => {
@@ -424,4 +835,29 @@ test.describe('the plan sent is the one the person read', () => {
     expect((await visitAsJordan(exported.id)).notes[0]!.status).toBe('completed');
     expect(await audited('clinician@example.com', exported.patient, 'note.cosigned')).toBe(cosigned);
   });
+});
+
+test('@responsive with nothing waiting, each queue and its Home card say so', async ({ page }) => {
+  await emptyQueues();
+  await signIn(page, 'clinician@example.com');
+  const cards = page.getByRole('main').getByRole('listitem');
+  await expect(cards.filter({ hasText: 'Co-sign queue' }).locator('p')).toHaveText(
+    'No visits wait for a co-signature.',
+  );
+  await expect(cards.filter({ hasText: 'Attestation queue' }).locator('p')).toHaveText(
+    'No visits wait for attestation.',
+  );
+  await expectAccessible(page, 'Home, nothing waiting');
+
+  for (const [name, empty] of [
+    ['Co-sign queue', 'No visits wait for a co-signature.'],
+    ['Attestation queue', 'No visits wait for attestation.'],
+  ] as const) {
+    await portalNav(page).getByRole('link', { name }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+    await expect(page.getByRole('main')).toContainText(empty);
+    await expect(page.getByRole('table')).toHaveCount(0);
+    await expectAccessible(page, `${name}, empty`);
+    await expectReflow(page, `${name}, empty`);
+  }
 });
