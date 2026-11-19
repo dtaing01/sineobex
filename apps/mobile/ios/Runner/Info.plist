@@ -4,6 +4,8 @@
 <dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock Sineobex with Face ID instead of typing your PIN.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sineobex adds where you are to a visit only when you tap Use my location. You can type the place instead.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

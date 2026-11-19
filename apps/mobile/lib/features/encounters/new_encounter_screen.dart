@@ -15,14 +15,16 @@ import '../patients/patient_widgets.dart';
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'kind_screen.dart';
+import 'location_field.dart';
 
 /// **New encounter** (lifecycle 9.2, 9.3, 3.10): Who, then Where, then Medical or Non-Medical, each a
 /// step of this one screen. Who is phase 3's patient search, with **New patient** (the intake) and
-/// **No patient**; started from a profile it is skipped. Where is the place typed. A person not asked
-/// the kind (`asksKind`: a credential that can't chart Medical) starts a Non-Medical visit from
-/// Where. The visit is created when the last step is answered, and the encounter screen takes this
-/// one's place; until then nothing is written. Start refuses, writing nothing, while the clock check
-/// fails (D35), and says why before anything is pressed.
+/// **No patient**; started from a profile it is skipped. Where is the place typed and, on **Use my
+/// location** only, the place the phone gives (12.1 #15). A person not asked the kind (`asksKind`: a
+/// credential that can't chart Medical) starts a Non-Medical visit from Where. The visit is created
+/// when the last step is answered, and the encounter screen takes this one's place; until then
+/// nothing is written. Start refuses, writing nothing, while the clock check fails (D35), and says
+/// why before anything is pressed.
 class NewEncounterScreen extends StatelessWidget {
   const NewEncounterScreen({super.key, this.patientId});
 
@@ -49,6 +51,7 @@ class _NewEncounter extends ConsumerStatefulWidget {
 
 class _NewEncounterState extends ConsumerState<_NewEncounter> {
   final _place = TextEditingController();
+  final _location = PhoneLocation();
   late _Step _step = widget.patientId == null ? _Step.who : _Step.where;
 
   /// Who the visit is for: none for **No patient**, and none before Who is answered.
@@ -73,6 +76,7 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
   @override
   void dispose() {
     _place.dispose();
+    _location.dispose();
     super.dispose();
   }
 
@@ -103,7 +107,12 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
       _needsPatient = false;
     });
     try {
-      final id = _s.repository.startEncounter(kind: kind, patientId: _patientId, locationText: _place.text);
+      final id = _s.repository.startEncounter(
+        kind: kind,
+        patientId: _patientId,
+        locationText: _place.text,
+        location: _location.location,
+      );
       context.pushReplacement('/encounters/$id');
     } on LocalValidationError catch (e) {
       setState(() {
@@ -230,6 +239,8 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => last ? _start(VisitKind.nonMedical) : _goTo(_Step.kind),
       ),
+      const SizedBox(height: FieldSpace.s3),
+      LocationField(location: _location, enabled: !_busy, finding: last ? findingBeforeStart : findingLocation),
       const SizedBox(height: FieldSpace.s4),
       if (_error != null) ...[ErrorMessage(_error!), const SizedBox(height: FieldSpace.s3)],
       // A person not asked the kind starts a Non-Medical visit here (6.2).
@@ -243,6 +254,7 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
 
   List<Widget> _kind() => [
     ..._whoLine(),
+    LocationNote(location: _location),
     if (_error != null) ...[
       ErrorMessage(_error!),
       const SizedBox(height: FieldSpace.s2),

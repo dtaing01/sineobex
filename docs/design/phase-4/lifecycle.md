@@ -3828,6 +3828,20 @@ visit needs its patient (3.10 as built). Start refuses, writing nothing, while t
 or the store is frozen (`ChartingPaused`), and for a role that doesn't chart or a Medical visit from
 a credential that doesn't chart Medical.
 
+As built (unit L5, `apps/mobile/lib/features/encounters/location_field.dart`, with the `geolocator`
+plugin): **Use my location** sits under "Where are you?". Nothing is asked of the phone before the
+tap, not even whether it may say: the tap checks that location is on, asks for the permission if it
+was never given (while the app is in use only: Android's fine and coarse location, iOS's
+`NSLocationWhenInUseUsageDescription`), then takes one high-accuracy fix within 30 seconds. The
+screen never shows the coordinates, only "Your location is added." with **Remove**, and "Your phone
+could tell only roughly where you are." when the fix is worse than 1 km (approximate location). A
+fix the server would refuse (out of range, worse than 100 km, or 0, 0) counts as none. When there
+is none the button stays, and a sentence says why in plain words: not allowed, not allowed for good
+(with **Open phone settings**), location off (with **Open phone settings**), not found in time, or
+not available on this phone. The place typed works with it or without it. The person may go on
+while the phone looks; the kind step says "Still finding where you are. If you choose now, the visit
+starts without it." and a fix that comes after the visit started is dropped.
+
 ### 9.3 Medical or Non-Medical
 
 Two large buttons, each with one line under it: "Medical: clinical notes, orders, signing" and

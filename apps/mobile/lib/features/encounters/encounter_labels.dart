@@ -53,6 +53,24 @@ const whereHeading = 'Where';
 const whereLabel = 'Where are you?';
 const whereHelper = 'Optional';
 
+// ---- Use my location (9.2, 12.1 #15): the place is never shown, only whether there is one ----
+
+const useMyLocationAction = 'Use my location';
+const findingLocation = 'Finding where you are…';
+const stillFindingLocation = 'Still finding where you are. If you choose now, the visit starts without it.';
+const findingBeforeStart = 'Finding where you are. If you start the visit now, it starts without it.';
+const locationAdded = 'Your location is added.';
+const locationRough = 'Your phone could tell only roughly where you are.';
+const removeLocationAction = 'Remove';
+const removeLocationSpoken = 'Remove my location';
+const locationNotAllowed = 'You didn’t allow your location. Type the place instead.';
+const locationBlocked =
+    'Your phone doesn’t let this app use your location. Allow it in your phone’s settings, or type the place.';
+const locationOff = 'Location is off on this phone. Turn it on in your phone’s settings, or type the place.';
+const locationNotFound = 'Your phone couldn’t find where you are. Try again, or type the place.';
+const locationUnavailable = 'Your location isn’t available on this phone. Type the place instead.';
+const openSettingsAction = 'Open phone settings';
+
 /// Who the visit is for, above Where.
 String forPatientText(String name) => 'For $name';
 const noPatientText = 'No patient';

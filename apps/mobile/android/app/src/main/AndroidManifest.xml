@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Use my location (lifecycle 9.2): one position for a visit, asked for only when the person
+         taps, while the app is open; never in the background. Fine and coarse together let the
+         person choose precise or approximate in the phone's own prompt. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <!-- Module 9, "Leaks outside the app": no cloud or device-to-device backup of app data,
          no cleartext HTTP. The debug manifest re-allows cleartext for a local API only. -->
     <application
