@@ -35,7 +35,10 @@
   border-left: 2px solid var(--line);
 }
 
+/* An entry's title ("Wound 1"): globals.css resets h1 to h3 only, and an h4's own margins would
+   open a gap above and below it in the entry's column. */
 .entryTitle {
+  margin: 0;
   font: 700 16px/22px var(--font-sans);
 }
 

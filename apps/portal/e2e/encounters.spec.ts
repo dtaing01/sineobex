@@ -170,6 +170,8 @@ test('@responsive every state the visit page comes back with is a status, access
   page,
 }) => {
   // Each act and each refusal loads the visit again with what to say (lifecycle 9.11, 9.12).
+  // Thirteen states, each read in three themes.
+  test.slow();
   await signIn(page, 'clinician@example.com');
   for (const [query, text] of [
     ['signed=cosigned', 'Co-signed. Your co-signature is on each note below.'],
@@ -214,6 +216,9 @@ test('@responsive a corrected measurement shows the new value, and the old one s
   );
   const wound = page.getByRole('article', { name: 'Wound care' });
   await expect(wound.getByRole('heading', { level: 4 })).toHaveText('Wound 1');
+  // It sits in its entry's column with no margin of its own: no gap opens around it.
+  await expect(wound.getByRole('heading', { level: 4 })).toHaveCSS('margin-top', '0px');
+  await expect(wound.getByRole('heading', { level: 4 })).toHaveCSS('margin-bottom', '0px');
   const length = wound
     .locator('dl > div')
     .filter({ has: page.getByText('Measurements, Length', { exact: true }) });
@@ -354,12 +359,15 @@ test('@responsive the timeline lists a chart’s visits and referrals, and Show 
 
   const chartReads = await audited('clinician@example.com', chart.recordId, 'patient.viewed');
   const pages = await audited('clinician@example.com', chart.recordId, 'chart.timeline_viewed');
+  // Empty, the notice is there for a screen reader and takes no room in the panel.
+  await expect(timeline.getByRole('status')).toHaveCSS('position', 'absolute');
   await timeline.getByRole('button', { name: 'Show earlier visits' }).click();
   await expect(visitLinks).toHaveCount(52);
   // Focus moves to the first visit the page added, and there is nothing earlier to show.
   await expect(visitLinks.nth(50)).toBeFocused();
   await expect(visitLinks.nth(50)).toHaveAttribute('href', `/encounters/${visits[1]!.recordId}`);
   await expect(timeline.getByRole('status')).toHaveText('2 earlier visits shown.');
+  await expect(timeline.getByRole('status')).toHaveCSS('position', 'static');
   await expect(timeline.getByRole('button', { name: 'Show earlier visits' })).toHaveCount(0);
   // The next page is logged by the API once, and the chart is not read again.
   expect(await audited('clinician@example.com', chart.recordId, 'chart.timeline_viewed')).toBe(pages + 1);

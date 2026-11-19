@@ -131,7 +131,11 @@ export function Timeline({
           ))}
         </ol>
       )}
-      <p role="status">{notice}</p>
+      {/* Always there, so a screen reader hears the notice when it comes; out of the panel's column
+          while it is empty, so it opens no gap under the visits. */}
+      <p role="status" className={notice ? undefined : 'sr-only'}>
+        {notice}
+      </p>
       {problem && (
         <p role="alert" className="px-alert px-alert--error">
           {problem}
