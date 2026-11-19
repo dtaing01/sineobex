@@ -13,6 +13,9 @@ import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError, 
 const newEncounterTitle = 'New encounter';
 const encounterTitle = 'Encounter';
 const noteTypesTitle = 'Note types';
+const noteTitle = 'Note';
+const summaryTitle = 'Summary';
+const handoffTitle = 'EMS handoff';
 
 // ---- Start (9.2) ----
 
@@ -146,6 +149,76 @@ const noNoteTypes = 'Connect once to load your team’s note types.';
 
 /// A role without `encounters.chart`: the domain layer's words for it (`not_charting`).
 const notCharting = 'Your role doesn’t chart visits.';
+
+// ---- The note form (9.5) ----
+
+const saveAndCloseAction = 'Save & Close';
+const continueAction = 'Continue';
+const noteNotOnPhone = 'This note isn’t on this phone. Connect to open it.';
+
+/// A note whose own version's form the phone lacks: the domain layer's words for it.
+const noteFormNotOnPhone = 'This note’s form isn’t on this phone yet. Connect to load it, then try again.';
+
+/// Above a form the person may read but not change now.
+const readOnlyNote = 'You can read this note. It can’t be changed here.';
+const addedToProblemList = 'Added to the problem list';
+
+/// After Expand, when some quick answers weren't carried (forms 6.4, 10.1 #12).
+const notCopiedTitle = 'Some answers weren’t copied';
+
+/// The quick fields' labels, one to a line, then why.
+String notCopiedBody(List<String> labels) =>
+    '${labels.join('\n')}\n\nThe full note doesn’t take them as they are. They stay in the quick note.';
+const notCopiedOk = 'Open the note';
+
+// ---- The summary (9.6) ----
+
+const notesToCompleteHeading = 'Notes';
+
+/// A note of the person's own with no answer yet (their Red flags note, added by the app).
+const noAnswersYet = 'No answers yet.';
+const assessmentHeading = 'Assessment';
+const assessmentLabel = 'Assessment';
+const addToAssessmentLabel = 'Add to the assessment';
+
+/// Under the locked assessment: what is added goes with Complete as an addendum to the visit (9.6).
+const addToAssessmentHelp = 'The assessment is locked once a note is finished. What you add here is kept with it.';
+const suggestionsHeading = 'Suggested next steps';
+
+/// A suggestion chip, read with what it does.
+String suggestionSpoken(String title) => 'Add $title';
+const addReferralAction = 'Add referral';
+const followUpHeading = 'Follow-up';
+const noFollowUp = 'No follow-up recorded yet.';
+const stopsHeading = 'Before you complete';
+
+/// A line of what stops Complete is a button that opens the note there.
+const stopOpensHint = 'Opens the note';
+
+/// "{name}'s note stays a draft until they complete it." (9.6), a teammate unnamed as "A teammate".
+String teammateDraftText(PersonRef author) => author.name == null
+    ? 'A teammate’s note stays a draft until they complete it.'
+    : '${author.name}’s note stays a draft until they complete it.';
+
+/// The person's own note held for a Program Admin: not completed (3.3 as built).
+String sentForReviewText(String title) => '$title: sent to a Program Admin for review.';
+
+/// The Complete button, worded by what will happen (3.3).
+const completeAction = 'Complete';
+const completeAndSignAction = 'Complete and sign';
+const completeAndSendAction = 'Complete and send for co-signature';
+
+// ---- The EMS handoff (9.8) ----
+
+const handoffDone = 'Done';
+const handoffNotesHeading = 'Notes';
+
+/// Who the handoff is about, as the portal's file words it (lifecycle 5.7, 12.1 #27).
+const handoffNoPatient = 'No patient recorded';
+const ageNotRecorded = 'Age not recorded';
+
+/// Nothing for EMS: no note of this visit has an answer EMS may be shown.
+const handoffNothing = 'Nothing in this visit is for EMS yet.';
 
 // ---- A note's state (lifecycle 3.1, 9.1) ----
 

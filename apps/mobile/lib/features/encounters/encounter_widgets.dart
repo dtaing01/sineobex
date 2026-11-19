@@ -2,19 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../api/transport.dart' show ApiException;
 import '../../app_providers.dart' show syncControllerProvider;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
+import '../../design/widgets/allergy_badge.dart';
 import '../../design/widgets/form_bits.dart' show ErrorMessage, NoticeMessage;
 import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_services.dart';
+import '../../patients/chart_cache.dart' show ChartMeta, chartMetaField, patientGroup;
+import '../../patients/display.dart';
 import '../../patients/patient_providers.dart';
 import '../../patients/patient_search.dart';
-import '../../sync/local_store.dart' show ChartingPaused, LocalStore;
+import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityAllergy;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_row.dart' show PatientRow;
 import '../patients/patient_widgets.dart' show FrozenNotice, PhiField, WideButton, todayOf;
@@ -381,3 +385,114 @@ Future<FoundPatient?> choosePatient(BuildContext context, PatientServices patien
         ),
       ),
     );
+
+/// The allergy badge of a visit's patient (lifecycle 9.5), by phase 3's one rule (`allergyBadge`):
+/// the active allergies of the patient's merged group that the phone holds, as the chart the phone
+/// keeps lists them, with its own unsent ones; for a patient the phone holds no record of, the
+/// team's index entry. For a screen that shows the visit's note, whose read logged it on the patient.
+AllergyBadge visitAllergyBadge(LocalStore store, String patientId) {
+  final canonical = store.canonicalPatient(patientId);
+  final group = patientGroup(store, canonical);
+  final records = [for (final id in group) ?store.record(id)];
+  final meta = switch (store.record(canonical)?.fields[chartMetaField]?.value) {
+    final Map<String, Object?> json => ChartMeta(json),
+    _ => null,
+  };
+  final listed = meta?.allergyIds.toSet();
+  final active = <BadgeAllergy>[];
+  var held = records.isNotEmpty;
+  for (final p in group) {
+    for (final id in store.recordIdsOfPatient(p)) {
+      final r = store.record(id);
+      if (r == null || r.entity != entityAllergy) continue;
+      // A chart the phone keeps says which of its allergies the reader is shown; one made here waits.
+      if (listed != null && !listed.contains(id) && r.origin != 'local') continue;
+      held = true;
+      if (r.status == 'active' && r.fields['enteredInError']?.value == null) {
+        active.add((
+          substance: r.attributes['substance'] as String? ?? '',
+          severity: r.attributes['severity'] as String?,
+        ));
+      }
+    }
+  }
+  String? screen = [for (final r in records) r.fields['allergyScreen']?.value].whereType<String>().firstOrNull;
+  if (!held) {
+    final entry = PatientServices.of(store)?.index.entry(canonical);
+    if (entry != null) {
+      active.addAll([for (final a in entry.allergies) (substance: a.substance, severity: a.severity.toJson())]);
+      screen = entry.allergyScreen.toJson();
+    }
+  }
+  return allergyBadge(active, screen: screen);
+}
+
+/// Who a visit is for, above its note or its summary (lifecycle 9.5): the patient's preferred name,
+/// never a legal name, and phase 3's allergy badge; "No patient" for a visit with none. [line] goes
+/// under the name (the note type, or the visit's kind), read with it as one heading.
+class VisitPatientHeader extends StatelessWidget {
+  const VisitPatientHeader({super.key, required this.store, required this.patientId, required this.line});
+  final LocalStore store;
+  final String? patientId;
+  final String line;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final id = patientId;
+    final name = id == null ? noPatientText : visitPatientName(store, id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          container: true,
+          header: true,
+          label: '$name, $line',
+          excludeSemantics: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name, style: text.headlineSmall),
+              Text(line, style: text.titleMedium),
+            ],
+          ),
+        ),
+        if (id != null) ...[
+          const SizedBox(height: FieldSpace.s2),
+          Semantics(container: true, child: AllergyBadgeView(badge: visitAllergyBadge(store, id))),
+        ],
+      ],
+    );
+  }
+}
+
+/// The routes of a visit's screens: New encounter, the encounter, its note types, a note, the summary
+/// and the handoff. By their patterns, which carry IDs only (10.2).
+bool _visitRoute(String? pattern) =>
+    pattern != null &&
+    (pattern.startsWith('/encounters/') || pattern.startsWith('/notes/') || pattern.endsWith('/encounters/new'));
+
+/// Leaves a visit's screens for the patient's chart: Save & Close (lifecycle 3.2) and after Complete
+/// (8.2: "the app replaces the encounter screens with the patient profile"). The visit's screens go;
+/// the chart is the one under them when it is this patient's, else it opens. A visit with no patient
+/// returns to Home. Nothing is closed in the store: a draft stays on the phone until it is finished
+/// (3.2), and the close sweep lets go of what is done with (8.2).
+void leaveVisit(BuildContext context, LocalStore store, String? patientId) {
+  final router = GoRouter.of(context);
+  Route<Object?>? landed;
+  Navigator.of(context).popUntil((route) {
+    final settings = route.settings;
+    // A sheet or a dialog over the visit goes with it.
+    final stays = route.isFirst || (settings is Page && !_visitRoute(settings.name));
+    if (stays) landed = route;
+    return stays;
+  });
+  if (patientId == null) return router.go('/');
+  final under = landed?.settings;
+  final onChart = switch (under) {
+    Page(name: '/patients/:id', arguments: {'id': final String id}) =>
+      store.canonicalPatient(id) == store.canonicalPatient(patientId),
+    _ => false,
+  };
+  if (!onChart) unawaited(router.push('/patients/$patientId'));
+}

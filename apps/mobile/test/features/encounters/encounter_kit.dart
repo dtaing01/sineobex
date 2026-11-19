@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_services.dart';
 import 'package:sineobex_field/features/encounters/encounter_screen.dart';
+import 'package:sineobex_field/features/encounters/note_screen.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart' show OpenTeam;
@@ -127,12 +128,16 @@ Map<String, Object?> answersOf(AppHarness h, String noteId) => {
 LocalRecord? noteOfType(AppHarness h, String encounterId, String key) =>
     notesOf(h, encounterId).where((n) => n.attributes['noteTypeKey'] == key).firstOrNull;
 
-/// The note [noteId] opened, where its form is (`/notes/<id>`, lifecycle 9.5). Until the note screen
-/// (card L5-note-screen) registers that route, the router draws its own page for a location it lacks,
-/// which overflows a phone: that page is not this unit's, and its layout error is dropped.
+/// The note [noteId] opened, where its form is (`/notes/<id>`, lifecycle 9.5).
 void expectNoteOpened(WidgetTester tester, String noteId) {
   expect(location(tester), '/notes/$noteId');
-  while (tester.takeException() != null) {}
+  expect(find.byType(NoteScreen), findsOneWidget);
+}
+
+/// The note screen of [noteId], opened as a tap opens it.
+Future<void> openNote(WidgetTester tester, String noteId) async {
+  await go(tester, '/notes/$noteId');
+  expectNoteOpened(tester, noteId);
 }
 
 /// A visit started on the phone, as New encounter starts it: for P1 unless [noPatient].

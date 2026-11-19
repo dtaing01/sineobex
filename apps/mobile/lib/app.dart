@@ -13,6 +13,7 @@ import 'design/widgets/demo_banner.dart';
 import 'features/encounters/encounter_labels.dart' show startTabLabel;
 import 'features/encounters/encounter_screen.dart';
 import 'features/encounters/new_encounter_screen.dart';
+import 'features/encounters/note_screen.dart';
 import 'features/encounters/note_type_list.dart' show NoteTypesScreen;
 import 'features/encounters/start_sheet.dart';
 import 'features/home/home_screen.dart';
@@ -132,6 +133,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/encounters/:id/note-types',
         builder: (_, state) => NoteTypesScreen(encounterId: state.pathParameters['id']!),
+      ),
+      // A note's form, or its read view once finished (9.5, 9.7). The section to open, the summary's
+      // jump (9.6), is a section's ID and travels in `extra`, never in the location.
+      GoRoute(
+        path: '/notes/:id',
+        builder: (_, state) => NoteScreen(
+          noteId: state.pathParameters['id']!,
+          openSection: state.extra is String ? state.extra! as String : null,
+        ),
       ),
     ],
   );
