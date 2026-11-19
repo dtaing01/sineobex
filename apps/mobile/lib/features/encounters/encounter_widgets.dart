@@ -63,8 +63,10 @@ bool encountersOpen(SyncController sync, EncounterServices services) => identica
 
 /// Reads the visit [encounterId] from the phone's copy for a screen, at first and again after every
 /// change the services or a sync make, so a note just added, removed or brought in shows. Each read
-/// logs only what it adds to what the screen showed before (`shownBefore`, lifecycle 9.7). The visit
-/// is kept open on the phone while the screen shows it (the close sweep's `showing`, 8.2).
+/// logs only what it adds to what the screen showed before (`shownBefore`, lifecycle 9.7). While
+/// another screen covers it (a note's form, saving at each answer), it reads again once it is on top,
+/// not at each change: it shows nothing meanwhile, so it logs nothing meanwhile. The visit is kept
+/// open on the phone while the screen is there (the close sweep's `showing`, 8.2).
 mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   EncounterServices get services;
   String get encounterId;
@@ -81,6 +83,10 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   final _shown = <String>{};
   int _seq = 0;
   late final SyncController _sync;
+  ModalRoute<Object?>? _route;
+
+  /// Something changed while another screen covered this one.
+  bool _stale = false;
 
   @override
   void initState() {
@@ -100,8 +106,23 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (_stale && (_route?.isCurrent ?? true)) {
+      _stale = false;
+      unawaited(reread());
+    }
+  }
+
   void _reload() {
-    if (mounted) unawaited(reread());
+    if (!mounted) return;
+    if (!(_route?.isCurrent ?? true)) {
+      _stale = true;
+      return;
+    }
+    unawaited(reread());
   }
 
   /// Reads the visit again. A read that a later one overtook shows nothing; what it logged stays

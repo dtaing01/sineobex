@@ -33,16 +33,16 @@ void main() {
       final mine = find.bySemanticsLabel('General / primary care, Draft, Chief concern: Demo: cough');
       await expectShown(tester, mine);
       expect(tester.getSemantics(mine), isSemantics(isButton: true, hasTapAction: true));
+      // Remove this note is in the menu of the person's own draft only.
+      await expectShown(tester, find.byTooltip('More for General / primary care'));
       final theirs = find.bySemanticsLabel('Social needs, Draft, By Demo Blair, Current needs: Food');
       await expectShown(tester, theirs);
       await expectShown(tester, find.text('By Demo Blair'));
       await expectShown(tester, find.text('Current needs: Food'));
+      expect(find.byTooltip('More for Social needs'), findsNothing);
       // The Red flags note the app added is an empty draft: it counts for nothing, so isn't listed.
       expect(noteOfType(h, visit, 'red_flags_disposition'), isNotNull);
-      expect(find.textContaining('Red flags'), findsNothing);
-      // Remove this note is in the menu of the person's own draft only.
-      expect(find.byTooltip('More for General / primary care'), findsOneWidget);
-      expect(find.byTooltip('More for Social needs'), findsNothing);
+      expect(find.textContaining('Red flags', skipOffstage: false), findsNothing);
       await expectShown(tester, find.widgetWithText(OutlinedButton, 'Add another note type'));
       await expectScreenOk(tester);
       // The read is logged, each record once, whatever rebuilds the screen.
@@ -170,6 +170,23 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a freeze for a hand-over: the search results in Who go at their next build (V1)', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical, noPatient: true);
+    await openVisit(tester, visit);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Switch to Medical'));
+    await type(tester, 'visitSearch', 'del');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Search'));
+    expect(find.bySemanticsLabel(RegExp('^Del,')), findsOneWidget);
+    h.sync.store!.freeze(frozen);
+    // A rebuild the controller didn't cause: the phone turned on its side.
+    tester.view.physicalSize = const Size(2532, 1170);
+    await tester.pump();
+    expect(find.bySemanticsLabel(RegExp('^Del,')), findsNothing);
+    expect(find.text(frozen), findsWidgets);
+  });
+
   testWidgets('Switch to Medical on a visit with no patient: closing the question changes nothing', (tester) async {
     final h = await signInToChart(tester);
     final visit = startVisit(h, kind: VisitKind.nonMedical, noPatient: true);
@@ -203,6 +220,40 @@ void main() {
     expect(offered, ['Outreach', 'Social needs']);
     await expectScreenOk(tester);
     handle.dispose();
+  });
+
+  testWidgets('the visit stays on the phone while it shows, and the close sweep may take it after (8.2)', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h);
+    await openVisit(tester, visit);
+    expect(h.encounters.sweep.showing, contains(visit));
+    await tester.pageBack();
+    await settle(tester);
+    expect(h.encounters.sweep.showing, isNot(contains(visit)));
+  });
+
+  testWidgets('covered by the note’s form, the screen reads nothing at each answer, and catches up after', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs');
+    await openVisit(tester, visit);
+    // Empty, the note isn't listed yet.
+    expect(find.bySemanticsLabel(RegExp(r'^Social needs, Draft')), findsNothing);
+    await go(tester, '/notes/$social');
+    expectNoteOpened(tester, social);
+    final store = h.sync.store!;
+    final before = auditEvents(store).length;
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['food']);
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['food', 'hygiene']);
+    await settle(tester);
+    expect(auditEvents(store).skip(before), isEmpty);
+    await back(tester);
+    await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Social needs, Draft, ')));
+    expect(auditEvents(store).skip(before), ['note.viewed']);
   });
 
   testWidgets('a visit the phone doesn’t hold says so', (tester) async {

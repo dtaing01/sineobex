@@ -278,11 +278,10 @@ void main() {
     await searchAndChoose(tester, 'del');
     await expectShown(tester, find.text('For Del'));
     h.sync.store!.freeze(frozen);
-    // A rebuild the controller didn't cause: the person's own tap.
-    await tapOn(tester, find.text('Change'));
+    // A rebuild the controller didn't cause: the person's own tap, to a step that would name them.
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Next'));
     expect(find.text(frozen), findsOneWidget);
     expect(find.text('For Del'), findsNothing);
-    expect(find.bySemanticsLabel(RegExp('^$del,')), findsNothing);
     expect(visits(h), isEmpty);
   });
 }
