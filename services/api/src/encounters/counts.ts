@@ -31,6 +31,9 @@ export const HomeCounts = z
     teamIncomplete: count.optional().openapi({
       description: 'The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users',
     }),
+    teamOverdue: count.optional().openapi({
+      description: 'How many of the team’s drafts are overdue, as that list says each is; team.manage_users',
+    }),
   })
   .openapi('HomeCounts');
 
@@ -49,7 +52,11 @@ export function homeCounts(scope: TeamScope): Promise<HomeCountsValue> {
       if (mayOpenQueue(scope, 'attestation'))
         counts.attestationWaiting = (await queueRows(tx, scope, 'attestation')).length;
     }
-    if (scope.can('team.manage_users')) counts.teamIncomplete = (await draftsAsRead(tx, scope)).length;
+    if (scope.can('team.manage_users')) {
+      const team = await draftsAsRead(tx, scope);
+      counts.teamIncomplete = team.length;
+      counts.teamOverdue = team.filter((n) => n.overdue).length;
+    }
     return counts;
   });
 }

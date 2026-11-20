@@ -1,5 +1,4 @@
 import {
-  effectiveAnswers,
   readModel,
   recapLines,
   visibleAnswers,
@@ -8,7 +7,7 @@ import {
   type ResolvedNoteType,
 } from '@sineobex/forms';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
-import { CAPABILITIES, mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
+import { mayViewProblems, type Credential, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { notFound } from '../lib/errors.ts';
 import type { VisitNoteValue, VisitReadValue } from '../patients/schemas.ts';
@@ -20,13 +19,14 @@ import {
   byDefinition,
   DefinitionError,
   noteReader,
-  sameValue,
   snapshot,
   type StoredRecord,
 } from '../sync/records.ts';
 import type { AnyRecordEntityName } from '../sync/schemas.ts';
 import { noteContentHash } from './content-hash.ts';
 import { encounterStatus, noteIsEmpty, type NoteStatus } from './rules.ts';
+import { showsHandoff } from './handoff.ts';
+import { actNote, maySecondSign, secondPersonView } from './second-person.ts';
 
 /**
  * Reading a visit online (lifecycle 5.1, 6.4): the rules that decide what of a note, and of what
@@ -246,15 +246,35 @@ export const signoffHashShown = (
   summaryHidden: boolean,
 ) => !summaryHidden && (read.reader.actsAsAuthor || signerUserId === userId || readsWhole(read.reader));
 
+/**
+ * The preferred name of each patient as a visit's reader is shown it: their chart's, or the chart's
+ * they were merged into, as the chart itself answers a merged ID. A preferred name is in every
+ * summary patients.view reads (phase 3 design 4.3), so a reader without it gets none. The visit
+ * read, the queues and the team's incomplete notes name a patient this way.
+ */
+export async function preferredNames(
+  tx: Tx,
+  scope: TeamScope,
+  patientIds: readonly (string | null)[],
+): Promise<Map<string, string | null>> {
+  const wanted = [...new Set(patientIds.filter((id) => id !== null))];
+  if (wanted.length === 0 || !scope.can('patients.view')) return new Map();
+  const rows = await tx<{ id: string; preferredName: string | null }[]>`
+    select p.id, c.preferred_name from sineobex.patients p
+    join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
+    where p.team_id = ${scope.team.teamId} and p.id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.preferredName]));
+}
+
 // ------------------------------------------------------------------------------------------------
 // GET /v1/encounters/{encounterId}
 // ------------------------------------------------------------------------------------------------
 
 /**
  * Where a visit was read, for its audit events: a registered phone of this person, the portal, or
- * the chart (online or for the phone's cache) that carried it as a recent visit.
+ * the phone's cached chart that carried it as a recent visit.
  */
-export type ReadSource = 'phone' | 'portal' | 'chart' | 'cache';
+export type ReadSource = 'phone' | 'portal' | 'cache';
 
 /** GET /v1/encounters/{encounterId}: the visit as the reader may see it, logged in its transaction. */
 export async function readVisit(scope: TeamScope, encounterId: string): Promise<VisitReadValue> {
@@ -374,11 +394,15 @@ export async function visitAsRead(
     select id from sineobex.encounter_notes
     where team_id = ${visit.teamId} and encounter_id = ${visit.id} order by created_at, id`;
   const reads: (NoteRead & { type: ResolvedNoteType })[] = [];
+  let hasHandoff = false;
   for (const { id } of noteRows) {
     const read = await noteAsRead(tx, scope, await noteRules.load(tx, id, false));
     if (!read || read.type === undefined) continue;
+    const typed = read as NoteRead & { type: ResolvedNoteType };
+    // Asked of every Red flags note the reader reads, as the export asks it (handoff.ts).
+    hasHandoff ||= showsHandoff(typed);
     if (read.note.status === 'draft' && noteIsEmpty(read.answers)) continue;
-    reads.push(read as NoteRead & { type: ResolvedNoteType });
+    reads.push(typed);
   }
   const names = await displayNames(
     tx,
@@ -386,11 +410,10 @@ export async function visitAsRead(
   );
   const user = (id: string) => ({ userId: id, displayName: names.get(id) ?? '' });
 
-  const can = CAPABILITIES[scope.team.credential];
-  const mayAct = scope.can('encounters.chart') && (can.sign || can.attest);
   const notes: VisitNoteValue[] = [];
   for (const read of reads) {
     const { note, type, answers, reader, seen } = read;
+    const second = await actNote(tx, scope, visit, note, read);
     await viewed('note.viewed', 'encounter_note', note.id);
     const shownSignoffs = signoffs.filter((s) => s.noteId === note.id);
     const shownAddenda = addenda.filter((a) => a.noteId === note.id);
@@ -403,16 +426,18 @@ export async function visitAsRead(
     for (const c of shownCorrections) await viewed('note.viewed', 'note_correction', c.id);
     for (const a of shownAttestations) await viewed('note.viewed', 'note_attestation', a.id);
 
-    const sees = (): boolean => byDefinition(() => sameValue(seen, effectiveAnswers(type, answers)));
     // The hash to co-sign or attest with: whoever may act on the note and sees all of it (lifecycle
-    // 5.1, 5.3, 5.4), besides those who get every sign-off's. Never over a summary the reader may not read.
+    // 5.1, 5.3, 5.4; second-person.ts), besides those who get every sign-off's. Never over a summary
+    // the reader may not read.
     //
     // Unlike D86's rule for the sign-offs' hashes, this one asks what the note holds: a reader who
     // may co-sign or attest learns from a missing hash that the note holds content they may not
     // see. The queue's canAct already tells them that (5.4 rule 4), and the online act needs the
     // hash, so the coordinator kept it (review finding LRD-3). The sync read keeps D86: it sends no
     // note's hash, and a sign-off's only by signoffHashShown.
-    const hashShown = !hideMedical && (reader.actsAsAuthor || readsWhole(reader) || (mayAct && sees()));
+    const hashShown =
+      !hideMedical &&
+      (reader.actsAsAuthor || readsWhole(reader) || (maySecondSign(scope) && second.seesAllThatCounts));
     const attrs = note.attributes as {
       noteTypeKey: string;
       noteTypeVersion: number;
@@ -425,6 +450,7 @@ export async function visitAsRead(
       noteTypeVersion: attrs.noteTypeVersion,
       title: type.title,
       group: type.group,
+      medical: note.internal.medical === true,
       status: note.status as VisitNoteValue['status'],
       attestation: attrs.attestation,
       completedAt: attrs.completedAt,
@@ -482,6 +508,9 @@ export async function visitAsRead(
             ),
           }
         : {}),
+      // What the reader may do to it as a second person, and why not (second-person.ts), so the
+      // page sends exactly the notes the act takes and words a held note truly.
+      ...secondPersonView(scope, second),
     });
   }
 
@@ -491,6 +520,8 @@ export async function visitAsRead(
 
   const records = await recordsMadeAt(tx, scope, visit);
   for (const r of records) await viewed('patient.viewed', r.entity, r.record.id, r.record.patientId);
+  const charts = await chartsOf(tx, visit.teamId, [patientId, ...records.map((r) => r.record.patientId)]);
+  const chartOf = (id: string | null) => (id === null ? null : (charts.get(id) ?? id));
 
   return {
     encounterId: visit.id,
@@ -500,11 +531,34 @@ export async function visitAsRead(
     startedAt: visit.attributes.startedAt as string,
     clockVerified: visit.attributes.clockVerified as boolean,
     locationText: visit.values.locationText as string | null,
+    preferredName: patientId ? ((await preferredNames(tx, scope, [patientId])).get(patientId) ?? null) : null,
+    hasHandoff,
     ...(hideMedical ? {} : { summary: visit.values.summary as string | null }),
     addenda: ownAddenda.map(addendumView),
     notes,
     records: records.map((r) => snapshot(r.record)),
+    recordsOnAnotherChart: records
+      .filter((r) => chartOf(r.record.patientId) !== chartOf(patientId))
+      .map((r) => r.record.id),
   };
+}
+
+/**
+ * The chart each patient ID is on now: its canonical record, the end of its merge chain, as the
+ * chart itself answers a merged ID. So a record made at a visit is on another chart when its
+ * patient's chart is not the visit patient's (lifecycle 9.7), and one kept under a merged ID of the
+ * visit's own patient is on the visit's chart (the review of unit L6).
+ */
+async function chartsOf(
+  tx: Tx,
+  teamId: string,
+  ids: readonly (string | null)[],
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id) => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = await tx<{ id: string; canonicalId: string }[]>`
+    select id, canonical_id from sineobex.patients where team_id = ${teamId} and id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.canonicalId]));
 }
 
 const asNoteCorrection = (c: CorrectionRow): NoteCorrection => ({

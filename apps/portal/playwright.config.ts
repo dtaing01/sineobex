@@ -34,7 +34,9 @@ export default defineConfig({
       command: 'node ../../tools/dev-idp.mjs',
       url: `http://localhost:${IDP_PORT}/.well-known/jwks.json`,
       reuseExistingServer: !process.env.CI,
-      env: { DEV_IDP_PORT: String(IDP_PORT) },
+      // The test hooks (tools/dev-idp.mjs) are on here alone: a test dates a sign-in back to take
+      // an export through /reauth.
+      env: { DEV_IDP_PORT: String(IDP_PORT), DEV_IDP_TEST_HOOKS: '1' },
     },
     {
       command: 'pnpm --filter @sineobex/api exec tsx src/entry/node.ts',

@@ -7,9 +7,17 @@ import { Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
 import { noteRules } from '../sync/entities/note.ts';
 import type { StoredRecord } from '../sync/records.ts';
+import { NoteHeldBecause, NoteTitle } from '../patients/schemas.ts';
 import { DateTime, UserRef } from '../sync/schemas.ts';
-import { attestOf } from './attest.ts';
-import { actNote, cosignOf, type ActNote } from './cosign.ts';
+import { preferredNames } from './read.ts';
+import {
+  actNote,
+  attestOf,
+  cosignOf,
+  secondPersonView,
+  type ActNote,
+  type HeldBecause,
+} from './second-person.ts';
 
 /**
  * The co-sign queue and the attestation queue (lifecycle 3.7, 5.4): team-wide, every attending sees
@@ -17,16 +25,19 @@ import { actNote, cosignOf, type ActNote } from './cosign.ts';
  *
  * A note is listed as the visit read would give it to the caller (6.4 rule 2): a note they may not
  * read at all is absent, as on the timeline, and a row left with no note is absent too. A note they
- * may read but not act on is listed with canAct false, so the queue can say why it waits for
- * someone else: an answer they may not see (6.4 rule 4), or a note they wrote or signed. canAct is
- * the act's own rule (cosignOf, attestOf) asked as if the hash matched, so the queue and the act
- * never disagree. Nothing a note holds is listed: its type, author and times only.
+ * may read but not act on is listed with canAct false, and with heldBecause, the visit read's own
+ * (second-person.ts secondPersonView), so the queue says why it waits for someone else in the
+ * visit page's words: an answer they may not see (6.4 rule 4), or a note they wrote, completed,
+ * act as the author of or signed. canAct is the act's own rule (cosignOf, attestOf) asked as if the
+ * hash matched, so the queue and the act never disagree. Nothing a note holds is listed: its type,
+ * author and times only.
  */
 
 export const QueueNote = z
   .object({
     noteId: Uuid,
     noteTypeKey: z.string(),
+    title: NoteTitle,
     author: UserRef,
     completedAt: DateTime.nullable(),
     signedBefore: z.union([UserRef, z.null()]).openapi({
@@ -38,6 +49,10 @@ export const QueueNote = z
     canAct: z.boolean().openapi({
       description:
         'False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed',
+    }),
+    heldBecause: NoteHeldBecause.optional().openapi({
+      description:
+        'Why the note waits for someone other than the caller, as the visit read gives it under the note (VisitNote.heldBecause), so the queue says why in the same words (lifecycle 5.4)',
     }),
   })
   .openapi('QueueNote');
@@ -81,8 +96,6 @@ interface WaitingRow {
   encounterId: string;
   startedAt: Date;
   patientId: string | null;
-  /** The canonical chart's, as a merged ID's chart shows it. */
-  preferredName: string | null;
 }
 
 /** Whether the caller's credential does the queue's act: who may open it. */
@@ -132,16 +145,14 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
       ? tx`n.status = 'completed' and n.medical`
       : tx`n.status = 'signed' and n.attestation = 'waiting'`;
   const waiting = await tx<WaitingRow[]>`
-    select n.id, n.encounter_id, e.started_at, e.patient_id, c.preferred_name
+    select n.id, n.encounter_id, e.started_at, e.patient_id
     from sineobex.encounter_notes n
     join sineobex.encounters e on e.team_id = n.team_id and e.id = n.encounter_id
-    left join sineobex.patients p on p.team_id = e.team_id and p.id = e.patient_id
-    left join sineobex.patients c on c.team_id = p.team_id and c.id = p.canonical_id
     where n.team_id = ${teamId} and ${waits}
     order by e.started_at, e.id, n.created_at, n.id`;
 
   const visits = new Map<string, StoredRecord | null>();
-  const shown: { row: WaitingRow; n: ActNote; canAct: boolean }[] = [];
+  const shown: { row: WaitingRow; n: ActNote; canAct: boolean; heldBecause?: HeldBecause }[] = [];
   for (const row of waiting) {
     if (!visits.has(row.encounterId))
       visits.set(row.encounterId, await loadEncounter(tx, row.encounterId, false));
@@ -152,7 +163,9 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
     // As the visit read: a note the caller may not read, or with no definition to read it by, is absent.
     if (!n.read || n.read.type === undefined) continue;
     const effect = queue.effect(scope, n, true);
-    shown.push({ row, n, canAct: !('refuse' in effect) });
+    // The visit read's reason, by the same rule: a waiting note waits for this act alone.
+    const { heldBecause } = secondPersonView(scope, n);
+    shown.push({ row, n, canAct: !('refuse' in effect), ...(heldBecause ? { heldBecause } : {}) });
   }
 
   const ids = shown.map((s) => s.n.note.id);
@@ -161,16 +174,20 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
     tx,
     shown.map((s) => s.n.note.authorUserId),
   );
-  // A preferred name is in every summary patients.view reads (phase 3 design 4.3).
-  const names = scope.can('patients.view');
+  // The canonical chart's, as a merged ID's chart shows it; none without patients.view.
+  const names = await preferredNames(
+    tx,
+    scope,
+    shown.map((s) => s.row.patientId),
+  );
   const rows: QueueVisitValue[] = [];
-  for (const { row, n, canAct } of shown) {
+  for (const { row, n, canAct, heldBecause } of shown) {
     let visit = rows.at(-1);
     if (visit?.encounterId !== row.encounterId) {
       visit = {
         encounterId: row.encounterId,
         patientId: row.patientId,
-        preferredName: names ? row.preferredName : null,
+        preferredName: row.patientId ? (names.get(row.patientId) ?? null) : null,
         startedAt: row.startedAt.toISOString(),
         notes: [],
       };
@@ -180,11 +197,14 @@ export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Pro
     visit.notes.push({
       noteId: note.id,
       noteTypeKey: note.attributes.noteTypeKey as string,
+      // Listed only with a definition to read it by (above).
+      title: n.read!.type!.title,
       author: { userId: note.authorUserId, displayName: authors.get(note.authorUserId) ?? '' },
       completedAt: note.attributes.completedAt as string | null,
       signedBefore: before.signed.get(note.id) ?? null,
       attestedBefore: before.attested.get(note.id) ?? null,
       canAct,
+      ...(heldBecause ? { heldBecause } : {}),
     });
   }
   return rows;

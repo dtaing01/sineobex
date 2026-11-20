@@ -129,6 +129,10 @@ describe('phase 4: attest', () => {
       const r = await attest(w, w.ana, v.visit.encounterId, [v.flags, v.note]);
       expect(r.status).toBe(403);
       expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
+      // Worded for everyone it covers: an assignee is never told they wrote it.
+      expect((r.body as { error?: { message?: string } }).error?.message).toBe(
+        'You can’t attest a note you wrote, completed or act as the author of.',
+      );
       await unchanged(v.flags, v.note);
       expect((await attest(w, w.vic, v.visit.encounterId, [v.flags, v.note])).status).toBe(200);
     });

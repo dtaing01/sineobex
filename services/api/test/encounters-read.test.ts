@@ -26,7 +26,7 @@ import {
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createPatient, expectAudit, expectAuditClean } from './patient-fixtures.ts';
+import { auditMark, createPatient, expectAudit, expectAuditClean, mergeDirect } from './patient-fixtures.ts';
 import {
   call,
   clinician,
@@ -74,6 +74,7 @@ interface VisitRead {
   addenda: { id: string }[];
   notes: Note[];
   records: { entity: string; id: string; attributes: Record<string, unknown> }[];
+  recordsOnAnotherChart: string[];
 }
 
 const E1 = 'e0000001';
@@ -597,6 +598,53 @@ describe('phase 4: read a visit online', () => {
       const left = await readAs(w.ana.token, moved.encounterId);
       expect(left.body.patientId).toBe(other);
       expect(byEntity(left.body)).toEqual([line('referral', made.left!)]);
+    });
+
+    it('says which are on another chart now, by the patients’ charts: a merged ID of the same person is the same chart', async () => {
+      // Each record on the visit's own patient is on its chart.
+      expect((await readAs(w.ana.token, at.encounterId)).body.recordsOnAnotherChart).toEqual([]);
+      // The moved visit's referral stays with the first patient, who is someone else.
+      expect((await readAs(w.ana.token, moved.encounterId)).body.recordsOnAnotherChart).toEqual([made.left]);
+
+      // A visit moved from a second record of its patient leaves its referral under that record's
+      // ID; once the two are merged, the referral is on the visit's own chart (the review of unit L6).
+      const { ana } = w;
+      const send = async (...changes: Change[]) => {
+        const results = await ana.send(...changes);
+        expect(
+          results.map((r) => r.status),
+          JSON.stringify(results),
+        ).toEqual(changes.map(() => 'accepted'));
+      };
+      const survivor = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Lark' })).id;
+      const second = (await createPatient(h, w.t.teamId, w.t.adminId, { preferredName: 'Demo Lark B' })).id;
+      const v = await visitAt(ana, second, { kind: 'non_medical' });
+      const kept = await ana.phone.change({
+        entity: 'referral',
+        op: 'create',
+        value: {
+          patientId: second,
+          referredOn: '2026-10-19',
+          details: 'Demo: food bank',
+          encounterId: v.encounterId,
+        },
+      });
+      await send(kept);
+      await send(
+        await ana.phone.change({
+          entity: 'encounter',
+          recordId: v.encounterId,
+          op: 'set',
+          field: 'patientId',
+          value: survivor,
+          baseVersion: 1,
+        }),
+      );
+      expect((await readAs(w.ana.token, v.encounterId)).body.recordsOnAnotherChart).toEqual([kept.recordId]);
+      await mergeDirect(h, w.t.teamId, second, survivor, w.t.adminId);
+      const after = await readAs(w.ana.token, v.encounterId);
+      expect(byEntity(after.body)).toEqual([line('referral', kept.recordId)]);
+      expect(after.body.recordsOnAnotherChart).toEqual([]);
     });
 
     it('logs each one shown as a read of its patient’s record', async () => {

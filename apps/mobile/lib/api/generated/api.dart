@@ -745,6 +745,26 @@ enum NoteAttestation {
   String toJson() => wire;
 }
 
+/// Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart
+enum NoteHeldBecause {
+  wrote('wrote'),
+  actsAsAuthor('acts_as_author'),
+  completed('completed'),
+  signed('signed'),
+  cannotSeeAll('cannot_see_all'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteHeldBecause(this.wire);
+  final String wire;
+
+  static NoteHeldBecause fromJson(String value) =>
+      NoteHeldBecause.values.firstWhere((e) => e.wire == value, orElse: () => NoteHeldBecause.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteStatus {
   draft('draft'),
   completed('completed'),
@@ -2641,6 +2661,7 @@ class HomeCounts {
     this.notesOverdue,
     this.notesToFinish,
     this.teamIncomplete,
+    this.teamOverdue,
   });
 
   /// Visits in the attestation queue (GET /v1/team/attestation-queue); encounters.chart and a credential that attests
@@ -2653,6 +2674,8 @@ class HomeCounts {
   final int? notesToFinish;
   /// The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users
   final int? teamIncomplete;
+  /// How many of the team’s drafts are overdue, as that list says each is; team.manage_users
+  final int? teamOverdue;
 
   factory HomeCounts.fromJson(Map<String, dynamic> json) => HomeCounts(
         attestationWaiting: json['attestationWaiting'] == null ? null : (json['attestationWaiting'] as num).toInt(),
@@ -2660,6 +2683,7 @@ class HomeCounts {
         notesOverdue: json['notesOverdue'] == null ? null : (json['notesOverdue'] as num).toInt(),
         notesToFinish: json['notesToFinish'] == null ? null : (json['notesToFinish'] as num).toInt(),
         teamIncomplete: json['teamIncomplete'] == null ? null : (json['teamIncomplete'] as num).toInt(),
+        teamOverdue: json['teamOverdue'] == null ? null : (json['teamOverdue'] as num).toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2668,6 +2692,7 @@ class HomeCounts {
         if (notesOverdue != null) 'notesOverdue': notesOverdue!,
         if (notesToFinish != null) 'notesToFinish': notesToFinish!,
         if (teamIncomplete != null) 'teamIncomplete': teamIncomplete!,
+        if (teamOverdue != null) 'teamOverdue': teamOverdue!,
       };
 }
 
@@ -2844,6 +2869,8 @@ class IncompleteNote {
     required this.startedAt,
     required this.author,
     required this.authorActive,
+    this.preferredName,
+    this.title,
   });
 
   final String encounterId;
@@ -2856,6 +2883,10 @@ class IncompleteNote {
   final Object? author;
   /// The author is still an active member of the team
   final bool authorActive;
+  /// The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view
+  final String? preferredName;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory IncompleteNote.fromJson(Map<String, dynamic> json) => IncompleteNote(
         encounterId: json['encounterId'] as String,
@@ -2866,6 +2897,8 @@ class IncompleteNote {
         startedAt: DateTime.parse(json['startedAt'] as String),
         author: json['author'],
         authorActive: json['authorActive'] as bool,
+        preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2877,6 +2910,8 @@ class IncompleteNote {
         'startedAt': startedAt.toUtc().toIso8601String(),
         'author': author,
         'authorActive': authorActive,
+        if (preferredName != null) 'preferredName': preferredName == null ? null : preferredName!,
+        if (title != null) 'title': title!,
       };
 }
 
@@ -3637,6 +3672,47 @@ class NoteAssigned {
       };
 }
 
+class NoteAssignee {
+  const NoteAssignee({
+    required this.credential,
+    required this.displayName,
+    required this.userId,
+  });
+
+  final Credential credential;
+  final String displayName;
+  final String userId;
+
+  factory NoteAssignee.fromJson(Map<String, dynamic> json) => NoteAssignee(
+        credential: Credential.fromJson(json['credential'] as String),
+        displayName: json['displayName'] as String,
+        userId: json['userId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'credential': credential.toJson(),
+        'displayName': displayName,
+        'userId': userId,
+      };
+}
+
+/// Every active member the assign route would take for this note, by name
+class NoteAssignees {
+  const NoteAssignees({
+    required this.assignees,
+  });
+
+  final List<NoteAssignee> assignees;
+
+  factory NoteAssignees.fromJson(Map<String, dynamic> json) => NoteAssignees(
+        assignees: (json['assignees'] as List<dynamic>).map((e) => NoteAssignee.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'assignees': assignees.map((e) => e.toJson()).toList(),
+      };
+}
+
 class NoteToFinish {
   const NoteToFinish({
     required this.encounterId,
@@ -4038,7 +4114,7 @@ class PatientChart {
   final List<RecordSnapshot>? problems;
   /// Which projection made this copy
   final String projection;
-  /// The last three visits in full, read offline from the cache
+  /// The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only
   final List<VisitRead>? recentVisits;
   /// The merged ID that was asked for
   final String? redirectedFrom;
@@ -4683,9 +4759,11 @@ class QueueNote {
     required this.author,
     required this.canAct,
     required this.completedAt,
+    this.heldBecause,
     required this.noteId,
     required this.noteTypeKey,
     required this.signedBefore,
+    this.title,
   });
 
   /// Who attested it last, when a correction sent it back; null otherwise
@@ -4694,19 +4772,24 @@ class QueueNote {
   /// False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed
   final bool canAct;
   final DateTime? completedAt;
+  final Object? heldBecause;
   final String noteId;
   final String noteTypeKey;
   /// Who signed it before, when a correction sent it back; null otherwise
   final UserRef? signedBefore;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory QueueNote.fromJson(Map<String, dynamic> json) => QueueNote(
         attestedBefore: json['attestedBefore'] == null ? null : UserRef.fromJson(json['attestedBefore'] as Map<String, dynamic>),
         author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
         canAct: json['canAct'] as bool,
         completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
+        heldBecause: json['heldBecause'],
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         signedBefore: json['signedBefore'] == null ? null : UserRef.fromJson(json['signedBefore'] as Map<String, dynamic>),
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -4714,9 +4797,11 @@ class QueueNote {
         'author': author.toJson(),
         'canAct': canAct,
         'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
+        'heldBecause': heldBecause,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'signedBefore': signedBefore == null ? null : signedBefore!.toJson(),
+        if (title != null) 'title': title!,
       };
 }
 
@@ -4940,7 +5025,7 @@ class RecordSnapshot {
     required this.version,
   });
 
-  /// What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then
+  /// What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now
   final Map<String, Object?> attributes;
   final String authorUserId;
   final DateTime createdAt;
@@ -5901,31 +5986,41 @@ class TimelineNote {
   const TimelineNote({
     required this.attestation,
     required this.group,
+    this.medical,
     required this.noteId,
     required this.noteTypeKey,
     required this.status,
+    this.title,
   });
 
   final NoteAttestation attestation;
   final TimelineGroup group;
+  /// A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+  final bool? medical;
   final String noteId;
   final String noteTypeKey;
   final NoteStatus status;
+  /// The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+  final String? title;
 
   factory TimelineNote.fromJson(Map<String, dynamic> json) => TimelineNote(
         attestation: NoteAttestation.fromJson(json['attestation'] as String),
         group: TimelineGroup.fromJson(json['group'] as String),
+        medical: json['medical'] == null ? null : json['medical'] as bool,
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         status: NoteStatus.fromJson(json['status'] as String),
+        title: json['title'] == null ? null : json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'attestation': attestation.toJson(),
         'group': group.toJson(),
+        if (medical != null) 'medical': medical!,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'status': status.toJson(),
+        if (title != null) 'title': title!,
       };
 }
 
@@ -6197,10 +6292,14 @@ class VisitNote {
     required this.attestation,
     required this.attestations,
     required this.author,
+    this.canAttest,
+    this.canCosign,
     required this.completedAt,
     this.contentHash,
     required this.corrections,
     required this.group,
+    this.heldBecause,
+    this.medical,
     required this.noteId,
     required this.noteTypeKey,
     required this.noteTypeVersion,
@@ -6216,11 +6315,18 @@ class VisitNote {
   final NoteAttestation attestation;
   final List<AttestationView> attestations;
   final UserRef author;
+  /// The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)
+  final bool? canAttest;
+  /// The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)
+  final bool? canCosign;
   final DateTime? completedAt;
   /// The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one
   final String? contentHash;
   final List<CorrectionView> corrections;
   final TimelineGroup group;
+  final NoteHeldBecause? heldBecause;
+  /// A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+  final bool? medical;
   final String noteId;
   final String noteTypeKey;
   final int noteTypeVersion;
@@ -6237,10 +6343,14 @@ class VisitNote {
         attestation: NoteAttestation.fromJson(json['attestation'] as String),
         attestations: (json['attestations'] as List<dynamic>).map((e) => AttestationView.fromJson(e as Map<String, dynamic>)).toList(),
         author: UserRef.fromJson(json['author'] as Map<String, dynamic>),
+        canAttest: json['canAttest'] == null ? null : json['canAttest'] as bool,
+        canCosign: json['canCosign'] == null ? null : json['canCosign'] as bool,
         completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
         contentHash: json['contentHash'] == null ? null : json['contentHash'] as String,
         corrections: (json['corrections'] as List<dynamic>).map((e) => CorrectionView.fromJson(e as Map<String, dynamic>)).toList(),
         group: TimelineGroup.fromJson(json['group'] as String),
+        heldBecause: json['heldBecause'] == null ? null : NoteHeldBecause.fromJson(json['heldBecause'] as String),
+        medical: json['medical'] == null ? null : json['medical'] as bool,
         noteId: json['noteId'] as String,
         noteTypeKey: json['noteTypeKey'] as String,
         noteTypeVersion: (json['noteTypeVersion'] as num).toInt(),
@@ -6257,10 +6367,14 @@ class VisitNote {
         'attestation': attestation.toJson(),
         'attestations': attestations.map((e) => e.toJson()).toList(),
         'author': author.toJson(),
+        if (canAttest != null) 'canAttest': canAttest!,
+        if (canCosign != null) 'canCosign': canCosign!,
         'completedAt': completedAt == null ? null : completedAt!.toUtc().toIso8601String(),
         if (contentHash != null) 'contentHash': contentHash!,
         'corrections': corrections.map((e) => e.toJson()).toList(),
         'group': group.toJson(),
+        if (heldBecause != null) 'heldBecause': heldBecause!.toJson(),
+        if (medical != null) 'medical': medical!,
         'noteId': noteId,
         'noteTypeKey': noteTypeKey,
         'noteTypeVersion': noteTypeVersion,
@@ -6277,11 +6391,14 @@ class VisitRead {
     required this.addenda,
     required this.clockVerified,
     required this.encounterId,
+    this.hasHandoff,
     required this.kind,
     required this.locationText,
     required this.notes,
     required this.patientId,
+    this.preferredName,
     required this.records,
+    this.recordsOnAnotherChart,
     required this.startedAt,
     required this.status,
     this.summary,
@@ -6291,13 +6408,19 @@ class VisitRead {
   final List<AddendumView> addenda;
   final bool clockVerified;
   final String encounterId;
+  /// The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)
+  final bool? hasHandoff;
   final EncounterKind kind;
   final String? locationText;
   /// The notes the reader may see; no empty draft
   final List<VisitNote> notes;
   final String? patientId;
+  /// The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient
+  final String? preferredName;
   /// Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them
   final List<RecordSnapshot> records;
+  /// The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another
+  final List<String>? recordsOnAnotherChart;
   final DateTime startedAt;
   final NoteStatus status;
   /// Absent for a Medical visit to a reader of no Medical notes
@@ -6307,11 +6430,14 @@ class VisitRead {
         addenda: (json['addenda'] as List<dynamic>).map((e) => AddendumView.fromJson(e as Map<String, dynamic>)).toList(),
         clockVerified: json['clockVerified'] as bool,
         encounterId: json['encounterId'] as String,
+        hasHandoff: json['hasHandoff'] == null ? null : json['hasHandoff'] as bool,
         kind: EncounterKind.fromJson(json['kind'] as String),
         locationText: json['locationText'] == null ? null : json['locationText'] as String,
         notes: (json['notes'] as List<dynamic>).map((e) => VisitNote.fromJson(e as Map<String, dynamic>)).toList(),
         patientId: json['patientId'] == null ? null : json['patientId'] as String,
+        preferredName: json['preferredName'] == null ? null : json['preferredName'] as String,
         records: (json['records'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+        recordsOnAnotherChart: json['recordsOnAnotherChart'] == null ? null : (json['recordsOnAnotherChart'] as List<dynamic>).map((e) => e as String).toList(),
         startedAt: DateTime.parse(json['startedAt'] as String),
         status: NoteStatus.fromJson(json['status'] as String),
         summary: json['summary'] == null ? null : json['summary'] as String,
@@ -6321,11 +6447,14 @@ class VisitRead {
         'addenda': addenda.map((e) => e.toJson()).toList(),
         'clockVerified': clockVerified,
         'encounterId': encounterId,
+        if (hasHandoff != null) 'hasHandoff': hasHandoff!,
         'kind': kind.toJson(),
         'locationText': locationText == null ? null : locationText!,
         'notes': notes.map((e) => e.toJson()).toList(),
         'patientId': patientId == null ? null : patientId!,
+        if (preferredName != null) 'preferredName': preferredName == null ? null : preferredName!,
         'records': records.map((e) => e.toJson()).toList(),
+        if (recordsOnAnotherChart != null) 'recordsOnAnotherChart': recordsOnAnotherChart!.map((e) => e).toList(),
         'startedAt': startedAt.toUtc().toIso8601String(),
         'status': status.toJson(),
         if (summary != null) 'summary': summary == null ? null : summary!,
@@ -6534,6 +6663,12 @@ class SineobexApi {
   Future<List<MembershipChange>> getMemberHistory({required String membershipId}) async {
     final json = await _transport.send('GET', '/v1/team/members/${Uri.encodeComponent(membershipId)}/history');
     return (json as List<dynamic>).map((e) => MembershipChange.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Who may be put in the place of a note’s author who has left the team
+  Future<NoteAssignees> getNoteAssignees({required String noteId}) async {
+    final json = await _transport.send('GET', '/v1/notes/${Uri.encodeComponent(noteId)}/assignees');
+    return NoteAssignees.fromJson(json as Map<String, dynamic>);
   }
 
   /// The drafts the caller acts as the author of, with whether each is overdue

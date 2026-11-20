@@ -412,15 +412,28 @@ Every card is level R, except L5-labels, and includes its widget test file under
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| L6-visit-page | R | `encounters/[encounterId]/page.tsx`, `encounters/[encounterId]/NoteView.tsx` | L2-contract |
-| L6-patient-timeline | R | `patients/[patientId]/Timeline.tsx`, `patients/[patientId]/page.tsx` | L2-contract |
-| L6-queues | R | `team/cosign/page.tsx`, `team/attestation/page.tsx` | L2-contract |
-| L6-sign-actions | R | `apps/portal/src/app/actions/encounters.ts`, `encounters/[encounterId]/SignActions.tsx` | L6-visit-page |
+| L6-visit-page | R | `encounters/[encounterId]/page.tsx`, `encounters/[encounterId]/NoteView.tsx`. As built also `encounters/encounters.module.css`, `apps/portal/src/lib/encounters.ts` with its test (a note's state, the trail's words, the timeline's rows, the records made at a visit), `apps/portal/src/lib/refusals.ts` with its test (one table of refusals for phase 1's `unwrap` in `apps/portal/src/lib/api.ts` and for the route handlers) and `apps/portal/src/lib/same-origin.ts` (a route handler takes the portal's own POSTs only). After the review the page reads `recordsOnAnotherChart`, a note's recap wraps at 320 px, and `api()` refuses an idle session, prefetch or not (lifecycle 9.11) | L2-contract |
+| L6-patient-timeline | R | `patients/[patientId]/Timeline.tsx`, `patients/[patientId]/page.tsx`. As built Show earlier visits posts to a route handler, `encounters/earlier/route.ts`, not a server action, and phase 3's `apps/portal/src/lib/patient-links.test.ts` holds links to visit pages to `prefetch={false}` too (lifecycle 9.11) | L2-contract |
+| L6-queues | R | `team/cosign/page.tsx`, `team/attestation/page.tsx`. As built both draw `team/cosign/SignatureQueue.tsx`, worded by `apps/portal/src/lib/worklists.ts` with its test; after the review a note says why it waits, from the queue note's `heldBecause` (lifecycle 9.14) | L2-contract |
+| L6-sign-actions | R | `apps/portal/src/app/actions/encounters.ts`, `encounters/[encounterId]/SignActions.tsx`. As built no server action: the route handler `encounters/[encounterId]/sign/route.ts`, with `apps/portal/src/lib/sign.ts` and its test, since a server action re-renders the page and reads the visit again. After the review the page renders it for each act on every render, and it keeps the first render's plan, none included (lifecycle 9.11) | L6-visit-page |
 | L6-incomplete | R | `team/incomplete-notes/page.tsx`, `home/page.tsx` | L2-contract |
-| L6-assign | R | `encounters/[encounterId]/AssignForm.tsx`, `apps/portal/src/app/actions/encounters.ts` | L6-sign-actions |
-| L6-nav-counts | R | `layout.tsx` (the links, shown by credential), `home/page.tsx` (the attending's count) | L6-queues |
-| L6-handoff-link | S | `encounters/[encounterId]/page.tsx` | L6-visit-page, L2-handoff-pdf |
-| L6-e2e | R | `apps/portal/e2e/encounters.spec.ts`, `apps/portal/e2e/attestation.spec.ts` | the L6 cards above |
+| L6-assign | R | `encounters/[encounterId]/AssignForm.tsx`, `apps/portal/src/app/actions/encounters.ts`. As built no server action: the route handler `encounters/[encounterId]/assign/route.ts`, with `apps/portal/src/lib/assign.ts` and its test, and `encounters/[encounterId]/AssignForm.test.ts` (the empty list, which the seeded team can't draw end to end); the visit page asks each note's assignees route and offers Assign on its 200 (lifecycle 5.5, 9.12) | L6-sign-actions |
+| L6-nav-counts | R | `layout.tsx` (the links, shown by credential), `home/page.tsx` (the attending's count). As built also `apps/portal/src/lib/credentials.ts` with its test (the credential table's sign and attest columns, held to `permissions.ts`), a Notes not complete link for `team.manage_users`, and Home's cards for both queues and Notes not complete (lifecycle 9.12, 9.14) | L6-queues |
+| L6-handoff-link | S | `encounters/[encounterId]/page.tsx`. As built also `encounters/[encounterId]/HandoffExport.tsx`, the route handler `encounters/[encounterId]/ems-handoff/route.ts` and `apps/portal/src/lib/handoff.ts` with its test (lifecycle 9.11) | L6-visit-page, L2-handoff-pdf |
+| L6-e2e | R | `apps/portal/e2e/encounters.spec.ts`, `apps/portal/e2e/attestation.spec.ts`. As built also `apps/portal/playwright.config.ts` (the identity provider's test hook, for the export's trip through `/reauth`), and after the review phase 1's `apps/portal/e2e/a11y.spec.ts`, whose every-screen sweep takes a visit page, the two queues and Notes not complete (lifecycle 11.1, 11.2) | the L6 cards above |
+
+As built (Nov 19), an API job came first, in other units' files, so that no page holds a rule of
+its own (lifecycle 5 as built): L2's `api/encounters/` (`second-person.ts`, new: who may co-sign or
+attest, which the acts, the queues and the visit read ask; `read.ts`, `queues.ts`, `cosign.ts`,
+`attest.ts`, `assign.ts` with the assignees route, `incomplete.ts`, `counts.ts`, `timeline.ts`,
+`handoff.ts` and `rules.ts`), `api/routes/encounters.ts` and `api/patients/{charts,schemas}.ts`;
+L1's `api/sync/entities/referral.ts` and `api/sync/schemas.ts` (a referral's `authorName`), with
+L3's test server and its parity case (`phone-test/sync/fake_server.dart`,
+`fake_parity_test.dart`); the contract, regenerated with each; phase 1's `tools/dev-idp.mjs` (a
+test hook that dates a sign-in back); and the tests,
+`api-test/encounters-{read-actions,assignees}.test.ts` and `api-test/dev-idp-hooks.test.ts`, new,
+besides L2's and L1's and `api-test/permissions.test.ts`. The review's fixes went into the same
+files (lifecycle 5.1, 5.3 to 5.5).
 
 ### L7 The Done when (lifecycle 11.1)
 

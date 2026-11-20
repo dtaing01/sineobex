@@ -11,15 +11,16 @@ import type {
 } from '../patients/schemas.ts';
 import { RULES } from '../sync/entities/index.ts';
 import { DefinitionError, definitionOf, snapshot } from '../sync/records.ts';
-import { readerOf, seenBy, statusShown, visitAsRead, type ReadSource, type StatusNote } from './read.ts';
+import { readerOf, seenBy, statusShown, visitAsRead, type StatusNote } from './read.ts';
 import { noteIsEmpty, type Attestation, type NoteStatus } from './rules.ts';
 
 /**
  * The patient timeline (lifecycle 5.2): a merged group's visits, newest first, each with the notes
- * the reader may see, by the visit read's rules (read.ts: readerOf, seenBy and statusShown); and the
- * last three visits in full, so the phone's chart cache can show what happened last time with no
- * signal (PRD main 533). Nothing a note holds is listed: only its type, group and state, so no
- * finding of a sensitive exam reaches the overview for any reader (6.4 rule 3).
+ * the reader may see, by the visit read's rules (read.ts: readerOf, seenBy and statusShown); and, on
+ * the phone's cached chart alone, the last three visits in full, so the phone can show what
+ * happened last time with no signal (PRD main 533). Nothing a note holds is listed: only its type (its key and title), group,
+ * whether it is Medical and its state, so no finding of a sensitive exam reaches the overview for
+ * any reader (6.4 rule 3).
  */
 
 /** Visits per page of the timeline: the chart's first page, and each of "Show earlier visits". */
@@ -95,6 +96,8 @@ export async function timelineVisits(
     shown.get(n.encounterId)!.push({
       noteId: n.id,
       noteTypeKey: n.noteTypeKey,
+      title: type.title,
+      medical: n.medical,
       group: type.group,
       status: n.status,
       attestation: n.attestation,
@@ -125,27 +128,32 @@ async function groupReferrals(tx: Tx, scope: TeamScope, canonicalId: string) {
   return out;
 }
 
+/** What a chart carries of the group's visits: its timeline, part of the chart's own logged read. */
+export async function chartTimeline(tx: Tx, scope: TeamScope, canonicalId: string): Promise<TimelineValue> {
+  return {
+    encounters: await timelineVisits(tx, scope, canonicalId),
+    referrals: await groupReferrals(tx, scope, canonicalId),
+  };
+}
+
 /**
- * What a chart carries of the group's visits: its timeline and its last three visits in full, each
- * read, and logged, as GET /v1/encounters/{id} reads it.
+ * What the phone's cached chart carries besides: the last three visits of [timeline] in full, each
+ * read, and logged, as GET /v1/encounters/{id} reads it, with source `cache`. The portal's chart
+ * read carries none: it opens a visit on its own page, and a read is logged where it is shown (the
+ * review of unit L6 found the portal's chart logging three visits' notes it never showed).
  */
-export async function chartVisits(
+export async function cachedRecentVisits(
   tx: Tx,
   scope: TeamScope,
   audit: AuditFn,
-  canonicalId: string,
-  source: ReadSource,
-): Promise<{ timeline: TimelineValue; recentVisits: VisitReadValue[] }> {
-  const encounters = await timelineVisits(tx, scope, canonicalId);
+  timeline: TimelineValue,
+): Promise<VisitReadValue[]> {
   const recentVisits: VisitReadValue[] = [];
-  for (const e of encounters.slice(0, RECENT_VISITS)) {
-    const visit = await visitAsRead(tx, scope, audit, e.encounterId, source);
+  for (const e of timeline.encounters.slice(0, RECENT_VISITS)) {
+    const visit = await visitAsRead(tx, scope, audit, e.encounterId, 'cache');
     if (visit) recentVisits.push(visit);
   }
-  return {
-    timeline: { encounters, referrals: await groupReferrals(tx, scope, canonicalId) },
-    recentVisits,
-  };
+  return recentVisits;
 }
 
 /**

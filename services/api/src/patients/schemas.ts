@@ -442,6 +442,24 @@ export const AttestationView = z
   })
   .openapi('AttestationView');
 
+// Fields added after phone builds cached a chart's recent visits and timeline carry a default, so a
+// copy cached before them still reads, and so does a scripted answer written before them (unit L6).
+export const Medical = z.boolean().default(false).openapi({
+  description:
+    'A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)',
+});
+export const NoteTitle = z.string().default('').openapi({
+  description:
+    'The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent',
+});
+
+export const NoteHeldBecause = z
+  .enum(['wrote', 'acts_as_author', 'completed', 'signed', 'cannot_see_all'])
+  .openapi('NoteHeldBecause', {
+    description:
+      'Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart',
+  });
+
 export const VisitNote = z
   .object({
     noteId: Uuid,
@@ -449,6 +467,7 @@ export const VisitNote = z
     noteTypeVersion: z.number().int(),
     title: z.string(),
     group: TimelineGroup,
+    medical: Medical,
     status: NoteStatus,
     attestation: Attestation,
     completedAt: DateTime.nullable(),
@@ -467,6 +486,15 @@ export const VisitNote = z
       description:
         'The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one',
     }),
+    canCosign: z.boolean().default(false).openapi({
+      description:
+        'The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)',
+    }),
+    canAttest: z.boolean().default(false).openapi({
+      description:
+        'The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)',
+    }),
+    heldBecause: NoteHeldBecause.optional(),
   })
   .openapi('VisitNote');
 
@@ -479,6 +507,14 @@ export const VisitRead = z
     startedAt: DateTime,
     clockVerified: z.boolean(),
     locationText: z.string().nullable(),
+    preferredName: z.string().nullable().default(null).openapi({
+      description:
+        'The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient',
+    }),
+    hasHandoff: z.boolean().default(false).openapi({
+      description:
+        'The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)',
+    }),
     summary: z.string().nullable().optional().openapi({
       description: 'Absent for a Medical visit to a reader of no Medical notes',
     }),
@@ -488,6 +524,10 @@ export const VisitRead = z
       description:
         'Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them',
     }),
+    recordsOnAnotherChart: z.array(Uuid).default([]).openapi({
+      description:
+        'The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another',
+    }),
   })
   .openapi('VisitRead');
 
@@ -495,6 +535,8 @@ export const TimelineNote = z
   .object({
     noteId: Uuid,
     noteTypeKey: z.string(),
+    title: NoteTitle,
+    medical: Medical,
     group: TimelineGroup,
     status: NoteStatus,
     attestation: Attestation,
@@ -546,7 +588,8 @@ export const PatientChart = z
       description: 'On the chart and the phone’s cache; absent where a chart is shown beside a decision',
     }),
     recentVisits: z.array(VisitRead).optional().openapi({
-      description: 'The last three visits in full, read offline from the cache',
+      description:
+        'The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only',
     }),
   })
   .openapi('PatientChart');

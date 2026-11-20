@@ -151,6 +151,34 @@ describe('phase 4 sync: referrals', () => {
     expect(await row(fromBo.recordId)).toBeUndefined();
   });
 
+  it('its snapshot names who recorded it, by their name now, wherever it is read', async () => {
+    // The referral list shows who recorded each (lifecycle 7, unit L6), as an addendum names its
+    // author. A referral keeps no name of its own, so it is the recorder's name now, as a note names
+    // who acts as its author (D108). A staff name, not a patient's.
+    const made = await referral(ivy, patientA, { details: 'Demo: food bank on 5th' });
+    expect(await ivy.send(made)).toEqual([taken(made)]);
+    const authorName = async () => {
+      const r = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: dana.token,
+        teamId: t.teamId,
+        json: { records: [{ entity: 'referral', id: made.recordId }] },
+      });
+      expect(r.status).toBe(200);
+      return (r.body.records as { attributes: Record<string, unknown> }[])[0]!.attributes.authorName;
+    };
+    expect(await authorName()).toBe('Ivy (demo)');
+    // The chart's timeline carries the same snapshot.
+    const chart = await call(h, `/v1/patients/${patientA}`, { token: dana.token, teamId: t.teamId });
+    expect(
+      (
+        chart.body.timeline as { referrals: { id: string; attributes: Record<string, unknown> }[] }
+      ).referrals.find((r) => r.id === made.recordId)!.attributes.authorName,
+    ).toBe('Ivy (demo)');
+    await h.scratch.owner`update sineobex.users set display_name = 'Ivy Rowe (demo)' where id = ${ivy.id}`;
+    expect(await authorName()).toBe('Ivy Rowe (demo)');
+  });
+
   it('is dated no more than a day after the server’s date (referral_in_future)', async () => {
     // The harness clock reads 2026-10-20.
     const changes = [

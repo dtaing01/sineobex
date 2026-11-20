@@ -308,6 +308,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notes/{noteId}/assignees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who may be put in the place of a note’s author who has left the team
+         * @description Lifecycle 3.8, 5.5, 9.12. Needs team.manage_users; a read, so no recent sign-in (the assignment asks for one). Every active member the assign route would take, by its own rule (mayAssign), so a picker lists exactly them. 409 author_active while whoever acts as the author is an active member; 404 for a note the team does not have or the caller may not read. Logged as note.assignees_viewed on the note.
+         */
+        get: operations["getNoteAssignees"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/owner/teams": {
         parameters: {
             query?: never;
@@ -1592,6 +1612,8 @@ export interface components {
             notesToFinish?: number;
             /** @description The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users */
             teamIncomplete?: number;
+            /** @description How many of the team’s drafts are overdue, as that list says each is; team.manage_users */
+            teamOverdue?: number;
         };
         IdentityCorrection: {
             baseVersion: number;
@@ -1659,6 +1681,16 @@ export interface components {
             author: components["schemas"]["UserRef"] & unknown;
             /** @description The author is still an active member of the team */
             authorActive: boolean;
+            /**
+             * @description The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view
+             * @default null
+             */
+            preferredName: string | null;
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         IncompleteNotes: {
             notes: components["schemas"]["IncompleteNote"][];
@@ -1875,8 +1907,23 @@ export interface components {
             /** Format: uuid */
             toUserId: string;
         };
+        NoteAssignee: {
+            credential: components["schemas"]["Credential"];
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description Every active member the assign route would take for this note, by name */
+        NoteAssignees: {
+            assignees: components["schemas"]["NoteAssignee"][];
+        };
         /** @enum {string} */
         NoteAttestation: "not_needed" | "waiting" | "attested";
+        /**
+         * @description Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart
+         * @enum {string}
+         */
+        NoteHeldBecause: "wrote" | "acts_as_author" | "completed" | "signed" | "cannot_see_all";
         /** @enum {string} */
         NoteStatus: "draft" | "completed" | "signed";
         NotesToFinish: {
@@ -2023,7 +2070,7 @@ export interface components {
             problems?: components["schemas"]["RecordSnapshot"][];
             /** @description Which projection made this copy */
             projection: string;
-            /** @description The last three visits in full, read offline from the cache */
+            /** @description The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only */
             recentVisits?: components["schemas"]["VisitRead"][];
             /**
              * Format: uuid
@@ -2229,11 +2276,17 @@ export interface components {
             canAct: boolean;
             /** Format: date-time */
             completedAt: string | null;
+            heldBecause?: components["schemas"]["NoteHeldBecause"] & unknown;
             /** Format: uuid */
             noteId: string;
             noteTypeKey: string;
             /** @description Who signed it before, when a correction sent it back; null otherwise */
             signedBefore: components["schemas"]["UserRef"] | null;
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         QueueVisit: {
             /** Format: uuid */
@@ -2288,7 +2341,7 @@ export interface components {
             id: string;
         };
         RecordSnapshot: {
-            /** @description What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then */
+            /** @description What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now */
             attributes: {
                 [key: string]: unknown;
             };
@@ -2612,10 +2665,20 @@ export interface components {
         TimelineNote: {
             attestation: components["schemas"]["NoteAttestation"];
             group: components["schemas"]["TimelineGroup"];
+            /**
+             * @description A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+             * @default false
+             */
+            medical: boolean;
             /** Format: uuid */
             noteId: string;
             noteTypeKey: string;
             status: components["schemas"]["NoteStatus"];
+            /**
+             * @description The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent
+             * @default
+             */
+            title: string;
         };
         TimelinePage: {
             /** @description Newest first, at most 50 */
@@ -2696,12 +2759,28 @@ export interface components {
             attestation: components["schemas"]["NoteAttestation"];
             attestations: components["schemas"]["AttestationView"][];
             author: components["schemas"]["UserRef"];
+            /**
+             * @description The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)
+             * @default false
+             */
+            canAttest: boolean;
+            /**
+             * @description The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)
+             * @default false
+             */
+            canCosign: boolean;
             /** Format: date-time */
             completedAt: string | null;
             /** @description The note as it is now (lifecycle 4.5), to send with a co-sign or an attest: only to a reader who acts as its author, sees every answer of any note, or may co-sign or attest and sees every answer of this one */
             contentHash?: string;
             corrections: components["schemas"]["CorrectionView"][];
             group: components["schemas"]["TimelineGroup"];
+            heldBecause?: components["schemas"]["NoteHeldBecause"];
+            /**
+             * @description A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)
+             * @default false
+             */
+            medical: boolean;
             /** Format: uuid */
             noteId: string;
             noteTypeKey: string;
@@ -2719,14 +2798,29 @@ export interface components {
             clockVerified: boolean;
             /** Format: uuid */
             encounterId: string;
+            /**
+             * @description The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)
+             * @default false
+             */
+            hasHandoff: boolean;
             kind: components["schemas"]["EncounterKind"];
             locationText: string | null;
             /** @description The notes the reader may see; no empty draft */
             notes: components["schemas"]["VisitNote"][];
             /** Format: uuid */
             patientId: string | null;
+            /**
+             * @description The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient
+             * @default null
+             */
+            preferredName: string | null;
             /** @description Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them */
             records: components["schemas"]["RecordSnapshot"][];
+            /**
+             * @description The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another
+             * @default []
+             */
+            recordsOnAnotherChart: string[];
             /** Format: date-time */
             startedAt: string;
             status: components["schemas"]["NoteStatus"];
@@ -3541,6 +3635,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoteAssigned"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getNoteAssignees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The people the note may be assigned to */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteAssignees"];
                 };
             };
             /** @description Not signed in, or the session expired */

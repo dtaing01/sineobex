@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { z } from '@hono/zod-openapi';
-import { effectiveAnswers } from '@sineobex/forms';
 import { TeamScope, type AuditFn } from '../auth/context.ts';
 import { CAPABILITIES, CREDENTIALS, isPermission, type Credential } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
@@ -16,25 +15,18 @@ import {
   byDefinition,
   DefinitionError,
   jsonb,
-  sameValue,
   type StoredRecord,
 } from '../sync/records.ts';
 import { noteContentHash } from './content-hash.ts';
-import { medicalHidden, noteAsRead, type NoteRead } from './read.ts';
-import {
-  cosignEffect,
-  type AttestRefusal,
-  type Attestation,
-  type CosignRefusal,
-  type NoteStatus,
-} from './rules.ts';
+import type { AttestRefusal, Attestation, CosignRefusal } from './rules.ts';
+import { actNote, cosignOf, type ActNote } from './second-person.ts';
 
 /**
  * Co-sign (lifecycle 3.7, 5.3): a second person signs a visit's Medical notes that wait for a
  * co-signer, online, in one action, since the timeline shows one entry per visit (PRD main 97).
- * The rule is cosignEffect's (rules.ts); this module loads what it asks, under the team lock, and
- * writes what it says. What co-sign and attest share (the body, the checks of every note named and
- * of every note left out, the refusals) is here too; attest.ts and queues.ts build on it.
+ * Who may co-sign is second-person.ts's to say (cosignOf); this module asks it of each note under the
+ * team lock and writes what it says. What co-sign and attest share (the body, the checks of every
+ * note named and of every note left out, the refusals) is here too; attest.ts builds on it.
  */
 
 /** A visit holds a few notes (forms 6.2); a list longer than this is not a visit's. */
@@ -86,59 +78,6 @@ export const NoteActResult = z
 export type NoteActInputValue = z.infer<typeof NoteActInput>;
 export type NoteActResultValue = z.infer<typeof NoteActResult>;
 
-/** A note as a second person finds it: what cosignEffect and attestEffect ask of the note. */
-export interface ActNote {
-  note: StoredRecord;
-  /** Null when the caller may not read the note at all, or the server cannot read its definition. */
-  read: NoteRead | null;
-  /**
-   * The caller is no second person to the note (3.7): they act as its author now, wrote it, or
-   * completed it. What the rules call actsAsAuthor (is_author): a note's writer whose note was
-   * assigned away while they were gone is still its writer when they come back (review findings
-   * LPM-1, LAC-3).
-   */
-  actsAsAuthor: boolean;
-  /**
-   * The caller sees every answer that counts (lifecycle 6.4 rule 4): what visibleAnswers gives them
-   * is all of effectiveAnswers, and the summary the hash covers is theirs to read.
-   */
-  seesAllThatCounts: boolean;
-  /** Who made the note's current signature, or null for a note it does not name one. */
-  signerUserId: string | null;
-}
-
-export async function actNote(
-  tx: Tx,
-  scope: TeamScope,
-  visit: StoredRecord,
-  note: StoredRecord,
-): Promise<ActNote> {
-  const caller = scope.principal.userId;
-  const [writer] = await tx<{ completedBy: string | null }[]>`
-    select completed_by from sineobex.encounter_notes where team_id = ${note.teamId} and id = ${note.id}`;
-  const actsAsAuthor =
-    actingAuthor(note) === caller || note.authorUserId === caller || writer?.completedBy === caller;
-  const signoffId = note.attributes.signoffId as string | null;
-  const [signature] = signoffId
-    ? await tx<{ signerUserId: string }[]>`
-        select signer_user_id from sineobex.note_signoffs where team_id = ${note.teamId} and id = ${signoffId}`
-    : [];
-  const signerUserId = signature?.signerUserId ?? null;
-  const read = await noteAsRead(tx, scope, note);
-  if (!read || read.type === undefined || medicalHidden(scope.team.permissions, visit.values.kind)) {
-    return { note, read, actsAsAuthor, seesAllThatCounts: false, signerUserId };
-  }
-  const { type, answers, seen } = read;
-  let seesAllThatCounts: boolean;
-  try {
-    seesAllThatCounts = byDefinition(() => sameValue(seen, effectiveAnswers(type, answers)));
-  } catch (err) {
-    if (!(err instanceof DefinitionError)) throw err;
-    seesAllThatCounts = false;
-  }
-  return { note, read, actsAsAuthor, seesAllThatCounts, signerUserId };
-}
-
 /** The hash of the note as the server holds it (4.5), or null when it has no definition to hash by. */
 async function heldHash(visit: StoredRecord, n: ActNote): Promise<string | null> {
   if (!n.read || n.read.type === undefined) return null;
@@ -158,20 +97,6 @@ async function heldHash(visit: StoredRecord, n: ActNote): Promise<string | null>
     if (err instanceof DefinitionError) return null;
     throw err;
   }
-}
-
-/** What co-sign asks of one note; `hashMatches` true when only asking whether the caller may act. */
-export function cosignOf(scope: TeamScope, n: ActNote, hashMatches: boolean) {
-  const can = CAPABILITIES[scope.team.credential];
-  return cosignEffect({
-    noteStatus: n.note.status as NoteStatus,
-    medicalNote: n.note.internal.medical === true,
-    actsAsAuthor: n.actsAsAuthor,
-    canSign: can.sign,
-    needsAttestation: can.billingNeedsAttestation,
-    seesAllThatCounts: n.seesAllThatCounts,
-    hashMatches,
-  });
 }
 
 export type ActRefusal = CosignRefusal | AttestRefusal;
@@ -384,7 +309,8 @@ export function cosignVisit(scope: TeamScope, encounterId: string, input: NoteAc
     messages: {
       not_waiting: 'A note isn’t waiting for a co-signature any more. Load the visit again.',
       content_changed: 'The visit changed since you read it. Read it again before you co-sign.',
-      is_author: 'You can’t co-sign a note you wrote.',
+      // Worded for everyone it covers: whoever wrote, completed or acts as the author of a note.
+      is_author: 'You can’t co-sign a note you wrote, completed or act as the author of.',
       cannot_sign: 'Your credential can’t sign notes.',
       cannot_see_all:
         'Your role can’t see every part of this note, so you can’t co-sign it. Someone who can see all of it must.',

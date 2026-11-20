@@ -6,10 +6,12 @@ import {
   createWorld,
   eventsAfter,
   finish,
+  get,
   noteRow,
   noticesOf,
   post,
   removeMember,
+  roleWith,
   SECRETS,
   setCredential,
   staleToken,
@@ -18,20 +20,22 @@ import {
   visitAt,
   whileTeamLocked,
   WITH_EXAM,
+  WITHOUT_EXAM,
   type ChartedVisit,
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, expectAudit, expectAuditClean } from './patient-fixtures.ts';
 import type { Credential } from '../src/auth/permissions.ts';
-import { clinician, noteOn, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
+import { addMember, clinician, noteOn, signoffOf, type Clinician, type Json } from './sync-fixtures.ts';
 
 // POST /v1/notes/{noteId}/assign (lifecycle 3.8, 5.5, PRD main 461): a Program Admin puts another
 // clinician in the place of a note's author who has left the team. team.manage_users and a recent
 // sign-in. Checked by mayAssign: the acting author is no longer an active member (409
 // author_active); the assignee is an active member with encounters.chart, whose credential's rank
 // is at least the one the note was signed under, or for an unsigned note its author's last
-// (422 credential_too_low), and who could see every answer of the note (422 cannot_see_all). Then a
+// (422 credential_too_low), and who could see every answer a note of its type could hold, asked of
+// the definition and their keys, never of what the note holds (422 cannot_see_all). Then a
 // note_assignments row, the note's assigned_user_id, note.assigned and a notice to the assignee.
 // Every person and value is made up.
 
@@ -148,15 +152,18 @@ describe('phase 4: assign a note', () => {
       expect((await assign(r.v.note.noteId, w.nia.id)).status).toBe(200);
     });
 
-    it('a note with an answer the assignee could not see: 422 cannot_see_all', async () => {
-      // Ana's role holds no patients.view_sensitive_exams; Vic's does.
-      const { c, v } = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
-      await gone(c);
-      const r = await assign(v.note.noteId, w.ana.id);
-      expect(r.status).toBe(422);
-      expect((r.body as Json).error?.code).toBe('cannot_see_all');
-      await unassigned(v);
-      expect((await assign(v.note.noteId, w.vic.id)).status).toBe(200);
+    it('a note of a type that could hold an answer the assignee could not see: 422 cannot_see_all, whatever it holds', async () => {
+      // Ana's role holds no patients.view_sensitive_exams; Vic's does. The type has a sensitive exam
+      // section: a note of it with nothing there is refused the same (review finding PRD-1).
+      for (const answers of [WITH_EXAM, WITHOUT_EXAM]) {
+        const { c, v } = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers });
+        await gone(c);
+        const r = await assign(v.note.noteId, w.ana.id);
+        expect(r.status).toBe(422);
+        expect((r.body as Json).error?.code).toBe('cannot_see_all');
+        await unassigned(v);
+        expect((await assign(v.note.noteId, w.vic.id)).status).toBe(200);
+      }
 
       // An attending whose role charts but reads no Medical note (no patients.view) sees none of it.
       const plain = await departed('attending');
@@ -182,6 +189,25 @@ describe('phase 4: assign a note', () => {
       expect((r.body as Json).error?.code).toBe('cannot_see_all');
       expect((await noteRow(h, inMedical.noteId)).assignedUserId).toBeNull();
       expect((await assign(inSocial.noteId, w.eli.id)).status).toBe(200);
+    });
+
+    it('a note the caller may not read is 404, as its assignees route answers, whatever its state, and nothing is written or logged', async () => {
+      // Review finding PAC-3: the act took a note its picker hid as not found, and answered 409 about
+      // the state of another. A role that manages the team without reading a Medical note.
+      const role = await roleWith(h, w.t, 'Roster keeper', ['team.manage_users']);
+      const ros = await addMember(h, w.t, 'roster-keeper@example.com', 'Roster keeper (demo)', role);
+      const { c, v } = await departed('resident');
+      await gone(c);
+      const active = await chartedVisit(w, w.rae);
+      const mark = await auditMark(h);
+      for (const note of [v.note, active.note]) {
+        expect((await get(w, ros.token, `/v1/notes/${note.noteId}/assignees`)).status).toBe(404);
+        const r = await assign(note.noteId, w.nia.id, ros.token);
+        expect(r.status).toBe(404);
+        expect((r.body as Json).error?.code).toBe('not_found');
+      }
+      await unassigned(v);
+      expect(await eventsAfter(h, mark)).toEqual([]);
     });
 
     it('a note the team does not have is 404; a reason too short or too long is 422', async () => {

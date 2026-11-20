@@ -3401,6 +3401,13 @@ class FakeSyncServer {
             if (c.entity == entityCorrection && c.attributes['noteId'] == noteId) c,
         ];
         return _hiddenCorrections(read.type, read.answers, read.reader, all).contains(r.id) ? null : _readSnapshot(r);
+      // Who recorded it, by their name now: a referral keeps no name of its own (referral.ts load).
+      case entityReferral:
+        final read = _readSnapshot(r);
+        return {
+          ...read,
+          'attributes': {...read['attributes']! as Map<String, Object?>, 'authorName': nameOf(r.author)},
+        };
       default:
         return _readSnapshot(r);
     }

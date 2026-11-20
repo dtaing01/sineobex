@@ -1,35 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
-import { CAPABILITIES } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { jsonb, type StoredRecord } from '../sync/records.ts';
-import {
-  noticeOfVisit,
-  secondAct,
-  type ActNote,
-  type NoteActInputValue,
-  type NoteActResultValue,
-} from './cosign.ts';
-import { attestEffect, type AttestRefusal, type Attestation, type NoteStatus } from './rules.ts';
+import { noticeOfVisit, secondAct, type NoteActInputValue, type NoteActResultValue } from './cosign.ts';
+import type { AttestRefusal } from './rules.ts';
+import { attestOf, type ActNote } from './second-person.ts';
 
 /**
  * Attest (lifecycle 3.7, 5.4): an attending reads a visit's signed notes that wait and attests
- * them, online, all or nothing, as co-sign does (cosign.ts runs both). "Attesting adds a dated
- * statement below the note and doesn't change it" (PRD main 216).
+ * them, online, all or nothing, as co-sign does (cosign.ts runs both; who may attest is
+ * second-person.ts's attestOf). "Attesting adds a dated statement below the note and doesn't change
+ * it" (PRD main 216).
  */
-
-/** What attest asks of one note; `hashMatches` true when only asking whether the caller may act. */
-export function attestOf(scope: TeamScope, n: ActNote, hashMatches: boolean) {
-  return attestEffect({
-    noteStatus: n.note.status as NoteStatus,
-    attestation: n.note.internal.attestation as Attestation,
-    actsAsAuthor: n.actsAsAuthor,
-    isSigner: n.signerUserId === scope.principal.userId,
-    canAttest: CAPABILITIES[scope.team.credential].attest,
-    seesAllThatCounts: n.seesAllThatCounts,
-    hashMatches,
-  });
-}
 
 const ATTEST_REFUSALS: readonly AttestRefusal[] = [
   'not_waiting',
@@ -55,7 +37,8 @@ export function attestVisit(scope: TeamScope, encounterId: string, input: NoteAc
     messages: {
       not_waiting: 'A note isn’t waiting for attestation any more. Load the visit again.',
       content_changed: 'The visit changed since you read it. Read it again before you attest.',
-      is_author: 'You can’t attest a note you wrote.',
+      // Worded for everyone it covers: whoever wrote, completed or acts as the author of a note.
+      is_author: 'You can’t attest a note you wrote, completed or act as the author of.',
       is_signer: 'You can’t attest a note you signed.',
       cannot_attest: 'Your credential can’t attest notes.',
       cannot_see_all:

@@ -1576,6 +1576,11 @@
             "description": "The team’s drafts (GET /v1/team/incomplete-notes); team.manage_users",
             "minimum": 0,
             "type": "integer"
+          },
+          "teamOverdue": {
+            "description": "How many of the team’s drafts are overdue, as that list says each is; team.manage_users",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "type": "object"
@@ -1809,6 +1814,19 @@
               "authorActive": {
                 "description": "The author is still an active member of the team",
                 "type": "boolean"
+              },
+              "preferredName": {
+                "default": null,
+                "description": "The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient, and without patients.view",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "default": "",
+                "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+                "type": "string"
               }
             },
             "required": [
@@ -2590,11 +2608,57 @@
         ],
         "type": "object"
       },
+      "NoteAssignee": {
+        "properties": {
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "userId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "credential"
+        ],
+        "type": "object"
+      },
+      "NoteAssignees": {
+        "description": "Every active member the assign route would take for this note, by name",
+        "properties": {
+          "assignees": {
+            "items": {
+              "$ref": "#/components/schemas/NoteAssignee"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "assignees"
+        ],
+        "type": "object"
+      },
       "NoteAttestation": {
         "enum": [
           "not_needed",
           "waiting",
           "attested"
+        ],
+        "type": "string"
+      },
+      "NoteHeldBecause": {
+        "description": "Why a note that waits for a co-signature or an attestation waits for someone other than the reader: they wrote it, act as its author (assigned to them), completed it, made its current signature, or cannot see every answer that counts. Given whenever the act’s first refusal of the reader is about the note, whatever their credential. Absent when the note waits for nothing, the reader may act, the first refusal is about their credential, or their role does not chart",
+        "enum": [
+          "wrote",
+          "acts_as_author",
+          "completed",
+          "signed",
+          "cannot_see_all"
         ],
         "type": "string"
       },
@@ -3068,7 +3132,7 @@
             "type": "string"
           },
           "recentVisits": {
-            "description": "The last three visits in full, read offline from the cache",
+            "description": "The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only",
             "items": {
               "$ref": "#/components/schemas/VisitRead"
             },
@@ -3801,6 +3865,16 @@
               "null"
             ]
           },
+          "heldBecause": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NoteHeldBecause"
+              },
+              {
+                "description": "Why the note waits for someone other than the caller, as the visit read gives it under the note (VisitNote.heldBecause), so the queue says why in the same words (lifecycle 5.4)"
+              }
+            ]
+          },
           "noteId": {
             "format": "uuid",
             "type": "string"
@@ -3818,6 +3892,11 @@
               }
             ],
             "description": "Who signed it before, when a correction sent it back; null otherwise"
+          },
+          "title": {
+            "default": "",
+            "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+            "type": "string"
           }
         },
         "required": [
@@ -4055,7 +4134,7 @@
         "properties": {
           "attributes": {
             "additionalProperties": {},
-            "description": "What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then",
+            "description": "What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now",
             "type": "object"
           },
           "authorUserId": {
@@ -5063,6 +5142,11 @@
           "group": {
             "$ref": "#/components/schemas/TimelineGroup"
           },
+          "medical": {
+            "default": false,
+            "description": "A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)",
+            "type": "boolean"
+          },
           "noteId": {
             "format": "uuid",
             "type": "string"
@@ -5072,6 +5156,11 @@
           },
           "status": {
             "$ref": "#/components/schemas/NoteStatus"
+          },
+          "title": {
+            "default": "",
+            "description": "The note type’s title, so no page reads the note types list to word it; empty only in a copy cached before it was sent",
+            "type": "string"
           }
         },
         "required": [
@@ -5353,6 +5442,16 @@
           "author": {
             "$ref": "#/components/schemas/UserRef"
           },
+          "canAttest": {
+            "default": false,
+            "description": "The reader may attest it now: the attestation’s own rule asked as if the hash matched (lifecycle 5.4)",
+            "type": "boolean"
+          },
+          "canCosign": {
+            "default": false,
+            "description": "The reader may co-sign it now: the co-sign’s own rule asked as if the hash matched, as a queue’s canAct is (lifecycle 5.3)",
+            "type": "boolean"
+          },
           "completedAt": {
             "format": "date-time",
             "type": [
@@ -5373,6 +5472,14 @@
           },
           "group": {
             "$ref": "#/components/schemas/TimelineGroup"
+          },
+          "heldBecause": {
+            "$ref": "#/components/schemas/NoteHeldBecause"
+          },
+          "medical": {
+            "default": false,
+            "description": "A Medical note: completed for a co-signer or signed, and attested when it waits (lifecycle 3.1)",
+            "type": "boolean"
           },
           "noteId": {
             "format": "uuid",
@@ -5443,6 +5550,11 @@
             "format": "uuid",
             "type": "string"
           },
+          "hasHandoff": {
+            "default": false,
+            "description": "The visit’s Red flags note, as the reader may read it, shows Show handoff (EMS was activated): GET /v1/encounters/{encounterId}/ems-handoff would give its file (lifecycle 5.7, 9.11)",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/EncounterKind"
           },
@@ -5466,10 +5578,27 @@
               "null"
             ]
           },
+          "preferredName": {
+            "default": null,
+            "description": "The patient’s preferred name, from the chart they were merged into when they were, as a queue row shows it; null for a visit with no patient",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "records": {
             "description": "Referrals, allergies, problems and problem notes made at the visit, whichever chart they are on, as the reader may see them",
             "items": {
               "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "recordsOnAnotherChart": {
+            "default": [],
+            "description": "The IDs of the records above that are on a chart other than the visit’s now, by the patients’ charts: a record kept under a merged ID of the visit’s own patient is on its chart; every record of a visit with no patient is on another",
+            "items": {
+              "format": "uuid",
+              "type": "string"
             },
             "type": "array"
           },
@@ -6666,6 +6795,94 @@
           }
         ],
         "summary": "Put another clinician in the place of a note’s author who has left the team",
+        "tags": [
+          "encounters"
+        ]
+      }
+    },
+    "/v1/notes/{noteId}/assignees": {
+      "get": {
+        "description": "Lifecycle 3.8, 5.5, 9.12. Needs team.manage_users; a read, so no recent sign-in (the assignment asks for one). Every active member the assign route would take, by its own rule (mayAssign), so a picker lists exactly them. 409 author_active while whoever acts as the author is an active member; 404 for a note the team does not have or the caller may not read. Logged as note.assignees_viewed on the note.",
+        "operationId": "getNoteAssignees",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "noteId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteAssignees"
+                }
+              }
+            },
+            "description": "The people the note may be assigned to"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Who may be put in the place of a note’s author who has left the team",
         "tags": [
           "encounters"
         ]

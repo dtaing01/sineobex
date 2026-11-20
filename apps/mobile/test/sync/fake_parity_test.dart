@@ -4524,6 +4524,22 @@ void main() {
         },
       );
 
+      test('its snapshot names who recorded it, by their name now, wherever it is read', () async {
+        // A referral keeps no name of its own: the recorder's name now, as a note names who acts as
+        // its author (D108; unit L6).
+        server.names[casey] = 'Casey (demo)';
+        final made = referral(patientA, details: 'Demo: food bank on 5th');
+        expect(await send(casey, [made]), [taken(made, 1)]);
+        Future<Object?> authorName() async => (await as(dana).fetchRecords(
+          body: FetchRecords(
+            records: [RecordRef(entity: RecordEntity.referral, id: made['recordId']! as String)],
+          ),
+        )).records.single.attributes['authorName'];
+        expect(await authorName(), 'Casey (demo)');
+        server.names[casey] = 'Casey Rowe (demo)';
+        expect(await authorName(), 'Casey Rowe (demo)');
+      });
+
       test('is dated no more than a day after the server’s date (referral_in_future)', () async {
         // The server's clock reads 2026-10-22.
         final changes = [

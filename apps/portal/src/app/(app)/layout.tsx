@@ -2,11 +2,14 @@ import Link from 'next/link';
 import { signOut, stayActive } from '@/app/actions/auth';
 import { IdleWarning } from '@/components/IdleWarning';
 import { NavLink } from '@/components/NavLink';
+import { queueLinks } from '@/lib/credentials';
 import { can, currentUser } from '@/lib/me';
 import { IDLE_MINUTES, IDLE_WARNING_SECONDS } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { me, team } = await currentUser();
+  // From the credential and the role alone: no counts call on every page (lifecycle 9.14).
+  const queues = queueLinks(team);
   const nav = [
     { href: '/home', label: 'Home', show: !!team },
     // Patients (phase 3 design 12.2): existing permissions only (D37), the same rules the API checks.
@@ -16,6 +19,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: 'Reviews',
       show: can(team, 'patients.edit') || can(team, 'patients.correct_identity'),
     },
+    { href: '/team/cosign', label: 'Co-sign queue', show: queues.cosign },
+    { href: '/team/attestation', label: 'Attestation queue', show: queues.attest },
+    { href: '/team/incomplete-notes', label: 'Notes not complete', show: can(team, 'team.manage_users') },
     { href: '/team/duplicates', label: 'Duplicates', show: can(team, 'patients.review_duplicates') },
     {
       href: '/team/merges',

@@ -129,6 +129,10 @@ describe('phase 4: co-sign', () => {
       const r = await cosign(w, w.rae, v.visit.encounterId, [v.flags, v.note]);
       expect(r.status).toBe(403);
       expect(refusal(r.body)).toEqual({ code: 'is_author', noteIds: [v.flags.noteId, v.note.noteId].sort() });
+      // Worded for everyone it covers: an assignee is never told they wrote it.
+      expect((r.body as { error?: { message?: string } }).error?.message).toBe(
+        'You can’t co-sign a note you wrote, completed or act as the author of.',
+      );
       const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
       expect(denied!.details).toMatchObject({ reason: 'is_author' });
       await unchanged(v.flags, v.note);
