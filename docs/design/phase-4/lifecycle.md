@@ -4239,6 +4239,23 @@ As built on the server (unit L2), what the page has to work with; the page is un
   is, takes the answer as a file, and keeps the file's name the route gives, `ems-handoff.pdf`
   (5.7).
 
+As built on the portal (unit L6, with its review):
+
+- **The plan sent is the one read.** Co-sign and Attest are rendered for each act on every render,
+  with a plan or none, and keep the first render's plan, none included, for the life of the page.
+  A server action (Stay signed in) renders the page again from a fresh read; when that render's
+  plan differs, the section says at once "This visit changed. Read it again.", with a link that
+  loads the visit whole, and a press sends nothing and loads `?signed=changed` (review finding
+  PRD-2, the coordinator's decision).
+- **After a press.** The button stays off, reading Working…, from the press until the next page
+  replaces it (PAC-1). A refusal shown in place takes focus, each time it comes (PAX-1). When the
+  connection drops, the page can't tell whether the act went through: it says so, and offers
+  **Read the visit again** in place of the act (PAC-4). The same holds for Assign.
+- **The records made at the visit** say "On another chart now" by the visit read's
+  `recordsOnAnotherChart` (5.1), never by comparing patient IDs.
+- **An idle session** is refused by every read and act, the proxy's gate or not: `api()` asks the
+  session's idle state too, since the gate skips a request that says it is a prefetch (PAC-2).
+
 ### 9.12 Portal: notes not complete, and assigning
 
 - Portal Home gains a count for a Program Admin: "4 notes not complete. 2 are older than a day."
@@ -4247,6 +4264,15 @@ As built on the server (unit L2), what the page has to work with; the page is un
   left says so and has **Assign**.
 - **Assign** is a form on the visit page: a clinician picker that lists only members who pass the
   checks of 5.5, and a reason.
+
+As built (unit L6, with its review): after /reauth, or a pick the API refused because the list
+changed, the visit loads at the note's own form (`?assign=reauthed&note=…#assign-…`), which says
+so and takes focus (PAX-3). With nobody to offer, the form says the note needs an active clinician
+of the same or a higher credential whose role can see everything a note of its type can hold
+(5.5). On Notes not complete, two drafts of one type by one author at one visit are numbered
+("Outreach (1 of 2)"), and each link's name carries the note, who acts as its author, the patient
+and when the visit started (PAX-5); a role without `patients.view` is told that someone whose role
+opens patients' charts can assign a note, not to do it itself (PAX-4).
 
 ### 9.13 Needs attention (phone)
 
@@ -4305,7 +4331,9 @@ the held sign-off it names there (4.8).
 
 `apps/portal/src/app/(app)/team/cosign/page.tsx` and `team/attestation/page.tsx`: the rows of
 5.4, each opening the visit page. The navigation shows each link only to a credential that may
-act. An attending's portal Home shows the attestation count (PRD main 216, 744).
+act. An attending's portal Home shows the attestation count (PRD main 216, 744). As built (unit
+L6, with its review), a note the person may not act on says why in the visit page's words, from
+the queue note's `heldBecause` (5.4), so an assignee is told it was assigned to them.
 
 ## 10. Audit events and PHI rules
 
