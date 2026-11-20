@@ -115,8 +115,10 @@ void main() {
     // Drafts: nothing to correct or add to yet.
     expect(find.bySemanticsLabel(RegExp('^Correct ')), findsNothing);
     expect(find.bySemanticsLabel(RegExp('^Add addendum')), findsNothing);
-    await tapOn(tester, find.bySemanticsLabel('Open the note, Outreach'));
+    final handle = tester.ensureSemantics();
+    await semanticTap(tester, 'Open the note, Outreach');
     expectNoteOpened(tester, mine);
+    handle.dispose();
     await back(tester);
     await tapOn(tester, find.bySemanticsLabel('Open the note, Social needs'));
     expectNoteOpened(tester, theirs);
@@ -155,8 +157,14 @@ void main() {
     final store = h.sync.store!;
     expect(store.noteState(v.general)!.status, NoteStatus.completed);
     await openVisitScreen(tester, v.visit);
-    await tapOn(tester, find.bySemanticsLabel('Reopen General / primary care'));
+    final handle = tester.ensureSemantics();
+    final reopen = find.bySemanticsLabel('Reopen General / primary care');
+    await reveal(tester, reopen);
+    expect(tester.getSemantics(reopen), isSemantics(isButton: true, hasTapAction: true));
+    // Its own tap action, as TalkBack and Switch Access use it.
+    await semanticTap(tester, 'Reopen General / primary care');
     expect(find.text('Reopen this note?'), findsOneWidget);
+    handle.dispose();
     // Cancel changes nothing.
     await tester.tap(find.text('Cancel'));
     await settle(tester);

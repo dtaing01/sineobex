@@ -71,6 +71,40 @@ void main() {
     });
   }
 
+  testWidgets('a freeze while the sheet is open takes the answer off the screen (phase 3’s V1)', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signInToChart(tester);
+    final v = await finishedVisit(tester, h);
+    await openVisitScreen(tester, v.visit);
+    await tapOn(tester, find.bySemanticsLabel('Correct Chief concern'));
+    await revealInSheet(tester, inSheet(find.text('Now: Demo: cough')));
+    h.sync.store!.freeze(frozen);
+    h.encounters.changed();
+    await settle(tester);
+    expect(inSheet(find.text(frozen)), findsOneWidget);
+    expect(find.text('Now: Demo: cough', skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('phi.form.concern'), skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('Correct acts by its own tap action, and its read logs only what the screen hadn’t shown', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final v = await finishedVisit(tester, h);
+    await openVisitScreen(tester, v.visit);
+    final store = h.sync.store!;
+    final before = auditEvents(store).length;
+    final correct = find.bySemanticsLabel('Correct Chief concern');
+    await reveal(tester, correct);
+    expect(tester.getSemantics(correct), isSemantics(isButton: true, hasTapAction: true));
+    await semanticTap(tester, 'Correct Chief concern');
+    await revealInSheet(tester, inSheet(find.text('Now: Demo: cough')));
+    // The note and its sign-off were shown already: reading it for the sheet logs nothing again.
+    expect(auditEvents(store).skip(before), isEmpty);
+    handle.dispose();
+  });
+
   testWidgets('the patient asked: Make the change or Record that it was declined', (tester) async {
     final h = await signInToChart(tester);
     final v = await finishedVisit(tester, h);

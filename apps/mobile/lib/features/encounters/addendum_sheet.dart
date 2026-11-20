@@ -8,6 +8,7 @@ import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count;
 import '../patients/patient_widgets.dart' show PhiField, WideButton, showDone;
 import 'encounter_labels.dart';
+import 'encounter_widgets.dart' show SheetGate;
 
 /// **Add addendum** (lifecycle 3.6, 9.7): "a dated entry by its author attached below the note"
 /// (PRD main 459), one text box of up to 4,000 characters, below the note [noteId] of the visit
@@ -25,7 +26,10 @@ Future<String?> showAddendumSheet(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (context) => _Addendum(services: services, encounterId: encounterId, noteId: noteId, to: to),
+  builder: (context) => SheetGate(
+    services: services,
+    child: _Addendum(services: services, encounterId: encounterId, noteId: noteId, to: to),
+  ),
 );
 
 class _Addendum extends StatefulWidget {

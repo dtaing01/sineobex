@@ -927,6 +927,10 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Co-sign'), findsNothing);
       // The server logged its read; the phone logged nothing of it again, having nothing of its own waiting.
       expect(auditEvents(store).skip(before), isEmpty);
+      // A change reads the phone's copy again under it: still nothing logged again.
+      h.encounters.changed();
+      await settle(tester);
+      expect(auditEvents(store).skip(before), isEmpty);
 
       // Offline: the phone's copy, without what was added elsewhere, and it says so.
       await back(tester);

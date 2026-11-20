@@ -49,6 +49,34 @@ void main() {
     });
   }
 
+  testWidgets('a freeze while the sheet is open closes what it shows', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signInToChart(tester);
+    final v = await finishedVisit(tester, h);
+    await openVisitScreen(tester, v.visit);
+    await tapOn(tester, find.bySemanticsLabel('Add addendum to General / primary care'));
+    expect(find.text('To General / primary care'), findsOneWidget);
+    h.sync.store!.freeze(frozen);
+    h.encounters.changed();
+    await settle(tester);
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+    expect(find.text('To General / primary care', skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('phi.addendum'), skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('Add addendum acts by its own tap action', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final v = await finishedVisit(tester, h);
+    await openVisitScreen(tester, v.visit);
+    final add = find.bySemanticsLabel('Add addendum to General / primary care');
+    await reveal(tester, add);
+    expect(tester.getSemantics(add), isSemantics(isButton: true, hasTapAction: true));
+    await semanticTap(tester, 'Add addendum to General / primary care');
+    expect(find.text('To General / primary care'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('below the visit itself, shown with the visit’s own', (tester) async {
     final h = await signInToChart(tester);
     final v = await finishedVisit(tester, h);
