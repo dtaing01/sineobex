@@ -90,6 +90,11 @@ void main() {
       );
       await revealInSheet(tester, made);
       expect(find.text('Write the referral’s details, up to 2,000 characters.'), findsNothing);
+      // Said in the sheet, under the button, as a live region: no SnackBar is drawn under the sheet.
+      final added = inSheet(find.bySemanticsLabel('Referral added'));
+      await revealInSheet(tester, added);
+      expect(tester.getSemantics(added), isSemantics(isLiveRegion: true));
+      expect(find.byType(SnackBar), findsNothing);
       await expectScreenOk(tester);
 
       // Entered in error asks for a reason, then the row stays, struck through.
@@ -112,6 +117,10 @@ void main() {
       );
       await revealInSheet(tester, marked);
       expect(find.bySemanticsLabel('Mark the referral of October 18, 2026 entered in error'), findsNothing);
+      final said = inSheet(find.bySemanticsLabel('Marked entered in error'));
+      await revealInSheet(tester, said);
+      expect(tester.getSemantics(said), isSemantics(isLiveRegion: true));
+      expect(find.byType(SnackBar), findsNothing);
       // Taken onto the phone to be marked offline, and read once still.
       final rec = h.sync.store!.record(r1)!;
       expect(rec.fields['enteredInError']!.value, {'reason': 'Typed by mistake'});

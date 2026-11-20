@@ -254,6 +254,37 @@ String errorText(Object e) => switch (e) {
   _ => 'That didn’t work. Try again.',
 };
 
+/// A question in a dialog whose buttons end its body and scroll with it: an AlertDialog's own row of
+/// actions stays put below the words, and at 200% text on a small phone it runs off the screen
+/// (phase 4's review, SAX-9 and SAX-10). Every button can be reached, at any text size.
+class AskDialog extends StatelessWidget {
+  const AskDialog({super.key, required this.title, required this.content, required this.actions});
+  final String title;
+  final Widget content;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: Text(title),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        content,
+        const SizedBox(height: FieldSpace.s4),
+        OverflowBar(
+          alignment: MainAxisAlignment.end,
+          spacing: FieldSpace.s2,
+          overflowSpacing: FieldSpace.s2,
+          overflowAlignment: OverflowBarAlignment.end,
+          children: actions,
+        ),
+      ],
+    ),
+  );
+}
+
 /// Asks yes or no; true for yes.
 Future<bool> confirm(
   BuildContext context, {
@@ -264,9 +295,9 @@ Future<bool> confirm(
 }) async {
   final answer = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: SingleChildScrollView(child: Text(body)),
+    builder: (context) => AskDialog(
+      title: title,
+      content: Text(body),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(no)),
         FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(yes)),
@@ -319,44 +350,42 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(widget.body),
-          if (widget.quick.isNotEmpty) ...[
-            const SizedBox(height: FieldSpace.s3),
-            Wrap(
-              spacing: FieldSpace.s2,
-              runSpacing: FieldSpace.s2,
-              children: [
-                for (final q in widget.quick)
-                  ActionChip(
-                    label: Text(q),
-                    onPressed: () => setState(() {
-                      _reason.text = q;
-                      _error = null;
-                    }),
-                  ),
-              ],
-            ),
-          ],
+  Widget build(BuildContext context) => AskDialog(
+    title: widget.title,
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.body),
+        if (widget.quick.isNotEmpty) ...[
           const SizedBox(height: FieldSpace.s3),
-          PhiField(
-            name: 'reason',
-            label: 'Reason',
-            controller: _reason,
-            error: _error,
-            maxLength: 300,
-            capitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _submit(),
+          Wrap(
+            spacing: FieldSpace.s2,
+            runSpacing: FieldSpace.s2,
+            children: [
+              for (final q in widget.quick)
+                ActionChip(
+                  label: Text(q),
+                  onPressed: () => setState(() {
+                    _reason.text = q;
+                    _error = null;
+                  }),
+                ),
+            ],
           ),
         ],
-      ),
+        const SizedBox(height: FieldSpace.s3),
+        PhiField(
+          name: 'reason',
+          label: 'Reason',
+          controller: _reason,
+          error: _error,
+          maxLength: 300,
+          capitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+        ),
+      ],
     ),
     actions: [
       TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),

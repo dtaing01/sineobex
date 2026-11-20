@@ -18,7 +18,7 @@ import '../../sync/local_store.dart' show ChartingPaused;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count, isoDay, longDate;
-import '../patients/patient_widgets.dart' show PhiField, WideButton, showDone, todayOf;
+import '../patients/patient_widgets.dart' show AskDialog, PhiField, WideButton, showDone, todayOf;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart' show encountersOpen;
 
@@ -101,6 +101,10 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
   List<ReferralView>? _referrals;
   String? _refused;
 
+  /// What was just done, said in the sheet, which stays open: a SnackBar would be drawn under it,
+  /// neither seen nor heard (review SAX-6). [added] under Add referral, else under the heading.
+  ({String text, bool added})? _said;
+
   EncounterServices get _s => widget.services;
 
   @override
@@ -158,7 +162,7 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
         },
       ),
     );
-    if (marked == true && mounted) showDone(context, referralMarked);
+    if (marked == true && mounted) setState(() => _said = (text: referralMarked, added: false));
   }
 
   @override
@@ -176,6 +180,7 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
           children: [
             Semantics(header: true, child: Text(referralsHeading, style: text.titleLarge)),
             const SizedBox(height: FieldSpace.s3),
+            if (_said case (:final text, added: false)) ...[_Said(text), const SizedBox(height: FieldSpace.s3)],
             if (frozen != null)
               ErrorMessage(frozen)
             else if (referrals != null) ...[
@@ -190,8 +195,9 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
                 _AddReferral(
                   services: _s,
                   patientId: widget.patientId,
-                  onAdded: (_) => showDone(context, referralAdded),
+                  onAdded: (_) => setState(() => _said = (text: referralAdded, added: true)),
                 ),
+                if (_said case (:final text, added: true)) ...[const SizedBox(height: FieldSpace.s3), _Said(text)],
               ],
             ],
           ],
@@ -415,9 +421,8 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    scrollable: true,
-    title: const Text(referralInErrorTitle),
+  Widget build(BuildContext context) => AskDialog(
+    title: referralInErrorTitle,
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,4 +461,13 @@ class _ReasonDialogState extends State<_ReasonDialog> {
       FilledButton(onPressed: _submit, child: const Text(referralInErrorYes)),
     ],
   );
+}
+
+/// What the sheet just did, in words, once: a live region a screen reader speaks as it appears.
+class _Said extends StatelessWidget {
+  const _Said(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Semantics(liveRegion: true, container: true, child: NoticeMessage(text));
 }
