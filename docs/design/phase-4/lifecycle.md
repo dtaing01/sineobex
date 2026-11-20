@@ -1430,6 +1430,13 @@ stored as `validation` with `definition_error`.
 
 Each problem gets one sentence in `apps/mobile/lib/features/sync/sync_labels.dart` (9.13).
 
+As built on the phone after unit L5's review, each fix of the first table has its button in Needs
+attention (9.13 as built), through the domain layer (4.8 as built): `medical_note_needs_patient` gives
+the visit its patient and sends the note's create again (`choosePatientFor`); `unknown_note_type`
+sends the create again as an empty draft on the version the team lists for its key now, and the
+type is then chosen again (`removeRefusedNote`; a type listed at no other version can't be settled
+yet); a problem of `checkAnswer` is settled by the next save of the answer (`saveAnswer`).
+
 As built (unit L1, with wave D's review):
 
 - **No new reject reason.** Beside the seven problems of the first table, the build answers
@@ -2620,6 +2627,53 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   it and the notice finds it. The screens show "Waiting to send" while a note has a `localEffect`
   and is not sent for review.
 
+As built for the screens (the domain layer after unit L5's review, the coordinator's decided work;
+`apps/mobile/lib/encounters/`). Its interface changed in these places, beside the visit read's new
+fields (5 as built on the phone):
+
+- **Reading a visit.** `EncounterRepository.openVisit` is unchanged, but the visit screen no longer
+  reads through `EncounterApi.openVisit`'s order: it asks the server first, online (9.7 as built).
+  `othersMayHaveAdded(encounterId)` says whether to ask at all: true for any visit but one made here
+  whose create still waits, which nobody else can have reached; it reads no value and logs nothing.
+  `serverReadLimit`, six seconds, bounds that read and the Red flags question below.
+- **`NoteActions.holdNote(encounterId, noteId)`**, public, was `_hold`: it brings the visit and the
+  note onto the phone when it lacks them, as an addendum or a correction does, so the store files
+  them under their patient. Without signal or an engine it throws "This note isn’t on this phone.
+  Connect to open it."; a record the server lacks is a `StateError`. The visit screen's Correct calls
+  it, then `openNote`, in place of the engine's hook.
+- **`openHandoff(encounterId)`** reads the phone's copy as `openVisit` reads and logs it, and writes
+  `ems_handoff.shown` on the visit with its patient in the same transaction; it is null, logging
+  nothing, when the phone holds no such visit, and throws `ChartingPaused` while the store is frozen.
+  The handoff screen writes nothing to the store itself (9.8 as built).
+- **`saveAnswer`** sends a save of an answer whose set waits refused as that refusal's fix
+  (`store.fixRejected`), which supersedes it, so it settles at the next sync and nothing waits behind
+  it; any other save is a `setField`, as before (9.13 as built). A note's create carries no answers,
+  each going as a set of its own, so a refused create holds no answer of the form's; were one to, its
+  fix would be the create's.
+- **The refusals' fixes** (`refusal_fixes.dart`, a part of `encounter_repository.dart`):
+  `settledByVisit`, `settledByPatient` and `settledByRemoving` say which card offers what;
+  `sendWithoutVisit`, `hasVisitsToChoose` (which reads and logs nothing), `visitsToChoose` (which
+  logs each visit it lists), `moveToVisit`, `choosePatientFor` and `removeRefusedNote` each send
+  their fix through `fixRejected`, linked to the refused change, and refuse, writing nothing, while
+  the store is frozen; the screen offers them only while the clock check passes (8.4 and 9.13 as
+  built).
+- **The Red flags note.** `finishedRedFlagsIn(visit)` gives the finished Red flags note a visit read
+  shows. `EncounterApi.finishedRedFlags(encounterId)` asks the server's read for one within
+  `serverReadLimit`: null without signal, for a visit the server lacks, after the limit or while the
+  store is frozen, and the screens pass whether there is one as `redFlagsFinished` (8.2 as built).
+  `RedFlagsNote.finishedRedFlagsNote(encounterId)` finds one the phone holds by a scan of the store,
+  which reads no note for anyone and logs nothing (9.5 as built).
+- **Co-sign and Attest** (`cosignPlan`, `attestPlan`): on a visit read from the server, the notes the
+  read marks `canCosign` or `canAttest`, each with the hash it gives, and those it holds from the
+  reader as `cannot_see_all` that wait; on any other copy, the phone's own rule, as a plan that reads
+  the visit from the server first (`readOnline`). Each is null for a role that doesn't chart and for
+  a saved credential that can't sign, or attest. The `is_author` refusal reads "You can’t co-sign a
+  note you wrote, completed or act as the author of." (and the same of attest), as the API words it
+  since unit L6's review, so no assignee is told they wrote a note.
+- **Home's tiles** (`homeTiles`): online, a queue's tile only when the counts carry its number.
+- **Referrals**: "Recorded by" from the record's `authorName` (`user.nameFor(…, named:)`), held or
+  listed from a chart (9.10 as built).
+
 ### 4.9 The phone's test server
 
 `apps/mobile/test/sync/fake_server.dart` mirrors the API by hand (plan risk 7). Each rule below
@@ -2854,7 +2908,12 @@ Try again.". These sentences are this layer's where the design gives none.
   gave: a plan from a visit read from the phone or from a chart's cache says `readOnline`, and the
   screen reads the visit online first, so the hash sent is of what the server holds and the person
   read (3.7). `secondAct` sends every note of the plan, all or nothing, and gives back what each
-  note is now.
+  note is now. Since unit L5's review a plan on a visit read from the server is that read's own
+  answer, the notes it marks `canCosign` or `canAttest` with its hashes and those it holds as
+  `cannot_see_all`; the rule above decides only whether a copy read elsewhere offers to read the
+  visit online first (4.8 as built). The phone reads each note's `canCosign`, `canAttest` and
+  `heldBecause`, the visit's `preferredName` and `recordsOnAnotherChart` (5.1 as built for the
+  portal's visit page), and each queue note's `heldBecause` (5.4).
 - **The rest**: the queues (`cosignQueue`, `attestationQueue`), earlier visits (`earlierVisits`)
   and the person's drafts on the server (`notesToFinish`) are the routes' answers, logged by the
   server. Home's tiles (`homeTiles`) never throw for want of signal or of an answer: Home shows the
@@ -2991,8 +3050,8 @@ As built for the portal's visit page (unit L6, 9.11), `VisitRead` and `VisitNote
   than the visit's now, by the patients' canonical charts, so a record kept under a merged ID of the
   visit's own patient is on its chart, and every record of a visit with no patient is on another.
   The page says "On another chart now" from it rather than comparing patient IDs (the coordinator's
-  decision on the review of unit L6), and the phone's screens are to read it in their own review
-  (L5); the phone does not read it yet.
+  decision on the review of unit L6), and since unit L5's review so does the phone's visit screen
+  for a visit read from the server (9.7 as built).
 - **Each note's `medical`**, beside its `title`.
 - **`canCosign` and `canAttest`**: the act's own rule (`cosignOf`, `attestOf`) asked of the reader
   as if the hash they would send matched, as a queue's `canAct` is, and false for a role without
@@ -3774,6 +3833,19 @@ As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/cl
   the phone cannot know of its finished Red flags note; the visit's snapshot saying it has one would
   let hard stop 5, and the Red flags note added with a Medical note, read it there.
 
+As built on the screens (unit L5, with its review; the coordinator's decision on findings SFL-5 and
+SRD-8): online, the summary, the note types list and the note screen's `open_note_type`, Go to Red
+flags and Expand ask once for the screen whether the server's read of the visit shows a finished
+Red flags note (`RedFlagsOnline`, through `EncounterApi.finishedRedFlags`, within `serverReadLimit`),
+and pass the answer as `redFlagsFinished` to `openComplete`, `addNote`, `addRedFlagsNote` and
+`expand` (D113). One read serves the screen, whatever it then adds or completes; the server logs it
+as it logs any visit read, though the screen draws none of it (10.1 as built). Offline, after the
+limit, and for a visit made here that has not reached the server, nothing is asked and the phone's
+copy decides, as before, which the server tolerates. As first built no screen passed it, so a
+teammate's finished Red flags note that only the server held made the person add and answer one of
+their own, online too. Reading a visit that has left the phone is the visit screen's, which since the
+review asks the server first, online, for any visit (9.7 as built).
+
 ### 8.3 Problems made or changed in an encounter
 
 Phase 3 left two hooks (1.1, 1.2): `problems.source` and the `encounterId` of a status.
@@ -3880,6 +3952,26 @@ As built on the phone (the domain layer, unit L4, with its review):
   under the chart it was read with. A note cached before the server named it is found through its
   problem, among the visit's records or on the phone, and one it cannot find that way is logged with
   no patient; the cache is fetched again at the next chart open online (5.2).
+
+As built on the phone after unit L5's review (the coordinator's decided work; the domain layer's
+`refusal_fixes.dart` and Needs attention, 9.13 as built): both buttons are built for a refused create
+of a referral, a problem, an allergy or a problem's note refused `encounter_missing` or
+`encounter_other_patient` (`settledByVisit`), each sent as the fix of the refused create through
+`fixRejected`, so the refusal settles once the server takes it and what waited behind it goes after
+it:
+
+- **Send without the visit** sends the same create with `encounterId: null` (`sendWithoutVisit`).
+- **Choose a visit** shows when the phone holds another visit of the record's patient's merged group,
+  decided without reading or logging anything (`hasVisitsToChoose`). Its sheet lists those visits,
+  newest first, by kind and start time alone, no place and no name, and leaves out the visit the
+  refusal names even while the phone's copy still says it is the patient's; each visit listed is
+  logged as `encounter.viewed` on its own patient, in one transaction, as the sheet opens
+  (`visitsToChoose`), and the sheet goes on a freeze. The visit chosen goes in the create sent again
+  (`moveToVisit`), which refuses, writing nothing, a visit of someone outside the record's patient's
+  group ("That visit belongs to someone else. Choose another, or send it without the visit.",
+  `encounter_other_patient`).
+- Both sit with **Open the chart** on the record's card and wait for the clock check. As first built
+  neither existed: the card offered only Open the chart, which settles nothing.
 
 ## 9. Screens
 
