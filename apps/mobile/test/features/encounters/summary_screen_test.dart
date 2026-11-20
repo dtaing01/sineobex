@@ -1,10 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
 import 'package:sineobex_field/encounters/rules.dart' show NoteStatus;
 import 'package:sineobex_field/features/encounters/summary_screen.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityEncounter, entityNote, entitySignoff;
+import 'package:sineobex_field/sync/entities.dart'
+    show entityAddendum, entityEncounter, entityNote, entityReferral, entitySignoff;
 
 import '../../encounters/scripted_api.dart' show userRef, visitJson, visitNoteJson;
 
@@ -356,6 +359,55 @@ void main() {
     await tapOn(tester, find.widgetWithText(FilledButton, 'Complete and sign'));
     expect(location(tester), '/patients/$p1Id');
     expect(h.sync.store!.noteState(mine)!.status, NoteStatus.signed);
+  });
+
+  testWidgets('Add referral opens the whole Referrals sheet; a referral added there is made at the visit', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic');
+    await openSummary(tester, visit);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add referral'));
+    final sheet = find.byType(BottomSheet);
+    expect(find.descendant(of: sheet, matching: find.text('Referrals')), findsOneWidget);
+    await revealInSheet(tester, find.descendant(of: sheet, matching: find.text('Demo: dental clinic')));
+    final box = find.byKey(const ValueKey('phi.referralDetails'));
+    await revealInSheet(tester, box);
+    await tester.enterText(box, 'Demo: shelter intake on Monday');
+    await tester.pump();
+    await tapInSheet(tester, find.descendant(of: sheet, matching: find.widgetWithText(FilledButton, 'Add referral')));
+    final made = [
+      for (final e in h.sync.store!.outbox())
+        if (e.entity == entityReferral && e.op == 'create') e.value! as Map<String, Object?>,
+    ].where((v) => v['details'] == 'Demo: shelter intake on Monday').single;
+    expect(made['encounterId'], visit);
+  });
+
+  testWidgets('hard stop 2’s line opens Needs attention', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['housing'],
+    });
+    final key = ('social_needs', 1);
+    final json = jsonEncode(h.server.noteTypes[key]);
+    h.server.noteTypes[key] = jsonDecode(json.replaceAll('"food"', '"food_gone"')) as Map<String, Object?>;
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['food']);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    expect(h.sync.store!.needsAttention(), isNotEmpty);
+    await openSummary(tester, visit);
+    final handle = tester.ensureSemantics();
+    final line = find.bySemanticsLabel(RegExp('Needs attention'));
+    await reveal(tester, line);
+    expect(tester.getSemantics(line.first), isSemantics(isButton: true, hasTapAction: true));
+    await tapOn(tester, line.first);
+    expect(location(tester), '/attention');
+    handle.dispose();
   });
 
   testWidgets('Save & Close on the summary opens the chart', (tester) async {

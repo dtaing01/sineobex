@@ -314,8 +314,9 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
           WideButton(
             label: addReferralAction,
             icon: LucideIcons.send,
+            // The whole Referrals sheet (9.10, decided item 12): the patient's referrals, then Add referral.
             onPressed: () =>
-                unawaited(showAddReferral(context, services, patientId: visit.patientId!, encounterId: encounterId)),
+                unawaited(showReferrals(context, services, patientId: visit.patientId!, encounterId: encounterId)),
           ),
         ],
 
@@ -332,9 +333,12 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
           for (final s in stops) ...[
             _StopRow(
               block: s,
-              onOpen: s.noteId == null
-                  ? null
-                  : () => unawaited(context.push(noteLocation(s.noteId!), extra: s.section)),
+              onOpen: switch ((s.noteId, s.stop)) {
+                (final id?, _) => () => unawaited(context.push(noteLocation(id), extra: s.section)),
+                // Hard stop 2: what waits is fixed in Needs attention (9.6 item 6, review SFL-6).
+                (null, CompleteStop.needsAttention) => () => unawaited(context.push('/attention')),
+                _ => null,
+              },
             ),
             const SizedBox(height: FieldSpace.s2),
           ],

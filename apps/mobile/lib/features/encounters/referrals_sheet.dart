@@ -77,19 +77,25 @@ Future<String?> showAddReferral(
 ///
 /// The list is the referrals the phone holds for the patient's merged group and those the chart the
 /// phone keeps lists (5.2), each logged as it first shows (`openReferrals`), so a read that can't be
-/// logged shows nothing.
-Future<void> showReferrals(BuildContext context, EncounterServices services, {required String patientId}) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => _ReferralsSheet(services: services, patientId: patientId),
-    );
+/// logged shows nothing. From a visit's summary, [encounterId] is the visit a referral added here is
+/// made at (9.6, 9.10).
+Future<void> showReferrals(
+  BuildContext context,
+  EncounterServices services, {
+  required String patientId,
+  String? encounterId,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (context) => _ReferralsSheet(services: services, patientId: patientId, encounterId: encounterId),
+);
 
 class _ReferralsSheet extends ConsumerStatefulWidget {
-  const _ReferralsSheet({required this.services, required this.patientId});
+  const _ReferralsSheet({required this.services, required this.patientId, this.encounterId});
   final EncounterServices services;
   final String patientId;
+  final String? encounterId;
 
   @override
   ConsumerState<_ReferralsSheet> createState() => _ReferralsSheetState();
@@ -195,6 +201,7 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
                 _AddReferral(
                   services: _s,
                   patientId: widget.patientId,
+                  encounterId: widget.encounterId,
                   onAdded: (_) => setState(() => _said = (text: referralAdded, added: true)),
                 ),
                 if (_said case (:final text, added: true)) ...[const SizedBox(height: FieldSpace.s3), _Said(text)],
