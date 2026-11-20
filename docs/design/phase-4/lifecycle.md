@@ -4593,14 +4593,17 @@ As built (the phone's domain layer, unit L4, `apps/mobile/lib/encounters/notes_t
   attests, with the server's numbers, and none offline (the table above).
 
 As built (the screens, unit L5, `notes_to_finish_screen.dart`, `queue_screen.dart`, `home_tiles.dart`
-and `apps/mobile/lib/features/home/home_screen.dart`):
+and `apps/mobile/lib/features/home/home_screen.dart`, with its review):
 
 - **The tiles** (`EncounterTiles`) sit under Needs attention. Notes to finish's reads "1 note to
   finish." or "3 notes to finish. 1 is older than a day." and shows while there is one; the queues'
   read their title over "2 visits" ("None waiting" at none), or "Connect to see notes waiting for you"
-  offline. The server's counts are asked when Home shows, at the end of each sync and when Home is on
-  top again; a change made here counts the person's drafts again against the server's last answer.
-  Nothing shows while the store is frozen.
+  offline. Online a queue's tile shows only when the server's counts carry its number, so the
+  server's word wins over the credential the phone saved (5.6 gives no number for a list the person
+  may not open; review finding SRD-6, where the tile said "Connect to see notes waiting for you"
+  online); offline the saved credential decides. The server's counts are asked when Home shows, at
+  the end of each sync and when Home is on top again; a change made here counts the person's drafts
+  again against the server's last answer. Nothing shows while the store is frozen.
 - **Notes to finish** (`/notes-to-finish`, title "Notes to finish"): each row reads the patient's
   preferred name ("No patient" for a visit with none), the note type, "Visit started …" and "Older
   than a day", "On this phone only" or "Opens with a connection" where they apply. The server's list
@@ -4608,14 +4611,21 @@ and `apps/mobile/lib/features/home/home_screen.dart`):
   copy again with the server's last answer. Offline the list says "Showing the notes on this phone.
   Connect to see the rest." A draft not on this phone is brought from the server first (its visit,
   then the note, `fetchNote`), and without signal the screen says "This note isn’t on this phone.
-  Connect to open it."
+  Connect to open it." under the row tapped, in sight of it (review finding SAX-11: it showed at the
+  head of the list). The drafts it lists are not held out of the close sweep (the coordinator's
+  decision): a draft the sweep closes leaves the list at its next read, and opens again online.
 - **The queues** (`/queues/cosign` "Waiting for your co-signature", `/queues/attestation` "Waiting for
   attestation"): each row reads the patient, "Visit started …" and each waiting note as "{type}, by
   {author}", with "Signed before by …" or "Attested before by …" after a correction, and, for a note
-  the person can't act on, "You wrote this note." when it is theirs, else "You can’t co-sign this
-  note. Open the visit to see why." (the queue does not say which rule). A row opens the visit (9.7).
-  Asked when the screen opens, when it is on top again and on pull to refresh; offline it shows the
-  domain layer's sentence and **Try again**.
+  the person can't act on, why, from the queue's own reason (`heldBecause`, 5.4), in the visit
+  screen's words (9.7: "You wrote this note, so someone else has to co-sign it.", and so on), or,
+  when the server gives none about the note, "Someone else has to co-sign this note." (decided work
+  of the review; as first built it said "You wrote this note." of every note of the person's own,
+  an assigned one included, and "You can’t co-sign this note. Open the visit to see why." of the
+  rest). A row opens the visit (9.7), which online reads the server first, so a visit the phone
+  holds shows the teammate's waiting note and offers Co-sign. Asked when the screen opens, when it is
+  on top again and on pull to refresh; offline it shows the domain layer's sentence and **Try
+  again**.
 
 ### 9.10 Referrals (phone)
 
@@ -4627,16 +4637,23 @@ As built (unit L4): the sheet's list, **Add referral** and **Entered in error** 
 (7 as built), whose `mayAdd` and `mayEnterInError` say what the sheet offers and whose refusals
 are worded there; the sheet itself is L5's.
 
-As built (the screens, unit L5, `referrals_sheet.dart`): `showReferrals` opens the sheet from the
-profile's + Referral, a referral's row on the timeline and one at the visit (9.7). Each row reads its
-date, its details, "Recorded by …" ("a teammate" where the phone knows no name: the sync snapshot
-carries none yet), "At a visit", and "Waiting to send" or "In Needs attention" while it is the
-phone's own; one entered in error stays, struck through, with "Entered in error: {reason}". **Entered
-in error** asks for the reason in a dialog of its own that scrolls at 200% text (phase 3's reason
-dialog does not), marks the referral from there and shows a refusal there. **Add referral** is
-below the list, to a role that may add one, and the sheet stays open on the list after it. Add
-referral from a note's action or the summary keeps its own sheet (`showAddReferral`), which closes
-once the referral is added.
+As built (the screens, unit L5, `referrals_sheet.dart`, with its review): `showReferrals` opens the
+sheet from the profile's + Referral, a referral's row on the timeline, one at the visit (9.7) and,
+since the review, the summary's Add referral, which gives it the visit, so a referral added there is
+made at it (decided work of the review; 9.6). Each row reads its date, its details, "Recorded by …",
+"At a visit", and "Waiting to send" or "In Needs attention" while it is the phone's own; one entered
+in error stays, struck through, with "Entered in error: {reason}". "Recorded by" names the recorder
+by the name the server gives the record now (`attributes.authorName`, 5.2 as built, through the
+domain layer's `user.nameFor`, held or listed from a chart), else one the phone knows; "a teammate"
+only where neither names them (decided work of the review: as first built every teammate read "a
+teammate"). **Entered in error** asks for the reason in a dialog of its own, built on `AskDialog`
+(9.3 as built) so its buttons scroll with its body and are reached at 200% text on a 320 px phone
+(review finding SAX-9), marks the referral from there and shows a refusal there. **Add referral** is
+below the list, to a role that may add one, and the sheet stays open on the list after it. What the
+sheet did is said inside it, as a live region, "Referral added" under Add referral and "Marked
+entered in error" under its heading: a SnackBar drawn under a sheet that stays open was neither seen
+nor heard (review finding SAX-6). Add referral from a note's action keeps its own sheet
+(`showAddReferral`), which closes once the referral is added.
 
 ### 9.11 Portal: the visit page
 
@@ -4874,23 +4891,54 @@ that fetches such a notice only after it was read elsewhere keeps it read, and i
 the held sign-off it names there (4.8).
 `finished_differently` names the note.
 
-As built (the screens, unit L5, `needs_attention_screen.dart` and `sync_labels.dart`): every problem
-of the first table has its sentence, and an answer its form refuses (forms 7.1's problems) reads
-"This answer doesn’t fit the note’s form. Open the note and change it." Every notice of 4.10 has a
+As built (the screens, unit L5, `needs_attention_screen.dart` and `sync_labels.dart`, with its
+review, and the domain layer's `refusal_fixes.dart`, 4.8 and 8.4 as built): every problem of the
+first table has its sentence, and an answer its form refuses (forms 7.1's problems) reads "This
+answer doesn’t fit the note’s form. Open the note and change it." Every notice of 4.10 has a
 sentence: `note_cosigned`, `note_attested` and `note_assigned`, which this design gives none, read "A
 visit you charted was co-signed.", "A visit you signed was attested." and "A note was assigned to
-you to finish." The buttons:
+you to finish." (the builders' words, kept by the coordinator's decision). The cards:
 
+- **A note's answer is named as its form names it** (review finding SAX-3, where a conflict showed
+  the answer's key and its option codes or raw JSON). Needs attention loads the definitions of the
+  notes it lists, once, and heads a conflict or a refusal on an answer by its label and the note's
+  type ("Current needs, in Social needs"), each value worded by its options' labels, one that is more
+  than a few words as "Open the note to see it"; a note whose definition the phone lacks is named by
+  its type, its values as stored. A conflict keeps phase 2's side-by-side choice, worded so, and adds
+  **Open the note**, where the form shows the same choice.
 - A refused sign-off (`content_changed`, `incomplete`, `red_flags_first`) and a refused change to a
-  note (but `definition_error`) offer **Open the note**, the note's form or read view.
+  note (but `definition_error` and `unknown_note_type`) offer **Open the note**, the note's form or
+  read view. **A refused answer settles once it is changed** (review finding SFL-1): a save of an
+  answer whose set waits refused is that refusal's fix (`saveAnswer`, 4.8 as built), so the sentence's
+  "Open the note and change it" is what settles it; as first built the new value waited behind the
+  refusal for good.
 - A refused correction offers **Leave it**, and **Open the note** unless it is `definition_error`;
   `field_changed` also offers **Correct again**. Leave it is offered for any refused correction: sent
-  again as it was, one refused `incomplete` would be refused again. Both write, so both wait for the
-  clock, and a refusal of the domain layer shows in its words.
-- `unknown_note_type` offers **Choose a note type**, the visit's note types; the refused create stays
-  until a fix the domain layer does not have yet. `medical_note_needs_patient`'s **Choose a patient**
-  and `encounter_other_patient`'s **Send without the visit** and **Choose a visit** are not built: the
-  domain layer gives no call for them yet. Those cards keep phase 3's **Open the chart**.
+  again as it was, one refused `incomplete` would be refused again.
+- **The refusals that had no way out** (decided work of the review; 4.1, 8.4), each settled through
+  the domain layer and the store's `fixRejected`, so the refused change is never dropped:
+  `medical_note_needs_patient` offers **Choose a patient** (the `choosePatient` sheet), which gives
+  the visit its patient and makes it Medical, then sends the note's create again, in one
+  transaction; where the phone's copy of the visit names a patient already (its set still on its
+  way), the button is **Send it again** and sends only the create. `encounter_missing` and
+  `encounter_other_patient`, on a referral, a problem, an allergy or a problem's note, offer **Send
+  without the visit** and, when the phone holds another visit of the record's patient, **Choose a
+  visit**: a sheet (in its own gate, so a freeze takes it away) listing those visits by kind and start
+  time, newest first, with no place and no name, the visit the refusal names left out; each visit
+  listed is logged as `encounter.viewed` in one transaction as the sheet opens, and whether the
+  button shows is decided without reading or logging anything. `unknown_note_type` offers **Remove
+  this note**, asked first, beside **Choose a note type** (the visit's note types): the refused create
+  is sent again as an empty draft, every answer cleared, on the version the team's list gives for its
+  key now, which the server takes and counts for nothing (3.1), and choosing the type again opens the
+  note on that version. It needs a listed version that holds every answer the phone keeps of the
+  note; a type the team lists at no other version, or a refusal on the very version listed, is
+  refused "This note can’t be removed on this phone. Tell a Program Admin." (`definition_error`) and
+  stays in Needs attention until the store can withdraw a create the server never took (13, "Not
+  built in this phase"). As first built `unknown_note_type` had only Choose a note type, which left
+  the refused create waiting, and the other three only phase 3's **Open the chart**: none could be
+  settled.
+- Every button that writes waits for the clock ("You can choose once the phone’s clock is right."),
+  and a refusal of the domain layer shows in its words.
 - The notices `signoff_not_applied` (by the note it names, D104) and `finished_differently` (by its
   record) offer **Open the note** in place of Open the chart, the note fetched first when this phone
   holds none of it; without signal the screen says the note needs a connection.
