@@ -509,6 +509,8 @@ class _NoteState extends ConsumerState<_Note> {
               actions: _action,
               expand: _repo.mayExpand(note) ? (section) => _offers[section.id] ?? const [] : null,
               enabled: note.editable && !paused,
+              // D92's answers drawn read-only before a tap, not refused and drawn again (9.5).
+              readOnly: (path) => _repo.readOnlyAt(note, path),
               openSection: _reopen ?? widget.openSection,
             ),
           ),

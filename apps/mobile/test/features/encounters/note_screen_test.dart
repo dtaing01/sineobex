@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/tokens.dart' show FieldTheme;
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
-import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
+import 'package:sineobex_field/encounters/encounter_repository.dart' show CompletePlan, EncounterCompletion;
 import 'package:sineobex_field/features/encounters/note_screen.dart';
 import 'package:sineobex_field/features/encounters/summary_screen.dart';
 import 'package:sineobex_field/features/forms/note_read_view.dart';
@@ -173,65 +173,62 @@ void main() {
     expect(h.server.records[social]!.fields['data.needs.housing']?.value, 'permanent');
   });
 
-  testWidgets('an answer the server would hold from a non-author is refused and drawn from the store (D92)', (
-    tester,
-  ) async {
-    final h = await signInToChart(tester);
-    final visit = startVisit(h);
-    // Blair's General draft; this person may not see sensitive exams, so the exam picker could hold
-    // a code they were never sent.
-    h.server.offline = false;
-    await syncAndRefresh(tester, h);
-    final theirs = h.server.seed(entityNote, {
-      'encounterId': visit,
-      'noteTypeKey': 'general_primary_care',
-      'noteTypeVersion': 1,
-      'data': {
-        'reason.concern': 'Demo: knee pain',
-        'exam.systems': ['skin'],
-      },
-    }, by: blair);
-    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirs)), isTrue);
-    h.server.offline = true;
-    await openNote(tester, theirs);
-    expect(find.text('By Demo Blair'), findsOneWidget);
-    await openSection(tester, 'exam');
-    final queued = h.sync.store!.outbox().length;
-    await tester.tap(chip('Pulmonary'));
-    await settle(tester);
-    expect(find.text('You can’t change this answer.'), findsOneWidget);
-    expect(h.sync.store!.outbox(), hasLength(queued));
-    expect(answersOf(h, theirs)['exam.systems'], ['skin']);
-    // Drawn again from the store: the tap is not shown as picked.
-    expect(tester.getSemantics(chip('Pulmonary')), isSemantics(isSelected: false, isButton: true));
-    // A field they may change is saved as ever.
-    await openSection(tester, 'reason');
-    await tester.tap(chip('Follow-up'));
-    await settle(tester);
-    expect(answersOf(h, theirs)['reason.reasons'], ['follow_up']);
-    expect(find.text('You can’t change this answer.'), findsNothing);
-  });
+  for (final run in runs) {
+    testWidgets('an answer the server would hold from a non-author is drawn read-only before a tap (D92) '
+        '(${runName(run)})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester, run: run);
+      final visit = startVisit(h);
+      // Blair's General draft; this person may not see sensitive exams, so the exam picker could hold
+      // a code they were never sent.
+      h.server.offline = false;
+      await syncAndRefresh(tester, h);
+      final theirs = h.server.seed(entityNote, {
+        'encounterId': visit,
+        'noteTypeKey': 'general_primary_care',
+        'noteTypeVersion': 1,
+        'data': {
+          'reason.concern': 'Demo: knee pain',
+          'exam.systems': ['skin'],
+        },
+      }, by: blair);
+      expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirs)), isTrue);
+      h.server.offline = true;
+      await openNote(tester, theirs);
+      expect(find.text('By Demo Blair'), findsOneWidget);
+      await openSection(tester, 'exam');
+      // Read-only as drawn: the answer, no chips to tap, so nothing is refused or drawn again.
+      await reveal(tester, find.text('Skin').first);
+      expect(find.bySemanticsLabel('Pulmonary'), findsNothing);
+      expect(find.text('You can’t change this answer.'), findsNothing);
+      await expectScreenOk(tester);
+      // A field they may change is saved as ever.
+      await openSection(tester, 'reason');
+      await tapOn(tester, chip('Follow-up'));
+      expect(answersOf(h, theirs)['reason.reasons'], ['follow_up']);
+      expect(answersOf(h, theirs)['exam.systems'], ['skin']);
+      handle.dispose();
+    });
+  }
 
   testWidgets('at large text a refusal stays in sight under the form while the buttons end the list', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signInToChart(tester, run: (theme: FieldTheme.day, scale: 2.0, narrow: true));
-    final visit = startVisit(h);
-    h.server.offline = false;
-    await syncAndRefresh(tester, h);
-    final theirs = h.server.seed(entityNote, {
-      'encounterId': visit,
-      'noteTypeKey': 'general_primary_care',
-      'noteTypeVersion': 1,
-      'data': {
-        'exam.systems': ['skin'],
-      },
-    }, by: blair);
-    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirs)), isTrue);
-    h.server.offline = true;
-    await openNote(tester, theirs);
-    await openSection(tester, 'exam');
-    await tapOn(tester, chip('Pulmonary'));
-    final refused = find.text('You can’t change this answer.');
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final mine = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await openNote(tester, mine);
+    await openSection(tester, 'needs');
+    // Completed behind the open form (as from the summary on another screen), unheard: the next
+    // answer is refused, as the store's lock refuses it.
+    final r = h.encounters.repository;
+    final heard = r.onChanged;
+    r.onChanged = null;
+    r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+    r.onChanged = heard;
+    await tapOn(tester, chip('Clothing'));
+    final refused = find.text('This note is already finished.');
     // In sight under the form wherever it is scrolled to, not at the list's end with the buttons,
     // and never more than a third of the screen: the form keeps the rest.
     final form = find.byType(ListView);

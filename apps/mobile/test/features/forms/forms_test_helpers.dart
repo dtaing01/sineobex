@@ -247,6 +247,7 @@ Future<TestAnswers> pumpForm(
   String? openSection,
   String Function()? newEntryId,
   DateTime Function()? clock,
+  bool Function(String path)? readOnly,
 }) async {
   final answers = TestAnswers(values);
   await pumpField(
@@ -260,6 +261,7 @@ Future<TestAnswers> pumpForm(
         conflicts: answers.conflicts,
         onChanged: answers.change,
         enabled: enabled,
+        readOnly: readOnly,
         capabilities: capabilities,
         actions: actions,
         openSection: openSection,

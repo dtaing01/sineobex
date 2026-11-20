@@ -62,6 +62,22 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('an answer the screen says is read-only is drawn so and Normal leaves it (D92)', (tester) async {
+    final all = expected(cardiac, [('heart', null)]);
+    expect(all.length, greaterThan(1));
+    final held = all.first.$1;
+    final answers = await pumpForm(tester, general, values: cardiac, openSection: 'heart', readOnly: (p) => p == held);
+    await tapNamed(tester, 'All normal, Heart rate, rhythm and sounds');
+    expect(
+      plain(answers.changes),
+      plain([
+        for (final c in all)
+          if (c.$1 != held) c,
+      ]),
+    );
+    expect(answers.values.containsKey(held), isFalse);
+  });
+
   testWidgets('Normal writes what normalAnswers gives the section, one answer at a time', (tester) async {
     final handle = tester.ensureSemantics();
     final values = {...cardiac, 'heart.rate': 'tachycardic'};

@@ -46,6 +46,7 @@ class NoteForm extends StatefulWidget {
     this.actions,
     this.expand,
     this.enabled = true,
+    this.readOnly,
     this.openSection,
     this.newEntryId = makeEntryId,
     this.clock = DateTime.now,
@@ -81,6 +82,12 @@ class NoteForm extends StatefulWidget {
   /// False for a finished note or a frozen store: everything is read-only, and the sections still
   /// open to be read.
   final bool enabled;
+
+  /// Whether the answer at a path (entry and side included) is read-only to the person on a form
+  /// they may otherwise change: the screen's own test (the domain layer's `readOnlyAt`, D92: one that
+  /// could hold what they may not see, or that needs a credential they lack). Such an answer is drawn
+  /// read-only before any tap, and Normal fills none of it (review of unit L5; decided item 9).
+  final bool Function(String path)? readOnly;
 
   /// The section to open, by its ID (the summary's "jumps to it", lifecycle 9.6). Without one the
   /// first section that shows is open.
@@ -132,6 +139,8 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
     var filled = 0;
     for (final (section, entry) in targets) {
       for (final MapEntry(:key, :value) in normalAnswers(widget.definition, section, working, entry).entries) {
+        // An answer the person may not change is left as it is, so Normal is never refused part-way.
+        if (widget.readOnly?.call(key) ?? false) continue;
         working[key] = value;
         change(key, value);
         filled++;
@@ -495,7 +504,7 @@ class _Drawing {
           field: f,
           path: '$path$sided',
           answers: form,
-          enabled: enabled,
+          enabled: enabled && !(widget.readOnly?.call('$path$sided') ?? false),
           // A grid's cell itself, not a field of a group in it.
           cell: node.parent?.cell == node ? path : null,
         );
