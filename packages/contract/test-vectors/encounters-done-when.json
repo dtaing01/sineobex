@@ -1,0 +1,279 @@
+{
+  "note": "Hand-written. The phase 4 Done when (lifecycle 11.1): \"A resident charts a medical, wound and social visit as one encounter offline, saves and closes it, completes it later, and an attending attests it.\" One story for every test that runs it: apps/mobile/test/encounters/done_when_test.dart (steps 1 to 6, the phone's test server), live_encounters_test.dart (steps 1 to 7, the real API), apps/mobile/test/features/encounters/done_when_flow_test.dart (the screens), services/api/test/encounters-done-when.test.ts (steps 3, 5, 6 and 7 as raw changes and requests, and the shorter test) and the portal's half in apps/portal/e2e/attestation.spec.ts. The people are the seeded staff of db/seed/seed.ts, by email; a test that makes its own team makes them with these names, roles and credentials. Each note's answers are paths of its note type as released (packages/forms/generated/presets.json), the values the phone stores and sends; 'answers' are written at step 2, 'answersAtStep4' at step 4, and the note is finished with both. In 'steps', a string where a value is expected names each note's own value under that key ('answers', 'afterStep5', 'afterStep7'); a list of notes is in the visit's order, the order the phone made them in (the queue and the visit read keep it). A wound entry's ID and time ('edone001' and its entryAt) are the ones the domain layer's tests write through saveAnswer; the screens make their own. Everyone and everything here is invented.",
+
+  "people": {
+    "resident": {
+      "email": "resident@example.com",
+      "displayName": "Casey Nguyen (demo)",
+      "role": "healthcare_staff",
+      "credential": "resident"
+    },
+    "attending": {
+      "email": "clinician@example.com",
+      "displayName": "Jordan Lee (demo)",
+      "role": "healthcare_staff",
+      "credential": "attending"
+    },
+    "programAdmin": {
+      "email": "admin@example.com",
+      "displayName": "Alex Rivera (demo)",
+      "role": "program_admin",
+      "credential": "attending"
+    }
+  },
+
+  "patient": {
+    "id": "d04e0000-0000-4000-8000-000000000001",
+    "preferredName": "Wren",
+    "visualDescriptor": "Demo: green coat, grey backpack",
+    "usualArea": "Demo: by the made-up library steps",
+    "livingSituation": { "kind": "unsheltered" },
+    "preferredLanguage": "en"
+  },
+
+  "encounter": {
+    "kind": "medical",
+    "locationText": "Demo: by the made-up library steps"
+  },
+
+  "statementVersions": {
+    "sign": "sign-2026-11",
+    "complete": "complete-2026-11",
+    "attest": "attest-2026-11"
+  },
+
+  "assessment": "Demo: cough settling; wound clean; housing worker to follow up.",
+
+  "notes": [
+    {
+      "ref": "general",
+      "noteTypeKey": "general_primary_care",
+      "noteTypeVersion": 1,
+      "title": "General / primary care",
+      "medical": true,
+      "addedBy": "resident",
+      "answers": {
+        "reason.reasons": ["new_concern"],
+        "reason.concern": "Demo: a cough for a week",
+        "exam.systems": ["pulmonary"]
+      },
+      "answersAtStep4": {},
+      "act": "sign",
+      "effect": "signed",
+      "event": "note.signed",
+      "afterStep5": { "status": "signed", "attestation": "waiting" },
+      "afterStep7": { "status": "signed", "attestation": "attested" }
+    },
+    {
+      "ref": "redFlags",
+      "noteTypeKey": "red_flags_disposition",
+      "noteTypeVersion": 1,
+      "title": "Red flags and disposition",
+      "medical": true,
+      "addedBy": "app",
+      "addedWith": "general",
+      "answers": {
+        "disposition.disposition": ["follow_up"],
+        "follow_up.when": "prn"
+      },
+      "answersAtStep4": {
+        "red_flags.emergency": "no"
+      },
+      "act": "sign",
+      "effect": "signed",
+      "event": "note.signed",
+      "afterStep5": { "status": "signed", "attestation": "waiting" },
+      "afterStep7": { "status": "signed", "attestation": "attested" }
+    },
+    {
+      "ref": "wound",
+      "noteTypeKey": "wound_care",
+      "noteTypeVersion": 1,
+      "title": "Wound care",
+      "medical": true,
+      "addedBy": "resident",
+      "answers": {
+        "wound.edone001.entryAt": "2026-11-19T15:10:00Z",
+        "wound.edone001.location.region": "lower_body",
+        "wound.edone001.location.surface": "posterior",
+        "wound.edone001.type": "pressure",
+        "wound.edone001.measurements.length": 3,
+        "wound.edone001.treatment.dressing": ["mepilex"]
+      },
+      "answersAtStep4": {},
+      "act": "sign",
+      "effect": "signed",
+      "event": "note.signed",
+      "afterStep5": { "status": "signed", "attestation": "waiting" },
+      "afterStep7": { "status": "signed", "attestation": "attested" }
+    },
+    {
+      "ref": "social",
+      "noteTypeKey": "social_needs",
+      "noteTypeVersion": 1,
+      "title": "Social needs",
+      "medical": false,
+      "addedBy": "resident",
+      "answers": {
+        "needs.needs": ["food"],
+        "needs.housing": "unsheltered"
+      },
+      "answersAtStep4": {},
+      "act": "complete",
+      "effect": "completed",
+      "event": "note.completed",
+      "afterStep5": { "status": "completed", "attestation": "not_needed" },
+      "afterStep7": { "status": "completed", "attestation": "not_needed" }
+    }
+  ],
+
+  "steps": [
+    {
+      "n": 1,
+      "online": false,
+      "by": "resident",
+      "story": "Offline. The resident starts a Medical encounter for the patient, at encounter.locationText, and adds General / primary care, Wound care and Social needs, in that order. The app adds the Red flags and disposition note by itself, with General / primary care, in the same transaction.",
+      "expect": {
+        "phone": { "encounters": 1, "notes": 4, "noteStatus": "draft", "sent": 0 }
+      }
+    },
+    {
+      "n": 2,
+      "online": false,
+      "by": "resident",
+      "story": "They fill in each note's answers and press Save & Close. The app is killed and started again, still offline.",
+      "expect": {
+        "phone": { "encounters": 1, "notes": 4, "noteStatus": "draft", "answers": "answers", "notesToFinish": 4, "sent": 0 }
+      }
+    },
+    {
+      "n": 3,
+      "online": true,
+      "by": "resident",
+      "story": "The phone reconnects.",
+      "expect": {
+        "receipts": { "status": "accepted", "hashConfirmed": true },
+        "server": {
+          "encounters": 1,
+          "encounterStatus": "draft",
+          "notes": 4,
+          "noteStatus": "draft",
+          "attestation": "not_needed",
+          "answers": "answers",
+          "notesToFinish": 4
+        },
+        "phone": { "encounters": 1, "notes": 4, "noteStatus": "draft" }
+      }
+    },
+    {
+      "n": 4,
+      "online": false,
+      "by": "resident",
+      "story": "Offline again, later. They open the visit from Notes to finish, answer the red-flag question (answersAtStep4), write the assessment and press Complete and sign.",
+      "expect": {
+        "phone": {
+          "button": "Complete and sign",
+          "outbox": [
+            { "note": "redFlags", "act": "sign" },
+            { "note": "general", "act": "sign" },
+            { "note": "wound", "act": "sign" },
+            { "note": "social", "act": "complete" }
+          ],
+          "readOnly": true,
+          "opens": "chart",
+          "visitLabel": "Waiting to send"
+        }
+      }
+    },
+    {
+      "n": 5,
+      "online": true,
+      "by": "resident",
+      "story": "The phone reconnects.",
+      "expect": {
+        "receipts": { "status": "accepted", "hashConfirmed": true },
+        "server": {
+          "signoffs": 4,
+          "effects": { "signed": 3, "completed": 1 },
+          "notes": "afterStep5",
+          "encounterStatus": "signed",
+          "events": { "note.signed": 3, "note.completed": 1 },
+          "eachEventInItsChangeTransaction": true
+        }
+      }
+    },
+    {
+      "n": 6,
+      "online": true,
+      "by": "resident",
+      "story": "The phone's sync finishes.",
+      "expect": {
+        "phone": { "encounters": 0, "notes": 0, "notesToFinish": 0 },
+        "server": { "notesToFinish": 0 }
+      }
+    },
+    {
+      "n": 7,
+      "online": true,
+      "by": "attending",
+      "story": "An attending, online, opens the attestation queue and attests the visit in one action.",
+      "expect": {
+        "server": {
+          "queueBefore": { "visits": 1, "notes": ["general", "redFlags", "wound"] },
+          "attest": { "status": 200, "notes": ["general", "redFlags", "wound"] },
+          "queueAfter": { "visits": 0 },
+          "attestations": 3,
+          "notes": "afterStep7",
+          "encounterStatus": "signed",
+          "events": { "attestation_queue.viewed": 1, "note.attested": 3 },
+          "notices": { "resident": { "note_attested": 1 } }
+        }
+      }
+    }
+  ],
+
+  "guExam": {
+    "story": "11.1's shorter test (6.4 rule 4): the resident charts a Medical visit whose General / primary care note has a GU exam, a sensitive exam section, and signs it with its Red flags note. The attending, Healthcare Staff, may not read the GU exam: attesting the note is refused. A Program Admin, who reads it, attests it.",
+    "assessment": "Demo: burning eased; fluids and a follow-up.",
+    "notes": [
+      {
+        "ref": "redFlags",
+        "noteTypeKey": "red_flags_disposition",
+        "noteTypeVersion": 1,
+        "title": "Red flags and disposition",
+        "answers": {
+          "red_flags.emergency": "no",
+          "disposition.disposition": ["follow_up"],
+          "follow_up.when": "prn"
+        }
+      },
+      {
+        "ref": "general",
+        "noteTypeKey": "general_primary_care",
+        "noteTypeVersion": 1,
+        "title": "General / primary care",
+        "answers": {
+          "reason.concern": "Demo: burning when passing water",
+          "exam.systems": ["gu"],
+          "gu.general": ["dysuria"],
+          "gu.cva": "no_tenderness"
+        }
+      }
+    ],
+    "refusedTo": "attending",
+    "refusal": { "status": 403, "code": "cannot_see_all", "notes": ["general"] },
+    "attestedBy": "programAdmin"
+  },
+
+  "neverInAuditDetails": [
+    "Wren",
+    "Demo: cough settling",
+    "Demo: a cough for a week",
+    "Demo: green coat",
+    "Demo: by the made-up library steps",
+    "Demo: burning",
+    "Casey Nguyen",
+    "Jordan Lee",
+    "Alex Rivera"
+  ]
+}
