@@ -1312,9 +1312,13 @@ mayAssign(i: {
 }): 'ok' | { refuse: 'author_active' | 'assignee_not_member' | 'assignee_cannot_chart' | 'credential_too_low' | 'cannot_see_all' }
 ```
 
-`noteHasHiddenSection` is true when a note of its type could hold an answer the assignee could
-not see without being its author, asked of the definition and their keys, never of what the note holds (5.5 as built; review finding PRD-1). Whoever acts as a note's author sees all of it (6.4), so
-the check is about what the assignee's role allows today, before the assignment.
+`noteHasHiddenSection` is true when the note hides an answer from the assignee as if they were not
+its author, asked of what the person assigning may see (5.5 as built; review finding PRD-1, the
+coordinator's decision of Nov 20): where that person's keys could miss what a path of the
+definition holds too, when a note of its type could hold there an answer the assignee could not
+see, whatever the note holds; elsewhere, when the note holds an answer that counts that the
+assignee could not see. Whoever acts as a note's author sees all of it (6.4), so the check is about
+what the assignee's role allows today, before the assignment.
 
 **`noteIsEmpty`**, **`encounterStatus`**, **`envelopeLocked`** and **`isOverdue`**:
 
@@ -3225,8 +3229,9 @@ needs a recent sign-in (`services/api/src/routes/members.ts:157`). Checked by `m
 acting author is not an active member, else `409 author_active`; the assignee is an active
 member with `encounters.chart`; the assignee's credential rank is at least the rank the note was
 signed under, or for an unsigned note the author's last credential, else `422
-credential_too_low`; a note of its type could hold no answer the assignee could not see (6.4),
-else `422 cannot_see_all`. Then a `note_assignments` row and `assigned_user_id`.
+credential_too_low`; the note hides no answer from the assignee (6.4), asked by what the person
+assigning may see (below), else `422 cannot_see_all`. Then a `note_assignments` row and
+`assigned_user_id`.
 Audit: `note.assigned`. Notice to the assignee: `note_assigned`.
 
 As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `assignNote`):
@@ -3243,16 +3248,25 @@ As built (unit L2, with its review; `services/api/src/encounters/assign.ts`, `as
   note's current signature was recorded under, else from its writer's credential on their
   membership, which is kept when they are removed, else, for a writer with no membership, the
   highest rank; and whether the note hides something from the assignee, asked of their role as
-  if they were not the author: true when the role may not read a Medical visit's summary, when
-  any answer a note of its type could hold is one the role could not see (`mayHoldHidden`, asked
-  of every path of the definition: a note of a type the role may not read, a sensitive exam's
-  section or marked option, a treatment record, a section with a diagnosis), and when the
-  definition cannot be read. A phase 2 note with no version hides nothing. It is asked of the
-  definition and the assignee's keys alone, never of what the note holds, as a hold is (D88):
-  the picker's list is read with every visit page, and one that left out whoever could not see a
-  sensitive exam or a treatment record the note holds would tell its reader that the note holds
-  one (review finding PRD-1, the coordinator's decision of Nov 19). A note no active member
-  qualifies for stays in Notes not complete (PLAN-OPEN 12.1 #31).
+  if they were not the author (`hidesFrom`): true when the role may not read a Medical visit's
+  summary or a note of the type, and when the definition cannot be read; otherwise asked path by
+  path of the definition, with the caller's read of the note (`noteAsRead`), by what the caller
+  may see there (the coordinator's decision of Nov 20, narrowing D116):
+  - where the caller's keys could miss what a path holds too, true when a note of its type could
+    hold there an answer the assignee's role could not see (`mayHoldHidden`, asked of both: a
+    sensitive exam's section or marked option, a treatment record, a section with a diagnosis),
+    whatever the note holds, as a hold is decided (D88). The picker's list is read with every
+    visit page, and one that left out whoever could not see a treatment record the note holds
+    would tell a Program Admin who reads none that the note holds one (review finding PRD-1, the
+    coordinator's decision of Nov 19);
+  - elsewhere, true when the note holds an answer that counts that the role could not see
+    (`seenBy`, the read rule, against `effectiveAnswers`): the caller reads every such answer on
+    the visit page, so leaving someone out for it tells them nothing new. An answer the assignee
+    could not see lies where `mayHoldHidden` marks for them, as a hold relies on, so where it
+    marks for the caller too the first rule has answered already, whatever the note holds.
+
+  A phase 2 note with no version hides nothing. A note no active member qualifies for stays in
+  Notes not complete (PLAN-OPEN 12.1 #31).
 - **Refusals**: 409 `author_active`; 422 `assignee_not_member`, `assignee_cannot_chart`,
   `credential_too_low` and `cannot_see_all`, each a person the picker should not have offered.
   None writes anything, and none is logged (10.1). A note whose assignee is active is theirs, so
@@ -3267,7 +3281,11 @@ As built for the portal's picker (unit L6, 9.12): **`GET /v1/notes/{noteId}/assi
 credential }] }`, every active member, by name, for whom `mayAssign` allows the note, asked through
 the function the assign route asks (`assignDecision`), so the picker lists exactly the people the
 route takes and holds no copy of the credential ranks. Whether the note hides something from each
-is `hidesFrom`'s, from its type (above), so the list tells nothing of what the note holds. It
+is `hidesFrom`'s, asked with the caller's read of the note (above), so the list tells the caller
+nothing of what they may not read in it. Two callers may be given different lists for one note,
+and that is intended: a Program Admin, who reads sensitive exams, is offered a Healthcare Staff
+attending for a General / primary care note with no GU exam in it, while a manager whose role reads
+none is not, since to them whom the list leaves out would say whether the note holds one. It
 needs `team.manage_users` and no recent sign-in: it is a read, as the list of members and the
 team's incomplete notes are, and the assignment asks for one (the coordinator's decision of Nov
 19). A note the team does not have, or the caller may not read (`noteAsRead`, as the visit read
@@ -3622,12 +3640,19 @@ Rules:
   open" reaches only a reader whose credential may do the act: D97 already tells them as much by
   the missing hash, and the queue by listing a note they did not write as not theirs (the
   coordinator's decision on the review of unit L6).
-- **Who may be assigned a note** is decided as rule 5 decides a hold (D88): from the note's type
-  and the assignee's keys, by `mayHoldHidden` over every path the type can hold, never from what
-  the note holds, for the picker's list and the assign route's `cannot_see_all` alike, so neither
-  tells its reader what the note holds (5.5; review finding PRD-1). The cost: a note of a type that
-  could hold a sensitive exam goes only to someone whose role reads sensitive exams, among the
-  standard roles a Program Admin (PLAN-OPEN 12.1 #31).
+- **Who may be assigned a note** is decided by what the person assigning may see of it, for the
+  picker's list and the assign route's `cannot_see_all` alike, so neither tells them anything of
+  the note they may not read (5.5; review finding PRD-1, the coordinator's decision of Nov 20).
+  Where their keys could miss what a path of the definition holds, it is decided as rule 5 decides
+  a hold (D88): from the note's type and the assignee's keys, by `mayHoldHidden` asked of both,
+  whatever the note holds. Elsewhere it is decided by what the note holds: an answer that counts
+  the assignee's role could not see keeps the note from them, and the person assigning reads that
+  answer on the page. So two people assigning may be offered different people for one note. The
+  cost of the type rule, a note of a type that could hold a sensitive exam offered only to someone
+  whose role reads them (among the standard roles a Program Admin), is left only where the person
+  assigning reads none either, such as a manager without the key; a Program Admin, who reads them,
+  is offered any clinician with the credential it needs for a General / primary care note with no
+  GU, breast or rectal exam in it (PLAN-OPEN 12.1 #31).
 - **The pages hold no read rule.** Each shows what the API answered for the reader, and the
   team's list of notes not complete names no patient to a reader without `patients.view` (5.6).
 
@@ -4427,11 +4452,12 @@ visit page's `AssignForm.tsx` and `assign/route.ts`; its words in
   says so and takes focus (PAX-3). The button stays off while the next page loads, and a dropped
   connection says it can't tell whether the note was assigned (9.11 as built).
 - **With nobody to offer**, the block says "Nobody on the team may take this note now. It needs an
-  active clinician with the same or a higher credential, whose role can see everything a note of
-  its type can hold.", asked of the type, never of what the note holds (5.5; review finding
-  PRD-1). Such a note stays in Notes not complete (PLAN-OPEN 12.1 #31): on the standard roles a
-  General / primary care note, which has a GU exam section, goes only to a Program Admin with the
-  credential it needs, the one role that reads sensitive exams.
+  active clinician with the same or a higher credential, whose role can see everything in it, and
+  any part of this kind of note that you can’t see.", as the rule asks: by what the note holds
+  where the reader sees it, and by its type where they could miss it (5.5; review finding PRD-1,
+  the coordinator's decision of Nov 20). Such a note stays in Notes not complete (PLAN-OPEN 12.1
+  #31): on the standard roles a General / primary care note that holds a GU exam goes only to a
+  Program Admin with the credential it needs, the one role that reads sensitive exams.
 - **After an assignment** the note says "Assigned to {name}, who acts as its author now.", and,
   where it waits for a second person, tells the assignee "This note was assigned to you, so
   someone else has to co-sign it." (9.11 as built): never that they wrote it.
@@ -4795,8 +4821,8 @@ Every rule below is checked to bite: put the old behaviour back, see the test fa
 | What the visit read tells the portal's page (unit L6): the patient's preferred name, the chart's they were merged into; `hasHandoff` exactly when the export gives its file; each note's title and `medical`; `canCosign` and `canAttest` equal to the queues' `canAct` for every reader, and taken by the act; `heldBecause` worded truly (an assignee never told they wrote it); nothing to a role that does not chart; each field added with a default; since the review, which records made at the visit are on another chart now, by the patients' canonical charts, a merged ID of the same person being the same chart | 5, 5.1, 5.3, 5.4 | `services/api/test/encounters-read-actions.test.ts` ("the contract", "the patient and the notes", "whether the visit has an EMS handoff", "what the reader may do as a second person"); `encounters-read.test.ts` ("says which are on another chart now, by the patients’ charts: a merged ID of the same person is the same chart") |
 | Each list's note title and `medical` (unit L6) | 5.2, 5.4, 5.6 | `encounters-timeline.test.ts` ("the group’s visits newest first…"), `encounters-queues.test.ts` (each queue's first case), `encounters-incomplete.test.ts` ("lists every draft of the team…") |
 | The portal's chart read logs no visit or note read; only the phone's cached chart carries and logs the recent visits (unit L6) | 5.2, 10.1 | `encounters-timeline.test.ts` ("the portal’s chart read carries the timeline and no visit in full, and logs no visit or note read", "the recent visits the phone caches are logged as the visit read logs them, from the cache") |
-| Assigning a note; since unit L6's review, `cannot_see_all` decided from the note's type whatever it holds, and a note the caller may not read 404, as its picker answers | 3.8, 5.5 | `services/api/test/encounters-assign.test.ts` ("who may assign", "what is refused, and how", "what is logged of a refusal", "what an assignment writes, and what it changes"; "a note of a type that could hold an answer the assignee could not see: 422 cannot_see_all, whatever it holds", "a note the caller may not read is 404, as its assignees route answers, whatever its state, and nothing is written or logged") |
-| Who may be assigned a note: exactly the active members the assign route takes; `team.manage_users` without a recent sign-in; 409, 404 and 422 unlogged; `note.assignees_viewed` (unit L6); since its review, decided from the note's type and each person's keys, never from what the note holds (D88's rule; review finding PRD-1) | 5.5, 6.4, 10.1 | `services/api/test/encounters-assignees.test.ts` (with the group "decided from the note’s type and each person’s keys, never from what the note holds (review finding PRD-1)": a note with and without a sensitive exam, and with and without a treatment record, give the same list and the route the same refusal); its row in `permissions.test.ts` |
+| Assigning a note; since unit L6's review, `cannot_see_all` decided by what the caller may see (by what the note holds where they see it, by its type where they could miss it too), and a note the caller may not read 404, as its picker answers | 3.8, 5.5 | `services/api/test/encounters-assign.test.ts` ("who may assign", "what is refused, and how", "what is logged of a refusal", "what an assignment writes, and what it changes"; "an answer the assignee could not see: 422 cannot_see_all, by what the note holds where the caller sees it, whatever it holds where they could miss it too", "a note the caller may not read is 404, as its assignees route answers, whatever its state, and nothing is written or logged") |
+| Who may be assigned a note: exactly the active members the assign route takes; `team.manage_users` without a recent sign-in; 409, 404 and 422 unlogged; `note.assignees_viewed` (unit L6); since its review, decided by what the caller may see: by D88's rule where the caller could miss the content, by what the note holds where they see it (review finding PRD-1; the coordinator's decision of Nov 20) | 5.5, 6.4, 10.1 | `services/api/test/encounters-assignees.test.ts` (with the group "decided by what the caller may see (review finding PRD-1; the coordinator’s decision of Nov 20)": a Program Admin is offered a Healthcare Staff attending for a General note with no GU exam and not for one with a GU exam; a manager without the exams key, and a Program Admin with no credential, get the same list and the same refusal of every member left out with and without a sensitive exam or a treatment record; the list and the route agree in each); its row in `permissions.test.ts` |
 | Overdue after 24 hours, worked out when read; the lists of notes not complete; the team's list names each patient, by the chart they were merged into and only with `patients.view` (unit L6) | 3.9, 5.6 | `note-lifecycle.json`; `services/api/test/encounters-incomplete.test.ts` ("notes to finish: the caller’s own drafts", "the team’s incomplete notes", "names a merged patient by the chart they were merged into, as the queues do") |
 | Home's counts: each its list's length, absent for a list the caller may not open, no patient named or logged; `teamOverdue` the team list's own overdue (unit L6) | 5.6 | `services/api/test/encounters-counts.test.ts` |
 | A referral's snapshot names who recorded it, by their name now (unit L6) | 5.2, 7 | `services/api/test/sync-referrals.test.ts` ("its snapshot names who recorded it, by their name now, wherever it is read"); on the fake, the parity case of the same name (`fake_parity_test.dart`) |
@@ -4929,7 +4955,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 28 | Which time zone are the EMS handoff PDF's times printed in? | The reader's, which the portal sends as an IANA zone's name, checked against the zones the server knows, and printed beside each time; without one, UTC, labelled UTC. No team has a time zone yet; one can come with routes (phase 7) (5.7) | The team |
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is not held to this yet (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's), on the phone or in the visit read online or from the cached chart, opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
-| 31 | Who may be assigned a note whose author left, when its type could hold a sensitive exam, a treatment record or a sensitive diagnosis? | Only someone whose role would see each of them, decided from the type and their keys, never from what the note holds (5.5; review finding PRD-1). A note no active member qualifies for, such as a General / primary care note on a team whose attendings hold no `patients.view_sensitive_exams`, stays in Notes not complete | Brooke and Mercy |
+| 31 | Who may be assigned a note whose author left, when it holds, or its type could hold, a sensitive exam, a treatment record or a sensitive diagnosis? | Only someone whose role would see each of them. Where the person assigning sees such content, by what the note holds; where they could miss it, by the note's type and the assignee's keys, whatever the note holds, so the list tells them nothing they may not read (5.5; review finding PRD-1, the coordinator's decision of Nov 20). A note no active member qualifies for stays in Notes not complete. A note that holds such content needs someone who may see it, whoever assigns it; its type alone keeps it from someone only where the person assigning may not see that content (a manager whose role reads no sensitive exam, a Program Admin with no credential before a treatment record). So on a team whose attendings hold no `patients.view_sensitive_exams`, a General / primary care note stalls only when it holds a GU, breast or rectal exam, or when someone who reads none assigns it | Brooke and Mercy |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -4946,7 +4972,8 @@ online routes, have theirs at the head of `assign.ts` and of `handoff.ts`, on `R
 Row 30 came from unit F7, Expand on the phone. Its `PLAN-OPEN:` comment is on `expand`
 (`apps/mobile/lib/encounters/expand_quick.dart`).
 
-Row 31 came from unit L6's review (finding PRD-1). Its `PLAN-OPEN:` comment is on `hidesFrom`
+Row 31 came from unit L6's review (finding PRD-1), narrowed by the coordinator's decision of Nov
+20. Its `PLAN-OPEN:` comment is on `hidesFrom`
 (`services/api/src/encounters/assign.ts`). Unit L6 also put row 5's comment on the portal's
 `SIGN_ACTS` (`apps/portal/src/lib/sign.ts`), the sentences the visit page shows a co-signer and an
 attester (9.11 as built), and added no other.
