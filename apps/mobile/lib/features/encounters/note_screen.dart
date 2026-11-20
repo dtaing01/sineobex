@@ -97,6 +97,11 @@ class _NoteState extends ConsumerState<_Note> {
   EncounterServices get _s => widget.services;
   EncounterRepository get _repo => _s.repository;
 
+  /// Online, whether the visit already has a finished Red flags note the phone lacks (8.2, D113):
+  /// asked at the first action that adds a note, once for the screen.
+  RedFlagsOnline? _redFlagsRead;
+  RedFlagsOnline _redFlags(String encounterId) => _redFlagsRead ??= RedFlagsOnline(_s, encounterId, _sync);
+
   @override
   void initState() {
     super.initState();
@@ -296,19 +301,21 @@ class _NoteState extends ConsumerState<_Note> {
 
   /// `open_note_type` (forms 6.7): the visit's draft of that type, or a new one (`addNote`).
   Future<void> _openType(NoteView note, NoteTypeDef type) => _run(() async {
-    final added = await _repo.addNote(note.encounterId, type);
+    final flags = await _redFlags(note.encounterId).finished;
+    final added = await _repo.addNote(note.encounterId, type, redFlagsFinished: flags);
     if (mounted) unawaited(context.push(noteLocation(added.noteId)));
   });
 
   /// `open_note_type` naming the Red flags note (forms 6.2 as built): the person's own, through
   /// `addRedFlagsNote`, so no second one is made once theirs is finished; when a teammate's finished
-  /// one makes it needless, that note opens, read-only.
+  /// one makes it needless, that note opens, read-only: the phone's, found without a read that would
+  /// log notes nothing shows (review SRD-7), else the server's, brought to the phone first.
   Future<void> _openRedFlags(NoteView note) => _run(() async {
-    var id = await _repo.addRedFlagsNote(note.encounterId);
-    if (id == null) {
-      final visit = await _repo.openVisit(note.encounterId);
-      id = visit?.notes.where((n) => n.finished && n.definition?.auto == 'medical').map((n) => n.noteId).firstOrNull;
-    }
+    final online = _redFlags(note.encounterId);
+    final theirs = await online.note;
+    var id = await _repo.addRedFlagsNote(note.encounterId, redFlagsFinished: theirs != null);
+    id ??= await _repo.finishedRedFlagsNote(note.encounterId);
+    if (id == null && theirs != null && await fetchNote(_s, theirs, encounterId: note.encounterId)) id = theirs;
     if (id == null) throw const LocalValidationError(noteNotOnPhone);
     if (mounted) unawaited(context.push(noteLocation(id)));
   });
@@ -346,7 +353,8 @@ class _NoteState extends ConsumerState<_Note> {
   }
 
   Future<void> _expand(NoteView note, NoteTypeDef full) => _run(() async {
-    final done = await _repo.expand(note.noteId, full);
+    final flags = await _redFlags(note.encounterId).finished;
+    final done = await _repo.expand(note.noteId, full, redFlagsFinished: flags);
     if (!mounted) return;
     final labels = [
       for (final l in done.leftOut) l.label,

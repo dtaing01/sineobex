@@ -196,6 +196,32 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 }
 
+/// Online, the finished Red flags note the server's read of a visit shows (lifecycle 8.2, D113, the
+/// coordinator's decision on SFL-5 and SRD-8), asked once for a screen and kept: one read serves the
+/// screen, whatever it then adds or completes. A screen passes whether there is one as
+/// `redFlagsFinished` to `addNote`, `openComplete`, `addRedFlagsNote` and `expand`, so a teammate's
+/// note the phone does not hold makes the person's own needless. Offline, and for a visit made here
+/// that has not reached the server, nothing is asked: the phone's own copy decides, as the server
+/// tolerates.
+class RedFlagsOnline {
+  RedFlagsOnline(this.services, this.encounterId, this.sync);
+  final EncounterServices services;
+  final String encounterId;
+  final SyncController sync;
+  Future<String?>? _asked;
+
+  /// The note's ID; null when the server shows none, or was not asked.
+  Future<String?> get note => _asked ??= _ask();
+
+  /// Whether the server shows one: what the domain layer takes as `redFlagsFinished`.
+  Future<bool> get finished async => await note != null;
+
+  Future<String?> _ask() async {
+    if (sync.snapshot.offline || !services.repository.othersMayHaveAdded(encounterId)) return null;
+    return services.api.finishedRedFlags(encounterId);
+  }
+}
+
 /// Whether "On this phone only" goes beside a note's state: never where the state says "Waiting to
 /// send", which says the same thing.
 bool showsOnThisPhoneOnly(NoteView note) => note.notSynced && !note.waitingToSend;

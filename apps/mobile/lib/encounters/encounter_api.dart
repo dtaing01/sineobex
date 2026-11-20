@@ -252,22 +252,22 @@ class EncounterApi {
     });
   }
 
-  /// Whether the server's read of the visit [encounterId] shows a finished Red flags note (lifecycle
-  /// 8.2, D113, forms 6.2), which a screen passes as `redFlagsFinished` to `addNote`, `openComplete`,
-  /// `addRedFlagsNote` and `expand`: a teammate's that this phone does not hold makes the person's own
-  /// needless. One read of the server's, logged there. False without signal, for a visit the server
-  /// does not have, or when no answer comes within [limit]: offline the phone's own copy decides, as
-  /// before, which the server tolerates.
-  Future<bool> redFlagsFinished(String encounterId, {Duration limit = serverReadLimit}) async {
+  /// The finished Red flags note the server's read of the visit [encounterId] shows, if any (lifecycle
+  /// 8.2, D113, forms 6.2): a screen passes whether there is one as `redFlagsFinished` to `addNote`,
+  /// `openComplete`, `addRedFlagsNote` and `expand`, since a teammate's that this phone does not hold
+  /// makes the person's own needless. One read of the server's, logged there. Null without signal, for
+  /// a visit the server does not have, or when no answer comes within [limit]: offline the phone's own
+  /// copy decides, as before, which the server tolerates.
+  Future<String?> finishedRedFlags(String encounterId, {Duration limit = serverReadLimit}) async {
     try {
-      return showsFinishedRedFlags(await readVisit(encounterId).timeout(limit));
+      return finishedRedFlagsIn(await readVisit(encounterId).timeout(limit));
     } on EncounterRequestFailed {
-      return false;
+      return null;
     } on TimeoutException {
-      return false;
+      return null;
     } on ChartingPaused {
       // Nothing is shown from it; the screen says why.
-      return false;
+      return null;
     }
   }
 

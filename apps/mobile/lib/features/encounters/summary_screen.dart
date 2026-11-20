@@ -86,6 +86,10 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
 
   EncounterRepository get _repo => services.repository;
 
+  /// Online, whether the visit already has a finished Red flags note the phone lacks (8.2, D113):
+  /// asked as the summary opens, once, before Complete is planned.
+  late final RedFlagsOnline _redFlags = RedFlagsOnline(services, encounterId, ref.read(syncControllerProvider));
+
   @override
   void initState() {
     super.initState();
@@ -109,14 +113,16 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
     if (!mounted || visit == null || services.store.frozen) return;
     final saves = _saves;
     try {
-      final plan = await _repo.openComplete(encounterId);
+      final flags = await _redFlags.finished;
+      if (!mounted || seq != _planSeq) return;
+      final plan = await _repo.openComplete(encounterId, redFlagsFinished: flags);
       if (!mounted || seq != _planSeq || plan == null) return;
       // Hard stop 5 with no note to open: the person has no Red flags note. The app adds theirs and
       // plans again (forms 6.2 as built); asked once, so a refusal is shown, not repeated.
       if (!_askedRedFlags && plan.stops.any((s) => s.stop == CompleteStop.redFlagsFirst && s.noteId == null)) {
         _askedRedFlags = true;
         try {
-          if (await _repo.addRedFlagsNote(encounterId) != null) return;
+          if (await _repo.addRedFlagsNote(encounterId, redFlagsFinished: flags) != null) return;
         } on Exception catch (e) {
           if (mounted) setState(() => _refused = [encounterErrorText(e)]);
         }
@@ -166,7 +172,7 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
       await _flushTyping();
       var plan = drawn.plan;
       if (_saves != drawn.saves) {
-        final fresh = await _repo.openComplete(encounterId);
+        final fresh = await _repo.openComplete(encounterId, redFlagsFinished: await _redFlags.finished);
         if (fresh == null || !_sameRecaps(plan, fresh)) {
           throw const CompleteRefused([CompleteBlock(CompleteStop.noteChanged, 'This note changed. Read it again.')]);
         }
@@ -196,7 +202,7 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
   /// A suggested note type: the visit's draft of it, or a new one (`addNote`), which opens.
   Future<void> _addType(NoteTypeDef type) async {
     try {
-      final added = await _repo.addNote(encounterId, type);
+      final added = await _repo.addNote(encounterId, type, redFlagsFinished: await _redFlags.finished);
       if (mounted) unawaited(context.push(noteLocation(added.noteId)));
     } on Exception catch (e) {
       if (mounted) setState(() => _refused = [encounterErrorText(e)]);

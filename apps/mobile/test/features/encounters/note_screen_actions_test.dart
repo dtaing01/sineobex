@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/design/widgets/form_bits.dart' show ErrorMessage;
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/features/forms/note_read_view.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityReferral;
+import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityReferral;
 import 'package:sineobex_field/sync/local_store.dart' show entityNote;
 
 import 'encounter_kit.dart';
@@ -89,12 +89,22 @@ void main() {
     final outreach = await chart(tester, h, visit, 'outreach', {
       'outreach.new_need': ['emergency'],
     });
+    final general = await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
     await openNote(tester, outreach);
+    final store = h.sync.store!;
+    final before = store.outbox().length;
     await tapOn(tester, action('Go to Red flags and disposition'));
     await settle(tester);
     expectNoteOpened(tester, theirs);
     expect(find.byType(NoteReadView), findsOneWidget);
     expect(find.text('By Demo Blair'), findsOneWidget);
+    // Only what the note screen shows is logged, once: not the visit, nor its other notes (10.1).
+    final logged = [
+      for (final e in store.outbox().skip(before))
+        if (e.entity == entityAudit) (e.value! as Map<String, Object?>)['entityId'],
+    ];
+    expect(logged, [theirs]);
+    expect(logged.contains(general), isFalse);
     // None of the person's own was made.
     expect(notesOf(h, visit).where((n) => n.attributes['noteTypeKey'] == 'red_flags_disposition'), hasLength(1));
   });

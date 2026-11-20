@@ -861,20 +861,20 @@ void main() {
       final p = phone(alex);
       final e = online(p);
       api.on('GET', '/v1/encounters/$visit', (_) => withFlags('signed'));
-      expect(await e.redFlagsFinished(visit), isTrue);
+      expect(await e.finishedRedFlags(visit), n2);
       expect(api.asked, hasLength(1));
       api.on('GET', '/v1/encounters/$visit', (_) => withFlags('draft'));
-      expect(await e.redFlagsFinished(visit), isFalse);
+      expect(await e.finishedRedFlags(visit), isNull);
       api.refuse('GET', '/v1/encounters/$visit', 404, 'not_found');
-      expect(await e.redFlagsFinished(visit), isFalse);
+      expect(await e.finishedRedFlags(visit), isNull);
       api.on(
         'GET',
         '/v1/encounters/$visit',
         (_) => Future<Object?>.delayed(const Duration(seconds: 1), () => withFlags('signed')),
       );
-      expect(await e.redFlagsFinished(visit, limit: const Duration(milliseconds: 20)), isFalse);
+      expect(await e.finishedRedFlags(visit, limit: const Duration(milliseconds: 20)), isNull);
       api.offline = true;
-      expect(await e.redFlagsFinished(visit), isFalse);
+      expect(await e.finishedRedFlags(visit), isNull);
       // The phone logs nothing of it: the server logged its read.
       expect(audits(p), isEmpty);
     });

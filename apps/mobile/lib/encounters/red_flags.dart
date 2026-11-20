@@ -26,12 +26,14 @@ List<NoteView> redFlagsLast(List<NoteView> notes) => [
     if (n.definition != null && _isRedFlags(n.definition!)) n,
 ];
 
-/// Whether [visit] shows a finished Red flags note (forms 6.2; lifecycle 8.2, D113): for the
+/// The finished Red flags note [visit] shows, if any (forms 6.2; lifecycle 8.2, D113): for the
 /// server's read of a visit, what a screen passes as `redFlagsFinished` to [EncounterRepository.addNote],
-/// [EncounterCompletion.openComplete], [RedFlagsNote.addRedFlagsNote] and `expand`, so a teammate's that the
-/// phone does not hold makes the person's own needless, as the server's Complete takes it.
-bool showsFinishedRedFlags(VisitView visit) =>
-    visit.notes.any((n) => n.finished && n.definition != null && _isRedFlags(n.definition!));
+/// [EncounterCompletion.openComplete], [RedFlagsNote.addRedFlagsNote] and `expand`, so a teammate's that
+/// the phone does not hold makes the person's own needless, as the server's Complete takes it.
+String? finishedRedFlagsIn(VisitView visit) => visit.notes
+    .where((n) => n.finished && n.definition != null && _isRedFlags(n.definition!))
+    .map((n) => n.noteId)
+    .firstOrNull;
 
 extension RedFlagsNote on EncounterRepository {
   /// The person's own Red flags note in the visit [encounterId]: one they act as the author of,
@@ -42,6 +44,16 @@ extension RedFlagsNote on EncounterRepository {
     _guardFrozen();
     await definitions.loadAll(EncounterRepository._versions(_Held.scan(store, encounterId: encounterId).notes));
     return _redFlagsIn(_Held.scan(store, encounterId: encounterId), null).own;
+  }
+
+  /// A finished Red flags note of the visit [encounterId] that the phone holds, by the store alone
+  /// (forms 6.2): what **Go to Red flags** opens when a finished one makes the person's own needless.
+  /// Reads no note for anyone, so it logs nothing: the note screen's own read logs what it shows
+  /// (10.1, review SRD-7). Null when the phone holds none, or no such visit.
+  Future<String?> finishedRedFlagsNote(String encounterId) async {
+    _guardFrozen();
+    await definitions.loadAll(EncounterRepository._versions(_Held.scan(store, encounterId: encounterId).notes));
+    return _redFlagsIn(_Held.scan(store, encounterId: encounterId), await _teamRedFlags()).finished;
   }
 
   /// **The person's own Red flags note** in the visit [encounterId] (forms 6.2), on the team's type
@@ -74,7 +86,7 @@ extension RedFlagsNote on EncounterRepository {
     _guardFrozen();
     final held = _redFlagsIn(_Held.scan(store, encounterId: encounterId), redFlags);
     if (held.own != null) return held.own;
-    if (held.finished || redFlagsFinished) return null;
+    if (held.finished != null || redFlagsFinished) return null;
     if (redFlags == null) {
       throw const LocalValidationError('Connect once to load your team’s note types.', problem: 'no_red_flags_type');
     }
@@ -88,15 +100,14 @@ extension RedFlagsNote on EncounterRepository {
   Future<bool> _needsRedFlags(String encounterId, NoteTypeDef redFlags) async {
     await definitions.loadAll(EncounterRepository._versions(_Held.scan(store, encounterId: encounterId).notes));
     final held = _redFlagsIn(_Held.scan(store, encounterId: encounterId), redFlags);
-    return held.own == null && !held.finished;
+    return held.own == null && held.finished == null;
   }
 
-  /// The visit's Red flags notes as this phone knows them: whether one is finished (by the server's
-  /// status, or a sign-off made here that was not refused, as Complete reads hard stop 5), and the
-  /// person's own. A note is one by its definition's `auto`, or by [redFlags]' key while the phone
+  /// The visit's Red flags notes as this phone knows them: a finished one (by the server's status, or
+  /// a sign-off made here that was not refused, as Complete reads hard stop 5), and the person's own. A note is one by its definition's `auto`, or by [redFlags]' key while the phone
   /// lacks its version.
-  ({bool finished, String? own}) _redFlagsIn(_Held held, NoteTypeDef? redFlags) {
-    var finished = false;
+  ({String? finished, String? own}) _redFlagsIn(_Held held, NoteTypeDef? redFlags) {
+    String? finished;
     String? own;
     for (final rec in held.ordered(held.notes)) {
       final definition = _loadedDefinition(rec);
@@ -104,7 +115,7 @@ extension RedFlagsNote on EncounterRepository {
           ? _isRedFlags(definition)
           : redFlags != null && rec.attributes['noteTypeKey'] == redFlags.key;
       if (!isRedFlags) continue;
-      if (store.noteState(rec.id)!.status != NoteStatus.draft) finished = true;
+      if (store.noteState(rec.id)!.status != NoteStatus.draft) finished ??= rec.id;
       if (_actsAsAuthor(rec)) own ??= rec.id;
     }
     return (finished: finished, own: own);

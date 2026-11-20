@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../app_providers.dart' show syncControllerProvider;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
@@ -47,6 +48,10 @@ class _NoteTypeListState extends ConsumerState<NoteTypeList> {
 
   EncounterServices get _s => widget.services;
 
+  /// Online, whether the visit already has a finished Red flags note the phone lacks (8.2, D113):
+  /// asked at the first tap, once for the list.
+  late final RedFlagsOnline _redFlags = RedFlagsOnline(_s, widget.visit.encounterId, ref.read(syncControllerProvider));
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +71,12 @@ class _NoteTypeListState extends ConsumerState<NoteTypeList> {
       _problem = null;
     });
     try {
-      final added = await _s.repository.addNote(widget.visit.encounterId, type, another: another);
+      final added = await _s.repository.addNote(
+        widget.visit.encounterId,
+        type,
+        another: another,
+        redFlagsFinished: await _redFlags.finished,
+      );
       if (!mounted) return;
       final location = noteLocation(added.noteId);
       if (widget.replace) {

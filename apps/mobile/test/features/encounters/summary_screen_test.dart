@@ -4,7 +4,9 @@ import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
 import 'package:sineobex_field/encounters/rules.dart' show NoteStatus;
 import 'package:sineobex_field/features/encounters/summary_screen.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entitySignoff;
+import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityEncounter, entityNote, entitySignoff;
+
+import '../../encounters/scripted_api.dart' show userRef, visitJson, visitNoteJson;
 
 import 'encounter_kit.dart';
 
@@ -257,6 +259,74 @@ void main() {
     await openSummary(tester, visit);
     expect(noteOfType(h, visit, 'red_flags_disposition'), isNotNull);
     await expectShown(tester, find.bySemanticsLabel(RegExp('^Red flags and disposition: Red flags,')));
+  });
+
+  testWidgets('a teammate’s finished Red flags note only the server holds: none of the person’s own is added, '
+      'from the note types list or the summary (8.2, D113)', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final routes = await withEncounterRoutes(tester, h);
+    final visit = h.server.seed(entityEncounter, {'kind': 'medical', 'patientId': p1Id}, by: blair);
+    final theirFlags = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'red_flags_disposition',
+      'noteTypeVersion': 1,
+      'data': {'red_flags.emergency': 'no', 'follow_up.when': 'next_street_clinic'},
+    }, by: blair);
+    h.server.finishNote(theirFlags, status: 'signed');
+    final theirGeneral = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {'reason.concern': 'Demo: cough'},
+    }, by: blair);
+    // Blair's draft opened to help: the visit and that note come onto the phone, not the Red flags note.
+    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityEncounter, visit)), isTrue);
+    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, theirGeneral)), isTrue);
+    final blairRef = userRef(blair, blairName);
+    routes.on(
+      'GET',
+      '/v1/encounters/$visit',
+      (_) => visitJson(
+        encounterId: visit,
+        patientId: p1Id,
+        status: 'draft',
+        notes: [
+          visitNoteJson(
+            noteId: theirGeneral,
+            author: blairRef,
+            key: 'general_primary_care',
+            title: 'General / primary care',
+            status: 'draft',
+            completedAt: null,
+          ),
+          visitNoteJson(
+            noteId: theirFlags,
+            author: blairRef,
+            key: 'red_flags_disposition',
+            title: 'Red flags and disposition',
+            status: 'signed',
+          ),
+        ],
+      ),
+    );
+    await openVisit(tester, visit);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add another note type'));
+    await tapOn(tester, find.bySemanticsLabel('Behavioral health'));
+    final mine = noteOfType(h, visit, 'psychological')!.id;
+    expectNoteOpened(tester, mine);
+    expect(noteOfType(h, visit, 'red_flags_disposition'), isNull);
+    h.encounters.repository.saveAnswer(mine, 'reason.reasons', ['substance_use']);
+    await openSummary(tester, visit);
+    await expectShown(tester, find.text('Behavioral health'));
+    // Nothing stops Complete: the visit's Red flags note is finished, on the server.
+    expect(find.text('Before you complete', skipOffstage: false), findsNothing);
+    expect(find.text('Red flags and disposition', skipOffstage: false), findsNothing);
+    expect(noteOfType(h, visit, 'red_flags_disposition'), isNull);
+    // One read for each screen that asked.
+    expect(routes.asked.where((a) => a.path == '/v1/encounters/$visit'), hasLength(2));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Complete and sign'));
+    expect(location(tester), '/patients/$p1Id');
+    expect(h.sync.store!.noteState(mine)!.status, NoteStatus.signed);
   });
 
   testWidgets('Save & Close on the summary opens the chart', (tester) async {
