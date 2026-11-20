@@ -4014,7 +4014,13 @@ sync controller and the team's services and leaves only why on the sheet once th
 the correction and addendum sheets (9.7), the Referrals sheet (9.10), Needs attention's visits to
 choose from (9.13), the `choosePatient` sheet that Switch to Medical and Needs attention's Choose the
 patient open (9.2), and phase 3's patient picker, What changed, Which is right? and Create's Is this
-Del?.
+Del?. A dialog that names something of a chart or a note (the profile's **Remove “Smitty”?**,
+**Mark “penicillin” entered in error?** and **Copy which card’s link?**, the intake's **Open Del’s
+chart?**, the ID card's **They declined a card. Make one anyway?**, a note entry's **Remove
+Problem 1?**, and Add to the problem list's question about a Resolved problem) sits in
+`DialogGate`, beside it, which hears the same and closes the dialog as its Cancel would, leaving
+the screen to say why; the note form, which reads through no services, finds the note screen's in
+a `DialogGateScope`.
 
 ### 9.1 The patient profile (phone)
 
@@ -4140,9 +4146,10 @@ review):
   Needs attention's Choose a patient open): each search a run of its own, logged before it shows,
   its count said once ("1 patient found on this phone"), **Show more** or "More people match. Add
   letters to narrow it down." for a long run, and nothing once the store is frozen. It is not phase
-  3's `pickPatient` sheet, whose heading is Needs attention's and which has no Show more, no count of
-  the phone's run and no freeze check (the coordinator's decided reuse is not built: 13, "Not built
-  in this phase").
+  3's `pickPatient` sheet, whose heading is Needs attention's and which has no Show more and no
+  count of the phone's run; it does take what it found off the sheet once the store freezes, in
+  `SheetGate`, since `d713056` (the coordinator's decided reuse is not built: 13, "Not built in this
+  phase").
 - **New patient** opens phase 3's intake, told to come back (`IntakeStart(returnsPatient: true)`):
   once it saves, or once the person opens the chart of someone found already there, it returns that
   patient's ID, and the visit goes on at Where for them ("Register them, then the visit goes on for
@@ -5766,9 +5773,9 @@ where it would go:
 Also not built as this part stands, each an open question for the coordinator from the review's
 fixes:
 
-- Who on New encounter reusing phase 3's `pickPatient` (decided work): the picker has no Show more,
-  no count of the phone's run and no freeze check, and keeps a found row on screen after a freeze,
-  so `PatientFinder` stays (9.2 as built) until the picker gains them.
+- Who on New encounter reusing phase 3's `pickPatient` (decided work): the picker has no Show more
+  and no count of the phone's run, so `PatientFinder` stays (9.2 as built) until the picker gains
+  them. (A freeze takes what it found off the sheet since `d713056`, as on Who.)
 - Show handoff for a visit the phone does not hold: the server's read can say it has one
   (`hasHandoff`), but the page reads the phone's copy only (9.8 as built).
 - A refused note create whose type the team lists at no other version, or that was refused on the

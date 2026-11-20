@@ -259,7 +259,11 @@ How R5's fixes read the design (R5 reported its own revert check for each):
   rebuild; nothing is read through a store a lock just closed. The controller notifies its
   listeners the moment it freezes the store, so a chart on screen goes at once (`92b7fd7`). A
   modal sheet is not under a screen's gate: since Nov 20 the patient picker's sheet sits in one of
-  its own (`SheetGate`), as What changed, Which is right? and Create's Is this Del? do.
+  its own (`SheetGate`), as What changed, Which is right? and Create's Is this Del? do. A dialog
+  that names something of the chart (Remove “Smitty”?, Mark “penicillin” entered in error?, Copy
+  which card’s link?, Open Del’s chart?, They declined a card. Make one anyway?) sits in
+  `DialogGate` beside it, which closes the dialog as its Cancel would once the store freezes, and
+  the screen under it says why.
 - **V3, V4, V5.** The intake saves its draft a second after each change and when the app leaves
   the screen, never into a closed or frozen store. A declined intake keeps no draft. A preferred
   name filled in from the legal given name, or carried from a search, stays out of the draft until
