@@ -255,7 +255,7 @@ class _ProfileState extends ConsumerState<_Profile> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => const _AllergySheet(),
+      builder: (_) => SheetGate.patients(services: _s, child: const _AllergySheet()),
     );
     if (allergy == null || !mounted) return;
     await _run('Allergy added', () => _s.patients.addAllergy(_id, allergy));

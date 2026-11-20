@@ -21,6 +21,7 @@ import '../../sync/sync_engine.dart' show RefreshReason;
 import 'patient_labels.dart';
 import 'patient_row.dart';
 import 'patient_widgets.dart';
+import 'sheet_gate.dart' show SheetGate;
 
 /// The Patients tab (design 12.1): find someone on or off line, or start a new patient.
 ///
@@ -159,7 +160,10 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _BornSheet(today: today, initial: _born),
+      builder: (context) => SheetGate.patients(
+        services: _s,
+        child: _BornSheet(today: today, initial: _born),
+      ),
     );
     if (birth == null || !mounted) return;
     setState(() => _born = birth);

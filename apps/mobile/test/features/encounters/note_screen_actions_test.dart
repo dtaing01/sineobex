@@ -163,4 +163,42 @@ void main() {
       handle.dispose();
     });
   }
+
+  // A sheet is not under the note screen's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a visit’s change ends before the controller says so', (tester, h) async => h.encounters.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over leaves only why on Add referral, and adds nothing: $how (V1)', (
+      tester,
+    ) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await signInToChart(tester);
+      final visit = startVisit(h, kind: VisitKind.nonMedical);
+      final social = await chart(tester, h, visit, 'social_needs');
+      await openNote(tester, social);
+      await tapOn(tester, action('Add referral'));
+      await settle(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.referralDetails')), 'Demo: shelter intake on Monday');
+      await tester.pump();
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+      expect(find.text('Demo: shelter intake on Monday', skipOffstage: false), findsNothing);
+      expect(find.byKey(const ValueKey('phi.referralDetails'), skipOffstage: false), findsNothing);
+
+      // Closing it adds nothing.
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(store.recordIds().where((id) => store.record(id)!.entity == entityReferral), isEmpty);
+      expect(store.outbox(), hasLength(before));
+    });
+  }
 }

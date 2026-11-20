@@ -46,23 +46,26 @@ Future<String?> showAddReferral(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (context) => SafeArea(
-    child: Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
-        children: [
-          _AddReferral(
-            services: services,
-            patientId: patientId,
-            encounterId: encounterId,
-            onAdded: (id) {
-              showDone(context, referralAdded);
-              Navigator.of(context).pop(id);
-            },
-          ),
-        ],
+  builder: (context) => SheetGate(
+    services: services,
+    child: SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+          children: [
+            _AddReferral(
+              services: services,
+              patientId: patientId,
+              encounterId: encounterId,
+              onAdded: (id) {
+                showDone(context, referralAdded);
+                Navigator.of(context).pop(id);
+              },
+            ),
+          ],
+        ),
       ),
     ),
   ),

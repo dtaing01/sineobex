@@ -288,7 +288,7 @@ void main() {
     });
   });
 
-  // A dialog is not under the profile's gate: it sits in its own (phase 3's V1).
+  // A dialog or a sheet is not under the profile's gate: each sits in its own (phase 3's V1).
   group('what the profile asks goes when the store freezes for a hand-over (V1)', () {
     const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
 
@@ -356,6 +356,27 @@ void main() {
         await freezeUnder(tester, h, find.text('Copy which card’s link?'));
         expect(find.textContaining('Card made', skipOffstage: false), findsNothing);
         expect(h.copied, isEmpty);
+      });
+
+      testWidgets('Add allergy: the sheet keeps only why, and nothing is added: $how', (tester) async {
+        final h = await openDel(tester);
+        await tapOn(tester, find.text('Add allergy'));
+        await type(tester, 'allergySubstance', 'Demo: latex');
+        h.server.offline = true;
+
+        h.sync.store!.freeze(frozen);
+        await tell(tester, h);
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+        expect(find.text('Demo: latex', skipOffstage: false), findsNothing);
+        expect(find.byKey(const ValueKey('phi.allergySubstance'), skipOffstage: false), findsNothing);
+
+        // Closing it adds nothing.
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(h.sync.store!.outbox().where((e) => e.entity == entityAllergy), isEmpty);
       });
     }
   });

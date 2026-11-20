@@ -265,4 +265,44 @@ void main() {
     expect(find.text('Opened recently on this phone'), findsOneWidget);
     expect(auditEvents(store).sublist(before), ['patient.searched']);
   });
+
+  // A sheet is not under the tab's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over leaves only why on the Born sheet, and searches nothing: $how (V1)', (
+      tester,
+    ) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(ActionChip, 'Born'));
+      await tester.enterText(find.byKey(const ValueKey('phi.born')), '1946');
+      await tester.pump(const Duration(milliseconds: 900));
+      await settle(tester);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('1946')), findsOneWidget);
+      h.server.offline = true;
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+      expect(find.text('1946', skipOffstage: false), findsNothing);
+      expect(find.byKey(const ValueKey('phi.born'), skipOffstage: false), findsNothing);
+
+      // Closing it sets no criterion and runs no search.
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.textContaining('Born 1946', skipOffstage: false), findsNothing);
+      expect(store.outbox(), hasLength(before));
+    });
+  }
 }
