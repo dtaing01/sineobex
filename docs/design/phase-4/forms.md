@@ -1201,6 +1201,28 @@ As built on the phone (units F7 and L4, `apps/mobile/lib/encounters/red_flags.da
   finished; when a teammate's finished one makes it needless, the action opens that note
   read-only (the coordinator's decision).
 
+As built (cards F7-actions and F7-handoff, built with unit L5's screens, with its review; lifecycle
+9.5 and 9.8 as built):
+
+- **The actions** are the note screen's handlers (8.1); `action_field.dart` needed nothing for them.
+  `open_note_type` is offered only where its type can be started in the visit (10.1 #39) and opens
+  the note Add note gives. The Red flags action goes through `addRedFlagsNote`; when a finished Red
+  flags note makes the person's needless, it opens that one read-only: the phone's, found by a scan
+  of the store that reads and logs nothing (`finishedRedFlagsNote`), else the server's, brought onto
+  the phone first, so only the note screen's own read logs it (review finding SRD-7). Online, these
+  actions and Expand first ask once for the screen whether the server's read of the visit shows a
+  finished Red flags note the phone lacks, and pass it as `redFlagsFinished` (lifecycle 8.2 as
+  built), so a teammate's that only the server holds makes the person's own needless; as first
+  built nothing was asked, and the person was given a Red flags note of their own to answer
+  (review findings SFL-5, SRD-8). `add_referral` opens Add referral on its own sheet.
+- **The handoff** is built for EMS's reader, `emsReader`, a copy of the server's `EMS_READER` (D94,
+  lifecycle 12.1 #29): each note as EMS may see it, of what the person showing it sees too
+  (`sentToEms`), so a note of a sensitive type is neither shown nor named. Since the review
+  `show_handoff` is drawn on a form the person can't change now too, being a read (10.1 #51 as
+  built; review finding SRD-2), the visit screen offers it under a finished Red flags note, and the
+  page is headed by the patient's preferred name alone and logged by the domain layer in the
+  transaction of its read (lifecycle 9.8 as built).
+
 ### 6.3 The Focused Exam
 
 "It lives only inside General / primary care, after Vitals. The picker asks 'What did you
@@ -1991,7 +2013,8 @@ what it last showed as picked, so two taps before the form is drawn again both c
   label standing for the cell's (7.1).
 - **An action** is drawn only on a form that can be changed, and only where the screen's
   `ActionHandler` gives it something to do; otherwise nothing is drawn, not even its label, so it
-  leaves no gap (PLAN-OPEN, 10.1 #51; #39). Its button carries the field's label, its help under it,
+  leaves no gap (PLAN-OPEN, 10.1 #51; #39). Since unit L5's review Show handoff, a read, is drawn on a
+  form that can't be changed now too (below). Its button carries the field's label, its help under it,
   and while the future it starts runs a second tap does nothing, so one tap opens one note.
 - Every other field is a `FieldHost`, keyed `host.<path>`.
 
@@ -2075,8 +2098,8 @@ which the visit screen places among the note's recap, sign-offs and addenda (lif
   server holds every set, from someone who does not act as the author, of a field that could hold
   content they may not see, whatever it holds now. So the screen shows such a field read-only to
   them (the exam picker, for someone without `patients.view_sensitive_exams`), drawn as the form
-  draws a field a set flag clears. The form takes no list of such fields yet: the unit that wires
-  the rule in gives it one. L4 builds the rule as a Dart copy of the one the server uses,
+  draws a field a set flag clears. The form took no list of such fields: since unit L5's review it
+  takes a read-only test, which the note screen gives it (below). L4 builds the rule as a Dart copy of the one the server uses,
   `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's test server,
   `apps/mobile/test/sync/fake_server.dart`, has one), with that copy's own tests against the
   server's cases: never a second idea of which fields are hidden.
@@ -2108,8 +2131,8 @@ lifecycle 9.5 as built), what the screen has to give the form:
   could hold what they may not see to someone who does not act as the author (`mayHoldHidden`, its
   Dart copy held to the test server's over every path of every test note type and to the API's
   named cases), and one of a section that needs an ordering credential to a credential that can't
-  order, its author included (lifecycle 6.4 rule 5). The form takes no list of them yet: the screen
-  that wires it in (L5) gives it one.
+  order, its author included (lifecycle 6.4 rule 5). The note screen gives the form this test since
+  unit L5's review (below).
 - **The contract's types** (`AnswerState`, `AnswerConflict`, `ConflictBy`, `FormAnswers`) are in
   `apps/mobile/lib/forms/answer_state.dart`, which `field_host.dart` exports, so the domain layer
   imports no widget library (`apps/mobile/test/encounters/layering_test.dart` holds it so).
@@ -2117,6 +2140,28 @@ lifecycle 9.5 as built), what the screen has to give the form:
   `expandTargets`, `expandOpensAsItIs` and `expand` (6.4 as built). `ProblemListScope` takes a
   handler made from `problemListPlace` and `addToProblemList` (lifecycle 8.3 as built), and a
   diagnosis finds its own path from the field host around it, so a widget still names no note type.
+
+As built on the screen's side (unit L5, with its review; lifecycle 9.5 as built):
+
+- **The read-only test** (the coordinator's decided work): `NoteForm` takes `readOnly`, a test of an
+  answer's whole path, its entry part and side included, and the note screen passes the domain
+  layer's `readOnlyAt`. An answer it names is drawn read-only before any tap, as a field a set flag
+  clears is, its section still opening, and one-tap Normal for a section, an entry or a system fills
+  none of it, so a teammate's Normal is never refused part-way. As first built the form took no such
+  test: the answer was drawn like any other, refused at the tap (`saveAnswer`, "You can’t change this
+  answer.") and the form drawn again from the store; that refusal stays as the second line. Held by
+  `apps/mobile/test/features/forms/note_form_normal_test.dart` ("an answer the screen says is
+  read-only is drawn so and Normal leaves it (D92)") and by the note screen's test in the five runs
+  (lifecycle 11.2).
+- **Show handoff** is drawn on a form that can't be changed now too (`enabled: false`: a teammate's
+  draft, a draft sent for review, charting paused for the clock), wherever the screen gives it a
+  handler, since showing the handoff is a read and changes nothing (10.1 #51 as built). Every other
+  action is still drawn only on a form that can be changed; `action_field.dart` changed only in its
+  comment. A finished note's read view draws no action: the visit screen offers Show handoff beside
+  it (lifecycle 9.7, 9.8).
+- **The actions' handlers** are the note screen's (6.2 as built): `open_note_type` where its type can
+  be started in the visit, `add_referral` on a visit with a patient to someone who may add one, and
+  `show_handoff` always.
 
 ### 8.2 What every field widget must do
 
@@ -2369,7 +2414,7 @@ the rest of the visit page.
 | 48 | How much of a long recap a closed section's header shows | Three lines, then an ellipsis; a screen reader hears all of it, and the open section shows every answer (8.1) | The team |
 | 49 | How a choose-one answer is cleared | By tapping the picked chip again, and a screen reader is told that a tap clears it (8.2). The design gave no way to clear one, and a mis-tap must be undoable; a Clear button beside every choice would double the targets. Phase 3's choose-one chips keep the picked one on | The team |
 | 50 | Does a collapsed group or grid open by itself? | Only when it holds an answer, so what was charted is never out of sight, on a read-only form too; otherwise it stays closed until tapped (8.1). Wound care's infection details still stay closed for Possible, Yes and Urgent until something in them is answered (#15), and one-tap Normal still fills nothing in a collapsed part (#25) | Brooke and Mercy |
-| 51 | Does a finished note offer its actions, Show handoff on a finished Red flags note for one? | No: an action is drawn only on a form that can be changed, and only where the screen gives it something to do (#39, 8.1). An action stores nothing, and a step that can't be taken is not offered. Whether the visit screen offers a finished note's handoff is the screen's (lifecycle 9.7, 9.8) | Brooke and Mercy |
+| 51 | Does a finished note offer its actions, Show handoff on a finished Red flags note for one? | No: an action is drawn only on a form that can be changed, and only where the screen gives it something to do (#39, 8.1). An action stores nothing, and a step that can't be taken is not offered. As built since unit L5's review, Show handoff is the exception, being a read: the form draws it on a note the person may read but not change now, and the visit screen offers it under a Red flags note the phone holds whose `show_handoff` shows, draft or finished (the coordinator's decision: yes for a finished note; 8.1 as built; lifecycle 9.7, 9.8) | Brooke and Mercy |
 | 52 | Does a conflict on an answer name the person who made the other change? | No: phase 2's words, "A teammate", "You, from another phone" or "On the server", with the time, the two values side by side (8.1). Lifecycle 9.5 asks for both values and phase 2's choice; the summary's lines name who changed an answer since the person last had the note open (lifecycle 9.6) | The team |
 | 53 | Is a section that `needs` a capability drawn for a credential without it? | No, even when it holds a teammate's answers: such a section is "shown to, and changed by" a credential with the capability (2.2, 6.4), and the form draws it only for one (8.1). The read view of a finished note shows it to every reader, as `needs` hides nothing from a reader (lifecycle 6.4) | Brooke and Mercy |
 | 54 | How a date is typed | In three private boxes, month, day and year: month first, as the US pilot writes a date and as phase 3's birth date is read (phase 3 design 14.1 #20), and a four-digit year, since a two-digit one could fall either side of today on a field whose range is `any`. The calendar is the second way in: its day cells can't be 48 px on a 320 px phone (8.2, review finding A11Y-3). Day-month order follows phase 3's team setting when there is one | The team |
