@@ -28,6 +28,7 @@ import 'patient_labels.dart';
 import 'patient_row.dart';
 import 'patient_widgets.dart';
 import 'same_person_sheet.dart';
+import 'sheet_gate.dart' show DialogGate;
 
 /// **New patient** and **Edit details** (design 11): one scrolling form, nothing hidden behind
 /// "More", each section a heading, a sticky main button above the keyboard. New patient asks for
@@ -476,6 +477,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           'Nothing new is created. What you typed here is discarded'
           '${typed.isEmpty ? '.' : ', and the chart offers to add the street names, where they’re usually found and their living situation.'}',
       yes: 'Open the chart',
+      gate: (dialog) => DialogGate<bool>.patients(services: _s, cancel: false, child: dialog),
     );
     if (!yes || !mounted) return;
     _finish(discard: true);
@@ -828,6 +830,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       body: 'Say why. The street name stays in the chart’s history.',
       action: 'Remove',
       quick: const ['Wrong patient', 'Typed by mistake', 'They don’t use it'],
+      gate: (dialog) => DialogGate<String>.patients(services: _s, child: dialog),
     );
     if (reason == null || !mounted) return;
     setState(() => a.removal = reason);

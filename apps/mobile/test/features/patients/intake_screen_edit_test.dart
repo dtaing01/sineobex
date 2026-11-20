@@ -96,6 +96,43 @@ void main() {
     handle.dispose();
   });
 
+  // A dialog is not under the edit form's gate: it closes as its Cancel would (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over closes Remove “Smitty”?: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Edit'));
+      await tapOn(tester, find.bySemanticsLabel('Remove street name Smitty'));
+      final question = find.text('Remove “Smitty”?', skipOffstage: false);
+      expect(find.descendant(of: find.byType(Dialog), matching: question), findsOneWidget);
+      h.server.offline = true;
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Dialog), findsNothing);
+      expect(question, findsNothing);
+      expect(store.outbox(), hasLength(before));
+      // The screen under it says why once the controller does.
+      await tester.runAsync(() => h.sync.syncNow());
+      await settle(tester);
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.text('Smitty', skipOffstage: false), findsNothing);
+      expectNoLegalName(tester);
+      expect(store.outbox(), hasLength(before));
+    });
+  }
+
   testWidgets('a list-only chart’s birth can’t be typed, so it can’t be dropped (V8)', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);

@@ -185,6 +185,38 @@ void main() {
       await settle(tester);
       expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
     });
+
+    // A dialog is not under the intake's gate either: it closes as its Cancel would.
+    testWidgets('a freeze for a hand-over closes This is them’s question, naming Del: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Del');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      await tapOn(tester, find.text('This is them'));
+      final question = find.text('Open Del’s chart?', skipOffstage: false);
+      expect(find.descendant(of: find.byType(Dialog), matching: question), findsOneWidget);
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Dialog), findsNothing);
+      expect(question, findsNothing);
+      // Its Cancel: the intake stays, and the chart isn't opened.
+      expect(find.byType(PatientScreen), findsNothing);
+      expect(store.outbox(), hasLength(before));
+      expect(h.patients.patients.draft(), isNotNull);
+      // The screen under it says why once the controller does.
+      await tester.runAsync(() => h.sync.syncNow());
+      await settle(tester);
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.byType(PatientScreen), findsNothing);
+      expect(store.outbox(), hasLength(before));
+    });
   }
 
   testWidgets('two likely matches: Create asks about each, and records only the ones answered (V10)', (tester) async {

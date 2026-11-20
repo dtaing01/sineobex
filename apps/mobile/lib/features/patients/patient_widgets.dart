@@ -285,39 +285,48 @@ class AskDialog extends StatelessWidget {
   );
 }
 
-/// Asks yes or no; true for yes.
+/// Asks yes or no; true for yes. A question that names something of a chart sits in [gate] (a
+/// `DialogGate`, phase 3's V1).
 Future<bool> confirm(
   BuildContext context, {
   required String title,
   required String body,
   required String yes,
   String no = 'Cancel',
+  Widget Function(Widget dialog)? gate,
 }) async {
   final answer = await showDialog<bool>(
     context: context,
-    builder: (context) => AskDialog(
-      title: title,
-      content: Text(body),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(no)),
-        FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(yes)),
-      ],
+    builder: (context) => _gated(
+      gate,
+      AskDialog(
+        title: title,
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(no)),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(yes)),
+        ],
+      ),
     ),
   );
   return answer ?? false;
 }
 
-/// Asks for a short reason (3 to 300 characters), with quick choices; null when cancelled.
+/// Asks for a short reason (3 to 300 characters), with quick choices; null when cancelled. A
+/// question that names something of a chart sits in [gate] (a `DialogGate`, phase 3's V1).
 Future<String?> askReason(
   BuildContext context, {
   required String title,
   required String body,
   required String action,
   List<String> quick = const [],
+  Widget Function(Widget dialog)? gate,
 }) => showDialog<String>(
   context: context,
-  builder: (context) => _ReasonDialog(title: title, body: body, action: action, quick: quick),
+  builder: (context) => _gated(gate, _ReasonDialog(title: title, body: body, action: action, quick: quick)),
 );
+
+Widget _gated(Widget Function(Widget dialog)? gate, Widget dialog) => gate == null ? dialog : gate(dialog);
 
 class _ReasonDialog extends StatefulWidget {
   const _ReasonDialog({required this.title, required this.body, required this.action, required this.quick});

@@ -155,25 +155,28 @@ class _ProfileState extends ConsumerState<_Profile> {
       final today = todayOf(ref);
       final chosen = await showDialog<IdCard>(
         context: context,
-        builder: (context) => SimpleDialog(
-          title: const Text('Copy which card’s link?'),
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: FieldSpace.s5),
-              child: Text('Two records were merged, so both cards open this chart.'),
-            ),
-            for (final c in cards)
-              SimpleDialogOption(
-                onPressed: () => Navigator.of(context).pop(c),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: FieldTap.min),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(c.effectiveAt == null ? 'Card' : 'Card made ${shortDate(c.effectiveAt!, today)}'),
+        builder: (context) => DialogGate<IdCard>.patients(
+          services: _s,
+          child: SimpleDialog(
+            title: const Text('Copy which card’s link?'),
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: FieldSpace.s5),
+                child: Text('Two records were merged, so both cards open this chart.'),
+              ),
+              for (final c in cards)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(context).pop(c),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: FieldTap.min),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(c.effectiveAt == null ? 'Card' : 'Card made ${shortDate(c.effectiveAt!, today)}'),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       );
       if (chosen == null) return;
@@ -240,6 +243,7 @@ class _ProfileState extends ConsumerState<_Profile> {
       body: 'Say why. The street name stays in the chart’s history.',
       action: 'Remove',
       quick: const ['Wrong patient', 'Typed by mistake', 'They don’t use it'],
+      gate: (dialog) => DialogGate<String>.patients(services: _s, child: dialog),
     );
     if (reason == null || !mounted) return;
     final removed = await _run('Street name removed', () => _s.patients.removeAlias(a.id!, reason));
@@ -265,6 +269,7 @@ class _ProfileState extends ConsumerState<_Profile> {
       body: 'It leaves the allergy badge and stays in the chart’s history with your reason.',
       action: 'Mark entered in error',
       quick: const ['Wrong patient', 'Typed by mistake', 'Not an allergy'],
+      gate: (dialog) => DialogGate<String>.patients(services: _s, child: dialog),
     );
     if (reason == null || !mounted) return;
     final marked = await _run('Marked entered in error', () => _s.patients.allergyEnteredInError(a.id, reason));

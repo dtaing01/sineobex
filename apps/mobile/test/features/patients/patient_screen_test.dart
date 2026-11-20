@@ -287,4 +287,76 @@ void main() {
       expect(h.sync.store!.outbox().where((e) => e.entity == entityAlias), isEmpty);
     });
   });
+
+  // A dialog is not under the profile's gate: it sits in its own (phase 3's V1).
+  group('what the profile asks goes when the store freezes for a hand-over (V1)', () {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+
+    Future<AppHarness> openDel(WidgetTester tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      return h;
+    }
+
+    for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+      // A sync that finds no signal.
+      ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+      ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+    ]) {
+      /// The open dialog shows [named]; the store freezes and [tell] says so. The dialog closes as
+      /// its Cancel would, with what it named, nothing is written or logged, and the profile says why.
+      Future<void> freezeUnder(WidgetTester tester, AppHarness h, Finder named) async {
+        expect(find.descendant(of: find.byType(Dialog), matching: named), findsOneWidget);
+        h.server.offline = true;
+        final store = h.sync.store!;
+        final before = store.outbox().length;
+
+        store.freeze(frozen);
+        await tell(tester, h);
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(Dialog), findsNothing);
+        expect(find.descendant(of: find.byType(Navigator), matching: named), findsNothing);
+        expect(find.text(frozen), findsOneWidget);
+        expectNoLegalName(tester);
+        expect(store.outbox(), hasLength(before));
+      }
+
+      testWidgets('Remove a street name: the question goes, naming it: $how', (tester) async {
+        final h = await openDel(tester);
+        await tapOn(tester, find.text('Remove'));
+        await freezeUnder(tester, h, find.text('Remove “Smitty”?'));
+      });
+
+      testWidgets('an allergy’s Entered in error: the question goes, naming it: $how', (tester) async {
+        final h = await openDel(tester);
+        await tapOn(tester, find.text('Entered in error'));
+        await freezeUnder(tester, h, find.text('Mark “penicillin” entered in error?'));
+      });
+
+      testWidgets('Copy ID link with two cards: the question goes, with the cards’ dates: $how', (tester) async {
+        final h = await signIn(tester);
+        seedP1(h.server);
+        final p2 = h.server.seedPatient(preferredName: 'Demo Smitty');
+        for (final (patient, token) in [(p1Id, 'AAAAAAAAAAAAAAAAAAAAAA'), (p2, 'BBBBBBBBBBBBBBBBBBBBBB')]) {
+          h.server.seed(entityIdLink, {
+            'patientId': patient,
+            'token': token,
+            'replacesLinkId': null,
+            'reason': 'first_card',
+          });
+        }
+        h.server.merge(p2, p1Id);
+        await syncAndRefresh(tester, h);
+        await go(tester, '/patients/$p1Id');
+        await tapOn(tester, find.widgetWithText(FilledButton, 'Copy ID link'));
+        expect(find.textContaining('Card made'), findsNWidgets(2));
+        await freezeUnder(tester, h, find.text('Copy which card’s link?'));
+        expect(find.textContaining('Card made', skipOffstage: false), findsNothing);
+        expect(h.copied, isEmpty);
+      });
+    }
+  });
 }
