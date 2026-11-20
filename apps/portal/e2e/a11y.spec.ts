@@ -171,6 +171,39 @@ test('@responsive a Program Admin has every patient screen in the navigation, ac
   await expectReflow(page, 'navigation');
 });
 
+// Phase 4's portal screens (lifecycle 9.11 to 9.14): the visit page, the two queues and Notes not
+// complete, each in all three themes and at 320 px (the coordinator's decision on the review of L6).
+const PHASE_4_SCREENS: Record<string, string> = {
+  'Co-sign queue': '/team/cosign',
+  'Attestation queue': '/team/attestation',
+  'Notes not complete': '/team/incomplete-notes',
+};
+// The seeded demo team's first visit (db/seed/demo-encounters.ts).
+const SEEDED_VISIT = '/encounters/5eed2000-0000-4000-8000-000000000001';
+
+test('@responsive a Program Admin’s phase 4 screens, and a visit page, are accessible in all three themes and reflow at 320 px', async ({
+  page,
+}) => {
+  await signIn(page, 'admin@example.com');
+  const csp = watchCsp(page);
+  for (const [name, href] of Object.entries(PHASE_4_SCREENS)) {
+    const link = portalNav(page).getByRole('link', { name, exact: true });
+    await expect(link).toHaveAttribute('href', href);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+    await expectAccessible(page, href);
+    await expectReflow(page, href);
+    await expectNothingStored(page, href);
+  }
+  await page.goto(SEEDED_VISIT);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Visit');
+  await expectAccessible(page, 'visit page');
+  await expectReflow(page, 'visit page');
+  await expectNothingStored(page, 'visit page');
+  expect(csp).toEqual([]);
+});
+
 for (const [email, role, screens] of [
   ['clinician@example.com', 'Healthcare Staff', ['Patients', 'Reviews']],
   ['chw@example.com', 'the community health worker preset', ['Patients', 'Reviews']],
