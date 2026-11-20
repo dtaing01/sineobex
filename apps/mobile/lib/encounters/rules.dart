@@ -284,8 +284,9 @@ enum AssignRefusal {
 /// 5.5): why not, or null when they may.
 ///
 /// [neededRank]: the rank the note was signed under; for an unsigned note, of its author's last
-/// credential. [noteHasHiddenSection]: the note holds an answer that counts in a section the
-/// assignee's role cannot see today.
+/// credential. [noteHasHiddenSection]: a note of its type could hold an answer the assignee's
+/// role cannot see today, asked of the definition and their keys, never of what the note holds
+/// (the server's assign.ts hidesFrom, D116).
 AssignRefusal? mayAssign({
   required bool actingAuthorActive,
   required bool assigneeActive,

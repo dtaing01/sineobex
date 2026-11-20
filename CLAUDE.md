@@ -41,6 +41,7 @@ the commit.
 ```sh
 export PATH=/opt/flutter/bin:/opt/bin:$PATH        # flutter, deno, gitleaks, actionlint
 pg_isready -h localhost || pg_ctlcluster 16 main start   # Postgres is down after a machine restart
+su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\""   # a fresh machine's Postgres has none
 pnpm install --frozen-lockfile
 (cd apps/mobile && flutter pub get --enforce-lockfile)
 export TEST_ADMIN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
@@ -75,7 +76,7 @@ that look like bugs.
 | PHI guard | `node tools/phi-guard.mjs` |
 | Task cards (after writing or changing one) | `node tools/card-check.mjs` |
 | Run a card with the small local model | `CARD_MODEL=<name> node tools/card-run.mjs <card>`; `--dry-run` shows what the model is sent (`docs/plan/README.md`, "Running a card") |
-| **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome tools/ci-local.sh` |
+| **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium tools/ci-local.sh` |
 
 `tools/ci-local.sh` takes about 15 minutes. It must end with "All local CI checks passed" before
 anything is pushed. Without `PW_CHROMIUM_PATH` the portal tests can't start a browser.

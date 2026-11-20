@@ -23,6 +23,9 @@ test-results/
 # commands printed
 .card-runs/
 
+# Helper agents' worktrees (CLAUDE.md, "Running units with helper agents")
+.claude/worktrees/
+
 # Editors and OS
 .DS_Store
 .idea/
