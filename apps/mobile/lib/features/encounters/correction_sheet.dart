@@ -277,11 +277,13 @@ class _CorrectionState extends State<_Correction> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(header: true, child: Text(labels, style: text.titleMedium)),
+          // The heading, the value now and the input, each a node of its own: one node would be both a
+          // heading and the text box, its label said twice (review SAX-5).
+          Semantics(container: true, header: true, child: Text(labels, style: text.titleMedium)),
           const SizedBox(height: FieldSpace.s1),
-          Text(nowText(_item(path)?.value), style: text.bodyLarge),
+          Semantics(container: true, child: Text(nowText(_item(path)?.value), style: text.bodyLarge)),
           const SizedBox(height: FieldSpace.s3),
-          _input(path),
+          Semantics(container: true, child: _input(path)),
           if (_paths.length > 1) ...[
             const SizedBox(height: FieldSpace.s2),
             Align(

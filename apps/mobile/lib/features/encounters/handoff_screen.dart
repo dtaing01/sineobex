@@ -221,6 +221,7 @@ class _HandoffState extends ConsumerState<_Handoff> {
               Padding(
                 padding: const EdgeInsets.only(top: FieldSpace.s4, bottom: FieldSpace.s1),
                 child: Semantics(
+                  container: true,
                   header: true,
                   child: Text(
                     '${shown.notes[line.note].title} (${shown.notes[line.note].state})',
@@ -228,9 +229,10 @@ class _HandoffState extends ConsumerState<_Handoff> {
                   ),
                 ),
               ),
+            // Its own node, so it is read under its note's title, in order (review SAX-2).
             Padding(
               padding: const EdgeInsets.only(bottom: FieldSpace.s2),
-              child: Text('${line.label}: ${line.value}', style: big),
+              child: Semantics(container: true, child: Text('${line.label}: ${line.value}', style: big)),
             ),
           ],
         ],

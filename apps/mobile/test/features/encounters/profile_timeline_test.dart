@@ -154,11 +154,18 @@ void main() {
 
   testWidgets('a chart opened from the team’s list shows the phone’s visits, and says the rest come with the '
       'full chart', (tester) async {
+    final handle = tester.ensureSemantics();
     final h = await signInToChart(tester);
     final mine = startVisit(h, kind: VisitKind.nonMedical);
     await chart(tester, h, mine, 'outreach', {'outreach.type': 'outreach'});
     await go(tester, '/patients/$p1Id');
     await expectShown(tester, find.text('Visits recorded elsewhere show with the full chart.'));
+    // The heading is read alone, the sentence after it.
+    expect(
+      readingOrder(tester),
+      containsAllInOrder(['[H] Timeline', 'Visits recorded elsewhere show with the full chart.']),
+    );
+    handle.dispose();
     await expectShown(tester, row('Non-Medical visit, Waiting to send, Outreach: Waiting to send\$'));
     expect(find.text(showEarlierVisitsText), findsNothing);
   });

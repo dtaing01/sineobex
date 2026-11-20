@@ -78,9 +78,24 @@ void main() {
       // The lines, each note's under its title and state: its answers, then, under Recap, its recap.
       await reveal(tester, find.text('General / primary care (Draft)'));
       await expectShown(tester, find.text('Chief concern: Demo: chest pain'));
-      await reveal(tester, find.text('Red flags and disposition (Draft)'));
+      await reveal(tester, find.text('Red flags and disposition (Draft)').first);
       await expectShown(tester, find.text('EMS activated?: YES'));
       await expectShown(tester, find.text('Time EMS called: 14:30'));
+      // Each note's lines are read under its title, the patient's name a heading (review SAX-2).
+      await tester.scrollUntilVisible(find.text('Del'), -300, scrollable: find.byType(Scrollable).last);
+      expect(tester.getSemantics(find.text('Del')), isSemantics(isHeader: true));
+      // Where the whole page is built at once: at large text a list builds only what is near the screen.
+      if (run.scale == 1 && !run.narrow) {
+        expect(
+          readingOrder(tester),
+          containsAllInOrder([
+            '[H] General / primary care (Draft)',
+            'Chief concern: Demo: chest pain',
+            '[H] Red flags and disposition (Draft)',
+            'EMS activated?: YES',
+          ]),
+        );
+      }
       // Nothing to select, copy or share.
       expect(find.byType(SelectionArea), findsNothing);
       expect(find.byType(SelectableText), findsNothing);

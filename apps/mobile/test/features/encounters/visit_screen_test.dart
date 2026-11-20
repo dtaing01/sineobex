@@ -46,6 +46,16 @@ void main() {
       expect(find.descendant(of: general, matching: find.text('Waiting to send')), findsWidgets);
       expect(find.descendant(of: general, matching: find.text('On this phone only')), findsNothing);
       await expectShown(tester, find.text('Chief concern: Demo: cough'));
+      // Read under its title, in order: its state, its recap, then its sections.
+      expect(
+        readingOrder(tester),
+        containsAllInOrder([
+          '[H] General / primary care',
+          'Waiting to send',
+          'Chief concern: Demo: cough',
+          '[H] Reason for encounter',
+        ]),
+      );
       await expectShown(tester, find.byKey(const ValueKey('read.reason.concern')));
       await expectShown(tester, find.bySemanticsLabel('Correct Chief concern'));
       // Below it, in the order made: the signature, waiting to send, then the addendum.

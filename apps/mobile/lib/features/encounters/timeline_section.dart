@@ -180,11 +180,16 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
             ),
           ),
           const SizedBox(height: FieldSpace.s3),
+          // Nodes of their own, so the heading above doesn't take them in (review SAX-5).
           if (meta == null || meta.partial || meta.timeline == null) ...[
-            Text(timelineNeedsChart, style: text.bodyLarge),
+            Semantics(container: true, child: Text(timelineNeedsChart, style: text.bodyLarge)),
             const SizedBox(height: FieldSpace.s2),
           ],
-          if (rows.isEmpty) Text(view.rows.isEmpty ? noTimeline : noTimelineFiltered, style: text.bodyLarge),
+          if (rows.isEmpty)
+            Semantics(
+              container: true,
+              child: Text(view.rows.isEmpty ? noTimeline : noTimelineFiltered, style: text.bodyLarge),
+            ),
           for (final row in rows) ...[
             switch (row) {
               TimelineVisitRow() => _VisitRow(

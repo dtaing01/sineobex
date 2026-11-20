@@ -39,6 +39,8 @@ void main() {
       final heading = inSheet(find.text('Correct this note'));
       expect(tester.getSemantics(heading), isSemantics(isHeader: true));
       await revealInSheet(tester, inSheet(find.text('Now: Demo: cough')));
+      // The answer's heading, its value now and its input, each read once, in that order.
+      expect(readingOrder(tester), containsAllInOrder(['[H] Chief concern', 'Now: Demo: cough', '[F] Chief concern']));
       // The field's own input, starting from what the note says.
       await revealInSheet(tester, concernBox);
       expect(tester.widget<TextField>(concernBox).controller!.text, 'Demo: cough');

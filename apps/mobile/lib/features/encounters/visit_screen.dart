@@ -523,7 +523,10 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         ),
         if (visit.notSynced) ...[
           const SizedBox(height: FieldSpace.s2),
-          const StatusChip(label: onThisPhoneOnly, icon: LucideIcons.smartphone, tone: ChipTone.info),
+          Semantics(
+            container: true,
+            child: const StatusChip(label: onThisPhoneOnly, icon: LucideIcons.smartphone, tone: ChipTone.info),
+          ),
         ],
       ],
     );
@@ -593,95 +596,105 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
     // handoff, a read, for a draft or a finished note, clock check or not (9.8, review SRD-2).
     final mine = _held?.notes.where((n) => n.noteId == note.noteId).firstOrNull;
     final handoff = mine != null && offersHandoff(mine);
-    return Container(
-      padding: const EdgeInsets.all(FieldSpace.s3),
-      decoration: BoxDecoration(
-        color: c.surface,
-        border: Border.all(color: c.line),
-        borderRadius: BorderRadius.circular(FieldRadius.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Semantics(header: true, child: Text(title, style: text.titleLarge)),
-          const SizedBox(height: FieldSpace.s1),
-          Wrap(
-            spacing: FieldSpace.s2,
-            runSpacing: FieldSpace.s1,
-            children: [
-              NoteStateChip(note: note),
-              if (showsOnThisPhoneOnly(note))
-                const StatusChip(label: onThisPhoneOnly, icon: LucideIcons.smartphone, tone: ChipTone.info),
-            ],
-          ),
-          if (!note.actsAsAuthor) ...[
+    // One node for the note, so what is in it is read in its order, under its title.
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: Container(
+        padding: const EdgeInsets.all(FieldSpace.s3),
+        decoration: BoxDecoration(
+          color: c.surface,
+          border: Border.all(color: c.line),
+          borderRadius: BorderRadius.circular(FieldRadius.md),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Each of these its own node, in order: the title, then its state, who acts as its author and
+            // its recap. Without one, a screen reader hears them before the title (review SAX-2).
+            Semantics(container: true, header: true, child: Text(title, style: text.titleLarge)),
             const SizedBox(height: FieldSpace.s1),
-            Text(byText(note.actingAuthor), style: text.bodyLarge),
-          ],
-          // The recap (8.1): a line per section with an answer that counts, only what the reader may
-          // see, nothing from a sensitive exam.
-          if (note.recap.isNotEmpty) ...[
-            const SizedBox(height: FieldSpace.s2),
-            for (final l in note.recap) Text(l.text, style: text.bodyLarge),
-          ],
-          const SizedBox(height: FieldSpace.s3),
-          if (draftElsewhere) ...[
-            _SpokenButton(
-              label: openNoteAction,
-              spoken: openNoteSpoken(title),
-              icon: LucideIcons.squarePen,
-              onPressed: _busy ? null : () => unawaited(_openServerDraft(note)),
+            Semantics(
+              container: true,
+              child: Wrap(
+                spacing: FieldSpace.s2,
+                runSpacing: FieldSpace.s1,
+                children: [
+                  NoteStateChip(note: note),
+                  if (showsOnThisPhoneOnly(note))
+                    const StatusChip(label: onThisPhoneOnly, icon: LucideIcons.smartphone, tone: ChipTone.info),
+                ],
+              ),
             ),
+            if (!note.actsAsAuthor) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Semantics(container: true, child: Text(byText(note.actingAuthor), style: text.bodyLarge)),
+            ],
+            // The recap (8.1): a line per section with an answer that counts, only what the reader may
+            // see, nothing from a sensitive exam.
+            if (note.recap.isNotEmpty) ...[
+              const SizedBox(height: FieldSpace.s2),
+              for (final l in note.recap) Semantics(container: true, child: Text(l.text, style: text.bodyLarge)),
+            ],
             const SizedBox(height: FieldSpace.s3),
+            if (draftElsewhere) ...[
+              _SpokenButton(
+                label: openNoteAction,
+                spoken: openNoteSpoken(title),
+                icon: LucideIcons.squarePen,
+                onPressed: _busy ? null : () => unawaited(_openServerDraft(note)),
+              ),
+              const SizedBox(height: FieldSpace.s3),
+            ],
+            if (note.editable)
+              _SpokenButton(
+                label: openNoteAction,
+                spoken: openNoteSpoken(title),
+                icon: LucideIcons.squarePen,
+                onPressed: () => unawaited(context.push(noteLocation(note.noteId))),
+              )
+            else if (read != null)
+              NoteReadView(
+                model: read,
+                itemAction: correct ? (item) => _correctButton(note, item, _labelsOf(item)) : null,
+              )
+            else
+              const NoticeMessage(noteFormNotOnPhone),
+            if (held != null) ...[const SizedBox(height: FieldSpace.s3), NoticeMessage(held)],
+            ..._trail(context, note),
+            if (_problem case (at: final at, :final message) when at == note.noteId) ...[
+              const SizedBox(height: FieldSpace.s3),
+              ErrorMessage(message),
+            ],
+            if (handoff) ...[
+              const SizedBox(height: FieldSpace.s3),
+              _SpokenButton(
+                label: showHandoffAction,
+                spoken: showHandoffAction,
+                icon: LucideIcons.clipboardList,
+                onPressed: () => unawaited(context.push('/encounters/$encounterId/handoff')),
+              ),
+            ],
+            if (repo.mayAddAddendum(note)) ...[
+              const SizedBox(height: FieldSpace.s3),
+              _SpokenButton(
+                label: addAddendumAction,
+                spoken: addAddendumSpoken(title),
+                icon: LucideIcons.messageSquarePlus,
+                onPressed: () => unawaited(_addAddendum(note.noteId, title)),
+              ),
+            ],
+            if (repo.mayReopen(note.noteId)) ...[
+              const SizedBox(height: FieldSpace.s2),
+              _SpokenButton(
+                label: reopenAction,
+                spoken: reopenSpoken(title),
+                icon: LucideIcons.undo2,
+                onPressed: () => unawaited(_reopen(note)),
+              ),
+            ],
           ],
-          if (note.editable)
-            _SpokenButton(
-              label: openNoteAction,
-              spoken: openNoteSpoken(title),
-              icon: LucideIcons.squarePen,
-              onPressed: () => unawaited(context.push(noteLocation(note.noteId))),
-            )
-          else if (read != null)
-            NoteReadView(
-              model: read,
-              itemAction: correct ? (item) => _correctButton(note, item, _labelsOf(item)) : null,
-            )
-          else
-            const NoticeMessage(noteFormNotOnPhone),
-          if (held != null) ...[const SizedBox(height: FieldSpace.s3), NoticeMessage(held)],
-          ..._trail(context, note),
-          if (_problem case (at: final at, :final message) when at == note.noteId) ...[
-            const SizedBox(height: FieldSpace.s3),
-            ErrorMessage(message),
-          ],
-          if (handoff) ...[
-            const SizedBox(height: FieldSpace.s3),
-            _SpokenButton(
-              label: showHandoffAction,
-              spoken: showHandoffAction,
-              icon: LucideIcons.clipboardList,
-              onPressed: () => unawaited(context.push('/encounters/$encounterId/handoff')),
-            ),
-          ],
-          if (repo.mayAddAddendum(note)) ...[
-            const SizedBox(height: FieldSpace.s3),
-            _SpokenButton(
-              label: addAddendumAction,
-              spoken: addAddendumSpoken(title),
-              icon: LucideIcons.messageSquarePlus,
-              onPressed: () => unawaited(_addAddendum(note.noteId, title)),
-            ),
-          ],
-          if (repo.mayReopen(note.noteId)) ...[
-            const SizedBox(height: FieldSpace.s2),
-            _SpokenButton(
-              label: reopenAction,
-              spoken: reopenSpoken(title),
-              icon: LucideIcons.undo2,
-              onPressed: () => unawaited(_reopen(note)),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

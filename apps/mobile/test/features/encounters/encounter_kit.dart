@@ -203,6 +203,14 @@ Future<void> semanticTap(WidgetTester tester, Pattern label) async {
   await settle(tester);
 }
 
+/// What a screen reader moves through on screen, in its order (Flutter's simulated traversal): each
+/// node's label, "[H] " before a heading's, "[F] " before a text field's.
+List<String> readingOrder(WidgetTester tester) => [
+  for (final n in tester.semantics.simulatedAccessibilityTraversal())
+    if (n.getSemanticsData() case final d when d.label.isNotEmpty)
+      '${d.flagsCollection.isHeader ? '[H] ' : ''}${d.flagsCollection.isTextField ? '[F] ' : ''}${d.label}',
+];
+
 /// Back from the route on top, as the system's back does (the router's own page for a location it
 /// lacks has no back button).
 Future<void> back(WidgetTester tester) async {
