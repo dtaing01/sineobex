@@ -4604,6 +4604,16 @@ summary, a reason's text or an addendum's.
 | `access.denied` | A missing key: `permission`, `route`, from the team scope, or from co-sign and attest when the caller's role no longer charts once the team lock is theirs. A rule about the caller: `reason` and `route`, on entity `encounter` and the visit with its patient for co-sign and attest (with `noteIds`: `is_author`, `is_signer`, `cannot_sign`, `cannot_attest`, `cannot_see_all`) and for the handoff (`cannot_see_red_flags`); with no entity for the queues' `cannot_sign` and `cannot_attest`, and for a caller of co-sign or attest who is no longer an active member once the lock is theirs (`not_a_member`) |
 | Not logged | `reauth_required`, and every 409, 422 and 404. When a co-sign or an attest answers a 409 and a note it names was refused about the caller too, that refusal is logged (5.3). `GET /v1/me/counts` writes no event: it names no patient (5.6) |
 
+As built for the portal's pages (unit L6, with its review): the portal writes no event of its
+own. What a page reads or does goes through the API, which logs it as the table above says, and
+the end-to-end tests count the events. A visit page logs its read (5.1) and, for a person with
+`team.manage_users`, one `note.assignees_viewed` for each note it offers Assign on (9.12). The
+patient page's chart read logs the chart and none of its visits (5.2), Show earlier visits logs
+`chart.timeline_viewed`, and opening a visit from the timeline logs that one visit. An export
+logs its `ems_handoff.exported` and nothing more: the page is not read again (9.11). Each queue
+and Notes not complete log their view; Home's counts write none, and no link reads anything
+before it is followed.
+
 As built for the phone's reads (the domain layer, unit L4, with its review). Each read writes its
 events in the store transaction that reads it, with the closed list's keys (`AuditAppend`), so a
 read that can't be logged shows nothing, and nothing is read while the store is frozen. A screen
@@ -4660,13 +4670,40 @@ As built for the online routes (unit L2, with its review):
   preview gets no visits, having no seeded staff to sign them; and no demo student is added, so the
   queues and Notes to finish start empty.
 
+As built for the portal's pages (unit L6, with its review):
+
+- **Addresses.** Every page and route handler is named by IDs alone: `/encounters/{encounterId}`
+  and its `sign`, `assign` and `ems-handoff` handlers, `/encounters/earlier`,
+  `/patients/{patientId}`, `/team/cosign`, `/team/attestation` and `/team/incomplete-notes`. What
+  the visit page comes back with is a state from a closed list (`?signed=`, `?handoff=`, and
+  `?assign=` with `&note={noteId}#assign-{noteId}`), and a word it does not know shows nothing.
+  The IDs Show earlier visits needs, a press's plan, an assignment's person and reason, and the
+  export's time zone travel in POST bodies; the zone, in a zone's shape, is the one query string
+  the export sends the API (5.7). The end-to-end tests hold every address a page loads to these
+  (`expectOnlyIds`).
+- **Titles.** Each page's is fixed: "Visit", "Co-sign queue", "Attestation queue", "Notes not
+  complete", and the patient page's "Patient".
+- **Browser storage.** None. The plan a visit page holds, the earlier visits a timeline has loaded
+  and a form's values live in the page's memory and go with it; local and session storage stay
+  empty after each page (`expectNothingStored`, in the specs and the accessibility sweep). The
+  handoff comes as an attachment named `ems-handoff.pdf`, `no-store`, as the route handlers' JSON
+  answers do.
+- **Reads nobody made.** No link to a visit or a chart prefetches (`prefetch={false}`, held by
+  `apps/portal/src/lib/patient-links.test.ts`), since loading one logs a read, and a timeline row
+  carries the note titles and states it shows and nothing more of a note.
+- **Names.** A page names a patient by the name the API gives, the canonical chart's preferred
+  name, given only to a reader with `patients.view`, and makes none up: "No name recorded", "No
+  patient recorded".
+
 Staff names in the sync read (D108): a note's snapshot names who acts as its author, a sign-off's
 its signer and a correction's its corrector (4.4, 4.6, 4.7), beside the IDs they already carried,
-as an addendum's named its author. They are staff, not patients, and the PHI guard and the rules on
-logs hold as before: they go only with a record the reader is shown (6.4), no audit event or
-rejection holds one (events name people by ID, 10.1), and on the phone they live with the record's
-attributes in the encrypted database, never in preferences. A note's recap lines (5.1) are answers,
-so they go only in the bodies of the visit read and the chart, never in a URL, a title or a log.
+as an addendum's named its author; since unit L6 a referral's names who recorded it, by their name
+now (`attributes.authorName`, 5.2 as built). They are staff, not patients, and the PHI guard and
+the rules on logs hold as before: they go only with a record the reader is shown (6.4), no audit
+event or rejection holds one (events name people by ID, 10.1), and on the phone they live with the
+record's attributes in the encrypted database, never in preferences. A note's recap lines (5.1)
+are answers, so they go only in the bodies of the visit read and the chart, never in a URL, a
+title or a log.
 
 As built for the phone's store (unit L3, 4.8): what it keeps of a sign-off held for review is IDs
 only, in the encrypted database's `kv` table (`held_signoff.<noteId>`, `held_note.<signoffId>`);
