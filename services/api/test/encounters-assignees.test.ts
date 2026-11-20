@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { PRESETS, type ResolvedNoteType } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   chartedVisit,
@@ -44,6 +45,13 @@ interface Assignee {
   credential: string;
 }
 
+/** The released General / primary care note: a GU exam is one of the systems it examines. */
+const GENERAL = PRESETS.find((p) => p.key === 'general_primary_care')!.definition as ResolvedNoteType;
+/** A General note's answers with no sensitive exam in them. */
+const NO_GU = { 'reason.concern': 'Demo: a cough for a week', 'exam.systems': ['pulmonary'] };
+/** The same note with a GU exam: its pick and one finding, which only patients.view_sensitive_exams reads. */
+const WITH_GU = { ...NO_GU, 'exam.systems': ['pulmonary', 'gu'], 'gu.general': ['dysuria'] };
+
 describe('phase 4: who may be assigned a note', () => {
   let h: Harness;
   let w: World;
@@ -57,13 +65,13 @@ describe('phase 4: who may be assigned a note', () => {
 
   const assignees = (noteId: string, token = w.t.adminToken) =>
     get(w, token, `/v1/notes/${noteId}/assignees`);
-  const listed = async (noteId: string) => {
-    const r = await assignees(noteId);
+  const listed = async (noteId: string, token = w.t.adminToken) => {
+    const r = await assignees(noteId, token);
     expect(r.status).toBe(200);
     return ((r.body as Json).assignees as Assignee[]).map((a) => a.userId).sort();
   };
-  const assign = (noteId: string, toUserId: string) =>
-    post(w, w.t.adminToken, `/v1/notes/${noteId}/assign`, { toUserId, reason: 'Demo: the author left' });
+  const assign = (noteId: string, toUserId: string, token = w.t.adminToken) =>
+    post(w, token, `/v1/notes/${noteId}/assign`, { toUserId, reason: 'Demo: the author left' });
 
   /** A visit charted by a clinician who then left the team. */
   async function departed(
@@ -84,6 +92,34 @@ describe('phase 4: who may be assigned a note', () => {
       await h.scratch.owner<{ userId: string }[]>`
         select user_id as "userId" from sineobex.team_memberships where team_id = ${w.t.teamId} and status = 'active'`
     ).map((m) => m.userId);
+
+  /**
+   * What the list and the route answer the caller of [token] about the note: whom the list names,
+   * and, for every active member it leaves out, the route's refusal, which writes nothing. So the
+   * two agree on everyone the list leaves out; each test assigns one it names.
+   */
+  async function answers(noteId: string, token = w.t.adminToken) {
+    const ids = await listed(noteId, token);
+    const refused: Record<string, string> = {};
+    for (const id of (await members()).filter((m) => !ids.includes(m))) {
+      const r = await assign(noteId, id, token);
+      expect(r.status, id).toBe(422);
+      refused[id] = (r.body as Json).error?.code as string;
+    }
+    expect((await noteRow(h, noteId)).assignedUserId).toBeNull();
+    return { listed: ids, refused };
+  }
+
+  /** A role that manages the team and reads Medical notes, without patients.view_sensitive_exams. */
+  async function manager() {
+    const role = await roleWith(h, w.t, `Team manager ${++count}`, [
+      'team.manage_users',
+      'patients.view',
+      'patients.view_sensitive',
+      'billing.view_codes',
+    ]);
+    return addMember(h, w.t, `manager-${count}@example.com`, `Manager ${count} (demo)`, role);
+  }
 
   it('needs team.manage_users: a role without it is refused, and the refusal is logged', async () => {
     const v = await departed('resident');
@@ -123,51 +159,72 @@ describe('phase 4: who may be assigned a note', () => {
     expect((await assign(v.note.noteId, w.nia.id)).status).toBe(200);
   });
 
-  it('a signed note lists only those of the rank it was signed under, and one of a type that could hold an answer someone may not see only those who would see it', async () => {
+  it('a signed note lists only those of the rank it was signed under, and one that holds a sensitive exam only those who would see it', async () => {
     const signed = await departed('attending', { sign: true });
     expect(await listed(signed.note.noteId)).toEqual([w.ana.id, w.vic.id].sort());
     const exam = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
     expect(await listed(exam.note.noteId)).toEqual([w.vic.id]);
   });
 
-  describe('decided from the note’s type and each person’s keys, never from what the note holds (review finding PRD-1)', () => {
-    it('a note with a sensitive exam and one without give the same list, and the route the same refusal', async () => {
-      // Ana's role reads no sensitive exam: told by who is missing, the list would say which note holds one.
-      const withExam = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
-      const without = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITHOUT_EXAM });
-      expect(await listed(without.note.noteId)).toEqual(await listed(withExam.note.noteId));
-      expect(await listed(without.note.noteId)).toEqual([w.vic.id]);
-      for (const v of [withExam, without]) {
-        const r = await assign(v.note.noteId, w.ana.id);
-        expect(r.status).toBe(422);
-        expect((r.body as Json).error?.code).toBe('cannot_see_all');
-        expect((await noteRow(h, v.note.noteId)).assignedUserId).toBeNull();
-      }
+  describe('decided by what the caller may see (review finding PRD-1; the coordinator’s decision of Nov 20)', () => {
+    it('a caller who sees sensitive exams: a General note with no GU exam lists a Healthcare Staff clinician, and the same note with one does not', async () => {
+      // The Program Admin holds patients.view_sensitive_exams, so whom the list leaves out tells them
+      // nothing they do not read: Ana's role reads no sensitive exam, and only a GU exam the note
+      // holds keeps the note from her (lifecycle 12.1 #31).
+      const plain = await departed('attending', { type: GENERAL, answers: NO_GU });
+      const gu = await departed('attending', { type: GENERAL, answers: WITH_GU });
+      const withoutGu = await answers(plain.note.noteId);
+      const withGu = await answers(gu.note.noteId);
+      expect(withoutGu.listed).toEqual([w.ana.id, w.vic.id].sort());
+      expect(withGu.listed).toEqual([w.vic.id]);
+      expect(withGu.refused[w.ana.id]).toBe('cannot_see_all');
+      expect((await assign(plain.note.noteId, w.ana.id)).status).toBe(200);
+      expect((await assign(gu.note.noteId, w.vic.id)).status).toBe(200);
     });
 
-    it('a note with a treatment record and one without give the same list, and the route the same refusal', async () => {
+    it('a caller who may not see sensitive exams: a note with one and one without give the same list, and the route the same refusals', async () => {
+      // Told by who is missing, the list would say which note holds a sensitive exam to a manager
+      // whose role reads none, so where they could miss it the note's type decides.
+      const m = await manager();
+      const withExam = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
+      const without = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITHOUT_EXAM });
+      const exam = await answers(withExam.note.noteId, m.token);
+      expect(await answers(without.note.noteId, m.token)).toEqual(exam);
+      expect(exam.listed).toEqual([w.vic.id]);
+      expect(exam.refused[w.ana.id]).toBe('cannot_see_all');
+      for (const v of [withExam, without]) {
+        expect((await assign(v.note.noteId, w.vic.id, m.token)).status).toBe(200);
+      }
+      // The Program Admin reads sensitive exams, so to them the two notes differ, and so do the lists.
+      const a = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITH_EXAM });
+      const b = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers: WITHOUT_EXAM });
+      expect((await answers(a.note.noteId)).listed).toEqual([w.vic.id]);
+      expect((await answers(b.note.noteId)).listed).toEqual([w.ana.id, w.vic.id].sort());
+    });
+
+    it('a caller who may not see treatment records: a note with one and one without give the same list, and the route the same refusals', async () => {
       // The probe's: two people with no credential write a test_restricted note on a Non-Medical
       // visit and leave, one with a dose in its treatment record section. A Program Admin with no
-      // credential reads neither's treatment record.
+      // credential reads neither's treatment record, so whoever could not read one is left out of
+      // both: Jordan, Healthcare Staff with no credential.
       const notes = [];
-      for (const answers of [
+      for (const content of [
         { 'general.notes': 'Demo: a chat', 'moud.dose': 'Demo: 8 mg' },
         { 'general.notes': 'Demo: a chat' },
       ]) {
         const n = ++count;
         const c = await clinician(h, w.t, `gone-${n}@example.com`, `Gone ${n} (demo)`, 'none');
         const visit = await visitAt(c, w.patientId, { kind: 'non_medical' });
-        notes.push(await noteOn(c, visit, TEST_RESTRICTED_TYPE, answers));
+        notes.push(await noteOn(c, visit, TEST_RESTRICTED_TYPE, content));
         await removeMember(w, c.membershipId);
       }
       const [moud, plain] = notes as [HeldNote, HeldNote];
-      expect(await listed(plain.noteId)).toEqual(await listed(moud.noteId));
-      expect(await listed(plain.noteId)).toEqual([w.vic.id]);
-      for (const note of [moud, plain]) {
-        const r = await assign(note.noteId, w.nia.id);
-        expect(r.status).toBe(422);
-        expect((r.body as Json).error?.code).toBe('cannot_see_all');
-      }
+      const dose = await answers(moud.noteId);
+      expect(await answers(plain.noteId)).toEqual(dose);
+      expect(dose.listed).not.toContain(w.t.aId);
+      expect(dose.refused[w.t.aId]).toBe('cannot_see_all');
+      expect(dose.listed).toContain(w.nia.id);
+      for (const note of [moud, plain]) expect((await assign(note.noteId, w.nia.id)).status).toBe(200);
     });
   });
 

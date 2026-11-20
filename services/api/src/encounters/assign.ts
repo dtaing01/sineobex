@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { definitionModel, type ResolvedNoteType } from '@sineobex/forms';
+import { definitionModel, effectiveAnswers, type ResolvedNoteType } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import {
   CAPABILITIES,
@@ -12,16 +12,17 @@ import type { Tx } from '../db/database.ts';
 import { conflict, invalid, notFound } from '../lib/errors.ts';
 import { Credential as CredentialSchema, Reason, Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
-import { actingAuthor, noteRules, noteTypeOf } from '../sync/entities/note.ts';
+import { actingAuthor, noteRules } from '../sync/entities/note.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
 import {
   byDefinition,
   DefinitionError,
   mayHoldHidden,
   noteReader,
+  sameValue,
   type StoredRecord,
 } from '../sync/records.ts';
-import { medicalHidden, noteAsRead } from './read.ts';
+import { medicalHidden, noteAsRead, seenBy, type NoteRead } from './read.ts';
 import { mayAssign, type AssignRefusal } from './rules.ts';
 
 /**
@@ -136,54 +137,75 @@ function answerPaths(type: ResolvedNoteType): string[] {
 }
 
 /**
- * Whether a note of this type could hold an answer the assignee's role could not see if they were
- * not its author (6.4 rule 4, design 3.12): whoever acts as the author sees all of it, so the
- * question is what their role allows today. Decided from the note's definition and the assignee's
- * keys alone, never from what the note holds, as a hold is (D88, mayHoldHidden): the picker's list
- * is read on every visit page, and a list that left out whoever could not see a sensitive exam or
- * a treatment record the note holds would tell the person reading it that the note holds one
- * (review finding PRD-1). The summary of a Medical visit they may not read, or a definition the
- * server cannot read, hides something too.
+ * Whether the note hides something from the assignee's role, as if they were not its author (6.4
+ * rule 4, design 3.12): whoever acts as the author sees all of it, so the question is what their
+ * role allows today. It is asked of each path of the note's definition, and of what the caller,
+ * who reads the picker's list on every visit page, may see there (the coordinator's decision of
+ * Nov 20, narrowing D116):
  *
- * PLAN-OPEN: a note of a type that could hold a sensitive exam, a treatment record or a sensitive
- * diagnosis goes only to someone whose role would see them, so a team whose attendings hold no
- * patients.view_sensitive_exams has nobody to take a General / primary care note whose author
- * left, and it stays in Notes not complete (lifecycle 12.1 #31). Is that acceptable?
+ *  - where the caller's keys could miss what the path holds too, a note of the type could hold
+ *    there something the assignee's keys could miss (mayHoldHidden for both), whatever the note
+ *    holds, as a hold is decided (D88): a list that left out whoever could not see a treatment
+ *    record the note holds would tell a Program Admin who reads none that it holds one (review
+ *    finding PRD-1);
+ *  - elsewhere, the note holds an answer that counts the assignee's role may not see (seenBy, the
+ *    read rule): the caller sees every such answer on the page, so whom the list leaves out tells
+ *    them nothing new. An answer the assignee may not see is at a path mayHoldHidden marks for
+ *    them, as a hold relies on; where it marks the path for the caller too, the first rule has
+ *    refused already, whatever the answer is.
+ *
+ * So two callers may be given different lists for one note, each from what they may see of it. A
+ * note of a type the assignee may not read, the summary of a Medical visit they may not read, or a
+ * definition the server cannot read, hides something too.
+ *
+ * PLAN-OPEN: a note that holds a sensitive exam, a treatment record or a sensitive diagnosis, or
+ * could hold one where the person assigning could not see it, goes only to someone whose role would
+ * see them, so on a team whose attendings hold no patients.view_sensitive_exams a General / primary
+ * care note with a GU exam whose author left has nobody to take it, and it stays in Notes not
+ * complete (lifecycle 12.1 #31). Is that acceptable?
  */
-async function hidesFrom(
-  tx: Tx,
+function hidesFrom(
   visit: StoredRecord,
-  note: StoredRecord,
+  read: NoteRead,
   permissions: ReadonlySet<Permission>,
   credential: Credential,
-): Promise<boolean> {
+): boolean {
   if (medicalHidden(permissions, visit.values.kind)) return true;
-  const reader = noteReader(permissions, credential, false);
+  const { type, answers, reader: caller } = read;
+  // A phase 2 note with no version has no definition, and the sync read gives it whole.
+  if (type === undefined) return false;
+  const assignee = noteReader(permissions, credential, false);
   try {
-    const type = await noteTypeOf(tx, note);
-    // A phase 2 note with no version has no definition, and the sync read gives it whole.
-    if (type === undefined) return false;
-    return byDefinition(() => answerPaths(type).some((path) => mayHoldHidden(type, path, reader)));
+    return byDefinition(() => {
+      const paths = answerPaths(type);
+      if (paths.some((p) => mayHoldHidden(type, p, assignee) && mayHoldHidden(type, p, caller))) return true;
+      const seen = seenBy(type, answers, assignee);
+      return seen === null || !sameValue(seen, effectiveAnswers(type, answers));
+    });
   } catch (err) {
     if (err instanceof DefinitionError) return true;
     throw err;
   }
 }
 
-/** What mayAssign asks of a note whatever the assignee: who acts as its author, and the rank it needs. */
+/**
+ * What mayAssign asks of a note whatever the assignee: the note as the caller reads it, who acts as
+ * its author, and the rank it needs.
+ */
 interface AssignedNote {
   visit: StoredRecord;
-  note: StoredRecord;
+  read: NoteRead;
   fromUserId: string;
   actingAuthorActive: boolean;
   neededRank: number;
 }
 
-async function assignedNote(tx: Tx, visit: StoredRecord, note: StoredRecord): Promise<AssignedNote> {
+async function assignedNote(tx: Tx, visit: StoredRecord, read: NoteRead): Promise<AssignedNote> {
+  const { note } = read;
   const fromUserId = actingAuthor(note);
   return {
     visit,
-    note,
+    read,
     fromUserId,
     actingAuthorActive: (await memberOf(tx, note.teamId, fromUserId))?.status === 'active',
     neededRank: await neededRank(tx, note),
@@ -191,10 +213,11 @@ async function assignedNote(tx: Tx, visit: StoredRecord, note: StoredRecord): Pr
 }
 
 /**
- * mayAssign asked of [assignee] for the note: the one rule the assign route and its picker's list
- * (GET /v1/notes/{noteId}/assignees) both ask, so the picker never offers someone the route refuses.
+ * mayAssign asked of [assignee] for the note, by the caller: the one rule the assign route and its
+ * picker's list (GET /v1/notes/{noteId}/assignees) both ask, with the caller's read of the note, so
+ * the picker never offers someone the route refuses.
  */
-async function assignDecision(tx: Tx, a: AssignedNote, assignee: Member | undefined) {
+function assignDecision(a: AssignedNote, assignee: Member | undefined) {
   const credential = credentialOf(assignee) ?? 'none';
   const permissions = new Set((assignee?.permissions ?? []).filter(isPermission));
   return mayAssign({
@@ -203,7 +226,7 @@ async function assignDecision(tx: Tx, a: AssignedNote, assignee: Member | undefi
     assigneeCanChart: permissions.has('encounters.chart'),
     assigneeRank: CAPABILITIES[credential].rank,
     neededRank: a.neededRank,
-    noteHasHiddenSection: await hidesFrom(tx, a.visit, a.note, permissions, credential),
+    noteHasHiddenSection: hidesFrom(a.visit, a.read, permissions, credential),
   });
 }
 
@@ -224,16 +247,18 @@ export function assignNote(
   return scope.tx(async (tx, audit) => {
     const teamId = scope.team.teamId;
     await lockTeamWrites(tx, teamId);
-    const note = await noteRules.load(tx, noteId, true);
+    const loaded = await noteRules.load(tx, noteId, true);
     // A note the caller may not read is not found, as its assignees route answers, so no answer
     // tells its state (6.4 rule 5; review finding PAC-3).
-    if (!note || note.teamId !== teamId || !(await noteAsRead(tx, scope, note))) throw notFound('note');
+    const read = loaded?.teamId === teamId ? await noteAsRead(tx, scope, loaded) : null;
+    if (!read) throw notFound('note');
+    const { note } = read;
     const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
     if (!visit) throw notFound('note');
 
-    const assigned = await assignedNote(tx, visit, note);
+    const assigned = await assignedNote(tx, visit, read);
     const { fromUserId } = assigned;
-    const decision = await assignDecision(tx, assigned, await memberOf(tx, teamId, input.toUserId));
+    const decision = assignDecision(assigned, await memberOf(tx, teamId, input.toUserId));
     if (decision !== 'ok') {
       const { refuse } = decision;
       throw refuse === 'author_active'
@@ -275,11 +300,13 @@ export function assignNote(
 export function noteAssignees(scope: TeamScope, noteId: string): Promise<NoteAssigneesValue> {
   return scope.tx(async (tx, audit) => {
     const teamId = scope.team.teamId;
-    const note = await noteRules.load(tx, noteId, false);
-    if (!note || note.teamId !== teamId || !(await noteAsRead(tx, scope, note))) throw notFound('note');
+    const loaded = await noteRules.load(tx, noteId, false);
+    const read = loaded?.teamId === teamId ? await noteAsRead(tx, scope, loaded) : null;
+    if (!read) throw notFound('note');
+    const { note } = read;
     const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
     if (!visit) throw notFound('note');
-    const assigned = await assignedNote(tx, visit, note);
+    const assigned = await assignedNote(tx, visit, read);
     if (assigned.actingAuthorActive) throw conflict('author_active', MESSAGES.author_active);
 
     const active = await tx<(Member & { userId: string; displayName: string })[]>`
@@ -291,7 +318,7 @@ export function noteAssignees(scope: TeamScope, noteId: string): Promise<NoteAss
       order by u.display_name, m.user_id`;
     const assignees: NoteAssigneesValue['assignees'] = [];
     for (const member of active) {
-      if ((await assignDecision(tx, assigned, member)) !== 'ok') continue;
+      if (assignDecision(assigned, member) !== 'ok') continue;
       assignees.push({
         userId: member.userId,
         displayName: member.displayName,

@@ -173,8 +173,9 @@ export function mayAssign(i: {
   /** The rank the note was signed under; for an unsigned note, of its author's last credential. */
   neededRank: number;
   /**
-   * A note of its type could hold an answer the assignee's role cannot see today: asked of the
-   * definition and their keys, never of what the note holds (assign.ts hidesFrom).
+   * The note hides an answer from the assignee's role today, asked of what the person assigning
+   * may see (assign.ts hidesFrom): where they could miss what a path of its definition holds too, a
+   * note of its type could hold such an answer there; elsewhere, the note holds one that counts.
    */
   noteHasHiddenSection: boolean;
 }): 'ok' | { refuse: AssignRefusal } {
