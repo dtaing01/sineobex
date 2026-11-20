@@ -257,7 +257,9 @@ How R5's fixes read the design (R5 reported its own revert check for each):
 - **V1, V12.** `PatientsGate` follows the sync controller and replaces every patient screen with
   the freeze message; each screen also asks one shared check before any read, whatever caused the
   rebuild; nothing is read through a store a lock just closed. The controller notifies its
-  listeners the moment it freezes the store, so a chart on screen goes at once (`92b7fd7`).
+  listeners the moment it freezes the store, so a chart on screen goes at once (`92b7fd7`). A
+  modal sheet is not under a screen's gate: since Nov 20 the patient picker's sheet sits in one of
+  its own (`SheetGate`), as What changed, Which is right? and Create's Is this Del? do.
 - **V3, V4, V5.** The intake saves its draft a second after each change and when the app leaves
   the screen, never into a closed or frozen store. A declined intake keeps no draft. A preferred
   name filled in from the legal given name, or carried from a search, stays out of the draft until

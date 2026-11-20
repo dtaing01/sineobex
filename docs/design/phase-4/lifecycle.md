@@ -4008,6 +4008,14 @@ autocorrect off; routes that carry UUIDs only; no patient details in a page titl
 once the store is frozen; every phone screen tested offline. Wording lives in
 `apps/mobile/lib/features/encounters/encounter_labels.dart`, with curly apostrophes.
 
+A modal sheet is not under its screen's gate, so every sheet that shows a patient's or a note's
+details sits in `SheetGate` (`apps/mobile/lib/features/patients/sheet_gate.dart`), which hears the
+sync controller and the team's services and leaves only why on the sheet once the store freezes:
+the correction and addendum sheets (9.7), the Referrals sheet (9.10), Needs attention's visits to
+choose from (9.13), the `choosePatient` sheet that Switch to Medical and Needs attention's Choose the
+patient open (9.2), and phase 3's patient picker, What changed, Which is right? and Create's Is this
+Del?.
+
 ### 9.1 The patient profile (phone)
 
 `apps/mobile/lib/features/patients/patient_screen.dart` gains:
