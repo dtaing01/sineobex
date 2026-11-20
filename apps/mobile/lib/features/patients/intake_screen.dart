@@ -561,7 +561,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       for (final candidate in likely) {
         // The question, not a spinner, while the worker decides.
         setState(() => _saving = false);
-        final answer = await askSamePerson(context, candidate, todayOf(ref));
+        final answer = await askSamePerson(context, _s, candidate, todayOf(ref));
         if (!mounted || answer == null) return;
         if (answer == SamePersonAnswer.open) {
           await _thisIsThem(candidate);

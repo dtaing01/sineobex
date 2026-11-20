@@ -5,20 +5,23 @@ import '../../api/generated/api.dart' show FieldReviewView, ReviewNeeds;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
+import '../../patients/patient_providers.dart' show PatientServices;
 import '../../patients/patient_repository.dart' show OnlineRequestFailed, PatientRepository;
 import '../../sync/local_store.dart' show ChartingPaused;
 import 'patient_labels.dart';
+import 'sheet_gate.dart';
 
 /// "Which is right?" (design 3.2, 12.1): two values were recorded for one field and someone who
 /// knows the person chooses. Each value is a radio card with who recorded it and when. **Save
 /// choice** works online only; offline the sheet is read-only and says why. Identity fields (legal
 /// name, birth) are a Program Admin's: the sheet says so and offers no choice.
 ///
-/// The choice goes through [patients] (`decideFieldReview`), which opens the chart again once it is
-/// saved, so the chart under the sheet shows the value kept. Returns true when a choice was saved.
+/// The choice goes through the team's [services] (`decideFieldReview`), which open the chart again
+/// once it is saved, so the chart under the sheet shows the value kept. Once the store freezes, no
+/// value stays on the sheet (phase 3's V1). Returns true when a choice was saved.
 Future<bool?> showFieldReviewSheet(
   BuildContext context, {
-  required PatientRepository patients,
+  required PatientServices services,
   required FieldReviewView review,
   required bool mayDecide,
   required bool online,
@@ -27,12 +30,15 @@ Future<bool?> showFieldReviewSheet(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (_) => FieldReviewSheet(
-    patients: patients,
-    review: review,
-    mayDecide: mayDecide,
-    online: online,
-    today: today ?? DateTime.now(),
+  builder: (_) => SheetGate.patients(
+    services: services,
+    child: FieldReviewSheet(
+      patients: services.patients,
+      review: review,
+      mayDecide: mayDecide,
+      online: online,
+      today: today ?? DateTime.now(),
+    ),
   ),
 );
 

@@ -217,4 +217,30 @@ void main() {
     // A choice's reasons are all different things to do, so no two share a sentence.
     expect(OnlineProblem.values.map(reviewProblemText).toSet(), hasLength(OnlineProblem.values.length));
   });
+
+  // A modal sheet is not under the profile's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over takes both values off the sheet: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await twoValues(tester);
+      await openSheet(tester);
+      expect(find.textContaining(river, skipOffstage: false), findsWidgets);
+      h.server.offline = true;
+
+      h.sync.store!.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+      expect(find.text('Which is right?'), findsNothing);
+      for (final value in [river, steps]) {
+        expect(find.textContaining(value, skipOffstage: false), findsNothing);
+        expect(find.bySemanticsLabel(RegExp(RegExp.escape(value)), skipOffstage: false), findsNothing);
+      }
+    });
+  }
 }

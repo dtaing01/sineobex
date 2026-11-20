@@ -31,6 +31,7 @@ import '../encounters/timeline_section.dart';
 import 'field_review_sheet.dart';
 import 'patient_labels.dart';
 import 'patient_widgets.dart';
+import 'sheet_gate.dart';
 
 /// A patient's profile (design 12.1): the header read first as one summary, the banners most urgent
 /// first, the quick actions (phase 4's **+ Encounter** and **+ Referral** first, lifecycle 9.1), then
@@ -279,7 +280,7 @@ class _ProfileState extends ConsumerState<_Profile> {
   Future<void> _chooseReview(FieldReviewView review, {required bool online}) async {
     final decided = await showFieldReviewSheet(
       context,
-      patients: _s.patients,
+      services: _s,
       review: review,
       mayDecide: _s.mayEdit,
       online: online,
@@ -294,7 +295,10 @@ class _ProfileState extends ConsumerState<_Profile> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _HistorySheet(patients: _s.patients, patientId: v.canonicalId, today: todayOf(ref)),
+      builder: (_) => SheetGate.patients(
+        services: _s,
+        child: _HistorySheet(patients: _s.patients, patientId: v.canonicalId, today: todayOf(ref)),
+      ),
     );
   }
 

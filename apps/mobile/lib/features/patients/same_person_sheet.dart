@@ -2,22 +2,32 @@ import 'package:flutter/material.dart';
 
 import '../../design/tokens.dart';
 import '../../patients/dob.dart';
+import '../../patients/patient_providers.dart' show PatientServices;
 import '../../patients/patient_search.dart';
 import 'patient_row.dart';
+import 'sheet_gate.dart';
 
 /// What the Create sheet answers.
 enum SamePersonAnswer { open, createNew }
 
 /// On Create with a likely match still showing (design 8.1): one question, focus on its heading,
 /// **Open Del's chart** first, **No, create a new patient** second, both full width. Back closes it
-/// with nothing done (null).
-Future<SamePersonAnswer?> askSamePerson(BuildContext context, FoundPatient p, DateTime today) =>
-    showModalBottomSheet<SamePersonAnswer>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => SamePersonSheet(patient: p, today: today),
-    );
+/// with nothing done (null). Once the store [services] read freezes, nothing of [p] stays on the
+/// sheet (phase 3's V1).
+Future<SamePersonAnswer?> askSamePerson(
+  BuildContext context,
+  PatientServices services,
+  FoundPatient p,
+  DateTime today,
+) => showModalBottomSheet<SamePersonAnswer>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (context) => SheetGate.patients(
+    services: services,
+    child: SamePersonSheet(patient: p, today: today),
+  ),
+);
 
 class SamePersonSheet extends StatelessWidget {
   const SamePersonSheet({super.key, required this.patient, required this.today});

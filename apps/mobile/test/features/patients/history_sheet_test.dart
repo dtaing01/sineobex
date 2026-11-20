@@ -209,4 +209,29 @@ void main() {
     expect(find.textContaining('{'), findsNothing);
     expect(find.textContaining('reason:'), findsNothing);
   });
+
+  // A modal sheet is not under the profile's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over takes the history off the sheet: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await openDel(tester);
+      await tapOn(tester, showHistory());
+      final legal = find.textContaining('Legal name: (blank) → Delbert Smithfield', skipOffstage: false);
+      expect(legal, findsOneWidget);
+      h.server.offline = true;
+
+      h.sync.store!.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(frozen)), findsOneWidget);
+      expect(legal, findsNothing);
+      expect(find.textContaining('Name they go by:', skipOffstage: false), findsNothing);
+      expectNoLegalName(tester);
+    });
+  }
 }

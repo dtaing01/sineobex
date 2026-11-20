@@ -152,6 +152,41 @@ void main() {
     handle.dispose();
   });
 
+  // The question is a modal sheet, not under the intake's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over takes the likely match off Create’s question: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await offlineIntake(tester);
+      await typeSmitty(tester);
+      await tapOn(tester, find.text('Yes, that’s right'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      // The sheet's own: the screen under it hears the controller (PatientsGate).
+      Finder inSheet(Finder f) => find.descendant(of: find.byType(BottomSheet), matching: f, skipOffstage: false);
+      final question = inSheet(find.textContaining('Is this Del', skipOffstage: false));
+      expect(question, findsOneWidget);
+
+      h.sync.store!.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(inSheet(find.text(frozen)), findsOneWidget);
+      expect(question, findsNothing);
+      for (final part in ['March 7, 1946', 'Elm St', 'Open Del’s chart']) {
+        expect(inSheet(find.textContaining(part, skipOffstage: false)), findsNothing);
+      }
+      expectNoLegalName(tester);
+
+      // Closing it does nothing.
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    });
+  }
+
   testWidgets('two likely matches: Create asks about each, and records only the ones answered (V10)', (tester) async {
     final h = await signIn(tester);
     seedP1(h.server);
