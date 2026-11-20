@@ -3147,6 +3147,11 @@ As built (unit L2, with its review; `services/api/src/encounters/cosign.ts`, `co
 - **The Red flags note.** A co-sign does not wait for it: with the visit's Red flags note reopened
   to a draft, its other waiting notes are co-signed all the same (3.5; the coordinator's decision
   on review finding LAC-6).
+- **The `is_author` message** names everyone the code covers: "You can’t co-sign a note you wrote,
+  completed or act as the author of." (attest's: "You can’t attest a note you wrote, completed or
+  act as the author of."), so it never tells an assignee they wrote the note (the coordinator's
+  decision on the review of unit L6). The portal shows no refusal's message: it loads the visit
+  again, and the note says why (9.11 as built).
 
 ### 5.4 The queues, and attest
 
@@ -3259,14 +3264,17 @@ As built for the portal's picker (unit L6, 9.12): **`GET /v1/notes/{noteId}/assi
 (`noteAssignees`, `assign.ts`) answers `NoteAssignees`, `{ assignees: [{ userId, displayName,
 credential }] }`, every active member, by name, for whom `mayAssign` allows the note, asked through
 the function the assign route asks (`assignDecision`), so the picker lists exactly the people the
-route takes and holds no copy of the credential ranks. It needs `team.manage_users` and no recent
-sign-in: it is a read, as the list of members and the team's incomplete notes are, and the
-assignment asks for one (decided as built; the job asked for the key alone). A note the team does not have, or
-the caller may not read (`noteAsRead`, as the visit read leaves one out), is 404; a note whose
-acting author is an active member is 409 `author_active`, as the act answers, so the page offers
-Assign only where the list answers 200. Neither is logged (10.1). The list is logged as one
-`note.assignees_viewed` on entity `encounter_note` and the note, with the visit's patient,
-`{ resultCount }`, no name.
+route takes and holds no copy of the credential ranks. Whether the note hides something from each
+is `hidesFrom`'s, from its type (above), so the list tells nothing of what the note holds. It
+needs `team.manage_users` and no recent sign-in: it is a read, as the list of members and the
+team's incomplete notes are, and the assignment asks for one (the coordinator's decision of Nov
+19). A note the team does not have, or the caller may not read (`noteAsRead`, as the visit read
+leaves one out), is 404, as the act answers since the review; a note whose acting author is an
+active member is 409 `author_active`, as the act answers, so the page offers Assign only where the
+list answers 200. Neither is logged (10.1). The list is logged as one `note.assignees_viewed` on
+entity `encounter_note` and the note, with the visit's patient, `{ resultCount }`, no name. The
+visit page asks it of every note it shows, for a person with `team.manage_users` (9.12 as built;
+the coordinator's decision).
 
 ### 5.6 Notes that are not complete
 
@@ -3440,6 +3448,8 @@ As built (unit L2, with its review):
 - **Assign** and **the EMS handoff** ask for their key first, then the recent sign-in. The
   handoff asks whether the reader may read the Red flags note as the visit read asks it, and
   refuses one who may not with `cannot_see_red_flags`, logged (5.7).
+- **Who may be assigned a note** (unit L6), the list the portal's picker shows, needs
+  `team.manage_users` and no recent sign-in: it is a read, and the assignment asks for one (5.5).
 
 ### 6.2 What the phone offers, by credential
 
@@ -3600,6 +3610,24 @@ Rules:
   finding RD-11); an answer of a `needs` section from a credential that does not order
   medications, whoever acts as the author (4.2). The reader for each is the sender's role and
   their credential now.
+
+**For the portal, as built** (unit L6, with its review):
+
+- **Rule 4, said as well as applied.** The visit read marks the notes the reader may co-sign or
+  attest (`canCosign`, `canAttest`) and says why a waiting note waits for someone else
+  (`heldBecause`), and each queue note gives the same reason (5.1, 5.4). In the rule's order a
+  refusal about the credential comes before `cannot_see_all`, so "This note has a part you can’t
+  open" reaches only a reader whose credential may do the act: D97 already tells them as much by
+  the missing hash, and the queue by listing a note they did not write as not theirs (the
+  coordinator's decision on the review of unit L6).
+- **Who may be assigned a note** is decided as rule 5 decides a hold (D88): from the note's type
+  and the assignee's keys, by `mayHoldHidden` over every path the type can hold, never from what
+  the note holds, for the picker's list and the assign route's `cannot_see_all` alike, so neither
+  tells its reader what the note holds (5.5; review finding PRD-1). The cost: a note of a type that
+  could hold a sensitive exam goes only to someone whose role reads sensitive exams, among the
+  standard roles a Program Admin (PLAN-OPEN 12.1 #31).
+- **The pages hold no read rule.** Each shows what the API answered for the reader, and the
+  team's list of notes not complete names no patient to a reader without `patients.view` (5.6).
 
 ## 7. Referrals in this phase
 
