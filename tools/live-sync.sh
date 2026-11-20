@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the phone's sync scenarios (apps/mobile/test/sync/live_api_test.dart), then its patient
 # scenarios (apps/mobile/test/patients/live_patients_test.dart), then its visits and notes through
-# the domain layer (apps/mobile/test/encounters/live_domain_test.dart), against the real API on a
-# freshly seeded database. CI's "Phone sync against the real API" job and tools/ci-local.sh
+# the domain layer (apps/mobile/test/encounters/live_domain_test.dart), then phase 4's Done when
+# (apps/mobile/test/encounters/live_encounters_test.dart), against the real API on a freshly
+# seeded database. CI's "Phone sync against the real API" job and tools/ci-local.sh
 # both run this. Needs: pnpm, Flutter, curl, and a superuser Postgres at $ADMIN_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -70,7 +71,7 @@ status=0
   export SINEOBEX_LIVE_REQUIRED=1
   # One file after the other: the patient scenarios read the seeded P1 and the team index, which
   # the sync scenarios must not change under them. (errexit doesn't apply inside `( ) ||`, hence &&.)
-  flutter test test/sync/live_api_test.dart && flutter test test/patients/live_patients_test.dart && flutter test test/encounters/live_domain_test.dart
+  flutter test test/sync/live_api_test.dart && flutter test test/patients/live_patients_test.dart && flutter test test/encounters/live_domain_test.dart && flutter test test/encounters/live_encounters_test.dart
 ) || status=$?
 if [[ $status -ne 0 ]]; then
   # The API's log holds no patient details (allowlisted fields only), and this is demo data.
