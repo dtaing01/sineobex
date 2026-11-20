@@ -12,6 +12,9 @@ import '../../design/tokens.dart';
 import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_repository.dart' show NoteActions;
 import '../../encounters/encounter_services.dart';
+import '../../forms/definition.dart' show ChoiceDef;
+import '../../forms/field_at.dart' show fieldAt;
+import '../../forms/forms_api.dart' show NoteTypeVersion;
 import '../../patients/patient_providers.dart';
 import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
@@ -51,6 +54,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
             ? watchedEncounters
             : null;
         final notices = store?.notices(unreadOnly: true) ?? const <LocalNotice>[];
+        if (encounters != null) _loadDefinitions(encounters, items);
         final messenger = ScaffoldMessenger.of(context);
         void outOfDate() =>
             messenger.showSnackBar(const SnackBar(content: Text('The other value changed. Check both values again.')));
@@ -93,6 +97,12 @@ class NeedsAttentionScreen extends ConsumerWidget {
                 entry: e,
                 mine: store.myValue(e),
                 me: me,
+                // A note's answer, named and worded as its form words it, never by its key or its
+                // option codes; and Open the note, where the form shows the choice too (review SAX-3).
+                words: e.entity == entityNote && encounters != null ? noteAnswerWords(encounters, e) : null,
+                onOpenNote: e.entity == entityNote && encounters != null
+                    ? () => unawaited(_openNote(context, encounters, e.recordId))
+                    : null,
                 // A choice writes to the chart, so it waits like the rest of charting.
                 onChoose: snapshot.clock.paused
                     ? null
@@ -175,9 +185,74 @@ VoidCallback? _opener(BuildContext context, LocalNotice n, PatientServices? serv
   return null;
 }
 
+/// The note type and version of the note [e] changes, by the phone's record or the change itself.
+NoteTypeVersion? _versionOf(EncounterServices services, OutboxEntry e) {
+  final rec = services.store.record(e.recordId);
+  final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
+  final key = rec?.attributes['noteTypeKey'] ?? value['noteTypeKey'];
+  final version = rec?.attributes['noteTypeVersion'] ?? value['noteTypeVersion'];
+  return key is String && version is int ? (key: key, version: version) : null;
+}
+
+/// The note types of the notes [entries] change that the services have not loaded: loaded once for
+/// the screen, which then words their answers ([noteAnswerWords]).
+final _askedDefinitions = Expando<Set<NoteTypeVersion>>();
+void _loadDefinitions(EncounterServices services, Iterable<OutboxEntry> entries) {
+  final asked = _askedDefinitions[services] ??= {};
+  final missing = {
+    for (final e in entries)
+      if (e.entity == entityNote)
+        if (_versionOf(services, e) case final v? when services.definitions.loaded(v.key, v.version) == null) v,
+  }.difference(asked);
+  if (missing.isEmpty) return;
+  asked.addAll(missing);
+  unawaited(services.definitions.loadAll(missing).then((_) => services.changed(), onError: (Object _) {}));
+}
+
+/// A note's answer as its form names and words it (lifecycle 9.13; review SAX-3, SFL-1): the answer's
+/// label and the note's type ("Current needs, in Social needs"), and a value with each option's label
+/// in place of its code. The note's type alone, and the value as stored, for an answer the phone's
+/// copy of the definition doesn't name; null while the phone holds no definition of the note.
+({String heading, String Function(Object? value) value})? noteAnswerWords(EncounterServices services, OutboxEntry e) {
+  final v = _versionOf(services, e);
+  final definition = v == null ? null : services.definitions.loaded(v.key, v.version);
+  if (definition == null) return null;
+  final field = e.field;
+  final path = field != null && field.startsWith('data.') ? field.substring('data.'.length) : null;
+  final target = path == null ? null : fieldAt(definition, path)?.field;
+  String words(Object? value) {
+    if (target is ChoiceDef) {
+      String label(Object? code) => target.options.where((o) => o.code == code).firstOrNull?.label ?? '$code';
+      return switch (value) {
+        null || '' => valueText(value),
+        final List<Object?> codes => codes.isEmpty ? valueText(null) : codes.map(label).join(', '),
+        _ => label(value),
+      };
+    }
+    return value is Map || value is List ? openTheNoteToSee : valueText(value);
+  }
+
+  return (heading: target == null ? definition.title : '${target.label}, in ${definition.title}', value: words);
+}
+
+/// [noteAnswerWords]' heading, else the change's own field or record words.
+String noteAnswerHeading(EncounterServices services, OutboxEntry e) =>
+    noteAnswerWords(services, e)?.heading ?? (e.field != null ? fieldLabel(e.field!) : entityLabel(e.entity));
+
 class _ConflictCard extends StatelessWidget {
-  const _ConflictCard({required this.entry, required this.mine, required this.me, required this.onChoose});
+  const _ConflictCard({
+    required this.entry,
+    required this.mine,
+    required this.me,
+    required this.onChoose,
+    this.words,
+    this.onOpenNote,
+  });
   final OutboxEntry entry;
+
+  /// A note's answer named and worded as its form does ([noteAnswerWords]).
+  final ({String heading, String Function(Object? value) value})? words;
+  final VoidCallback? onOpenNote;
 
   /// What the person has in the field now: exactly what "Use my value" sends.
   final Object? mine;
@@ -209,7 +284,7 @@ class _ConflictCard extends StatelessWidget {
             children: [
               Text(heading, style: text.labelLarge?.copyWith(color: c.inkMuted)),
               const SizedBox(height: FieldSpace.s1),
-              Text(valueText(value), style: text.titleMedium),
+              Text(words?.value(value) ?? valueText(value), style: text.titleMedium),
             ],
           ),
         ),
@@ -220,7 +295,7 @@ class _ConflictCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(header: true, child: Text(fieldLabel(entry.field!), style: text.titleLarge)),
+          Semantics(header: true, child: Text(words?.heading ?? fieldLabel(entry.field!), style: text.titleLarge)),
           const SizedBox(height: FieldSpace.s1),
           Text('This field already had a different value. Choose which one to keep.', style: text.bodyLarge),
           const SizedBox(height: FieldSpace.s3),
@@ -247,6 +322,10 @@ class _ConflictCard extends StatelessWidget {
             const SizedBox(height: FieldSpace.s1),
           ],
           Text('Both values stay in the record’s history either way.', style: text.bodyMedium),
+          if (onOpenNote case final open?) ...[
+            const SizedBox(height: FieldSpace.s2),
+            OutlinedButton(onPressed: open, child: const Text(openNoteAction)),
+          ],
         ],
       ),
     );
@@ -345,9 +424,14 @@ class _RejectionCard extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final e = entry;
     final problem = e.details?['problem'] as String?;
-    final what = e.field != null ? fieldLabel(e.field!) : entityLabel(e.entity);
     final s = services;
+    final n = encounters;
     final patientSide = e.entity != entityEncounter && e.entity != entityNote;
+    final what = n != null && e.entity == entityNote
+        ? noteAnswerHeading(n, e)
+        : e.field != null
+        ? fieldLabel(e.field!)
+        : entityLabel(e.entity);
     final card = e.entity == entityIdLink && e.op == 'create';
     final attach =
         !card &&
@@ -355,7 +439,6 @@ class _RejectionCard extends ConsumerWidget {
         (problem == 'patient_missing') &&
         const {entityAlias, entityAllergy, entityConsent, entityProblem}.contains(e.entity);
     final messenger = ScaffoldMessenger.of(context);
-    final n = encounters;
     // A note's life (lifecycle 9.13): the note a refused sign-off, correction or answer is about.
     final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
     final noteId = switch (e.entity) {
@@ -529,5 +612,8 @@ class _NoticeCard extends StatelessWidget {
 }
 
 const correctAgainAction = 'Correct again';
+
+/// A note's answer whose value is more than a few words: the form shows it.
+const openTheNoteToSee = 'Open the note to see it';
 const leaveItAction = 'Leave it';
 const chooseNoteTypeAction = 'Choose a note type';

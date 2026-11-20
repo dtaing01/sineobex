@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart'
@@ -138,6 +140,70 @@ void main() {
     expect(find.text('Your role doesn’t chart visits.'), findsOneWidget);
     expect(h.sync.store!.outbox(), hasLength(outbox));
     await expectShown(tester, find.text('Correction'));
+  });
+
+  testWidgets('two people changed a note’s answers: named by the form’s labels, chosen on the note, no codes', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.housing': 'shelter',
+      'needs.needs': ['food'],
+    });
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.serverEdit(social, 'data.needs.housing', 'transitional', by: blair);
+    h.server.serverEdit(social, 'data.needs.needs', ['food', 'clothing'], by: blair);
+    h.encounters.repository
+      ..saveAnswer(social, 'needs.housing', 'permanent')
+      ..saveAnswer(social, 'needs.needs', ['hygiene']);
+    await syncAndRefresh(tester, h);
+    // As after a restart: no note's definition loaded yet; Needs attention loads what it words.
+    await remakeServices(tester, h);
+    await openAttention(tester);
+    for (final heading in ['Housing status, in Social needs', 'Current needs, in Social needs']) {
+      final title = find.text(heading);
+      await expectShown(tester, title);
+      expect(tester.getSemantics(title), isSemantics(isHeader: true));
+    }
+    // Each value in the form's words: no field key, option code or raw value.
+    for (final raw in ['Needs housing', 'Needs needs', 'permanent', 'transitional', 'hygiene', '[']) {
+      expect(find.textContaining(raw, skipOffstage: false), findsNothing, reason: raw);
+    }
+    await expectShown(tester, find.text('Permanent'));
+    await expectShown(tester, find.text('Transitional'));
+    await expectShown(tester, find.text('Food, Clothing'));
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note').first);
+    expectNoteOpened(tester, social);
+  });
+
+  testWidgets('an answer the server refused settles once it is changed: the next save is its fix', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['housing'],
+    });
+    // The server's copy of the type no longer knows "food" (a build fault: the phone's differs).
+    final key = ('social_needs', 1);
+    final json = jsonEncode(h.server.noteTypes[key]);
+    h.server.noteTypes[key] = jsonDecode(json.replaceAll('"food"', '"food_gone"')) as Map<String, Object?>;
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['food']);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final store = h.sync.store!;
+    expect([for (final e in store.needsAttention()) e.field], ['data.needs.needs']);
+    await openAttention(tester);
+    // Named as the form names it.
+    await expectShown(tester, find.text('Current needs, in Social needs'));
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
+    expectNoteOpened(tester, social);
+    // The person changes the answer, as the card says: it settles the refusal, and nothing waits.
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['housing']);
+    await syncAndRefresh(tester, h);
+    expect(store.needsAttention(), isEmpty);
+    expect(store.heldCount(), 0);
+    expect(h.server.records[social]!.fields['data.needs.needs']?.value, ['housing']);
   });
 
   testWidgets('a notice that a Complete wasn’t applied opens its note, fetched first on a phone that never held it', (

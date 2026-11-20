@@ -491,7 +491,20 @@ class EncounterRepository {
     }
     if (store.noteState(noteId)!.status != NoteStatus.draft) throw const RecordLocked();
     if (canonicalJson(rec.fields['$_data$path']?.value) == canonicalJson(value)) return false;
-    store.setField(noteId, '$_data$path', value);
+    // A refused set of this answer waits in Needs attention, and an ordinary set would wait behind
+    // it for good: the new value is its fix, so the refusal settles (lifecycle 4.1's last row,
+    // phase 2's fix for a refused set; review SFL-1).
+    final refused = store
+        .outbox()
+        .where(
+          (e) => e.recordId == noteId && e.op == 'set' && e.field == '$_data$path' && e.state == ChangeState.rejected,
+        )
+        .firstOrNull;
+    if (refused != null) {
+      store.fixRejected(refused.changeId, value);
+    } else {
+      store.setField(noteId, '$_data$path', value);
+    }
     onChanged?.call();
     return true;
   }
