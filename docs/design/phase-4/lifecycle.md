@@ -5178,6 +5178,21 @@ the phone's offline reads.
 | `notes_to_finish.viewed` | `patientIds`, each patient once and at most 50 an entry, so a longer list writes several, and `resultCount`, the rows the read adds; the server's rows are logged again (9.9 as built) |
 | Not logged | The profile's timeline and its referral rows, part of the chart's logged read (9.1 as built); Home's tile, numbers only; Complete's plan, drawn beside the visit's logged read (9.6 as built); a visit read from the server, which logged it. The phone writes no `access.denied`, which the closed list does not hold: a reader without `patients.view` is not refused the phone's own read of a visit (9.7 as built), and the records made at a visit show them nothing |
 
+As built for the phone's screens (unit L5, with its review). Each screen reads through the domain
+layer, so it logs as the table above says; a screen that reads again passes what it showed
+(`shownBefore`), a screen another covers reads again only once it is on top (9.4 as built), and the
+visit screen's Correct reads its note with what the screen had shown (9.7 as built). Since the
+review:
+
+| Action | As built |
+|---|---|
+| `ems_handoff.shown` | Written by the domain layer's `openHandoff`, on entity `encounter` and the visit, with its patient, in the transaction of the visit read that shows the handoff, beside that read's own `encounter.viewed` and `note.viewed`; nothing is written when the phone holds no such visit, or while the store is frozen (9.8 as built). As first built the screen wrote it itself, in a transaction after the read's |
+| A visit read from the server with the phone's copy under it (the visit screen, online, 9.7 as built) | The server logs its read (5.1, source `phone`); the phone's read under it logs only what that read did not show: notes, sign-offs, addenda, corrections and records made here that the server does not have yet. A change reads the phone's copy again, logging only what it adds |
+| Whether the visit has a finished Red flags note (`finishedRedFlags`, 8.2 as built) | A server visit read, which the server logs as it logs any, though the screen draws none of it; the phone logs nothing |
+| Go to Red flags on a teammate's finished note | Nothing until the note screen's own read of the note it opens, which logs it: the note is found by a scan of the store that reads nothing (9.5 as built). As first built a whole visit read was logged that nothing showed (review finding SRD-7) |
+| `encounter.viewed` (Needs attention's Choose a visit, 8.4 as built) | One per visit the sheet lists, on its own patient, in one transaction as the sheet opens |
+| Not logged | Whether Show handoff, Add or remove notes or Choose a visit is offered, decided from what a logged read already gave or from no value at all (`othersMayHaveAdded`, `hasVisitsToChoose`); the queue tiles, numbers only |
+
 ### 10.2 PHI rules, applied to this phase
 
 | Rule (`CLAUDE.md`) | How phase 4 keeps it |
@@ -5253,6 +5268,46 @@ event or rejection holds one (events name people by ID, 10.1), and on the phone 
 record's attributes in the encrypted database, never in preferences. A note's recap lines (5.1)
 are answers, so they go only in the bodies of the visit read and the chart, never in a URL, a
 title or a log.
+
+As built for the phone's screens (unit L5, with its review):
+
+- **Routes.** IDs only: `/encounters/new`, `/patients/<id>/encounters/new`, `/encounters/<id>` and its
+  `note-types`, `summary`, `visit` and `handoff`, `/notes/<id>` (the section to open, the summary's
+  jump, travels beside the route as a section's ID, never in it), `/notes-to-finish`,
+  `/queues/cosign` and `/queues/attestation`.
+- **Titles.** Fixed (the coordinator's decision for the first three): "Encounter", "Visit", "Note
+  types", "New encounter", "Note", "Summary", "EMS handoff", "Notes to finish", "Waiting for your
+  co-signature" and "Waiting for attestation". A note type's name is a heading in the body, and a
+  patient's name is only in the body of a screen that shows them.
+- **What is said in passing.** The SnackBars after Complete and Save & Close ("Signed", "Sent for
+  co-signature", "Completed", "Saved as a draft"), the Referrals sheet's live regions ("Referral
+  added", "Marked entered in error") and every refusal name no patient and no answer. No
+  notification is sent.
+- **The task switcher, the clipboard and share sheets.** Phase 1's guards hold every new screen: on
+  Android `FLAG_SECURE` keeps each one out of screenshots, screen recordings and the recent-apps view,
+  and on iOS the app is covered whenever it is not in front (`apps/mobile/lib/security/idle_lock.dart`),
+  so no visit, note or handoff shows in the app switcher. No phase 4 screen puts anything on the
+  clipboard or opens a share sheet: the EMS handoff has no copy, no share and no text that can be
+  selected (9.8), a read view's text cannot be selected, and the phone exports nothing (12.1 #12).
+  Every box that takes a patient's details or a note's text is private, with no suggestions,
+  autocorrect or learned words (phase 3's `PhiField`, the form's `NoteTextField`), the place typed at
+  Where and Add to the assessment among them; selecting and copying inside such a box is the
+  platform's own, as in phase 3.
+- **The place.** A position joins the visit only on the tap (12.1 #15), kept in the encrypted
+  database with the visit and sent in its create; no screen shows it as coordinates, no log holds it
+  (10.1's details hold no value) and nothing about it is written to preferences. Outside the app's
+  screens it is named only by the platforms' prompts: iOS's purpose string, "Sineobex adds where you
+  are to a visit only when you tap Use my location. You can type the place instead.", and Android's
+  fine and coarse location, while the app is in use; there is no background location and, since the
+  review, no location service in the build (9.2).
+- **Memory only.** What is typed in Add to the assessment until Complete, a visit read from the
+  server (kept nowhere unless an action brings its records onto the phone, which files them in the
+  encrypted database as a sync read does), and a screen's answer about the Red flags note.
+- **Names.** The handoff heads the patient by their preferred name alone, "No preferred name
+  recorded" without one, never their description, legal name or birth date (9.8 as built); a visit
+  the phone does not hold is headed by the read's `preferredName`, given only to a reader with
+  `patients.view`; Choose a visit lists visits by kind and time alone (8.4 as built); a staff name
+  ("By …", "Recorded by …") is the one its record carries (D108).
 
 As built for the phone's store (unit L3, 4.8): what it keeps of a sign-off held for review is IDs
 only, in the encrypted database's `kv` table (`held_signoff.<noteId>`, `held_note.<signoffId>`);
