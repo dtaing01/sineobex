@@ -1098,6 +1098,50 @@ test.describe('the plan sent is the one the person read', () => {
   });
 });
 
+test('@responsive a note back after a correction: the queue says who attested it before, its caption runs the page’s width at 320 px, and an answer the correction took away reads as no answer now', async ({
+  page,
+}) => {
+  // PAX-6: neither the row nor the answer was ever drawn.
+  const v = await residentVisit('sign', [
+    ['red_flags_disposition', { ...RED_FLAGS, 'follow_up.details': 'Demo: come back on Tuesday' }],
+  ]);
+  const noteId = v.notes.red_flags_disposition!;
+  const alexs = planOf(await visitAs('admin@example.com', v.id), 'attest');
+  const attested = await apiCall(
+    await staffToken('admin@example.com'),
+    'POST',
+    `/v1/encounters/${v.id}/attest`,
+    {
+      notes: alexs,
+      statementVersion: 'attest-2026-11',
+    },
+  );
+  expect(attested.status).toBe(200);
+  await correct(noteId, 'follow_up.details', null);
+
+  await signIn(page, 'clinician@example.com');
+  await portalNav(page).getByRole('link', { name: 'Attestation queue' }).click();
+  const row = queueRow(page, v.name);
+  await expect(row.getByRole('listitem')).toContainText(
+    'Back after a correction. Attested before by Alex Rivera (demo).',
+  );
+  await expectAccessible(page, 'attestation queue, back after a correction');
+  await expectReflow(page, 'attestation queue, back after a correction');
+  // A stacked table's caption runs the width of the page, not of one word.
+  await page.setViewportSize({ width: 320, height: 800 });
+  const caption = await page.getByRole('table').locator('caption').boundingBox();
+  const table = await page.getByRole('table').boundingBox();
+  expect(caption!.width).toBeGreaterThan(table!.width * 0.9);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await row.getByRole('link').click();
+  const note = page.getByRole('article', { name: 'Red flags and disposition' });
+  const details = note.locator('dl > div').filter({ has: page.getByText('Demo: come back on Tuesday') });
+  await expect(details.getByText('No answer now', { exact: true })).toHaveClass('sr-only');
+  await expect(details.locator('del')).toHaveText('Demo: come back on Tuesday');
+  await expectAccessible(page, 'visit page, an answer a correction took away');
+});
+
 test('@responsive with nothing waiting, each queue and its Home card say so', async ({ page }) => {
   await emptyQueues();
   await signIn(page, 'clinician@example.com');

@@ -390,6 +390,41 @@ test('@responsive the records made at a visit: one on another chart since the vi
   await expectReflow(page, 'visit page, records on another chart and entered in error');
 });
 
+test('@responsive a visit with no patient says so, and offers no chart', async ({ page }) => {
+  // PAX-6: no spec drew it.
+  const phone = await phoneOf('clinician@example.com');
+  const id = randomUUID();
+  await phone.send(
+    { entity: 'encounter', recordId: id, op: 'create', value: { kind: 'non_medical' }, minutesAgo: 30 },
+    {
+      entity: 'encounter_note',
+      recordId: randomUUID(),
+      op: 'create',
+      value: {
+        encounterId: id,
+        noteTypeKey: 'outreach',
+        noteTypeVersion: 1,
+        data: { 'outreach.type': 'wellness_check' },
+      },
+      minutesAgo: 29,
+    },
+  );
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/encounters/${id}`);
+  await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+    /^No patient recorded · Non-Medical · /,
+  );
+  const about = page.getByRole('region', { name: 'About the visit' });
+  await expect(about.locator('dl > div').filter({ hasText: 'Patient' }).locator('dd')).toHaveText(
+    'No patient recorded',
+  );
+  await expect(page.getByRole('navigation', { name: 'This visit' })).toHaveCount(0);
+  await expect(page.getByRole('main').getByRole('link', { name: /chart/ })).toHaveCount(0);
+  await expect(page.getByRole('article', { name: 'Outreach' })).toContainText('Draft');
+  await expectAccessible(page, 'visit page, no patient');
+  await expectReflow(page, 'visit page, no patient');
+});
+
 test('@responsive a role that reads no Medical notes sees a visit without them, and without its assessment', async ({
   page,
 }) => {
@@ -553,6 +588,33 @@ test('@responsive the timeline lists a chart’s visits and referrals, and Show 
     `/patients/${chart.recordId}`,
   );
   await expectAccessible(page, 'visit page, a record made at it');
+});
+
+test('@responsive Show earlier visits on a chart of exactly 50 visits finds none: it says so and moves focus to the Visits heading', async ({
+  page,
+}) => {
+  // PAX-6: a full first page shows the button, and nothing earlier was ever drawn.
+  const phone = await phoneOf('clinician@example.com');
+  const chart = newPatient({ preferredName: `Fir ${newSurname()}` }, 600);
+  const visits: PhoneChange[] = Array.from({ length: 50 }, (_, i) => ({
+    entity: 'encounter',
+    recordId: randomUUID(),
+    op: 'create',
+    value: { kind: 'non_medical', patientId: chart.recordId },
+    minutesAgo: 500 - i,
+  }));
+  await phone.send(chart, ...visits);
+  await signIn(page, 'clinician@example.com');
+  await page.goto(`/patients/${chart.recordId}`);
+  const timeline = page.getByRole('region', { name: 'Timeline' });
+  await expect(timeline.getByRole('link', { name: /^Visit on / })).toHaveCount(50);
+  await timeline.getByRole('button', { name: 'Show earlier visits' }).click();
+  await expect(timeline.getByRole('status')).toHaveText('No earlier visits.');
+  await expect(timeline.getByRole('heading', { name: 'Visits' })).toBeFocused();
+  await expect(timeline.getByRole('button', { name: 'Show earlier visits' })).toHaveCount(0);
+  await expect(timeline.getByRole('link', { name: /^Visit on / })).toHaveCount(50);
+  await expectAccessible(page, 'timeline, no earlier visits', { inPlace: true });
+  await expectReflow(page, 'timeline, no earlier visits');
 });
 
 test.describe('the EMS handoff', () => {
