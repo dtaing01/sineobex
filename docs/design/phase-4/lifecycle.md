@@ -4944,7 +4944,9 @@ Row 30 came from unit F7, Expand on the phone. Its `PLAN-OPEN:` comment is on `e
 (`apps/mobile/lib/encounters/expand_quick.dart`).
 
 Row 31 came from unit L6's review (finding PRD-1). Its `PLAN-OPEN:` comment is on `hidesFrom`
-(`services/api/src/encounters/assign.ts`).
+(`services/api/src/encounters/assign.ts`). Unit L6 also put row 5's comment on the portal's
+`SIGN_ACTS` (`apps/portal/src/lib/sign.ts`), the sentences the visit page shows a co-signer and an
+attester (9.11 as built), and added no other.
 
 Rows 3, 4, 5, 9, 10, 11, 15, 16 and 30 were built with the phone's domain layer (units L4 and F7),
 and each now has its row in the plan's section 6, as every built default does. Their `PLAN-OPEN:`
