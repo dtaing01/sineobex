@@ -61,6 +61,9 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
   List<wire.NoteToFinish>? _server;
   String? _refused;
   String? _problem;
+
+  /// The row [_problem] is about, when it is about one.
+  String? _problemAt;
   final _shown = <String>{};
   bool _covered = false;
   bool _opening = false;
@@ -140,11 +143,17 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
       setState(() {
         _opening = true;
         _problem = null;
+        _problemAt = null;
       });
       final found = await fetchNote(_s, row.noteId, encounterId: row.encounterId);
       if (!mounted) return;
       setState(() => _opening = false);
-      if (!found) return setState(() => _problem = noteNotOnPhone);
+      if (!found) {
+        return setState(() {
+          _problem = noteNotOnPhone;
+          _problemAt = row.noteId;
+        });
+      }
     }
     if (mounted) unawaited(context.push(noteLocation(row.noteId)));
   }
@@ -167,10 +176,19 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
           padding: const EdgeInsets.all(FieldSpace.s4),
           children: [
             if (!list.online) ...[const NoticeMessage(onlyThisPhone), const SizedBox(height: FieldSpace.s3)],
-            if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s3)],
+            if (_problem != null && _problemAt == null) ...[
+              ErrorMessage(_problem!),
+              const SizedBox(height: FieldSpace.s3),
+            ],
             if (list.rows.isEmpty) Text(noNotesToFinish, style: text.bodyLarge),
             for (final row in list.rows) ...[
               _NoteRow(row: row, onOpen: _opening ? null : () => unawaited(_open(row))),
+              // Under the row tapped, in sight of it: at the head of a long list it would be heard
+              // but not seen (review SAX-11).
+              if (_problem != null && _problemAt == row.noteId) ...[
+                const SizedBox(height: FieldSpace.s2),
+                ErrorMessage(_problem!),
+              ],
               const SizedBox(height: FieldSpace.s2),
             ],
           ],

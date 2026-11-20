@@ -390,9 +390,11 @@ class EncounterApi {
     return HomeTiles(
       online: counts != null,
       notesToFinish: notesToFinish(counts),
-      showsCosign: user.charts && user.can.sign,
+      // Online, the server's answer wins (6.2): it gives no number for a list the person may not
+      // open (5.6), whatever the credential this phone saved. Offline, the saved credential says.
+      showsCosign: user.charts && user.can.sign && (counts == null || counts.cosignWaiting != null),
       cosignWaiting: counts?.cosignWaiting,
-      showsAttestation: user.charts && user.can.attest,
+      showsAttestation: user.charts && user.can.attest && (counts == null || counts.attestationWaiting != null),
       attestationWaiting: counts?.attestationWaiting,
     );
   }

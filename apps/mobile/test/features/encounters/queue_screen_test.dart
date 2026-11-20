@@ -153,6 +153,18 @@ void main() {
     expect(routes.asked.where((a) => a.path == '/v1/team/cosign-queue').length, asked + 1);
   });
 
+  testWidgets('online, a tile the server gives no number for is not shown: its word wins', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final routes = await scripted(tester, h);
+    // The person's credential was lowered on the server since this phone saved it.
+    routes.on('GET', '/v1/me/counts', (_) => {'notesToFinish': 0, 'cosignWaiting': 2});
+    await syncAndRefresh(tester, h);
+    await home(tester);
+    await expectShown(tester, find.text('2 visits'));
+    expect(find.text('Waiting for attestation'), findsNothing);
+    expect(find.text('Connect to see notes waiting for you'), findsNothing);
+  });
+
   testWidgets('each tile shows only to a credential that may act', (tester) async {
     final h = await signInToChart(tester);
     await scripted(tester, h, credential: 'resident');

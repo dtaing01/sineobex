@@ -138,7 +138,10 @@ void main() {
     h.server.offline = true;
     await tapOn(tester, remote);
     expect(location(tester), notesToFinishLocation);
-    await expectShown(tester, find.text('This note isn’t on this phone. Connect to open it.'));
+    // Said under the row tapped, in sight without scrolling.
+    final said = find.text('This note isn’t on this phone. Connect to open it.');
+    expect(said.hitTestable(), findsOneWidget);
+    expect(tester.getTopLeft(said).dy, greaterThan(tester.getBottomLeft(remote).dy));
     expect(h.sync.store!.record(theirs), isNull);
 
     h.server.offline = false;
