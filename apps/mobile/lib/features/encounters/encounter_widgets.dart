@@ -23,6 +23,7 @@ import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityAlle
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_row.dart' show PatientRow;
 import '../patients/patient_widgets.dart' show FrozenNotice, PhiField, WideButton, todayOf;
+import '../patients/sheet_gate.dart' show SheetGate;
 import 'encounter_labels.dart';
 
 // The sheets' gate: phase 3's patient picker needs it too, so it lives with the patient screens.
@@ -422,25 +423,29 @@ class _PatientFinderState extends ConsumerState<PatientFinder> {
 }
 
 /// Asks who a visit is for, with phase 3's search (Switch to Medical on a visit with no patient,
-/// lifecycle 3.10); null when the sheet is closed without a choice.
+/// lifecycle 3.10); null when the sheet is closed without a choice. A modal sheet is not under the
+/// screen's gate, so it sits in its own: once the store freezes, nothing it found stays (V1).
 Future<FoundPatient?> choosePatient(BuildContext context, PatientServices patients, {required String line}) =>
     showModalBottomSheet<FoundPatient>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
-            children: [
-              Semantics(header: true, child: Text(whoHeading, style: Theme.of(context).textTheme.titleLarge)),
-              const SizedBox(height: FieldSpace.s2),
-              Text(line, style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: FieldSpace.s3),
-              PatientFinder(patients: patients, onChosen: (p) => Navigator.of(context).pop(p)),
-            ],
+      builder: (context) => SheetGate.patients(
+        services: patients,
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+              children: [
+                Semantics(header: true, child: Text(whoHeading, style: Theme.of(context).textTheme.titleLarge)),
+                const SizedBox(height: FieldSpace.s2),
+                Text(line, style: Theme.of(context).textTheme.bodyLarge),
+                const SizedBox(height: FieldSpace.s3),
+                PatientFinder(patients: patients, onChosen: (p) => Navigator.of(context).pop(p)),
+              ],
+            ),
           ),
         ),
       ),
