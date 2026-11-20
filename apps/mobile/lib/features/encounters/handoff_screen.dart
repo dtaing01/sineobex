@@ -8,14 +8,15 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_services.dart';
-import '../../forms/conditions.dart' show Answers;
+import '../../forms/conditions.dart' show Answers, NoteReading;
+import '../../forms/definition.dart' show ActionDef;
 import '../../forms/handoff.dart';
 import '../../forms/visible.dart';
 import '../../patients/chart_cache.dart' show patientGroup;
 import '../../patients/dob.dart';
 import '../../patients/generated/sensitive_codes.dart';
 import '../../patients/patient_providers.dart';
-import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityEncounter;
+import '../../sync/local_store.dart' show ChartingPaused, LocalStore;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_labels.dart' show longDate;
 import '../patients/patient_widgets.dart' show FrozenNotice, WideButton, todayOf;
@@ -56,16 +57,34 @@ Answers? sentToEms(NoteView note) {
   };
 }
 
+/// Whether [note] is a Red flags note whose `show_handoff` action shows with the answers the reader
+/// holds (EMS was activated; forms 6.2): the server's `offersHandoff`, asked of the phone's copy. A
+/// read, so it is offered to whoever may read the note, a draft or finished, while charting is paused
+/// for the clock too (review SRD-2; F5's PLAN-OPEN 10.1 #51 answered yes for this action).
+bool offersHandoff(NoteView note) {
+  final definition = note.definition;
+  if (definition == null || definition.auto != 'medical') return false;
+  final reading = NoteReading(definition, note.answers);
+  return reading.model.nodes.any((node) {
+    final field = node.field;
+    if (field is! ActionDef || field.action != 'show_handoff') return false;
+    return node.section.section.repeat != null
+        ? reading.entries(node.section).any((entry) => reading.fieldCounts(node, null, entry))
+        : reading.fieldCounts(node, null, null);
+  });
+}
+
 /// The EMS handoff (lifecycle 9.8; cards L5-handoff and F7-handoff): a full-screen page for the
 /// medic, built by the forms part's `handoffLines` from the visit's notes as EMS may see them
 /// ([sentToEms]), whoever shows it. Large text, high contrast in every theme, no app bar actions,
 /// **Done** at the bottom. It has no copy and no share, and its text can't be selected (PRD main
-/// 413). Who it is about: their preferred name, age in years and allergies, as the portal's file
-/// heads it (12.1 #27), never the legal name or the birth date.
+/// 413). Who it is about: their preferred name ("No preferred name recorded" without one, never the
+/// description), age in years and allergies, as the portal's file heads it (12.1 #27), never the
+/// legal name or the birth date.
 ///
-/// It works offline, from the phone's copy of the visit (`openVisit`, which logs what it reads), and
-/// showing it is logged (`ems_handoff.shown`, on the visit, with its patient, 10.1) in the store
-/// before anything shows: a showing that can't be logged shows nothing.
+/// It works offline, from the phone's copy of the visit, and the domain layer logs the showing
+/// (`ems_handoff.shown`, on the visit, with its patient, 10.1) in the transaction of the read that
+/// shows it (`openHandoff`): a showing that can't be logged shows nothing.
 class HandoffScreen extends StatelessWidget {
   const HandoffScreen({super.key, required this.encounterId});
   final String encounterId;
@@ -113,7 +132,7 @@ class _HandoffState extends ConsumerState<_Handoff> {
 
   Future<void> _open() async {
     try {
-      final visit = await _s.repository.openVisit(widget.encounterId);
+      final visit = await _s.repository.openHandoff(widget.encounterId);
       if (!mounted) return;
       if (visit == null) return setState(() => _opening = false);
       final notes = <NoteView>[];
@@ -125,15 +144,6 @@ class _HandoffState extends ConsumerState<_Handoff> {
         answers.add(sent);
       }
       final lines = handoffLines([for (final n in notes) n.definition!], answers, sensitiveCodeRanges);
-      // Logged before it shows, in the store: refused while frozen, and then nothing shows.
-      _s.store.transaction(
-        () => _s.store.appendAudit(
-          'ems_handoff.shown',
-          entity: entityEncounter,
-          entityId: visit.encounterId,
-          patientId: visit.patientId,
-        ),
-      );
       setState(() {
         _shown = (
           visit: visit,
@@ -233,7 +243,7 @@ class _HandoffState extends ConsumerState<_Handoff> {
         if (patientId == null)
           Semantics(header: true, child: Text(handoffNoPatient, style: heading))
         else ...[
-          Semantics(header: true, child: Text(visitPatientName(_s.store, patientId), style: heading)),
+          Semantics(header: true, child: Text(handoffName(_s.store, patientId), style: heading)),
           const SizedBox(height: FieldSpace.s1),
           Text(_ageOf(_s.store, patientId, todayOf(ref)), style: big),
           Text(visitAllergyBadge(_s.store, patientId).text, style: big),
@@ -260,6 +270,17 @@ class _HandoffState extends ConsumerState<_Handoff> {
       ],
     );
   }
+}
+
+/// The patient's preferred name as the portal's file heads the handoff (lifecycle 5.7, 9.8, 12.1 #27),
+/// from the team's index or the chart the phone holds, never a description or a legal name: "No
+/// preferred name recorded" without one, as the file says it.
+String handoffName(LocalStore store, String patientId) {
+  final canonical = store.canonicalPatient(patientId);
+  String? named(Object? v) => v is String && v.trim().isNotEmpty ? v : null;
+  return named(PatientServices.of(store)?.index.entry(canonical)?.preferredName) ??
+      named(store.record(canonical)?.fields['preferredName']?.value) ??
+      noPreferredNameRecorded;
 }
 
 /// The patient's age in years as the portal's file words it (lifecycle 5.7): "Age 52" from a full

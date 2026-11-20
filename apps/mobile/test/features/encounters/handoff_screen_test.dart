@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/encounters/handoff_screen.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityAudit;
+import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
+import 'package:sineobex_field/encounters/encounter_repository.dart' show CompletePlan, EncounterCompletion;
+import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityNote;
+import 'package:sineobex_field/sync/local_store.dart' show entityPatient;
 
 import 'encounter_kit.dart';
 
@@ -121,6 +124,99 @@ void main() {
     expect(find.textContaining('Behavioral', skipOffstage: false), findsNothing);
     expect(find.textContaining('Psycholog', skipOffstage: false), findsNothing);
     expect(find.textContaining('Substance', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('a patient with a description and no preferred name: headed as the file heads it', (tester) async {
+    const p2 = 'a2000000-0000-4000-8000-0000000000b2';
+    final h = await signInToChart(tester, offline: false);
+    h.server.seed(entityPatient, {
+      'visualDescriptor': 'Demo: tall, red cap, grey beard',
+      'birth': {'precision': 'day', 'date': '1970-03-07'},
+      'consent': {
+        'id': '5eed0c00-0000-4000-8000-0000000000c1',
+        'decision': 'given',
+        'method': 'verbal',
+        'scriptVersion': '2026-10-1',
+        'language': 'en',
+      },
+      'privacyNotice': {'id': '5eed0c00-0000-4000-8000-0000000000c2', 'decision': 'acknowledged'},
+    }, id: p2);
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    final r = h.encounters.repository;
+    final visit = r.startEncounter(kind: VisitKind.medical, patientId: p2, locationText: 'Demo: by the library');
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: chest pain'});
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    await tester.runAsync(() => r.openNote(flags));
+    r
+      ..saveAnswer(flags, 'red_flags.emergency', 'yes')
+      ..saveAnswer(flags, 'red_flags.ems_activated', 'yes');
+    await go(tester, '/encounters/$visit/handoff');
+    final heading = find.text('No preferred name recorded');
+    expect(heading, findsOneWidget);
+    expect(tester.getSemantics(heading), isSemantics(isHeader: true));
+    expect(find.textContaining('red cap', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('Show handoff, a read, is offered while charting waits for the clock', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final (:visit, :flags) = await emsVisit(tester, h);
+    h.serverAhead = const Duration(hours: 2);
+    await tester.runAsync(() => h.sync.checkClock(fresh: true));
+    await settle(tester);
+    expect(h.sync.store!.chartingPaused, isTrue);
+    await openNote(tester, flags);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Show handoff'));
+    expect(location(tester), '/encounters/$visit/handoff');
+    await expectShown(tester, find.text('EMS activated?: YES'));
+  });
+
+  testWidgets('a teammate’s Red flags draft the person may read but not change offers Show handoff', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: chest pain'});
+    await syncAndRefresh(tester, h);
+    final flags = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'red_flags_disposition',
+      'noteTypeVersion': 1,
+      'data': {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'yes'},
+    }, by: blair);
+    expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, flags)), isTrue);
+    // A teammate with no clinical credential reads the Medical draft and can't change it (6.2).
+    await asCredential(tester, h, 'none');
+    h.server.offline = true;
+    await openNote(tester, flags);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Show handoff'));
+    expect(location(tester), '/encounters/$visit/handoff');
+  });
+
+  testWidgets('a finished Red flags note offers Show handoff on the visit screen, logged with its read', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final (:visit, :flags) = await emsVisit(tester, h);
+    final r = h.encounters.repository;
+    r.saveAnswer(flags, 'follow_up.when', 'next_street_clinic');
+    final plan = (await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!;
+    expect(plan.stops, isEmpty);
+    r.complete(plan);
+    final store = h.sync.store!;
+    await openVisitScreen(tester, visit);
+    final show = find.bySemanticsLabel('Show handoff');
+    await expectShown(tester, show);
+    expect(tester.getSemantics(show), isSemantics(isButton: true, hasTapAction: true));
+    final before = auditEvents(store).length;
+    await semanticTap(tester, 'Show handoff');
+    expect(location(tester), '/encounters/$visit/handoff');
+    await expectShown(tester, find.text('EMS activated?: YES'));
+    // The showing goes with the read that shows it: the visit and its notes read again, then it.
+    final logged = auditEvents(store).skip(before).toList();
+    expect(logged.first, 'encounter.viewed');
+    expect(logged.last, 'ems_handoff.shown');
+    expect(logged.where((e) => e == 'ems_handoff.shown'), hasLength(1));
+    handle.dispose();
   });
 
   testWidgets('a frozen store shows nothing and logs nothing', (tester) async {

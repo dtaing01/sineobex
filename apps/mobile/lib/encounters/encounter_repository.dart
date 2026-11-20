@@ -134,6 +134,28 @@ class EncounterRepository {
     });
   }
 
+  /// The visit [encounterId] for its EMS handoff (lifecycle 9.8, 10.1): the phone's copy, as
+  /// [openVisit] reads and logs it, and `ems_handoff.shown` on the visit with its patient, in the same
+  /// transaction as the read, so a showing that can't be logged shows nothing. Null when the phone
+  /// holds no such visit, and then nothing is logged. Throws [ChartingPaused] while the store is
+  /// frozen.
+  Future<VisitView?> openHandoff(String encounterId) async {
+    _guardFrozen();
+    await definitions.loadAll(_versions(_Held.scan(store, encounterId: encounterId).notes));
+    return store.transaction(() {
+      final visit = readVisit(encounterId);
+      if (visit != null) {
+        store.appendAudit(
+          'ems_handoff.shown',
+          entity: entityEncounter,
+          entityId: visit.encounterId,
+          patientId: visit.patientId,
+        );
+      }
+      return visit;
+    });
+  }
+
   /// Whether others may have added to the visit [encounterId] what this phone does not hold (lifecycle
   /// 4.10, 9.7): any visit but one made here whose create still waits, which no one else can have
   /// reached. Reads no value of a record and logs nothing.

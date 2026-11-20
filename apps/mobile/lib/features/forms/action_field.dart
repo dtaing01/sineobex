@@ -51,7 +51,9 @@ class _ActionFieldState extends State<ActionField> {
   Widget build(BuildContext context) {
     final action = widget.onPressed;
     // PLAN-OPEN: whether a finished note offers its actions (forms 10.1 #51): no; an action is drawn
-    // only on a form that can be changed, and only where the screen gives it something to do.
+    // only on a form that can be changed, and only where the screen gives it something to do. Show
+    // handoff, a read, is the exception: the form offers it on a note the person may read but not
+    // change now (review SRD-2), and the visit screen offers it for a finished note.
     if (action == null || !widget.enabled) return const SizedBox.shrink();
     final f = widget.field;
     final text = Theme.of(context).textTheme;

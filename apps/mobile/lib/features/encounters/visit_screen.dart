@@ -34,6 +34,7 @@ import 'addendum_sheet.dart';
 import 'correction_sheet.dart';
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
+import 'handoff_screen.dart' show offersHandoff;
 import 'note_type_list.dart' show noteLocation;
 import 'referrals_sheet.dart' show showReferrals;
 
@@ -201,6 +202,10 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   /// opened, else a chart's recent visit for a visit the phone does not hold.
   VisitView? _base;
 
+  /// The phone's own read of the visit, when it holds it: what Show handoff reads (9.8), from the
+  /// answers the phone holds.
+  VisitView? _held;
+
   /// The server's read is asked first only once, as the screen opens: it does not read again by
   /// itself when signal returns (9.7).
   bool _askedServer = false;
@@ -238,9 +243,11 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
       final made = services.visitRecords.madeAt(encounterId, shownBefore: shownBefore);
       shownSoFar.addAll([for (final r in made) r.id]);
       _madeAt = made;
+      _held = held;
       _mayLack = repo.othersMayHaveAdded(encounterId) && !held.notSynced;
       return held;
     }
+    _held = null;
     final cached = _recent(services.store, encounterId).firstOrNull;
     if (cached != null) {
       _mayLack = true;
@@ -273,11 +280,13 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   /// at the visit here that the server does not have yet.
   Future<VisitView> _overServer(VisitView base, Set<String> shownBefore) async {
     if (services.store.record(encounterId) == null) {
+      _held = null;
       _madeAt = const [];
       return base;
     }
     final shown = {...shownBefore, ...base.shownIds};
     final held = await services.repository.openVisit(encounterId, shownBefore: shown);
+    _held = held;
     if (held == null) {
       _madeAt = const [];
       return base;
@@ -580,6 +589,10 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         services.user.charts &&
         services.store.record(note.noteId) == null;
     final held = heldBecauseText(note.heldBecause, cosign: note.status == NoteStatus.completed);
+    // EMS was activated in a Red flags note the person may read, as the phone holds it: Show
+    // handoff, a read, for a draft or a finished note, clock check or not (9.8, review SRD-2).
+    final mine = _held?.notes.where((n) => n.noteId == note.noteId).firstOrNull;
+    final handoff = mine != null && offersHandoff(mine);
     return Container(
       padding: const EdgeInsets.all(FieldSpace.s3),
       decoration: BoxDecoration(
@@ -640,6 +653,15 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
           if (_problem case (at: final at, :final message) when at == note.noteId) ...[
             const SizedBox(height: FieldSpace.s3),
             ErrorMessage(message),
+          ],
+          if (handoff) ...[
+            const SizedBox(height: FieldSpace.s3),
+            _SpokenButton(
+              label: showHandoffAction,
+              spoken: showHandoffAction,
+              icon: LucideIcons.clipboardList,
+              onPressed: () => unawaited(context.push('/encounters/$encounterId/handoff')),
+            ),
           ],
           if (repo.mayAddAddendum(note)) ...[
             const SizedBox(height: FieldSpace.s3),

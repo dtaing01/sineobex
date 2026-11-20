@@ -485,7 +485,8 @@ class _Drawing {
           ),
         );
       case ActionDef():
-        final handler = enabled ? widget.actions?.call(f, path) : null;
+        // Show handoff, a read, is offered on a form that can't be changed now too (review SRD-2).
+        final handler = enabled || f.action == 'show_handoff' ? widget.actions?.call(f, path) : null;
         if (handler == null) return null;
         return ActionField(key: ValueKey('form.$path'), field: f, onPressed: handler);
       default:

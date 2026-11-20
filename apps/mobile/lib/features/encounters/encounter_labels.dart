@@ -233,6 +233,12 @@ const handoffRecapHeading = 'Recap';
 
 /// Who the handoff is about, as the portal's file words it (lifecycle 5.7, 12.1 #27).
 const handoffNoPatient = 'No patient recorded';
+
+/// The handoff's heading for a patient with no preferred name, as the portal's file words it.
+const noPreferredNameRecorded = 'No preferred name recorded';
+
+/// Show handoff under a Red flags note that offers it (9.7, 9.8): the form's own label for it.
+const showHandoffAction = 'Show handoff';
 const ageNotRecorded = 'Age not recorded';
 
 /// Nothing for EMS: no note of this visit has an answer EMS may be shown.
