@@ -4371,7 +4371,9 @@ with its review):
   the phone keeps nothing of it); offline the last says "This visit isn’t on this phone. Connect to
   open it.". The cache is fetched again each time the chart opens online (5.2), so it is as old as
   the chart on screen, and Co-sign and Attest read the visit online first (5 as built), so nothing
-  is signed from it.
+  is signed from it. `EncounterApi.openVisit` keeps this order, but no screen reads through it now:
+  since the review of unit L5 the visit screen reads the server's visit first, online (below; the
+  coordinator's decision on findings SRD-3 and SRD-4, which amends D112's order).
 - **One read model** (`VisitView`, `NoteView`) whatever the source: `visitFromRead` turns the
   server's read, or a cached recent visit, into the read model the phone's own read gives, with the
   server's laid-out note (`read`), each note's recap lines (`VisitNote.recap`, D108), the Red flags
@@ -4410,44 +4412,104 @@ with its review):
   built, on a visit read from the server.
 
 As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_screen.dart`,
-`correction_sheet.dart` and `addendum_sheet.dart`):
+`correction_sheet.dart` and `addendum_sheet.dart`, with its review):
 
-- The visit opens at `/encounters/<id>/visit` (fixed title "Visit"), read by `EncounterApi.openVisit`
-  with the recent visits of every chart the phone keeps, looked through only when the phone holds no
-  copy. A visit read from the phone is read again after every change, logging only what a read adds;
-  its records made at the visit are `VisitRecords.madeAt`, logged in their own read. A visit read from
-  the server or a chart is not asked for again at a change: the server is asked when the screen
-  opens, after the person added to the visit (once a sync has sent it), and for Co-sign and Attest.
-  What the person made of it that has not reached the server (an addendum, a correction, waiting or
-  refused) shows beside that read, from the phone's copy (`withWaiting`); nothing else of a phone
-  copy is shown over it, since `_hold` brings only the records an action needs and the phone may then
-  hold part of the visit.
-- The envelope is one heading (who, the kind, "Started …", "time not verified", the place), then the
-  assessment and the visit's own addenda. A patient the phone knows nothing of is named "No name
-  recorded": the visit read carries no name (a queue's row does).
-- Each note shows its state, recap and read view; a draft the person may change is a button to its
-  form. Below it, in the order made: sign-offs (Completed, Signed, Co-signed by …, with the credential
-  in words), attestations (Attested by …), addenda and corrections, each "Waiting to send" or "In
-  Needs attention" while it is the phone's own. A correction's line names its answers and its reason;
-  the old values are struck through in the read view itself, which marks only `corrected` ones.
-- Records made at the visit: a problem and a problem's note open the problem's screen, an allergy the
-  chart's Allergies, a referral the phone holds or a kept chart lists the Referrals sheet of its
-  patient's chart (9.10), where it is entered in error; one only a server read gives opens its chart. A server snapshot is "On another chart now" when its patient is not in the
-  visit's patient's merged group as the phone knows it.
-- **Reopen** is asked first ("Reopen this note?") and opens the form. **Correct** brings a note that
-  has left the phone back first (the visit and the note, as the correction itself would), so the
-  sheet starts from its answers and the versions the person reads; offline that says the action needs
-  a connection.
-- The correction sheet draws each answer with the renderer's own field (`FieldHost`, a grid's cell
-  bare), adds others from the note's read view, up to ten, and, when `correct` refuses `incomplete`,
-  asks for the answers it names under "Needed with this change". With "The patient asked for this
-  change" on, its button becomes **Make the change** and **Record that it was declined**.
-- **Co-sign** and **Attest** are decided in one function, `secondActOffers`: today the domain layer's
-  `cosignPlan` and `attestPlan`; the visit read's own answer for the reader replaces them there. They
-  sit at the end of the visit, the sentence of 3.5 above the button. On a visit not read from the
-  server the first tap reads it there, the screen says "This is the visit as it is now. Read it, then
-  co-sign." and the next tap signs; offline (the last sync found no signal) the button is greyed,
-  "Connect to co-sign". A note the person may not act on for a part they can't open says so under it.
+- **Where the visit is read from** (the coordinator's decision on review findings SRD-3 and SRD-4,
+  amending D112's order). The visit opens at `/encounters/<id>/visit` (fixed title "Visit"), from the
+  timeline, Notes to finish or a queue. Online (the sync controller's last outcome found signal), it
+  asks the server's read first, as it opens, within a short limit (`serverReadLimit`, six seconds, a
+  constant), unless the visit was made here and its create still waits, which nobody else can have
+  added to (`othersMayHaveAdded`). What the phone holds of the visit and has not sent is drawn over
+  that read (`withWaiting`): a note the person has work of their own in (a draft they may change, a
+  note not yet synced, finished or changed here and waiting to send, sent for review, an answer
+  waiting or in conflict) is the phone's copy, with the server's hash, its co-sign and attest answers
+  and its reason; a note made here that the server lacks is added; each note's sign-offs, addenda and
+  corrections waiting here, and the visit's own addenda, go beside the server's; an envelope field
+  changed here is the phone's; the visit's state is worked out again over the notes shown. The rest
+  is the server's, so a teammate's notes, co-signatures and attestations made elsewhere show on a
+  visit the phone holds, and a queue row opens a visit that offers Co-sign. As first built a visit
+  the phone held was read from its copy alone: a queue row opened it without the teammate's waiting
+  note and with nothing to co-sign, and a co-signature made elsewhere never showed (SRD-3, SRD-4).
+  The partial copy an addendum or a correction brings onto the phone (the visit and one note) is
+  drawn over the server's read the same way online, and offline shows with the line below: this
+  decision took the place of the fix to `openVisit` first decided for that copy.
+- **Offline**, or when that read fails or comes too late: the phone's copy, else a chart's cached
+  recent visit (looked through only when the phone holds no copy), with "This is the copy on this
+  phone. What others added since may be missing." (not for a visit made here whose create still
+  waits); with neither, the read's failure is said ("This visit isn’t on this phone. Connect to open
+  it." without signal). The server is asked once, as the screen opens: it is not read again by itself
+  when signal returns (the coordinator's decision).
+- **What is logged.** Each record shown is logged once, in the transaction of the read that shows
+  it: the server logs its own read (5.1), and the phone's read under it logs only what that read did
+  not show (the records made here among them); a chart's recent visit is logged on the phone (10.1).
+  A visit read from the phone is read again after every change, logging only what a read adds. Over
+  a server read, a change reads the phone's copy again and not the server, which is asked again only
+  after the person added to the visit (once a sync has sent it) and for Co-sign and Attest.
+- **The envelope** is one heading (who, the kind, "Started …", "time not verified", the place), then
+  the assessment and the visit's own addenda. A patient the phone does not hold is named by the
+  read's `preferredName` (decided work of the review; as first built "No name recorded").
+- **Each note** is one node for a screen reader: its title first, then its state, "By {name}" and
+  each recap line as nodes of their own (review finding SAX-2: the state and the recap were heard
+  before the title). It shows its state, recap and read view; a draft the person may change is a
+  button to its form, and the person's own draft that only the server's read gives offers **Open the
+  note**, which brings it onto the phone first (`fetchNote`), as Notes to finish does (SRD-5). "By
+  {name}" names whoever acts as an assigned note's author, never its writer (D108; SRD-10). A note
+  that waits for someone other than the reader says why under it, from the read's `heldBecause`, in
+  the portal's words (9.11): "You wrote this note, so someone else has to co-sign it.", "This note
+  was assigned to you, so someone else has to co-sign it." (an assignee is never told they wrote
+  it), "You completed this note, so …", "You signed this note, so someone else has to attest it.", or
+  "This note has a part you can’t open. Ask a Program Admin." (decided work of the review).
+- **The trail** below each note, in the order made: sign-offs (Completed, Signed, Co-signed by …,
+  with the credential in words), attestations (Attested by …), addenda and corrections, each
+  "Waiting to send" or "In Needs attention" while it is the phone's own. A correction's line names
+  its answers and its reason; the old values are struck through in the read view itself, which marks
+  only `corrected` ones. A sign-off whose effect is `none` reads "The note was already finished",
+  though `none` also covers `not_author`: the read model carries no reason for it (a review note,
+  left as built).
+- **Records made at the visit.** "On another chart now" is the server read's own answer
+  (`recordsOnAnotherChart`, by the patients' canonical charts); for a cached copy older than that
+  answer, and for the records the phone reads itself, it is the visit's patient's merged group as the
+  store knows it (its canonical patient), so a record under a merged ID of the same person is on the
+  same chart (decided work of the review). A problem and a problem's note open the problem's screen,
+  an allergy the chart's Allergies; a referral the phone reads itself (held, or listed by a kept
+  chart) opens the Referrals sheet of its patient's chart (9.10), where it is entered in error, and one
+  the server's read gives opens its chart.
+- **Add or remove notes**, to a person who charts: the encounter screen of the visit (9.4), where Add
+  another note type, Remove this note and Switch to Medical are; a visit the phone does not hold, a
+  teammate's, is brought onto it first (`openServerRecord`), which needs signal. As first built
+  nothing led back to the encounter screen once the person had left it (review finding SFL-4).
+- **Show handoff** under a Red flags note the phone holds whose `show_handoff` action shows, draft or
+  finished (9.8).
+- **Reopen** is asked first ("Reopen this note?") and opens the form; it is offered only on a note
+  the phone holds (13, "Not built in this phase"). **Correct** brings a note that has left the phone
+  back first through the domain layer's `holdNote` (the visit and the note, as the correction itself
+  would; decided work of the review, where the screen had called `openServerRecord` itself), then
+  reads it with what the screen had shown, so the sheet starts from its answers and the versions the
+  person reads, and the read logs only what is new (SRD-9); offline that says the action needs a
+  connection.
+- **The sheets.** The correction sheet draws each answer with the renderer's own field (`FieldHost`,
+  a grid's cell bare), its heading, its "Now: …" line and its field each a node of their own (SAX-5),
+  adds others from the note's read view, up to ten, and, when `correct` refuses `incomplete`, asks
+  for the answers it names under "Needed with this change". With "The patient asked for this change"
+  on, its button becomes **Make the change** and **Record that it was declined**. The addendum sheet
+  is one private box of up to 4,000 characters, counted as the server counts them. Each sheet sits in
+  a gate of its own (`SheetGate`), since a sheet is not under the screen's: it hears the sync
+  controller and the services, shows only why once the store freezes and nothing once the database
+  closes, so an answer being changed leaves the screen with the rest (phase 3's V1; review finding
+  SFL-3, where the answers stayed on screen after a freeze).
+- **Co-sign** and **Attest** sit at the end of the visit, the sentence of 3.5 above the button, and
+  are decided in one function (`secondActOffers`: the domain layer's `cosignPlan` and `attestPlan`,
+  4.8 as built). On the server's read they offer exactly the notes it marks `canCosign` or
+  `canAttest`, each with the hash it gives, and name under a note held for a part the person can't
+  open why it waits (decided work of the review; before, the phone worked the offer out by its own
+  copy of the rule). A copy read from the phone or a chart says nothing of it: the phone's own rule
+  only decides whether to offer a plan that reads the visit from the server first, the first tap
+  reading it, the screen saying "This is the visit as it is now. Read it, then co-sign." and the next
+  tap signing what was read (the coordinator's decision). With the server's read first, that is a
+  visit whose read failed as it opened. Either is offered only to a role that charts with a saved
+  credential that signs or attests, which only narrows: a credential raised on the server reaches
+  the phone at its next opening or unlock (8.2 as built). Offline the button is greyed, "Connect to
+  co-sign"; a tap that meets no signal says "Connect to co-sign.".
 
 ### 9.8 The EMS handoff
 
@@ -4458,16 +4520,36 @@ bottom. It has no copy and no share (PRD main 413), and its text cannot be selec
 is logged (`ems_handoff.shown`). It works offline. It is built for EMS's reader, as the file is
 (5.7, D94): no note of a sensitive type and no sensitive exam's findings, whoever shows it.
 
-As built (unit L5, `apps/mobile/lib/features/encounters/handoff_screen.dart`): **Show handoff** opens
-`/encounters/<id>/handoff`, full screen over the visit's screens. Its lines are `handoffLines` over
-each note as `emsReader` (the server's `EMS_READER`) sees it, of what the person showing it sees too
-(`sentToEms`, the server's rule), so a note of a sensitive type is neither shown nor named; each
-note's lines sit under its title and state, as the file has them. It is headed by the patient's
-preferred name, age in years and allergies, worded as the file words them (12.1 #27). The visit is
-read from the phone's copy (a visit read, logged as one), then `ems_handoff.shown` is written on the
-visit with its patient before anything shows. Day draws it in the High contrast theme and Night run
-in its own, every word in full ink; there is no back arrow and no action, only **Done**, and no text
-can be selected.
+As built (unit L5, `apps/mobile/lib/features/encounters/handoff_screen.dart`, with its review):
+
+- **Where it is offered.** **Show handoff** opens `/encounters/<id>/handoff` (fixed title "EMS
+  handoff"), full screen over the visit's screens, wherever EMS was activated in a Red flags note the
+  person may read: on the note's form, one they can't change now included (a teammate's draft,
+  charting paused for the clock), and on the visit screen under such a note the phone holds, draft
+  or finished, by the test the server's export uses (`offersHandoff`, a Dart copy of `handoff.ts`'s,
+  asked of the phone's copy of the note). Showing it is a read, so it waits for nothing (review
+  finding SRD-2, which also covers the decided offer for a finished note; forms 10.1 #51 as built).
+  As first built it was offered only on a form the person could change. A visit the phone does not
+  hold is not offered it, though the server's read can say it has one (`hasHandoff`): the page reads
+  the phone's copy only (13, "Not built in this phase").
+- **What it shows.** Its lines are `handoffLines` over each note as `emsReader` (the server's
+  `EMS_READER`) sees it, of what the person showing it sees too (`sentToEms`, the server's rule), so
+  a note of a sensitive type is neither shown nor named; each note's lines sit under its title and
+  state, as the file has them, each line a node of its own under its note's heading, so a screen
+  reader hears them in that order (review finding SAX-2). It is headed by the patient's preferred
+  name alone, from the team's index or the chart the phone holds, else "No preferred name recorded",
+  as D93's file heads it, never their description (review finding SRD-1: a patient with no preferred
+  name was headed by what they look like), then their age in years and allergies, worded as the
+  file words them (12.1 #27); a visit with no patient, "No patient recorded". A visit the phone does
+  not hold says "This visit isn’t on this phone. Connect to open it."
+- **Its log.** The domain layer's `openHandoff` reads the phone's copy, as `openVisit` reads and logs
+  it, and writes `ems_handoff.shown` on the visit with its patient in the same transaction (decided
+  work of the review; as first built the screen wrote the event itself, in a transaction after the
+  read's), so a showing that can't be logged shows nothing, and nothing shows while the store is
+  frozen.
+- **How it looks.** Day draws it in the High contrast theme and Night run in its own, every word in
+  full ink, measured at 7:1 or more; there is no back arrow and no action, only **Done** and the
+  system's back, and no text can be selected.
 
 ### 9.9 Home: notes to finish, and the queues
 
