@@ -14,6 +14,10 @@ dependencies:
   cryptography: 2.9.0
   flutter_riverpod: 3.4.3
   flutter_secure_storage: 11.2.0
+  # Use my location (lifecycle 9.2). geolocator is MIT; on Android it brings Google Play services'
+  # play-services-location 21.2.0 (and -base, -basement, -tasks), under Google's SDK terms, outside
+  # this lockfile and its osv scan, and uses the fused provider wherever Play services is on the phone.
+  # PLAN-OPEN: may Use my location ask Google's location service (IMPLEMENTATION_PLAN.md section 6)?
   geolocator: 14.1.2
   go_router: 18.1.0
   http: 1.6.0

@@ -129,6 +129,10 @@ class PhoneLocation extends ChangeNotifier {
         case LocationPermission.whileInUse || LocationPermission.always:
           break;
       }
+      // One fix, never the position stream: the build takes out geolocator's foreground location
+      // service, which only the stream uses (AndroidManifest.xml). PLAN-OPEN: may Use my location ask
+      // Google's location service? On Android this asks the fused provider through Google Play
+      // services wherever it is on the phone (IMPLEMENTATION_PLAN.md section 6, review SAX-8).
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: locationTimeLimit),
       );

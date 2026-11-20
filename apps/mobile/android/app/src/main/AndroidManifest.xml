@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Use my location (lifecycle 9.2): one position for a visit, asked for only when the person
          taps, while the app is open; never in the background. Fine and coarse together let the
          person choose precise or approximate in the phone's own prompt. -->
@@ -15,6 +16,15 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- geolocator's foreground location service, merged in from its manifest, is taken out:
+             only its position stream starts it (geolocator_android 5.2.1, StreamHandlerImpl), and
+             Use my location takes one fix with getCurrentPosition, which never binds or starts it
+             (MethodCallHandlerImpl). The plugin binds it as the app starts; without it that bind
+             fails quietly and nothing else changes. So the build holds no location service of any
+             kind. Check Use my location once on a device after a geolocator update. -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            tools:node="remove"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
