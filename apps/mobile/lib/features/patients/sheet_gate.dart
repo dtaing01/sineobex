@@ -69,6 +69,15 @@ class DialogGate<T> extends ConsumerStatefulWidget {
     : store = services.store,
       _services = services;
 
+  /// What puts a dialog asked from [context] in its gate, where [context] is under a
+  /// [DialogGateScope]: a note's form and its fields read through no services of their own, so the
+  /// screen's are the scope's. Under none (the form drawn alone, as its own tests draw it) there is no
+  /// team's store to hear, and the dialog is asked as it is.
+  static Widget Function(Widget dialog) over<T>(BuildContext context, {T? cancel}) {
+    final services = context.getInheritedWidgetOfExactType<DialogGateScope>()?.services;
+    return (dialog) => services == null ? dialog : DialogGate<T>(services: services, cancel: cancel, child: dialog);
+  }
+
   /// The team's store the screen under the dialog reads.
   final LocalStore store;
   final Listenable _services;
@@ -116,4 +125,15 @@ class _DialogGateState<T> extends ConsumerState<DialogGate<T>> {
       }
     });
   }
+}
+
+/// The services of the screen [child] is drawn on, for what it draws that reads through none of its
+/// own (a note's form and its fields): the dialogs they ask sit in a [DialogGate] on them
+/// ([DialogGate.over]).
+class DialogGateScope extends InheritedWidget {
+  const DialogGateScope({super.key, required this.services, required super.child});
+  final EncounterServices services;
+
+  @override
+  bool updateShouldNotify(DialogGateScope oldWidget) => !identical(services, oldWidget.services);
 }

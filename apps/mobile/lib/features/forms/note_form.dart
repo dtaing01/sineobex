@@ -12,6 +12,7 @@ import '../../forms/definition.dart';
 import '../../forms/normal.dart';
 import '../../forms/paths.dart';
 import '../../forms/recap.dart';
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'action_field.dart';
 import 'field_host.dart';
 import 'grid_field.dart';
@@ -195,15 +196,19 @@ class _NoteFormState extends State<NoteForm> implements FormAnswers {
       (a) => a.key.startsWith(prefix) && a.key != '${prefix}entryAt' && !isBlank(a.value),
     );
     if (holds) {
+      // It names the entry: it goes with the screen's store (phase 3's V1).
+      final gate = DialogGate.over<bool>(context, cancel: false);
       final sure = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Remove $title?'),
-          content: const Text('Its answers will no longer count. They stay in the note’s history.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
-          ],
+        builder: (context) => gate(
+          AlertDialog(
+            title: Text('Remove $title?'),
+            content: const Text('Its answers will no longer count. They stay in the note’s history.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
+            ],
+          ),
         ),
       );
       if (sure != true || !mounted) return;

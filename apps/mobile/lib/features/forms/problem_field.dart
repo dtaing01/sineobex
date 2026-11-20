@@ -12,6 +12,7 @@ import '../../forms/definition.dart';
 import '../../patients/patient_providers.dart' show problemCodesProvider;
 import '../../patients/problems.dart' show ProblemCode, isSensitiveCode;
 import '../patients/patient_widgets.dart';
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'field_host.dart' show FieldHost;
 import 'text_field.dart' show ReadOnlyAnswer, limitCodePoints;
 
@@ -288,21 +289,27 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
   );
 
   /// Phase 3's recurrence question, in Add problem's words: true for a new episode of the Resolved
-  /// problem named [title], false for a different problem; null when the person cancels. Neither
-  /// answer is put forward.
-  Future<bool?> _askComingBack(String title) => showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      scrollable: true,
-      title: const Text('Is this the same problem coming back?'),
-      content: Text('“$title” is on the list as Resolved.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No, a different problem')),
-        TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes, it came back')),
-      ],
-    ),
-  );
+  /// problem named [title], false for a different problem; null when the person cancels, or when the
+  /// store freezes while it is asked (it names the chart's problem, phase 3's V1). Neither answer is
+  /// put forward.
+  Future<bool?> _askComingBack(String title) {
+    final gate = DialogGate.over<bool>(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => gate(
+        AlertDialog(
+          scrollable: true,
+          title: const Text('Is this the same problem coming back?'),
+          content: Text('“$title” is on the list as Resolved.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No, a different problem')),
+            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes, it came back')),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _search(BuildContext context) {
     final text = Theme.of(context).textTheme;

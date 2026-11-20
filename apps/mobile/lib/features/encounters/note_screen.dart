@@ -21,6 +21,7 @@ import '../forms/note_form.dart';
 import '../forms/note_read_view.dart';
 import '../forms/problem_field.dart';
 import '../patients/patient_widgets.dart' show FrozenNotice, WideButton, showDone;
+import '../patients/sheet_gate.dart' show DialogGateScope;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'note_type_list.dart' show noteLocation;
@@ -496,22 +497,26 @@ class _NoteState extends ConsumerState<_Note> {
           const NoticeMessage(noteFormNotOnPhone)
         else ...[
           if (!note.editable) ...[const NoticeMessage(readOnlyNote), const SizedBox(height: FieldSpace.s3)],
-          ProblemListScope(
-            handler: _problemOffer,
-            child: NoteForm(
-              key: ValueKey(_generation),
-              definition: definition,
-              answers: note.answers,
-              onChanged: _save,
-              pending: note.pendingPaths,
-              conflicts: _conflicts(note),
-              capabilities: {if (_s.user.can.orderMedications) 'orderMedications'},
-              actions: _action,
-              expand: _repo.mayExpand(note) ? (section) => _offers[section.id] ?? const [] : null,
-              enabled: note.editable && !paused,
-              // D92's answers drawn read-only before a tap, not refused and drawn again (9.5).
-              readOnly: (path) => _repo.readOnlyAt(note, path),
-              openSection: _reopen ?? widget.openSection,
+          // The form's dialogs (an entry's Remove, the problem coming back) close with this store.
+          DialogGateScope(
+            services: _s,
+            child: ProblemListScope(
+              handler: _problemOffer,
+              child: NoteForm(
+                key: ValueKey(_generation),
+                definition: definition,
+                answers: note.answers,
+                onChanged: _save,
+                pending: note.pendingPaths,
+                conflicts: _conflicts(note),
+                capabilities: {if (_s.user.can.orderMedications) 'orderMedications'},
+                actions: _action,
+                expand: _repo.mayExpand(note) ? (section) => _offers[section.id] ?? const [] : null,
+                enabled: note.editable && !paused,
+                // D92's answers drawn read-only before a tap, not refused and drawn again (9.5).
+                readOnly: (path) => _repo.readOnlyAt(note, path),
+                openSection: _reopen ?? widget.openSection,
+              ),
             ),
           ),
         ],

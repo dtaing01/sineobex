@@ -312,6 +312,74 @@ void main() {
     expect(find.text('Food'), findsNothing);
   });
 
+  // A dialog is not under the note screen's gate: it closes as its Cancel would (phase 3's V1).
+  group('what the note’s form asks goes when the store freezes for a hand-over (V1)', () {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+
+    /// A General / primary care note of P1 with a diagnosis in its first problem, open there.
+    Future<({AppHarness h, String note})> assessed(WidgetTester tester) async {
+      final h = await signInToChart(tester);
+      final visit = startVisit(h);
+      final note = await chart(tester, h, visit, 'general_primary_care', {
+        'problems.e1234567.entryAt': '2026-10-20T15:00:00.000Z',
+        'problems.e1234567.diagnosis.code': 'J02.9',
+        'problems.e1234567.diagnosis.label': 'Acute pharyngitis, unspecified',
+        'problems.e1234567.status': 'new',
+      });
+      return (h: h, note: note);
+    }
+
+    for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+      // A sync that finds no signal.
+      ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+      ('a visit’s change ends before the controller says so', (tester, h) async => h.encounters.changed()),
+    ]) {
+      /// The open dialog shows [named]; the store freezes and [tell] says so. The dialog closes as
+      /// its Cancel would, with what it named, nothing is written or logged, and the screen says why.
+      Future<void> freezeUnder(WidgetTester tester, AppHarness h, Finder named) async {
+        expect(find.descendant(of: find.byType(Dialog), matching: named), findsOneWidget);
+        final store = h.sync.store!;
+        final before = store.outbox().length;
+
+        store.freeze(frozen);
+        await tell(tester, h);
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(Dialog), findsNothing);
+        expect(find.descendant(of: find.byType(Navigator), matching: named), findsNothing);
+        expect(find.text(frozen), findsOneWidget);
+        expect(find.text('Del'), findsNothing);
+        expect(store.outbox(), hasLength(before));
+      }
+
+      testWidgets('an entry’s Remove: the question goes, naming the entry: $how', (tester) async {
+        final (:h, :note) = await assessed(tester);
+        await openNote(tester, note);
+        await openSection(tester, 'problems');
+        await tapOn(tester, find.bySemanticsLabel('Remove Problem 1'));
+        await freezeUnder(tester, h, find.text('Remove Problem 1?'));
+        expect(answersOf(h, note).keys.where((path) => path.endsWith('entryRemoved')), isEmpty);
+      });
+
+      testWidgets('Add to the problem list: the question goes, naming the Resolved problem: $how', (tester) async {
+        final (:h, :note) = await assessed(tester);
+        final problems = Problems(h.sync.store!, permissions: h.encounters.user.permissions.toList());
+        final earlier = problems.add(
+          p1Id,
+          title: 'Demo: sore throat',
+          code: (system: 'icd10cm', code: 'J02.9', display: 'Acute pharyngitis, unspecified'),
+          status: 'new',
+        );
+        problems.move(earlier, 'resolved');
+        await openNote(tester, note);
+        await openSection(tester, 'problems');
+        await tapOn(tester, find.bySemanticsLabel(RegExp('^Add to the problem list')));
+        await freezeUnder(tester, h, find.text('“Demo: sore throat” is on the list as Resolved.'));
+        expect([for (final p in problems.problemsOf(p1Id)!) p.id], [earlier]);
+      });
+    }
+  });
+
   testWidgets('a note the phone doesn’t hold says so', (tester) async {
     await signInToChart(tester);
     await openNote(tester, '0f000000-0000-4000-8000-000000000001');
