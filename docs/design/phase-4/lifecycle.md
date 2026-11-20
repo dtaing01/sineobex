@@ -2823,9 +2823,10 @@ read's `canCosign`, `canAttest` and `heldBecause` all ask (5.1, 5.3, 5.4). A pat
 chart's they were merged into, and only to a reader with `patients.view` (5.1, 5.4, 5.6). Each
 field added to an answer carries a default in the contract (a field a phone may hold from before
 it is optional there), so a chart's timeline or recent visit cached before it, and a scripted
-answer written before it, still reads (`encounters-read-actions.test.ts`, "the contract"). No
-page reads `GET /v1/forms/note-types`, which may install presets: each list gives each note's
-`title`.
+answer written before it, still reads (`encounters-read-actions.test.ts`, "the contract"); the
+API always sends each one that has a default, so the portal reads them as given (the
+coordinator's decision). No page reads `GET /v1/forms/note-types`, which may install presets:
+each list gives each note's `title`.
 
 As built on the phone (the domain layer, unit L4, `apps/mobile/lib/encounters/encounter_api.dart`,
 with its review): `EncounterApi` calls, through the generated client and as the person in the open
