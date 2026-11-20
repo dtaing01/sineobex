@@ -15,6 +15,7 @@ import '../../sync/local_store.dart' show ChartingPaused, LocalNotice;
 import 'patient_labels.dart';
 import 'patient_screen.dart' show copyOutcomeText;
 import 'patient_widgets.dart';
+import 'sheet_gate.dart' show DialogGate;
 
 /// The Street Medicine ID card (design 10.4): the card's state as a sentence with an icon, the
 /// conflict message first when another card won, **Copy link** (announced "Link copied. It clears
@@ -62,6 +63,8 @@ class _IdCardState extends ConsumerState<_IdCard> {
         title: 'They declined a card. Make one anyway?',
         body: 'Make a card only if they’ve changed their mind.',
         yes: 'Make a card',
+        // It says what the chart holds (their answer): it goes with the store (phase 3's V1).
+        gate: (dialog) => DialogGate<bool>.patients(services: _s, cancel: false, child: dialog),
       );
       if (!yes || !mounted) return;
     }

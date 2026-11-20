@@ -137,4 +137,37 @@ void main() {
     await expectScreenOk(tester);
     handle.dispose();
   });
+
+  // A dialog is not under the screen's gate: it closes as its Cancel would (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over closes They declined a card, and makes none: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await signIn(tester);
+      final id = h.server.seedPatient(preferredName: 'Demo Ash');
+      h.server.serverEdit(id, 'idCardChoice', 'declined', by: 'seed-user');
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$id');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open ID card'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Make a card'));
+      final question = find.text('They declined a card. Make one anyway?', skipOffstage: false);
+      expect(find.descendant(of: find.byType(Dialog), matching: question), findsOneWidget);
+      h.server.offline = true;
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Dialog), findsNothing);
+      expect(question, findsNothing);
+      expect(find.text(frozen), findsOneWidget);
+      expect(store.outbox(), hasLength(before));
+      expect(store.outbox().where((e) => e.entity == entityIdLink), isEmpty);
+    });
+  }
 }
