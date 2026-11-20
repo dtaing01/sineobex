@@ -127,8 +127,10 @@ export function AssignForm({
       {options.length === 0 ? (
         <p>
           Nobody on the team may take this note now. It needs an active clinician with the same or a higher
-          credential, whose role can see everything a note of its type can hold.
-          {/* Asked of the type, never of what the note holds (review finding PRD-1). */}
+          credential, whose role can see everything in it, and any part of this kind of note that you can’t
+          see.
+          {/* Asked of what the note holds where the reader sees it, and of its type where they could miss
+              it, so the list tells them nothing they may not read (review finding PRD-1; lifecycle 5.5). */}
         </p>
       ) : (
         <form className="px-form" onSubmit={submit} noValidate>

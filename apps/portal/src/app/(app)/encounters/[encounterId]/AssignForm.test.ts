@@ -11,13 +11,13 @@ const NOTE = '5eed2100-0000-4000-8000-000000000001';
 const VISIT = '5eed2000-0000-4000-8000-000000000001';
 
 describe('Assign with nobody on the team who may take the note', () => {
-  it('says so, says why from the note’s type, and offers no picker and no button', () => {
+  it('says so, says why as the rule asks it, and offers no picker and no button', () => {
     const html = renderToStaticMarkup(
       createElement(AssignForm, { encounterId: VISIT, noteId: NOTE, options: [] }),
     );
     expect(html).toContain('<h3 class="px-h3">Assign this note</h3>');
     expect(html).toContain(
-      'Nobody on the team may take this note now. It needs an active clinician with the same or a higher credential, whose role can see everything a note of its type can hold.',
+      'Nobody on the team may take this note now. It needs an active clinician with the same or a higher credential, whose role can see everything in it, and any part of this kind of note that you can’t see.',
     );
     expect(html).not.toContain('<select');
     expect(html).not.toContain('<button');
