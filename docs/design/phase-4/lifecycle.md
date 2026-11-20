@@ -4178,33 +4178,47 @@ As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with i
   form each answer two people changed (forms 8.1 as built). A choice on a conflict is made in the
   store; the screen syncs after it, as Needs attention does (the coordinator's decision, L5).
 
-As built (the screens, unit L5, `apps/mobile/lib/features/encounters/note_screen.dart`):
+As built (the screens, unit L5, `apps/mobile/lib/features/encounters/note_screen.dart`, with its
+review):
 
-- **The frame.** A note opens at `/notes/<id>` under the fixed title "Note": the visit's patient by
+- **The frame.** A note opens at `/notes/<id>` under the fixed title "Note" (the section to open, the
+  summary's jump, travels as an ID beside the route, never in it): the visit's patient by
   their preferred name and phase 3's allergy badge (by phase 3's `allergyBadge`, from the records
   the phone holds of the patient's merged group, else the team's index), then the note's type, its
   state and, for a teammate's note, who acts as its author. A finished note opens as its read view;
   a draft the person may not change now (sent for review, a Medical draft to a credential that
   can't chart Medical) as the form with nothing to change. While charting is paused for the clock
   the form is read-only and says why. Read through `openNote`, each read logging what it adds.
-- **Read-only answers (D92).** `NoteForm` takes no list of them yet, and the form is the forms
-  part's: an answer `readOnlyAt` says is read-only is refused by `saveAnswer` ("You can’t change
-  this answer.") and the form is drawn again from what the store holds, the refused answer's
-  section open. The field is not drawn read-only before it is tapped; that needs a `readOnly`
-  parameter on `NoteForm`.
+- **Read-only answers (D92).** Since the review the screen gives `NoteForm` the domain layer's
+  `readOnlyAt` as its read-only test (forms 8.1 as built), so an answer the server would hold from
+  the person is drawn read-only before any tap, and one-tap Normal leaves it alone, so a section's
+  or a system's Normal is never refused part-way (decided work of the review, with a reviewer's
+  note on Normal). As first built such an answer was drawn like any other, refused by `saveAnswer`
+  ("You can’t change this answer.") at the tap and the form drawn again from the store; that refusal
+  stays as the second line.
 - **Save & Close** saves the box being typed in, pops the visit's screens to the patient's chart
   (the chart under them when it is this patient's, else it opens; Home for a visit with no
-  patient) and asks for a sync; **Continue** opens the summary. Both stand in a bar under the form,
+  patient), says "Saved as a draft" there (a SnackBar from the app's messenger, taken before the
+  visit's screens go, so the chart shows and a screen reader hears it; review finding SAX-1) and
+  asks for a sync; **Continue** opens the summary. Both stand in a bar under the form,
   with what was last refused; at large text on a short screen (two times on most phones) they end
   the note's list instead, and only a refusal stays in the bar. The bar never takes more than a
   third of the screen; a longer refusal scrolls in it.
 - **The form's actions** (card F7-actions): `open_note_type` is offered where its type can be
   started in the visit (the note types list offers it; a Medical type needs a Medical visit with a
-  patient) and opens `addNote`'s note; the Red flags note goes through `addRedFlagsNote`, and when
-  a teammate's finished one makes the person's needless, that one opens read-only. `add_referral`,
-  on a visit with a patient and to someone with `referrals.create`, opens Add referral
-  (`referrals_sheet.dart`: a date, today by default, and the details; the sheet's list and
-  Entered in error are card L5-referrals'). `show_handoff` opens the handoff (9.8).
+  patient) and opens `addNote`'s note. The Red flags note goes through `addRedFlagsNote`; when a
+  finished one makes the person's needless, the action opens that one, read-only: the phone's, found
+  by a scan of the store that reads and logs nothing (`finishedRedFlagsNote`), else the server's,
+  brought onto the phone first (`fetchNote`), so only the note screen's own read logs it (review
+  finding SRD-7; as first built a whole visit read was logged that nothing showed); with neither, it
+  says "This note isn’t on this phone. Connect to open it.". Online, `open_note_type`, the Red flags
+  action and Expand first ask once for the screen whether the visit has a finished Red flags note
+  the phone lacks (`RedFlagsOnline`, 8.2 as built). `add_referral`, on a visit with a patient and to
+  someone with `referrals.create`, opens Add referral on its own (`showAddReferral`: a date, today by
+  default, and the details), which closes once the referral is added; the summary opens the whole
+  Referrals sheet (9.6, 9.10). `show_handoff` opens the handoff (9.8); since the review it is drawn
+  on a form the person can't change now too (a teammate's draft, charting paused for the clock),
+  since showing it is a read (review finding SRD-2; forms 10.1 #51 as built).
 
 ### 9.6 The summary, and Complete
 
@@ -4268,24 +4282,50 @@ nothing of its own.
   (`ChartingPaused`), and hard stop 2's "Something about this visit waits in Needs attention. Fix it
   there first, then complete again.".
 
-As built (the screens, unit L5, `apps/mobile/lib/features/encounters/summary_screen.dart`):
+As built (the screens, unit L5, `apps/mobile/lib/features/encounters/summary_screen.dart`, with its
+review):
 
-- The summary opens at `/encounters/<id>/summary`; the visit is read through `openVisit` and
-  Complete is planned again after every change. Item 1 draws the plan's notes, a note of the
-  person's own with no answer yet saying so; teammates' drafts and the person's notes sent for
-  review are named under them. **Not built**: the line above a recap for each answer someone else
-  changed since the person last had the note open. Nothing records when the person last had a note
-  open; the domain layer would have to keep it.
+- The summary opens at `/encounters/<id>/summary` (fixed title "Summary"); the visit is read through
+  `openVisit` and Complete is planned again after every change. Online, as it opens, it asks once
+  whether the visit has a finished Red flags note the phone lacks (`RedFlagsOnline`, 8.2 as built)
+  and passes the answer as `redFlagsFinished` to `openComplete`, `addRedFlagsNote` and a suggestion's
+  `addNote`, so a teammate's finished note that only the server holds makes the person's own
+  needless (review findings SFL-5 and SRD-8; as first built no screen passed it, and the person was
+  given a Red flags note to answer, online too). Offline, and for a visit made here that has not
+  reached the server, nothing is asked and the phone's copy decides, as the server tolerates.
+- Item 1 draws the plan's notes, a note of the person's own with no answer yet saying so; teammates'
+  drafts and the person's notes sent for review are named under them. **Someone else's change**
+  (review finding SFL-2): the summary keeps each note's answers as it drew them, and when a plan
+  made again shows a note whose answers changed where nothing of the person's waits to send (a
+  teammate's change a sync brought in), it says "This note changed. Read it again." above that
+  recap, and Complete refuses once, in the same words, before it signs what was drawn again. A
+  change of the person's own, made in the note while the summary was covered and confirmed by a sync
+  before it shows again, is read the same way and costs one more look. **Not built** (13): who
+  changed what, the design's "{name} changed Dressing applied." Nothing records when the person last
+  had a note open; the domain layer would have to keep it.
 - The locked assessment shows without who wrote it: the visit's read does not carry the summary's
-  author. What is added under it is kept in memory only and goes with Complete.
+  author (13). What is added under it is kept in memory only and goes with Complete; Save & Close
+  with something added asks first, "Leave what you added?" ("What you added to the assessment goes
+  only with Complete. If you close now, it isn’t kept.", **Cancel** or **Close without it**; review
+  finding SFL-7).
 - The assessment is in each note's hash (4.5), so a Complete pressed while it is being typed saves
   it, plans again and goes ahead only when every recap shown is unchanged; otherwise it says "This
   note changed. Read it again." and shows the new plan.
+- Item 4, **Add referral**, opens the whole Referrals sheet (`showReferrals`, 9.10), the patient's
+  referrals and then Add referral, given the visit, so a referral added there is made at it (decided
+  work of the review, as this section's "a sheet from the profile or the summary screen" reads); as
+  first built it opened the add-only sheet a note's action opens.
 - Item 5 reads the section or the field `follow_up` of the notes, the Red flags note's alone in a
-  Medical visit: the format marks no follow-up, so the summary reads those IDs.
+  Medical visit: the format marks no follow-up, so the summary reads those IDs (a definition
+  marker is not built, 13).
+- Item 6: a line naming a note opens it at the section it names; hard stop 2's line, which names
+  none, opens Needs attention (review finding SFL-6).
 - Hard stop 5 with no note to open adds the person's Red flags note once, as the summary opens.
 - After Complete the visit's screens give way to the patient's chart (Home for a visit with no
-  patient), as Save & Close does, and a sync is asked for.
+  patient), as Save & Close does, and a sync is asked for. Since the review the chart says what the
+  button did, in a SnackBar from the app's messenger: "Signed", "Sent for co-signature" or
+  "Completed", by the button's own wording (3.3), and "Saved as a draft" after Save & Close; a newer
+  one takes the place of one still showing (review finding SAX-1: nothing was seen or heard).
 
 ### 9.7 The visit
 
