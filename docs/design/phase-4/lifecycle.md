@@ -5214,6 +5214,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 29 | Should a note of a sensitive type, or a sensitive exam's findings, reach EMS in the handoff PDF? | No, whoever exports it: EMS is read as a reader of Medical notes without `patients.view_sensitive` or `patients.view_sensitive_exams`, and the file holds only what both the exporter and EMS may see, as D82 keeps treatment records and sensitive diagnoses out. Such a note is not named among the notes the export's event lists. The phone's full-screen summary is held to the same reader (9.8, card F7-handoff) (5.7) | The clinical team (Brooke and Mercy), counsel |
 | 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's), on the phone or in the visit read online or from the cached chart, opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
 | 31 | Who may be assigned a note whose author left, when its type could hold a sensitive exam, a treatment record or a sensitive diagnosis? | Only someone whose role would see each of them, decided from the type and their keys, never from what the note holds (5.5; review finding PRD-1). A note no active member qualifies for, such as a General / primary care note on a team whose attendings hold no `patients.view_sensitive_exams`, stays in Notes not complete | Brooke and Mercy |
+| 32 | May Use my location ask Google's location service? | Yes. `geolocator` (MIT) asks Android's fused provider, through Google Play services' `play-services-location` 21.2.0 (Google's SDK terms), wherever Play services is on the phone: one fix, only on the tap, kept as the phone gives it (#15). On most Android phones the location service is Google's whatever a plugin is told, so forcing the platform's own provider would change little, and the team's device policy decides whether Google's location accuracy is on. The Play services libraries are outside `pubspec.lock` and its osv scan (plan risk 9) (9.2) | The security questionnaire and counsel |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -5235,6 +5236,15 @@ Row 31 came from unit L6's review (finding PRD-1). Its `PLAN-OPEN:` comment is o
 (`services/api/src/encounters/assign.ts`). Unit L6 also put row 5's comment on the portal's
 `SIGN_ACTS` (`apps/portal/src/lib/sign.ts`), the sentences the visit page shows a co-signer and an
 attester (9.11 as built), and added no other.
+
+Row 32 came from unit L5's review (the coordinator's decision on finding SAX-8). Its `PLAN-OPEN:`
+comments are beside the dependency in `apps/mobile/pubspec.yaml` and at the one call the app makes,
+`getCurrentPosition` in `apps/mobile/lib/features/encounters/location_field.dart`; both name the
+plan's section 6, where the row is. Unit L5 also put row 15's comment on `PhoneLocation` (that
+file) and row 29's on `emsReader` (`handoff_screen.dart`, above), and noted beside forms 10.1 #51's
+comment, in `apps/mobile/lib/features/forms/action_field.dart`, that Show handoff is that row's
+exception (forms 10.1 #51 as built). Its other choices are the coordinator's decisions, recorded in
+section 9's as-built paragraphs.
 
 Rows 3, 4, 5, 9, 10, 11, 15, 16 and 30 were built with the phone's domain layer (units L4 and F7),
 and each now has its row in the plan's section 6, as every built default does. Their `PLAN-OPEN:`
