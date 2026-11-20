@@ -102,9 +102,14 @@ void main() {
     // Typed, and Complete pressed before typing pauses: the assessment is in each note's hash.
     await tester.enterText(find.byKey(const ValueKey('phi.form.summary')), 'Demo: viral, rest and fluids');
     await tester.pump();
+    final handle = tester.ensureSemantics();
     await tapOn(tester, button('Complete and sign'));
     await settle(tester);
     expect(location(tester), '/patients/$p1Id');
+    // Said on the chart, seen and heard: what Complete did.
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Signed')), findsOneWidget);
+    expect(tester.getSemantics(find.text('Signed')), isSemantics(label: 'Signed'));
+    handle.dispose();
     final store = h.sync.store!;
     expect(store.record(visit)!.fields['summary']?.value, 'Demo: viral, rest and fluids');
     expect([store.noteState(general)!.status, store.noteState(flags)!.status], [NoteStatus.signed, NoteStatus.signed]);
@@ -113,6 +118,30 @@ void main() {
         if (e.entity == entitySignoff) (e.value! as Map<String, Object?>)['act'],
     ];
     expect(signoffs, ['sign', 'sign']);
+  });
+
+  testWidgets('what Complete did is said on the chart, by its button', (tester) async {
+    final h = await signInToChart(tester);
+    final social = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, social, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await openSummary(tester, social);
+    await tapOn(tester, button('Complete'));
+    expect(location(tester), '/patients/$p1Id');
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Completed')), findsOneWidget);
+    await back(tester);
+
+    await asCredential(tester, h, 'student');
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    await tester.runAsync(() => h.encounters.repository.openNote(flags));
+    h.encounters.repository.saveAnswer(flags, 'red_flags.emergency', 'no');
+    await openSummary(tester, visit);
+    await tapOn(tester, button('Complete and send for co-signature'));
+    expect(location(tester), '/patients/$p1Id');
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Sent for co-signature')), findsOneWidget);
   });
 
   testWidgets('a note changed since the summary drew it: Complete says so, and the new recap shows', (tester) async {
@@ -336,5 +365,6 @@ void main() {
     await openSummary(tester, visit);
     await tapOn(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
     expect(location(tester), '/patients/$p1Id');
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Saved as a draft')), findsOneWidget);
   });
 }

@@ -153,7 +153,12 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
   Future<void> _saveAndClose(VisitView visit) async {
     await _flushTyping();
     if (!mounted) return;
+    // The app's messenger: the summary goes, and the chart under it says what was done.
+    final said = ScaffoldMessenger.of(context);
     leaveVisit(context, services.store, visit.patientId);
+    said
+      ..removeCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(savedAsDraftDone)));
     unawaited(ref.read(syncControllerProvider).syncNow());
   }
 
@@ -180,7 +185,20 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
       }
       _repo.complete(plan, addToAssessment: visit.envelopeLocked ? _addition : null);
       if (!mounted) return;
+      // Said on the chart that opens, by what the button said would happen (3.3), heard once.
+      final said = ScaffoldMessenger.of(context);
       leaveVisit(context, services.store, visit.patientId);
+      said
+        ..removeCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(switch (plan.button) {
+              CompleteButton.complete => completedDone,
+              CompleteButton.completeAndSign => signedDone,
+              CompleteButton.completeAndSendForCosignature => sentForCosignatureDone,
+            }),
+          ),
+        );
       unawaited(ref.read(syncControllerProvider).syncNow());
     } on CompleteRefused catch (e) {
       if (mounted) setState(() => _refused = [for (final s in e.stops) s.message]);

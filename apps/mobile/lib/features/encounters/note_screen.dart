@@ -257,7 +257,11 @@ class _NoteState extends ConsumerState<_Note> {
   Future<void> _saveAndClose(NoteView note) async {
     await _flushTyping();
     if (!mounted) return;
+    final said = ScaffoldMessenger.of(context);
     leaveVisit(context, _s.store, _visit(note)?.patientId);
+    said
+      ..removeCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(savedAsDraftDone)));
     unawaited(_sync.syncNow());
   }
 

@@ -226,6 +226,14 @@ const completeAction = 'Complete';
 const completeAndSignAction = 'Complete and sign';
 const completeAndSendAction = 'Complete and send for co-signature';
 
+/// What Complete did, said on the chart that opens after it (9.6, review SAX-1), by its button.
+const completedDone = 'Completed';
+const signedDone = 'Signed';
+const sentForCosignatureDone = 'Sent for co-signature';
+
+/// What Save & Close did, said on the chart that opens.
+const savedAsDraftDone = 'Saved as a draft';
+
 // ---- The EMS handoff (9.8) ----
 
 const handoffDone = 'Done';
