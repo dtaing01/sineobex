@@ -5693,6 +5693,45 @@ go through route handlers under `apps/portal/src/app/(app)/encounters/` (9.11 as
 with an API job in L2's and L1's files, and L3's test server, so that no page holds a rule of its
 own (5 as built; the card index's L6 section names the files).
 
+**Not built in this phase** (the coordinator's list of Nov 20, from unit L5's review), each recorded
+where it would go:
+
+- The summary's line for each answer someone else changed, "{name} changed {label}." (9.6 item 1),
+  and who wrote a locked assessment (item 2): both need the domain layer to record more, which
+  answers the person last saw and the summary's author in the read model. The summary says only
+  "This note changed. Read it again." above a recap a sync redrew (9.6 as built).
+- A definition marker for follow-up fields: the summary reads a section or a field by its ID,
+  `follow_up` (9.6 as built), and a released note type version never changes, so a marker waits for
+  new versions.
+- The phone's test server answering the online lists (Home's counts, Notes to finish, the queues,
+  earlier visits, the visit read): the screen tests script them in front of it (11.2).
+- Reopening a note the phone does not hold: Reopen is offered only on a note the phone holds (9.7 as
+  built), where an addendum and a correction bring their note onto it first.
+- The recap's "label?:": a field whose label ends in a question mark reads "{label}?: {value}" in
+  every recap (an "evaluation?: NO" line); with the recap's wording, a question for the clinical team
+  (forms 7.1, `recapLines`).
+- `geolocator`'s 'always' permission code on iOS: Apple may warn of a binary that names a location
+  API without that purpose string, and the iOS build can strip it (the plugin's
+  `BYPASS_PERMISSION_LOCATION_ALWAYS`) or add the string; nothing in the repository builds iOS yet
+  (plan risk 5).
+
+Also not built as this part stands, each an open question for the coordinator from the review's
+fixes:
+
+- Who on New encounter reusing phase 3's `pickPatient` (decided work): the picker has no Show more,
+  no count of the phone's run and no freeze check, and keeps a found row on screen after a freeze,
+  so `PatientFinder` stays (9.2 as built) until the picker gains them.
+- Show handoff for a visit the phone does not hold: the server's read can say it has one
+  (`hasHandoff`), but the page reads the phone's copy only (9.8 as built).
+- A refused note create whose type the team lists at no other version, or that was refused on the
+  very version listed: Remove this note can't settle it, so it stays in Needs attention, and hard stop
+  2 holds its visit's Complete, until the store can withdraw a create the server never took (9.13 as
+  built).
+- The merged Android manifest without the plugin's location service, and one Use my location fix on
+  a device: they wait for CI's Android build, which this machine cannot run, and a phone; that build
+  also lists the Play services artifacts that `pubspec.lock`'s osv scan does not see (9.2; plan risk
+  9).
+
 This part is 94 of the phase's 218 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
 core, the phone's store and the phone's test server are where the X cards are, and a small model
 cannot shorten that third.
