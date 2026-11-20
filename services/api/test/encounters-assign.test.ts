@@ -34,10 +34,10 @@ import { addMember, clinician, noteOn, signoffOf, type Clinician, type Json } fr
 // sign-in. Checked by mayAssign: the acting author is no longer an active member (409
 // author_active); the assignee is an active member with encounters.chart, whose credential's rank
 // is at least the one the note was signed under, or for an unsigned note its author's last
-// (422 credential_too_low), and who could see every answer a note of its type could hold, asked of
-// the definition and their keys, never of what the note holds (422 cannot_see_all). Then a
-// note_assignments row, the note's assigned_user_id, note.assigned and a notice to the assignee.
-// Every person and value is made up.
+// (422 credential_too_low), and whose role would see all of the note (422 cannot_see_all): asked of
+// what it holds where the caller sees it, and of what a note of its type could hold where the
+// caller could miss it too. Then a note_assignments row, the note's assigned_user_id, note.assigned
+// and a notice to the assignee. Every person and value is made up.
 
 const REASON = 'Demo: the author left the program';
 
@@ -152,17 +152,40 @@ describe('phase 4: assign a note', () => {
       expect((await assign(r.v.note.noteId, w.nia.id)).status).toBe(200);
     });
 
-    it('a note of a type that could hold an answer the assignee could not see: 422 cannot_see_all, whatever it holds', async () => {
-      // Ana's role holds no patients.view_sensitive_exams; Vic's does. The type has a sensitive exam
-      // section: a note of it with nothing there is refused the same (review finding PRD-1).
-      for (const answers of [WITH_EXAM, WITHOUT_EXAM]) {
+    it('an answer the assignee could not see: 422 cannot_see_all, by what the note holds where the caller sees it, whatever it holds where they could miss it too', async () => {
+      // Ana's role holds no patients.view_sensitive_exams; Vic's and the Program Admin's do. To the
+      // Program Admin a note with a sensitive exam is refused, and one with nothing there is Ana's.
+      for (const [answers, ana] of [
+        [WITH_EXAM, 422],
+        [WITHOUT_EXAM, 200],
+      ] as const) {
         const { c, v } = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers });
         await gone(c);
         const r = await assign(v.note.noteId, w.ana.id);
+        expect(r.status).toBe(ana);
+        if (ana === 422) {
+          expect((r.body as Json).error?.code).toBe('cannot_see_all');
+          await unassigned(v);
+          expect((await assign(v.note.noteId, w.vic.id)).status).toBe(200);
+        }
+      }
+      // A manager whose role reads no sensitive exam could miss one too, so the type decides: both
+      // notes are refused alike, and the refusal tells them nothing (review finding PRD-1).
+      const role = await roleWith(h, w.t, 'Team manager', [
+        'team.manage_users',
+        'patients.view',
+        'patients.view_sensitive',
+        'billing.view_codes',
+      ]);
+      const manager = await addMember(h, w.t, 'team-manager@example.com', 'Team manager (demo)', role);
+      for (const answers of [WITH_EXAM, WITHOUT_EXAM]) {
+        const { c, v } = await departed('attending', { type: TEST_MEDICAL_EXAM_TYPE, answers });
+        await gone(c);
+        const r = await assign(v.note.noteId, w.ana.id, manager.token);
         expect(r.status).toBe(422);
         expect((r.body as Json).error?.code).toBe('cannot_see_all');
         await unassigned(v);
-        expect((await assign(v.note.noteId, w.vic.id)).status).toBe(200);
+        expect((await assign(v.note.noteId, w.vic.id, manager.token)).status).toBe(200);
       }
 
       // An attending whose role charts but reads no Medical note (no patients.view) sees none of it.
