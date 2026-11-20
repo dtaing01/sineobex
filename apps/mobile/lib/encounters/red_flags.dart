@@ -26,6 +26,13 @@ List<NoteView> redFlagsLast(List<NoteView> notes) => [
     if (n.definition != null && _isRedFlags(n.definition!)) n,
 ];
 
+/// Whether [visit] shows a finished Red flags note (forms 6.2; lifecycle 8.2, D113): for the
+/// server's read of a visit, what a screen passes as `redFlagsFinished` to [EncounterRepository.addNote],
+/// [EncounterCompletion.openComplete], [RedFlagsNote.addRedFlagsNote] and `expand`, so a teammate's that the
+/// phone does not hold makes the person's own needless, as the server's Complete takes it.
+bool showsFinishedRedFlags(VisitView visit) =>
+    visit.notes.any((n) => n.finished && n.definition != null && _isRedFlags(n.definition!));
+
 extension RedFlagsNote on EncounterRepository {
   /// The person's own Red flags note in the visit [encounterId]: one they act as the author of,
   /// draft or finished, empty or not, with the definitions of the visit's notes loaded first. Null

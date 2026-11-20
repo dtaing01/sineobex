@@ -134,6 +134,16 @@ class EncounterRepository {
     });
   }
 
+  /// Whether others may have added to the visit [encounterId] what this phone does not hold (lifecycle
+  /// 4.10, 9.7): any visit but one made here whose create still waits, which no one else can have
+  /// reached. Reads no value of a record and logs nothing.
+  bool othersMayHaveAdded(String encounterId) {
+    if (store.record(encounterId) == null) return true;
+    return !store.outbox().any(
+      (e) => e.recordId == encounterId && e.op == 'create' && e.state != ChangeState.superseded,
+    );
+  }
+
   /// One note, as the person may see it, with what hangs off it; null when the phone holds no such
   /// note or the person may not see it. The visit itself is not read, nor logged. An empty draft,
   /// which no list shows (3.1), opens here for whoever acts as its author: it is the form of a note

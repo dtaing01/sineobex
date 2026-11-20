@@ -6,6 +6,8 @@
 /// Nothing is asked while the store is frozen, since nothing may be shown then.
 library;
 
+import 'dart:async' show TimeoutException;
+
 import '../api/generated/api.dart' as wire;
 import '../api/transport.dart';
 import '../auth/auth_provider.dart' show AuthErrorCode, AuthException;
@@ -28,6 +30,11 @@ const cosignStatementVersion = 'cosign-2026-11';
 
 /// The version of the attester's sentence (lifecycle 3.5).
 const attestStatementVersion = 'attest-2026-11';
+
+/// How long a screen waits for the server's read of a visit before it reads the phone's copy instead
+/// (the coordinator's decision on the review of unit L5, SRD-3): a weak signal must not keep a
+/// clinician from the visit they hold.
+const serverReadLimit = Duration(seconds: 6);
 
 /// What a co-signer is shown above **Co-sign** (lifecycle 3.5, 9.9).
 const cosignSentence = 'I reviewed this note and agree with it.';
@@ -129,6 +136,7 @@ class QueueNoteItem {
     required this.signedBefore,
     required this.attestedBefore,
     required this.canAct,
+    this.heldBecause,
   });
 
   final String noteId;
@@ -145,6 +153,10 @@ class QueueNoteItem {
   /// The person may act on it; false for one they wrote or signed, or one with a part they can't
   /// open, which the queue says why of.
   final bool canAct;
+
+  /// Why someone else has to act on it, as the server says (5.4, in the visit read's words); null when
+  /// the person may, or the reason is about their credential or role rather than the note.
+  final HeldBecause? heldBecause;
 }
 
 /// One visit of a queue: the patient by preferred name, as the reader's projection allows.
@@ -240,6 +252,25 @@ class EncounterApi {
     });
   }
 
+  /// Whether the server's read of the visit [encounterId] shows a finished Red flags note (lifecycle
+  /// 8.2, D113, forms 6.2), which a screen passes as `redFlagsFinished` to `addNote`, `openComplete`,
+  /// `addRedFlagsNote` and `expand`: a teammate's that this phone does not hold makes the person's own
+  /// needless. One read of the server's, logged there. False without signal, for a visit the server
+  /// does not have, or when no answer comes within [limit]: offline the phone's own copy decides, as
+  /// before, which the server tolerates.
+  Future<bool> redFlagsFinished(String encounterId, {Duration limit = serverReadLimit}) async {
+    try {
+      return showsFinishedRedFlags(await readVisit(encounterId).timeout(limit));
+    } on EncounterRequestFailed {
+      return false;
+    } on TimeoutException {
+      return false;
+    } on ChartingPaused {
+      // Nothing is shown from it; the screen says why.
+      return false;
+    }
+  }
+
   /// Opens a visit wherever it is (8.2, 9.7): the phone's own copy, for a visit it holds; else the
   /// chart's [recent] visits; else the server's read, which needs a connection.
   Future<VisitView> openVisit(
@@ -257,12 +288,15 @@ class EncounterApi {
 
   // ---- co-sign and attest (3.7, 5.3, 5.4) ----
 
-  /// **Co-sign** on [visit]: null when the person may co-sign none of its notes, being a role that
-  /// doesn't chart, a credential that can't sign, or with no note waiting for a co-signer that they
-  /// did not write, complete or act as the author of. Asked as the server asks it (`cosignEffect`),
-  /// as if each hash matched, as the queue's `canAct` is.
+  /// **Co-sign** on [visit]: null when the person may co-sign none of its notes. For a visit read
+  /// from the server, the notes its read marks `canCosign` (5.1 as built for L6), each with the hash
+  /// it gives, and those held from the reader for a part they can't open (`heldBecause`); the server
+  /// asked its own rule of the reader. For a copy read from the phone or a chart, which says nothing
+  /// of it, the notes the same rule would offer (`cosignEffect`, as if each hash matched): a plan
+  /// that reads the visit from the server first ([SecondActPlan.readOnline]), whose answer then
+  /// decides. Never for a role that doesn't chart or a credential that can't sign.
   SecondActPlan? cosignPlan(VisitView visit) {
-    if (!user.charts) return null;
+    if (!user.charts || !user.can.sign) return null;
     return _plan(SecondAct.cosign, visit, (note, seesAll) {
       final effect = cosignEffect(
         noteStatus: note.status,
@@ -277,11 +311,13 @@ class EncounterApi {
     });
   }
 
-  /// **Attest** on [visit]: null when the person may attest none of its notes, being a role that
-  /// doesn't chart, a credential that can't attest, or with no note waiting for attestation that is
-  /// not theirs and whose current signature is not their own (`attestEffect`).
+  /// **Attest** on [visit]: null when the person may attest none of its notes. For a visit read from
+  /// the server, the notes its read marks `canAttest` (5.1 as built for L6); for any other copy, a
+  /// plan that reads it there first, by the rule (`attestEffect`): a note waiting for attestation
+  /// that is not theirs and whose current signature is not their own. Never for a role that doesn't
+  /// chart or a credential that can't attest.
   SecondActPlan? attestPlan(VisitView visit) {
-    if (!user.charts) return null;
+    if (!user.charts || !user.can.attest) return null;
     return _plan(
       SecondAct.attest,
       visit,
@@ -407,25 +443,38 @@ class EncounterApi {
                 signedBefore: n.signedBefore == null ? null : _ref(n.signedBefore!),
                 attestedBefore: n.attestedBefore == null ? null : _ref(n.attestedBefore!),
                 canAct: n.canAct,
+                heldBecause: HeldBecause.fromCode(n.heldBecause),
               ),
           ],
         ),
     ];
   }
 
-  /// [refusal] says, for a note waiting for [act], why the person may not act on it (the rule's
-  /// code), as if its hash matched; null when they may. A note that does not wait is `not_waiting`.
+  /// For a visit read from the server, its own answer for the reader: the notes it marks for [act],
+  /// and those it holds from them for a part they can't open. For any other copy, [refusal] says, for
+  /// a note waiting for [act], why the person may not act on it (the rule's code), as if its hash
+  /// matched; null when they may. A note that does not wait is `not_waiting`.
   SecondActPlan? _plan(SecondAct act, VisitView visit, String? Function(NoteView note, bool seesAll) refusal) {
     final fromServer = visit.source == VisitSource.server;
     final notes = <({String noteId, String? contentHash})>[];
     final hidden = <String>[];
+    bool waits(NoteView note) => act == SecondAct.cosign
+        ? note.status == NoteStatus.completed
+        : note.status == NoteStatus.signed && note.attestation == Attestation.waiting;
     for (final note in visit.notes) {
-      // A reader who may act on a note is given its hash only when they see every answer of it that
-      // counts (5.1); a copy not read from the server says nothing of it.
-      final seesAll = !fromServer || note.contentHash != null;
-      switch (refusal(note, seesAll)) {
+      if (fromServer) {
+        final may = act == SecondAct.cosign ? note.canCosign : note.canAttest;
+        // Only what the server gave a hash for can be sent (5.3, 5.4).
+        if (may && note.contentHash != null) {
+          notes.add((noteId: note.noteId, contentHash: note.contentHash));
+        } else if (note.heldBecause == HeldBecause.cannotSeeAll && waits(note)) {
+          hidden.add(note.noteId);
+        }
+        continue;
+      }
+      switch (refusal(note, true)) {
         case null:
-          notes.add((noteId: note.noteId, contentHash: fromServer ? note.contentHash : null));
+          notes.add((noteId: note.noteId, contentHash: null));
         case 'cannot_see_all':
           hidden.add(note.noteId);
       }
@@ -579,6 +628,8 @@ VisitView visitFromRead(
     notSynced: false,
     pendingFields: const {},
     records: read.records,
+    preferredName: read.preferredName,
+    recordsOnAnotherChart: read.recordsOnAnotherChart?.toSet(),
   );
 }
 
@@ -651,6 +702,9 @@ NoteView _noteFromRead(
   notSynced: false,
   title: n.title,
   contentHash: n.contentHash,
+  canCosign: n.canCosign ?? false,
+  canAttest: n.canAttest ?? false,
+  heldBecause: HeldBecause.fromCode(n.heldBecause?.wire),
 );
 
 AddendumItem _addendum(wire.AddendumView a) => AddendumItem(
@@ -723,13 +777,14 @@ const _cantAttestCredential = 'Your credential can’t attest notes.';
 
 const _cosignRefusals = {
   'cannot_see_all': _partHidden,
-  'is_author': 'You can’t co-sign a note you wrote.',
+  // Worded for everyone it covers, as the API words it: an assignee is never told they wrote a note.
+  'is_author': 'You can’t co-sign a note you wrote, completed or act as the author of.',
   'cannot_sign': _cantSign,
   'not_a_member': _notAMember,
 };
 const _attestRefusals = {
   'cannot_see_all': _partHidden,
-  'is_author': 'You can’t attest a note you wrote.',
+  'is_author': 'You can’t attest a note you wrote, completed or act as the author of.',
   'is_signer': 'You can’t attest a note you signed.',
   'cannot_attest': _cantAttestCredential,
   'not_a_member': _notAMember,

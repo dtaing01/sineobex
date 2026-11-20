@@ -51,6 +51,9 @@ Map<String, Object?> visitNoteJson({
   List<Map<String, Object?>> addenda = const [],
   List<Map<String, Object?>> corrections = const [],
   List<Map<String, Object?>> attestations = const [],
+  bool? canCosign,
+  bool? canAttest,
+  String? heldBecause,
 }) => {
   'noteId': noteId,
   'noteTypeKey': key,
@@ -69,6 +72,9 @@ Map<String, Object?> visitNoteJson({
   'addenda': addenda,
   'corrections': corrections,
   'attestations': attestations,
+  'canCosign': ?canCosign,
+  'canAttest': ?canAttest,
+  'heldBecause': ?heldBecause,
 };
 
 /// A sign-off as the visit read gives it (`SignoffView`).
@@ -106,6 +112,8 @@ Map<String, Object?> visitJson({
   List<Map<String, Object?>> addenda = const [],
   List<Map<String, Object?>> notes = const [],
   List<Map<String, Object?>> records = const [],
+  String? preferredName,
+  List<String>? recordsOnAnotherChart,
 }) => {
   'encounterId': encounterId,
   'patientId': patientId,
@@ -118,4 +126,6 @@ Map<String, Object?> visitJson({
   'addenda': addenda,
   'notes': notes,
   'records': records,
+  'preferredName': ?preferredName,
+  'recordsOnAnotherChart': ?recordsOnAnotherChart,
 };

@@ -187,6 +187,24 @@ class AttestationItem {
   final String statementVersion;
 }
 
+/// Why a note that waits for a co-signature or an attestation waits for someone other than the
+/// reader (the visit read's and the queue's `heldBecause`, lifecycle 5.1, 5.4): the act's first
+/// refusal of them, when it is about the note. Someone a note was assigned to acts as its author
+/// without having written it ([actsAsAuthor]), and is never told they wrote it.
+enum HeldBecause {
+  wrote('wrote'),
+  actsAsAuthor('acts_as_author'),
+  completed('completed'),
+  signed('signed'),
+  cannotSeeAll('cannot_see_all');
+
+  const HeldBecause(this.code);
+  final String code;
+
+  /// The reason [code] names; null for none, or for one this app does not know yet.
+  static HeldBecause? fromCode(Object? code) => values.where((r) => r.code == code).firstOrNull;
+}
+
 /// A note as one reader may see it.
 class NoteView {
   const NoteView({
@@ -215,6 +233,9 @@ class NoteView {
     this.title,
     this.contentHash,
     this.conflicts = const {},
+    this.canCosign = false,
+    this.canAttest = false,
+    this.heldBecause,
   });
 
   final String noteId;
@@ -294,6 +315,18 @@ class NoteView {
   /// note, or may co-sign or attest it and sees every answer of it that counts.
   final String? contentHash;
 
+  /// The server's read says the reader may co-sign it now (lifecycle 5.1, 5.3): the act's own rule,
+  /// asked of them as if the hash they would send matched. False in any copy not read from the
+  /// server, which says nothing of it.
+  final bool canCosign;
+
+  /// The server's read says the reader may attest it now (5.1, 5.4); false in any other copy.
+  final bool canAttest;
+
+  /// Why it waits for someone other than the reader, as the server's read says; null in any other
+  /// copy, and when the server gives no reason about the note (5.1).
+  final HeldBecause? heldBecause;
+
   /// The phone lacks its definition. A note the server read keeps its [read] all the same.
   bool get unreadable => definition == null;
 
@@ -336,6 +369,8 @@ class VisitView {
     required this.notSynced,
     required this.pendingFields,
     this.records = const [],
+    this.preferredName,
+    this.recordsOnAnotherChart,
   });
 
   final String encounterId;
@@ -382,6 +417,16 @@ class VisitView {
   /// they are on, 9.7, D91), as the server's read gives them to the reader; none in the phone's own
   /// read, whose records `VisitRecords.madeAt` reads and logs.
   final List<RecordSnapshot> records;
+
+  /// The patient's preferred name as the server's read gives it (from the chart they were merged into
+  /// when they were, 5.1 as built for L6), for a visit whose patient the phone does not hold; null
+  /// in the phone's own read and for a visit with no patient.
+  final String? preferredName;
+
+  /// The IDs of [records] on a chart other than the visit's now, by the patients' canonical charts,
+  /// as the server's read answers it (5.1); null in the phone's own read, and in a copy cached before
+  /// the server answered it.
+  final Set<String>? recordsOnAnotherChart;
 
   bool get medical => kind == VisitKind.medical;
 

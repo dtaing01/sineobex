@@ -513,8 +513,9 @@ void main() {
   });
 
   group('co-sign and attest (lifecycle 3.7, 5.3, 5.4, 9.7, 9.9)', () {
-    // n1: a student's note waiting, read whole. n2: one with a part the reader can't open (no hash).
-    // n3: the reader's own, waiting. n4: a Non-Medical note completed, which waits for no one.
+    // Read by Dana, a resident: n1, a student's note waiting, read whole. n2: one with a part the
+    // reader can't open (no hash). n3: Alex's, waiting. n4: a Non-Medical note completed, which waits
+    // for no one. The server answers for the reader (5.1 as built for L6).
     Map<String, Object?> waiting() => readOf(
       notes: [
         visitNoteJson(
@@ -522,19 +523,34 @@ void main() {
           author: blairRef,
           contentHash: hash1,
           signoffs: [signoffJson(id: s1, signer: blairRef)],
+          canCosign: true,
+          canAttest: false,
         ),
         visitNoteJson(
           noteId: n2,
           author: blairRef,
           signoffs: [signoffJson(id: s2, signer: blairRef)],
+          canCosign: false,
+          canAttest: false,
+          heldBecause: 'cannot_see_all',
         ),
         visitNoteJson(
           noteId: n3,
           author: alexRef,
           contentHash: hash3,
           signoffs: [signoffJson(id: s3, signer: alexRef)],
+          canCosign: true,
+          canAttest: false,
         ),
-        visitNoteJson(noteId: n4, author: blairRef, key: 'test_note', title: 'Test note', contentHash: hash1),
+        visitNoteJson(
+          noteId: n4,
+          author: blairRef,
+          key: 'test_note',
+          title: 'Test note',
+          contentHash: hash1,
+          canCosign: false,
+          canAttest: false,
+        ),
       ],
     );
 
@@ -576,11 +592,13 @@ void main() {
       expect(done[n1], (status: NoteStatus.signed, attestation: Attestation.waiting));
     });
 
-    test('nobody co-signs a note they wrote or completed, and a credential that can’t sign is offered none', () async {
+    test('a copy not read from the server: nobody is offered to co-sign a note they wrote or completed, nor a '
+        'credential that can’t sign', () async {
       final p = phone(alex);
-      api.on('GET', '/v1/encounters/$visit', (_) => waiting());
-      final v = await online(p).readVisit(visit);
-      expect(online(p).cosignPlan(v)!.noteIds, [n1]);
+      Future<VisitView> chartCopy(Map<String, Object?> read) => online(p).recentVisit(VisitRead.fromJson(read));
+      final v = await chartCopy(waiting());
+      // Not Alex's own n3. A copy says nothing of what the reader can't open, so n2 is read online first.
+      expect(online(p).cosignPlan(v)!.noteIds, [n1, n2]);
       expect(online(p, credential: 'student').cosignPlan(v), isNull);
       expect(online(p, permissions: {'patients.view', 'patients.view_sensitive'}).cosignPlan(v), isNull);
 
@@ -592,8 +610,7 @@ void main() {
         contentHash: hash1,
         signoffs: [signoffJson(id: s1, signer: alexRef)],
       );
-      api.on('GET', '/v1/encounters/$visit', (_) => readOf(notes: [assigned]));
-      expect(online(p).cosignPlan(await online(p).readVisit(visit)), isNull);
+      expect(online(p).cosignPlan(await chartCopy(readOf(notes: [assigned]))), isNull);
 
       // Written by the reader, then given to someone who completed it: still the reader's note.
       final written = visitNoteJson(
@@ -603,8 +620,7 @@ void main() {
         contentHash: hash1,
         signoffs: [signoffJson(id: s1, signer: danaRef)],
       );
-      api.on('GET', '/v1/encounters/$visit', (_) => readOf(notes: [written]));
-      expect(online(p).cosignPlan(await online(p).readVisit(visit)), isNull);
+      expect(online(p).cosignPlan(await chartCopy(readOf(notes: [written]))), isNull);
 
       // Given to the reader after its writer left: theirs now (3.8).
       final given = visitNoteJson(
@@ -614,8 +630,84 @@ void main() {
         contentHash: hash1,
         signoffs: [signoffJson(id: s1, signer: blairRef)],
       );
-      api.on('GET', '/v1/encounters/$visit', (_) => readOf(notes: [given]));
+      expect(online(p).cosignPlan(await chartCopy(readOf(notes: [given]))), isNull);
+    });
+
+    test('read from the server: the notes it marks for the reader, whatever the phone’s own rule says', () async {
+      final p = phone(alex);
+      // A note given to Alex after its writer left: the server holds it from them (acts_as_author),
+      // and offers the one it marks, though the phone's own rule would offer neither or both.
+      api.on(
+        'GET',
+        '/v1/encounters/$visit',
+        (_) => readOf(
+          notes: [
+            visitNoteJson(
+              noteId: n1,
+              author: blairRef,
+              actingAuthor: alexRef,
+              contentHash: hash1,
+              signoffs: [signoffJson(id: s1, signer: blairRef)],
+              canCosign: false,
+              heldBecause: 'acts_as_author',
+            ),
+            visitNoteJson(
+              noteId: n3,
+              author: alexRef,
+              contentHash: hash3,
+              signoffs: [signoffJson(id: s3, signer: blairRef)],
+              canCosign: true,
+            ),
+          ],
+        ),
+      );
+      final v = await online(p).readVisit(visit);
+      expect(
+        [for (final n in v.notes) (n.noteId, n.canCosign, n.heldBecause)],
+        [(n1, false, HeldBecause.actsAsAuthor), (n3, true, null)],
+      );
+      final plan = online(p).cosignPlan(v)!;
+      expect(
+        [plan.noteIds, plan.cannotSeeAll, plan.canAct],
+        [
+          [n3],
+          isEmpty,
+          true,
+        ],
+      );
+      // A credential the phone holds as one that can't sign is offered nothing all the same.
+      expect(online(p, credential: 'student').cosignPlan(v), isNull);
+      // A server that marks nothing: nothing to co-sign.
+      api.on(
+        'GET',
+        '/v1/encounters/$visit',
+        (_) => readOf(
+          notes: [
+            visitNoteJson(
+              noteId: n1,
+              author: blairRef,
+              contentHash: hash1,
+              signoffs: [signoffJson(id: s1, signer: blairRef)],
+            ),
+          ],
+        ),
+      );
       expect(online(p).cosignPlan(await online(p).readVisit(visit)), isNull);
+    });
+
+    test('the refusals name everyone a note’s author covers, so no assignee is told they wrote it', () async {
+      final p = phone(dana);
+      api.on('GET', '/v1/encounters/$visit', (_) => waiting());
+      final e = online(p, credential: 'attending');
+      final plan = e.cosignPlan(await e.readVisit(visit))!;
+      api.refuse('POST', '/v1/encounters/$visit/cosign', 403, 'is_author');
+      await expectLater(
+        e.secondAct(plan),
+        failsWith(
+          EncounterProblem.notAllowed,
+          'You can’t co-sign a note you wrote, completed or act as the author of.',
+        ),
+      );
     });
 
     test('Attest: never one’s own signature; only a credential that attests', () async {
@@ -626,6 +718,9 @@ void main() {
         status: 'signed',
         attestation: 'waiting',
         contentHash: hash,
+        // Read by Alex: the server holds their own signature's note from them.
+        canAttest: signer['userId'] != alex,
+        heldBecause: signer['userId'] == alex ? 'signed' : null,
         signoffs: [
           signoffJson(id: s1, signer: blairRef),
           signoffJson(
@@ -747,6 +842,44 @@ void main() {
     });
   });
 
+  group('a teammate’s finished Red flags note the phone lacks (lifecycle 8.2, D113)', () {
+    Map<String, Object?> withFlags(String status) => readOf(
+      notes: [
+        visitNoteJson(noteId: n1, author: blairRef, status: 'draft', completedAt: null),
+        visitNoteJson(
+          noteId: n2,
+          author: blairRef,
+          key: testRedFlags.key,
+          title: 'Test red flags',
+          status: status,
+          completedAt: status == 'draft' ? null : '2026-10-19T16:00:00.000Z',
+        ),
+      ],
+    );
+
+    test('the server’s read says so, once; a draft, no signal, a visit it lacks and a slow answer say no', () async {
+      final p = phone(alex);
+      final e = online(p);
+      api.on('GET', '/v1/encounters/$visit', (_) => withFlags('signed'));
+      expect(await e.redFlagsFinished(visit), isTrue);
+      expect(api.asked, hasLength(1));
+      api.on('GET', '/v1/encounters/$visit', (_) => withFlags('draft'));
+      expect(await e.redFlagsFinished(visit), isFalse);
+      api.refuse('GET', '/v1/encounters/$visit', 404, 'not_found');
+      expect(await e.redFlagsFinished(visit), isFalse);
+      api.on(
+        'GET',
+        '/v1/encounters/$visit',
+        (_) => Future<Object?>.delayed(const Duration(seconds: 1), () => withFlags('signed')),
+      );
+      expect(await e.redFlagsFinished(visit, limit: const Duration(milliseconds: 20)), isFalse);
+      api.offline = true;
+      expect(await e.redFlagsFinished(visit), isFalse);
+      // The phone logs nothing of it: the server logged its read.
+      expect(audits(p), isEmpty);
+    });
+  });
+
   group('the queues and Home’s counts (lifecycle 5.4, 5.6, 9.9)', () {
     test('a queue lists one row per visit, with who wrote and signed each waiting note', () async {
       final p = phone(alex);
@@ -769,6 +902,7 @@ void main() {
                   'signedBefore': danaRef,
                   'attestedBefore': null,
                   'canAct': false,
+                  'heldBecause': 'signed',
                 },
               ],
             },
@@ -783,8 +917,16 @@ void main() {
       );
       final note = row.notes.single;
       expect(
-        [note.noteId, note.noteTypeKey, note.author.name, note.signedBefore?.name, note.attestedBefore, note.canAct],
-        [n1, 'test_medical', 'Demo Blair', 'Demo Dana', null, false],
+        [
+          note.noteId,
+          note.noteTypeKey,
+          note.author.name,
+          note.signedBefore?.name,
+          note.attestedBefore,
+          note.canAct,
+          note.heldBecause,
+        ],
+        [n1, 'test_medical', 'Demo Blair', 'Demo Dana', null, false, HeldBecause.signed],
       );
 
       api.offline = true;
