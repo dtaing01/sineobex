@@ -469,9 +469,14 @@ class PatientsGate extends ConsumerWidget {
 
 /// What the intake starts from: a name typed in a search that found no one, or the saved draft.
 class IntakeStart {
-  const IntakeStart({this.name, this.fromDraft = false});
+  const IntakeStart({this.name, this.fromDraft = false, this.returnsPatient = false});
   final String? name;
   final bool fromDraft;
+
+  /// Opened from New encounter (phase 4, lifecycle 9.2): a save ends by going back with the new
+  /// patient's ID, and so does opening the chart of someone found already there, so the visit goes
+  /// on at Where for them, instead of their chart opening.
+  final bool returnsPatient;
 }
 
 /// What a worker typed at intake before finding that the person already has a chart (design 8.1,

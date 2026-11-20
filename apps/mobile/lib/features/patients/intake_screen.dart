@@ -479,6 +479,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     );
     if (!yes || !mounted) return;
     _finish(discard: true);
+    if (widget.start?.returnsPatient ?? false) return context.pop(p.patientId);
     context.pushReplacement('/patients/${p.patientId}', extra: typed.isEmpty ? null : typed);
   }
 
@@ -599,6 +600,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _finish();
       if (!mounted) return;
       showDone(context, result.cardWaitsForClock ? 'Saved. Make the card once the phone’s clock is right.' : 'Saved');
+      if (widget.start?.returnsPatient ?? false) return context.pop(result.patientId);
       context.pushReplacement('/patients/${result.patientId}');
     } on LocalValidationError catch (e) {
       if (mounted) setState(() => _saveError = e.message);

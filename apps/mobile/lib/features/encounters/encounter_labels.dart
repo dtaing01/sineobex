@@ -43,7 +43,7 @@ String foundText(int count, {required bool onPhone}) => count == 0
     : '${count == 1 ? '1 patient' : '$count patients'} found${onPhone ? ' on this phone' : ''}';
 
 const newPatientAction = 'New patient';
-const newPatientLine = 'Register them, then start the visit from their chart.';
+const newPatientLine = 'Register them, then the visit goes on for them.';
 const noPatientAction = 'No patient';
 const noPatientLine = 'For someone who’d rather not be registered. The visit takes Non-Medical notes only.';
 

@@ -46,10 +46,7 @@ void main() {
       expect(find.widgetWithText(AppBar, 'New encounter'), findsOneWidget);
       expectStep(tester, 'Who is this visit for?', step: 'Step 1 of 3');
       await expectShown(tester, find.bySemanticsLabel('No patient. ${_noPatientLine()}'));
-      await expectShown(
-        tester,
-        find.bySemanticsLabel('New patient. Register them, then start the visit from their chart.'),
-      );
+      await expectShown(tester, find.bySemanticsLabel('New patient. Register them, then the visit goes on for them.'));
       await expectScreenOk(tester);
 
       await searchAndChoose(tester, 'del');
@@ -230,13 +227,24 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('New patient hands over to the intake, whose chart starts the visit', (tester) async {
-    await signInToChart(tester);
+  testWidgets('New patient opens the intake, which comes back to Where with the new patient', (tester) async {
+    final h = await signInToChart(tester);
     await openNewEncounter(tester);
-    await tapOn(tester, find.bySemanticsLabel('New patient. Register them, then start the visit from their chart.'));
+    await tapOn(tester, find.bySemanticsLabel('New patient. Register them, then the visit goes on for them.'));
     expect(find.byType(IntakeScreen), findsOneWidget);
-    expect(find.byType(NewEncounterScreen), findsNothing);
     expect(location(tester), '/patients/new');
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Wren');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    // Back on New encounter, at Where, for the patient just registered; no chart opened.
+    expect(find.byType(IntakeScreen), findsNothing);
+    expect(find.byType(NewEncounterScreen), findsOneWidget);
+    expect(location(tester), '/encounters/new');
+    expectStep(tester, 'Where', step: 'Step 2 of 3');
+    await expectShown(tester, find.text('For Wren'));
+    expect(visits(h), isEmpty);
   });
 
   testWidgets('a role without patient records charts with No patient only', (tester) async {

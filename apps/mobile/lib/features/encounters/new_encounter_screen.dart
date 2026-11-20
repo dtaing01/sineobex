@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -85,6 +87,12 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
     _error = null;
     _needsPatient = false;
   });
+
+  /// **New patient**: phase 3's intake, which comes back with the new patient's ID once it saves.
+  Future<void> _newPatient() async {
+    final id = await context.push<String>('/patients/new', extra: const IntakeStart(returnsPatient: true));
+    if (id != null && mounted) _chose(id);
+  }
 
   void _chose(String? patientId, {String? name}) {
     _patientId = patientId;
@@ -188,12 +196,12 @@ class _NewEncounterState extends ConsumerState<_NewEncounter> {
         ),
       const SizedBox(height: FieldSpace.s5),
       if (patients?.mayEdit ?? false) ...[
-        // The intake opens the new chart when it saves; the visit starts there (+ Encounter).
+        // The intake comes back here with the new patient when it saves: the visit goes on at Where.
         ChoiceTile(
           icon: LucideIcons.userPlus,
           label: newPatientAction,
           line: newPatientLine,
-          onTap: () => context.pushReplacement('/patients/new'),
+          onTap: () => unawaited(_newPatient()),
         ),
         const SizedBox(height: FieldSpace.s3),
       ],
