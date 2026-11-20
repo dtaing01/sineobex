@@ -19,6 +19,7 @@ void main() {
   const n1 = 'f0000000-0000-4000-8000-0000000000d3';
   const n2 = 'f0000000-0000-4000-8000-0000000000d4';
   const n3 = 'f0000000-0000-4000-8000-0000000000d5';
+  const n4 = 'f0000000-0000-4000-8000-0000000000d6';
   const avery = 'a0000000-0000-4000-8000-0000000000a7';
   final blairRef = userRef(blair, blairName);
   final meRef = userRef(me, 'Jordan Lee (demo)');
@@ -26,7 +27,13 @@ void main() {
   /// A time as the screens word one: a date, "at", a time.
   const at = r' at \d{1,2}:\d{2}\s?[AP]M';
 
-  Map<String, Object?> queueNote(String id, String key, Map<String, Object?> author, {bool canAct = true}) => {
+  Map<String, Object?> queueNote(
+    String id,
+    String key,
+    Map<String, Object?> author, {
+    bool canAct = true,
+    String? heldBecause,
+  }) => {
     'noteId': id,
     'noteTypeKey': key,
     'author': author,
@@ -34,6 +41,7 @@ void main() {
     'signedBefore': null,
     'attestedBefore': null,
     'canAct': canAct,
+    'heldBecause': ?heldBecause,
   };
 
   /// Two visits of P1: Demo Blair's note the person may act on, and one of the person's own, with a
@@ -53,11 +61,13 @@ void main() {
         'preferredName': 'Del',
         'startedAt': '2026-10-21T15:00:00.000Z',
         'notes': [
-          queueNote(n2, 'wound_care', meRef, canAct: false),
+          queueNote(n2, 'wound_care', meRef, canAct: false, heldBecause: 'wrote'),
+          // Given to the person after Blair left: they act as its author, and aren't told they wrote it.
           {
-            ...queueNote(n3, 'general_primary_care', blairRef, canAct: false),
+            ...queueNote(n3, 'general_primary_care', blairRef, canAct: false, heldBecause: 'acts_as_author'),
             'signedBefore': userRef(avery, 'Demo Avery'),
           },
+          queueNote(n4, 'social_needs', blairRef, canAct: false),
         ],
       },
     ],
@@ -107,9 +117,10 @@ void main() {
       );
       final second = find.bySemanticsLabel(
         RegExp(
-          '^Del, Visit started October 21, 2026$at, Wound care, by Jordan Lee \\(demo\\)\\. You wrote this note\\., '
-          'General / primary care, by Demo Blair\\. Signed before by Demo Avery\\. You can’t co-sign this note\\. '
-          'Open the visit to see why\\.\$',
+          '^Del, Visit started October 21, 2026$at, Wound care, by Jordan Lee \\(demo\\)\\. You wrote this note, so '
+          'someone else has to co-sign it\\., General / primary care, by Demo Blair\\. Signed before by Demo Avery\\. '
+          'This note was assigned to you, so someone else has to co-sign it\\., Social needs, by Demo Blair\\. '
+          'Someone else has to co-sign this note\\.\$',
         ),
       );
       await expectShown(tester, first);

@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sineobex_field/features/encounters/visit_screen.dart' show visitLocation;
 import 'package:sineobex_field/patients/chart_cache.dart' show chartMetaField;
 import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityEncounter, entityNote;
 import 'package:sineobex_field/sync/local_store.dart' show ServerField, ServerRecord, entityPatient;
@@ -157,6 +161,11 @@ void main() {
           ...extra,
         ],
         attestations: attestations,
+        // The server's answer for the reader (5.1 as built for L6): an attending who sees all of it
+        // may act on what waits; one who can't open a part of it is told so.
+        canCosign: status == 'completed' && contentHash != null,
+        canAttest: attestation == 'waiting' && contentHash != null,
+        heldBecause: contentHash == null ? 'cannot_see_all' : null,
       ),
     ],
   );
@@ -464,6 +473,172 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Attest'), findsNothing);
   });
 
+  testWidgets('a queue row for a visit the phone holds, without the teammate’s note: the server’s read shows it, '
+      'with Co-sign, and the person’s own draft drawn over it', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final routes = await withEncounterRoutes(tester, h);
+    // The person started the visit and keeps a draft of their own in it.
+    final held = startVisit(h);
+    final mine = await chart(tester, h, held, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await syncAndRefresh(tester, h);
+    // A student completed a note of the visit on their own phone: the phone never fetches it.
+    h.server.credentials[blair] = 'student';
+    final theirs = h.server.seed(entityNote, {
+      'encounterId': held,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {'reason.concern': 'Demo: cough'},
+    }, by: blair);
+    h.server.finishNote(theirs);
+    await syncAndRefresh(tester, h);
+    expect(h.sync.store!.record(theirs), isNull);
+    routes
+      ..on(
+        'GET',
+        '/v1/team/cosign-queue',
+        (_) => {
+          'rows': [
+            {
+              'encounterId': held,
+              'patientId': p1Id,
+              'preferredName': 'Del',
+              'startedAt': '2026-10-20T15:00:00.000Z',
+              'notes': [
+                {
+                  'noteId': theirs,
+                  'noteTypeKey': 'general_primary_care',
+                  'author': blairRef,
+                  'completedAt': '2026-10-20T16:00:00.000Z',
+                  'signedBefore': null,
+                  'attestedBefore': null,
+                  'canAct': true,
+                },
+              ],
+            },
+          ],
+        },
+      )
+      ..on(
+        'GET',
+        '/v1/encounters/$held',
+        (_) => visitJson(
+          encounterId: held,
+          patientId: p1Id,
+          status: 'draft',
+          notes: [
+            visitNoteJson(
+              noteId: theirs,
+              author: blairRef,
+              key: 'general_primary_care',
+              title: 'General / primary care',
+              contentHash: hash,
+              sections: [concern],
+              signoffs: [signoffJson(id: signoff, signer: blairRef)],
+              canCosign: true,
+            ),
+          ],
+        ),
+      );
+    Object? sent;
+    routes.on('POST', '/v1/encounters/$held/cosign', (body) {
+      sent = body;
+      return {
+        'notes': [
+          {'noteId': theirs, 'status': 'signed', 'attestation': 'not_needed'},
+        ],
+      };
+    });
+    await go(tester, '/queues/cosign');
+    await tapOn(tester, find.bySemanticsLabel(RegExp('^Del, Visit started October 20')));
+    expect(location(tester), visitLocation(held));
+    expect(routes.asked.map((a) => '${a.method} ${a.path}'), contains('GET /v1/encounters/$held'));
+    await expectShown(tester, find.text('General / primary care'));
+    await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Replaced: Demo: cough\n')));
+    // The person's own draft, which the server's read leaves out, opens as its form.
+    await expectShown(tester, find.text('Social needs'));
+    await expectShown(tester, find.bySemanticsLabel('Open the note, Social needs'));
+    expect(find.text('This is the copy on this phone. What others added since may be missing.'), findsNothing);
+    // One tap: what was read is what is signed.
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Co-sign'));
+    expect(sent, {
+      'notes': [
+        {'noteId': theirs, 'contentHash': hash},
+      ],
+      'statementVersion': 'cosign-2026-11',
+    });
+    expect(mine, isNotNull);
+  });
+
+  testWidgets('a patient the phone doesn’t hold is named by the read’s preferred name; “On another chart now” '
+      'is the read’s own answer', (tester) async {
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    h.server.offline = false;
+    const stranger = 'd0000000-0000-4000-8000-0000000000b5';
+    const problem = 'c0000000-0000-4000-8000-0000000000a7';
+    const referral = 'c1000000-0000-4000-8000-0000000000a8';
+    routes.on(
+      'GET',
+      '/v1/encounters/$visit',
+      (_) => {
+        ...signedVisit(),
+        'patientId': stranger,
+        'preferredName': 'Demo Wren',
+        // By the patients' canonical charts: the problem, under an ID the phone can't tell is merged
+        // away, is on another chart; the referral, under a merged ID of the visit's own, is not.
+        'recordsOnAnotherChart': [problem],
+      },
+    );
+    await openVisitScreen(tester, visit);
+    expect(find.bySemanticsLabel(RegExp(r'^Demo Wren, Medical visit, Started ')), findsOneWidget);
+    await expectShown(tester, find.bySemanticsLabel('Problem: Demo: chest cold, On another chart now'));
+    await expectShown(tester, find.bySemanticsLabel('Referral, October 19, 2026: Demo: chest x-ray'));
+    expect(referral, isNotEmpty);
+  });
+
+  testWidgets('the person’s own draft read from the server opens once it is brought to the phone', (tester) async {
+    final h = await signInToChart(tester, offline: false);
+    final routes = await withEncounterRoutes(tester, h);
+    // Started on the person's other phone: this phone holds neither the visit nor the note.
+    final serverVisit = h.server.seed(entityEncounter, {'kind': 'medical', 'patientId': p1Id}, by: me);
+    final serverNote = h.server.seed(entityNote, {
+      'encounterId': serverVisit,
+      'noteTypeKey': 'general_primary_care',
+      'noteTypeVersion': 1,
+      'data': {'reason.concern': 'Demo: cough'},
+    }, by: me);
+    routes.on(
+      'GET',
+      '/v1/encounters/$serverVisit',
+      (_) => visitJson(
+        encounterId: serverVisit,
+        patientId: p1Id,
+        status: 'draft',
+        notes: [
+          visitNoteJson(
+            noteId: serverNote,
+            author: meRef,
+            key: 'general_primary_care',
+            title: 'General / primary care',
+            status: 'draft',
+            completedAt: null,
+            sections: [concern],
+          ),
+        ],
+      ),
+    );
+    await openVisitScreen(tester, serverVisit);
+    expect(h.sync.store!.record(serverNote), isNull);
+    final open = find.bySemanticsLabel('Open the note, General / primary care');
+    await expectShown(tester, open);
+    expect(tester.getSemantics(open), isSemantics(isButton: true, hasTapAction: true));
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
+    expectNoteOpened(tester, serverNote);
+    expect(h.sync.store!.record(serverNote), isNotNull);
+  });
+
   testWidgets('a visit the server doesn’t give is not asked for again at every change', (tester) async {
     final h = await signInToChart(tester);
     final routes = await withEncounterRoutes(tester, h);
@@ -647,11 +822,29 @@ void main() {
       return held;
     }
 
-    testWidgets('Co-sign reads the visit from the server first, then signs what was read', (tester) async {
+    testWidgets('when the server’s read failed as it opened, Co-sign reads it there first, then signs what was read', (
+      tester,
+    ) async {
       final h = await signInToChart(tester);
       final routes = await withEncounterRoutes(tester, h);
       final held = await heldWaiting(tester, h);
       final heldNote = noteOfType(h, held, 'general_primary_care')!.id;
+      // The server fails the read the screen asks for as it opens: the phone's copy shows, saying what
+      // others added may be missing.
+      routes.refuse('GET', '/v1/encounters/$held', 500, 'internal');
+      Object? sent;
+      routes.on('POST', '/v1/encounters/$held/cosign', (body) {
+        sent = body;
+        return {
+          'notes': [
+            {'noteId': heldNote, 'status': 'signed', 'attestation': 'not_needed'},
+          ],
+        };
+      });
+      await openVisitScreen(tester, held);
+      expect([for (final a in routes.asked) a.method], ['GET']);
+      await expectShown(tester, find.text('This is the copy on this phone. What others added since may be missing.'));
+      routes.asked.clear();
       routes.on(
         'GET',
         '/v1/encounters/$held',
@@ -667,21 +860,11 @@ void main() {
               contentHash: hash,
               sections: [concern],
               signoffs: [signoffJson(id: signoff, signer: blairRef)],
+              canCosign: true,
             ),
           ],
         ),
       );
-      Object? sent;
-      routes.on('POST', '/v1/encounters/$held/cosign', (body) {
-        sent = body;
-        return {
-          'notes': [
-            {'noteId': heldNote, 'status': 'signed', 'attestation': 'not_needed'},
-          ],
-        };
-      });
-      await openVisitScreen(tester, held);
-      expect(routes.asked, isEmpty);
       // The first tap reads it there, and the person reads it: nothing is signed yet.
       await tapOn(tester, find.widgetWithText(FilledButton, 'Co-sign'));
       expect([for (final a in routes.asked) a.method], ['GET']);
@@ -694,6 +877,86 @@ void main() {
         ],
         'statementVersion': 'cosign-2026-11',
       });
+    });
+
+    testWidgets('online, the server’s read comes first: a co-signature made elsewhere shows on a note the phone '
+        'holds, and offline the phone’s copy says what may be missing', (tester) async {
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      final held = await heldWaiting(tester, h);
+      final heldNote = noteOfType(h, held, 'general_primary_care')!.id;
+      // Demo Avery, an attending, co-signed it on the portal: the phone holds the student's Complete only.
+      routes.on(
+        'GET',
+        '/v1/encounters/$held',
+        (_) => visitJson(
+          encounterId: held,
+          patientId: p1Id,
+          status: 'signed',
+          notes: [
+            visitNoteJson(
+              noteId: heldNote,
+              author: blairRef,
+              key: 'general_primary_care',
+              title: 'General / primary care',
+              status: 'signed',
+              contentHash: hash,
+              sections: [concern],
+              signoffs: [
+                signoffJson(id: signoff, signer: blairRef),
+                signoffJson(
+                  id: 'f4000000-0000-4000-8000-0000000000b1',
+                  signer: userRef('a0000000-0000-4000-8000-0000000000b2', 'Demo Avery'),
+                  act: 'cosign',
+                  effect: 'signed',
+                  credential: 'attending',
+                  signedAt: '2026-10-22T15:00:00.000Z',
+                ),
+              ],
+              canCosign: false,
+            ),
+          ],
+        ),
+      );
+      final store = h.sync.store!;
+      final before = auditEvents(store).length;
+      await openVisitScreen(tester, held);
+      expect([for (final a in routes.asked) '${a.method} ${a.path}'], ['GET /v1/encounters/$held']);
+      await expectShown(tester, find.textContaining(RegExp(r'^Co-signed by Demo Avery, Attending physician, ')));
+      expect(find.text('This is the copy on this phone. What others added since may be missing.'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Co-sign'), findsNothing);
+      // The server logged its read; the phone logged nothing of it again, having nothing of its own waiting.
+      expect(auditEvents(store).skip(before), isEmpty);
+
+      // Offline: the phone's copy, without what was added elsewhere, and it says so.
+      await back(tester);
+      h.server.offline = true;
+      await tester.runAsync(() => h.sync.syncNow());
+      routes.asked.clear();
+      await openVisitScreen(tester, held);
+      expect(routes.asked, isEmpty);
+      await expectShown(tester, find.text('This is the copy on this phone. What others added since may be missing.'));
+      expect(find.textContaining('Co-signed by Demo Avery'), findsNothing);
+      await expectShown(tester, find.text('General / primary care'));
+      await expectScreenOk(tester);
+    });
+
+    testWidgets('a server that doesn’t answer in time: the phone’s copy shows, saying what may be missing', (
+      tester,
+    ) async {
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      final held = await heldWaiting(tester, h);
+      final never = Completer<Object?>();
+      routes.on('GET', '/v1/encounters/$held', (_) => never.future);
+      final context = tester.element(find.byType(Navigator).first);
+      unawaited(GoRouter.of(context).push(visitLocation(held)));
+      await tester.pump();
+      expect(find.text('General / primary care'), findsNothing);
+      await tester.pump(const Duration(seconds: 7));
+      await settle(tester);
+      await expectShown(tester, find.text('This is the copy on this phone. What others added since may be missing.'));
+      await expectShown(tester, find.text('General / primary care'));
     });
 
     testWidgets('offline, Co-sign is greyed: Connect to co-sign', (tester) async {

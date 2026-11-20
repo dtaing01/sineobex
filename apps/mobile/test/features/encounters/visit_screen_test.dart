@@ -168,6 +168,32 @@ void main() {
     expectNoteOpened(tester, v.general);
   });
 
+  testWidgets('after Save & Close, the visit reached from the timeline offers Add or remove notes: the encounter '
+      'screen, with Add another note type and Switch to Medical', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await openVisit(tester, visit);
+    await openNote(tester, social);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
+    expect(location(tester), '/patients/$p1Id');
+    final row = find.bySemanticsLabel(RegExp('Non-Medical'));
+    await reveal(tester, row);
+    await tapOn(tester, row.first);
+    expect(location(tester), visitLocation(visit));
+    final change = find.bySemanticsLabel('Add or remove notes');
+    await expectShown(tester, change);
+    expect(tester.getSemantics(change), isSemantics(isButton: true, hasTapAction: true));
+    await semanticTap(tester, 'Add or remove notes');
+    expect(location(tester), '/encounters/$visit');
+    await expectShown(tester, find.text('Add another note type'));
+    await expectShown(tester, find.text('Switch to Medical'));
+    handle.dispose();
+  });
+
   testWidgets('a visit the phone doesn’t hold, offline, says so', (tester) async {
     await signInToChart(tester);
     await go(tester, visitLocation('e0000000-0000-4000-8000-0000000000f1'));

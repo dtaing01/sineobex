@@ -253,6 +253,15 @@ String whenText(String date, String time, {required bool verified}) =>
 
 const visitAddendaHeading = 'Added to the visit';
 
+/// Above a visit read from this phone or a cached chart, when the server's read could not be had
+/// (offline, no answer in time): a teammate's notes, co-signatures and attestations made elsewhere
+/// may not be in it (the coordinator's decision on the review of unit L5, SRD-3).
+const othersMayBeMissing = 'This is the copy on this phone. What others added since may be missing.';
+
+/// The encounter screen of a visit, from its visit screen (9.4, 9.7): where Add another note type,
+/// Remove this note and Switch to Medical are.
+const addOrRemoveNotesAction = 'Add or remove notes';
+
 /// A draft the person may change opens as its form (9.7).
 const openNoteAction = 'Open the note';
 
@@ -356,6 +365,24 @@ const connectToCosign = 'Connect to co-sign';
 const connectToAttest = 'Connect to attest';
 const cosignedDone = 'Co-signed';
 const attestedDone = 'Attested';
+
+/// Why a note waits for someone other than the reader, as the server says (`heldBecause`, 5.1), in
+/// the portal's words; null for no reason about the note. Someone a note was assigned to is never
+/// told they wrote it.
+String? heldBecauseText(HeldBecause? reason, {required bool cosign}) {
+  final act = cosign ? 'co-sign' : 'attest';
+  return switch (reason) {
+    HeldBecause.wrote => 'You wrote this note, so someone else has to $act it.',
+    HeldBecause.actsAsAuthor => 'This note was assigned to you, so someone else has to $act it.',
+    HeldBecause.completed => 'You completed this note, so someone else has to $act it.',
+    HeldBecause.signed => 'You signed this note, so someone else has to $act it.',
+    HeldBecause.cannotSeeAll => partHidden,
+    null => null,
+  };
+}
+
+/// A note with a part the reader can't open (6.4 rule 4), as the domain layer says it.
+const partHidden = 'This note has a part you can’t open. Ask a Program Admin.';
 
 /// After the visit was read from the server for a co-sign or an attestation: what is signed is what
 /// the person now reads (lifecycle 5 as built).
@@ -527,9 +554,9 @@ String signedBeforeText(PersonRef person) => 'Signed before by ${personText(pers
 /// Who attested it before.
 String attestedBeforeText(PersonRef person) => 'Attested before by ${personText(person)}';
 
-/// A note the person can't act on (`canAct` false, 5.4): theirs, or one with a part they can't open.
-const youWroteThis = 'You wrote this note.';
-String cantActText(String act) => 'You can’t ${act.toLowerCase()} this note. Open the visit to see why.';
+/// A note the person can't act on (`canAct` false, 5.4), when the server gives no reason about the
+/// note ([heldBecauseText] says it when it does).
+String cantActText(String act) => 'Someone else has to ${act.toLowerCase()} this note.';
 
 // ---- A note's state (lifecycle 3.1, 9.1) ----
 

@@ -188,8 +188,10 @@ class _QueueRow extends StatelessWidget {
           queueNoteText(titles[n.noteTypeKey] ?? untitledNote, n.author),
           if (n.signedBefore case final p?) signedBeforeText(p),
           if (n.attestedBefore case final p?) attestedBeforeText(p),
+          // Why someone else has to, as the server says, in the visit screen's words (5.4).
           if (!n.canAct)
-            n.author.userId == me ? youWroteThis : cantActText(act == SecondAct.cosign ? cosignAction : attestAction),
+            heldBecauseText(n.heldBecause, cosign: act == SecondAct.cosign) ??
+                cantActText(act == SecondAct.cosign ? cosignAction : attestAction),
         ],
     ];
     return Semantics(

@@ -16,12 +16,14 @@ import '../../encounters/encounter_api.dart';
 import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_repository.dart' hide Expanded;
 import '../../encounters/encounter_services.dart';
-import '../../encounters/rules.dart' show ReopenEffect;
+import '../../encounters/rules.dart' show NoteStatus, ReopenEffect, encounterStatus;
 import '../../encounters/visit_records.dart';
 import '../../forms/field_at.dart' show fieldAt;
 import '../../forms/read_model.dart' show ReadItem;
 import '../../patients/chart_cache.dart' show chartMetaOf, patientGroup;
-import '../../sync/local_store.dart' show ChartingPaused, LocalStore, entityEncounter, entityNote, entityPatient;
+import '../../patients/patient_providers.dart' show PatientServices;
+import '../../sync/local_store.dart'
+    show ChartingPaused, LocalStore, LocalValidationError, entityEncounter, entityNote, entityPatient;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../forms/note_read_view.dart';
 import '../forms/text_field.dart' show ReadOnlyAnswer;
@@ -40,19 +42,24 @@ String visitLocation(String encounterId) => '/encounters/$encounterId/visit';
 
 /// What the visit screen offers a second person on [visit] (lifecycle 3.7, 9.7, 9.9): **Co-sign** and
 /// **Attest**, each null where it is not offered, each with the notes it acts on and those the person
-/// may not act on because each holds a part they can't open. The one place the screen decides them:
-/// the domain layer's plans today, asked as the server asks it; once the visit read carries the
-/// server's own answer for the reader (its can-co-sign and can-attest, and why a waiting note can't be
-/// signed by them), it is read here instead.
+/// may not act on because each holds a part they can't open. For a visit read from the server, the
+/// notes its read marks `canCosign` or `canAttest`, each with the hash it gives (5.1 as built for
+/// L6); a note it holds from the reader says why under it ([NoteView.heldBecause]). A copy read from
+/// the phone or a chart says nothing of it: its offer reads the visit from the server first, and the
+/// server's answer then decides ("Read it, then co-sign.").
 ({SecondActPlan? cosign, SecondActPlan? attest}) secondActOffers(EncounterServices services, VisitView visit) =>
     (cosign: services.api.cosignPlan(visit), attest: services.api.attestPlan(visit));
 
-/// [base], a visit read from the server or a chart (9.7), with what this phone made of it that has not
-/// reached the server yet, from the phone's own read [held]: each note's sign-offs, addenda and
-/// corrections waiting here, and the visit's own addenda. The server's read has none of them until
-/// they are sent, and the phone may hold only part of the visit (what an addendum or a correction
-/// brought onto it), so nothing else of [held] is shown: the server's read stays what is read, and
-/// what Co-sign and Attest sign.
+/// [base], a visit read from the server or a chart (9.7), with what this phone holds of it that has
+/// not reached the server yet, from the phone's own read [held]: the person's own work on a note
+/// (a draft they may change, a note finished or changed here and not yet confirmed, a choice two
+/// people made) in place of the server's copy of that note; each note's sign-offs, addenda and
+/// corrections waiting here; the visit's own addenda; a note made here that the server does not
+/// have yet; and an envelope field changed here. Everything else is the server's: a teammate's notes,
+/// co-signatures and attestations made elsewhere, the hashes Co-sign and Attest send, and what the
+/// server says the reader may sign. The phone may hold only part of the visit (what an addendum or a
+/// correction brought onto it): a note it holds with nothing of the person's waiting is shown as the
+/// server read it.
 VisitView withWaiting(VisitView base, VisitView held) {
   List<T> add<T>(List<T> shown, List<T> mine, String Function(T x) id, Sending Function(T x) sending) {
     final ids = {for (final x in shown) id(x)};
@@ -63,62 +70,89 @@ VisitView withWaiting(VisitView base, VisitView held) {
     ];
   }
 
+  // The person's own work on a note, which the server's read lacks until it is sent.
+  bool ownWork(NoteView n) =>
+      n.editable ||
+      n.notSynced ||
+      n.waitingToSend ||
+      n.sentForReview ||
+      n.pendingPaths.isNotEmpty ||
+      n.conflicts.isNotEmpty;
+
+  NoteView merged(NoteView server, NoteView mine) {
+    final n = ownWork(mine) ? mine : server;
+    return NoteView(
+      noteId: n.noteId,
+      encounterId: n.encounterId,
+      noteTypeKey: n.noteTypeKey,
+      noteTypeVersion: n.noteTypeVersion,
+      definition: n.definition ?? server.definition,
+      author: n.author,
+      actingAuthor: n.actingAuthor,
+      actsAsAuthor: n.actsAsAuthor,
+      status: n.status,
+      attestation: n.attestation,
+      waitingToSend: n.waitingToSend,
+      sentForReview: n.sentForReview,
+      editable: n.editable,
+      answers: n.answers,
+      pendingPaths: n.pendingPaths,
+      read: n.read,
+      recap: n.recap,
+      signoffs: add(server.signoffs, mine.signoffs, (s) => s.id, (s) => s.sending),
+      addenda: add(server.addenda, mine.addenda, (a) => a.id, (a) => a.sending),
+      corrections: add(server.corrections, mine.corrections, (c) => c.id, (c) => c.sending),
+      attestations: server.attestations,
+      notSynced: n.notSynced,
+      title: n.title ?? server.title,
+      contentHash: server.contentHash,
+      conflicts: n.conflicts,
+      canCosign: server.canCosign,
+      canAttest: server.canAttest,
+      heldBecause: server.heldBecause,
+    );
+  }
+
   final heldNotes = {for (final n in held.notes) n.noteId: n};
+  final serverNotes = {for (final n in base.notes) n.noteId};
+  final notes = redFlagsLast([
+    for (final n in base.notes)
+      if (heldNotes[n.noteId] case final mine?) merged(n, mine) else n,
+    for (final n in held.notes)
+      if (!serverNotes.contains(n.noteId) && ownWork(n)) n,
+  ]);
+  String? pick(String field, String? server, String? mine) => held.pendingFields.contains(field) ? mine : server;
   return VisitView(
     encounterId: base.encounterId,
     source: base.source,
-    patientId: base.patientId,
-    kind: base.kind,
-    status: base.status,
+    patientId: pick('patientId', base.patientId, held.patientId),
+    kind: held.pendingFields.contains('kind') ? held.kind : base.kind,
+    status: encounterStatus([for (final n in notes) (status: n.status, medical: n.medical ?? true, empty: false)]),
     startedAt: base.startedAt,
     clockVerified: base.clockVerified,
-    locationText: base.locationText,
-    summary: base.summary,
+    locationText: pick('locationText', base.locationText, held.locationText),
+    summary: base.summaryHidden ? base.summary : pick('summary', base.summary, held.summary),
     summaryHidden: base.summaryHidden,
-    envelopeLocked: base.envelopeLocked,
+    envelopeLocked: base.envelopeLocked || held.envelopeLocked,
     addenda: base.summaryHidden ? base.addenda : add(base.addenda, held.addenda, (a) => a.id, (a) => a.sending),
-    notes: [
-      for (final n in base.notes)
-        if (heldNotes[n.noteId] case final mine?)
-          NoteView(
-            noteId: n.noteId,
-            encounterId: n.encounterId,
-            noteTypeKey: n.noteTypeKey,
-            noteTypeVersion: n.noteTypeVersion,
-            definition: n.definition,
-            author: n.author,
-            actingAuthor: n.actingAuthor,
-            actsAsAuthor: n.actsAsAuthor,
-            status: n.status,
-            attestation: n.attestation,
-            waitingToSend: n.waitingToSend,
-            sentForReview: n.sentForReview,
-            editable: n.editable,
-            answers: n.answers,
-            pendingPaths: n.pendingPaths,
-            read: n.read,
-            recap: n.recap,
-            signoffs: add(n.signoffs, mine.signoffs, (s) => s.id, (s) => s.sending),
-            addenda: add(n.addenda, mine.addenda, (a) => a.id, (a) => a.sending),
-            corrections: add(n.corrections, mine.corrections, (c) => c.id, (c) => c.sending),
-            attestations: n.attestations,
-            notSynced: n.notSynced,
-            title: n.title,
-            contentHash: n.contentHash,
-            conflicts: n.conflicts,
-          )
-        else
-          n,
-    ],
+    notes: notes,
     notSynced: base.notSynced,
-    pendingFields: base.pendingFields,
+    pendingFields: held.pendingFields,
     records: base.records,
+    preferredName: base.preferredName,
+    recordsOnAnotherChart: base.recordsOnAnotherChart,
   );
 }
 
-/// The visit (lifecycle 9.7), opened from the chart's timeline, from Notes to finish or from a queue:
-/// read wherever it is (`EncounterApi.openVisit`), the phone's own copy, else the chart's recent visit,
-/// else the server's, each read logged before it shows (10.1). From the top:
+/// The visit (lifecycle 9.7), opened from the chart's timeline, from Notes to finish or from a queue.
+/// Online, the server's read comes first (5.1, which the server logs), within a short time limit
+/// ([serverReadLimit]), with what the phone holds of the visit and has not sent drawn over it
+/// ([withWaiting]), so a teammate's notes, co-signatures and attestations made elsewhere show, and a
+/// queue row opens a visit that offers Co-sign (the coordinator's decision on the review of unit L5,
+/// SRD-3, amending D112). Offline, or when that read fails or does not come in time: the phone's own
+/// copy, else the chart's recent visit, with a line that what others added since may be missing;
+/// else the server's read is asked once more (8.2: "Connect to open it."). Each record shown is
+/// logged once, in the transaction of the read that shows it (10.1). From the top:
 ///
 /// - **The envelope**: who it is for, Medical or Non-Medical, when it started ("time not verified"
 ///   when the phone's clock wasn't checked), the place, the assessment and the visit's own addenda.
@@ -134,6 +168,9 @@ VisitView withWaiting(VisitView base, VisitView held) {
 ///   that was never signed; and, at the end, **Co-sign** and **Attest** with the sentence the person
 ///   signs, online only ([secondActOffers]). A visit not read from the server is read there first,
 ///   so what is signed is what was read.
+/// - **Add or remove notes**, for a visit the person may chart: the encounter screen, where Add another
+///   note type, Remove this note and Switch to Medical are (9.4); a visit the phone does not hold is
+///   brought onto it first (`openServerRecord`).
 ///
 /// A visit read from the phone is read again after every change, logging only what a read adds; one
 /// read from the server or a chart is read again from the server once what the person added there
@@ -160,8 +197,17 @@ class _Visit extends ConsumerStatefulWidget {
 }
 
 class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
-  /// The visit as the server or a chart read it, when the phone did not hold it at the first read.
+  /// The visit as the server or a chart read it: the server's whenever it answered as the screen
+  /// opened, else a chart's recent visit for a visit the phone does not hold.
   VisitView? _base;
+
+  /// The server's read is asked first only once, as the screen opens: it does not read again by
+  /// itself when signal returns (9.7).
+  bool _askedServer = false;
+
+  /// Read from the phone or a chart for want of the server's read: what others added since may be
+  /// missing.
+  bool _mayLack = false;
 
   /// The records made at the visit, for a visit read from the phone (`VisitRecords.madeAt`); a visit
   /// read elsewhere carries the server's ([VisitView.records]).
@@ -183,27 +229,67 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
 
   @override
   Future<VisitView?> readOnce(Set<String> shownBefore) async {
+    final failed = _askedServer ? null : await _serverFirst();
     final base = _base;
-    if (base != null) {
-      final held = services.store.record(encounterId) == null
-          ? null
-          : await services.repository.openVisit(encounterId, shownBefore: shownBefore);
-      return held == null ? base : withWaiting(base, held);
-    }
-    final read = await services.api.openVisit(
-      encounterId,
-      phone: services.repository,
-      recent: _recent(services.store, encounterId),
-      shownBefore: shownBefore,
-    );
-    if (read.source == VisitSource.phone) {
+    if (base != null) return _overServer(base, shownBefore);
+    final repo = services.repository;
+    final held = await repo.openVisit(encounterId, shownBefore: shownBefore);
+    if (held != null) {
       final made = services.visitRecords.madeAt(encounterId, shownBefore: shownBefore);
       shownSoFar.addAll([for (final r in made) r.id]);
       _madeAt = made;
-    } else {
-      _base = read;
+      _mayLack = repo.othersMayHaveAdded(encounterId) && !held.notSynced;
+      return held;
     }
-    return read;
+    final cached = _recent(services.store, encounterId).firstOrNull;
+    if (cached != null) {
+      _mayLack = true;
+      return _base = await services.api.recentVisit(cached, shownBefore: shownBefore);
+    }
+    // Nothing here: what the server said as the screen opened, or, when it wasn't asked, its read.
+    if (failed != null) throw failed;
+    return _base = await services.api.readVisit(encounterId);
+  }
+
+  /// Online, the server's read of the visit as the screen opens, within [serverReadLimit], unless
+  /// the visit was made here and has not reached the server, which no one else can have added to.
+  /// Returns why there is none, when it was asked and gave none.
+  Future<EncounterRequestFailed?> _serverFirst() async {
+    _askedServer = true;
+    if (_syncing.snapshot.offline || !services.repository.othersMayHaveAdded(encounterId)) return null;
+    try {
+      _base = await services.api.readVisit(encounterId).timeout(serverReadLimit);
+      _mayLack = false;
+      return null;
+    } on EncounterRequestFailed catch (e) {
+      return e;
+    } on TimeoutException {
+      return const EncounterRequestFailed(EncounterProblem.offline, visitNotOnPhone);
+    }
+  }
+
+  /// The server's read [base] with what the phone holds of the visit and has not sent drawn over it
+  /// ([withWaiting]); the phone's read logs only what the server's did not show, and the records made
+  /// at the visit here that the server does not have yet.
+  Future<VisitView> _overServer(VisitView base, Set<String> shownBefore) async {
+    if (services.store.record(encounterId) == null) {
+      _madeAt = const [];
+      return base;
+    }
+    final shown = {...shownBefore, ...base.shownIds};
+    final held = await services.repository.openVisit(encounterId, shownBefore: shown);
+    if (held == null) {
+      _madeAt = const [];
+      return base;
+    }
+    final fromServer = {for (final r in base.records) r.id};
+    final made = services.visitRecords.madeAt(encounterId, shownBefore: shown);
+    _madeAt = [
+      for (final r in made)
+        if (!fromServer.contains(r.id)) r,
+    ];
+    shownSoFar.addAll([for (final r in _madeAt) r.id]);
+    return withWaiting(base, held);
   }
 
   /// Only what the phone holds of the visit is read again at a change: the server is asked when the
@@ -217,6 +303,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   Future<void> _readServer() async {
     final read = await services.api.readVisit(encounterId);
     _base = read;
+    _mayLack = false;
     await reread();
   }
 
@@ -351,14 +438,13 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   Widget _body(BuildContext context, VisitView visit) {
     final repo = services.repository;
     final offers = secondActOffers(services, visit);
-    final cantOpen = {...?offers.cosign?.cannotSeeAll, ...?offers.attest?.cannotSeeAll};
-    final cantOpenMessage = (offers.cosign ?? offers.attest)?.cannotSeeAllMessage;
     final visitAddenda = !visit.summaryHidden && (visit.addenda.isNotEmpty || repo.mayAddVisitAddendum(visit));
     final records = _recordRows(visit);
     return ListView(
       padding: const EdgeInsets.all(FieldSpace.s4),
       children: [
         _envelope(context, visit),
+        if (_mayLack) ...[const SizedBox(height: FieldSpace.s3), const NoticeMessage(othersMayBeMissing)],
         if (!visit.summaryHidden) ...[
           const SectionHeading(assessmentHeading),
           ReadOnlyAnswer(label: assessmentLabel, value: visit.summary, showLabel: false),
@@ -375,10 +461,18 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
             ),
         ],
         const SectionHeading(notesHeading),
-        for (final note in visit.notes) ...[
-          _note(context, note, cantOpen: cantOpen.contains(note.noteId) ? cantOpenMessage : null),
-          const SizedBox(height: FieldSpace.s4),
+        for (final note in visit.notes) ...[_note(context, note), const SizedBox(height: FieldSpace.s4)],
+        if (_problem case (at: _changeNotes, :final message)) ...[
+          ErrorMessage(message),
+          const SizedBox(height: FieldSpace.s2),
         ],
+        if (services.user.charts)
+          _SpokenButton(
+            label: addOrRemoveNotesAction,
+            spoken: addOrRemoveNotesAction,
+            icon: LucideIcons.listPlus,
+            onPressed: _busy ? null : () => unawaited(_changeNotesOf()),
+          ),
         if (records.isNotEmpty) ...[
           const SectionHeading(madeAtVisitHeading),
           for (final r in records) ...[r, const SizedBox(height: FieldSpace.s2)],
@@ -393,7 +487,11 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   Widget _envelope(BuildContext context, VisitView visit) {
     final text = Theme.of(context).textTheme;
     final c = context.field;
-    final patient = visit.patientId == null ? noPatientText : visitPatientName(services.store, visit.patientId!);
+    final patient = switch (visit.patientId) {
+      null => noPatientText,
+      final id when visit.preferredName != null && !_holdsPatient(id) => visit.preferredName!,
+      final id => visitPatientName(services.store, id),
+    };
     final when = _when(visit.startedAt, verified: visit.clockVerified);
     final place = visit.locationText;
     final lines = [visitKindText(visit.kind), if (when != null) startedText(when), if (place != null) whereText(place)];
@@ -422,15 +520,66 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
     );
   }
 
+  /// The phone holds [patientId]: in the team's index or as a record of its own, so it names them.
+  bool _holdsPatient(String patientId) {
+    final store = services.store;
+    return store.record(store.canonicalPatient(patientId)) != null ||
+        PatientServices.of(store)?.index.entry(patientId) != null;
+  }
+
+  /// Where the last refusal of **Add or remove notes** shows.
+  static const _changeNotes = 'notes';
+
+  /// **Add or remove notes** (9.4, 9.7): the encounter screen of a visit the phone holds; a visit it
+  /// does not, a teammate's, is brought onto it first through the domain layer, which needs signal.
+  Future<void> _changeNotesOf() async {
+    setState(() => _problem = null);
+    final open = services.repository.openServerRecord;
+    if (services.store.record(encounterId) == null) {
+      setState(() => _busy = true);
+      try {
+        final found = open != null && await open(entityEncounter, encounterId);
+        if (!found) return _refused(_changeNotes, const LocalValidationError(visitNotOnPhone));
+      } on Exception catch (e) {
+        return _refused(_changeNotes, e);
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+    }
+    if (mounted) unawaited(context.push('/encounters/$encounterId'));
+  }
+
+  /// **Open the note** for the person's own draft that the phone does not hold (read from the server,
+  /// 9.7): brought onto the phone first, as Notes to finish brings one (9.9).
+  Future<void> _openServerDraft(NoteView note) async {
+    setState(() {
+      _problem = null;
+      _busy = true;
+    });
+    final found = await fetchNote(services, note.noteId, encounterId: encounterId);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!found) return setState(() => _problem = (at: note.noteId, message: noteNotOnPhone));
+    unawaited(context.push(noteLocation(note.noteId)));
+  }
+
   /// A note: its state and recap, then its sections or its form's button, then what hangs off it in
   /// time order, then what may be done to it.
-  Widget _note(BuildContext context, NoteView note, {required String? cantOpen}) {
+  Widget _note(BuildContext context, NoteView note) {
     final text = Theme.of(context).textTheme;
     final c = context.field;
     final repo = services.repository;
     final title = note.title ?? untitledNote;
     final correct = repo.mayCorrect(note);
     final read = note.read;
+    // A draft of the person's own that the phone does not hold opens once it is brought here (9.7).
+    final draftElsewhere =
+        !note.editable &&
+        !note.finished &&
+        note.actsAsAuthor &&
+        services.user.charts &&
+        services.store.record(note.noteId) == null;
+    final held = heldBecauseText(note.heldBecause, cosign: note.status == NoteStatus.completed);
     return Container(
       padding: const EdgeInsets.all(FieldSpace.s3),
       decoration: BoxDecoration(
@@ -463,6 +612,15 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
             for (final l in note.recap) Text(l.text, style: text.bodyLarge),
           ],
           const SizedBox(height: FieldSpace.s3),
+          if (draftElsewhere) ...[
+            _SpokenButton(
+              label: openNoteAction,
+              spoken: openNoteSpoken(title),
+              icon: LucideIcons.squarePen,
+              onPressed: _busy ? null : () => unawaited(_openServerDraft(note)),
+            ),
+            const SizedBox(height: FieldSpace.s3),
+          ],
           if (note.editable)
             _SpokenButton(
               label: openNoteAction,
@@ -477,7 +635,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
             )
           else
             const NoticeMessage(noteFormNotOnPhone),
-          if (cantOpen != null) ...[const SizedBox(height: FieldSpace.s3), NoticeMessage(cantOpen)],
+          if (held != null) ...[const SizedBox(height: FieldSpace.s3), NoticeMessage(held)],
           ..._trail(context, note),
           if (_problem case (at: final at, :final message) when at == note.noteId) ...[
             const SizedBox(height: FieldSpace.s3),
@@ -622,48 +780,60 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
 
   List<Widget> _recordRows(VisitView visit) {
     final store = services.store;
-    if (visit.source == VisitSource.phone) {
-      return [
-        for (final r in _madeAt)
-          switch (r) {
-            ReferralMadeAt(:final referral) => _RecordRow(
-              text: referralMadeText(_day(referral.referredOn), referral.details),
-              onAnotherChart: r.onAnotherChart,
-              enteredInError: referral.enteredInError != null,
-              // The Referrals sheet of its chart, which lists it and marks it entered in error (9.10).
-              onOpen: () => unawaited(showReferrals(context, services, patientId: referral.patientId)),
-            ),
-            ProblemMadeAt(:final problem) => _RecordRow(
-              text: problemMadeText(problem.title),
-              onAnotherChart: r.onAnotherChart,
-              enteredInError: problem.enteredInError != null,
-              onOpen: () => _open('/patients/${problem.patientId}/problems/${problem.id}'),
-            ),
-            AllergyMadeAt(:final allergy, :final patientId) => _RecordRow(
-              text: allergyMadeText(allergy.substance),
-              onAnotherChart: r.onAnotherChart,
-              enteredInError: allergy.enteredInErrorReason != null,
-              onOpen: () => _open('/patients/$patientId'),
-            ),
-            ProblemNoteMadeAt(:final note, :final problemId, :final problemTitle, :final patientId) => _RecordRow(
-              text: problemNoteMadeText(problemTitle, note.text),
-              onAnotherChart: r.onAnotherChart,
-              enteredInError: false,
-              onOpen: () => _open('/patients/$patientId/problems/$problemId'),
-            ),
-          },
-      ];
-    }
+    if (visit.source == VisitSource.phone) return _phoneRows();
     final group = visit.patientId == null ? const <String>{} : patientGroup(store, visit.patientId!);
-    return [for (final r in visit.records) ?_snapshotRow(store, r, visit.records, group)];
+    return [
+      for (final r in visit.records) ?_snapshotRow(store, r, visit, group),
+      // Made here at the visit and not on the server yet (a server's read under the phone's records).
+      ..._phoneRows(),
+    ];
   }
 
+  /// The records made at the visit that the phone reads itself (`VisitRecords.madeAt`): "On another
+  /// chart now" when the record's chart is not the visit's patient's, by the store's canonical patient,
+  /// so one kept under a merged ID of the same person is on the same chart.
+  List<Widget> _phoneRows() => [
+    for (final r in _madeAt)
+      switch (r) {
+        ReferralMadeAt(:final referral) => _RecordRow(
+          text: referralMadeText(_day(referral.referredOn), referral.details),
+          onAnotherChart: r.onAnotherChart,
+          enteredInError: referral.enteredInError != null,
+          // The Referrals sheet of its chart, which lists it and marks it entered in error (9.10).
+          onOpen: () => unawaited(showReferrals(context, services, patientId: referral.patientId)),
+        ),
+        ProblemMadeAt(:final problem) => _RecordRow(
+          text: problemMadeText(problem.title),
+          onAnotherChart: r.onAnotherChart,
+          enteredInError: problem.enteredInError != null,
+          onOpen: () => _open('/patients/${problem.patientId}/problems/${problem.id}'),
+        ),
+        AllergyMadeAt(:final allergy, :final patientId) => _RecordRow(
+          text: allergyMadeText(allergy.substance),
+          onAnotherChart: r.onAnotherChart,
+          enteredInError: allergy.enteredInErrorReason != null,
+          onOpen: () => _open('/patients/$patientId'),
+        ),
+        ProblemNoteMadeAt(:final note, :final problemId, :final problemTitle, :final patientId) => _RecordRow(
+          text: problemNoteMadeText(problemTitle, note.text),
+          onAnotherChart: r.onAnotherChart,
+          enteredInError: false,
+          onOpen: () => _open('/patients/$patientId/problems/$problemId'),
+        ),
+      },
+  ];
+
   /// A record the server's read gives (`VisitView.records`), as the phone's own are drawn; "On another
-  /// chart now" when its patient is not the visit's, as far as the phone knows the visit's merged group.
-  Widget? _snapshotRow(LocalStore store, wire.RecordSnapshot r, List<wire.RecordSnapshot> all, Set<String> group) {
+  /// chart now" as the read answers it (`recordsOnAnotherChart`, by the patients' canonical charts),
+  /// else, for a copy cached before the server answered it, as far as the phone knows the visit's
+  /// merged group.
+  Widget? _snapshotRow(LocalStore store, wire.RecordSnapshot r, VisitView visit, Set<String> group) {
     final a = r.attributes;
+    final all = visit.records;
     final patientId = patientOfMadeAt(r, all, store);
-    final moved = patientId != null && !group.contains(store.canonicalPatient(patientId));
+    final moved =
+        visit.recordsOnAnotherChart?.contains(r.id) ??
+        (patientId != null && !group.contains(store.canonicalPatient(patientId)));
     final error = r.fields['enteredInError']?.value != null;
     String? text(Object? v) => v is String ? v : null;
     final (String line, String? location) = switch (r.entity.wire) {

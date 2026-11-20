@@ -195,6 +195,14 @@ Future<void> openVisit(WidgetTester tester, String visit) async {
   expect(find.byType(EncounterScreen), findsOneWidget);
 }
 
+/// Activates the semantics node labelled [label] as TalkBack, Switch Access and Voice Access do (its
+/// own tap action, not a pointer), after scrolling it into view.
+Future<void> semanticTap(WidgetTester tester, Pattern label) async {
+  await reveal(tester, find.bySemanticsLabel(label));
+  tester.semantics.tap(find.semantics.byLabel(label));
+  await settle(tester);
+}
+
 /// Back from the route on top, as the system's back does (the router's own page for a location it
 /// lacks has no back button).
 Future<void> back(WidgetTester tester) async {
