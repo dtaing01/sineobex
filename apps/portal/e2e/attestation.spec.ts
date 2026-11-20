@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   expect,
   request as playwrightRequest,
@@ -42,16 +43,24 @@ const RED_FLAGS_EMS: Answers = {
 };
 const QUICK: Answers = { 'visit.parts': ['general'], 'general.concern': 'Demo: a cough for a week' };
 const SOCIAL: Answers = { 'needs.needs': ['food'], 'needs.housing': 'unsheltered' };
-const GENERAL: Answers = { 'reason.concern': 'Demo: a cough for a week', 'exam.systems': ['pulmonary'] };
-/** A wound entry, as the phone adds one: `e` and seven characters. */
-const WOUND_CARE: Answers = {
-  'wound.edone001.entryAt': new Date(Date.now() - 70 * 60_000).toISOString(),
-  'wound.edone001.location.region': 'lower_body',
-  'wound.edone001.location.surface': 'posterior',
-  'wound.edone001.type': 'pressure',
-  'wound.edone001.measurements.length': 3,
-  'wound.edone001.treatment.dressing': ['mepilex'],
+/**
+ * The Done when's story (lifecycle 11.1), which the API's and the phone's tests read too: each note's
+ * answers, those of step 2 and the red-flag answer of step 4, and the assessment.
+ */
+const DONE_WHEN = JSON.parse(
+  readFileSync(
+    new URL('../../../packages/contract/test-vectors/encounters-done-when.json', import.meta.url),
+    'utf8',
+  ),
+) as {
+  assessment: string;
+  notes: { ref: string; noteTypeKey: string; answers: Answers; answersAtStep4: Answers }[];
 };
+/** A note of the story as the resident finishes it: its type, and its answers of steps 2 and 4. */
+function doneWhenNote(ref: string): [string, Answers] {
+  const n = DONE_WHEN.notes.find((x) => x.ref === ref)!;
+  return [n.noteTypeKey, { ...n.answers, ...n.answersAtStep4 }];
+}
 /** A GU exam: a sensitive exam section, which only patients.view_sensitive_exams reads (6.4). */
 const GU_EXAM: Answers = {
   'reason.concern': 'Demo: burning when passing water',
@@ -329,15 +338,12 @@ test.beforeAll(async () => {
   exported = await residentVisit('complete', [['red_flags_disposition', RED_FLAGS_EMS]]);
   // The Done when's visit (lifecycle 11.1): General / primary care, Wound care and Social needs, with
   // the Red flags note the app adds by itself and an assessment, signed and completed at Complete.
+  // The answers are the shared story's; the Red flags note is charted first here, as the visit page
+  // and the queue are asserted.
   story = await residentVisit(
     'sign',
-    [
-      ['red_flags_disposition', RED_FLAGS],
-      ['general_primary_care', GENERAL],
-      ['wound_care', WOUND_CARE],
-      ['social_needs', SOCIAL],
-    ],
-    'Demo: cough settling; wound clean; housing worker to follow up.',
+    ['redFlags', 'general', 'wound', 'social'].map(doneWhenNote),
+    DONE_WHEN.assessment,
   );
   // A sensitive note type, a note with a GU exam, and a Social needs note (6.4), beside the Red flags
   // note every Medical visit has.
@@ -541,9 +547,7 @@ test('@responsive the Done when, its portal half: an attending opens the attesta
 
   await row.getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`/encounters/${story.id}$`));
-  await expect(page.getByRole('region', { name: 'About the visit' })).toContainText(
-    'Demo: cough settling; wound clean; housing worker to follow up.',
-  );
+  await expect(page.getByRole('region', { name: 'About the visit' })).toContainText(DONE_WHEN.assessment);
   const section = page.getByRole('region', { name: 'Attest' });
   await expect(section.getByRole('listitem')).toHaveText(medical);
   await expect(section).toContainText(
