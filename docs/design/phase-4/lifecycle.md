@@ -3927,7 +3927,8 @@ As built (the screens, unit L5, `apps/mobile/lib/features/patients/patient_scree
   come first among the quick actions, neither on a merged chart. Each is read as what it opens ("New
   encounter", "Add a referral"); + Encounter opens New encounter with the patient chosen
   (`/patients/<id>/encounters/new`), + Referral the Referrals sheet (9.10).
-- The **Timeline** section sits after Problems, before Allergies (the design does not place it). The
+- The **Timeline** section sits after Problems, before Allergies (the coordinator's decision; the
+  design did not place it). The
   filter's seven chips wrap onto more lines at large text or on a narrow phone rather than scrolling
   sideways in one row; with none on every row shows, with some on the rows of any of them. A visit's
   row reads its date and time, Medical or Non-Medical, "Waiting to send" and each note as "{type}:
@@ -3937,6 +3938,10 @@ As built (the screens, unit L5, `apps/mobile/lib/features/patients/patient_scree
   appears under a full page, keeps the pages it fetched while the profile is open, and offline says
   the domain layer's "Connect to see earlier visits." The section reads the chart's cached timeline
   again after every change or sync, and logs nothing of its own.
+- Since the review, the Timeline heading and each sentence under it (the one above, and the empty
+  list's) are nodes of their own, so a screen reader hears the heading alone and then the sentence;
+  before, the heading took the sentence in (review finding SAX-5). A visit opened from the timeline
+  after Save & Close offers **Add or remove notes** (9.7), the way back to the encounter screen.
 
 ### 9.2 Start
 
@@ -3978,6 +3983,49 @@ not available on this phone. The place typed works with it or without it. The pe
 while the phone looks; the kind step says "Still finding where you are. If you choose now, the visit
 starts without it." and a fix that comes after the visit started is dropped.
 
+Since the review of unit L5 (the coordinator's decisions on SAX-7 and SAX-8): the position is asked
+only on the tap, kept as the phone gives it (12.1 #15), within 30 seconds ("Your phone couldn’t find
+where you are. Try again, or type the place.", the button left to try again), and never shown as
+coordinates. `geolocator` stays, and on Android it asks the fused provider through Google Play
+services (`play-services-location` 21.2.0, under Google's SDK terms, outside `pubspec.lock` and its
+osv scan): on most Android phones the location service is Google's whatever a plugin is told, so the
+team's device policy decides whether Google's location accuracy is on (12.1 #32; plan section 6 and
+risk 9). The plugin's foreground location service is taken out of the merged Android manifest
+(`tools:node="remove"`): only its position stream starts it, and `getCurrentPosition`, the one call
+the app makes, never binds or starts it (`geolocator_android` 5.2.1's source, `StreamHandlerImpl`
+and `MethodCallHandlerImpl`), so the build holds no location service of any kind. The merged
+manifest and one fix on a device wait for the Android build (13, "Not built in this phase").
+
+As built (the screens, unit L5, `start_sheet.dart` and `new_encounter_screen.dart`, with its
+review):
+
+- **Start** sits in the tab bar after Patients and opens a sheet with one choice, **New encounter**
+  ("Chart a visit, with or without a registered patient."). A role without `encounters.chart` is
+  told "Your role doesn’t chart visits." and offered nothing; while the clock check fails the sheet
+  says the store's sentence before anything is pressed.
+- **New encounter** (`/encounters/new`, fixed title "New encounter"; from a profile's + Encounter,
+  `/patients/<id>/encounters/new`, with Who skipped) is one screen of steps, "Step 1 of 3" and so on:
+  Who, Where, then Medical or Non-Medical (9.3). A credential that can't chart Medical is not asked
+  the kind and starts a Non-Medical visit from Where (**Start the visit**). Nothing is written until
+  the last step is answered; then the encounter screen (9.4) takes this one's place. A freeze for a
+  hand-over takes what was read off the screen at its next build, whatever causes it (phase 3's V1).
+- **Who** is phase 3's search run and rows, built into the screen (`PatientFinder` in
+  `encounter_widgets.dart`, and the `choosePatient` sheet built on it, which Switch to Medical and
+  Needs attention's Choose a patient open): each search a run of its own, logged before it shows,
+  its count said once ("1 patient found on this phone"), **Show more** or "More people match. Add
+  letters to narrow it down." for a long run, and nothing once the store is frozen. It is not phase
+  3's `pickPatient` sheet, whose heading is Needs attention's and which has no Show more, no count of
+  the phone's run and no freeze check (the coordinator's decided reuse is not built: 13, "Not built
+  in this phase").
+- **New patient** opens phase 3's intake, told to come back (`IntakeStart(returnsPatient: true)`):
+  once it saves, or once the person opens the chart of someone found already there, it returns that
+  patient's ID, and the visit goes on at Where for them ("Register them, then the visit goes on for
+  them."). As first built the intake replaced New encounter with the new chart, and the visit was
+  started again from its + Encounter (decided work of the review). **No patient** says "For someone
+  who’d rather not be registered. The visit takes Non-Medical notes only."; Medical chosen with no
+  patient shows the domain layer's refusal and **Choose the patient**, back to Who.
+- **Where** is a private text field, "Where are you?" (optional), with Use my location under it.
+
 ### 9.3 Medical or Non-Medical
 
 Two large buttons, each with one line under it: "Medical: clinical notes, orders, signing" and
@@ -3993,6 +4041,20 @@ As built (unit L4): Start asks the kind (`asksKind`) of a role that charts with 
 charts Medical; anyone else's visit starts Non-Medical. **Switch to Medical** (`switchToMedical`)
 sets the kind once, gives a visit with no patient its patient in the same transaction, and refuses
 without one (3.10 as built).
+
+As built (the screens, unit L5, `kind_screen.dart`, with its review): each kind's button shows the
+kind's name over the rest of the design's line ("Clinical notes, orders, signing") and is read as
+the whole line. **Switch to Medical** sits in the encounter screen's header (9.4) on a Non-Medical
+visit, for a credential that charts Medical. On a visit with no patient it asks who first, in the
+`choosePatient` sheet ("A Medical visit needs a patient."); then it asks "Switch this visit to
+Medical?" ("The notes and their answers stay as they are. A visit can’t be switched back."), since
+there is no switch back, and says "Switched to Medical". Closing either question changes nothing.
+Every question these screens ask (Switch to Medical, Remove this note, Reopen, Entered in error,
+Leave what you added) is phase 3's `confirm()` or a dialog of the same build, which since the review
+is `AskDialog` (`apps/mobile/lib/features/patients/patient_widgets.dart`): its buttons end its body
+and scroll with it, so each is reached at 200% text on a 320 px phone, where the Switch button had
+been off the screen (review finding SAX-10). Phase 3's reason dialog (`askReason`) is built on it
+too, for every screen that asks a reason.
 
 ### 9.4 Note types
 
@@ -4037,6 +4099,41 @@ As built (the phone's domain layer, unit L4, `encounter_repository.dart`, with i
   section that needs an ordering credential, filled by a teammate): the server's copy would never
   be empty, and the fix would be refused `content_changed` again.
 - A teammate's note shows the name its record carries (9.7 as built, D108).
+
+As built (the screens, unit L5, `encounter_screen.dart` and `note_type_list.dart`, with its review):
+
+- **The encounter screen** opens at `/encounters/<id>` under the fixed title "Encounter" (the
+  coordinator's decision), when New encounter starts the visit and from the visit screen's **Add or
+  remove notes** (9.7), the way back once the person has left it (review finding SFL-4). It reads the
+  phone's copy only (the coordinator's decision): a visit the phone does not hold says "This visit
+  isn’t on this phone. Connect to open it.", and the visit screen is where a visit is read from the
+  cached chart or the server, or brought onto the phone. Its header is one heading: who, the kind
+  ("Medical visit") and "Where: {place}", with **Switch to Medical** under it (9.3).
+- **Each note** shows its type, its recap, a line per section, three lines then an ellipsis (forms
+  10.1 #48; a screen reader hears the whole recap), its state, "On this phone only" until the server
+  has it (never beside "Waiting to send", which says the same), and "By {name}" for someone else's ("a
+  teammate" while the phone knows no name). It opens its form, or its read view once finished. An
+  empty draft is not listed. **Remove this note** is in the menu of a draft the person acts as the
+  author of ("More for {type}"), asked first ("Remove this note?", "Every answer in it is cleared,
+  and the note counts for nothing."), and the domain layer's refusal shows in its words.
+- **Add another note type** sits below the notes and opens the Note types screen. A visit with no
+  note listed shows its note types on the screen itself, under "Choose a note type".
+- **Note types** (`/encounters/<id>/note-types`, fixed title "Note types") lists `noteTypesOffered`.
+  A type the visit has a draft of says "A draft of this is in the visit. Tapping it opens the
+  draft." and offers **Add another** (read "Add another {type}", `addNote(another: true)`), as 4.4's
+  "opens an existing draft before it offers to make another" reads. The screen works out which types
+  have a draft from the visit it shows, so the person's own draft on a version whose form the phone
+  can't lay out is listed as opening while `addNote` makes a new note (a review note, left as built:
+  asking the domain layer would be exact). A Non-Medical visit says "For clinical notes, switch this
+  visit to Medical." to a credential that may; with no list on the phone yet, "Connect once to load
+  your team’s note types."; to a role that doesn't chart, "Your role doesn’t chart visits." A note
+  opened from the Note types screen takes that screen's place, so back lands on the encounter screen.
+  Online, the first tap asks once whether the visit has a finished Red flags note the phone lacks
+  (`RedFlagsOnline`, 8.2 as built), so a teammate's makes the person's own needless.
+- **Reading.** Both read the visit through `openVisit` (the `VisitReading` mixin), each read logging
+  only what it adds. A screen covered by another (the note's form saves at every answer) does not
+  read at each change: it reads once it is on top again, so it logs only what it shows and scans the
+  store once, not per keystroke. The visit stays in the close sweep's `showing` set while it shows.
 
 ### 9.5 The note form
 
