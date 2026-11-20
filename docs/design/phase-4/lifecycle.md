@@ -1312,9 +1312,9 @@ mayAssign(i: {
 }): 'ok' | { refuse: 'author_active' | 'assignee_not_member' | 'assignee_cannot_chart' | 'credential_too_low' | 'cannot_see_all' }
 ```
 
-`noteHasHiddenSection` is true when the note holds an answer that counts in a section the
-assignee could not see without being its author. Whoever acts as a note's author sees all of it (6.4), so the check is about
-what the assignee's role allows today, before the assignment.
+`noteHasHiddenSection` is true when a note of its type could hold an answer the assignee could
+not see without being its author, asked of the definition and their keys, never of what the note holds (5.5 as built; review finding PRD-1). Whoever acts as a note's author sees all of it (6.4), so
+the check is about what the assignee's role allows today, before the assignment.
 
 **`noteIsEmpty`**, **`encounterStatus`**, **`envelopeLocked`** and **`isOverdue`**:
 
