@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
-import 'package:sineobex_field/encounters/encounter_repository.dart' show EncounterCompletion;
+import 'package:sineobex_field/encounters/encounter_repository.dart' show CompletePlan, EncounterCompletion;
 import 'package:sineobex_field/encounters/rules.dart' show NoteStatus;
 import 'package:sineobex_field/features/encounters/summary_screen.dart';
+import 'package:sineobex_field/features/forms/text_field.dart' show typingPause;
 import 'package:sineobex_field/sync/entities.dart'
     show entityAddendum, entityEncounter, entityNote, entityReferral, entitySignoff;
 
@@ -237,6 +238,64 @@ void main() {
     ];
     expect(addenda, ['Demo: socks given too']);
     expect(store.record(visit)!.fields['summary']?.value, 'Demo: fed and warm');
+  });
+
+  testWidgets('Save & Close with something added to a locked assessment asks before dropping it', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    final r = h.encounters.repository;
+    r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+    final type = await noteType(tester, h, 'social_needs');
+    final second = (await tester.runAsync(() => r.addNote(visit, type, another: true)))!.noteId;
+    await tester.runAsync(() => r.openNote(second));
+    r.saveAnswer(second, 'needs.needs', ['clothing']);
+    await openSummary(tester, visit);
+    final box = find.byKey(const ValueKey('phi.form.summary_addition'));
+    await reveal(tester, box);
+    await tester.enterText(box, 'Demo: socks given too');
+    await tester.pump(typingPause);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
+    expect(find.text('Leave what you added?'), findsOneWidget);
+    // Staying keeps it, typed, on the summary.
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+    expect(location(tester), '/encounters/$visit/summary');
+    expect(tester.widget<TextField>(box).controller!.text, 'Demo: socks given too');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Close without it'));
+    await settle(tester);
+    expect(location(tester), '/patients/$p1Id');
+  });
+
+  testWidgets('a teammate’s change a sync brings in is said above its recap, and Complete asks for one more look', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    await openSummary(tester, visit);
+    await expectShown(tester, find.text('Current needs: Food'));
+    expect(find.text('This note changed. Read it again.'), findsNothing);
+    // Demo Blair changes it on the server; a sync brings it in while the summary shows.
+    h.server.serverEdit(social, 'data.needs.needs', ['housing'], by: blair);
+    await syncAndRefresh(tester, h);
+    await settle(tester);
+    await expectShown(tester, find.text('Current needs: Housing'));
+    await expectShown(tester, find.text('This note changed. Read it again.'));
+    await tapOn(tester, button('Complete'));
+    expect(location(tester), '/encounters/$visit/summary');
+    expect(h.sync.store!.noteState(social)!.status, NoteStatus.draft);
+    // Read once more: Complete signs what is drawn now.
+    await tapOn(tester, button('Complete'));
+    expect(location(tester), '/patients/$p1Id');
+    expect(h.sync.store!.noteState(social)!.status, isNot(NoteStatus.draft));
   });
 
   testWidgets('suggested next steps add a note type the visit does not have', (tester) async {

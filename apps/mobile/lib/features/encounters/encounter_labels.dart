@@ -201,6 +201,16 @@ const addToAssessmentLabel = 'Add to the assessment';
 
 /// Under the locked assessment: what is added goes with Complete as an addendum to the visit (9.6).
 const addToAssessmentHelp = 'The assessment is locked once a note is finished. What you add here is kept with it.';
+
+/// Save & Close with something typed into Add to the assessment, which goes only with Complete
+/// (9.6 as built; review SFL-7).
+const leaveAdditionTitle = 'Leave what you added?';
+const leaveAdditionBody = 'What you added to the assessment goes only with Complete. If you close now, it isn’t kept.';
+const leaveAdditionYes = 'Close without it';
+
+/// Above a recap a sync redrew with someone else's change (9.6 item 1; review SFL-2), and Complete's
+/// own stop for a note changed since it was drawn.
+const noteChangedText = 'This note changed. Read it again.';
 const suggestionsHeading = 'Suggested next steps';
 
 /// A suggestion chip, read with what it does.

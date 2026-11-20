@@ -18,7 +18,8 @@ import '../../forms/layout.dart' show layOut;
 import '../../forms/suggestions.dart';
 import '../../sync/local_store.dart' show ChartingPaused;
 import '../forms/text_field.dart' show NoteTextField, ReadOnlyAnswer;
-import '../patients/patient_widgets.dart' show SectionHeading, WideButton;
+import '../../sync/canonical_json.dart' show canonicalJson;
+import '../patients/patient_widgets.dart' show SectionHeading, WideButton, confirm;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'note_type_list.dart' show noteLocation;
@@ -79,6 +80,12 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
   /// only: never in browser or key-value storage (10.2).
   String? _addition;
 
+  /// Each note's answers as the summary last drew it, and the notes whose answers someone else
+  /// changed since (a sync brought it in): each says so above its recap, and Complete asks for one
+  /// more look before it signs what was redrawn (9.6 item 1; review SFL-2).
+  final _drawnAnswers = <String, Map<String, Object?>>{};
+  final _changedElsewhere = <String>{};
+
   @override
   EncounterServices get services => widget.services;
   @override
@@ -127,9 +134,25 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
           if (mounted) setState(() => _refused = [encounterErrorText(e)]);
         }
       }
+      _noteChangesElsewhere();
       setState(() => _drawn = (plan: plan, saves: saves));
     } on ChartingPaused {
       // The visit's read says why.
+    }
+  }
+
+  /// Marks each note whose answers changed since the summary drew it, in an answer that waits for
+  /// nothing of the person's own: someone else's change, brought in by a sync.
+  void _noteChangesElsewhere() {
+    for (final n in visit?.notes ?? const <NoteView>[]) {
+      final before = _drawnAnswers[n.noteId];
+      if (before != null) {
+        final changed = {...before.keys, ...n.answers.keys}.where(
+          (path) => canonicalJson(before[path]) != canonicalJson(n.answers[path]) && !n.pendingPaths.contains(path),
+        );
+        if (changed.isNotEmpty) _changedElsewhere.add(n.noteId);
+      }
+      _drawnAnswers[n.noteId] = n.answers;
     }
   }
 
@@ -153,6 +176,11 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
   Future<void> _saveAndClose(VisitView visit) async {
     await _flushTyping();
     if (!mounted) return;
+    // What was added to a locked assessment goes only with Complete: asked before it is dropped.
+    if (visit.envelopeLocked && (_addition?.trim().isNotEmpty ?? false)) {
+      final leave = await confirm(context, title: leaveAdditionTitle, body: leaveAdditionBody, yes: leaveAdditionYes);
+      if (!leave || !mounted) return;
+    }
     // The app's messenger: the summary goes, and the chart under it says what was done.
     final said = ScaffoldMessenger.of(context);
     leaveVisit(context, services.store, visit.patientId);
@@ -175,11 +203,16 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
     });
     try {
       await _flushTyping();
+      // Someone else's change redrew a recap: the person reads it once more before signing it.
+      if (_changedElsewhere.isNotEmpty) {
+        _changedElsewhere.clear();
+        throw const CompleteRefused([CompleteBlock(CompleteStop.noteChanged, noteChangedText)]);
+      }
       var plan = drawn.plan;
       if (_saves != drawn.saves) {
         final fresh = await _repo.openComplete(encounterId, redFlagsFinished: await _redFlags.finished);
         if (fresh == null || !_sameRecaps(plan, fresh)) {
-          throw const CompleteRefused([CompleteBlock(CompleteStop.noteChanged, 'This note changed. Read it again.')]);
+          throw const CompleteRefused([CompleteBlock(CompleteStop.noteChanged, noteChangedText)]);
         }
         plan = fresh;
       }
@@ -259,6 +292,10 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
         const SectionHeading(notesToCompleteHeading),
         for (final n in plan.notes)
           if (!n.settlesOnly) ...[
+            if (_changedElsewhere.contains(n.noteId)) ...[
+              const NoticeMessage(noteChangedText),
+              const SizedBox(height: FieldSpace.s2),
+            ],
             _Recap(title: n.definition.title, lines: [for (final l in n.recap) l.text]),
             const SizedBox(height: FieldSpace.s3),
           ],
