@@ -313,7 +313,11 @@ extension NoteActions on EncounterRepository {
 
   /// Brings the visit [encounterId] and the note [noteId] onto the phone when it lacks them (4.8,
   /// 8.2): the store files an addendum or a correction under its patient through the note and its
-  /// visit, and takes no patient hint.
+  /// visit, and takes no patient hint. The visit screen's Correct brings the note so before the sheet
+  /// opens. Throws, bringing nothing more: "This note isn't on this phone. Connect to open it."
+  /// without signal or an engine; a [StateError] when the server has no such record.
+  Future<void> holdNote(String encounterId, String? noteId) => _hold(encounterId, noteId);
+
   Future<void> _hold(String encounterId, String? noteId) async {
     final missing = [
       if (store.record(encounterId) == null) (entityEncounter, encounterId),

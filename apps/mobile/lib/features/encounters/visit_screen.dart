@@ -23,7 +23,7 @@ import '../../forms/read_model.dart' show ReadItem;
 import '../../patients/chart_cache.dart' show chartMetaOf, patientGroup;
 import '../../patients/patient_providers.dart' show PatientServices;
 import '../../sync/local_store.dart'
-    show ChartingPaused, LocalStore, LocalValidationError, entityEncounter, entityNote, entityPatient;
+    show ChartingPaused, LocalStore, LocalValidationError, entityEncounter, entityPatient;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../forms/note_read_view.dart';
 import '../forms/text_field.dart' show ReadOnlyAnswer;
@@ -371,15 +371,13 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
 
   /// [note] as this phone holds it, with its answers, so the correction starts from them and from the
   /// versions the person reads (3.6 as built); one that has left the phone is brought from the server
-  /// first, with its visit, as the correction itself would bring it (4.8, 8.2). Its read logs only
-  /// what the screen has not shown.
+  /// first, with its visit, as the correction itself would bring it (`holdNote`, 4.8, 8.2). Its read
+  /// logs only what the screen has not shown.
   Future<NoteView?> _heldNote(NoteView note) async {
-    final store = services.store;
-    if (store.record(note.noteId) == null) {
-      final open = services.repository.openServerRecord;
-      if (open == null) return null;
-      if (store.record(encounterId) == null && !await open(entityEncounter, encounterId)) return null;
-      if (!await open(entityNote, note.noteId)) return null;
+    try {
+      await services.repository.holdNote(encounterId, note.noteId);
+    } on StateError {
+      return null;
     }
     final held = await services.repository.openNote(note.noteId, shownBefore: {...shownSoFar});
     if (held != null) shownSoFar.addAll(held.shownIds);

@@ -639,6 +639,35 @@ void main() {
     expect(h.sync.store!.record(serverNote), isNotNull);
   });
 
+  testWidgets('a note assigned to someone else names who acts as its author, never its writer (D108)', (tester) async {
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    h.server.offline = false;
+    routes.on(
+      'GET',
+      '/v1/encounters/$visit',
+      (_) => visitJson(
+        encounterId: visit,
+        patientId: p1Id,
+        status: 'draft',
+        notes: [
+          visitNoteJson(
+            noteId: note,
+            author: blairRef,
+            actingAuthor: userRef('a0000000-0000-4000-8000-0000000000c7', 'Demo Avery'),
+            key: 'general_primary_care',
+            title: 'General / primary care',
+            status: 'draft',
+            completedAt: null,
+          ),
+        ],
+      ),
+    );
+    await openVisitScreen(tester, visit);
+    await expectShown(tester, find.text('By Demo Avery'));
+    expect(find.textContaining('Demo Blair', skipOffstage: false), findsNothing);
+  });
+
   testWidgets('a visit the server doesn’t give is not asked for again at every change', (tester) async {
     final h = await signInToChart(tester);
     final routes = await withEncounterRoutes(tester, h);
