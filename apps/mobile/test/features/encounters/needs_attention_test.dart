@@ -331,31 +331,34 @@ void main() {
     return (referral: referral, other: other);
   }
 
-  testWidgets('a referral at a visit that moved to someone else: Choose a visit makes it at another of theirs', (
-    tester,
-  ) async {
-    final h = await signInToChart(tester);
-    final r = await referralAtMovedVisit(tester, h);
-    // Offline while the sheet is read, so the audit entries it writes wait in the outbox to be counted.
-    h.server.offline = true;
-    final viewed = auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed').length;
-    await openAttention(tester);
-    await expectShown(tester, find.text('The visit this names belongs to someone else.'));
-    await expectShown(tester, find.widgetWithText(OutlinedButton, 'Send without the visit'));
-    await expectScreenOk(tester);
-    await tapOn(tester, find.widgetWithText(FilledButton, 'Choose a visit'));
-    // The patient's other visit the phone holds, and only it, logged as it is shown.
-    final row = find.text('Non-Medical visit');
-    await expectShown(tester, row);
-    expect(find.text('Medical visit'), findsNothing);
-    await expectScreenOk(tester);
-    expect(auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed'), hasLength(viewed + 1));
-    h.server.offline = false;
-    await tapOn(tester, row);
-    await settle(tester);
-    expect(h.sync.store!.needsAttention(), isEmpty);
-    expect(h.server.records[r.referral]!.attributes['encounterId'], r.other);
-  });
+  for (final run in runs) {
+    testWidgets(
+      'a referral at a visit that moved to someone else: Choose a visit makes it at another of theirs (${runName(run)})',
+      (tester) async {
+        final h = await signInToChart(tester, run: run);
+        final r = await referralAtMovedVisit(tester, h);
+        // Offline while the sheet is read, so the audit entries it writes wait in the outbox to be counted.
+        h.server.offline = true;
+        final viewed = auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed').length;
+        await openAttention(tester);
+        await expectShown(tester, find.text('The visit this names belongs to someone else.'));
+        await expectShown(tester, find.widgetWithText(OutlinedButton, 'Send without the visit'));
+        await expectScreenOk(tester);
+        await tapOn(tester, find.widgetWithText(FilledButton, 'Choose a visit'));
+        // The patient's other visit the phone holds, and only it, logged as it is shown.
+        final row = find.text('Non-Medical visit');
+        await expectShown(tester, row);
+        expect(find.text('Medical visit'), findsNothing);
+        await expectScreenOk(tester);
+        expect(auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed'), hasLength(viewed + 1));
+        h.server.offline = false;
+        await tapOn(tester, row);
+        await settle(tester);
+        expect(h.sync.store!.needsAttention(), isEmpty);
+        expect(h.server.records[r.referral]!.attributes['encounterId'], r.other);
+      },
+    );
+  }
 
   testWidgets('a referral at a visit the team never had: Send without the visit makes it at no visit', (tester) async {
     final h = await signInToChart(tester);
