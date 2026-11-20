@@ -104,8 +104,8 @@ extension RedFlagsNote on EncounterRepository {
   }
 
   /// The visit's Red flags notes as this phone knows them: a finished one (by the server's status, or
-  /// a sign-off made here that was not refused, as Complete reads hard stop 5), and the person's own. A note is one by its definition's `auto`, or by [redFlags]' key while the phone
-  /// lacks its version.
+  /// a sign-off made here that was not refused, as Complete reads hard stop 5), and the person's own.
+  /// A note is one by its definition's `auto`, or by [redFlags]' key while the phone lacks its version.
   ({String? finished, String? own}) _redFlagsIn(_Held held, NoteTypeDef? redFlags) {
     String? finished;
     String? own;
