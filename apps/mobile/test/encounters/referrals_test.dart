@@ -142,6 +142,28 @@ void main() {
       expect(p.store.outbox(), hasLength(before));
     });
 
+    test('“Recorded by” names a teammate who recorded one by the name the server gives, held or listed', () async {
+      server.names[blair] = 'Demo Blair';
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      String referralBy() => server.seed(entityReferral, {
+        'patientId': patient,
+        'referredOn': '2026-10-15',
+        'details': 'Demo: housing navigator',
+        'encounterId': null,
+      }, by: blair);
+      final listed = referralBy();
+      final held = referralBy();
+      final chart = [await snapshotOf(alex, listed)];
+      expect(await p.engine.openServerRecord(entityReferral, held), isTrue);
+      // The phone knows no teammate's name of its own: the record's authorName is the one shown.
+      final r = referrals(p);
+      expect(
+        {for (final v in r.openReferrals(patient, chart: chart)) v.id: v.recordedBy.name},
+        {listed: 'Demo Blair', held: 'Demo Blair'},
+      );
+    });
+
     test('a referral the chart lists and the phone does not hold is listed, and can be taken back offline', () async {
       final p = phone(alex);
       final patient = server.seedPatient();

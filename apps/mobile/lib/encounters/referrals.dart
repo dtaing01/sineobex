@@ -45,7 +45,8 @@ class ReferralView {
   /// chart's merged group as far as the phone knows (8.4).
   final bool atVisit;
 
-  /// Who recorded it: a name only where the phone knows one.
+  /// Who recorded it: the name the server gives the record (`authorName`, their name now), else one
+  /// the phone knows; none, and the screen says a teammate, for neither.
   final PersonRef recordedBy;
 
   /// When, by the server's record, or by this phone's clock while it waits here.
@@ -259,7 +260,11 @@ class Referrals {
       details: a['details'] as String? ?? '',
       encounterId: encounterId,
       atVisit: _atVisit(encounterId, rec.patientId ?? a['patientId'] as String? ?? ''),
-      recordedBy: PersonRef(authorId, name: user.nameFor(authorId, nameOf: nameOf)),
+      // Who recorded it, by the name the server gives (`authorName`, their name now, D108).
+      recordedBy: PersonRef(
+        authorId,
+        name: user.nameFor(authorId, named: a['authorName'], nameOf: nameOf),
+      ),
       recordedAt: _time(a['recordedAt']) ?? create?.correctedTime ?? create?.deviceTime,
       enteredInError: _reason(mark?.value),
       markWaiting: mark != null && !mark.confirmed,
@@ -281,7 +286,10 @@ class Referrals {
       details: a['details'] as String? ?? '',
       encounterId: encounterId,
       atVisit: _atVisit(encounterId, a['patientId'] as String? ?? ''),
-      recordedBy: PersonRef(s.authorUserId, name: user.nameFor(s.authorUserId, nameOf: nameOf)),
+      recordedBy: PersonRef(
+        s.authorUserId,
+        name: user.nameFor(s.authorUserId, named: a['authorName'], nameOf: nameOf),
+      ),
       recordedAt: _time(a['recordedAt']),
       enteredInError: _reason(s.fields['enteredInError']?.value),
       markWaiting: false,
