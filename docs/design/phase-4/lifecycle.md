@@ -4411,7 +4411,8 @@ review):
   Medical visit: the format marks no follow-up, so the summary reads those IDs (a definition
   marker is not built, 13).
 - Item 6: a line naming a note opens it at the section it names; hard stop 2's line, which names
-  none, opens Needs attention (review finding SFL-6).
+  none, opens Needs attention (review finding SFL-6). A Complete the domain layer refuses shows its
+  stops' sentences just above the button, apart from the plan's own list.
 - Hard stop 5 with no note to open adds the person's Red flags note once, as the summary opens.
 - After Complete the visit's screens give way to the patient's chart (Home for a visit with no
   patient), as Save & Close does, and a sync is asked for. Since the review the chart says what the
@@ -4508,23 +4509,25 @@ As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_scree
 
 - **Where the visit is read from** (the coordinator's decision on review findings SRD-3 and SRD-4,
   amending D112's order). The visit opens at `/encounters/<id>/visit` (fixed title "Visit"), from the
-  timeline, Notes to finish or a queue. Online (the sync controller's last outcome found signal), it
-  asks the server's read first, as it opens, within a short limit (`serverReadLimit`, six seconds, a
-  constant), unless the visit was made here and its create still waits, which nobody else can have
-  added to (`othersMayHaveAdded`). What the phone holds of the visit and has not sent is drawn over
-  that read (`withWaiting`): a note the person has work of their own in (a draft they may change, a
-  note not yet synced, finished or changed here and waiting to send, sent for review, an answer
-  waiting or in conflict) is the phone's copy, with the server's hash, its co-sign and attest answers
-  and its reason; a note made here that the server lacks is added; each note's sign-offs, addenda and
-  corrections waiting here, and the visit's own addenda, go beside the server's; an envelope field
-  changed here is the phone's; the visit's state is worked out again over the notes shown. The rest
-  is the server's, so a teammate's notes, co-signatures and attestations made elsewhere show on a
-  visit the phone holds, and a queue row opens a visit that offers Co-sign. As first built a visit
-  the phone held was read from its copy alone: a queue row opened it without the teammate's waiting
-  note and with nothing to co-sign, and a co-signature made elsewhere never showed (SRD-3, SRD-4).
-  The partial copy an addendum or a correction brings onto the phone (the visit and one note) is
-  drawn over the server's read the same way online, and offline shows with the line below: this
-  decision took the place of the fix to `openVisit` first decided for that copy.
+  timeline, Notes to finish or a queue, under `/encounters/` so that leaving the visit's screens
+  (Save & Close, Complete) takes it with them. Online (the sync controller's last outcome found
+  signal), it asks the server's read first, as it opens, within a short limit (`serverReadLimit`,
+  six seconds, a constant), unless the visit was made here and its create still waits, which nobody
+  else can have added to (`othersMayHaveAdded`). What the phone holds of the visit and has not sent
+  is drawn over that read (`withWaiting`): a note the person has work of their own in (a draft they
+  may change, a note not yet synced, finished or changed here and waiting to send, sent for review,
+  an answer waiting or in conflict) is the phone's copy, with the server's hash, its co-sign and
+  attest answers and its reason; a note made here that the server lacks is added; each note's
+  sign-offs, addenda and corrections waiting here, and the visit's own addenda, go beside the
+  server's; an envelope field changed here is the phone's; the visit's state is worked out again
+  over the notes shown. The rest is the server's, so a teammate's notes, co-signatures and
+  attestations made elsewhere show on a visit the phone holds, and a queue row opens a visit that
+  offers Co-sign. As first built a visit the phone held was read from its copy alone: a queue row
+  opened it without the teammate's waiting note and with nothing to co-sign, and a co-signature made
+  elsewhere never showed (SRD-3, SRD-4). The partial copy an addendum or a correction brings onto
+  the phone (the visit and one note) is drawn over the server's read the same way online, and
+  offline shows with the line below: this decision took the place of the fix to `openVisit` first
+  decided for that copy.
 - **Offline**, or when that read fails or comes too late: the phone's copy, else a chart's cached
   recent visit (looked through only when the phone holds no copy), with "This is the copy on this
   phone. What others added since may be missing." (not for a visit made here whose create still
@@ -4551,13 +4554,17 @@ As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_scree
   was assigned to you, so someone else has to co-sign it." (an assignee is never told they wrote
   it), "You completed this note, so …", "You signed this note, so someone else has to attest it.", or
   "This note has a part you can’t open. Ask a Program Admin." (decided work of the review).
-- **The trail** below each note, in the order made: sign-offs (Completed, Signed, Co-signed by …,
-  with the credential in words), attestations (Attested by …), addenda and corrections, each
-  "Waiting to send" or "In Needs attention" while it is the phone's own. A correction's line names
-  its answers and its reason; the old values are struck through in the read view itself, which marks
-  only `corrected` ones. A sign-off whose effect is `none` reads "The note was already finished",
-  though `none` also covers `not_author`: the read model carries no reason for it (a review note,
-  left as built).
+- **The trail** below each note, in the order made, each line with the person, their credential in
+  words and the time, "Waiting to send" or "In Needs attention" while it is the phone's own. The
+  design gave only "Signed by …" and "Attested by …"; the builders' lines are "Completed by …",
+  "Co-signed by …", "Completed again by …. The note was already finished, so nothing changed.",
+  "Addendum by …", "Corrected by …: {answers}", "Corrected at the patient’s request by …", "The
+  patient asked to change {answers}. Declined by ….", "Correction by …: nothing changed.", "Correction
+  by …: not made, as only the note’s author can correct it." and "Changed in the draft by …", each
+  with its reason ("Reason: …") or an addendum's text under it. The old values are struck through in
+  the read view itself, which marks only `corrected` ones. A sign-off whose effect is `none` reads
+  "The note was already finished", though `none` also covers `not_author`: the read model carries no
+  reason for it (a review note, left as built).
 - **Records made at the visit.** "On another chart now" is the server read's own answer
   (`recordsOnAnotherChart`, by the patients' canonical charts); for a cached copy older than that
   answer, and for the records the phone reads itself, it is the visit's patient's merged group as the
@@ -5022,8 +5029,11 @@ you to finish." (the builders' words, kept by the coordinator's decision). The c
   this note**, asked first, beside **Choose a note type** (the visit's note types): the refused create
   is sent again as an empty draft, every answer cleared, on the version the team's list gives for its
   key now, which the server takes and counts for nothing (3.1), and choosing the type again opens the
-  note on that version. It needs a listed version that holds every answer the phone keeps of the
-  note; a type the team lists at no other version, or a refusal on the very version listed, is
+  note on that version; the set of an answer sent in the same push, refused with the create
+  (`record_missing`), settles with it. The person's answers are cleared, as decided: keeping them on
+  the listed version would spare typing them again, and is an open question (13). It needs a listed
+  version that holds every answer the phone keeps of the note; a type the team lists at no other
+  version, or a refusal on the very version listed, is
   refused "This note can’t be removed on this phone. Tell a Program Admin." (`definition_error`) and
   stays in Needs attention until the store can withdraw a create the server never took (13, "Not
   built in this phase"). As first built `unknown_note_type` had only Choose a note type, which left
@@ -5726,7 +5736,8 @@ fixes:
 - A refused note create whose type the team lists at no other version, or that was refused on the
   very version listed: Remove this note can't settle it, so it stays in Needs attention, and hard stop
   2 holds its visit's Complete, until the store can withdraw a create the server never took (9.13 as
-  built).
+  built). And whether the fix of such a create should keep the person's answers on the listed
+  version, rather than clear them, as the design table's "Choose the note type again" would.
 - The merged Android manifest without the plugin's location service, and one Use my location fix on
   a device: they wait for CI's Android build, which this machine cannot run, and a phone; that build
   also lists the Play services artifacts that `pubspec.lock`'s osv scan does not see (9.2; plan risk

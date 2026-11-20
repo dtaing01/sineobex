@@ -2099,10 +2099,10 @@ which the visit screen places among the note's recap, sign-offs and addenda (lif
   content they may not see, whatever it holds now. So the screen shows such a field read-only to
   them (the exam picker, for someone without `patients.view_sensitive_exams`), drawn as the form
   draws a field a set flag clears. The form took no list of such fields: since unit L5's review it
-  takes a read-only test, which the note screen gives it (below). L4 builds the rule as a Dart copy of the one the server uses,
-  `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's test server,
-  `apps/mobile/test/sync/fake_server.dart`, has one), with that copy's own tests against the
-  server's cases: never a second idea of which fields are hidden.
+  takes a read-only test, which the note screen gives it (below). L4 builds the rule as a Dart copy
+  of the one the server uses, `mayHoldHidden` in `services/api/src/sync/records.ts` (the phone's
+  test server, `apps/mobile/test/sync/fake_server.dart`, has one), with that copy's own tests
+  against the server's cases: never a second idea of which fields are hidden.
 
 As built on the domain layer's side (unit L4, `apps/mobile/lib/encounters/`, with its review;
 lifecycle 9.5 as built), what the screen has to give the form:
