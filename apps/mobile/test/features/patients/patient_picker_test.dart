@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/encounters/encounter_widgets.dart' show PatientFinder;
 import 'package:sineobex_field/features/patients/patient_picker.dart';
 import 'package:sineobex_field/features/patients/patient_row.dart';
+import 'package:sineobex_field/sync/local_store.dart';
 
 import 'patient_kit.dart';
 
 /// The patient picker (design 2.6, Needs attention's **Attach to another patient**): a modal sheet,
 /// so not under a screen's gate. A freeze for a hand-over takes a found patient off it whatever
-/// tells it, and what it read before is never shown again (V1).
+/// tells it, and what it read before is never shown again (V1). New encounter's Who keeps its own
+/// copy of the search (`PatientFinder`); the two find the same patients in the same order and log
+/// the search alike.
 void main() {
   const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
   final sheet = find.byType(BottomSheet);
@@ -68,6 +72,53 @@ void main() {
       expect(rows(tester, sheet), isEmpty);
       expect(find.textContaining('found', skipOffstage: false), findsNothing);
       expect(auditEvents(store), hasLength(before));
+    });
+  }
+
+  for (final offline in [true, false]) {
+    testWidgets('the picker and New encounter’s Who find the same patients in the same order, and log the search alike '
+        '(${offline ? 'offline' : 'online'})', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      for (final name in ['Demo Adele', 'Demo Dell', 'Demo Delia']) {
+        h.server.seedPatient(preferredName: name);
+      }
+      await syncAndRefresh(tester, h);
+      h.server.offline = offline;
+      final store = h.sync.store!;
+      // The search's audit: the phone's own entry offline, the server's online.
+      List<Object?> searchAudit() => offline
+          ? [
+              for (final e in store.outbox())
+                if (e.entity == entityAudit && (e.value! as Map<String, Object?>)['action'] == 'patient.searched')
+                  e.value,
+            ]
+          : [
+              for (final a in h.server.serverAudit)
+                if (a['action'] == 'patient.searched') a,
+            ];
+
+      var before = searchAudit().length;
+      await openPicker(tester, h);
+      await type(tester, 'attachSearch', 'del');
+      await tapOn(tester, searchButton);
+      final picked = rows(tester, sheet);
+      final pickerAudit = searchAudit().skip(before).toList();
+      Navigator.of(tester.element(sheet)).pop();
+      await settle(tester);
+
+      before = searchAudit().length;
+      await go(tester, '/encounters/new');
+      await type(tester, 'visitSearch', 'del');
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Search'));
+      final found = rows(tester, find.byType(PatientFinder));
+      final whoAudit = searchAudit().skip(before).toList();
+
+      // More than one, so that the order is something to agree on.
+      expect(picked.length, greaterThan(1));
+      expect(found, picked);
+      expect(pickerAudit, hasLength(1));
+      expect(whoAudit, pickerAudit);
     });
   }
 }
