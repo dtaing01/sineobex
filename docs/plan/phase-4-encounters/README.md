@@ -422,17 +422,18 @@ Every card is level R, except L5-labels, and includes its widget test file under
 | L6-handoff-link | S | `encounters/[encounterId]/page.tsx`. As built also `encounters/[encounterId]/HandoffExport.tsx`, the route handler `encounters/[encounterId]/ems-handoff/route.ts` and `apps/portal/src/lib/handoff.ts` with its test (lifecycle 9.11) | L6-visit-page, L2-handoff-pdf |
 | L6-e2e | R | `apps/portal/e2e/encounters.spec.ts`, `apps/portal/e2e/attestation.spec.ts`. As built also `apps/portal/playwright.config.ts` (the identity provider's test hook, for the export's trip through `/reauth`), and after the review phase 1's `apps/portal/e2e/a11y.spec.ts`, whose every-screen sweep takes a visit page, the two queues and Notes not complete (lifecycle 11.1, 11.2) | the L6 cards above |
 
-As built (Nov 19), an API job came first, in L2's and L1's files, so that no page holds a rule of
-its own (lifecycle 5 as built): `api/encounters/second-person.ts` (new: who may co-sign or attest,
-which the acts, the queues and the visit read ask), `read.ts`, `queues.ts`, `cosign.ts`,
-`attest.ts`, `assign.ts` (the assignees route), `incomplete.ts`, `counts.ts`, `timeline.ts`,
-`handoff.ts` and `rules.ts`, `api/routes/encounters.ts` and `api/patients/{charts,schemas}.ts`;
+As built (Nov 19), an API job came first, in other units' files, so that no page holds a rule of
+its own (lifecycle 5 as built): L2's `api/encounters/` (`second-person.ts`, new: who may co-sign or
+attest, which the acts, the queues and the visit read ask; `read.ts`, `queues.ts`, `cosign.ts`,
+`attest.ts`, `assign.ts` with the assignees route, `incomplete.ts`, `counts.ts`, `timeline.ts`,
+`handoff.ts` and `rules.ts`), `api/routes/encounters.ts` and `api/patients/{charts,schemas}.ts`;
 L1's `api/sync/entities/referral.ts` and `api/sync/schemas.ts` (a referral's `authorName`), with
-the test server and its parity case (`phone-test/sync/fake_server.dart`, `fake_parity_test.dart`);
-the contract, regenerated with each; phase 1's `tools/dev-idp.mjs` (a test hook that dates a
-sign-in back); and the tests, `api-test/encounters-{read-actions,assignees}.test.ts` and
-`api-test/dev-idp-hooks.test.ts`, new, besides L2's and L1's and `api-test/permissions.test.ts`.
-The review's fixes went into the same files (lifecycle 5.1, 5.3 to 5.5).
+L3's test server and its parity case (`phone-test/sync/fake_server.dart`,
+`fake_parity_test.dart`); the contract, regenerated with each; phase 1's `tools/dev-idp.mjs` (a
+test hook that dates a sign-in back); and the tests,
+`api-test/encounters-{read-actions,assignees}.test.ts` and `api-test/dev-idp-hooks.test.ts`, new,
+besides L2's and L1's and `api-test/permissions.test.ts`. The review's fixes went into the same
+files (lifecycle 5.1, 5.3 to 5.5).
 
 ### L7 The Done when (lifecycle 11.1)
 

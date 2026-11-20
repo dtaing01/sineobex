@@ -4675,8 +4675,9 @@ As built for the portal's pages (unit L6, with its review):
 - **Addresses.** Every page and route handler is named by IDs alone: `/encounters/{encounterId}`
   and its `sign`, `assign` and `ems-handoff` handlers, `/encounters/earlier`,
   `/patients/{patientId}`, `/team/cosign`, `/team/attestation` and `/team/incomplete-notes`. What
-  the visit page comes back with is a state from a closed list (`?signed=`, `?handoff=`, and
-  `?assign=` with `&note={noteId}#assign-{noteId}`), and a word it does not know shows nothing.
+  the visit page comes back with is a state from a closed list (`?signed=`, `?handoff=`, `?assign=`,
+  with `&note={noteId}#assign-{noteId}` when it comes back at a note's form), and a word it does
+  not know shows nothing.
   The IDs Show earlier visits needs, a press's plan, an assignment's person and reason, and the
   export's time zone travel in POST bodies; the zone, in a zone's shape, is the one query string
   the export sends the API (5.7). The end-to-end tests hold every address a page loads to these
@@ -5044,8 +5045,8 @@ their levels, files and order. This part's units, and what each owns:
 
 As built, L6 has no `apps/portal/src/app/actions/encounters.ts`: the visit page's reads and acts
 go through route handlers under `apps/portal/src/app/(app)/encounters/` (9.11 as built). It began
-with an API job in L2's and L1's files, so that no page holds a rule of its own (5 as built; the
-card index's L6 section names the files).
+with an API job in L2's and L1's files, and L3's test server, so that no page holds a rule of its
+own (5 as built; the card index's L6 section names the files).
 
 This part is 94 of the phase's 218 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
 core, the phone's store and the phone's test server are where the X cards are, and a small model
