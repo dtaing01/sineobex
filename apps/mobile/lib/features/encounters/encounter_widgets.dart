@@ -25,6 +25,9 @@ import '../patients/patient_row.dart' show PatientRow;
 import '../patients/patient_widgets.dart' show FrozenNotice, PhiField, WideButton, todayOf;
 import 'encounter_labels.dart';
 
+// The sheets' gate: phase 3's patient picker needs it too, so it lives with the patient screens.
+export '../patients/sheet_gate.dart' show SheetGate;
+
 /// Pieces the encounter screens share (lifecycle 9).
 
 /// The open team's encounter services, and what to show when there are none: locked, signed out or
@@ -58,30 +61,6 @@ class EncountersGate extends ConsumerWidget {
           );
         }
         return builder(context, services);
-      },
-    );
-  }
-}
-
-/// A sheet over a visit's screens (Correct, Add addendum): [child] while [services] read the
-/// database the controller holds open and the store is not frozen; nothing once it closed, and why
-/// once it froze. A modal sheet is not under the screen's gate, so it hears the controller and the
-/// services itself: what it read before access ended goes, an answer being changed with it (phase
-/// 3's V1, review SFL-3).
-class SheetGate extends ConsumerWidget {
-  const SheetGate({super.key, required this.services, required this.child});
-  final EncounterServices services;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sync = ref.watch(syncControllerProvider);
-    return ListenableBuilder(
-      listenable: Listenable.merge([sync, services]),
-      builder: (context, _) {
-        if (!encountersOpen(sync, services)) return const SizedBox.shrink();
-        if (services.store.frozenMessage case final frozen?) return SafeArea(child: FrozenNotice(frozen));
-        return child;
       },
     );
   }

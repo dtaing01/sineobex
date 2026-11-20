@@ -11,16 +11,21 @@ import '../../patients/patient_search.dart';
 import '../../sync/local_store.dart' show ChartingPaused;
 import 'patient_row.dart';
 import 'patient_widgets.dart';
+import 'sheet_gate.dart';
 
 /// Finds the patient a refused record should belong to (Needs attention, **Attach to another
-/// patient**, design 2.6). Each search is a run of its own, audited like the Patients tab's.
-/// Returns the chosen patient's ID, or null.
+/// patient**, design 2.6). Each search is a run of its own, audited like the Patients tab's. Once
+/// the store freezes, nothing it found stays on the sheet (V1). Returns the chosen patient's ID, or
+/// null.
 Future<String?> pickPatient(BuildContext context, PatientServices services, {required DateTime today}) =>
     showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _PickerSheet(services: services, today: today),
+      builder: (_) => SheetGate.patients(
+        services: services,
+        child: _PickerSheet(services: services, today: today),
+      ),
     );
 
 class _PickerSheet extends StatefulWidget {
@@ -55,7 +60,14 @@ class _PickerSheetState extends State<_PickerSheet> {
         });
       }
     } on ChartingPaused catch (e) {
-      if (mounted) setState(() => _problem = e.message);
+      // A search the store refused (a freeze before the gate hears of it): what the sheet found
+      // before goes too, as on New encounter's Who (V1).
+      if (mounted) {
+        setState(() {
+          _run = null;
+          _problem = e.message;
+        });
+      }
     } on ApiException {
       if (mounted) setState(() => _problem = 'Search isn’t available right now. Try again in a moment.');
     }
