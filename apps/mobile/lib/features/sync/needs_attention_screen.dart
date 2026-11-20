@@ -10,7 +10,9 @@ import '../../auth/session_controller.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/status_chip.dart';
-import '../../encounters/encounter_repository.dart' show NoteActions;
+import '../../encounters/encounter_models.dart' show VisitKind;
+import '../../encounters/encounter_repository.dart'
+    show NoteActions, RefusalFixes, VisitChoice, settledByPatient, settledByRemoving, settledByVisit;
 import '../../encounters/encounter_services.dart';
 import '../../forms/definition.dart' show ChoiceDef;
 import '../../forms/field_at.dart' show fieldAt;
@@ -18,12 +20,22 @@ import '../../forms/forms_api.dart' show NoteTypeVersion;
 import '../../patients/patient_providers.dart';
 import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
-import '../encounters/encounter_labels.dart' show encounterErrorText, noteNotOnPhone, openNoteAction;
-import '../encounters/encounter_widgets.dart' show encountersOpen, fetchNote;
+import '../encounters/encounter_labels.dart'
+    show
+        encounterErrorText,
+        noteNotOnPhone,
+        openNoteAction,
+        removeNoteAction,
+        removeNoteBody,
+        removeNoteTitle,
+        removeNoteYes,
+        startedHere,
+        visitKindText;
+import '../encounters/encounter_widgets.dart' show ChoiceTile, SheetGate, choosePatient, encountersOpen, fetchNote;
 import '../encounters/note_type_list.dart' show noteLocation;
-import '../patients/patient_labels.dart' show problemStatusText, shortDate;
+import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
-import '../patients/patient_widgets.dart' show errorText, todayOf;
+import '../patients/patient_widgets.dart' show confirm, errorText, todayOf;
 import 'sync_labels.dart';
 
 /// Rejected changes and conflicts, until someone resolves them (module 9 "Rejections", Oct 19
@@ -456,6 +468,12 @@ class _RejectionCard extends ConsumerWidget {
     // changing nothing, so the refusal settles (3.6, D109). Correct again only where someone else's
     // correction got there first; one that left the note missing something needs other answers.
     final correction = n != null && e.entity == entityCorrection && e.op == 'create';
+    // The refusals only the domain layer can settle (4.1, 8.4): a record made at a visit the team
+    // lacks or that is someone else's now; a clinical note in a visit with no patient; a note on a
+    // type the team doesn't have. Each fix writes, so it waits for the clock.
+    final byVisit = n != null && settledByVisit(e);
+    final byPatient = n != null && settledByPatient(e);
+    final byRemoving = n != null && settledByRemoving(e);
     final visitId = switch (e.entity) {
       entityEncounter => e.recordId,
       entityNote =>
@@ -481,6 +499,32 @@ class _RejectionCard extends ConsumerWidget {
       } on Exception catch (x) {
         messenger.showSnackBar(SnackBar(content: Text(errorText(x))));
       }
+    }
+
+    Future<void> chooseVisit() async {
+      final chosen = await _chooseVisit(context, n!, e.changeId);
+      if (chosen == null) return;
+      await settle(() async => n.repository.moveToVisit(e.changeId, chosen));
+    }
+
+    // The visit's patient, when this phone's copy names one already (its set still on its way):
+    // then the note's create is only sent again.
+    final visitPatient = byPatient && visitId != null
+        ? n.store.record(visitId)?.fields['patientId']?.value as String?
+        : null;
+    Future<void> choosePatientFor() async {
+      final patients = s;
+      final patientId =
+          visitPatient ??
+          (patients == null ? null : (await choosePatient(context, patients, line: choosePatientLine))?.patientId);
+      if (patientId == null) return;
+      await settle(() async => n!.repository.choosePatientFor(e.changeId, patientId));
+    }
+
+    Future<void> removeRefused() async {
+      final yes = await confirm(context, title: removeNoteTitle, body: removeNoteBody, yes: removeNoteYes);
+      if (!yes) return;
+      await settle(() => n!.repository.removeRefusedNote(e.changeId));
     }
 
     Future<void> attachTo() async {
@@ -514,12 +558,17 @@ class _RejectionCard extends ConsumerWidget {
                 : 'It stays on this phone until it is fixed. Open the record to fix it.',
             style: text.bodyMedium,
           ),
-          if (opensNote || correction || (n != null && visitId != null && problem == 'unknown_note_type')) ...[
+          if (opensNote || correction || byPatient || byRemoving) ...[
             const SizedBox(height: FieldSpace.s2),
             Wrap(
               spacing: FieldSpace.s2,
               runSpacing: FieldSpace.s2,
               children: [
+                if (byPatient && (visitPatient != null || s != null))
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(choosePatientFor()),
+                    child: Text(visitPatient == null ? choosePatientAction : sendAgainAction),
+                  ),
                 if (correction && problem == 'field_changed')
                   FilledButton(
                     onPressed: paused ? null : () => unawaited(settle(() => n.repository.correctAgain(e.changeId))),
@@ -530,10 +579,15 @@ class _RejectionCard extends ConsumerWidget {
                     onPressed: () => unawaited(_openNote(context, n, noteId)),
                     child: const Text(openNoteAction),
                   ),
-                if (visitId != null && problem == 'unknown_note_type')
+                if (visitId != null && byRemoving)
                   OutlinedButton(
                     onPressed: () => unawaited(context.push('/encounters/$visitId/note-types')),
                     child: const Text(chooseNoteTypeAction),
+                  ),
+                if (byRemoving)
+                  OutlinedButton(
+                    onPressed: paused ? null : () => unawaited(removeRefused()),
+                    child: const Text(removeNoteAction),
                   ),
                 if (correction)
                   OutlinedButton(
@@ -542,7 +596,7 @@ class _RejectionCard extends ConsumerWidget {
                   ),
               ],
             ),
-            if (correction && paused) ...[
+            if ((correction || byPatient || byRemoving) && paused) ...[
               const SizedBox(height: FieldSpace.s1),
               Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
             ],
@@ -562,6 +616,18 @@ class _RejectionCard extends ConsumerWidget {
                   ),
                 if (attach)
                   FilledButton(onPressed: () => unawaited(attachTo()), child: const Text('Attach to another patient')),
+                if (byVisit && n.repository.hasVisitsToChoose(e.changeId))
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(chooseVisit()),
+                    child: const Text(chooseVisitAction),
+                  ),
+                if (byVisit)
+                  OutlinedButton(
+                    onPressed: paused
+                        ? null
+                        : () => unawaited(settle(() async => n.repository.sendWithoutVisit(e.changeId))),
+                    child: const Text(sendWithoutVisitAction),
+                  ),
                 if (e.patientId != null && !attach)
                   OutlinedButton(
                     onPressed: () => unawaited(context.push('/patients/${e.patientId}')),
@@ -572,6 +638,10 @@ class _RejectionCard extends ConsumerWidget {
             if (card && paused) ...[
               const SizedBox(height: FieldSpace.s1),
               Text('Cards can be made once the phone’s clock is right.', style: text.bodyMedium),
+            ],
+            if (byVisit && paused) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
             ],
           ],
         ],
@@ -617,3 +687,55 @@ const correctAgainAction = 'Correct again';
 const openTheNoteToSee = 'Open the note to see it';
 const leaveItAction = 'Leave it';
 const chooseNoteTypeAction = 'Choose a note type';
+const choosePatientAction = 'Choose a patient';
+const choosePatientLine = 'A clinical note needs a patient. Choose who this visit is for.';
+const sendAgainAction = 'Send it again';
+const chooseVisitAction = 'Choose a visit';
+const chooseVisitHeading = 'Choose a visit';
+const chooseVisitLine = 'Visits of this patient on this phone.';
+const sendWithoutVisitAction = 'Send without the visit';
+
+/// **Choose a visit** (lifecycle 8.4): the visits of the refused record's patient the phone holds,
+/// read and logged as the sheet opens; the chosen one's ID, or null. In a sheet gate, so a freeze
+/// takes the list off the screen (phase 3's V1).
+Future<String?> _chooseVisit(BuildContext context, EncounterServices services, String changeId) async {
+  final List<VisitChoice> choices;
+  try {
+    choices = services.repository.visitsToChoose(changeId);
+  } on Exception catch (x) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(encounterErrorText(x))));
+    return null;
+  }
+  if (!context.mounted) return null;
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SheetGate(
+      services: services,
+      child: SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+          children: [
+            Semantics(header: true, child: Text(chooseVisitHeading, style: Theme.of(context).textTheme.titleLarge)),
+            const SizedBox(height: FieldSpace.s2),
+            Text(chooseVisitLine, style: Theme.of(context).textTheme.bodyLarge),
+            for (final v in choices) ...[
+              const SizedBox(height: FieldSpace.s2),
+              ChoiceTile(
+                icon: v.kind == VisitKind.medical ? LucideIcons.stethoscope : LucideIcons.heartHandshake,
+                label: visitKindText(v.kind),
+                line: switch (v.startedAt) {
+                  final at? => '${longDate(at)} at ${timeOfDay(context, at)}',
+                  null => startedHere,
+                },
+                onTap: () => Navigator.of(context).pop(v.encounterId),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}

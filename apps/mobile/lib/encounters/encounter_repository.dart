@@ -18,7 +18,17 @@ import '../patients/chart_cache.dart' show patientGroup;
 import '../patients/problems.dart' show Problems, problemListStatus;
 import '../sync/canonical_json.dart';
 import '../sync/entities.dart'
-    show credentials, entityAddendum, entityCorrection, entitySignoff, maxCorrectionChanges, parentsOf;
+    show
+        credentials,
+        entityAddendum,
+        entityAllergy,
+        entityCorrection,
+        entityProblem,
+        entityProblemNote,
+        entityReferral,
+        entitySignoff,
+        maxCorrectionChanges,
+        parentsOf;
 import '../sync/local_store.dart';
 import 'credentials.dart';
 import 'encounter_models.dart';
@@ -31,6 +41,7 @@ part 'complete.dart';
 part 'expand_quick.dart';
 part 'note_actions.dart';
 part 'red_flags.dart';
+part 'refusal_fixes.dart';
 part 'timeline.dart';
 
 /// Visits and notes on the phone (phase 4 design, lifecycle 3, 4.8, 9): what the screens read and

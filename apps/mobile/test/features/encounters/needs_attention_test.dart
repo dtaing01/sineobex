@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart'
     show CompletePlan, EncounterCompletion, NoteActions;
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
-import 'package:sineobex_field/sync/entities.dart' show entityCorrection, entityEncounter, entityNote, entitySignoff;
+import 'package:sineobex_field/sync/canonical_json.dart' show valueHash;
+import 'package:sineobex_field/sync/entities.dart'
+    show entityCorrection, entityEncounter, entityNote, entityReferral, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart'
     show ChangeState, noticeFinishedDifferently, noticeSignoffNotApplied;
 
@@ -265,5 +267,159 @@ void main() {
     );
     await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
     expectNoteOpened(tester, outreach);
+  });
+
+  // The refusals of 4.1 and 8.4 that had no way out (decided item B6): each card settles its
+  // refusal through the domain layer and the store's fixRejected, and the queue goes on.
+
+  testWidgets('a clinical note refused for a visit with no patient: Choose a patient names it, and the note goes', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final store = h.sync.store!;
+    final visit = startVisit(h, kind: VisitKind.nonMedical, noPatient: true);
+    // An older build let a clinical note into a visit with no patient; the server refuses it (3.10).
+    final general = store.createNote(
+      encounterId: visit,
+      noteTypeKey: 'general_primary_care',
+      noteTypeVersion: 1,
+      data: {'reason.concern': 'Demo: cough'},
+    );
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    expect([for (final e in store.needsAttention()) e.details?['problem']], ['medical_note_needs_patient']);
+    await openAttention(tester);
+    await expectShown(tester, find.text('A clinical note needs a patient. Choose who this visit is for.'));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Choose a patient'));
+    await type(tester, 'visitSearch', 'Del');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Search'));
+    await tapOn(tester, find.bySemanticsLabel(RegExp('^Del,')));
+    await settle(tester);
+    // The visit names Del, then the note's create goes again as the refusal's fix, and is taken.
+    expect(store.needsAttention(), isEmpty);
+    expect(store.heldCount(), 0);
+    expect(h.server.records[visit]!.fields['patientId']!.value, p1Id);
+    expect(h.server.records[general]!.fields['data.reason.concern']!.value, 'Demo: cough');
+    expect(find.text('A clinical note needs a patient. Choose who this visit is for.'), findsNothing);
+    handle.dispose();
+  });
+
+  /// A referral made offline at [visit], a visit of P1 the phone holds, which a teammate then moves
+  /// to another patient on the server: the referral's create is refused `encounter_other_patient`.
+  /// [other], another visit of P1, stays on the phone (on screen, so the close sweep leaves it).
+  Future<({String referral, String other})> referralAtMovedVisit(WidgetTester tester, AppHarness h) async {
+    final kit = h.server.seedPatient(preferredName: 'Demo Kit');
+    final visit = startVisit(h);
+    final other = startVisit(h, kind: VisitKind.nonMedical);
+    h.encounters.sweep.showing.addAll([visit, other]);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    final referral = h.encounters.referrals.add(
+      p1Id,
+      referredOn: fixtureNow,
+      details: 'Demo: dental clinic',
+      encounterId: visit,
+    );
+    h.server.serverEdit(visit, 'patientId', kit, by: blair);
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final refused = h.sync.store!.needsAttention().single;
+    expect([refused.entity, refused.details?['problem']], [entityReferral, 'encounter_other_patient']);
+    return (referral: referral, other: other);
+  }
+
+  testWidgets('a referral at a visit that moved to someone else: Choose a visit makes it at another of theirs', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final r = await referralAtMovedVisit(tester, h);
+    // Offline while the sheet is read, so the audit entries it writes wait in the outbox to be counted.
+    h.server.offline = true;
+    final viewed = auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed').length;
+    await openAttention(tester);
+    await expectShown(tester, find.text('The visit this names belongs to someone else.'));
+    await expectShown(tester, find.widgetWithText(OutlinedButton, 'Send without the visit'));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Choose a visit'));
+    // The patient's other visit the phone holds, and only it, logged as it is shown.
+    final row = find.text('Non-Medical visit');
+    await expectShown(tester, row);
+    expect(find.text('Medical visit'), findsNothing);
+    await expectScreenOk(tester);
+    expect(auditEvents(h.sync.store!).where((a) => a == 'encounter.viewed'), hasLength(viewed + 1));
+    h.server.offline = false;
+    await tapOn(tester, row);
+    await settle(tester);
+    expect(h.sync.store!.needsAttention(), isEmpty);
+    expect(h.server.records[r.referral]!.attributes['encounterId'], r.other);
+  });
+
+  testWidgets('a referral at a visit the team never had: Send without the visit makes it at no visit', (tester) async {
+    final h = await signInToChart(tester);
+    final referral = h.encounters.referrals.add(
+      p1Id,
+      referredOn: fixtureNow,
+      details: 'Demo: dental clinic',
+      encounterId: '7e570000-0000-4000-8000-0000000000f1',
+    );
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final store = h.sync.store!;
+    expect([for (final e in store.needsAttention()) e.details?['problem']], ['encounter_missing']);
+    await openAttention(tester);
+    await expectShown(tester, find.text('The visit this names isn’t on the team’s list.'));
+    // The phone holds no other visit of the patient: nothing to choose.
+    expect(find.widgetWithText(FilledButton, 'Choose a visit'), findsNothing);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Send without the visit'));
+    await settle(tester);
+    expect(store.needsAttention(), isEmpty);
+    expect(h.server.records[referral]!.attributes['encounterId'], isNull);
+  });
+
+  testWidgets('a note on a version the team moved on from: Remove this note settles it, and its type opens anew', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    // While the phone was offline the team moved Social needs to a version 2 (the same form):
+    // the server no longer takes version 1, and the phone's list names version 2 once it reads it.
+    final v1 = AppHarness.bundledPresets.cast<Map<String, Object?>>().firstWhere((v) => v['key'] == 'social_needs');
+    final definition = {...v1['definition']! as Map<String, Object?>, 'version': 2};
+    final v2 = {'key': 'social_needs', 'version': 2, 'hash': valueHash(definition), 'definition': definition};
+    for (final team in h.forms.teams.values) {
+      team.add(v2);
+    }
+    h.server.noteTypes
+      ..remove(('social_needs', 1))
+      ..[('social_needs', 2)] = definition;
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final store = h.sync.store!;
+    // The answer's set went in the same push, after the create, and found no note there.
+    expect([for (final e in store.needsAttention()) e.details?['problem']], ['unknown_note_type', 'record_missing']);
+    await openAttention(tester);
+    await expectShown(tester, find.text('This note type isn’t on your team’s list. Choose the note type again.'));
+    await expectShown(tester, find.widgetWithText(OutlinedButton, 'Choose a note type'));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Remove this note'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Remove'));
+    await settle(tester);
+    // Sent again as an empty draft the server takes, which counts for nothing (3.1): the refusal settles.
+    expect(store.needsAttention(), isEmpty);
+    expect(store.heldCount(), 0);
+    expect(h.server.records[social]!.attributes['noteTypeVersion'], 2);
+    expect(answersOf(h, social).values.where((v) => v != null), isEmpty);
+    // Choosing the type again opens a Social needs note on the version the team has now.
+    await go(tester, '/encounters/$visit/note-types');
+    await tapOn(tester, find.text('Social needs'));
+    await settle(tester);
+    expect(location(tester), startsWith('/notes/'));
+    expect(store.record(location(tester).substring('/notes/'.length))!.attributes['noteTypeVersion'], 2);
   });
 }
