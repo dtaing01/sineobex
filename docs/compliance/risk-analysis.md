@@ -13,9 +13,11 @@ The Security Rule requires an accurate and thorough assessment of risks to ePHI 
 | RDS PostgreSQL | Charts, audit log | KMS encryption, private subnets, backups | |
 | S3 (photos, documents) | Images, paperwork | KMS, block public access, TLS-only policy | |
 | S3 Object Lock | Audit chain anchors | Compliance mode retention | |
-| Field app | Charts a person opened (24 hours, with their timeline and last three visits), unsynced work, a person's draft notes until finished (at most 7 days untouched), the team's patient list for offline search (no legal names; field roles only; 7 days) | SQLCipher, keystore-held key, auto-lock, deletion at sign-out, remote wipe | |
+| Field app | Charts a person opened (24 hours, with their timeline and last three visits), unsynced work, a person's draft notes until finished (at most 7 days untouched), a visit's position when the person taps Use my location, the team's patient list for offline search (no legal names; field roles only; 7 days) | SQLCipher, keystore-held key, auto-lock, deletion at sign-out, remote wipe | |
 | Portal | Nothing at rest | no-store, in-memory only | |
 | Identity provider | Names, emails of staff (not patients) | MFA | |
+
+Of the phone's own permissions, the field app asks for location (phase 4), and only when the person taps Use my location on a new visit, while the app is in use, never in the background; the location plugin's own service is removed from the build (the merged Android manifest is still to be checked in CI's Android build). On iOS it also asks for Face ID, to unlock.
 
 ## 2. Threats and vulnerabilities
 
@@ -38,6 +40,7 @@ For each, rate likelihood (low/medium/high) and impact (low/medium/high), list e
 | 13 | After a merge, two ID cards open one chart until a new card is made | | | Both cards are listed on the chart; the next new card retires both; undo gives each record its own card back | | | |
 | 14 | A patient list up to 7 days old can miss a new allergy | | | Refreshed after each sync and every 15 minutes while unlocked; screens say when the list was updated | The phase 6 allergy hard stop must say which list it used | | |
 | 15 | ID card tokens are stored unencrypted at the application layer | | | A token is a pointer, not a credential: opening a chart needs a signed-in member with MFA; KMS encryption at rest; tokens never in logs, URLs sent to a server, or audit rows | Decide on column encryption in phase 12 | | |
+| 16 | A visit's position tells where a patient or a worker was, and on Android it comes from Google Play services | | | Asked only on the tap, while the app is in use, never in the background, the plugin's location service removed from the build; one fix, kept with the visit as the phone gives it, never shown as coordinates or written to a log; the place can be typed instead. On Android the fix comes from Google's fused provider wherever Play services is on the phone, and the team's device policy decides whether Google's location accuracy is on; the Play services libraries are outside the lockfile's vulnerability scan (plan risk 9) | Counsel and the team decide how exact (lifecycle 12.1 #15); the security questionnaire and counsel decide whether Google's location service may answer (#32) | | |
 
 ## 3. Decisions and sign-off
 
