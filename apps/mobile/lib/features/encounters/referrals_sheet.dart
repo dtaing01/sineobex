@@ -20,7 +20,7 @@ import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count, isoDay, longDate;
 import '../patients/patient_widgets.dart' show AskDialog, PhiField, WideButton, showDone, todayOf;
 import 'encounter_labels.dart';
-import 'encounter_widgets.dart' show encountersOpen;
+import 'encounter_widgets.dart' show SheetGate, encountersOpen;
 
 /// Most characters a referral's details hold (lifecycle 7, 9.10).
 const referralDetailsMax = 2000;
@@ -78,7 +78,8 @@ Future<String?> showAddReferral(
 /// The list is the referrals the phone holds for the patient's merged group and those the chart the
 /// phone keeps lists (5.2), each logged as it first shows (`openReferrals`), so a read that can't be
 /// logged shows nothing. From a visit's summary, [encounterId] is the visit a referral added here is
-/// made at (9.6, 9.10).
+/// made at (9.6, 9.10). The sheet sits in [SheetGate] too, so it hears a freeze whichever of the
+/// team's services tells of it first (phase 3's V1).
 Future<void> showReferrals(
   BuildContext context,
   EncounterServices services, {
@@ -88,7 +89,10 @@ Future<void> showReferrals(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (context) => _ReferralsSheet(services: services, patientId: patientId, encounterId: encounterId),
+  builder: (context) => SheetGate(
+    services: services,
+    child: _ReferralsSheet(services: services, patientId: patientId, encounterId: encounterId),
+  ),
 );
 
 class _ReferralsSheet extends ConsumerStatefulWidget {

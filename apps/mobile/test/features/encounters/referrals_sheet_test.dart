@@ -174,4 +174,20 @@ void main() {
     expect(find.text('Demo: handing over'), findsWidgets);
     h.sync.store!.unfreeze();
   });
+
+  testWidgets('a freeze a download tells of first takes the list off the sheet too (V1)', (tester) async {
+    final h = await signInToChart(tester);
+    await cacheChart(tester, h, p1Id, listed());
+    await openSheet(tester);
+    await revealInSheet(tester, inSheet(find.text('Demo: dental clinic')));
+    h.sync.store!.freeze('Demo: handing over');
+    // The patient services, not the visits' nor the controller: the sheet sits in the sheets' gate.
+    h.patients.changed();
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Demo: dental clinic', skipOffstage: false), findsNothing);
+    expect(find.text('Demo: eye clinic', skipOffstage: false), findsNothing);
+    expect(inSheet(find.text('Demo: handing over')), findsOneWidget);
+    h.sync.store!.unfreeze();
+  });
 }
