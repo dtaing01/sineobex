@@ -14,25 +14,30 @@ The project lead decided on Nov 21 that the frontier model builds this phase wit
 - **This method is the default for phases 6 to 10**, and is listed in that document for review too.
 
 ## 1. Scope and Done when
-**Done when** (`build-plan.md:91`, `IMPLEMENTATION_PLAN.md:161`): an admin adds a Labs item, a bundle and a secondary flag, and a phone sees all three after its next sync.
+**Done when** (`build-plan.md:91`, `IMPLEMENTATION_PLAN.md:239`): an admin adds a Labs item, a bundle and a secondary flag, and a phone sees all three after its next sync.
 
 | In | PRD |
 |---|---|
-| Admins own every team preset, on desktop | `main.md:185-192`, `:198-199` |
-| Note types: use as is, edit, remove, add; edits versioned; used ones archived; a platform update never overwrites a team copy | `main.md:387` |
-| Bundles: use, edit, remove, add; core and optional lines; Medical or Non-Medical tag | `main.md:128`, `:437-448` |
+| Admins own every team preset, on desktop. Every write asks for a recent sign-in and a reason, and is logged | `main.md:185-192`, `:198-199`, `:600`; reasons `:930`, `:951`, `:955` |
+| Note types: use as is, edit, remove, add (blank or from an existing type; offered for Medical, Non-Medical or both; with its sections); edits versioned; used ones archived; a platform update never overwrites a team copy | `main.md:387`, `:945`, `:952` |
+| Bundles: use, edit, remove, add; core and optional lines; Medical or Non-Medical tag; a clinical prompt asked before the bundle | `main.md:128`, `:437-448`, `:445` |
 | Item catalog; each item counted in its dispensing unit, set at creation; no conversions | `main.md:127`, `:469`, `:472` |
 | Orders categories: OTC, Rx, Labs and others the admin adds; a Labs item records a result | `main.md:104` |
-| Field-to-supply mappings, firing on the action field | `main.md:424-431`, `:470` |
-| Condition-to-supply mappings with a quantity per patient; the problem status-check window (default 90 days) | `main.md:476` |
-| Two-tier flags: primary risk levels placed at a rank, secondary condition flags, criteria text; a flag change records who and why; sensitive flags hidden from Billing and Data | `main.md:120-121`, `:316-320` |
-| Bag minimums: per bag, a template for new bags, on or off per team | `main.md:477` |
+| Item mappings: from a field's answer, firing on the action field, and from a note type ("wound care" → 1 bandage) | `main.md:188`, `:424-431`, `:470` |
+| Condition-to-supply mappings with a quantity per patient | `main.md:476` |
+| The problem status check: a window (default 90 days), and a New or Ongoing problem not checked within it marked for a status check | `main.md:476` |
+| Two-tier flags: primary risk levels placed at a rank, with criteria text, shown as a pill with the colour's name and a word ("Red · High"); secondary condition flags; sensitive flags hidden from Billing and Data | `main.md:120-121`, `:316-320`, `:945` |
+| Flags on a patient: set and cleared with a reason, offline on the phone and in the portal, at intake too; who and why recorded; searched and filtered by both tiers. This is the flag half of stage 11, moved here (12.2) | `main.md:120`, `:316`, `:320`, `:944`; `build-plan.md:102`, `:113` |
+| Bag minimums: per bag, a template for new bags, a bag copied from another, on or off per team | `main.md:477`, `:930` |
 
 | Out | Taken by |
 |---|---|
-| Stock counts, the Orders tab, suggest then confirm, deduction, the restock reminder itself, bag owners, the allergy check | Phase 6 (`build-plan.md:93-98`) |
-| The bag check and the route packing list (they read this phase's mappings); ranking the route builder and the continuity queue by flags | Phases 7 and 9 (`main.md:476`, `:478`) |
-| Alert rules, geofence radius, resource directory settings | Phase 6 (alerts); V2 (`main.md:190-191`) |
+| Stock counts, the Orders tab, suggest then confirm, deduction, the restock reminder itself, bag owners, the allergy check; asking a bundle's prompt before it is applied | Phase 6 (`build-plan.md:93-98`) |
+| The bag check and the route packing list (they read this phase's mappings and the status-check window); ranking the route builder and the continuity queue by flags | Phases 7 and 9 (`main.md:476`, `:478`; `build-plan.md:102`, `:113`) |
+| Billing codes for bundles, items and note types (`main.md:437`) | Phase 10, as a ninth preset kind, `billing_code_map` (phase 10 design 4.3). The kind check of 4.1, the routes of 7 and `validatePreset` take a kind added later; the phone's pull leaves that kind out |
+| Alert rules (`main.md:190`): the PRD defines none | Not built in the MVP (PLAN-OPEN, section 11). Geofence radius and resource directory settings are V2 (`main.md:190-191`) |
+| The other team settings the PRD names: the phone's idle time (`main.md:600`), rooted or jailbroken phones (`:603`), the unsynced banner's hours (`:574`), index thumbnails (`:273`) | The phase that builds each. Each joins the settings body then, optional with its default (4.4) |
+| A flag about substance use | Not shipped until counsel answers whether 42 CFR Part 2 covers it (`main.md:435`; section 11) |
 | A free-form form builder (conditions, layout, new kinds of field); barcode scanning; pack-to-unit conversion | V2 or deferred (`main.md:479`, `:127`). Phase 5 edits note types through a fixed list of operations (5.4) |
 
 ## 2. Ground truth
@@ -86,16 +91,17 @@ What the code has at `c307a0b`. Phase 4 is done (`docs/design/phase-4-encounters
 | lifecycle 4.1, 4.2, D59 | A refusal only for what the worker can fix; a permission failure on a push is held for a Program Admin; a rule that throws is a stored rejection; every change takes the team lock | The flag change follows all four (6.2) |
 
 ## 3. The design in one page
-1. **Every setting is a preset: a head row plus append-only versions with a JSON body.** One pair of tables holds eight kinds. One shape means one set of rules, one route file and one portal pattern, repeated. Note types keep phase 4's table and gain a head of the same shape.
-2. **Presets are written only online, in the portal, never through the change protocol.** Admins work on desktop (`main.md:185`), so no phone can hold a refused preset change. Every write takes the team write lock first.
-3. **A phone gets presets from one read route, by revision, after every sync, and keeps them in its team database.** Presets hold no patient data, so they stay until the team database is wiped. Everything works offline from that copy.
-4. **Nothing is deleted. Remove means archive.** Old notes, orders and reports can always resolve an id. This is stricter than the PRD, which archives only what was used (`main.md:387`).
-5. **What a count or a rank means never changes after creation**: an item's unit, a category's behaviour and a flag's tier are fixed. To change one, archive and add. An old order then never changes meaning.
+1. **Every setting is a preset: a head row plus append-only versions with a JSON body.** One pair of tables holds eight kinds (phase 10 adds a ninth). One shape means one set of rules, one route file and one portal pattern, repeated. Note types keep phase 4's table and gain a head of the same shape.
+2. **Presets are written only online, in the portal, never through the change protocol.** Admins work on desktop (`main.md:185`), so no phone can hold a refused preset change. Every write asks for a recent sign-in (`main.md:600`) and a reason, takes the team write lock first, and takes its revision from one function.
+3. **A phone gets presets from one read route, by revision, after every sync, and keeps them in its team database with the team's other server copies.** They go with those copies at every sign-out. Everything works offline from that copy.
+4. **Nothing is deleted. Remove means archive.** Old notes, orders and reports can always resolve an id. This is stricter than the PRD, which archives only what was used (`main.md:387`). Archiving a flag never takes it off a patient.
+5. **What a count, a rank or a reader means never changes after creation**: an item's unit, a category's behaviour, a flag's tier and whether it is sensitive. To change one, archive and add. A platform update never changes one either.
 6. **Records made against an older version are kept, never refused.** A record stores the preset id and the version it was made on. A phone offline cannot know about an edit or an archive.
 7. **A platform update touches only copies the team never edited.** An edited copy gets an offer the admin may take. An archived copy stays archived.
-8. **Note types are edited by a fixed list of operations, applied by one pure function on the server.** The server never accepts a definition built by a browser. No operation can change a mark that phase 4's rules read (who may read, what is required, what is Medical), and the result passes phase 4's validator before it is stored.
-9. **A patient's flags are append-only changes; the current flags are worked out from them.** Two phones offline cannot conflict, and "who set it and why" (`main.md:320`) is the record itself. No flag change is refused for something its sender cannot fix (D59).
-10. **No new permission keys.** Writing presets needs `team.manage_presets`. Flagging a patient needs `patients.edit`. Seeing a sensitive flag needs `patients.view_sensitive`.
+8. **Note types are edited by a fixed list of operations, applied by one pure function on the server.** The server never accepts a definition built by a browser. No operation writes a mark that phase 4's rules read (who may read, what is required, what is Medical). Every stored definition names its own row's key and version, and passes phase 4's validator and version rules before it is stored.
+9. **A patient's flags are changes made once; the current flags are worked out from them.** Two phones offline cannot conflict, and "who set it and why" (`main.md:320`) is the record itself. A clear takes off only the flag it names. A change's time is never later than when the server received it. A change made on the wrong patient is marked entered in error, once. No flag change is refused for something its sender cannot fix (D59).
+10. **One rule says who may see a sensitive flag**, in `read-rules.ts`, and every read and every act calls it: the sync read, the review queue, the value sent back, the chart, the team index, search and the flag route.
+11. **No new permission keys.** Writing presets needs `team.manage_presets`. Flagging a patient needs `patients.edit`. Seeing a sensitive flag needs what a sensitive problem needs.
 
 ## 4. Data model
 Migrations take the next free numbers after phase 4 (0022 and 0023 if nothing lands between). All are plain SQL, additive, one transaction. Both add policies, so both are level X.
