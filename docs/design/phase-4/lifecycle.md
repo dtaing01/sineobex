@@ -5458,8 +5458,19 @@ As built for the phone's screens (unit L5, with its review):
   platform's own, as in phase 3. Since the phase's review (finding PP-3, the coordinator's
   decision), its selection menu offers only cut, copy, paste and select all, on both platforms:
   the platforms' Share, Search Web and Look Up, Android's text-processing apps and iOS's Live Text
-  are left out (`PhiField`'s `contextMenuBuilder`, pinned by
-  `test/features/patients/phi_field_menu_test.dart`). Copy stays the platform's own.
+  are left out, pinned by `test/features/patients/phi_field_menu_test.dart`. Since the second pass
+  (the coordinator's decisions on review findings C-2 and C-4) every private box shares one
+  `PrivateBox` (`apps/mobile/lib/design/widgets/private_box.dart`): `PhiField`, every box built on
+  it, and the birth date box, which was a plain `TextField` with Share, Search Web and Look Up in
+  its menu. Its Copy and Cut, from the selection menu and from the keyboard alike (the copy and cut
+  text intent, which `EditableText` lets an ancestor override), go through `secureCopy`, as an ID
+  link does, never the general pasteboard: on iOS a local-only item, never Universal Clipboard, on
+  Android a clip marked sensitive whose label names no one, each cleared after 60 seconds. Cut takes
+  the text out only once `secureCopy` says it was copied. When it says no, nothing is copied and the
+  box says “Nothing was copied: this phone couldn’t copy it privately.”; there is no fallback to the
+  plain clipboard. On success the box says “Copied. It clears in 60 seconds.” under it, a live
+  region, a new one at every copy. Paste is the platform's own. The sign-in and PIN boxes take
+  neither a patient's details nor a note's text and keep the platform's menu.
 - **The place.** A position joins the visit only on the tap (12.1 #15), kept in the encrypted
   database with the visit and sent in its create; no screen shows it as coordinates, no log holds it
   (10.1's details hold no value) and nothing about it is written to preferences. Outside the app's

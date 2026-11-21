@@ -110,14 +110,14 @@ class MainActivity : FlutterFragmentActivity() {
         fun clipboardOf(context: Context) = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
         /**
-         * Puts an ID link on the clipboard marked sensitive, so the system's copy preview doesn't
-         * show it (EXTRA_IS_SENSITIVE from Android 13; Android 7 to 12 read the same key or ignore
-         * it), and clears it [expiresAfterMs] later, as iOS does, if it is still the one there: the
+         * Puts text (an ID link, or what a private box copied: review finding C-4) on the clipboard
+         * marked sensitive, so the system's copy preview doesn't show it (EXTRA_IS_SENSITIVE from
+         * Android 13; Android 7 to 12 read the same key or ignore it), and clears it [expiresAfterMs] later, as iOS does, if it is still the one there: the
          * person can paste it into another app meanwhile, and something they copied since is never
          * wiped (review P9). The label names no one.
          */
         fun secureCopy(context: Context, text: String, expiresAfterMs: Long) {
-            val clip = ClipData.newPlainText("Street Medicine ID link", text)
+            val clip = ClipData.newPlainText("Copied text", text)
             val id = UUID.randomUUID().toString()
             if (Build.VERSION.SDK_INT >= 24) {
                 val sensitiveKey = if (Build.VERSION.SDK_INT >= 33) {

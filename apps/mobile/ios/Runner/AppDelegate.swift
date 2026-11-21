@@ -56,8 +56,9 @@ enum DeviceChannel {
     }
   }
 
-  /// An ID link on the pasteboard that stays on this device (never Universal Clipboard) and expires
-  /// after `seconds` (design 10.4). The item is the link alone; it names no one.
+  /// Text on the pasteboard (an ID link, or what a private box copied: review finding C-4) that
+  /// stays on this device (never Universal Clipboard) and expires after `seconds` (design 10.4). The
+  /// item is the text alone; it names no one.
   private static func secureCopy(_ text: String, expiresAfter seconds: Double) {
     UIPasteboard.general.setItems(
       [["public.utf8-plain-text": text]],

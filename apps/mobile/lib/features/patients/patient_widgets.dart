@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app_providers.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
+import '../../design/widgets/private_box.dart';
 import '../../patients/patient_providers.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import '../../sync/sync_controller.dart' show SyncController;
@@ -69,59 +70,45 @@ class PhiField extends StatelessWidget {
   /// field has focus, read at every keystroke; a screen with its own counter turns it off.
   final bool showCounter;
 
+  /// A private box (`PrivateBox`): its selection menu holds only cut, copy, paste and select all,
+  /// and its Copy and Cut go through `secureCopy`, never the general pasteboard (lifecycle 10.2).
   @override
-  Widget build(BuildContext context) => TextField(
-    key: ValueKey('phi.$name'),
+  Widget build(BuildContext context) => PrivateBox(
     controller: controller,
-    focusNode: focusNode,
-    enabled: enabled,
-    autocorrect: false,
-    enableSuggestions: false,
-    enableIMEPersonalizedLearning: false,
-    textCapitalization: capitalization,
-    textInputAction: textInputAction,
-    keyboardType: keyboardType ?? (maxLines == 1 ? TextInputType.text : TextInputType.multiline),
-    maxLength: maxLength,
-    buildCounter: showCounter ? null : _noCounter,
-    maxLines: maxLines,
-    minLines: minLines,
     onChanged: onChanged,
-    onSubmitted: onSubmitted,
-    // The focused field scrolls above the keyboard (design 12.1).
-    scrollPadding: const EdgeInsets.all(FieldSpace.s7 * 2),
-    contextMenuBuilder: _privateMenu,
-    decoration: InputDecoration(
-      labelText: label,
-      hintText: hint,
-      helperText: helper,
-      helperMaxLines: 4,
-      errorText: error,
-      errorMaxLines: 4,
-      prefixIcon: prefixIcon,
-      suffixIcon: suffix,
+    builder: (context, menu) => TextField(
+      key: ValueKey('phi.$name'),
+      controller: controller,
+      focusNode: focusNode,
+      enabled: enabled,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      textCapitalization: capitalization,
+      textInputAction: textInputAction,
+      keyboardType: keyboardType ?? (maxLines == 1 ? TextInputType.text : TextInputType.multiline),
+      maxLength: maxLength,
+      buildCounter: showCounter ? null : _noCounter,
+      maxLines: maxLines,
+      minLines: minLines,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      // The focused field scrolls above the keyboard (design 12.1).
+      scrollPadding: const EdgeInsets.all(FieldSpace.s7 * 2),
+      contextMenuBuilder: menu,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        helperText: helper,
+        helperMaxLines: 4,
+        errorText: error,
+        errorMaxLines: 4,
+        prefixIcon: prefixIcon,
+        suffixIcon: suffix,
+      ),
     ),
   );
 }
-
-/// What a private box's selection menu offers: the platform's own cut, copy, paste and select all,
-/// and nothing that sends its text out of the app (lifecycle 10.2; the coordinator's decision on
-/// review finding PP-3). The platforms' Share, Search Web and Look Up, Android's text-processing
-/// apps (a translator) and iOS's Live Text are left out.
-Widget _privateMenu(BuildContext context, EditableTextState state) => AdaptiveTextSelectionToolbar.buttonItems(
-  anchors: state.contextMenuAnchors,
-  buttonItems: [
-    for (final item in state.contextMenuButtonItems)
-      if (privateMenuItems.contains(item.type)) item,
-  ],
-);
-
-/// The only items a private box's selection menu holds.
-const privateMenuItems = {
-  ContextMenuButtonType.cut,
-  ContextMenuButtonType.copy,
-  ContextMenuButtonType.paste,
-  ContextMenuButtonType.selectAll,
-};
 
 Widget? _noCounter(
   BuildContext context, {

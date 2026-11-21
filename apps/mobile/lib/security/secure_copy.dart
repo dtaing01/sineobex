@@ -2,15 +2,18 @@ import 'package:flutter/services.dart';
 
 import '../sync/device_channel.dart';
 
-/// How long a copied ID link stays on the clipboard (design 10.4: "It clears in 60 seconds").
+/// How long copied text stays on the clipboard (design 10.4: "It clears in 60 seconds").
 // PLAN-OPEN: Android's clipboard rule (design 14.3, #17). The PRD (module 13) clears a copied link
 // "as the user leaves the app" on Android. That makes it impossible to paste the link into the app
 // that prints the card, which is what Copy is for, so both platforms clear after this time
 // instead. The project lead confirms, or the PRD's rule comes back.
 const secureCopyLifetime = Duration(seconds: 60);
 
-/// Copies [text] (an ID link, never a name or health detail) through the app's native channel, as
-/// short-lived and private as each platform allows (design 10.4, risk 14.2-14):
+/// Copies [text] through the app's native channel, as short-lived and private as each platform
+/// allows (design 10.4, risk 14.2-14): an ID link, and since the phase 4 review whatever is copied
+/// or cut in a private box, a patient's details or a note's text among them (`PrivateBox`; the
+/// coordinator's decision on review finding C-4), so nothing typed into a chart reaches the general
+/// pasteboard:
 ///
 /// - iOS: a local-only pasteboard item (never Universal Clipboard to the person's other devices)
 ///   that expires after [lifetime].
@@ -22,7 +25,7 @@ const secureCopyLifetime = Duration(seconds: 60);
 ///   the clearing still applies.
 ///
 /// Returns false when nothing was copied: the platform refused, or there is no native side (tests
-/// and desktop builds). Never falls back to the plain clipboard, which would keep the link
+/// and desktop builds). Never falls back to the plain clipboard, which would keep the text
 /// indefinitely and share it across devices.
 Future<bool> secureCopy(String text, {Duration lifetime = secureCopyLifetime}) async {
   try {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../patients/dob.dart';
 import '../theme.dart';
 import '../tokens.dart';
+import 'private_box.dart';
 
 /// What the birth field holds: the typed text, the mode, what the phone understood, and whether the
 /// worker confirmed a guess.
@@ -171,24 +172,30 @@ class _BirthFieldState extends State<BirthField> {
           ),
           const SizedBox(height: FieldSpace.s2),
         ],
-        TextField(
-          key: widget.fieldKey,
+        // A patient's birth date: a private box, as PhiField is (review finding C-2).
+        PrivateBox(
           controller: _controller,
-          focusNode: _focus,
-          enabled: widget.enabled,
-          keyboardType: age ? TextInputType.number : TextInputType.datetime,
-          autocorrect: false,
-          enableSuggestions: false,
-          enableIMEPersonalizedLearning: false,
-          textInputAction: TextInputAction.next,
           onChanged: _typed,
-          decoration: InputDecoration(
-            labelText: age ? 'Age in years' : (widget.allowAge ? 'Date of birth or year' : 'Born (year or date)'),
-            hintText: age ? 'Like 46' : 'Month first: 3/7/1946, or 1946',
-            helperText: widget.helper,
-            helperMaxLines: 3,
-            errorText: _shown ? _entry.error : null,
-            errorMaxLines: 3,
+          builder: (context, menu) => TextField(
+            key: widget.fieldKey,
+            controller: _controller,
+            focusNode: _focus,
+            enabled: widget.enabled,
+            keyboardType: age ? TextInputType.number : TextInputType.datetime,
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            textInputAction: TextInputAction.next,
+            onChanged: _typed,
+            contextMenuBuilder: menu,
+            decoration: InputDecoration(
+              labelText: age ? 'Age in years' : (widget.allowAge ? 'Date of birth or year' : 'Born (year or date)'),
+              hintText: age ? 'Like 46' : 'Month first: 3/7/1946, or 1946',
+              helperText: widget.helper,
+              helperMaxLines: 3,
+              errorText: _shown ? _entry.error : null,
+              errorMaxLines: 3,
+            ),
           ),
         ),
         if (_shown && parsed is ParsedBirth) ...[
