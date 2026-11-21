@@ -152,7 +152,7 @@ L0-vectors itself is removed; the index lines that named it now name the split c
 | Card | Condition (added to the tests card that writes its test) |
 |---|---|
 | L2-cosign, L2-attest, L2-assign (index 270-273); P4-publish (phase 5, 448) | For every route: a refusal for each missing key or credential in `lifecycle.md` §6.1, each refusal logged; and an audit write that fails rolls the action back |
-| L4-close-sweep (index 307) | L4-tests: a draft with any change waiting in the outbox is not closed; a finished note without its receipt is not closed. Each test checked to bite (`lifecycle.md` 8.2, "When a finished note leaves the phone") |
+| L4-close-sweep (index 307) | L4-tests: a draft with any change waiting in the outbox is not closed; a finished note without its receipt is not closed. Each test checked to bite (`lifecycle.md` 8.2, "When a finished note leaves the phone" and "A draft nobody has touched for 7 days") |
 | L5-needs-attention (index 337) | The card calls only L3's named store functions; Audit: no button discards a change (CLAUDE.md, "A rejected change is never dropped") |
 | B0-suppress (phase 10, 386) | B0-tests: vectors at n−1, n and n+1 of every threshold, and complementary suppression |
 
