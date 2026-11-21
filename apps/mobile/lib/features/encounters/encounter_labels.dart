@@ -520,6 +520,10 @@ const showEarlierVisits = 'Show earlier visits';
 
 /// What Show earlier visits brought, said once (review finding PX-1), as the portal says it (9.11).
 const noEarlierVisits = 'No earlier visits.';
+
+/// What a screen reader finds while a visit or a list is on its way (review finding PX-7).
+const loadingVisit = 'Loading the visit';
+const loadingList = 'Loading the list';
 String earlierVisitsShown(int n) => n == 1 ? '1 earlier visit shown.' : '$n earlier visits shown.';
 
 /// A visit made here whose time the phone hasn't learned yet.

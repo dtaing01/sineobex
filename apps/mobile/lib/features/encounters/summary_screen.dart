@@ -271,7 +271,9 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
       body: SafeArea(
         child:
             shown ??
-            (drawn == null ? const Center(child: CircularProgressIndicator()) : _body(context, visit!, drawn.plan)),
+            (drawn == null
+                ? const Center(child: CircularProgressIndicator(semanticsLabel: loadingVisit))
+                : _body(context, visit!, drawn.plan)),
       ),
     );
   }

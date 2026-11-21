@@ -195,7 +195,8 @@ mixin VisitReading<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     if (services.store.frozenMessage case final frozen?) return FrozenNotice(frozen);
     if (readRefused case final message?) return FrozenNotice(message);
     if (visit != null) return null;
-    if (opening) return const Center(child: CircularProgressIndicator());
+    // Said while it waits: the server's read can take up to six seconds (D119; review finding PX-7).
+    if (opening) return const Center(child: CircularProgressIndicator(semanticsLabel: loadingVisit));
     return Padding(padding: const EdgeInsets.all(FieldSpace.s4), child: NoticeMessage(missingText ?? visitNotOnPhone));
   }
 }

@@ -369,6 +369,25 @@ void main() {
     );
   }
 
+  testWidgets('while the server’s read is on its way, a screen reader finds that the visit is loading (review '
+      'finding PX-7)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    final slow = Completer<Object?>();
+    routes.on('GET', '/v1/encounters/$visit', (_) => slow.future);
+    h.server.offline = false;
+    final context = tester.element(find.byType(Navigator).first);
+    unawaited(GoRouter.of(context).push(visitLocation(visit)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.bySemanticsLabel('Loading the visit'), findsOneWidget);
+    slow.complete(signedVisit());
+    await settle(tester);
+    expect(find.bySemanticsLabel('Loading the visit'), findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('a note changed since the visit was read: says so, and reads it again', (tester) async {
     final h = await signInToChart(tester);
     final routes = await withEncounterRoutes(tester, h);

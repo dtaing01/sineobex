@@ -134,7 +134,7 @@ class _QueueState extends ConsumerState<_Queue> {
     } else if (_s.store.frozenMessage ?? _refused case final frozen?) {
       body = FrozenNotice(frozen);
     } else if (rows == null && _problem == null) {
-      body = const Center(child: CircularProgressIndicator());
+      body = const Center(child: CircularProgressIndicator(semanticsLabel: loadingList));
     } else {
       body = RefreshIndicator(
         onRefresh: _ask,
