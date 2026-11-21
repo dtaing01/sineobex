@@ -404,28 +404,42 @@ The fake mirrors `GET /v1/presets` (`since`, the revision of 6.1, `reset` and `e
 | A flag change | `flag_id` | Accepted (6.2). An archived flag stays on the patient and in the history (5.1) |
 
 ## 7. API routes that only work online
-All are in `services/api/src/routes/presets.ts` and `note-types-admin.ts`, opened with `teamScope` as `routes/roles.ts:141` does. "Admin" below means `team.manage_presets`. Every route that writes calls `lockTeamWrites` as its first statement, as every online writer does (lifecycle 5), then bumps the revision and audits in the same transaction. Every refusal here is shown to the person at a desk who can fix it; none reaches a phone's queue. A refusal for a missing key writes `access.denied` (`auth/context.ts:230-241`).
+The phone's pull is in `services/api/src/routes/presets.ts`, the admin preset routes in `routes/presets-admin.ts`, the note type routes in `routes/note-types-admin.ts`, and the patient's flag routes in `routes/patients.ts`; each opens `teamScope` as `routes/roles.ts:141` does. "Admin" below means `team.manage_presets`.
+
+- **Every admin route that writes asks for a recent sign-in** (`main.md:600`: "sign-in again for exports and admin actions"): `teamScope(c, deps, {permissions: ['team.manage_presets'], recentAuth: true})`, as every admin write built so far does. A stale sign-in answers 403 `reauth_required`, which is not logged (D98); the portal sends the admin to `/reauth` and back. The reads do not ask.
+- **Every write takes a reason**: `reason`, trimmed, 3 to 300 characters, required in the body, stored in `team_preset_events` (4.2), shown in the version history, never in audit details or logs.
+- **Every write takes the team lock first** (`lockTeamWrites` as its first statement, D32), then its revision from `takeRevision` (4.2), and audits in the same transaction.
+- Every refusal here is shown to the person at a desk who can fix it; none reaches a phone's queue. A refusal for a missing key writes `access.denied` (`auth/context.ts:228-257`).
+- Ids in paths are preset ids and note type keys, never a name. `{kind}` and `{key}` are path parameters that are not ids, so the contract's test (`packages/contract/test/spec.test.ts:69-73`) lets each through on these paths only: `{kind}` as the enum of the kinds, `{key}` with 0017's key pattern, which a team's `t_` key fits.
 
 | Route | Key | Request and answer | Refusals | Audit event |
 |---|---|---|---|---|
-| `GET /v1/presets?since=` | active membership | `{revision, presets[]}` or `{reset: true, …}` (6.1). Names no patient. Runs the installer first (5.2) | not a member: 403 | none (11, row 9); `preset.platform_installed` when the installer wrote |
-| `GET /v1/admin/presets/{kind}` | Admin | `[{id, name, state, version, customized, updateOnOffer, referencedBy, body}]` | 403 | none |
-| `POST /v1/admin/presets/{kind}` | Admin | `{body}` gives 201 `{id, version: 1, revision}` | 422 `invalid` with paths; 409 `name_taken`, `reference_archived` | `preset.created` |
-| `PUT /v1/admin/presets/{kind}/{id}` | Admin | `{baseVersion, body}` gives `{version, revision}` | 409 `stale` with `currentVersion`, `archived`; 422 `invalid`, `fixed_field`, `no_change` | `preset.updated` |
-| `POST /v1/admin/presets/{kind}/{id}/archive` | Admin | `{baseVersion}` gives `{revision}` | 409 `referenced` with counts by kind, `stale`, `not_removable` | `preset.archived` |
-| `POST /v1/admin/presets/{kind}/{id}/restore` | Admin | `{}` gives `{revision}` | 409 `name_taken`, `reference_archived` | `preset.restored` |
-| `POST /v1/admin/presets/{kind}/{id}/take-update` | Admin | `{baseVersion}` gives `{version, revision}` | 409 `stale`, `no_update` | `preset.platform_update_taken` |
-| `GET /v1/admin/presets/{kind}/{id}/versions` | Admin | `[{version, source, createdBy, createdAt, body}]` | 404 | none |
-| `POST /v1/admin/preset-order/flag` | Admin | `{tier, ids}` gives `{changed}` | 422 `ids_mismatch` unless `ids` is exactly the tier's active flags | `preset.reordered` |
+| `GET /v1/presets?since=&epoch=` | active membership | `{revision, epoch, presets[]}` or `{reset: true, …}` (6.1), never a `billing_code_map`. Names no patient. Runs the installer first (5.2) | not a member: 403 | none (section 11, row 9); `preset.platform_installed` when the installer wrote |
+| `GET /v1/admin/presets/{kind}` | Admin | `[{id, name, state, version, customized, updateOnOffer, updateChangesFixed, referencedBy, body}]` | 403 | none |
+| `POST /v1/admin/presets/{kind}` | Admin, recent sign-in | `{body, reason}` gives 201 `{id, version: 1, revision}` | 422 `invalid` with paths (`sensitive_path` among them); 409 `name_taken`, `reference_archived` | `preset.created` |
+| `PUT /v1/admin/presets/{kind}/{id}` | Admin, recent sign-in | `{baseVersion, body, reason}` gives `{version, revision}` | 409 `stale` with `currentVersion`, `archived`; 422 `invalid`, `fixed_field`, `no_change` | `preset.updated` |
+| `POST /v1/admin/presets/{kind}/{id}/archive` | Admin, recent sign-in | `{baseVersion, reason}` gives `{revision}` | 409 `referenced` with counts by kind, `stale`, `not_removable` | `preset.archived` |
+| `POST /v1/admin/presets/{kind}/{id}/restore` | Admin, recent sign-in | `{reason}` gives `{revision}` | 409 `name_taken`, `reference_archived` | `preset.restored` |
+| `POST /v1/admin/presets/{kind}/{id}/take-update` | Admin, recent sign-in | `{baseVersion, reason, asNew}` gives `{id, version, revision}`; with `asNew` the platform body becomes a new preset and the old one is archived (5.1) | 409 `stale`, `no_update`, `fixed_field` (without `asNew`), `referenced` (with it) | `preset.platform_update_taken` |
+| `GET /v1/admin/presets/{kind}/{id}/history` | Admin | `[{act, version, source, by, at, reason, body}]`: every event of 4.2, with the body of each version | 404 | none |
+| `POST /v1/admin/preset-order/flag` | Admin, recent sign-in | `{tier, ids, reason}` gives `{changed}` | 422 `ids_mismatch` unless `ids` is exactly the tier's active flags | `preset.reordered` |
 | `GET /v1/admin/note-types` | Admin | heads with the current resolved definition and, for each section, field and option, whether it is protected (5.4). The portal reads definitions only here (forms 3.5) | 403 | none |
-| `POST /v1/admin/note-types` | Admin | `{title, copyOf}` or `{title, medical, group}` gives 201 `{key, version: 1}` | 409 `name_taken`; 404 `copyOf`; 422 `not_copyable` | `note_type.created` |
-| `PUT /v1/admin/note-types/{key}` | Admin | `{baseVersion, ops}` gives `{version, alsoPublished: keys}` | 409 `stale`, `archived`; 422 `{opIndex, code}`, or `invalid` from phase 4's validator | `note_type.published`, one per type |
-| `POST /v1/admin/note-types/{key}/archive`, `/restore`, `/take-update` | Admin | as for presets | as for presets | `note_type.archived`, `.restored`, `.platform_update_taken` |
+| `POST /v1/admin/note-types` | Admin, recent sign-in | `{title, copyOf, reason}` or `{title, kinds, group, reason}`, `kinds` one or both of `medical` and `non_medical`, gives 201 `{key, version: 1}` | 409 `name_taken`; 404 `copyOf`; 422 `not_copyable` | `note_type.created` |
+| `PUT /v1/admin/note-types/{key}` | Admin, recent sign-in | `{baseVersion, ops, reason}` gives `{version, alsoPublished: keys}` | 409 `stale`, `archived`; 422 `{opIndex, code}`, or `invalid` from phase 4's validator and version rules | `note_type.published`, one per type |
+| `POST /v1/admin/note-types/{key}/archive`, `/restore`, `/take-update` | Admin, recent sign-in | as for presets, each with `reason` | as for presets | `note_type.archived`, `.restored`, `.platform_update_taken` |
 | `GET /v1/forms/note-types` (phase 4's, forms 3.3) | as today | lists only keys whose `note_types.state` is `active`; `/{key}/{version}` still serves every stored version | as today | as today |
-| `POST /v1/patients/{id}/flags` | `patients.edit`; plus `patients.view_sensitive` for a sensitive flag | `{flagId, action, reason}` gives 201 `{id}` | 404 patient; 422 `unknown_flag`; 403 | `patient.flag_changed` |
-| `POST /v1/patients/search` (exists) gains `flagIds` | as today | filters by current flags, both tiers (`main.md:120`) | a sensitive flag id without `patients.view_sensitive`: 403 | the existing search event, plus the count of flag ids |
+| `POST /v1/patients/{id}/flags` | `patients.view` and `patients.edit`; the flag must not be one `flagHidden` hides from the caller | `{id, flagId, action, reason}` gives 201 `{id}`. `id` is made once per form by the page, so a retry after a dropped connection gets the first answer, not a second history row (D115) | 404 patient; 422 `unknown_flag`, `reason_invalid`; 409 `archived` for a set of an archived flag (a clear is allowed, 5.1); a hidden flag: 403, logged `access.denied` with the permission and the patient (D98 as amended) | `patient_flag.changed` |
+| `POST /v1/patients/{id}/flag-changes/{changeId}/entered-in-error` | `patients.edit`; the change's author or a holder of `team.manage_users` | `{reason}` gives `{version}` | 404; 409 `already_marked`; 403, logged `access.denied` | `patient_flag.entered_in_error` |
+| `POST /v1/patients/search` (exists) gains `flagIds` (`PatientSearch`, `services/api/src/patients/schemas.ts:293-317`) | as today | filters by current flags, both tiers (`main.md:120`), in the request's body, never the address | a flag id `flagHidden` hides from the caller: 403, logged `access.denied` | the existing search event, plus the count of flag ids |
+| `POST /v1/patients/index` (exists) | as today | each entry gains `flags` (6.1) | as today | as today |
 
-Ids in paths are preset ids and note type keys, never a name. The chart answer (`services/api/src/patients/projection.ts`, `schemas.ts`) gains `flags: {primary, secondary[], history[]}` filtered by `currentFlags`, beside phase 4's `timeline` and `recentVisits`. A sensitive flag and its history are absent for a reader without the key, never blanked.
+The flag routes and the sync entity share one function that checks a change (`unknown_flag`, the kind, the reason, the flag rule) and inserts it with its audit event, so the online and offline paths cannot drift (D99's reason). The chart answer gains, in `charts.ts` `loadGroupCharts` (`PatientChart` in `schemas.ts`), beside phase 4's `timeline` and `recentVisits`:
+
+- `flagChanges`: the group's flag changes as record snapshots, for the phone (6.1).
+- `flags: {primary, secondary[], history[]}`, worked out on the server by `currentFlags`, so the portal holds no rule of its own (D114). Each flag is `{flagId, name, tier, color, colorName, rank, archived}` as the flag is now. Each history row is `{changeId, flagId, name, tier, action, effectiveAt, authorName, reason, enteredInError: {byName, at, reason} or null}`.
+- On each problem, `statusCheckDue` (`problemCheckDue` with the team's window, 5.3).
+
+`projectChart` removes from both what `flagHidden` and `flagChangeShown` hide: a hidden flag and every history row of it are absent, never blanked, and an entered-in-error row keeps its reasons only for its author and Program Admins.
 
 ## 8. Screens
 Every screen passes the accessibility checks in Day, Night run and High contrast and reflows at 320 px. A flag is never shown by colour alone: its name is always beside the colour.
