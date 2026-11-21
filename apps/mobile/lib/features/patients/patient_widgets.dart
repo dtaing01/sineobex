@@ -225,22 +225,30 @@ class RadioChips<T> extends StatelessWidget {
 
 /// A full-width button of the minimum target size.
 class WideButton extends StatelessWidget {
-  const WideButton({super.key, required this.label, required this.onPressed, this.icon, this.filled = false});
+  const WideButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.filled = false,
+    this.focusNode,
+  });
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
   final bool filled;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     final child = Text(label, textAlign: TextAlign.center);
     final button = filled
         ? (icon == null
-              ? FilledButton(onPressed: onPressed, child: child)
-              : FilledButton.icon(onPressed: onPressed, icon: Icon(icon), label: child))
+              ? FilledButton(onPressed: onPressed, focusNode: focusNode, child: child)
+              : FilledButton.icon(onPressed: onPressed, focusNode: focusNode, icon: Icon(icon), label: child))
         : (icon == null
-              ? OutlinedButton(onPressed: onPressed, child: child)
-              : OutlinedButton.icon(onPressed: onPressed, icon: Icon(icon), label: child));
+              ? OutlinedButton(onPressed: onPressed, focusNode: focusNode, child: child)
+              : OutlinedButton.icon(onPressed: onPressed, focusNode: focusNode, icon: Icon(icon), label: child));
     return SizedBox(width: double.infinity, child: button);
   }
 }

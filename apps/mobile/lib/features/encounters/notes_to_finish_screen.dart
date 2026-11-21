@@ -64,6 +64,9 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
 
   /// The row [_problem] is about, when it is about one.
   String? _problemAt;
+
+  /// Each refusal counts, so a second identical one is a new live region (review finding PX-2).
+  int _tries = 0;
   final _shown = <String>{};
   bool _covered = false;
   bool _opening = false;
@@ -151,6 +154,7 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
       if (!found) {
         return setState(() {
           _problem = noteNotOnPhone;
+          _tries++;
           _problemAt = row.noteId;
         });
       }
@@ -177,7 +181,7 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
           children: [
             if (!list.online) ...[const NoticeMessage(onlyThisPhone), const SizedBox(height: FieldSpace.s3)],
             if (_problem != null && _problemAt == null) ...[
-              ErrorMessage(_problem!),
+              ErrorMessage(_problem!, key: ValueKey('finish.problem.$_tries')),
               const SizedBox(height: FieldSpace.s3),
             ],
             if (list.rows.isEmpty) Text(noNotesToFinish, style: text.bodyLarge),
@@ -187,7 +191,7 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
               // but not seen (review SAX-11).
               if (_problem != null && _problemAt == row.noteId) ...[
                 const SizedBox(height: FieldSpace.s2),
-                ErrorMessage(_problem!),
+                ErrorMessage(_problem!, key: ValueKey('finish.problem.$_tries')),
               ],
               const SizedBox(height: FieldSpace.s2),
             ],

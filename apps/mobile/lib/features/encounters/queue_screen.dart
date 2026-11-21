@@ -64,6 +64,9 @@ class _QueueState extends ConsumerState<_Queue> {
   late final SyncController _sync;
   List<QueueRow>? _rows;
   String? _problem;
+
+  /// Each answer counts, so a second identical refusal is a new live region (review finding PX-2).
+  int _tries = 0;
   String? _refused;
   bool _asking = false;
   bool _covered = false;
@@ -108,6 +111,7 @@ class _QueueState extends ConsumerState<_Queue> {
       setState(() {
         _rows = null;
         _problem = e.message;
+        _tries++;
       });
     } on ChartingPaused catch (e) {
       if (!mounted || seq != _seq) return;
@@ -138,7 +142,7 @@ class _QueueState extends ConsumerState<_Queue> {
           padding: const EdgeInsets.all(FieldSpace.s4),
           children: [
             if (_problem case final problem?) ...[
-              Semantics(liveRegion: true, child: NoticeMessage(problem)),
+              Semantics(key: ValueKey('queue.problem.$_tries'), liveRegion: true, child: NoticeMessage(problem)),
               const SizedBox(height: FieldSpace.s3),
               WideButton(label: tryAgainAction, onPressed: _asking ? null : () => unawaited(_ask())),
             ] else if (rows!.isEmpty)

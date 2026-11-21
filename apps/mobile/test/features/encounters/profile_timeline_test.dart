@@ -208,6 +208,76 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, showEarlierVisitsText), findsNothing);
   });
 
+  group('Show earlier visits says what came and keeps focus somewhere (review findings PX-1, PX-2)', () {
+    List<Map<String, Object?>> pageOf(int n) => [
+      for (var i = 0; i < n; i++)
+        timelineVisit(
+          'e0000000-0000-4000-8000-0000000001${i.toString().padLeft(2, '0')}',
+          DateTime.utc(2026, 10, 20).subtract(Duration(days: i)).toIso8601String(),
+          kind: 'non_medical',
+        ),
+    ];
+
+    for (final next in [0, 1]) {
+      testWidgets('a next page of $next: said once, and focus moves to what came or to the heading', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signInToChart(tester);
+        final routes = await withEncounterRoutes(tester, h);
+        await cacheChart(tester, h, p1Id, {
+          'timeline': {'encounters': pageOf(50), 'referrals': <Object?>[]},
+        });
+        routes.on(
+          'GET',
+          '/v1/patients/$p1Id/timeline',
+          (_) => {
+            'encounters': [
+              if (next == 1)
+                timelineVisit('e0000000-0000-4000-8000-000000000201', '2026-08-01T15:00:00.000Z', kind: 'non_medical'),
+            ],
+          },
+        );
+        await go(tester, '/patients/$p1Id');
+        final more = find.widgetWithText(OutlinedButton, 'Show earlier visits');
+        await reveal(tester, more);
+        h.server.offline = false;
+        Focus.of(tester.element(find.text('Show earlier visits'))).requestFocus();
+        await tester.pump();
+        tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+        await settle(tester);
+        await settle(tester);
+        // The page was not full, so the button went.
+        expect(more, findsNothing);
+        final said = next == 0 ? 'No earlier visits.' : '1 earlier visit shown.';
+        await expectShown(tester, find.text(said));
+        expect(tester.getSemantics(find.bySemanticsLabel(said)), isSemantics(isLiveRegion: true));
+        expect(FocusManager.instance.primaryFocus?.debugLabel, next == 0 ? 'timeline heading' : 'first earlier visit');
+        handle.dispose();
+      });
+    }
+
+    testWidgets('offline, a second press says its refusal again, as a new live region', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      await withEncounterRoutes(tester, h);
+      await cacheChart(tester, h, p1Id, {
+        'timeline': {'encounters': pageOf(50), 'referrals': <Object?>[]},
+      });
+      await go(tester, '/patients/$p1Id');
+      await reveal(tester, find.widgetWithText(OutlinedButton, 'Show earlier visits'));
+      tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+      await settle(tester);
+      final refusal = find.bySemanticsLabel('Connect to see earlier visits.');
+      final first = tester.getSemantics(refusal);
+      expect(first, isSemantics(isLiveRegion: true));
+      tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+      await settle(tester);
+      final second = tester.getSemantics(refusal);
+      expect(second, isSemantics(isLiveRegion: true));
+      expect(second.id, isNot(first.id));
+      handle.dispose();
+    });
+  });
+
   testWidgets('+ Encounter starts a visit for the patient; each quick action shows only to a role that may use it', (
     tester,
   ) async {

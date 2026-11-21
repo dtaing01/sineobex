@@ -518,6 +518,10 @@ const noTimelineFiltered = 'Nothing of these types.';
 const timelineNeedsChart = 'Visits recorded elsewhere show with the full chart.';
 const showEarlierVisits = 'Show earlier visits';
 
+/// What Show earlier visits brought, said once (review finding PX-1), as the portal says it (9.11).
+const noEarlierVisits = 'No earlier visits.';
+String earlierVisitsShown(int n) => n == 1 ? '1 earlier visit shown.' : '$n earlier visits shown.';
+
 /// A visit made here whose time the phone hasn't learned yet.
 const startedHere = 'Started on this phone';
 

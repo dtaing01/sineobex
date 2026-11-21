@@ -237,6 +237,15 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   /// The last refusal and where it shows: under a note (its ID), or above a second act (its name).
   ({String at, String message})? _problem;
 
+  /// Each refusal set counts: a second identical one is a new live region, so it is said again
+  /// (review finding PX-2).
+  int _tries = 0;
+
+  ({String at, String message}) _counted({required String at, required String message}) {
+    _tries++;
+    return (at: at, message: message);
+  }
+
   /// The second act the visit was read from the server for, until it is done.
   SecondAct? _readFor;
   bool _busy = false;
@@ -349,7 +358,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
   // ---- the actions ----
 
   void _refused(String at, Object error) {
-    if (mounted) setState(() => _problem = (at: at, message: encounterErrorText(error)));
+    if (mounted) setState(() => _problem = _counted(at: at, message: encounterErrorText(error)));
   }
 
   Future<void> _addAddendum(String? noteId, String to) async {
@@ -380,7 +389,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
       return _refused(note.noteId, e);
     }
     if (!mounted) return;
-    if (held == null) return setState(() => _problem = (at: note.noteId, message: noteNotOnPhone));
+    if (held == null) return setState(() => _problem = _counted(at: note.noteId, message: noteNotOnPhone));
     final id = await showCorrectionSheet(context, services, note: held, path: item.path);
     if (id != null) unawaited(_afterChange());
   }
@@ -431,7 +440,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         EncounterProblem.offline => '${plan.act == SecondAct.cosign ? connectToCosign : connectToAttest}.',
         _ => e.message,
       };
-      if (mounted) setState(() => _problem = (at: at, message: message));
+      if (mounted) setState(() => _problem = _counted(at: at, message: message));
       if (e.problem == EncounterProblem.changed) {
         try {
           await _readServer();
@@ -486,7 +495,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         const SectionHeading(notesHeading),
         for (final note in visit.notes) ...[_note(context, note), const SizedBox(height: FieldSpace.s4)],
         if (_problem case (at: _changeNotes, :final message)) ...[
-          ErrorMessage(message),
+          ErrorMessage(message, key: ValueKey('visit.problem.$_tries')),
           const SizedBox(height: FieldSpace.s2),
         ],
         if (services.user.charts)
@@ -585,7 +594,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
     final found = await fetchNote(services, note.noteId, encounterId: encounterId);
     if (!mounted) return;
     setState(() => _busy = false);
-    if (!found) return setState(() => _problem = (at: note.noteId, message: noteNotOnPhone));
+    if (!found) return setState(() => _problem = _counted(at: note.noteId, message: noteNotOnPhone));
     unawaited(context.push(noteLocation(note.noteId)));
   }
 
@@ -680,7 +689,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
             ..._trail(context, note),
             if (_problem case (at: final at, :final message) when at == note.noteId) ...[
               const SizedBox(height: FieldSpace.s3),
-              ErrorMessage(message),
+              ErrorMessage(message, key: ValueKey('visit.problem.$_tries')),
             ],
             if (handoff) ...[
               const SizedBox(height: FieldSpace.s3),
@@ -951,7 +960,7 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
           Text(plan.sentence, style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: FieldSpace.s3),
           if (_problem case (at: final at, :final message) when at == plan.act.name) ...[
-            ErrorMessage(message),
+            ErrorMessage(message, key: ValueKey('visit.problem.$_tries')),
             const SizedBox(height: FieldSpace.s2),
           ],
           WideButton(

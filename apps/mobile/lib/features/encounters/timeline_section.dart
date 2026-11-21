@@ -9,7 +9,7 @@ import '../../api/generated/api.dart' as wire;
 import '../../app_providers.dart' show syncControllerProvider;
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
-import '../../design/widgets/form_bits.dart' show ErrorMessage;
+import '../../design/widgets/form_bits.dart' show ErrorMessage, NoticeMessage;
 import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_api.dart' show EncounterRequestFailed;
 import '../../encounters/encounter_models.dart';
@@ -29,7 +29,7 @@ import '../../patients/chart_cache.dart' show chartMetaOf;
 import '../../sync/local_store.dart' show ChartingPaused;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../patients/patient_labels.dart' show longDate;
-import '../patients/patient_widgets.dart' show SectionHeading, WideButton;
+import '../patients/patient_widgets.dart' show SectionHeading, WideButton, focusFollows, focusInView;
 import '../sync/sync_labels.dart' show timeOfDay;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart' show encountersOpen;
@@ -67,6 +67,18 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
   bool _fetching = false;
   String? _earlierProblem;
 
+  /// What the last Show earlier visits brought, said once (review finding PX-1), and each press
+  /// counted, so a second identical answer is a new live region and is said again (PX-2).
+  String? _earlierSaid;
+  int _tries = 0;
+
+  /// Where focus goes when the button goes, or after its press: the first visit it brought, else the
+  /// heading (the portal's twin, 9.11).
+  final _headingFocus = FocusNode(debugLabel: 'timeline heading');
+  final _earlierFocus = FocusNode(debugLabel: 'show earlier visits');
+  final _firstNewFocus = FocusNode(debugLabel: 'first earlier visit');
+  String? _firstNew;
+
   /// The filter's chips that are on: none shows every row.
   final _groups = <String>{};
 
@@ -93,6 +105,9 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
   void dispose() {
     _s.removeListener(_reread);
     _sync.removeListener(_reread);
+    _headingFocus.dispose();
+    _earlierFocus.dispose();
+    _firstNewFocus.dispose();
     super.dispose();
   }
 
@@ -127,15 +142,29 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
   }
 
   Future<void> _showEarlier(String before) async {
+    final follow = focusFollows(context, _earlierFocus);
     setState(() {
       _fetching = true;
       _earlierProblem = null;
+      _earlierSaid = null;
+      _tries++;
     });
     try {
       final page = await _s.api.earlierVisits(widget.patientId, before: before);
       if (!mounted) return;
       _earlier.add(page);
       await _read();
+      if (!mounted) return;
+      final shown = {for (final r in _view?.filtered(_groups) ?? const <TimelineRow>[]) ?_idOf(r)};
+      setState(() {
+        _firstNew = page.map((v) => v.encounterId).where(shown.contains).firstOrNull;
+        _earlierSaid = page.isEmpty ? noEarlierVisits : earlierVisitsShown(page.length);
+      });
+      if (follow) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) focusInView(_firstNew != null ? _firstNewFocus : _headingFocus);
+        });
+      }
     } on EncounterRequestFailed catch (e) {
       if (mounted) setState(() => _earlierProblem = e.message);
     } on ChartingPaused catch (e) {
@@ -157,7 +186,7 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeading(timelineHeading),
+        Focus(focusNode: _headingFocus, child: const SectionHeading(timelineHeading)),
         if (_refused case final message?)
           ErrorMessage(message)
         else if (view == null)
@@ -194,6 +223,7 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
             switch (row) {
               TimelineVisitRow() => _VisitRow(
                 row: row,
+                focusNode: row.encounterId == _firstNew ? _firstNewFocus : null,
                 onOpen: () => unawaited(context.push(visitLocation(row.encounterId))),
               ),
               TimelineReferralRow(:final referral) => _ReferralRow(
@@ -203,11 +233,19 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
             },
             const SizedBox(height: FieldSpace.s2),
           ],
+          if (_earlierSaid case final said?) ...[
+            NoticeMessage(said, key: ValueKey('earlier.said.$_tries')),
+            const SizedBox(height: FieldSpace.s2),
+          ],
           if (before != null) ...[
-            if (_earlierProblem != null) ...[ErrorMessage(_earlierProblem!), const SizedBox(height: FieldSpace.s2)],
+            if (_earlierProblem != null) ...[
+              ErrorMessage(_earlierProblem!, key: ValueKey('earlier.problem.$_tries')),
+              const SizedBox(height: FieldSpace.s2),
+            ],
             WideButton(
               label: showEarlierVisits,
               icon: LucideIcons.history,
+              focusNode: _earlierFocus,
               onPressed: _fetching ? null : () => unawaited(_showEarlier(before)),
             ),
           ],
@@ -217,13 +255,23 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
   }
 }
 
+/// A timeline row's visit, or null for a referral's row.
+String? _idOf(TimelineRow row) => row is TimelineVisitRow ? row.encounterId : null;
+
 /// A row of the timeline: a card that is one button, read as [spoken].
 class _RowCard extends StatelessWidget {
-  const _RowCard({required this.spoken, required this.hint, required this.onOpen, required this.children});
+  const _RowCard({
+    required this.spoken,
+    required this.hint,
+    required this.onOpen,
+    required this.children,
+    this.focusNode,
+  });
   final String spoken;
   final String hint;
   final VoidCallback onOpen;
   final List<Widget> children;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -244,6 +292,7 @@ class _RowCard extends StatelessWidget {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(FieldRadius.md),
+          focusNode: focusNode,
           onTap: onOpen,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: FieldTap.large),
@@ -261,9 +310,10 @@ class _RowCard extends StatelessWidget {
 /// A visit's row (9.1): its date, its kind, "Waiting to send" while something done here waits, and
 /// its notes as chips, each with its state in words.
 class _VisitRow extends StatelessWidget {
-  const _VisitRow({required this.row, required this.onOpen});
+  const _VisitRow({required this.row, required this.onOpen, this.focusNode});
   final TimelineVisitRow row;
   final VoidCallback onOpen;
+  final FocusNode? focusNode;
 
   static String _state(TimelineNoteChip n) => n.sentForReview
       ? sentForReview
@@ -283,6 +333,7 @@ class _VisitRow extends StatelessWidget {
       spoken: [when, visitKindText(row.kind), if (row.waitingToSend) waitingToSend, ...chips].join(', '),
       hint: visitOpensHint,
       onOpen: onOpen,
+      focusNode: focusNode,
       children: [
         Text(when, style: text.titleMedium),
         Text(visitKindText(row.kind), style: text.bodyLarge),
