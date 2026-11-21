@@ -1674,10 +1674,12 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   sends such a sender of the summary is a field that holds nothing (`fieldForAnswer`, 6.4 rule 2;
   review finding PA-4). An admin's accept applies the held set as it was made, at the version it
   named, as `services/api/src/sync/review.ts` applies every held change (the coordinator's
-  decision on the second pass's open question): when the summary has moved to another value since,
-  the accept is refused `cannot_apply` and the reviewer can only reject it, and once a note of the visit is
-  finished it is kept in the visit's history, as any late change is (the envelope lock). So an
-  accept never puts a value over one its sender never saw. A reviewer who may read both can write
+  decision on the second pass's open question): once a note of the visit is finished it is kept
+  in the visit's history, as any late change is (the envelope lock, which is asked first), whatever
+  version the summary is at; before that, when the summary holds another value at a later version
+  than the one named, the accept is refused `cannot_apply` and the reviewer can only reject it, and
+  a summary cleared since is filled. So an accept never puts a value over one its sender never
+  saw. A reviewer who may read both can write
   the visit's summary themselves, as anyone who charts may while no note of the visit is finished,
   and after that add to it by an addendum (3.6).
 - **`hasFinishedNote`** (review finding SLK-1, as the coordinator decided, with the phone's store):
@@ -1746,11 +1748,12 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   nothing, so nothing is undone. A sender is never asked to choose between their value and one they
   are not shown: that choice could never settle, and Use my value would overwrite blind. An admin's
   accept applies the held change as it was made, at the version it named, as `review.ts` applies
-  every held change (the coordinator's decision on the second pass's open question): while the
-  field holds a value at a later version than the one named, as it did when the conflict came, the
-  accept is refused `cannot_apply` and the reviewer can only reject it, and a record that takes no more
-  values keeps it in its history (3.6). So an accept never puts a value over one its sender never
-  saw. A reviewer who may read both can make the change themselves.
+  every held change (the coordinator's decision on the second pass's open question): a record
+  that takes no more values keeps it in its history first (3.6); otherwise, while the field holds
+  another value at a later version than the one named, as it did when the conflict came, the accept
+  is refused `cannot_apply` and the reviewer can only reject it, a field cleared since is filled,
+  and one that holds the same value takes nothing. So an accept never puts a value over one its
+  sender never saw. A reviewer who may read both can make the change themselves.
 - **An answer that will not count.** A `set` that lands in a field another phone has hidden, or
   in an entry another phone has removed, is accepted as usual. Its receipt carries
   `details.notCounted` (`hidden_field` or `removed_entry`), and the phone says so on the field:
