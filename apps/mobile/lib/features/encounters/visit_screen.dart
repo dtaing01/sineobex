@@ -61,6 +61,12 @@ String visitLocation(String encounterId) => '/encounters/$encounterId/visit';
 /// server says the reader may sign. The phone may hold only part of the visit (what an addendum or a
 /// correction brought onto it): a note it holds with nothing of the person's waiting is shown as the
 /// server read it.
+///
+/// What Co-sign and Attest send is the server's hash of the note as the server holds it (5.3), so a
+/// note drawn from the phone's own copy, or drawn under the phone's own patient or assessment, carries
+/// none of the server's hash, `canCosign` or `canAttest`: the person would sign what they were not
+/// shown. Such a note says so ([NoteView.sendFirst]) when the server would have offered the act
+/// (review finding PA-5).
 VisitView withWaiting(VisitView base, VisitView held) {
   List<T> add<T>(List<T> shown, List<T> mine, String Function(T x) id, Sending Function(T x) sending) {
     final ids = {for (final x in shown) id(x)};
@@ -80,8 +86,14 @@ VisitView withWaiting(VisitView base, VisitView held) {
       n.pendingPaths.isNotEmpty ||
       n.conflicts.isNotEmpty;
 
+  // The patient or the assessment the screen shows is the phone's, which every note's hash covers.
+  final envelopeMine =
+      held.pendingFields.contains('patientId') || (held.pendingFields.contains('summary') && !base.summaryHidden);
+
   NoteView merged(NoteView server, NoteView mine) {
-    final n = ownWork(mine) ? mine : server;
+    final drawnHere = ownWork(mine);
+    final n = drawnHere ? mine : server;
+    final serversOnly = !drawnHere && !envelopeMine;
     return NoteView(
       noteId: n.noteId,
       encounterId: n.encounterId,
@@ -106,19 +118,23 @@ VisitView withWaiting(VisitView base, VisitView held) {
       attestations: server.attestations,
       notSynced: n.notSynced,
       title: n.title ?? server.title,
-      contentHash: server.contentHash,
+      contentHash: serversOnly ? server.contentHash : null,
       conflicts: n.conflicts,
-      canCosign: server.canCosign,
-      canAttest: server.canAttest,
+      canCosign: serversOnly && server.canCosign,
+      canAttest: serversOnly && server.canAttest,
       heldBecause: server.heldBecause,
+      sendFirst: !serversOnly && (server.canCosign || server.canAttest),
     );
   }
+
+  // A note the phone does not hold, under the phone's own patient or assessment.
+  NoteView underMine(NoteView server) => merged(server, server);
 
   final heldNotes = {for (final n in held.notes) n.noteId: n};
   final serverNotes = {for (final n in base.notes) n.noteId};
   final notes = redFlagsLast([
     for (final n in base.notes)
-      if (heldNotes[n.noteId] case final mine?) merged(n, mine) else n,
+      if (heldNotes[n.noteId] case final mine?) merged(n, mine) else if (envelopeMine) underMine(n) else n,
     for (final n in held.notes)
       if (!serverNotes.contains(n.noteId) && ownWork(n)) n,
   ]);
@@ -589,7 +605,9 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
         note.actsAsAuthor &&
         services.user.charts &&
         services.store.record(note.noteId) == null;
-    final held = heldBecauseText(note.heldBecause, cosign: note.status == NoteStatus.completed);
+    final held = note.sendFirst
+        ? sendFirstText
+        : heldBecauseText(note.heldBecause, cosign: note.status == NoteStatus.completed);
     // EMS was activated in a Red flags note the person may read, as the phone holds it: Show
     // handoff, a read, for a draft or a finished note, clock check or not (9.8, review SRD-2).
     final mine = _held?.notes.where((n) => n.noteId == note.noteId).firstOrNull;

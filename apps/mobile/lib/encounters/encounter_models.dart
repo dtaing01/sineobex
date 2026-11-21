@@ -236,6 +236,7 @@ class NoteView {
     this.canCosign = false,
     this.canAttest = false,
     this.heldBecause,
+    this.sendFirst = false,
   });
 
   final String noteId;
@@ -326,6 +327,11 @@ class NoteView {
   /// Why it waits for someone other than the reader, as the server's read says; null in any other
   /// copy, and when the server gives no reason about the note (5.1).
   final HeldBecause? heldBecause;
+
+  /// The server's read would let the reader co-sign or attest it, but what is shown of it is the
+  /// phone's own work, which the server's hash does not cover: the act waits until that work is sent
+  /// and the visit read again (the coordinator's decision on review finding PA-5).
+  final bool sendFirst;
 
   /// The phone lacks its definition. A note the server read keeps its [read] all the same.
   bool get unreadable => definition == null;

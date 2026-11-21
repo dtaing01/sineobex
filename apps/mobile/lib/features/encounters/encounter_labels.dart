@@ -390,6 +390,10 @@ const connectToAttest = 'Connect to attest';
 const cosignedDone = 'Co-signed';
 const attestedDone = 'Attested';
 
+/// Under a note the visit screen draws from the phone's own copy, which the server's read would let
+/// the person co-sign or attest (review finding PA-5).
+const sendFirstText = 'Send your changes first, then read the visit again.';
+
 /// Why a note waits for someone other than the reader, as the server says (`heldBecause`, 5.1), in
 /// the portal's words; null for no reason about the note. Someone a note was assigned to is never
 /// told they wrote it.

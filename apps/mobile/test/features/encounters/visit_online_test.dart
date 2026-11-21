@@ -908,6 +908,56 @@ void main() {
       });
     });
 
+    testWidgets('a note drawn under the person’s own assessment, not sent yet, is not co-signed: it says to send '
+        'first (review finding PA-5)', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      h.server.offline = false;
+      final held = startVisit(h);
+      await syncAndRefresh(tester, h);
+      // The person's own words for the visit, waiting here: every note's hash covers the assessment.
+      h.sync.store!.setField(held, 'summary', 'Demo: my assessment, not sent');
+      // Demo Blair's note, completed by them as a student, then brought to the phone.
+      h.server.credentials[blair] = 'student';
+      final heldNote = h.server.seed(entityNote, {
+        'encounterId': held,
+        'noteTypeKey': 'general_primary_care',
+        'noteTypeVersion': 1,
+        'data': {'reason.concern': 'Demo: cough'},
+      }, by: blair);
+      h.server.finishNote(heldNote);
+      expect(await tester.runAsync(() => h.sync.engine!.openServerRecord(entityNote, heldNote)), isTrue);
+      expect(h.sync.store!.record(held)!.fields['summary']!.pendingChange, isNotNull);
+      routes.on(
+        'GET',
+        '/v1/encounters/$held',
+        (_) => visitJson(
+          encounterId: held,
+          patientId: p1Id,
+          notes: [
+            visitNoteJson(
+              noteId: heldNote,
+              author: blairRef,
+              key: 'general_primary_care',
+              title: 'General / primary care',
+              contentHash: hash,
+              sections: [concern],
+              signoffs: [signoffJson(id: signoff, signer: blairRef)],
+              canCosign: true,
+            ),
+          ],
+        ),
+      );
+      await openVisitScreen(tester, held);
+      await expectShown(tester, find.text('Demo: my assessment, not sent'));
+      await expectShown(tester, find.text('Send your changes first, then read the visit again.'));
+      expect(find.widgetWithText(FilledButton, 'Co-sign'), findsNothing);
+      expect(routes.asked.where((a) => a.method == 'POST'), isEmpty);
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+
     testWidgets('online, the server’s read comes first: a co-signature made elsewhere shows on a note the phone '
         'holds, and offline the phone’s copy says what may be missing', (tester) async {
       final h = await signInToChart(tester);

@@ -4651,6 +4651,15 @@ As built (the screens, unit L5, `apps/mobile/lib/features/encounters/visit_scree
   the phone at its next opening or unlock (8.2 as built). Offline the button is greyed, "Connect to
   co-sign"; a tap that meets no signal says "Connect to co-sign.".
 
+As built since the phase's review (finding PA-5): Co-sign and Attest send the server's hash of the
+note as the server holds it, so a note `withWaiting` draws from the phone's own copy (the person's
+own work on it: an editable draft copy, answers waiting to send, an open choice, a Complete not
+confirmed), and every note while the phone's own patient or assessment is drawn over the server's,
+carries no `contentHash`, `canCosign` or `canAttest`. Where the server's read would have offered
+either act, the note says "Send your changes first, then read the visit again." in place of the
+act (`NoteView.sendFirst`). Tested for both acts in `test/encounters/visit_overlay_test.dart` and
+on the screen in `visit_online_test.dart`.
+
 ### 9.8 The EMS handoff
 
 Red flags answered Yes opens the EMS branch in the form (forms part). When EMS is activated, the
