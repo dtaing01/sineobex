@@ -504,6 +504,37 @@ void main() {
         },
       );
 
+      test('a Medical visit’s summary goes to a sender the sync read withholds it from as a field that holds nothing, kept in history and on a retry too', () async {
+        // Casey charts with encounters.chart alone: the sync read leaves a Medical visit's summary out
+        // (review finding PA-4).
+        server.permissions[casey] = {'encounters.chart'};
+        const nothing = {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
+        final id = visitOf(by: casey);
+        final alexs = setOn(entityEncounter, id, 'summary', 'Demo: Alex Medical assessment', 0);
+        expect(await send(alex, [alexs]), [taken(alexs, 1)]);
+        final caseys = setOn(entityEncounter, id, 'summary', 'Demo: Casey again', 0);
+        final first = await send(casey, [caseys]);
+        expect(first.single['status'], 'conflict');
+        expect(first.single['server'], nothing);
+        expect((await send(casey, [caseys])).single['server'], nothing);
+        // Blair, who may read it, is sent it.
+        final blairs = setOn(entityEncounter, id, 'summary', 'Demo: Blair from an old copy', 0);
+        expect((await send(blair, [blairs])).single['server'], containsPair('value', 'Demo: Alex Medical assessment'));
+        // Kept in history once the visit holds a finished note: the same.
+        server.finishNote(noteOn(id));
+        final late = setOn(entityEncounter, id, 'summary', 'Demo: Casey late words', 1);
+        final kept = await send(casey, [late]);
+        expect(kept.single['details'], {'outcome': 'history_only', 'problem': 'encounter_has_finished_note'});
+        expect(kept.single['server'], nothing);
+        expect((await send(casey, [late])).single['server'], nothing);
+        // On a Non-Medical visit it goes as it is.
+        final outreach = visitOf(kind: 'non_medical', by: casey);
+        final words = setOn(entityEncounter, outreach, 'summary', 'Demo: Alex outreach words', 0);
+        await send(alex, [words]);
+        final mine = setOn(entityEncounter, outreach, 'summary', 'Demo: Casey outreach', 0);
+        expect((await send(casey, [mine])).single['server'], containsPair('value', 'Demo: Alex outreach words'));
+      });
+
       test('a summary holds 1 to 4,000 characters and a place 1 to 200, with no space at either end', () async {
         final id = visitOf();
         for (final (field, value) in [

@@ -3,7 +3,8 @@ import type { AuditFn } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { canonicalJson } from './canonical.ts';
 import { applyField } from './entities/fields.ts';
-import { fieldForSender } from './entities/note.ts';
+import { medicalHidden } from '../encounters/read.ts';
+import { fieldForSender, NOTHING_SHOWN } from './entities/note.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
@@ -20,7 +21,13 @@ import {
   type Outcome,
   type StoredRecord,
 } from './records.ts';
-import type { QuarantineReasonName, RejectReasonName, SyncChangeInput, SyncResultValue } from './schemas.ts';
+import type {
+  FieldStateValue,
+  QuarantineReasonName,
+  RejectReasonName,
+  SyncChangeInput,
+  SyncResultValue,
+} from './schemas.ts';
 
 export type { ApplyActor } from './records.ts';
 
@@ -148,23 +155,82 @@ export async function changeOwners(tx: Tx, changeId: string): Promise<ChangeOwne
 export const sameOwner = (a: ChangeOwner, b: ChangeOwner) =>
   a.teamId === b.teamId && a.userId === b.userId && a.deviceId === b.deviceId;
 
+type Sender = Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>;
+
+/**
+ * A record's field as it goes back to [sender] in an answer (D86): as the sync read would show it
+ * to them. A note's answer they may not see all of is a field that holds nothing (note.ts
+ * fieldForSender), and so is a Medical visit's summary for a sender the sync read withholds it from
+ * (review.ts summaryHidden, lifecycle 6.4 row 1; the coordinator's decision on review finding PA-4).
+ */
+async function fieldForAnswer(
+  tx: Tx,
+  sender: Sender,
+  record: StoredRecord,
+  field: string,
+): Promise<FieldStateValue> {
+  if (record.entity === 'encounter_note') return fieldForSender(tx, sender, record, field);
+  if (
+    record.entity === 'encounter' &&
+    field === 'summary' &&
+    medicalHidden(sender.permissions, record.values.kind)
+  )
+    return NOTHING_SHOWN;
+  return fieldState(record, field);
+}
+
+/**
+ * The read a field sent back to a phone is (the coordinator's decisions on review findings PA-1
+ * and PP-4): logged as the sync read logs the record, on its patient, with the change it answers.
+ * A field that holds nothing tells the sender nothing, and is not logged.
+ */
+async function logSentBack(
+  audit: AuditFn,
+  record: StoredRecord,
+  changeId: string,
+  field: string,
+  shown: FieldStateValue,
+): Promise<void> {
+  if (shown.value === null && shown.version === 0) return;
+  await audit({
+    action: viewedAction(record.entity),
+    entity: record.entity,
+    entityId: record.id,
+    patientId: record.patientId,
+    details: { source: 'sync', changeId, field },
+  });
+}
+
+/** The records of a visit's notes: read through their note, and logged as a view of it. */
+const NOTE_SIDE: ReadonlySet<string> = new Set([
+  'encounter_note',
+  'note_signoff',
+  'note_addendum',
+  'note_correction',
+]);
+
+/** The event a read of a record is logged as: a visit, a note or what hangs off one, or the chart. */
+export const viewedAction = (entity: string) =>
+  entity === 'encounter' ? 'encounter.viewed' : NOTE_SIDE.has(entity) ? 'note.viewed' : 'patient.viewed';
+
 /**
  * The answer for a change the server already has, so a retry gets the answer the first attempt
  * got. A conflict, and a value kept but not applied (kept both, history only), show the field as
- * the server holds it now, as [sender] may see it: a note's answer hidden from them since is sent
- * as a field that holds nothing (note.ts fieldForSender).
+ * the server holds it now, as [sender] may see it (fieldForAnswer), and the read it is is logged
+ * in this transaction (logSentBack).
  */
 export async function resultFromReceipt(
   tx: Tx,
+  audit: AuditFn,
   r: Receipt,
-  sender: Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>,
+  sender: Sender,
 ): Promise<SyncResultValue> {
   const current = async (recordId: string) => {
     const record = await rulesFor(r.entity)?.load(tx, recordId, false);
-    if (!record || !r.field) return { value: null, version: 0, changedBy: null, changedAt: null };
-    return record.entity === 'encounter_note'
-      ? fieldForSender(tx, sender, record, r.field)
-      : fieldState(record, r.field);
+    if (!record || !r.field) return NOTHING_SHOWN;
+    const shown = await fieldForAnswer(tx, sender, record, r.field);
+    await logSentBack(audit, record, r.changeId, r.field, shown);
+    return shown;
   };
   // A redirected change was answered with the survivor's field, a conflict included.
   const on = typeof r.details?.redirectedTo === 'string' ? r.details.redirectedTo : r.recordId;
@@ -200,6 +266,13 @@ export async function resultFromReceipt(
   return toResult(r.changeId, { status: 'conflict', server: await current(on) });
 }
 
+/** The record whose field an answer carries: a redirected change's survivor, or its own. */
+async function onRecord(tx: Tx, change: SyncChangeInput, outcome: Outcome): Promise<StoredRecord | null> {
+  const details = 'details' in outcome ? outcome.details : undefined;
+  const on = typeof details?.redirectedTo === 'string' ? details.redirectedTo : change.recordId;
+  return (await rulesFor(change.entity)?.load(tx, on, false)) ?? null;
+}
+
 /**
  * An accepted change that never reached the chart as the person sent it: kept as the other value
  * of a review, kept in history only, or applied to a merged record's survivor.
@@ -225,7 +298,15 @@ export async function applyChange(
   /** A rejection precheck already decided; stored and logged without touching any record. */
   rejection?: Outcome,
 ): Promise<SyncResultValue> {
-  const outcome = rejection ?? (await decide(tx, audit, actor, change, hash));
+  const decided = rejection ?? (await decide(tx, audit, actor, change, hash));
+  // What the answer carries of the field goes as the sender may see it (fieldForAnswer), and names
+  // the record's patient when it is a conflict (PA-1).
+  const sentBack =
+    'server' in decided && decided.server && change.field ? await onRecord(tx, change, decided) : null;
+  const outcome: Outcome =
+    sentBack && 'server' in decided && decided.server
+      ? { ...decided, server: await fieldForAnswer(tx, actor, sentBack, change.field!) }
+      : decided;
   await storeReceipt(tx, actor, change, hash, outcome);
 
   if (outcome.status === 'accepted') {
@@ -249,6 +330,7 @@ export async function applyChange(
       action: 'sync.conflict',
       entity: change.entity,
       entityId: change.recordId,
+      patientId: sentBack?.patientId ?? null,
       details: {
         ...actor.auditDetails,
         changeId: change.changeId,

@@ -3985,12 +3985,19 @@ class _Receipt {
 
   /// The answer for this change, as the API gives it: a conflict, and a value kept but not applied,
   /// show the field as the server holds it now, as its sender may see it (apply.ts
-  /// resultFromReceipt, note.ts fieldForSender).
+  /// resultFromReceipt and fieldForAnswer, note.ts fieldForSender): a Medical visit's summary goes
+  /// to a sender the sync read withholds it from as a field that holds nothing (review finding PA-4).
   Map<String, Object?> result(FakeSyncServer s, String changeId) {
     Map<String, Object?> current(String id) {
       final rec = s.records[id];
       if (rec == null) return FakeSyncServer._nothingShown;
-      return rec.entity == entityNote ? s._fieldForSender(userId, rec, field ?? '') : rec.state(field ?? '');
+      if (rec.entity == entityNote) return s._fieldForSender(userId, rec, field ?? '');
+      if (rec.entity == entityEncounter &&
+          field == 'summary' &&
+          FakeSyncServer._medicalHidden(s.permissionsOf(userId), rec)) {
+        return FakeSyncServer._nothingShown;
+      }
+      return rec.state(field ?? '');
     }
 
     // A redirected change was answered with the survivor's field, a conflict included.

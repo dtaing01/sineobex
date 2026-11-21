@@ -316,7 +316,7 @@ async function senderReader(tx: Tx, actor: Pick<ApplyActor, 'teamId' | 'authorId
 }
 
 /** A field that holds nothing, as a retry is answered with an answer hidden from its sender. */
-const NOTHING_SHOWN: FieldStateValue = { value: null, version: 0, changedBy: null, changedAt: null };
+export const NOTHING_SHOWN: FieldStateValue = { value: null, version: 0, changedBy: null, changedAt: null };
 
 /**
  * A note's field as a retry of [sender]'s change is answered with it (apply.ts resultFromReceipt;

@@ -22,6 +22,7 @@ import {
   findReceipt,
   heldCreate,
   sameOwner,
+  viewedAction,
   type ApplyActor,
 } from './apply.ts';
 import { RULES, takesTeamLock } from './entities/index.ts';
@@ -550,12 +551,7 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
       }
       records.push(snapshot(shown));
       await audit({
-        action:
-          ref.entity === 'encounter'
-            ? 'encounter.viewed'
-            : NOTE_SIDE.has(ref.entity)
-              ? 'note.viewed'
-              : 'patient.viewed',
+        action: viewedAction(ref.entity),
         entity: ref.entity,
         entityId: ref.id,
         patientId: shown.patientId,
@@ -682,14 +678,6 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     }
   });
 }
-
-/** The records of a visit's notes: read through their note, and logged as a view of it. */
-const NOTE_SIDE: ReadonlySet<AnyRecordEntityName> = new Set([
-  'encounter_note',
-  'note_signoff',
-  'note_addendum',
-  'note_correction',
-]);
 
 /**
  * A sign-off without the hash of what was signed (lifecycle 6.4 rule 4, review findings NOT-5 and

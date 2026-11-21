@@ -5183,6 +5183,17 @@ there is one, in the row's patient column. None holds a value, a reason's text o
 | `encounter.viewed`, `note.viewed`, `patient.viewed` (the sync read) | One per record returned, with its entity and ID, and `{ source: 'sync' }`: a visit is `encounter.viewed`; a note, a sign-off, an addendum and a correction are `note.viewed`; a referral is `patient.viewed`. Not one per visit with `noteIds` |
 | `ems_handoff.shown`, `notes_to_finish.viewed` (offline) | The closed list's keys (`AuditAppend`): the handoff names its visit by `entity` `encounter` and `entityId`, and its patient; Notes to finish names `patientIds` and `resultCount`, not `count`. `ems_handoff.exported` stays refused offline |
 
+A value the server sends back to a phone is a read (the coordinator's decisions on review findings
+PA-1, PA-4 and PP-4). What a conflict, a value kept in history and a retry carry of a field goes as
+the sync read would show it to the sender: a note's answer they may not see all of, and a Medical
+visit's summary for a sender `medicalHidden` withholds it from, go as a field that holds nothing
+(`apply.ts` `fieldForAnswer`; the phone's test server's `_Receipt.result`). `sync.conflict` names
+the record's patient in the row's patient column, as `*.kept_in_history` and `*.field_contested`
+already did. A retry answered from its receipt with a field that holds something writes the read
+it is, in the push's transaction: `encounter.viewed`, `note.viewed` or `patient.viewed` as the sync
+read logs the record, on its patient, with `{ source: 'sync', changeId, field }`. Needs attention
+draws what those answers carried and logs nothing again.
+
 A sign-off's and a correction's events are on entity `encounter_note` and the note, with their
 own ID in the details, so the audit search by note finds them. A change held for review writes
 `sync.quarantined` with the reason `permission` and nothing that names the rule. The online events
