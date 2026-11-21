@@ -985,6 +985,8 @@ test.describe('the plan sent is the one the person read', () => {
     await section.getByRole('button', { name: 'Co-sign' }).click();
     await expect(page).toHaveURL(new RegExp(`/encounters/${stay.id}\\?signed=changed$`));
     await expect(page.getByRole('main').getByRole('status')).toHaveText('This visit changed. Read it again.');
+    // A notice that comes back as a full load takes focus, so it is heard (review finding PX-4).
+    await expect(page.getByRole('main').getByRole('status')).toBeFocused();
     expect(presses).toHaveLength(0);
     expect((await visitAsJordan(stay.id)).notes[0]!.status).toBe('completed');
     await expectAccessible(page, 'visit page, changed');
@@ -992,6 +994,7 @@ test.describe('the plan sent is the one the person read', () => {
     // Read again, it co-signs what the person now read.
     await page.getByRole('region', { name: 'Co-sign' }).getByRole('button', { name: 'Co-sign' }).click();
     await expect(page).toHaveURL(new RegExp(`/encounters/${stay.id}\\?signed=cosigned$`));
+    await expect(page.getByRole('main').getByRole('status')).toBeFocused();
     expect(presses.map((p) => p.postDataJSON())).toEqual([{ act: 'cosign', notes: after }]);
   });
 

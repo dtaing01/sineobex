@@ -12,6 +12,7 @@ import { SIGNED_STATES, signedState, signPlan } from '@/lib/sign';
 import styles from '../encounters.module.css';
 import { AssignForm } from './AssignForm';
 import { HandoffExport } from './HandoffExport';
+import { PageNotice } from './PageNotice';
 import { NoteView, Trail } from './NoteView';
 import { SignActions } from './SignActions';
 
@@ -106,11 +107,7 @@ export default async function VisitPage({
           </ul>
         </nav>
       )}
-      {notice && (
-        <p role="status" className={`px-alert px-alert--${notice.tone}`}>
-          {notice.text}
-        </p>
-      )}
+      {notice && <PageNotice tone={notice.tone} text={notice.text} />}
 
       <section aria-labelledby="visit-heading" className="px-panel">
         <h2 id="visit-heading" className="px-h2">

@@ -5003,7 +5003,10 @@ visit page's `AssignForm.tsx` and `assign/route.ts`; its words in
   `?assign=reauthed&note={noteId}#assign-{noteId}` ("You confirmed it’s you. Assign the note
   again.") or `changed` ("Who may take this note changed. Choose again from the list."), which
   says so and takes focus (PAX-3). The button stays off while the next page loads, and a dropped
-  connection says it can't tell whether the note was assigned (9.11 as built).
+  connection says it can't tell whether the note was assigned (9.11 as built). Since the phase's
+  review (finding PX-4), the notice at the top of the visit page that a full load brings back
+  (`?signed=`, `?handoff=`, and `?assign=` when it names no note's form) takes focus as the page
+  opens too (`PageNotice.tsx`), since a status region already there at load is not announced.
 - **With nobody to offer**, the block says "Nobody on the team may take this note now. It needs an
   active clinician with the same or a higher credential, whose role can see everything in it, and
   any part of this kind of note that you can’t see.", as the rule asks: by what the note holds
