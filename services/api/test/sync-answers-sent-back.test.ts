@@ -3,9 +3,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createWorld,
   finish,
+  noteRow,
+  noticesOf,
   roleWith,
+  TEST_MEDICAL_EXAM_TYPE,
   TEST_MEDICAL_TYPE,
   visitAt,
+  WITH_EXAM,
   type World,
 } from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
@@ -40,12 +44,31 @@ describe('a value sent back to a phone', () => {
       await h.scratch.owner<{ id: string; status: string }[]>`
         select id, status from sineobex.quarantine_items where change_id = ${changeId}`
     )[0];
+  /** The team's Program Admin decides on a held change. */
+  const decide = async (changeId: string, decision: 'accept' | 'reject', reason: string) =>
+    call(h, `/v1/team/quarantine/${(await heldItem(changeId))!.id}/decision`, {
+      method: 'POST',
+      token: w.t.adminToken,
+      teamId: w.t.teamId,
+      json: { decision, reason },
+    });
+  const historyOf = (recordId: string, field: string) =>
+    h.scratch.owner<
+      { value: unknown; version: number; kind: string; changedBy: string; approvedBy: string | null }[]
+    >`
+      select value, version, kind, changed_by as "changedBy", approved_by as "approvedBy"
+      from sineobex.field_history where record_id = ${recordId} and field = ${field} order by id`;
+  const receiptOf = async (changeId: string) =>
+    (
+      await h.scratch.owner<{ status: string; details: Record<string, unknown> | null }[]>`
+        select status, details from sineobex.sync_changes where change_id = ${changeId}`
+    )[0];
 
   describe('a Medical visit’s summary (PA-4, VS-1)', () => {
     const summarySet = (
       c: World['eli'],
       encounterId: string,
-      value: string,
+      value: string | null,
       baseVersion: number,
       extra: { conflictOf?: string; resolution?: 'replace' | 'keep_server' } = {},
     ) =>
@@ -138,6 +161,108 @@ describe('a value sent back to a phone', () => {
       await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana outreach words', 0));
       const [first] = await w.eli.send(await summarySet(w.eli, visit.encounterId, 'Demo: eli outreach', 0));
       expect(first).toMatchObject({ status: 'conflict', server: { value: 'Demo: Ana outreach words' } });
+    });
+
+    describe('an admin’s accept of the held set meets the rule a push of it meets (D88)', () => {
+      // Eli names the version the summary was at when he set it; what it holds by the accept decides.
+      const heldSet = async (value: string) => {
+        const visit = await visitAt(w.eli, w.patientId);
+        await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana first assessment', 0));
+        const eli = await summarySet(w.eli, visit.encounterId, value, 1);
+        expect((await w.eli.send(eli))[0]).toMatchObject(held);
+        return { visit, eli };
+      };
+
+      it('is refused over a summary that holds another value since, and the reviewer can then reject it', async () => {
+        const { visit, eli } = await heldSet('Demo: eli words, moved');
+        await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana second assessment', 1));
+        const accept = await decide(eli.changeId, 'accept', 'Demo: checked with Eli');
+        // Never over a value its sender never saw: the conflict a push of it would meet refuses it.
+        expect(accept.status).toBe(409);
+        expect(accept.body.error).toMatchObject({ code: 'cannot_apply', details: { status: 'conflict' } });
+        expect(await summaryOf(visit.encounterId)).toBe('Demo: Ana second assessment');
+        expect((await historyOf(visit.encounterId, 'summary')).map((r) => r.value)).not.toContain(
+          'Demo: eli words, moved',
+        );
+        expect((await heldItem(eli.changeId))!.status).toBe('pending');
+        const reject = await decide(eli.changeId, 'reject', 'Demo: Ana’s assessment stands');
+        expect(reject.status).toBe(200);
+        expect((await heldItem(eli.changeId))!.status).toBe('rejected');
+        expect(await summaryOf(visit.encounterId)).toBe('Demo: Ana second assessment');
+      });
+
+      it('fills a summary cleared since', async () => {
+        const { visit, eli } = await heldSet('Demo: eli words, filled');
+        await w.ana.send(await summarySet(w.ana, visit.encounterId, null, 1));
+        const accept = await decide(eli.changeId, 'accept', 'Demo: checked with Eli');
+        expect(accept.status).toBe(200);
+        expect(await summaryOf(visit.encounterId)).toBe('Demo: eli words, filled');
+        expect((await heldItem(eli.changeId))!.status).toBe('accepted');
+        expect((await historyOf(visit.encounterId, 'summary')).at(-1)).toEqual({
+          value: 'Demo: eli words, filled',
+          version: 3,
+          kind: 'filled_blank',
+          changedBy: w.eli.id,
+          approvedBy: w.t.adminId,
+        });
+      });
+
+      it('is kept in the visit’s history once a note of the visit is finished, the summary unchanged', async () => {
+        const { visit, eli } = await heldSet('Demo: eli words, late');
+        const withSummary = { ...visit, summary: 'Demo: Ana first assessment' };
+        const flags = await noteOn(w.ana, withSummary, TEST_RED_FLAGS_TYPE, { 'flags.any': 'no' });
+        const note = await noteOn(w.ana, withSummary, TEST_MEDICAL_TYPE, { 'care.plan': 'Demo: rest' });
+        await finish(w.ana, [flags, 'sign', 'signed'], [note, 'sign', 'signed']);
+        const accept = await decide(eli.changeId, 'accept', 'Demo: checked with Eli');
+        expect(accept.status).toBe(200);
+        expect(await summaryOf(visit.encounterId)).toBe('Demo: Ana first assessment');
+        expect((await heldItem(eli.changeId))!.status).toBe('accepted');
+        expect((await historyOf(visit.encounterId, 'summary')).at(-1)).toMatchObject({
+          value: 'Demo: eli words, late',
+          version: 1,
+          kind: 'kept_both',
+          changedBy: w.eli.id,
+        });
+        expect(await receiptOf(eli.changeId)).toMatchObject({
+          status: 'accepted',
+          details: { outcome: 'history_only', problem: 'encounter_has_finished_note' },
+        });
+        // Its sender and the finished notes' signer are told, as of any late change to the visit.
+        for (const who of [w.eli.id, w.ana.id]) {
+          expect(await noticesOf(h, who, 'late_change_kept')).toContainEqual({
+            entity: 'encounter',
+            recordId: visit.encounterId,
+          });
+        }
+      });
+    });
+  });
+
+  describe('a held note answer (lifecycle 6.4 rule 5)', () => {
+    it('an admin’s accept is refused over an answer that holds another value since (D88)', async () => {
+      // Ana sees no sensitive exam, so her set of one on Vic's note is held, whatever it holds.
+      const visit = await visitAt(w.vic, w.patientId);
+      const note = await noteOn(w.vic, visit, TEST_MEDICAL_EXAM_TYPE, WITH_EXAM);
+      const findings = (c: World['eli'], value: string, baseVersion: number) =>
+        c.phone.change({
+          entity: 'encounter_note',
+          recordId: note.noteId,
+          op: 'set',
+          field: 'data.exam.findings',
+          value,
+          baseVersion,
+        });
+      const anas = await findings(w.ana, 'Demo: a small rash', 1);
+      expect((await w.ana.send(anas))[0]).toMatchObject(held);
+      const [vics] = await w.vic.send(await findings(w.vic, 'Demo: a healing scrape', 1));
+      expect(vics).toMatchObject({ status: 'accepted', serverVersion: 2 });
+      const accept = await decide(anas.changeId, 'accept', 'Demo: checked with Ana');
+      expect(accept.status).toBe(409);
+      expect(accept.body.error).toMatchObject({ code: 'cannot_apply', details: { status: 'conflict' } });
+      expect((await noteRow(h, note.noteId)).data).toMatchObject({
+        'exam.findings': 'Demo: a healing scrape',
+      });
+      expect((await heldItem(anas.changeId))!.status).toBe('pending');
     });
   });
 
