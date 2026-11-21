@@ -8,8 +8,44 @@ describes the code at commit `c307a0b`, with phases 0 to 4 built and closed; pha
 designed, and each design's own defaults join this document as its phase closes. Read "Decide
 early" first, then your own section, and answer by row id: a row nobody answers keeps its default.
 It holds 118 decisions: 10 for the project lead, 63 for Brooke and Mercy, 12 for counsel and 33
-for the team, each naming in its Decision anyone else to ask. "Before the first real patient" lists
-what needs a person or an account but no decision.
+for the team; a row that needs someone else as well names them in brackets after its question.
+"Before the first real patient" lists what needs a person or an account but no decision.
+
+## Decide early
+
+Most rows below are a constant, a sentence or a new version of a form, and cost little to change
+at any time. These few do not: they cut across the data model, the API's permission checks, the
+phone and the portal, or decide what reaches EMS, billing or an export, so a late answer costs a
+rebuild of several parts, or cannot undo what was already sent.
+
+1. **Who may see, co-sign, attest or take over a note with a GU, breast or rectal exam (BM-4).**
+   Until it is answered, such notes wait for attestation on any team whose attendings lack
+   `patients.view_sensitive_exams`. The rule is one function on the server, mirrored on the phone
+   and in the phone's test server; a later change alters who reads every such note already
+   charted.
+2. **Whether a Non-Medical note inside a Medical visit is signed (BM-5).** A late change touches
+   the sign rules on the server, the phone and the test server, and every note completed before it
+   stays unsigned, so phase 10's billing export would read two kinds of note for good.
+3. **When an offline signature counts, and under which credential (CO-3).** Both times and both
+   credentials are stored, so no data is lost; but the billing export reads the signature time,
+   and claims sent under one answer stay sent.
+4. **42 CFR Part 2 and the sensitive code list (CO-1, CO-2).** Who reads a treatment record or a
+   sensitive diagnosis is decided in the API's read rule, its copy on the phone, the EMS handoff
+   and phase 10's exports. What was read or sent under the old answer can't be called back.
+5. **What reaches EMS (BM-18, TM-3).** The handoff's lines are built by both interpreters and
+   pinned by their vectors and the golden file, and a PDF handed to a medic is out of the team's
+   hands.
+6. **The forms' clinical choices, before the first real chart (BM-28 to BM-61, TM-12, TM-13).** A
+   released definition never changes: a change is a new version, every note keeps the version it
+   was written on, and everything that reads notes (the read model, and phase 10's billing export
+   and grant reports) reads every version for good. A frozen list (the body regions, the Social needs icons) becomes a new list
+   under a new name.
+7. **The ID link host, and the app's public name, bundle identifiers and domain (TM-1, TM-2).** A
+   printed card never expires and names its host for good, so a new host means reprinting every
+   card or keeping the old one forwarding; bundle identifiers can't change once an app is in the
+   stores.
+8. **Retention of photos, documents and the audit log (CO-10).** Phase 12 anchors the audit chain
+   under compliance-mode Object Lock, which cannot be shortened once set.
 
 ## The project lead
 
@@ -153,3 +189,38 @@ forms are a preview.
 | TM-31 | A search rate limit | None in the API. Phase 12's two WAF rate rules (600 requests per 5 minutes per token, 2,000 per IP) count for the pilot's first 14 days, then block if no field phone would have been blocked. Until they block, nothing limits refused requests either: each team-scope refusal writes an `access.denied` row to the platform audit chain, so one signed-in person can grow that chain without limit | Keep the gateway rules, and let them block after the 14 days as planned | Gateway configuration (phase 12) | Phase 3 design 14.1 #24; plan section 6 (phase 3); no marker | 3 |
 | TM-32 | A human-readable chart number; a contact phone, gender identity and pronouns on the chart | None: the UUID is the patient ID; a contact phone arrives with phase 7 | Revisit the chart number with billing (phase 10), and add the others when teams ask, as they are additive | Additive fields; a number would be given by the server, since a phone can't take one from a sequence offline | Phase 3 design 14.1 #28, #29; plan section 6 (phase 3); no marker | 3 |
 | TM-33 | What a history entry can say about how a change was made | "On a phone" whenever the entry has a device time; it can't say "offline" | Keep it unless the history should say it; the sync would then have to report whether the phone had signal | A field in the history from the sync, and the words on the phone and the portal | `apps/mobile/lib/features/patients/patient_labels.dart`, `apps/portal/src/app/(app)/patients/format.ts`; phase 3 design 11.7; plan section 6 (phase 3) | 3 |
+
+## Before the first real patient
+
+These need a person or an account, but no decision. The code is written so each is configuration,
+not a rebuild.
+
+| # | What | Who, or which account | Where |
+|---|---|---|---|
+| BF-1 | AWS accounts for dev, staging and production; the BAA accepted in AWS Artifact before any real patient data; the deploy role for GitHub OIDC; and phase 12's production stack, the portal's production sign-in among it (Cognito's hosted UI, with an authorization code and PKCE) | The project lead; AWS | Plan section 7; build plan "Before the first real patient"; `docs/design/phase-12-aws-production.md`; `apps/portal/src/lib/auth/index.ts` |
+| BF-2 | The Supabase preview project and the Vercel projects, with their `SUPABASE_*` and `VERCEL_*` secrets in GitHub, so the preview deploys | The project lead; Supabase, Vercel | Plan section 7; `docs/setup.md` |
+| BF-3 | Apple Developer Program and Google Play accounts and signing keys, and a macOS runner so CI builds the iOS side | The project lead; Apple, Google, GitHub | Plan section 7, risk 5 |
+| BF-4 | The pilot site, its signer, the partner FQHC and the pilot agreement | The project lead | Build plan "Before the first real patient" |
+| BF-5 | The access policy, written with the build, read and adopted, with its reason for Logistics seeing sensitive details | The project lead | `docs/compliance/access-policy.md`; build plan "Before the first real patient" |
+| BF-6 | The HIPAA risk analysis completed, and the security official who signs it named | The project lead | `docs/compliance/risk-analysis.md` (a template); plan section 7; phase 12 design 11.2 #2 |
+| BF-7 | An outside accessibility audit, and the VPAT | An outside auditor | Plan section 7 and phase 11 |
+| BF-8 | Phase 11 on devices: Brooke and Mercy run the preview and sign it off; VoiceOver and TalkBack; the private copy and a keyboard's own Copy checked on both platforms (risk 10); Use my location once; the clock check through sleep and a reboot (risk 5); the PBKDF2 iterations measured on the pilot's phones and raised, or the platform's own KDF used (risk 4) | Brooke and Mercy, the team, and the pilot's phones | Plan phase 11, risks 4, 5 and 10; `docs/design/phase-4-encounters.md` (unit L5's row) |
+| BF-9 | The old secret-scan finding confirmed harmless, or its key rotated, before production secrets exist | The project lead | Build plan "Before the first real patient"; phase 12 design 11.2 #6 |
+
+These rows need an answer by then too: PL-2, PL-3 and PL-7; BM-1 and BM-21; CO-1, CO-4, CO-6,
+CO-10, CO-11 and CO-12; TM-1 and TM-2.
+
+## How this document is kept
+
+- Each phase's close adds its rows: every default and question in its design that needs a person,
+  in its decider's section, under the next free id. Ids are never reused or renumbered.
+- A row is a question only a person can answer. A decision the project lead has already taken in a
+  document is not listed, unless the document says it is still open.
+- A `PLAN-OPEN:` marker in code names its row, for example `PLAN-OPEN (TM-6): how long an untouched
+  draft stays on its author's phone`. Several markers about one question are one row, naming all
+  their files. The markers at `c307a0b` name their design item instead (lifecycle 12.1 #4, design
+  14.1 #2); each row's Where names every file that holds one of its markers, and every marker
+  belongs to exactly one row.
+- When a person decides, the decision goes into the plan's D-table with the date and who took it,
+  the row leaves this document (its id stays retired), and its markers go or say what was decided.
+  The plan's section 6 keeps the reasoning for each default until then.
