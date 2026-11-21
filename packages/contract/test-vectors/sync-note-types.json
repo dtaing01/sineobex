@@ -1,0 +1,762 @@
+{
+  "note": "Hand-written (phase 4 design, lifecycle 4.4). The test-only note types phase 2's sync tests chart on, in place of the keys they made up before note types existed (vitals, wound_care), with the paths those tests use. Each is a resolved definition as the export writes one; a team holds it with the hash sha256Hex(canonicalJson(definition)). test_note is a Non-Medical note type (offered for both kinds of encounter), so the Medical gate never applies to it; test_medical is a Medical note type with the same sections. No field is required, so a note on either passes the finish check whatever it holds. rows repeats: its entries give a note as many answers as a test needs. more.detail shows only while more.none is not ticked, so an answer there can be one that does not count (lifecycle 4.4, notCounted). redFlags is a Medical note type marked auto: 'medical', as the Red flags and disposition note is (forms 6.2): a visit's finished one lets its Medical notes be finished (lifecycle 4.6, red_flags_first), and its one required answer, flags.any, makes the finish check fail while it is empty (incomplete); the sign-off tests install it in their own team. services/api/test/sync-fixtures.ts installs both noteTypes in every test team; the phone's tests read them through apps/mobile/test/sync/test_note_types.dart. Never installed outside tests. restricted holds four Non-Medical note types for who may read and change what (lifecycle 6.4): test_restricted has a sensitive exam section (exam), a treatment record section (moud), a section only a credential that orders medications may change (meds), a picker with a sensitive exam option (systems.seen, gu) and a repeating section with a diagnosis (dx), a sensitive code taking its entry with it; test_sensitive is a sensitive note type; test_assess has one section that is not repeated, holding a diagnosis, and a detail and a picker with a sensitive exam option (assess.seen, gu) that show only while 'Nothing more' (assess.none) is not ticked, so an answer that does not count can sit beside a sensitive diagnosis, whose section goes with it, or hold a sensitive exam's option; test_marked has, outside any sensitive exam section, each place an exam's mark can sit: a picker whose Other option is marked (look.systems, its text look.systems_other), a region with a marked region (look.skin), a grid with a marked row (look.rows, rectal), and a repeating section holding a picker with a marked option (wounds.where), so a set by someone without patients.view_sensitive_exams is held there whatever the note holds (lifecycle 4.4, review finding RD-10). The sync read tests install them in their own team.",
+  "noteTypes": [
+    {
+      "key": "test_note",
+      "version": 1,
+      "title": "Test note",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "vitals",
+          "title": "Vitals",
+          "fields": [
+            {
+              "id": "temp_c",
+              "kind": "number",
+              "label": "Temperature",
+              "min": 30,
+              "max": 45,
+              "decimals": 1
+            },
+            {
+              "id": "pulse",
+              "kind": "number",
+              "label": "Pulse",
+              "min": 0,
+              "max": 300,
+              "decimals": 0
+            }
+          ]
+        },
+        {
+          "id": "care",
+          "title": "Care",
+          "fields": [
+            {
+              "id": "plan",
+              "kind": "text",
+              "label": "Plan",
+              "lines": "many",
+              "maxLength": 4000
+            },
+            {
+              "id": "followup",
+              "kind": "text",
+              "label": "Follow-up",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "allergies",
+              "kind": "text",
+              "label": "Allergies",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "history",
+              "kind": "text",
+              "label": "History",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "wound",
+          "title": "Wound",
+          "fields": [
+            {
+              "id": "site",
+              "kind": "text",
+              "label": "Site",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "length_cm",
+              "kind": "number",
+              "label": "Length",
+              "min": 0,
+              "max": 99.9,
+              "decimals": 1
+            }
+          ]
+        },
+        {
+          "id": "extra",
+          "title": "More",
+          "fields": [
+            {
+              "id": "a",
+              "kind": "text",
+              "label": "Answer a",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "b",
+              "kind": "text",
+              "label": "Answer b",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "c",
+              "kind": "text",
+              "label": "Answer c",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "d",
+              "kind": "text",
+              "label": "Answer d",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "e",
+              "kind": "text",
+              "label": "Answer e",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "f",
+              "kind": "text",
+              "label": "Answer f",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "g",
+              "kind": "text",
+              "label": "Answer g",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "rows",
+          "title": "Rows",
+          "repeat": {
+            "max": 20,
+            "itemTitle": "Row {n}"
+          },
+          "fields": [
+            {
+              "id": "n",
+              "kind": "number",
+              "label": "Count",
+              "min": 0,
+              "max": 100000,
+              "decimals": 0
+            },
+            {
+              "id": "text",
+              "kind": "text",
+              "label": "Text",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "more",
+          "title": "More",
+          "fields": [
+            {
+              "id": "none",
+              "kind": "flag",
+              "label": "Nothing more"
+            },
+            {
+              "id": "detail",
+              "kind": "text",
+              "label": "Detail",
+              "lines": "one",
+              "maxLength": 200,
+              "showWhen": {
+                "not": {
+                  "field": "more.none",
+                  "filled": true
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_medical",
+      "version": 1,
+      "title": "Test Medical note",
+      "kinds": [
+        "medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "vitals",
+          "title": "Vitals",
+          "fields": [
+            {
+              "id": "temp_c",
+              "kind": "number",
+              "label": "Temperature",
+              "min": 30,
+              "max": 45,
+              "decimals": 1
+            },
+            {
+              "id": "pulse",
+              "kind": "number",
+              "label": "Pulse",
+              "min": 0,
+              "max": 300,
+              "decimals": 0
+            }
+          ]
+        },
+        {
+          "id": "care",
+          "title": "Care",
+          "fields": [
+            {
+              "id": "plan",
+              "kind": "text",
+              "label": "Plan",
+              "lines": "many",
+              "maxLength": 4000
+            },
+            {
+              "id": "followup",
+              "kind": "text",
+              "label": "Follow-up",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "allergies",
+              "kind": "text",
+              "label": "Allergies",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "history",
+              "kind": "text",
+              "label": "History",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "wound",
+          "title": "Wound",
+          "fields": [
+            {
+              "id": "site",
+              "kind": "text",
+              "label": "Site",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "length_cm",
+              "kind": "number",
+              "label": "Length",
+              "min": 0,
+              "max": 99.9,
+              "decimals": 1
+            }
+          ]
+        },
+        {
+          "id": "extra",
+          "title": "More",
+          "fields": [
+            {
+              "id": "a",
+              "kind": "text",
+              "label": "Answer a",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "b",
+              "kind": "text",
+              "label": "Answer b",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "c",
+              "kind": "text",
+              "label": "Answer c",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "d",
+              "kind": "text",
+              "label": "Answer d",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "e",
+              "kind": "text",
+              "label": "Answer e",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "f",
+              "kind": "text",
+              "label": "Answer f",
+              "lines": "one",
+              "maxLength": 200
+            },
+            {
+              "id": "g",
+              "kind": "text",
+              "label": "Answer g",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "rows",
+          "title": "Rows",
+          "repeat": {
+            "max": 20,
+            "itemTitle": "Row {n}"
+          },
+          "fields": [
+            {
+              "id": "n",
+              "kind": "number",
+              "label": "Count",
+              "min": 0,
+              "max": 100000,
+              "decimals": 0
+            },
+            {
+              "id": "text",
+              "kind": "text",
+              "label": "Text",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "more",
+          "title": "More",
+          "fields": [
+            {
+              "id": "none",
+              "kind": "flag",
+              "label": "Nothing more"
+            },
+            {
+              "id": "detail",
+              "kind": "text",
+              "label": "Detail",
+              "lines": "one",
+              "maxLength": 200,
+              "showWhen": {
+                "not": {
+                  "field": "more.none",
+                  "filled": true
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "redFlags": {
+    "key": "test_red_flags",
+    "version": 1,
+    "title": "Test Red flags note",
+    "kinds": [
+      "medical"
+    ],
+    "group": "clinical",
+    "sensitivity": "none",
+    "auto": "medical",
+    "sections": [
+      {
+        "id": "flags",
+        "title": "Red flags",
+        "fields": [
+          {
+            "id": "any",
+            "kind": "choice",
+            "label": "Any red flags?",
+            "many": false,
+            "options": [
+              {
+                "code": "no",
+                "label": "No"
+              },
+              {
+                "code": "yes",
+                "label": "Yes"
+              }
+            ],
+            "required": true
+          },
+          {
+            "id": "note",
+            "kind": "text",
+            "label": "Note",
+            "lines": "one",
+            "maxLength": 200
+          }
+        ]
+      }
+    ]
+  },
+  "restricted": [
+    {
+      "key": "test_restricted",
+      "version": 1,
+      "title": "Test restricted",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "general",
+          "title": "General",
+          "fields": [
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "exam",
+          "title": "Exam",
+          "sensitiveExam": true,
+          "fields": [
+            {
+              "id": "findings",
+              "kind": "text",
+              "label": "Findings",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "moud",
+          "title": "Treatment",
+          "treatmentRecord": true,
+          "fields": [
+            {
+              "id": "dose",
+              "kind": "text",
+              "label": "Dose",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "meds",
+          "title": "Medication",
+          "needs": "orderMedications",
+          "fields": [
+            {
+              "id": "given",
+              "kind": "text",
+              "label": "Given",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        },
+        {
+          "id": "systems",
+          "title": "Systems",
+          "fields": [
+            {
+              "id": "seen",
+              "kind": "choice",
+              "label": "Systems examined",
+              "many": true,
+              "options": [
+                {
+                  "code": "heart",
+                  "label": "Heart"
+                },
+                {
+                  "code": "lungs",
+                  "label": "Lungs"
+                },
+                {
+                  "code": "gu",
+                  "label": "GU",
+                  "sensitiveExam": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dx",
+          "title": "Diagnoses",
+          "repeat": {
+            "max": 20,
+            "itemTitle": "Diagnosis {n}"
+          },
+          "fields": [
+            {
+              "id": "diagnosis",
+              "kind": "problem",
+              "label": "Diagnosis"
+            },
+            {
+              "id": "note",
+              "kind": "text",
+              "label": "Note",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_sensitive",
+      "version": 1,
+      "title": "Test sensitive",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "psych",
+      "sensitivity": "sensitive",
+      "sections": [
+        {
+          "id": "talk",
+          "title": "Talk",
+          "fields": [
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_assess",
+      "version": 1,
+      "title": "Test assessment",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "assess",
+          "title": "Assessment",
+          "fields": [
+            {
+              "id": "diagnosis",
+              "kind": "problem",
+              "label": "Diagnosis"
+            },
+            {
+              "id": "none",
+              "kind": "flag",
+              "label": "Nothing more"
+            },
+            {
+              "id": "detail",
+              "kind": "text",
+              "label": "Detail",
+              "lines": "one",
+              "maxLength": 200,
+              "showWhen": {
+                "not": {
+                  "field": "assess.none",
+                  "filled": true
+                }
+              }
+            },
+            {
+              "id": "seen",
+              "kind": "choice",
+              "label": "Systems examined",
+              "many": true,
+              "options": [
+                {
+                  "code": "heart",
+                  "label": "Heart"
+                },
+                {
+                  "code": "gu",
+                  "label": "GU",
+                  "sensitiveExam": true
+                }
+              ],
+              "showWhen": {
+                "not": {
+                  "field": "assess.none",
+                  "filled": true
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_marked",
+      "version": 1,
+      "title": "Test marked",
+      "kinds": [
+        "medical",
+        "non_medical"
+      ],
+      "group": "clinical",
+      "sensitivity": "none",
+      "sections": [
+        {
+          "id": "look",
+          "title": "Look",
+          "fields": [
+            {
+              "id": "systems",
+              "kind": "choice",
+              "label": "Systems examined",
+              "many": true,
+              "options": [
+                {
+                  "code": "heart",
+                  "label": "Heart"
+                },
+                {
+                  "code": "other",
+                  "label": "Other",
+                  "other": true,
+                  "sensitiveExam": true
+                }
+              ]
+            },
+            {
+              "id": "skin",
+              "kind": "region",
+              "label": "Where on the skin",
+              "options": [
+                {
+                  "code": "arm",
+                  "label": "Arm"
+                },
+                {
+                  "code": "groin",
+                  "label": "Groin",
+                  "sensitiveExam": true
+                }
+              ]
+            },
+            {
+              "id": "rows",
+              "kind": "grid",
+              "label": "Checked",
+              "rows": [
+                {
+                  "code": "head",
+                  "label": "Head"
+                },
+                {
+                  "code": "rectal",
+                  "label": "Rectal",
+                  "sensitiveExam": true
+                }
+              ],
+              "cell": {
+                "id": "seen",
+                "kind": "text",
+                "label": "Seen",
+                "lines": "one",
+                "maxLength": 200
+              }
+            },
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "lines": "many",
+              "maxLength": 4000
+            }
+          ]
+        },
+        {
+          "id": "wounds",
+          "title": "Wounds",
+          "repeat": {
+            "max": 5,
+            "itemTitle": "Wound {n}"
+          },
+          "fields": [
+            {
+              "id": "where",
+              "kind": "choice",
+              "label": "Where",
+              "many": false,
+              "options": [
+                {
+                  "code": "arm",
+                  "label": "Arm"
+                },
+                {
+                  "code": "groin",
+                  "label": "Groin",
+                  "sensitiveExam": true
+                }
+              ]
+            },
+            {
+              "id": "size",
+              "kind": "text",
+              "label": "Size",
+              "lines": "one",
+              "maxLength": 200
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

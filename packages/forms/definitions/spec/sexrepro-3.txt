@@ -1,0 +1,8 @@
+      2. Symptoms
+         1. Buttons: \[ None \] \[ Discharge \] \[ Dysuria \] \[ Lesion \] \[ Pelvic pain \] \[ Testicular pain \] \[ Rash \]
+      3. Testing
+         1. Buttons: \[ HIV \] \[ Syphilis \] \[ Gonorrhea \] \[ Chlamydia \] \[ Hep B \] \[ Hep C \] \[ Pregnancy \]
+      4. Prevention
+         1. Buttons: \[ Condoms provided \] \[ PrEP discussed \] \[ PEP discussed \] \[ Vaccine \] \[ Safer sex counseling \]
+      5. Follow-up
+         1. &#91; Results needed \] \[ Referral \] \[ PCP \] \[ None \]

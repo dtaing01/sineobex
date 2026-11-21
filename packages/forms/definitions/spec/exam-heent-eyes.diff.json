@@ -1,0 +1,52 @@
+{
+  "piece": "exam-heent-eyes",
+  "notOptions": ["Right pupil: _____ mm", "Left pupil: _____ mm"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_heent_eyes, that the General note type includes: its section Eyes shows only while HEENT (exam.systems is heent) is picked in the exam picker, and offers one-tap Normal. HEENT is four modules, one for each sub-exam (eyes, ears, nose, mouth and throat), each with its own Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10, 11"
+    },
+    {
+      "line": 3,
+      "what": "The guidance line is not typed: it is why HEENT is four sections.",
+      "why": "focused-exam inventory construct 39, default 11"
+    },
+    {
+      "line": 7,
+      "what": "Pupils is choose-many. PERRL is the normal option and clears the others. PERRLA, the same normal pupils with accommodation, clears the others too, so neither is held beside an abnormal pupil; Normal fills PERRL. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 17, 26, 31; PLAN-OPEN (forms 10.1 #23)"
+    },
+    {
+      "line": 21,
+      "what": "If unequal: the two sizes are one number with sides, Pupil size, in mm from 1 to 9 with one decimal (so a half millimetre can be typed: the format has no step), and the reaction is asked for each pupil, Pupil reaction, choose-one with sides. Both show only while Unequal pupils is picked. The bullets Right pupil and Left pupil are the two sides, not options.",
+      "why": "focused-exam inventory default 20, 43; forms 4.3 (sides)"
+    },
+    {
+      "line": 31,
+      "what": "Extraocular movements is choose-many. Intact is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 43,
+      "what": "Conjunctiva is choose-many. Normal is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 53,
+      "what": "Sclera is choose-one. Anicteric is the normal option.",
+      "why": "focused-exam inventory default 14, 26"
+    },
+    {
+      "line": 59,
+      "what": "Visual symptoms is choose-many. Vision normal is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 73,
+      "what": "Other is a text box, Other eye findings, for what has no side (conjunctiva, sclera and eye movements have none). Normal leaves it empty.",
+      "why": "focused-exam inventory default 19"
+    }
+  ]
+}

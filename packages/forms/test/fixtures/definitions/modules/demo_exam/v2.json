@@ -1,0 +1,11 @@
+{
+  "name": "demo_exam",
+  "version": 2,
+  "sections": [
+    {
+      "id": "eyes",
+      "title": "Eyes (second version)",
+      "fields": [{ "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }]
+    }
+  ]
+}

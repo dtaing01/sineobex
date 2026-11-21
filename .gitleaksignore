@@ -1,0 +1,27 @@
+# False positive, confirmed 2026-10-20. gitleaks' generic-api-key rule matched the
+# *name* of a Keychain entry ('sineobex.db.key.v1') in a file deleted by the Oct 8
+# reset. The value is a lookup label, not a key; the real database key was generated
+# on the device and never committed. Nothing to rotate. Scoped to this one commit,
+# file, rule and line so any new finding still fails the scan.
+471b0180a11e0ee7f437b725465c397aebe69088:app/lib/core/security/db_key.dart:generic-api-key:14
+
+# False positive, confirmed 2026-11-14. gitleaks' generic-api-key rule matched the *name* of a
+# task card ('A3-policy-edge') that followed the word 'access' in a table of the phase 12 design.
+# It is a card ID in a document, not a credential. Nothing to rotate. The card before it has
+# since been renamed so the line no longer matches. Scoped to this one commit, file, rule and
+# line so any new finding still fails the scan.
+1968309f0dbac4b538b8734184d12252a3996659:docs/design/phase-12-aws-production.md:generic-api-key:417
+
+# False positive, confirmed 2026-11-17. gitleaks' generic-api-key rule matched the SHA-256 hash of
+# a released definition file (lists/capillary_refill.json) in the forms lock, which the export's
+# --release writes: every value there is the hash of a file in this repository, not a credential.
+# Nothing to rotate. Scoped to this one commit, file, rule and line so any new finding still fails
+# the scan; a cherry-pick of the release commit changes its hash and needs this line rewritten.
+495d08ae73cbd59f73cc6cee5e95b09141e330dd:packages/forms/definitions.lock.json:generic-api-key:3
+
+# False positive, confirmed 2026-11-18. gitleaks' generic-api-key rule matched a made-up visit ID
+# (a UUID no team holds) passed beside a test member's token to the EMS handoff route, in a test
+# that checks an unknown visit is answered 404. It is a test's input, not a credential. Nothing to
+# rotate. The line now names the ID in a constant of its own, so it no longer matches. Scoped to
+# this one commit, file, rule and line so any new finding still fails the scan.
+ff5b5dbf2aa2b25cabb5d89ce55e4e8584c94ed8:services/api/test/encounters-handoff.test.ts:generic-api-key:310

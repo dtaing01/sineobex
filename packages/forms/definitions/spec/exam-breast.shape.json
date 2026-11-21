@@ -1,0 +1,131 @@
+{
+  "piece": "exam-breast",
+  "file": "modules/exam_breast/v1.json",
+  "sections": [
+    {
+      "id": "breast",
+      "title": "Breast",
+      "showWhen": { "field": "exam.systems", "is": "breast" },
+      "normal": true,
+      "sensitiveExam": true
+    }
+  ],
+  "fields": [
+    { "path": "breast.performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+    {
+      "path": "breast.chaperone",
+      "kind": "choice",
+      "many": false,
+      "label": "Chaperone present",
+      "options": { "list": "yes_no" },
+      "noNormal": true,
+      "showWhen": { "field": "breast.performed", "filled": true }
+    },
+    {
+      "path": "breast.consented",
+      "kind": "flag",
+      "label": "Patient consented",
+      "required": true,
+      "noNormal": true,
+      "showWhen": { "field": "breast.performed", "filled": true }
+    },
+    {
+      "path": "breast.inspection",
+      "kind": "choice",
+      "many": true,
+      "label": "Inspection",
+      "options": [
+        "symmetric",
+        "asymmetric",
+        "skin_changes",
+        "retraction",
+        "dimpling",
+        "erythema",
+        "discharge"
+      ],
+      "excludes": [["symmetric", "asymmetric"]],
+      "showWhen": { "field": "breast.performed", "filled": true },
+      "flags": { "normal": ["symmetric"] }
+    },
+    {
+      "path": "breast.inspection_side",
+      "kind": "choice",
+      "many": false,
+      "label": "Side of the inspection findings",
+      "options": { "list": "side" },
+      "showWhen": {
+        "field": "breast.inspection",
+        "is": ["asymmetric", "skin_changes", "retraction", "dimpling", "erythema", "discharge"]
+      }
+    },
+    {
+      "path": "breast.finding",
+      "kind": "choice",
+      "many": true,
+      "label": "Finding",
+      "options": ["no_mass", "mass", "tenderness", "nodule", "other"],
+      "showWhen": { "field": "breast.performed", "filled": true },
+      "excludes": [
+        ["no_mass", "mass"],
+        ["no_mass", "nodule"]
+      ],
+      "flags": { "normal": ["no_mass"], "other": ["other"] }
+    },
+    {
+      "path": "breast.mass",
+      "kind": "group",
+      "label": "Mass",
+      "layout": "stack",
+      "showWhen": { "field": "breast.finding", "is": "mass" }
+    },
+    {
+      "path": "breast.mass.location",
+      "kind": "choice",
+      "many": false,
+      "label": "Location (clock position)",
+      "options": [
+        { "code": "clock_1", "label": "1 o’clock" },
+        { "code": "clock_2", "label": "2 o’clock" },
+        { "code": "clock_3", "label": "3 o’clock" },
+        { "code": "clock_4", "label": "4 o’clock" },
+        { "code": "clock_5", "label": "5 o’clock" },
+        { "code": "clock_6", "label": "6 o’clock" },
+        { "code": "clock_7", "label": "7 o’clock" },
+        { "code": "clock_8", "label": "8 o’clock" },
+        { "code": "clock_9", "label": "9 o’clock" },
+        { "code": "clock_10", "label": "10 o’clock" },
+        { "code": "clock_11", "label": "11 o’clock" },
+        { "code": "clock_12", "label": "12 o’clock" },
+        "central"
+      ]
+    },
+    {
+      "path": "breast.mass.side",
+      "kind": "choice",
+      "many": false,
+      "label": "Side",
+      "options": { "list": "side_rl" }
+    },
+    {
+      "path": "breast.mass.size",
+      "kind": "number",
+      "label": "Size",
+      "min": 0.1,
+      "max": 30,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 }
+    },
+    {
+      "path": "breast.mass.characteristics",
+      "kind": "choice",
+      "many": true,
+      "label": "Characteristics",
+      "options": ["mobile", "fixed", "tender", "non_tender"],
+      "excludes": [
+        ["mobile", "fixed"],
+        ["tender", "non_tender"]
+      ]
+    }
+  ]
+}

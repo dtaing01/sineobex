@@ -1,0 +1,57 @@
+{
+  "piece": "quick-2",
+  "notOptions": ["SOCIAL NEEDS", "Text box", "MEDICATION", "Date"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "The section shows when the visit covers SOCIAL NEEDS.",
+      "why": "inventory section 3.7"
+    },
+    {
+      "line": 3,
+      "what": "Choose-many.",
+      "why": "inventory section 3.7"
+    },
+    {
+      "line": 5,
+      "what": "Choose-many, with the codes of the shared list needs: ID Documents is the code id. Expand maps it to social_needs:needs.needs.",
+      "why": "inventory A63; PRD main 410; forms 6.4"
+    },
+    {
+      "line": 7,
+      "what": "Choose-one, labelled as the line writes them: Yes and No (codes yes, no), pinned in the shape file beside their codes. Yes shows a text box, the V1 referral's details, which is required while it shows: a referral records a date and its details.",
+      "why": "inventory A3, A62; PRD main 113"
+    },
+    {
+      "line": 10,
+      "what": "The Medication section shows when the visit covers MEDICATION, and needs an ordering credential.",
+      "why": "PRD main 409; forms 6.4; lifecycle 6.4"
+    },
+    {
+      "line": 12,
+      "what": "Choose-many. Records the order's category; no order is placed.",
+      "why": "inventory A60; forms 6.8"
+    },
+    {
+      "line": 14,
+      "what": "Choose-one, labelled as the line writes them: YES and NO (codes yes, no), unlike Referral at line 7, pinned in the shape file beside their codes. Yes is recorded now; phase 7 creates the delivery task. Instructions for delivery shows while it is YES and is required then: the task is created with the instructions.",
+      "why": "inventory A3; PRD main 418; forms 6.4"
+    },
+    {
+      "line": 15,
+      "what": "Shown only when Delivery is YES.",
+      "why": "inventory A61"
+    },
+    {
+      "line": 18,
+      "what": "The Assessment / Encounter Summary text box is the visit's assessment on the summary screen, not a field.",
+      "why": "inventory A56; lifecycle 9.6; forms 6.2"
+    },
+    {
+      "line": 21,
+      "what": "No Follow up section: the lines' text box and date (lines 21 to 25) are not typed, a departure from the lines. A quick encounter is a Medical note, so the visit's follow-up is the Red flags and disposition note's (when, the date, and Follow-up details, the text box that takes this one's place), which is added with it; the phase 7 follow-up task reads that note's. A follow-up here as well would be asked twice and could disagree.",
+      "why": "PRD main 404, 409; forms 6.2, 6.7; inventory A57"
+    }
+  ]
+}

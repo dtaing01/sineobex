@@ -1,0 +1,77 @@
+{
+  "piece": "exam-gu",
+  "file": "modules/exam_gu/v1.json",
+  "sections": [
+    {
+      "id": "gu",
+      "title": "Genitourinary (GU)",
+      "showWhen": { "field": "exam.systems", "is": "gu" },
+      "normal": true,
+      "sensitiveExam": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "gu.general",
+      "kind": "choice",
+      "many": true,
+      "label": "General findings",
+      "options": [
+        "no_acute_findings",
+        "dysuria",
+        "frequency",
+        "urgency",
+        "hematuria",
+        "flank_pain",
+        "pelvic_pain",
+        "discharge",
+        "genital_lesion",
+        "testicular_pain_swelling"
+      ],
+      "flags": { "exclusive": ["no_acute_findings"], "normal": ["no_acute_findings"] }
+    },
+    {
+      "path": "gu.cva",
+      "kind": "choice",
+      "many": false,
+      "label": "Costovertebral angle (CVA)",
+      "options": ["no_tenderness", "right", "left", "bilateral"],
+      "flags": { "normal": ["no_tenderness"] }
+    },
+    { "path": "gu.performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+    {
+      "path": "gu.chaperone",
+      "kind": "choice",
+      "many": false,
+      "label": "Chaperone present",
+      "options": { "list": "yes_no" },
+      "noNormal": true,
+      "showWhen": { "field": "gu.performed", "filled": true }
+    },
+    {
+      "path": "gu.consented",
+      "kind": "flag",
+      "label": "Patient consented",
+      "required": true,
+      "noNormal": true,
+      "showWhen": { "field": "gu.performed", "filled": true }
+    },
+    {
+      "path": "gu.external",
+      "kind": "choice",
+      "many": true,
+      "label": "External exam",
+      "options": ["normal", "lesion", "ulcer", "rash", "discharge", "swelling", "tenderness"],
+      "showWhen": { "field": "gu.performed", "filled": true },
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "gu.findings",
+      "kind": "text",
+      "label": "Findings",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "gu.performed", "filled": true }
+    }
+  ]
+}

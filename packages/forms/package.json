@@ -1,0 +1,24 @@
+{
+  "name": "@sineobex/forms",
+  "private": true,
+  "type": "module",
+  "description": "Note type definitions as data: the definition format, its schema and checks, and the functions that read a definition.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./definition.schema.json": "./schema/definition.schema.json"
+  },
+  "scripts": {
+    "export": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/export.ts",
+    "golden": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/golden.ts",
+    "lock-grows": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/lock-grows.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "ajv": "8.20.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}

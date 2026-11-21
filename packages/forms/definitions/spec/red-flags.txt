@@ -1,0 +1,25 @@
+         2. Red Flags&#32;
+            1. Question: Does the patient require emergency evaluation?&#32;
+               1. Buttons: \[ NO \] \[ UNCERTAIN \] \[ YES \]
+                  1. If \[YES\] :&#32;
+                     1. EMS activated?\
+&#91; YES \] \[ NO \]\
+\
+Patient agrees to transport?\
+&#91; YES \] \[ NO \]\
+\
+If NO:\
+&#91; Patient declined \]\
+&#91; Capacity concern \]\
+&#91; Other \]\
+\
+TIME EMS CALLED: \[ 10:52 AM \]\
+\
+HANDOFF SUMMARY\
+&#91; Auto-generated from encounter/Export of Encounter\]\
+\
+&#91; COPY / SHARE HANDOFF \]&#32;
+         3. Disposition
+            1. &#91; Follow-up \] \[ PCP \] \[ Specialty \] \[ ED \] \[ None \] \[ EMS \] \[ ED referral \] \[ Transport arranged \] \[ Declined \]
+         4. Follow Up
+            1. Buttons: \[ Next street clinic \] \[ Specific date \] \[ PRN \]

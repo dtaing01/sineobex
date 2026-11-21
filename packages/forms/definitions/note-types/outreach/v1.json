@@ -1,0 +1,183 @@
+{
+  "key": "outreach",
+  "version": 1,
+  "title": "Outreach",
+  "kinds": ["medical", "non_medical"],
+  "group": "outreach",
+  "sensitivity": "none",
+  "sections": [
+    {
+      "id": "outreach",
+      "title": "Outreach / community encounter",
+      "spec": "outreach",
+      "fields": [
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Type",
+          "options": [
+            {
+              "code": "outreach",
+              "label": "Outreach"
+            },
+            {
+              "code": "wellness_check",
+              "label": "Wellness check"
+            },
+            {
+              "code": "resource_distribution",
+              "label": "Resource distribution"
+            },
+            {
+              "code": "navigation",
+              "label": "Navigation"
+            },
+            {
+              "code": "follow_up_attempt",
+              "label": "Follow-up attempt"
+            },
+            {
+              "code": "relationship",
+              "label": "Relationship"
+            }
+          ]
+        },
+        {
+          "id": "interaction",
+          "kind": "choice",
+          "many": false,
+          "label": "Interaction",
+          "options": [
+            {
+              "code": "spoke_with_patient",
+              "label": "Spoke with patient"
+            },
+            {
+              "code": "unable_to_locate",
+              "label": "Unable to locate"
+            },
+            {
+              "code": "left_message",
+              "label": "Left message"
+            },
+            {
+              "code": "spoke_with_collateral",
+              "label": "Spoke with collateral"
+            }
+          ]
+        },
+        {
+          "id": "support",
+          "kind": "choice",
+          "many": true,
+          "label": "Support provided",
+          "options": [
+            {
+              "code": "food",
+              "label": "Food"
+            },
+            {
+              "code": "clothing",
+              "label": "Clothing"
+            },
+            {
+              "code": "hygiene",
+              "label": "Hygiene"
+            },
+            {
+              "code": "phone",
+              "label": "Phone"
+            },
+            {
+              "code": "charging",
+              "label": "Charging"
+            },
+            {
+              "code": "transportation",
+              "label": "Transportation"
+            },
+            {
+              "code": "supplies",
+              "label": "Supplies"
+            },
+            {
+              "code": "information",
+              "label": "Information"
+            }
+          ]
+        },
+        {
+          "id": "new_need",
+          "kind": "choice",
+          "many": true,
+          "label": "New need identified",
+          "options": [
+            {
+              "code": "no",
+              "label": "No",
+              "exclusive": true
+            },
+            {
+              "code": "medical",
+              "label": "Medical",
+              "suggests": "general_primary_care"
+            },
+            {
+              "code": "behavioral",
+              "label": "Behavioral",
+              "suggests": "psychological"
+            },
+            {
+              "code": "social",
+              "label": "Social",
+              "suggests": "social_needs"
+            },
+            {
+              "code": "emergency",
+              "label": "Emergency"
+            }
+          ]
+        },
+        {
+          "id": "red_flags",
+          "kind": "action",
+          "label": "Go to Red flags and disposition",
+          "action": "open_note_type",
+          "noteType": "red_flags_disposition",
+          "showWhen": {
+            "field": "outreach.new_need",
+            "is": "emergency"
+          }
+        },
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Notes",
+          "lines": "many",
+          "maxLength": 2000
+        },
+        {
+          "id": "follow_up",
+          "kind": "choice",
+          "many": false,
+          "label": "Follow-up",
+          "options": [
+            {
+              "code": "none",
+              "label": "None"
+            },
+            {
+              "code": "patient_follow_up",
+              "label": "Patient follow-up"
+            },
+            {
+              "code": "team_follow_up",
+              "label": "Team follow-up"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

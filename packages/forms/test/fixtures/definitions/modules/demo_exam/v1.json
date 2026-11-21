@@ -1,0 +1,46 @@
+{
+  "name": "demo_exam",
+  "version": 1,
+  "sections": [
+    {
+      "id": "eyes",
+      "title": "Eyes",
+      "normal": true,
+      "showWhen": { "field": "visit.systems", "is": "eyes" },
+      "fields": [
+        {
+          "id": "pupils",
+          "kind": "choice",
+          "many": false,
+          "label": "Pupils",
+          "options": { "list": "demo_scale" }
+        },
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Notes",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": { "field": "eyes.pupils", "is": ["zero", "one"] }
+        }
+      ]
+    },
+    {
+      "id": "ears",
+      "title": "Ears",
+      "fields": [
+        {
+          "id": "hearing",
+          "kind": "choice",
+          "many": false,
+          "label": "Hearing",
+          "sides": true,
+          "options": [
+            { "code": "intact", "label": "Grossly intact", "normal": true },
+            { "code": "decreased", "label": "Decreased" }
+          ]
+        }
+      ]
+    }
+  ]
+}

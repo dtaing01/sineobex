@@ -1,0 +1,57 @@
+{
+  "piece": "exam-picker",
+  "notOptions": ["Cardiovascular", "+ ADD EXAM", "CONTINUE"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "The picker is the section Focused exam of the General note type, right after Vitals and before Assessment; general-1 gives the note type's header.",
+      "why": "PRD main 414; forms 6.3"
+    },
+    {
+      "line": 5,
+      "what": "Prompt: What did you examine? is the label of one choose-many field, exam.systems, with an option for each system, in the order of the lines.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory construct 42"
+    },
+    {
+      "line": 9,
+      "what": "Each option's label is the picker's short name and its code the system's id (focused-exam inventory section 2): general_appearance (General), heent, cardiovascular (Cardiac), pulmonary, abdominal (Abdomen), msk, neurologic (Neuro), skin, peripheral_vascular, diabetic_foot (Foot), gu, psych_observation (Psych), lymphatic (Lymph), neck_thyroid (Neck / Thyroid), breast, rectal. Every exam module's sections show while their system's code is picked.",
+      "why": "focused-exam inventory default 10"
+    },
+    {
+      "line": 29,
+      "what": "GU, Breast and Rectal carry sensitiveExam: the picker's answer drops those codes for a reader without the key and from the recap for everyone, and only a sensitive exam section may test them.",
+      "why": "PRD main 415; forms 6.6"
+    },
+    {
+      "line": 41,
+      "what": "Other is kept, with no module: its short text names what was examined, and a text box, Other exam findings, shown while Other is picked, holds the findings (at most 2,000 characters).",
+      "why": "focused-exam inventory default 9, 31"
+    },
+    {
+      "line": 43,
+      "what": "After the picker come the 21 exam modules, one include each, in the order of the focused-exam inventory's section 7 (version 1 of exam_general_appearance, exam_heent_eyes, exam_heent_ears, exam_heent_nose, exam_heent_mouth, exam_cv_rhythm, exam_cv_perfusion, exam_pulmonary, exam_abdominal, exam_msk, exam_neuro_1, exam_neuro_2, exam_skin, exam_gu, exam_lymphatic, exam_peripheral_vascular, exam_breast, exam_rectal, exam_psychiatric, exam_foot, exam_neck). An include has no showWhen of its own: each section of a module already shows only while its system is picked, and the resolver would join a second, equal condition to each.",
+      "why": "forms 6.3; focused-exam inventory section 7"
+    },
+    {
+      "line": 45,
+      "what": "The example selection is not typed: Cardiovascular is the review step's name for Cardiac.",
+      "why": "focused-exam inventory 3.17, default 10, 12"
+    },
+    {
+      "line": 55,
+      "what": "+ ADD EXAM is the picker itself, opened again; it stores nothing.",
+      "why": "PRD main 414; focused-exam inventory construct 43"
+    },
+    {
+      "line": 57,
+      "what": "Only the selected sections expand: each module section's showWhen.",
+      "why": "PRD main 414; forms 6.3"
+    },
+    {
+      "line": 62,
+      "what": "CONTINUE is the screen's flow, not a field.",
+      "why": "focused-exam inventory construct 43"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "side_rl",
+  "options": [
+    { "code": "right", "label": "Right" },
+    { "code": "left", "label": "Left" }
+  ]
+}

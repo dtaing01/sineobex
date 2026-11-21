@@ -1,0 +1,73 @@
+      11\. Peripheral Vascular
+
+      Separate from cardiovascular to support wound care and chronic disease assessments.
+
+      A. Pulses
+
+      Pulse sites
+
+      &#32;&#32;&#32;&#32;•   Radial
+
+      &#32;&#32;&#32;&#32;•   Ulnar
+
+      &#32;&#32;&#32;&#32;•   Femoral
+
+      &#32;&#32;&#32;&#32;•   Popliteal
+
+      &#32;&#32;&#32;&#32;•   Dorsalis pedis (DP)
+
+      &#32;&#32;&#32;&#32;•   Posterior tibial (PT)
+
+      For each pulse
+
+      &#32;&#32;&#32;&#32;•   0
+
+      &#32;&#32;&#32;&#32;•   1+
+
+      &#32;&#32;&#32;&#32;•   2+
+
+      &#32;&#32;&#32;&#32;•   3+
+
+      &#32;&#32;&#32;&#32;•   4+
+
+      &#32;&#32;&#32;&#32;•   Unable to assess
+
+      B. Extremity Findings
+
+      &#32;&#32;&#32;&#32;•   Warm
+
+      &#32;&#32;&#32;&#32;•   Cool
+
+      &#32;&#32;&#32;&#32;•   Edema
+
+      &#32;&#32;&#32;&#32;•   Erythema
+
+      &#32;&#32;&#32;&#32;•   Cyanosis
+
+      &#32;&#32;&#32;&#32;•   Pallor
+
+      &#32;&#32;&#32;&#32;•   Hair loss
+
+      &#32;&#32;&#32;&#32;•   Skin changes
+
+      C. Perfusion
+
+      Capillary refill: \_\_\_\_\_ seconds
+
+      &#32;&#32;&#32;&#32;•   Less than 2 seconds
+
+      &#32;&#32;&#32;&#32;•   Greater than 2 seconds
+
+      D. Vascular Symptoms
+
+      &#32;&#32;&#32;&#32;•   Claudication
+
+      &#32;&#32;&#32;&#32;•   Rest pain
+
+      &#32;&#32;&#32;&#32;•   Leg swelling
+
+      &#32;&#32;&#32;&#32;•   Unilateral swelling
+
+      &#32;&#32;&#32;&#32;•   Color change
+
+      &#32;&#32;&#32;&#32;•   Temperature change

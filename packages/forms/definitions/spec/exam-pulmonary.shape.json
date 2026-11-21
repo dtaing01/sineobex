@@ -1,0 +1,90 @@
+{
+  "piece": "exam-pulmonary",
+  "file": "modules/exam_pulmonary/v1.json",
+  "sections": [
+    {
+      "id": "pulmonary",
+      "title": "Pulmonary / respiratory",
+      "showWhen": { "field": "exam.systems", "is": "pulmonary" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "pulmonary.work",
+      "kind": "choice",
+      "many": true,
+      "label": "Work of breathing",
+      "options": [
+        "normal",
+        "increased",
+        "labored",
+        "accessory_muscle_use",
+        "retractions",
+        "tripoding",
+        "unable_to_speak_full_sentences"
+      ],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "pulmonary.auscultation",
+      "kind": "choice",
+      "many": true,
+      "label": "Auscultation",
+      "options": { "list": "lung_findings" },
+      "sides": true
+    },
+    {
+      "path": "pulmonary.location_right",
+      "kind": "choice",
+      "many": true,
+      "label": "Location, right lung",
+      "options": ["upper", "middle", "lower", "diffuse"],
+      "showWhen": {
+        "field": "pulmonary.auscultation.right",
+        "is": ["diminished", "crackles", "wheezes", "rhonchi", "stridor", "bronchial"]
+      }
+    },
+    {
+      "path": "pulmonary.location_left",
+      "kind": "choice",
+      "many": true,
+      "label": "Location, left lung",
+      "options": ["upper", "middle", "lower", "diffuse"],
+      "showWhen": {
+        "field": "pulmonary.auscultation.left",
+        "is": ["diminished", "crackles", "wheezes", "rhonchi", "stridor", "bronchial"]
+      }
+    },
+    {
+      "path": "pulmonary.other_findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Other findings",
+      "options": ["pleural_rub", "asymmetric_breath_sounds"]
+    },
+    {
+      "path": "pulmonary.symptoms",
+      "kind": "choice",
+      "many": true,
+      "label": "Respiratory symptoms",
+      "options": ["cough", "sputum", "hemoptysis", "dyspnea", "orthopnea", "pleuritic_pain"]
+    },
+    {
+      "path": "pulmonary.sputum_color",
+      "kind": "text",
+      "label": "Sputum color",
+      "lines": "one",
+      "maxLength": 200,
+      "showWhen": { "field": "pulmonary.symptoms", "is": "sputum" }
+    },
+    {
+      "path": "pulmonary.sputum_amount",
+      "kind": "text",
+      "label": "Sputum amount",
+      "lines": "one",
+      "maxLength": 200,
+      "showWhen": { "field": "pulmonary.symptoms", "is": "sputum" }
+    }
+  ]
+}

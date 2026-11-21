@@ -1,0 +1,79 @@
+      15\. Foot / Diabetic Foot Exam
+
+      An optional focused exam with high potential value in street medicine.
+
+      A. Inspection
+
+      &#32;&#32;&#32;&#32;•   Intact skin
+
+      &#32;&#32;&#32;&#32;•   Ulcer
+
+      &#32;&#32;&#32;&#32;•   Callus
+
+      &#32;&#32;&#32;&#32;•   Corn
+
+      &#32;&#32;&#32;&#32;•   Fissure
+
+      &#32;&#32;&#32;&#32;•   Blister
+
+      &#32;&#32;&#32;&#32;•   Deformity
+
+      &#32;&#32;&#32;&#32;•   Nail abnormality
+
+      &#32;&#32;&#32;&#32;•   Erythema
+
+      &#32;&#32;&#32;&#32;•   Swelling
+
+      &#32;&#32;&#32;&#32;•   Necrosis
+
+      B. Pulses
+
+      Dorsalis pedis (DP)
+
+      &#32;&#32;&#32;&#32;•   Right: 0 / 1+ / 2+ / 3+ / Unable
+
+      &#32;&#32;&#32;&#32;•   Left: 0 / 1+ / 2+ / 3+ / Unable
+
+      Posterior tibial (PT)
+
+      &#32;&#32;&#32;&#32;•   Right: 0 / 1+ / 2+ / 3+ / Unable
+
+      &#32;&#32;&#32;&#32;•   Left: 0 / 1+ / 2+ / 3+ / Unable
+
+      C. Sensation
+
+      &#32;&#32;&#32;&#32;•   Intact
+
+      &#32;&#32;&#32;&#32;•   Decreased
+
+      &#32;&#32;&#32;&#32;•   Absent
+
+      Monofilament
+
+      Right:
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Abnormal
+
+      Left:
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Abnormal
+
+      D. Temperature
+
+      &#32;&#32;&#32;&#32;•   Warm
+
+      &#32;&#32;&#32;&#32;•   Cool
+
+      &#32;&#32;&#32;&#32;•   Asymmetric
+
+      E. Wound Present?
+
+      &#32;&#32;&#32;&#32;•   Yes → Open Wound Care module
+
+      &#32;&#32;&#32;&#32;•   No
+
+      Workflow requirement: Avoid duplicate wound documentation. If a wound is present, link directly to the Wound Care module.

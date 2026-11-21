@@ -1,0 +1,112 @@
+{
+  "name": "exam_peripheral_vascular",
+  "version": 1,
+  "sections": [
+    {
+      "id": "peripheral_vascular",
+      "title": "Peripheral vascular",
+      "spec": "exam-peripheral-vascular",
+      "showWhen": { "field": "exam.systems", "is": "peripheral_vascular" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "pulses",
+          "kind": "grid",
+          "label": "Pulses",
+          "sides": true,
+          "rows": [
+            { "code": "radial", "label": "Radial" },
+            { "code": "dorsalis_pedis_dp", "label": "Dorsalis pedis (DP)" },
+            { "code": "posterior_tibial_pt", "label": "Posterior tibial (PT)" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Pulse",
+            "options": { "list": "pulse_scale" }
+          }
+        },
+        {
+          "id": "more_pulses",
+          "kind": "grid",
+          "label": "More pulse sites",
+          "collapsed": true,
+          "sides": true,
+          "rows": [
+            { "code": "ulnar", "label": "Ulnar" },
+            { "code": "femoral", "label": "Femoral" },
+            { "code": "popliteal", "label": "Popliteal" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Pulse",
+            "options": { "list": "pulse_scale" }
+          }
+        },
+        {
+          "id": "extremity",
+          "kind": "choice",
+          "many": true,
+          "label": "Extremity findings",
+          "options": [
+            { "code": "warm", "label": "Warm", "normal": true },
+            { "code": "cool", "label": "Cool" },
+            { "code": "edema", "label": "Edema" },
+            { "code": "erythema", "label": "Erythema" },
+            { "code": "cyanosis", "label": "Cyanosis" },
+            { "code": "pallor", "label": "Pallor" },
+            { "code": "hair_loss", "label": "Hair loss" },
+            { "code": "skin_changes", "label": "Skin changes" }
+          ],
+          "excludes": [["warm", "cool"]]
+        },
+        {
+          "id": "refill",
+          "kind": "choice",
+          "many": false,
+          "label": "Capillary refill",
+          "options": { "list": "capillary_refill" }
+        },
+        {
+          "id": "refill_time",
+          "kind": "number",
+          "label": "Capillary refill time",
+          "min": 2,
+          "max": 10,
+          "decimals": 1,
+          "unit": "seconds",
+          "showWhen": { "field": "peripheral_vascular.refill", "is": "greater_than_2_seconds" }
+        },
+        {
+          "id": "symptoms",
+          "kind": "choice",
+          "many": true,
+          "label": "Vascular symptoms",
+          "options": [
+            { "code": "claudication", "label": "Claudication" },
+            { "code": "rest_pain", "label": "Rest pain" },
+            { "code": "leg_swelling", "label": "Leg swelling" },
+            { "code": "unilateral_swelling", "label": "Unilateral swelling" },
+            { "code": "color_change", "label": "Color change" },
+            { "code": "temperature_change", "label": "Temperature change" }
+          ]
+        },
+        {
+          "id": "temperature_change",
+          "kind": "choice",
+          "many": false,
+          "label": "Temperature change",
+          "options": [
+            { "code": "warm", "label": "Warm" },
+            { "code": "cool", "label": "Cool" }
+          ],
+          "showWhen": { "field": "peripheral_vascular.symptoms", "is": "temperature_change" }
+        },
+        { "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
+      ]
+    }
+  ]
+}

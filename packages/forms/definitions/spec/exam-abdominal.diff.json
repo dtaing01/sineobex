@@ -1,0 +1,57 @@
+{
+  "piece": "exam-abdominal",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_abdominal, that the General note type includes: its section Abdominal / GI shows only while Abdominal (exam.systems is abdominal) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "Inspection is choose-many. Flat is the normal option and is not exclusive: a flat abdomen can have scars, bruising or a hernia. Flat excludes Distended and Protuberant.",
+      "why": "focused-exam inventory default 13, 17, 26 (a reading of default 13: Flat describes the abdomen's shape, not all of it)"
+    },
+    {
+      "line": 19,
+      "what": "Bowel sounds is choose-one. Normal is the normal option; Unable to assess is neither normal nor abnormal.",
+      "why": "focused-exam inventory default 14, 26; forms 2.2 (unable)"
+    },
+    {
+      "line": 33,
+      "what": "Tenderness is choose-many. None is the normal option and clears the others. The codes follow the rule: right_upper_quadrant_ruq and the like.",
+      "why": "focused-exam inventory default 13, 26; recipe step 5"
+    },
+    {
+      "line": 53,
+      "what": "Pain Severity is a whole number from 0 to 10, shown out of 10, and only while a tenderness is picked. Normal leaves it empty.",
+      "why": "focused-exam inventory default 28, 32, 44"
+    },
+    {
+      "line": 55,
+      "what": "Peritoneal signs is choose-many. None, written last, is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 65,
+      "what": "Mass is choose-one: None (the normal option) or Present.",
+      "why": "focused-exam inventory default 14, 26"
+    },
+    {
+      "line": 71,
+      "what": "Location is a short text, Mass location, shown only while Mass is Present.",
+      "why": "focused-exam inventory default 32"
+    },
+    {
+      "line": 73,
+      "what": "Organomegaly is choose-many. None, written last, is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 81,
+      "what": "Other findings is choose-many with no normal option: Normal leaves it empty. Other asks for a short text. CVA tenderness stays here and in GU, as written.",
+      "why": "focused-exam inventory default 27, 31, 48"
+    }
+  ]
+}

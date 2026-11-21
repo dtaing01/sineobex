@@ -1,0 +1,75 @@
+      2\. HEENT
+
+      Break HEENT into Eyes, Ears, Nose, and Mouth/Throat rather than using one large screen.
+
+      A. Eyes
+
+      Pupils
+
+      &#32;&#32;&#32;&#32;•   PERRL
+
+      &#32;&#32;&#32;&#32;•   PERRLA
+
+      &#32;&#32;&#32;&#32;•   Unequal pupils
+
+      &#32;&#32;&#32;&#32;•   Sluggish reaction
+
+      &#32;&#32;&#32;&#32;•   Nonreactive
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      If unequal:
+
+      &#32;&#32;&#32;&#32;•   Right pupil: \_\_\_\_\_ mm
+
+      &#32;&#32;&#32;&#32;•   Left pupil: \_\_\_\_\_ mm
+
+      &#32;&#32;&#32;&#32;•   Reactive
+
+      &#32;&#32;&#32;&#32;•   Nonreactive
+
+      Extraocular Movements
+
+      &#32;&#32;&#32;&#32;•   Intact
+
+      &#32;&#32;&#32;&#32;•   Limited
+
+      &#32;&#32;&#32;&#32;•   Pain with movement
+
+      &#32;&#32;&#32;&#32;•   Nystagmus
+
+      &#32;&#32;&#32;&#32;•   Diplopia
+
+      Conjunctiva
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Injected
+
+      &#32;&#32;&#32;&#32;•   Pale
+
+      &#32;&#32;&#32;&#32;•   Discharge
+
+      Sclera
+
+      &#32;&#32;&#32;&#32;•   Anicteric
+
+      &#32;&#32;&#32;&#32;•   Icteric
+
+      Visual Symptoms
+
+      &#32;&#32;&#32;&#32;•   Vision normal
+
+      &#32;&#32;&#32;&#32;•   Blurred vision
+
+      &#32;&#32;&#32;&#32;•   Vision loss
+
+      &#32;&#32;&#32;&#32;•   Photophobia
+
+      &#32;&#32;&#32;&#32;•   Eye pain
+
+      &#32;&#32;&#32;&#32;•   Foreign body sensation
+
+      Other
+
+      \- Free text: *\_\_*\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_

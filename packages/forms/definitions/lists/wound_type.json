@@ -1,0 +1,15 @@
+{
+  "name": "wound_type",
+  "options": [
+    { "code": "venous", "label": "Venous" },
+    { "code": "arterial", "label": "Arterial" },
+    { "code": "pressure", "label": "Pressure" },
+    { "code": "diabetic", "label": "Diabetic" },
+    { "code": "traumatic", "label": "Traumatic" },
+    { "code": "burn", "label": "Burn" },
+    { "code": "abscess", "label": "Abscess" },
+    { "code": "surgical", "label": "Surgical" },
+    { "code": "cellulitis", "label": "Cellulitis" },
+    { "code": "other", "label": "Other", "other": true }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "demo_scale",
+  "options": [
+    { "code": "zero", "label": "0" },
+    { "code": "one", "label": "1+" },
+    { "code": "two", "label": "2+", "normal": true },
+    { "code": "unable", "label": "Unable to assess", "unable": true }
+  ]
+}

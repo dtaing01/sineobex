@@ -1,0 +1,166 @@
+{
+  "piece": "general-1",
+  "file": "note-types/general_primary_care/v1.json",
+  "header": {
+    "key": "general_primary_care",
+    "version": 1,
+    "title": "General / primary care",
+    "kinds": ["medical"],
+    "group": "clinical",
+    "sensitivity": "none"
+  },
+  "sections": [
+    { "id": "reason", "title": "Reason for encounter" },
+    { "id": "hpi", "title": "History of present illness" },
+    { "id": "preventive", "title": "Preventative care" },
+    { "id": "vitals", "title": "Vitals", "repeat": { "max": 10, "itemTitle": "Vitals {n}" } }
+  ],
+  "fields": [
+    {
+      "path": "reason.reasons",
+      "kind": "choice",
+      "many": true,
+      "label": "Reason for encounter",
+      "options": [
+        "new_concern",
+        "follow_up",
+        "chronic_care",
+        "medication",
+        "general_check_in",
+        "acute_care",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "reason.concern",
+      "kind": "text",
+      "label": "Chief concern",
+      "lines": "many",
+      "maxLength": 2000,
+      "handoff": true
+    },
+    {
+      "path": "hpi.narrative",
+      "kind": "text",
+      "label": "History of present illness",
+      "lines": "many",
+      "maxLength": 2000
+    },
+    {
+      "path": "preventive.vaccines",
+      "kind": "choice",
+      "many": true,
+      "label": "Vaccines",
+      "options": ["flu", "covid", "tdap", "hep_a", "hep_b", "pneumococcal", "hpv", "shingles"]
+    },
+    {
+      "path": "preventive.vaccine_status",
+      "kind": "grid",
+      "label": "Status for each vaccine",
+      "rows": { "pickedIn": "preventive.vaccines" }
+    },
+    {
+      "path": "preventive.vaccine_status.status",
+      "kind": "choice",
+      "many": false,
+      "label": "Status",
+      "options": ["up_to_date", "given_today", "offered", "declined", "due", "unknown"]
+    },
+    {
+      "path": "preventive.screening",
+      "kind": "choice",
+      "many": true,
+      "label": "Screening",
+      "options": ["hiv", "hep_c", "sti", "tb", "diabetes", "bp", "cancer", "pregnancy"]
+    },
+    {
+      "path": "preventive.screening_action",
+      "kind": "grid",
+      "label": "Action for each screening",
+      "rows": { "pickedIn": "preventive.screening" }
+    },
+    {
+      "path": "preventive.screening_action.action",
+      "kind": "choice",
+      "many": true,
+      "label": "Action",
+      "options": ["performed", "ordered", "referred", "education", "declined"],
+      "excludes": [
+        ["performed", "declined"],
+        ["ordered", "declined"]
+      ]
+    },
+    { "path": "vitals.bp", "kind": "group", "label": "Blood pressure", "layout": "row" },
+    {
+      "path": "vitals.bp.systolic",
+      "kind": "number",
+      "label": "Systolic",
+      "min": 0,
+      "max": 300,
+      "decimals": 0,
+      "unit": "mmHg",
+      "handoff": true
+    },
+    {
+      "path": "vitals.bp.diastolic",
+      "kind": "number",
+      "label": "Diastolic",
+      "min": 0,
+      "max": 200,
+      "decimals": 0,
+      "unit": "mmHg",
+      "handoff": true
+    },
+    {
+      "path": "vitals.hr",
+      "kind": "number",
+      "label": "Heart rate",
+      "min": 0,
+      "max": 300,
+      "decimals": 0,
+      "unit": "bpm",
+      "handoff": true
+    },
+    {
+      "path": "vitals.spo2",
+      "kind": "number",
+      "label": "SpO₂",
+      "min": 0,
+      "max": 100,
+      "decimals": 0,
+      "unit": "%",
+      "handoff": true
+    },
+    {
+      "path": "vitals.rr",
+      "kind": "number",
+      "label": "Respiratory rate",
+      "min": 0,
+      "max": 80,
+      "decimals": 0,
+      "unit": "breaths/min",
+      "handoff": true
+    },
+    {
+      "path": "vitals.temp",
+      "kind": "number",
+      "label": "Temperature",
+      "min": 50,
+      "max": 115,
+      "decimals": 1,
+      "unit": "°F",
+      "handoff": true
+    },
+    {
+      "path": "vitals.pain",
+      "kind": "number",
+      "label": "Pain",
+      "min": 0,
+      "max": 10,
+      "decimals": 0,
+      "display": "outOf",
+      "handoff": true
+    }
+  ]
+}

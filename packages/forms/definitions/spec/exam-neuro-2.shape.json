@@ -1,0 +1,85 @@
+{
+  "piece": "exam-neuro-2",
+  "file": "modules/exam_neuro_2/v1.json",
+  "sections": [
+    {
+      "id": "neuro_motor",
+      "title": "Neurologic: strength, sensation, coordination, reflexes and gait",
+      "showWhen": { "field": "exam.systems", "is": "neurologic" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "neuro_motor.strength",
+      "kind": "grid",
+      "label": "Motor strength",
+      "sides": true,
+      "rows": ["upper_extremity", "lower_extremity"]
+    },
+    {
+      "path": "neuro_motor.strength.score",
+      "kind": "number",
+      "label": "Strength",
+      "min": 0,
+      "max": 5,
+      "decimals": 0,
+      "display": "outOf",
+      "normal": 5
+    },
+    {
+      "path": "neuro_motor.sensory",
+      "kind": "choice",
+      "many": true,
+      "label": "Sensory",
+      "options": ["intact", "decreased", "numbness", "tingling", "asymmetric"],
+      "flags": { "exclusive": ["intact"], "normal": ["intact"] }
+    },
+    {
+      "path": "neuro_motor.sensory_location",
+      "kind": "region",
+      "label": "Location",
+      "options": { "list": "body_region" },
+      "side": "side",
+      "showWhen": {
+        "field": "neuro_motor.sensory",
+        "is": ["decreased", "numbness", "tingling", "asymmetric"]
+      }
+    },
+    {
+      "path": "neuro_motor.coordination",
+      "kind": "choice",
+      "many": true,
+      "label": "Coordination",
+      "options": ["finger_to_nose_normal", "heel_to_shin_normal", "abnormal", "unable"],
+      "flags": {
+        "exclusive": ["unable"],
+        "normal": ["finger_to_nose_normal", "heel_to_shin_normal"],
+        "unable": ["unable"]
+      }
+    },
+    {
+      "path": "neuro_motor.reflexes",
+      "kind": "grid",
+      "label": "Reflexes",
+      "collapsed": true,
+      "sides": true,
+      "rows": ["biceps", "triceps", "patellar", "achilles"]
+    },
+    {
+      "path": "neuro_motor.reflexes.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Grade",
+      "options": { "list": "reflex_scale" }
+    },
+    {
+      "path": "neuro_motor.gait",
+      "kind": "choice",
+      "many": true,
+      "label": "Gait",
+      "options": ["normal", "ataxic", "antalgic", "shuffling", "unsteady", "unable"],
+      "flags": { "exclusive": ["normal", "unable"], "normal": ["normal"], "unable": ["unable"] }
+    }
+  ]
+}

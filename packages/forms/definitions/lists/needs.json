@@ -1,0 +1,19 @@
+{
+  "name": "needs",
+  "options": [
+    { "code": "housing", "label": "Housing" },
+    { "code": "food", "label": "Food" },
+    { "code": "hygiene", "label": "Hygiene" },
+    { "code": "clothing", "label": "Clothing" },
+    { "code": "phone", "label": "Phone" },
+    { "code": "charging", "label": "Charging" },
+    { "code": "transportation", "label": "Transportation" },
+    { "code": "medication", "label": "Medication" },
+    { "code": "id", "label": "ID" },
+    { "code": "financial", "label": "Financial" },
+    { "code": "legal", "label": "Legal" },
+    { "code": "pet", "label": "Pet" },
+    { "code": "benefits", "label": "Benefits" },
+    { "code": "other", "label": "Other", "other": true }
+  ]
+}

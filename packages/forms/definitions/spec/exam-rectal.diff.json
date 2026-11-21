@@ -1,0 +1,37 @@
+{
+  "piece": "exam-rectal",
+  "notOptions": [],
+  "added": ["Yes", "No"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_rectal, that the General note type includes: its section Rectal shows only while Rectal (exam.systems is rectal, an option marked sensitiveExam) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 1,
+      "what": "The section is a sensitive exam (sensitiveExam): its answers are left out for a reader without the key, and out of the patient overview for everyone. It holds the three fields of the sensitive exam workflow, none of which one-tap Normal fills (noNormal): Exam performed, a tick; Chaperone present, choose-one from the shared list yes_no (Yes and No added), shown while Exam performed is ticked; Patient consented, a tick, shown while Exam performed is ticked and required, so the note cannot be completed with the exam performed and no consent recorded. The three fields come first, and every finding shows only while Exam performed is ticked: the whole of Rectal is the intimate exam.",
+      "why": "PRD main 415; forms 5, 6.6; focused-exam inventory default 6, 7, 29, 52, 53 (SPEC gives the workflow for GU only; PRD main 415 wins); PLAN-OPEN (forms 10.1 #1): Exam performed gates the findings as default 35 has it gate GU's external exam"
+    },
+    {
+      "line": 3,
+      "what": "Hidden by default unless specifically selected is the section's showWhen on the picker; the line is not typed.",
+      "why": "PRD main 415; forms 6.6"
+    },
+    {
+      "line": 5,
+      "what": "Exam type is choose-one: a DRE includes the inspection.",
+      "why": "focused-exam inventory default 14, 15"
+    },
+    {
+      "line": 11,
+      "what": "Findings is choose-many, with no normal option. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 27, 31"
+    },
+    {
+      "line": 25,
+      "what": "If DRE Performed: a group, Digital rectal examination, shown only while Exam type is Digital rectal examination (DRE), holding Result, choose-one, Normal (the normal option) or Abnormal, and Findings, a text box.",
+      "why": "focused-exam inventory 3.13, default 14, 26"
+    }
+  ]
+}

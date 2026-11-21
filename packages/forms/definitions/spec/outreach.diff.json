@@ -1,0 +1,42 @@
+{
+  "piece": "outreach",
+  "notOptions": ["Dictation (option in V2, not in MVP/V1)"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Outreach is a note type of its own, offered in Medical and Non-Medical encounters.",
+      "why": "inventory A8; forms 5"
+    },
+    {
+      "line": 4,
+      "what": "Choose-one.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 6,
+      "what": "Choose-one. Unable to locate changes no other field.",
+      "why": "inventory A1, A53"
+    },
+    {
+      "line": 8,
+      "what": "Choose-many.",
+      "why": "inventory section 3.6"
+    },
+    {
+      "line": 10,
+      "what": "Choose-many. No is exclusive. Medical, Behavioral and Social suggest General / primary care, Behavioral health and Social needs on the summary screen. Emergency shows Go to Red flags and disposition, which opens the visit's Red flags note, as Behavioral health's Active and Wound care's Urgent do. The screen offers it only where that note type can be started (F5 and F7): a Non-Medical visit cannot take a Red flags note until it is made Medical.",
+      "why": "inventory A1, A4; PRD main 433 (suggested next steps); inventory A31, A41; PRD main 413; PLAN-OPEN (forms 10.1 #39): the default is Go to Red flags and disposition; the clinical team decides whether an emergency found on outreach should open it"
+    },
+    {
+      "line": 13,
+      "what": "Dictation is left out.",
+      "why": "PRD main 412 (V2)"
+    },
+    {
+      "line": 15,
+      "what": "Choose-one.",
+      "why": "inventory section 3.6"
+    }
+  ]
+}

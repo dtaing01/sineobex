@@ -1,0 +1,38 @@
+{
+  "piece": "exam-heent-ears",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_heent_ears, that the General note type includes: its section Ears shows only while HEENT (exam.systems is heent) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10, 11"
+    },
+    {
+      "line": 3,
+      "what": "External ear, Ear canal and Tympanic membrane are each recorded for the right ear and the left (sides).",
+      "why": "focused-exam inventory default 18; PLAN-OPEN (forms 10.1 #1): the inventory asks the clinical team to confirm sides for the ears"
+    },
+    {
+      "line": 3,
+      "what": "External ear is choose-many. Normal is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 17,
+      "what": "Ear canal is choose-many. Clear is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 31,
+      "what": "Tympanic membrane is choose-many. Normal is the normal option and clears the others. Unable to visualize is neither normal nor abnormal, and clears the others too.",
+      "why": "focused-exam inventory construct 11, default 13, 26; forms 2.2 (unable)"
+    },
+    {
+      "line": 47,
+      "what": "Hearing is choose-one: Grossly intact (the normal option) or Decreased. The sub-choice Right, Left, Bilateral is a field of its own, Hearing decreased on, choose-one from the shared list side, shown only while Hearing is Decreased.",
+      "why": "focused-exam inventory 3.2, default 14, 26; forms 4.4"
+    },
+    { "line": 59, "what": "The empty bullet is not typed.", "why": "focused-exam inventory default 47" }
+  ]
+}

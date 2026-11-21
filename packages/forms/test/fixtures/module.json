@@ -1,0 +1,12 @@
+{
+  "name": "demo_module",
+  "version": 1,
+  "sections": [
+    {
+      "id": "eyes",
+      "title": "Eyes",
+      "normal": true,
+      "fields": [{ "id": "notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }]
+    }
+  ]
+}

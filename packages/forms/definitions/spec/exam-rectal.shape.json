@@ -1,0 +1,66 @@
+{
+  "piece": "exam-rectal",
+  "file": "modules/exam_rectal/v1.json",
+  "sections": [
+    {
+      "id": "rectal",
+      "title": "Rectal",
+      "showWhen": { "field": "exam.systems", "is": "rectal" },
+      "normal": true,
+      "sensitiveExam": true
+    }
+  ],
+  "fields": [
+    { "path": "rectal.performed", "kind": "flag", "label": "Exam performed", "noNormal": true },
+    {
+      "path": "rectal.chaperone",
+      "kind": "choice",
+      "many": false,
+      "label": "Chaperone present",
+      "options": { "list": "yes_no" },
+      "noNormal": true,
+      "showWhen": { "field": "rectal.performed", "filled": true }
+    },
+    {
+      "path": "rectal.consented",
+      "kind": "flag",
+      "label": "Patient consented",
+      "required": true,
+      "noNormal": true,
+      "showWhen": { "field": "rectal.performed", "filled": true }
+    },
+    {
+      "path": "rectal.exam_type",
+      "kind": "choice",
+      "many": false,
+      "label": "Exam type",
+      "options": ["external_inspection_only", "digital_rectal_examination_dre"],
+      "showWhen": { "field": "rectal.performed", "filled": true }
+    },
+    {
+      "path": "rectal.findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Findings",
+      "options": ["hemorrhoids", "fissure", "bleeding", "mass", "tenderness", "other"],
+      "showWhen": { "field": "rectal.performed", "filled": true },
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "rectal.dre",
+      "kind": "group",
+      "label": "Digital rectal examination",
+      "layout": "stack",
+      "showWhen": { "field": "rectal.exam_type", "is": "digital_rectal_examination_dre" }
+    },
+    {
+      "path": "rectal.dre.result",
+      "kind": "choice",
+      "many": false,
+      "label": "Result",
+      "options": ["normal", "abnormal"],
+      "flags": { "normal": ["normal"] }
+    },
+    { "path": "rectal.dre.findings", "kind": "text", "label": "Findings", "lines": "many", "maxLength": 2000 }
+  ]
+}

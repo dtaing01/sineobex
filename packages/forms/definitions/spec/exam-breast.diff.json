@@ -1,0 +1,74 @@
+{
+  "piece": "exam-breast",
+  "notOptions": ["Size: _____ cm", "Location: ________________"],
+  "added": [
+    "Yes",
+    "No",
+    "Bilateral",
+    "1 o’clock",
+    "2 o’clock",
+    "3 o’clock",
+    "4 o’clock",
+    "5 o’clock",
+    "6 o’clock",
+    "7 o’clock",
+    "8 o’clock",
+    "9 o’clock",
+    "10 o’clock",
+    "11 o’clock",
+    "12 o’clock",
+    "Central"
+  ],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_breast, that the General note type includes: its section Breast shows only while Breast (exam.systems is breast, an option marked sensitiveExam) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 1,
+      "what": "The section is a sensitive exam (sensitiveExam): its answers are left out for a reader without the key, and out of the patient overview for everyone. It holds the three fields of the sensitive exam workflow, none of which one-tap Normal fills (noNormal): Exam performed, a tick; Chaperone present, choose-one from the shared list yes_no (Yes and No added), shown while Exam performed is ticked; Patient consented, a tick, shown while Exam performed is ticked and required, so the note cannot be completed with the exam performed and no consent recorded. The three fields come first, and every finding shows only while Exam performed is ticked: the whole of Breast is the intimate exam.",
+      "why": "PRD main 415; forms 5, 6.6; focused-exam inventory default 6, 7, 29, 52, 53 (SPEC gives the workflow for GU only; PRD main 415 wins); PLAN-OPEN (forms 10.1 #1): Exam performed gates the findings as default 35 has it gate GU's external exam"
+    },
+    {
+      "line": 3,
+      "what": "Hidden by default unless specifically selected is the section's showWhen on the picker; the line is not typed.",
+      "why": "PRD main 415; forms 6.6"
+    },
+    {
+      "line": 5,
+      "what": "Inspection is choose-many. Symmetric is the normal option and excludes Asymmetric. While a finding other than Symmetric is picked, Side of the inspection findings asks for its side, choose-one from the shared list side: Right, Left, Bilateral (added).",
+      "why": "focused-exam inventory default 13, 17, 24, 26"
+    },
+    {
+      "line": 21,
+      "what": "B. Palpation is a heading, not a field: what it holds is asked elsewhere, the location and side (lines 23 and 25) in the Mass group, and the finding (line 31) as Finding. No field is labelled Palpation.",
+      "why": "focused-exam inventory default 38, 39"
+    },
+    {
+      "line": 23,
+      "what": "Location: Breast clock / body map is a choose-one, Location (clock position), in the Mass group (line 43): 1 o’clock to 12 o’clock and Central, all added, with the codes clock_1 to clock_12 given (the rule makes none that starts with a letter). There is no drawing. It is the mass’s location, so it is asked only while Mass is picked.",
+      "why": "focused-exam inventory default 38, 54; recipe step 5"
+    },
+    {
+      "line": 25,
+      "what": "Side is choose-one from the shared list side_rl: Right, Left, in the Mass group (line 43): a mass stays on one side, so it is asked only while Mass is picked. Tenderness, a nodule or another finding is not given a side; a second mass cannot be charted apart from the first.",
+      "why": "focused-exam inventory default 14, 24, 38, 39; PLAN-OPEN (forms 10.1 #1): one mass per exam, no side for the other findings"
+    },
+    {
+      "line": 31,
+      "what": "Finding is choose-many. No mass is the normal option and is not exclusive: tenderness with no mass is charted as both, and only Mass and Nodule, its opposites, are excluded. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 17, 26, 31 (a reading of default 13, as for Moist: No mass says only that no mass was felt); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
+    },
+    {
+      "line": 43,
+      "what": "If mass is present: a group, Mass, shown only while Mass is picked, holding Size, in cm from 0.1 to 30 with one decimal, which can be typed in inches, and Characteristics, choose-many, where Mobile and Fixed, Tender and Non-tender exclude each other.",
+      "why": "PRD main 411; focused-exam inventory 3.12, default 17, 32"
+    },
+    {
+      "line": 47,
+      "what": "The text Location is not typed: the clock position is the mass's one location.",
+      "why": "focused-exam inventory default 39"
+    }
+  ]
+}

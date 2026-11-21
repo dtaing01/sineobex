@@ -1,0 +1,22 @@
+{
+  "piece": "exam-heent-nose",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_heent_nose, that the General note type includes: its section Nose shows only while HEENT (exam.systems is heent) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10, 11"
+    },
+    {
+      "line": 3,
+      "what": "Nose is choose-many. Normal is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 21,
+      "what": "Sinuses is choose-many. No tenderness is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    }
+  ]
+}

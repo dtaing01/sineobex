@@ -1,0 +1,103 @@
+{
+  "piece": "exam-msk",
+  "notOptions": ["Right: _____ / 5", "Left: _____ / 5"],
+  "added": ["Right", "Left", "Bilateral", "Hypertonic", "Hypotonic", "Isotonic"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_msk, that the General note type includes. Its two sections, Musculoskeletal and Gait, show only while MSK (exam.systems is msk) is picked in the exam picker, and each offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 1,
+      "what": "Musculoskeletal repeats, one entry for each region examined, up to 10, each titled Region {n}: the parts B to F and H are asked in each entry. Gait (part G) is asked once for the exam, in the second section, Gait: a person walks once, whatever regions were examined.",
+      "why": "focused-exam inventory default 16; forms 6.3; PLAN-OPEN (forms 10.1 #1): the most regions in one exam (the nine regions and one more, so the full General stays well under its limit of answers)"
+    },
+    { "line": 3, "what": "The guidance line is not typed.", "why": "focused-exam inventory construct 39" },
+    {
+      "line": 7,
+      "what": "Where are you examining? is choose-one: each entry is one region, and another region is another entry. Normal picks none. Other asks for a short text.",
+      "why": "focused-exam inventory default 16, 29, 31; PLAN-OPEN (forms 10.1 #1): Normal does nothing in an entry until its region is picked (default 29 asks)"
+    },
+    {
+      "line": 7,
+      "what": "Side (Oct 19) follows the region, choose-one from the shared list side: Right, Left, Bilateral (added). It shows for every region but Head / Neck and Back.",
+      "why": "PRD main 103; focused-exam inventory default 4"
+    },
+    {
+      "line": 27,
+      "what": "Once a region is selected: every part after the region shows only once the entry's region is picked.",
+      "why": "focused-exam inventory default 16"
+    },
+    {
+      "line": 29,
+      "what": "Inspection is choose-many. Normal is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 16, 26"
+    },
+    {
+      "line": 29,
+      "what": "Wound in Inspection opens no hand-off to Wound care, unlike Skin's Ulcer and Abscess and the foot exam's Wound present?: the wound is only ticked here, so nothing about it is charted twice, and a Wound care note is added for it as for any wound. A hand-off would be opened by Inspection, which one-tap Normal fills, and no answer Normal fills opens a hand-off (forms 10.1 #29).",
+      "why": "PRD main 416 (names open skin in Skin and a wound found in the diabetic foot exam); forms 6.7; PLAN-OPEN (forms 10.1 #1): does a wound found in the MSK exam hand off to Wound care too?"
+    },
+    {
+      "line": 47,
+      "what": "Palpation is choose-many; No tenderness is the normal option and clears the others. Pain, a whole number from 0 to 10 out of 10, shows only while Tenderness is picked. Normal leaves Pain empty.",
+      "why": "focused-exam inventory default 13, 16, 26, 28, 32, 44"
+    },
+    {
+      "line": 63,
+      "what": "Range of motion is two fields, Active and Passive, each choose-many from the shared list range_of_motion: Full is its normal option and clears the others, and so does Unable; Limited and Painful can be held together.",
+      "why": "focused-exam inventory section 5 (range of motion), default 13, 16, 26"
+    },
+    {
+      "line": 85,
+      "what": "Strength is two fields, Strength, right and Strength, left (the bullets Right and Left, not options), each a whole number from 0 to 5 out of 5. Each shows only for the side the entry examines: Strength, right while Side is Right or Bilateral, Strength, left while it is Left or Bilateral, and both for Head / Neck and Back, which have no Side. Normal fills 5 in each that shows, so a right knee examined says nothing of the left, and neither shows until the Side is picked.",
+      "why": "PRD main 414 (left and right are recorded where it matters); focused-exam inventory default 4, 28, 44; forms 2.2 (normal on a number), 2.3 (a follow-up for one side is two fields)"
+    },
+    {
+      "line": 87,
+      "what": "Scale: 0–5 is the range of Strength.",
+      "why": "focused-exam inventory construct 40"
+    },
+    {
+      "line": 91,
+      "what": "Tone (Oct 19) is choose-one: Hypertonic, Hypotonic, Isotonic (added), one value for the region, not one for each side. Normal leaves it empty: the inventories give no normal tone.",
+      "why": "PRD main 103; focused-exam inventory default 3; PLAN-OPEN (forms 10.1 #1): is Isotonic the tone Normal fills?"
+    },
+    {
+      "line": 95,
+      "what": "Sensation is choose-many. Intact is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 16, 26"
+    },
+    {
+      "line": 105,
+      "what": "Pulses is choose-one: Intact (the normal option), Decreased, Absent. It stays a quick check in words, not the pulse scale.",
+      "why": "focused-exam inventory default 1, 14, 16, 26"
+    },
+    {
+      "line": 113,
+      "what": "Capillary refill is choose-one from the shared list capillary_refill, whose normal option is Less than 2 seconds.",
+      "why": "focused-exam inventory section 5 (capillary refill), default 14, 16, 26"
+    },
+    {
+      "line": 119,
+      "what": "Gait is the second section's one field, asked once for the exam, choose-many. Normal is the normal option and clears the others. Unable to assess is neither normal nor abnormal, and clears the others.",
+      "why": "focused-exam inventory default 13, 26; forms 2.2 (unable)"
+    },
+    {
+      "line": 131,
+      "what": "Region-Specific Tests is one grid in the entry, Shoulder tests, shown only while the entry's region is Shoulder, with a row for each of the five tests and each cell choose-one from the shared list special_test_result: Not performed, Negative, Positive, Unable. Normal fills Not performed. The code neer is given for Neer's: the rule makes neer_s.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory 3.6, default 26, 36; forms 5 (shoulder only); recipe step 5"
+    },
+    {
+      "line": 133,
+      "what": "The guidance line and the example heading are not typed.",
+      "why": "focused-exam inventory construct 39"
+    },
+    {
+      "line": 157,
+      "what": "No tests are typed for other regions: they wait for the clinical team's lists, and come as a new version.",
+      "why": "PRD main 414; forms 10.2 #1; focused-exam inventory default 36, 54"
+    }
+  ]
+}

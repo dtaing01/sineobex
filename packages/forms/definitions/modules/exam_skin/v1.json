@@ -1,0 +1,144 @@
+{
+  "name": "exam_skin",
+  "version": 1,
+  "sections": [
+    {
+      "id": "skin",
+      "title": "Skin",
+      "spec": "exam-skin",
+      "showWhen": { "field": "exam.systems", "is": "skin" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "overall",
+          "kind": "choice",
+          "many": true,
+          "label": "Overall skin",
+          "options": [
+            { "code": "warm", "label": "Warm", "normal": true },
+            { "code": "cool", "label": "Cool" },
+            { "code": "dry", "label": "Dry", "normal": true },
+            { "code": "moist", "label": "Moist" },
+            { "code": "diaphoretic", "label": "Diaphoretic" },
+            { "code": "pale", "label": "Pale" },
+            { "code": "cyanotic", "label": "Cyanotic" },
+            { "code": "jaundiced", "label": "Jaundiced" }
+          ],
+          "excludes": [
+            ["warm", "cool"],
+            ["dry", "moist"],
+            ["dry", "diaphoretic"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skin_findings",
+      "title": "Skin finding",
+      "spec": "exam-skin",
+      "showWhen": { "field": "exam.systems", "is": "skin" },
+      "repeat": { "max": 20, "itemTitle": "Finding {n}" },
+      "fields": [
+        {
+          "id": "location",
+          "kind": "region",
+          "label": "Location",
+          "options": { "list": "body_region" },
+          "side": "side_rlm",
+          "surface": true
+        },
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": true,
+          "label": "Type",
+          "options": [
+            { "code": "rash", "label": "Rash" },
+            { "code": "macule", "label": "Macule" },
+            { "code": "papule", "label": "Papule" },
+            { "code": "plaque", "label": "Plaque" },
+            { "code": "vesicle", "label": "Vesicle" },
+            { "code": "pustule", "label": "Pustule" },
+            { "code": "nodule", "label": "Nodule" },
+            { "code": "ulcer", "label": "Ulcer" },
+            { "code": "blister", "label": "Blister" },
+            { "code": "ecchymosis", "label": "Ecchymosis" },
+            { "code": "petechiae", "label": "Petechiae" },
+            { "code": "purpura", "label": "Purpura" },
+            { "code": "abscess", "label": "Abscess" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        },
+        {
+          "id": "wound_care",
+          "kind": "action",
+          "label": "Chart in Wound care",
+          "action": "open_note_type",
+          "noteType": "wound_care",
+          "showWhen": { "field": "./type", "is": ["ulcer", "abscess"] }
+        },
+        {
+          "id": "characteristics",
+          "kind": "choice",
+          "many": true,
+          "label": "Characteristics",
+          "options": [
+            { "code": "erythematous", "label": "Erythematous" },
+            { "code": "warm", "label": "Warm" },
+            { "code": "tender", "label": "Tender" },
+            { "code": "pruritic", "label": "Pruritic" },
+            { "code": "fluctuant", "label": "Fluctuant" },
+            { "code": "indurated", "label": "Indurated" },
+            { "code": "scaling", "label": "Scaling" },
+            { "code": "crusting", "label": "Crusting" },
+            { "code": "draining", "label": "Draining" }
+          ],
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
+        },
+        {
+          "id": "size",
+          "kind": "group",
+          "label": "Size",
+          "layout": "row",
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } },
+          "fields": [
+            {
+              "id": "length",
+              "kind": "number",
+              "label": "Length",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": { "unit": "in", "perUnit": 2.54 }
+            },
+            {
+              "id": "width",
+              "kind": "number",
+              "label": "Width",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": { "unit": "in", "perUnit": 2.54 }
+            }
+          ]
+        },
+        {
+          "id": "photos",
+          "kind": "photo",
+          "label": "Photos",
+          "max": 5,
+          "showWhen": { "not": { "field": "./type", "is": ["ulcer", "abscess"] } }
+        },
+        {
+          "id": "same_lesion",
+          "kind": "choice",
+          "many": false,
+          "label": "Is this the same lesion/wound documented previously?",
+          "options": { "list": "yes_no_unknown" }
+        }
+      ]
+    }
+  ]
+}

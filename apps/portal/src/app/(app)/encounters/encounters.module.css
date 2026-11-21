@@ -1,0 +1,131 @@
+/* The visit page and the patient page's timeline (phase 4 design, lifecycle 9.7, 9.11). Here
+   rather than in globals.css, so the encounter screens' styles live with them. */
+
+/* A second line under a value: who and when, a reason. */
+.meta {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+/* Text someone typed (an assessment, an addendum): kept as typed, wrapped anywhere so a long word
+   never widens the page at 320 px. */
+.typed {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  margin: 0;
+}
+
+/* A note's sections, one under another. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+
+/* An entry's title ("Wound 1"): globals.css resets h1 to h3 only, and an h4's own margins would
+   open a gap above and below it in the entry's column. */
+.entryTitle {
+  margin: 0;
+  font: 700 16px/22px var(--font-sans);
+}
+
+/* Each answer: its labels above its value, a line between answers. */
+.answers {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.answers > div {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.answers dt {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+.answers dd {
+  margin: 0;
+}
+.value {
+  display: block;
+  font-weight: 700;
+}
+
+/* An old value a correction replaced: struck through, with who, when and why beside it. */
+.replaced {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line-strong);
+}
+.replaced del {
+  text-decoration-thickness: 2px;
+  color: var(--ink);
+}
+
+/* Lists with no bullets: the trail under a note, the timeline's visits and referrals. */
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.plain > li {
+  overflow-wrap: anywhere;
+}
+
+/* A note's recap: each line holds an answer as typed, so it wraps anywhere too (review finding
+   PAX-2). */
+.recap > li {
+  overflow-wrap: anywhere;
+}
+
+/* A visit's notes on the timeline: "Wound care: Signed". */
+.notes {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+
+.visitLink {
+  font-weight: 700;
+}
+
+.struck {
+  color: var(--ink-muted);
+}
+
+/* The sentence a second person makes by pressing Co-sign or Attest (lifecycle 3.5). */
+.statement {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--accent);
+  font-weight: 700;
+}
+
+/* The Assign picker fills its field. At its own width, its longest option would widen the page at
+   320 px, as a select's max-width does not stop. */
+.picker {
+  width: 100%;
+}
+
+/* A stacked table's caption runs the width of the page at 320 px, not the width of one word. */
+@media (max-width: 639.98px) {
+  .caption {
+    display: block;
+  }
+}

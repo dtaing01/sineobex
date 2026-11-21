@@ -1,0 +1,7 @@
+{
+  "name": "capillary_refill",
+  "options": [
+    { "code": "less_than_2_seconds", "label": "Less than 2 seconds", "normal": true },
+    { "code": "greater_than_2_seconds", "label": "Greater than 2 seconds" }
+  ]
+}

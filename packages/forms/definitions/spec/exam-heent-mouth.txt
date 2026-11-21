@@ -1,0 +1,55 @@
+      D. Mouth / Throat
+
+      Oral Mucosa
+
+      &#32;&#32;&#32;&#32;•   Moist
+
+      &#32;&#32;&#32;&#32;•   Dry
+
+      &#32;&#32;&#32;&#32;•   Pale
+
+      &#32;&#32;&#32;&#32;•   Lesions
+
+      &#32;&#32;&#32;&#32;•   Ulcers
+
+      &#32;&#32;&#32;&#32;•   Thrush
+
+      &#32;&#32;&#32;&#32;•   Bleeding
+
+      Dentition
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Poor dentition
+
+      &#32;&#32;&#32;&#32;•   Dental caries
+
+      &#32;&#32;&#32;&#32;•   Broken teeth
+
+      &#32;&#32;&#32;&#32;•   Dental abscess
+
+      &#32;&#32;&#32;&#32;•   Tooth pain
+
+      &#32;&#32;&#32;&#32;•   Missing teeth
+
+      Pharynx
+
+      &#32;&#32;&#32;&#32;•   Clear
+
+      &#32;&#32;&#32;&#32;•   Erythematous
+
+      &#32;&#32;&#32;&#32;•   Exudate
+
+      &#32;&#32;&#32;&#32;•   Tonsillar enlargement
+
+      &#32;&#32;&#32;&#32;•   Ulceration
+
+      &#32;&#32;&#32;&#32;•   Postnasal drainage
+
+      Airway
+
+      &#32;&#32;&#32;&#32;•   Patent
+
+      &#32;&#32;&#32;&#32;•   Swelling
+
+      &#32;&#32;&#32;&#32;•   Difficulty managing secretions

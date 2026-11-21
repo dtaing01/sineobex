@@ -1,0 +1,40 @@
+{
+  "piece": "exam-neck",
+  "file": "modules/exam_neck/v1.json",
+  "sections": [
+    {
+      "id": "neck_thyroid",
+      "title": "Neck / thyroid",
+      "showWhen": { "field": "exam.systems", "is": "neck_thyroid" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "neck_thyroid.neck",
+      "kind": "choice",
+      "many": true,
+      "label": "Neck",
+      "options": ["supple", "stiff", "tender", "mass", "lymphadenopathy", "jvd"],
+      "excludes": [["supple", "stiff"]],
+      "flags": { "normal": ["supple"] }
+    },
+    {
+      "path": "neck_thyroid.thyroid",
+      "kind": "choice",
+      "many": true,
+      "label": "Thyroid",
+      "options": ["normal", "enlarged", "nodules", "tender", "asymmetric"],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "neck_thyroid.carotids",
+      "kind": "choice",
+      "many": true,
+      "label": "Carotids",
+      "options": ["normal", "bruit", "decreased_pulse"],
+      "sides": true,
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "piece": "sexrepro-3",
+  "notOptions": [],
+  "added": ["Positive", "Negative", "Pending", "Unknown"],
+  "differences": [
+    {
+      "line": 2,
+      "what": "Choose-many. None is exclusive.",
+      "why": "inventory A1, A4"
+    },
+    {
+      "line": 3,
+      "what": "Testing becomes Testing history: a repeating section, up to 10, each titled Test {n}, with the test (choose-one), its date and its result, Positive, Negative, Pending or Unknown (added).",
+      "why": "PRD main 103 (Oct 19); inventory A34; PLAN-OPEN (forms 10.1 #1): the result options and the most tests"
+    },
+    {
+      "line": 4,
+      "what": "Pregnancy stays among the tests of Testing history, as the line has it: an earlier pregnancy test is charted here with its date. Today's is the Pregnancy section's Pregnancy test, which alone opens Current pregnancy; a positive pregnancy test entered here opens nothing, and nothing stops the two from disagreeing.",
+      "why": "PRD main 104, 417; forms 6.5, 6.7; PLAN-OPEN (forms 10.1 #24): one pregnancy test twice, for the clinical team"
+    },
+    {
+      "line": 6,
+      "what": "Choose-many.",
+      "why": "inventory A1"
+    },
+    {
+      "line": 8,
+      "what": "Choose-many. None is exclusive. The row has no Buttons: label. This follow-up (Results needed, Referral, PCP) is kept beside the Red flags and disposition note's, which is the visit's (forms 6.2): it says what the follow-up is for, and the phase 7 follow-up task reads only the Red flags note's.",
+      "why": "inventory A1, A4; forms 6.2; lifecycle 9.6; PLAN-OPEN (forms 10.1 #1): what phase 7 does with this follow-up"
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "name": "exam_abdominal",
+  "version": 1,
+  "sections": [
+    {
+      "id": "abdominal",
+      "title": "Abdominal / GI",
+      "spec": "exam-abdominal",
+      "showWhen": { "field": "exam.systems", "is": "abdominal" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "inspection",
+          "kind": "choice",
+          "many": true,
+          "label": "Inspection",
+          "options": [
+            { "code": "flat", "label": "Flat", "normal": true },
+            { "code": "distended", "label": "Distended" },
+            { "code": "protuberant", "label": "Protuberant" },
+            { "code": "scars", "label": "Scars" },
+            { "code": "bruising", "label": "Bruising" },
+            { "code": "visible_masses", "label": "Visible masses" },
+            { "code": "hernia", "label": "Hernia" }
+          ],
+          "excludes": [
+            ["flat", "distended"],
+            ["flat", "protuberant"]
+          ]
+        },
+        {
+          "id": "bowel_sounds",
+          "kind": "choice",
+          "many": false,
+          "label": "Bowel sounds",
+          "options": [
+            { "code": "normal", "label": "Normal", "normal": true },
+            { "code": "hypoactive", "label": "Hypoactive" },
+            { "code": "hyperactive", "label": "Hyperactive" },
+            { "code": "absent", "label": "Absent" },
+            { "code": "unable_to_assess", "label": "Unable to assess", "unable": true }
+          ]
+        },
+        {
+          "id": "tenderness",
+          "kind": "choice",
+          "many": true,
+          "label": "Tenderness",
+          "options": [
+            { "code": "none", "label": "None", "exclusive": true, "normal": true },
+            { "code": "right_upper_quadrant_ruq", "label": "Right upper quadrant (RUQ)" },
+            { "code": "right_lower_quadrant_rlq", "label": "Right lower quadrant (RLQ)" },
+            { "code": "left_upper_quadrant_luq", "label": "Left upper quadrant (LUQ)" },
+            { "code": "left_lower_quadrant_llq", "label": "Left lower quadrant (LLQ)" },
+            { "code": "epigastric", "label": "Epigastric" },
+            { "code": "suprapubic", "label": "Suprapubic" },
+            { "code": "periumbilical", "label": "Periumbilical" },
+            { "code": "diffuse", "label": "Diffuse" }
+          ]
+        },
+        {
+          "id": "pain",
+          "kind": "number",
+          "label": "Pain severity",
+          "min": 0,
+          "max": 10,
+          "decimals": 0,
+          "display": "outOf",
+          "showWhen": {
+            "field": "abdominal.tenderness",
+            "is": [
+              "right_upper_quadrant_ruq",
+              "right_lower_quadrant_rlq",
+              "left_upper_quadrant_luq",
+              "left_lower_quadrant_llq",
+              "epigastric",
+              "suprapubic",
+              "periumbilical",
+              "diffuse"
+            ]
+          }
+        },
+        {
+          "id": "peritoneal",
+          "kind": "choice",
+          "many": true,
+          "label": "Peritoneal signs",
+          "options": [
+            { "code": "guarding", "label": "Guarding" },
+            { "code": "rebound", "label": "Rebound" },
+            { "code": "rigidity", "label": "Rigidity" },
+            { "code": "none", "label": "None", "exclusive": true, "normal": true }
+          ]
+        },
+        {
+          "id": "mass",
+          "kind": "choice",
+          "many": false,
+          "label": "Mass",
+          "options": [
+            { "code": "none", "label": "None", "normal": true },
+            { "code": "present", "label": "Present" }
+          ]
+        },
+        {
+          "id": "mass_location",
+          "kind": "text",
+          "label": "Mass location",
+          "lines": "one",
+          "maxLength": 200,
+          "showWhen": { "field": "abdominal.mass", "is": "present" }
+        },
+        {
+          "id": "organomegaly",
+          "kind": "choice",
+          "many": true,
+          "label": "Organomegaly",
+          "options": [
+            { "code": "hepatomegaly", "label": "Hepatomegaly" },
+            { "code": "splenomegaly", "label": "Splenomegaly" },
+            { "code": "none", "label": "None", "exclusive": true, "normal": true }
+          ]
+        },
+        {
+          "id": "other_findings",
+          "kind": "choice",
+          "many": true,
+          "label": "Other findings",
+          "options": [
+            { "code": "cva_tenderness", "label": "CVA tenderness" },
+            { "code": "murphy_sign", "label": "Murphy sign" },
+            { "code": "mcburney_tenderness", "label": "McBurney tenderness" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

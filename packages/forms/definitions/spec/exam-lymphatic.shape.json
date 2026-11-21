@@ -1,0 +1,53 @@
+{
+  "piece": "exam-lymphatic",
+  "file": "modules/exam_lymphatic/v1.json",
+  "sections": [
+    {
+      "id": "lymphatic",
+      "title": "Lymphatic",
+      "showWhen": { "field": "exam.systems", "is": "lymphatic" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "lymphatic.nodes",
+      "kind": "choice",
+      "many": true,
+      "label": "Nodes examined",
+      "options": ["cervical", "supraclavicular", "axillary", "inguinal", "other"],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "lymphatic.node_findings",
+      "kind": "grid",
+      "label": "Findings for each node group",
+      "rows": { "pickedIn": "lymphatic.nodes" }
+    },
+    { "path": "lymphatic.node_findings.node", "kind": "group", "label": "Findings", "layout": "stack" },
+    {
+      "path": "lymphatic.node_findings.node.findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Findings",
+      "options": ["not_enlarged", "enlarged", "tender", "non_tender", "mobile", "fixed"],
+      "excludes": [
+        ["not_enlarged", "enlarged"],
+        ["tender", "non_tender"],
+        ["mobile", "fixed"]
+      ],
+      "flags": { "normal": ["not_enlarged"] }
+    },
+    {
+      "path": "lymphatic.node_findings.node.size",
+      "kind": "number",
+      "label": "Size",
+      "min": 0.1,
+      "max": 20,
+      "decimals": 1,
+      "unit": "cm",
+      "altUnit": { "unit": "in", "perUnit": 2.54 },
+      "showWhen": { "field": "./findings", "filled": true }
+    }
+  ]
+}

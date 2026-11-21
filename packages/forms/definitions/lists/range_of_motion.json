@@ -1,0 +1,9 @@
+{
+  "name": "range_of_motion",
+  "options": [
+    { "code": "full", "label": "Full", "exclusive": true, "normal": true },
+    { "code": "limited", "label": "Limited" },
+    { "code": "painful", "label": "Painful" },
+    { "code": "unable", "label": "Unable", "exclusive": true, "unable": true }
+  ]
+}

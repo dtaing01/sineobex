@@ -1,0 +1,8 @@
+{
+  "name": "yes_no_unknown",
+  "options": [
+    { "code": "yes", "label": "Yes" },
+    { "code": "no", "label": "No" },
+    { "code": "unknown", "label": "Unknown" }
+  ]
+}

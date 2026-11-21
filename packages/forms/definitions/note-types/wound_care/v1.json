@@ -1,0 +1,479 @@
+{
+  "key": "wound_care",
+  "version": 1,
+  "title": "Wound care",
+  "kinds": ["medical"],
+  "group": "wound",
+  "sensitivity": "none",
+  "sections": [
+    {
+      "id": "wound",
+      "title": "Wound",
+      "spec": "wound",
+      "repeat": {
+        "max": 10,
+        "itemTitle": "Wound {n}"
+      },
+      "fields": [
+        {
+          "id": "location",
+          "kind": "region",
+          "label": "Location",
+          "options": {
+            "list": "body_region"
+          },
+          "side": "side",
+          "surface": true
+        },
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Wound type",
+          "options": {
+            "list": "wound_type"
+          }
+        },
+        {
+          "id": "duration",
+          "kind": "choice",
+          "many": false,
+          "label": "Duration",
+          "options": [
+            {
+              "code": "under_1_wk",
+              "label": "<1 wk"
+            },
+            {
+              "code": "wk_1_to_4",
+              "label": "1–4 wk"
+            },
+            {
+              "code": "mo_1_to_3",
+              "label": "1–3 mo"
+            },
+            {
+              "code": "over_3_mo",
+              "label": ">3 mo"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        },
+        {
+          "id": "measurements",
+          "kind": "group",
+          "label": "Measurements",
+          "layout": "row",
+          "fields": [
+            {
+              "id": "length",
+              "kind": "number",
+              "label": "Length",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              }
+            },
+            {
+              "id": "width",
+              "kind": "number",
+              "label": "Width",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              }
+            },
+            {
+              "id": "depth",
+              "kind": "number",
+              "label": "Depth",
+              "min": 0,
+              "max": 30,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              }
+            },
+            {
+              "id": "unable",
+              "kind": "flag",
+              "label": "Unable to measure",
+              "clears": ["length", "width", "depth"]
+            }
+          ]
+        },
+        {
+          "id": "bed",
+          "kind": "choice",
+          "many": true,
+          "label": "Wound bed",
+          "options": [
+            {
+              "code": "granulation",
+              "label": "Granulation"
+            },
+            {
+              "code": "slough",
+              "label": "Slough"
+            },
+            {
+              "code": "eschar",
+              "label": "Eschar"
+            },
+            {
+              "code": "necrotic",
+              "label": "Necrotic"
+            },
+            {
+              "code": "exposed_tissue",
+              "label": "Exposed tissue"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "drainage_amount",
+          "kind": "choice",
+          "many": false,
+          "label": "Drainage amount",
+          "options": {
+            "list": "drainage_amount"
+          }
+        },
+        {
+          "id": "drainage_type",
+          "kind": "choice",
+          "many": false,
+          "label": "Drainage type",
+          "options": [
+            {
+              "code": "none",
+              "label": "None"
+            },
+            {
+              "code": "serous",
+              "label": "Serous"
+            },
+            {
+              "code": "serosang",
+              "label": "Serosang"
+            },
+            {
+              "code": "purulent",
+              "label": "Purulent"
+            }
+          ],
+          "showWhen": {
+            "field": "./drainage_amount",
+            "is": ["scant", "small", "moderate", "large"]
+          }
+        },
+        {
+          "id": "periwound",
+          "kind": "choice",
+          "many": true,
+          "label": "Periwound",
+          "options": [
+            {
+              "code": "intact",
+              "label": "Intact"
+            },
+            {
+              "code": "erythema",
+              "label": "Erythema"
+            },
+            {
+              "code": "warmth",
+              "label": "Warmth"
+            },
+            {
+              "code": "edema",
+              "label": "Edema"
+            },
+            {
+              "code": "maceration",
+              "label": "Maceration"
+            },
+            {
+              "code": "induration",
+              "label": "Induration"
+            },
+            {
+              "code": "excoriation",
+              "label": "Excoriation"
+            }
+          ]
+        },
+        {
+          "id": "infection_concern",
+          "kind": "choice",
+          "many": false,
+          "label": "Infection concern",
+          "options": [
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "possible",
+              "label": "Possible"
+            },
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "urgent",
+              "label": "Urgent"
+            }
+          ]
+        },
+        {
+          "id": "red_flags",
+          "kind": "action",
+          "label": "Go to Red flags and disposition",
+          "action": "open_note_type",
+          "noteType": "red_flags_disposition",
+          "showWhen": {
+            "field": "./infection_concern",
+            "is": "urgent"
+          }
+        },
+        {
+          "id": "infection",
+          "kind": "group",
+          "label": "Infection details",
+          "layout": "stack",
+          "collapsed": true,
+          "fields": [
+            {
+              "id": "findings",
+              "kind": "choice",
+              "many": true,
+              "label": "Infection findings",
+              "options": [
+                {
+                  "code": "increasing_redness",
+                  "label": "Increasing Redness"
+                },
+                {
+                  "code": "increasing_warmth",
+                  "label": "Increasing Warmth"
+                },
+                {
+                  "code": "increasing_swelling",
+                  "label": "Increasing Swelling"
+                },
+                {
+                  "code": "purulent_drainage",
+                  "label": "Purulent Drainage"
+                },
+                {
+                  "code": "foul_odor",
+                  "label": "Foul Odor"
+                },
+                {
+                  "code": "increasing_pain",
+                  "label": "Increasing Pain"
+                },
+                {
+                  "code": "fever",
+                  "label": "Fever"
+                },
+                {
+                  "code": "chills",
+                  "label": "Chills"
+                },
+                {
+                  "code": "lymphangitic_streaking",
+                  "label": "Lymphangitic Streaking"
+                }
+              ]
+            },
+            {
+              "id": "systemic",
+              "kind": "choice",
+              "many": true,
+              "label": "Systemic symptoms",
+              "options": [
+                {
+                  "code": "none",
+                  "label": "None",
+                  "exclusive": true
+                },
+                {
+                  "code": "fever",
+                  "label": "Fever"
+                },
+                {
+                  "code": "chills",
+                  "label": "Chills"
+                },
+                {
+                  "code": "malaise",
+                  "label": "Malaise"
+                },
+                {
+                  "code": "other",
+                  "label": "Other",
+                  "other": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "treatment",
+          "kind": "group",
+          "label": "Wound treatment",
+          "layout": "stack",
+          "fields": [
+            {
+              "id": "cleansing",
+              "kind": "choice",
+              "many": true,
+              "label": "Cleansing",
+              "options": [
+                {
+                  "code": "none",
+                  "label": "None",
+                  "exclusive": true
+                },
+                {
+                  "code": "soap_water",
+                  "label": "Soap/Water"
+                },
+                {
+                  "code": "ns",
+                  "label": "NS"
+                },
+                {
+                  "code": "antiseptic",
+                  "label": "Antiseptic"
+                },
+                {
+                  "code": "irrigation",
+                  "label": "Irrigation"
+                }
+              ]
+            },
+            {
+              "id": "procedure",
+              "kind": "choice",
+              "many": true,
+              "label": "Procedure",
+              "options": [
+                {
+                  "code": "none",
+                  "label": "None",
+                  "exclusive": true
+                },
+                {
+                  "code": "debridement",
+                  "label": "Debridement"
+                },
+                {
+                  "code": "drainage",
+                  "label": "Drainage"
+                },
+                {
+                  "code": "packing",
+                  "label": "Packing"
+                }
+              ]
+            },
+            {
+              "id": "dressing",
+              "kind": "choice",
+              "many": true,
+              "label": "Dressing",
+              "options": {
+                "list": "dressing"
+              }
+            },
+            {
+              "id": "medication",
+              "kind": "choice",
+              "many": true,
+              "label": "Medication",
+              "options": [
+                {
+                  "code": "topical",
+                  "label": "Topical"
+                },
+                {
+                  "code": "antibiotic",
+                  "label": "Antibiotic"
+                },
+                {
+                  "code": "pain_medication",
+                  "label": "Pain medication"
+                },
+                {
+                  "code": "none",
+                  "label": "None",
+                  "exclusive": true
+                }
+              ]
+            },
+            {
+              "id": "photos",
+              "kind": "photo",
+              "label": "Wound photos",
+              "max": 5
+            },
+            {
+              "id": "follow_up",
+              "kind": "choice",
+              "many": false,
+              "label": "Follow-up",
+              "options": [
+                {
+                  "code": "tomorrow",
+                  "label": "Tomorrow"
+                },
+                {
+                  "code": "days_2_to_3",
+                  "label": "2–3 days"
+                },
+                {
+                  "code": "week_1",
+                  "label": "1 week"
+                },
+                {
+                  "code": "next_clinic",
+                  "label": "Next clinic"
+                },
+                {
+                  "code": "wound_clinic",
+                  "label": "Wound clinic"
+                },
+                {
+                  "code": "ed",
+                  "label": "ED"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

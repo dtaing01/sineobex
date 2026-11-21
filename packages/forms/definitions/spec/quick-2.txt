@@ -1,0 +1,25 @@
+         3. If \[ SOCIAL NEEDS \]&#32;
+            1. Support&#32;
+               1. Buttons: \[ Water \] \[ Food \] \[ Hygiene Kit \] \[ Socks \] \[ Handwarmers \] \[ Ride arranged \]&#32;
+            2. Needs&#32;
+               1. Buttons: \[ Housing \] \[ Transportation \] \[ ID Documents \] \[ Phone \] \[ Benefits \]&#32;
+            3. Referral&#32;
+               1. Buttons: \[ Yes \] \[ No \]&#32;
+                  1. If \[ Yes \]&#32;
+                     1. &#91; Text box \]&#32;
+         4. If \[ MEDICATION \]&#32;
+            1. Order&#32;
+               1. Buttons: \[ OTC \] \[ Prescription \]&#32;
+            2. Delivery&#32;
+               1. Buttons: \[ YES \] \[ NO \]&#32;
+            3. Instructions for Delivery&#32;
+               1. &#91; Text box \]&#32;
+   2. Subsection 2
+      1. Assessment / Encounter Summary&#32;
+         1. &#91; Text box \]&#32;
+   3. Subsection 3
+      1. Follow up&#32;
+         1. Follow up&#32;
+            1. &#91; Text box \]&#32;
+         2. Date of follow up&#32;
+            1. &#91; Date \]&#32;

@@ -1,0 +1,10 @@
+{
+  "name": "pulse_scale",
+  "options": [
+    { "code": "zero", "label": "0" },
+    { "code": "one_plus", "label": "1+" },
+    { "code": "two_plus", "label": "2+", "normal": true },
+    { "code": "three_plus", "label": "3+" },
+    { "code": "unable_to_assess", "label": "Unable to assess", "unable": true }
+  ]
+}

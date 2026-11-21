@@ -1,0 +1,1205 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/encounters/credentials.dart';
+import 'package:sineobex_field/encounters/encounter_models.dart';
+import 'package:sineobex_field/encounters/encounter_repository.dart';
+import 'package:sineobex_field/encounters/note_definitions.dart';
+import 'package:sineobex_field/encounters/rules.dart';
+import 'package:sineobex_field/forms/definition.dart';
+import 'package:sineobex_field/forms/read_model.dart';
+import 'package:sineobex_field/sync/entities.dart'
+    show entityAddendum, entityCorrection, entityEncounter, entityNote, entitySignoff;
+import 'package:sineobex_field/sync/local_store.dart';
+import 'package:sineobex_field/sync/sync_engine.dart';
+
+import '../sync/fake_server.dart';
+import '../sync/phone_harness.dart';
+import '../sync/test_note_types.dart';
+
+/// Reopen, addenda and corrections on the phone (lifecycle 3.6, 4.7, 4.8, 8.2, 9.7; card
+/// L4-note-actions): what the visit screen offers, what each sends through the store, what is
+/// refused here before the server would keep it in history or hold it, and a note that has left the
+/// phone opened first. Each runs offline, then syncs to the phone's test server (4.9).
+void main() {
+  const team = '5a1f0c2e-8b7d-4e6a-9c3b-1d2e3f4a5b6c';
+  const alex = 'a0000000-0000-4000-8000-00000000000a';
+  const blair = 'b0000000-0000-4000-8000-00000000000b';
+  final start = DateTime.utc(2026, 10, 20, 15);
+  const staff = FakeSyncServer.healthcareStaff;
+
+  late DateTime serverTime;
+  late FakeSyncServer server;
+  final phones = <TestPhone>[];
+
+  TestPhone phone(String user) {
+    final p = TestPhone(userId: user, teamId: team, transport: () => server.transportFor(user, team), wall: start);
+    phones.add(p);
+    return p;
+  }
+
+  setUp(() {
+    serverTime = start;
+    server = FakeSyncServer(now: () => serverTime)
+      ..noteTypes[(testRedFlags.key, testRedFlags.version)] = redFlagsNoteType;
+    for (final d in restrictedNoteTypes) {
+      server.noteTypes[(d['key']! as String, d['version']! as int)] = d;
+    }
+  });
+  tearDown(() {
+    for (final p in phones) {
+      p.close();
+    }
+    phones.clear();
+  });
+
+  // The released Red flags and disposition note, as the phone bundles it: the note review LCM-1 was
+  // found on.
+  final releasedRedFlags = [
+    for (final p in (jsonDecode(
+      File('assets/forms/presets.json').readAsStringSync(),
+    ) as List<Object?>).cast<Map<String, Object?>>())
+      if (p['key'] == 'red_flags_disposition') p['definition']! as Map<String, Object?>,
+  ].single;
+  final definitions = {
+    for (final d in [...testNoteTypes, redFlagsNoteType, ...restrictedNoteTypes, releasedRedFlags])
+      (d['key']! as String, d['version']! as int): NoteTypeDef.fromJson(d),
+  };
+  NoteTypeDef definition(TestNoteType t) => definitions[(t.key, t.version)]!;
+  // The team's list: the test types, with the test Red flags type as the one the app adds.
+  final listed = [
+    for (final MapEntry(:key, :value) in definitions.entries)
+      if (key.$1 != releasedRedFlags['key']) value,
+  ];
+
+  EncounterRepository repo(
+    TestPhone p, {
+    String credential = 'attending',
+    Set<String> permissions = staff,
+    Iterable<NoteTypeDef>? noteTypes,
+  }) => EncounterRepository(
+    p.store,
+    user: EncounterUser(
+      userId: p.userId,
+      displayName: 'Demo Charter',
+      credential: credential,
+      permissions: permissions,
+    ),
+    definitions: NoteDefinitions(held: (key, version) async => definitions[(key, version)]),
+    noteTypes: () async => noteTypes ?? listed,
+    openServerRecord: p.engine.openServerRecord,
+  );
+
+  Future<SyncOutcome> sync(TestPhone p) => p.engine.syncAll(force: true);
+
+  Future<String> charted(EncounterRepository r, String visit, TestNoteType type, Map<String, Object?> answers) async {
+    final id = (await r.addNote(visit, definition(type), another: true)).noteId;
+    await r.openNote(id);
+    for (final MapEntry(:key, :value) in answers.entries) {
+      r.saveAnswer(id, key, value);
+    }
+    return id;
+  }
+
+  /// A visit of [kind] with [notes] charted and completed by [r]; returns the visit and the notes.
+  Future<(String, List<String>)> finished(
+    EncounterRepository r,
+    String? patient,
+    VisitKind kind,
+    List<(TestNoteType, Map<String, Object?>)> notes,
+  ) async {
+    final visit = r.startEncounter(kind: kind, patientId: patient);
+    final ids = [for (final (type, answers) in notes) await charted(r, visit, type, answers)];
+    r.complete((await r.openComplete(visit))!);
+    return (visit, ids);
+  }
+
+  OutboxEntry createOf(TestPhone p, String entity) =>
+      p.store.outbox().lastWhere((e) => e.entity == entity && e.op == 'create' && e.state != ChangeState.superseded);
+
+  Matcher refused(String problem) => throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', problem));
+
+  void serverTookAll(TestPhone p) {
+    expect(p.store.outbox(), isEmpty);
+    expect(p.store.needsAttention(), isEmpty);
+    expect(server.held, isEmpty);
+  }
+
+  Object? serverAnswer(String noteId, String path) => server.records[noteId]!.fields['data.$path']?.value;
+  String statusOn(String noteId) => server.records[noteId]!.fields['status']!.value! as String;
+
+  group('Reopen (lifecycle 3.6, 4.4)', () {
+    test('a student’s note waiting for a co-signer goes back to draft for its author, offline', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final (visit, [flags, medical]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 96}),
+      ]);
+      await sync(p);
+      expect(statusOn(medical), 'completed');
+
+      server.offline = true;
+      expect([r.mayReopen(medical), r.mayReopen(flags)], [true, true]);
+      var changed = 0;
+      r.onChanged = () => changed++;
+      expect(await r.reopen(medical), ReopenEffect.apply);
+      expect(changed, 1);
+      final view = (await r.openNote(medical))!;
+      expect([view.status, view.editable], [NoteStatus.draft, true]);
+      // A draft again: nothing more to send for it, and nothing to reopen.
+      final before = p.store.outbox().length;
+      expect(await r.reopen(medical), ReopenEffect.nothing);
+      expect(r.mayReopen(medical), isFalse);
+      expect(p.store.outbox(), hasLength(before));
+      r.saveAnswer(medical, 'vitals.pulse', 98);
+
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect([statusOn(medical), serverAnswer(medical, 'vitals.pulse')], ['draft', 98]);
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      expect(statusOn(medical), 'completed');
+    });
+
+    test('what the server would keep as it is never leaves the phone', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final (_, [flags, social]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testNote, {'care.plan': 'Demo: blankets'}),
+      ]);
+      await sync(p);
+      server.offline = true;
+      // Signed, and a Non-Medical note completed: an addendum or a correction is the way (3.6).
+      for (final id in [flags, social]) {
+        expect(r.mayReopen(id), isFalse, reason: id);
+        await expectLater(r.reopen(id), throwsA(isA<RecordLocked>()), reason: id);
+      }
+
+      // Someone else's note its author could reopen.
+      final b = phone(blair);
+      server.credentials[blair] = 'student';
+      final rb = repo(b, credential: 'student');
+      final (visit, [_, theirs]) = await finished(rb, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 96}),
+      ]);
+      server.offline = false;
+      await sync(b);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
+      server.offline = true;
+      expect(r.mayReopen(theirs), isFalse);
+      await expectLater(r.reopen(theirs), refused('not_author'));
+      expect(p.store.outbox(), isEmpty);
+    });
+
+    test('a credential lowered to one that can’t chart Medical reopens nothing: the server would hold it '
+        '(review LCM-4)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final (_, [_, medical]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 96}),
+      ]);
+      await sync(p);
+      server.offline = true;
+      final lowered = repo(p, credential: 'chw');
+      expect(lowered.mayReopen(medical), isFalse);
+      await expectLater(lowered.reopen(medical), refused('medical_credential'));
+      expect(p.store.outbox(), isEmpty);
+      expect(p.store.noteState(medical)!.status, NoteStatus.completed);
+    });
+
+    test('a note sent for review says so, and is neither reopened nor corrected', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      await charted(r, visit, testRedFlags, {'flags.any': 'no'});
+      final medical = await charted(r, visit, testMedical, {'vitals.pulse': 96});
+      await sync(p);
+      // The credential was lowered on the server and the phone's profile doesn't know (4.2).
+      server.changeCredential(alex, 'chw');
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      expect(p.store.sentForReview(medical), isTrue);
+      expect(r.mayReopen(medical), isFalse);
+      expect(r.mayCorrect((await r.openNote(medical))!), isFalse);
+      await expectLater(
+        r.correct(visit, medical, changes: {'vitals.pulse': 98}, reason: 'Demo: typo'),
+        refused('sent_for_review'),
+      );
+      await expectLater(
+        r.reopen(medical),
+        throwsA(
+          isA<LocalValidationError>()
+              .having((e) => e.problem, 'problem', 'sent_for_review')
+              .having(
+                (e) => e.message,
+                'message',
+                'This note was sent to a Program Admin for review. It can’t be changed until they decide.',
+              ),
+        ),
+      );
+    });
+  });
+
+  group('Addenda (lifecycle 3.6, 4.7)', () {
+    test('an addendum to a finished note, written offline, waits behind the sign-off it names', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88}),
+      ]);
+      final view = (await r.openVisit(visit))!;
+      expect([r.mayAddAddendum(view.notes.single), r.mayAddVisitAddendum(view)], [true, true]);
+      final signoff = p.store.localEffect(n)!.signoffId;
+      var changed = 0;
+      r.onChanged = () => changed++;
+      final id = await r.addAddendum(visit, noteId: n, text: '  Demo: results came back normal  ');
+      expect(changed, 1);
+      expect(createOf(p, entityAddendum).value, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: results came back normal',
+        'signoffId': signoff,
+      });
+      // One to the visit itself names a sign-off of the visit that waits too.
+      final own = await r.addAddendum(visit, text: 'Demo: seen again at noon');
+      expect(createOf(p, entityAddendum).value, {
+        'encounterId': visit,
+        'noteId': null,
+        'text': 'Demo: seen again at noon',
+        'signoffId': signoff,
+      });
+      expect(p.store.record(id)!.patientId, patient);
+
+      Matcher text(String message) =>
+          throwsA(isA<LocalValidationError>().having((e) => (e.problem, e.message), 'problem', ('text', message)));
+      await expectLater(r.addAddendum(visit, noteId: n, text: '   '), text('Write the addendum first.'));
+      await expectLater(
+        r.addAddendum(visit, noteId: n, text: 'Demo: ${'x' * 4000}'),
+        text('An addendum can be up to 4,000 characters.'),
+      );
+
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.attributes['noteId'], server.records[own]!.attributes['noteId']], [n, null]);
+      // Once the sign-off is confirmed, an addendum names none.
+      await r.addAddendum(visit, noteId: n, text: 'Demo: called back');
+      expect((createOf(p, entityAddendum).value! as Map)['signoffId'], isNull);
+    });
+
+    test('anyone who charts adds one; a role that doesn’t chart does not; the clock pauses it', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88}),
+      ]);
+      await sync(p);
+      final reader = repo(p, credential: 'chw', permissions: FakeSyncServer.chw);
+      final view = (await reader.openVisit(visit))!;
+      expect(reader.mayAddVisitAddendum(view), isFalse);
+      await expectLater(reader.addAddendum(visit, noteId: n, text: 'Demo: note'), refused('not_charting'));
+
+      server.offline = true;
+      p.wall = p.wall.add(const Duration(minutes: 10));
+      expect(p.clock.status.paused, isTrue);
+      await expectLater(r.addAddendum(visit, noteId: n, text: 'Demo: later'), throwsA(isA<ChartingPaused>()));
+      expect([for (final e in p.store.outbox()) e.entity], isNot(contains(entityAddendum)));
+    });
+  });
+
+  group('a teammate’s note the person may not read (lifecycle 6.4)', () {
+    // The phone holds Blair's Medical note as a role that reads Medical notes was sent it; Alex's
+    // role now charts but doesn't read Medical notes (no patients.view, D37).
+    final noMedical = {...staff}..remove('patients.view');
+
+    Future<(String, String, String)> blairsMedicalNote(TestPhone p, {required bool finish}) async {
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final rb = repo(b);
+      final visit = rb.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final theirs = await charted(rb, visit, testMedical, {'vitals.pulse': 96});
+      if (finish) {
+        final flags = (await rb.ownRedFlagsNote(visit))!;
+        await rb.openNote(flags);
+        rb.saveAnswer(flags, 'flags.any', 'no');
+        rb.complete((await rb.openComplete(visit))!);
+      }
+      await sync(b);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
+      return (patient, visit, theirs);
+    }
+
+    test('Complete doesn’t name their draft among the teammates’ drafts (review LCM-4)', () async {
+      final p = phone(alex);
+      final (_, visit, theirs) = await blairsMedicalNote(p, finish: false);
+      final reads = repo(p);
+      final mine = await charted(reads, visit, testNote, {'care.plan': 'Demo: blankets'});
+      expect([for (final d in (await reads.openComplete(visit))!.teammateDrafts) d.noteId], [theirs]);
+
+      final r = repo(p, permissions: noMedical);
+      final plan = (await r.openComplete(visit))!;
+      expect(plan.teammateDrafts, isEmpty);
+      expect([for (final n in plan.notes) n.noteId], [mine]);
+    });
+
+    test('an addendum to it is refused cannot_read, which the server would hold (review LCM-4)', () async {
+      final p = phone(alex);
+      final (_, visit, theirs) = await blairsMedicalNote(p, finish: true);
+      final r = repo(p, permissions: noMedical);
+      server.offline = true;
+      await expectLater(r.addAddendum(visit, noteId: theirs, text: 'Demo: seen again'), refused('cannot_read'));
+      expect(p.store.outbox(), isEmpty);
+      // Someone who may read it adds one.
+      await repo(p).addAddendum(visit, noteId: theirs, text: 'Demo: seen again');
+      expect(createOf(p, entityAddendum).value, containsPair('noteId', theirs));
+    });
+  });
+
+  group('Corrections (lifecycle 3.6, 4.7)', () {
+    test(
+      'one to ten answers of a finished note, each with the version it was read at; the server applies it',
+      () async {
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final r = repo(p);
+        final (_, [flags, medical]) = await finished(r, patient, VisitKind.medical, [
+          (testRedFlags, {'flags.any': 'no'}),
+          (testMedical, {'vitals.pulse': 96, 'care.plan': 'Demo: rest'}),
+        ]);
+        await sync(p);
+        final visit = p.store.record(medical)!.attributes['encounterId']! as String;
+        server.offline = true;
+        final view = (await r.openNote(medical))!;
+        expect(r.mayCorrect(view), isTrue);
+        final read = p.store.record(medical)!.fields['data.vitals.pulse']!.serverVersion;
+        var changed = 0;
+        r.onChanged = () => changed++;
+        final id = await r.correct(
+          visit,
+          medical,
+          changes: {'vitals.pulse': 86, 'care.plan': 'Demo: rest', 'care.followup': 'Demo: tomorrow'},
+          reason: '  Demo: counted twice  ',
+        );
+        expect(changed, 1);
+        // An answer that already says so is not sent as a change.
+        expect(createOf(p, entityCorrection).value, {
+          'noteId': medical,
+          'changes': [
+            {'field': 'data.vitals.pulse', 'newValue': 86, 'baseVersion': read},
+            {'field': 'data.care.followup', 'newValue': 'Demo: tomorrow', 'baseVersion': 0},
+          ],
+          'reason': 'Demo: counted twice',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': 'attending',
+          'signoffId': null,
+        });
+
+        // Refused here, writing nothing, as the server would refuse it.
+        final before = p.store.outbox().length;
+        await expectLater(
+          r.correct(visit, medical, changes: {'vitals.pulse': 'fast'}, reason: 'Demo: typo'),
+          refused('wrong_type'),
+        );
+        await expectLater(
+          r.correct(visit, medical, changes: {'vitals.pulse': 96}, reason: 'Demo: typo'),
+          refused('no_change'),
+        );
+        await expectLater(
+          r.correct(visit, flags, changes: {'flags.any': null}, reason: 'Demo: unsure'),
+          refused('incomplete'),
+        );
+        await expectLater(r.correct(visit, medical, changes: {'vitals.pulse': 80}, reason: 'no'), refused('reason'));
+        expect(p.store.outbox(), hasLength(before));
+
+        server.offline = false;
+        await sync(p);
+        serverTookAll(p);
+        expect(server.records[id]!.status, 'corrected');
+        expect([serverAnswer(medical, 'vitals.pulse'), serverAnswer(medical, 'care.followup')], [86, 'Demo: tomorrow']);
+      },
+    );
+
+    test(
+      'a correction after Keep theirs, before the sync, reads the version the server keeps (review LCM-3)',
+      () async {
+        final p = phone(alex);
+        final r = repo(p);
+        final visit = r.startEncounter(kind: VisitKind.nonMedical);
+        final n = await charted(r, visit, testNote, {'vitals.pulse': 88});
+        await sync(p);
+        server.serverEdit(n, 'data.vitals.pulse', 92, by: blair);
+        r.saveAnswer(n, 'vitals.pulse', 90);
+        await sync(p);
+        final conflict = p.store.needsAttention().single;
+        server.offline = true;
+        // Keep theirs: the server keeps 92 at its version, which the choice doesn't move.
+        expect(p.store.resolveConflict(conflict.changeId, keepMine: false), isTrue);
+        r.complete((await r.openComplete(visit))!);
+        await r.correct(visit, n, changes: {'vitals.pulse': 94}, reason: 'Demo: misread');
+        expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+          {
+            'field': 'data.vitals.pulse',
+            'newValue': 94,
+            'baseVersion': server.records[n]!.fields['data.vitals.pulse']!.version,
+          },
+        ]);
+        server.offline = false;
+        await sync(p);
+        serverTookAll(p);
+        expect(serverAnswer(n, 'vitals.pulse'), 94);
+      },
+    );
+
+    test('a correction made before the sign-off is confirmed names it, and waits behind it', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88}),
+      ]);
+      final signoff = p.store.localEffect(n)!.signoffId;
+      await r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: counted twice');
+      final correction = createOf(p, entityCorrection);
+      expect((correction.value! as Map)['signoffId'], signoff);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[correction.recordId]!.status, 'corrected');
+    });
+
+    test('only for whoever acts as the author, on a finished note, never a draft or one sent for review', () async {
+      final b = phone(blair);
+      final patient = server.seedPatient();
+      final rb = repo(b);
+      final (visit, [theirs]) = await finished(rb, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88}),
+      ]);
+      await sync(b);
+      final p = phone(alex);
+      final r = repo(p);
+      expect(await p.engine.openServerRecord('encounter', visit), isTrue);
+      expect(await p.engine.openServerRecord('encounter_note', theirs), isTrue);
+      expect(r.mayCorrect((await r.openNote(theirs))!), isFalse);
+      await expectLater(
+        r.correct(visit, theirs, changes: {'vitals.pulse': 86}, reason: 'Demo: typo'),
+        refused('not_author'),
+      );
+
+      final draft = await charted(r, visit, testNote, {'vitals.pulse': 70});
+      expect(r.mayCorrect((await r.openNote(draft))!), isFalse);
+      await expectLater(r.correct(visit, draft, changes: {'vitals.pulse': 72}, reason: 'Demo: typo'), refused('draft'));
+
+      // An answer the server would hold from them (a section that needs an ordering credential).
+      final s = phone(blair);
+      server.credentials[blair] = 'student';
+      final rs = repo(s, credential: 'student');
+      final (own, [restricted]) = await finished(rs, patient, VisitKind.nonMedical, [
+        (testRestricted, {'general.notes': 'Demo: talked'}),
+      ]);
+      await expectLater(
+        rs.correct(own, restricted, changes: {'meds.given': 'Demo: water'}, reason: 'Demo: forgot'),
+        refused('read_only'),
+      );
+      expect([for (final e in p.store.outbox()) e.entity], isNot(contains(entityCorrection)));
+      expect([for (final e in s.store.outbox()) e.entity], isNot(contains(entityCorrection)));
+    });
+
+    test('a patient’s request: made as a correction, or recorded as declined', () async {
+      // PRD main 463: the same path, with the request and the decision logged (lifecycle 3.6).
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'care.history': 'Demo: smokes'}),
+      ]);
+      await sync(p);
+      server.offline = true;
+      final declined = await r.correct(
+        visit,
+        n,
+        changes: {'care.history': 'Demo: never smoked'},
+        reason: 'Demo: seen smoking today',
+        requestedByPatient: true,
+        declined: true,
+      );
+      expect((createOf(p, entityCorrection).value! as Map)['declined'], isTrue);
+      await expectLater(
+        r.correct(visit, n, changes: {'care.history': 'Demo: x'}, reason: 'Demo: asked', declined: true),
+        throwsArgumentError,
+      );
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[declined]!.status, 'declined');
+      expect(serverAnswer(n, 'care.history'), 'Demo: smokes');
+    });
+
+    /// The released Red flags note of a Medical visit, answered as review LCM-1 found it: an emergency,
+    /// EMS not activated, then no emergency after all; completed offline and synced. Complete drops
+    /// "EMS activated", which no longer shows: blank on the server at a version the phone never held.
+    Future<(EncounterRepository, String, String)> droppedAnswer(TestPhone p) async {
+      final released = NoteTypeDef.fromJson(releasedRedFlags);
+      server.noteTypes[(released.key, released.version)] = releasedRedFlags;
+      final r = repo(p, noteTypes: [...listed.where((d) => d.auto != 'medical'), released]);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final flags = (await r.addRedFlagsNote(visit))!;
+      await r.openNote(flags);
+      r.saveAnswer(flags, 'red_flags.emergency', 'yes');
+      r.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+      r.saveAnswer(flags, 'red_flags.emergency', 'no');
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, flags]);
+      r.complete(plan);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      final dropped = server.records[flags]!.fields['data.red_flags.ems_activated']!;
+      expect([dropped.value, dropped.version], [null, 2]);
+      expect(p.store.record(flags)!.fields['data.red_flags.ems_activated'], isNull);
+      return (r, visit, flags);
+    }
+
+    test('an answer Complete dropped, corrected back, is taken from blank, and the visit completes again after '
+        '(D109, review LCM-1)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      server.offline = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'no'},
+        reason: 'Demo: misread',
+      );
+      // The phone holds no version of the answer Complete dropped, and sends none.
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.red_flags.emergency',
+          'newValue': 'yes',
+          'baseVersion': server.records[flags]!.fields['data.red_flags.emergency']!.version,
+        },
+        {'field': 'data.red_flags.ems_activated', 'newValue': 'no', 'baseVersion': 0},
+      ]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.status, 'corrected');
+      expect(
+        [serverAnswer(flags, 'red_flags.emergency'), serverAnswer(flags, 'red_flags.ems_activated')],
+        ['yes', 'no'],
+      );
+      // Nothing about the visit waits: a later note of it completes.
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    test('a correction refused field_changed before D109 is settled by Correct again', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      server.stepSixBeforeD109 = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'no'},
+        reason: 'Demo: misread',
+      );
+      await sync(p);
+      final refusal = p.store.needsAttention().single;
+      expect(
+        [refusal.recordId, refusal.details],
+        [
+          id,
+          {'problem': 'field_changed', 'field': 'data.red_flags.ems_activated'},
+        ],
+      );
+      // While it waits, every later Complete of the visit waits too (hard stop 2).
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      expect([for (final s in (await r.openComplete(visit))!.stops) s.stop], [CompleteStop.needsAttention]);
+
+      // The server as it is now. Correct again: the same record, each answer at the version now seen,
+      // which for the answer Complete dropped is still none.
+      server.stepSixBeforeD109 = false;
+      var changed = 0;
+      r.onChanged = () => changed++;
+      await r.correctAgain(refusal.changeId);
+      expect(changed, 1);
+      final fix = p.store.outbox().last;
+      expect([fix.recordId, fix.supersedes], [id, refusal.changeId]);
+      expect(((fix.value! as Map)['changes'] as List).last, {
+        'field': 'data.red_flags.ems_activated',
+        'newValue': 'no',
+        'baseVersion': 0,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.receipts[refusal.changeId]!.resolved], ['corrected', true]);
+      expect(serverAnswer(flags, 'red_flags.ems_activated'), 'no');
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    /// The released Red flags note answered as review F2 found it: an emergency, EMS not activated, a
+    /// transport; completed and synced. A correction to no emergency hides "EMS activated" and the
+    /// transport: the server keeps each at its version (4.7), and the note's read leaves them out, so
+    /// the phone holds no row of either (D107).
+    Future<(EncounterRepository, String, String)> hiddenAnswer(TestPhone p) async {
+      final released = NoteTypeDef.fromJson(releasedRedFlags);
+      server.noteTypes[(released.key, released.version)] = releasedRedFlags;
+      final r = repo(p, noteTypes: [...listed.where((d) => d.auto != 'medical'), released]);
+      final patient = server.seedPatient();
+      server.offline = true;
+      final visit = r.startEncounter(kind: VisitKind.medical, patientId: patient);
+      final flags = (await r.addRedFlagsNote(visit))!;
+      await r.openNote(flags);
+      r.saveAnswer(flags, 'red_flags.emergency', 'yes');
+      r.saveAnswer(flags, 'red_flags.ems_activated', 'no');
+      r.saveAnswer(flags, 'red_flags.transport', 'yes');
+      r.complete((await r.openComplete(visit))!);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      await r.correct(visit, flags, changes: {'red_flags.emergency': 'no'}, reason: 'Demo: misread');
+      await sync(p);
+      serverTookAll(p);
+      for (final path in ['red_flags.ems_activated', 'red_flags.transport']) {
+        final kept = server.records[flags]!.fields['data.$path']!;
+        expect([kept.value, kept.version], [path.endsWith('transport') ? 'yes' : 'no', 1]);
+        expect(p.store.record(flags)!.fields['data.$path'], isNull);
+      }
+      return (r, visit, flags);
+    }
+
+    test('an answer a correction hid, shown again by a later correction, is taken from no version, and the visit '
+        'completes again after (D109, review F2, probe B)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await hiddenAnswer(p);
+      server.offline = true;
+      final id = await r.correct(
+        visit,
+        flags,
+        changes: {'red_flags.emergency': 'yes', 'red_flags.ems_activated': 'yes', 'red_flags.ems_time': '10:05'},
+        reason: 'Demo: misread again',
+      );
+      // The phone holds no version of the answer the first correction hid, and sends none.
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.red_flags.emergency',
+          'newValue': 'yes',
+          'baseVersion': server.records[flags]!.fields['data.red_flags.emergency']!.version,
+        },
+        {'field': 'data.red_flags.ems_activated', 'newValue': 'yes', 'baseVersion': 0},
+        {'field': 'data.red_flags.ems_time', 'newValue': '10:05', 'baseVersion': 0},
+      ]);
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.status, 'corrected');
+      expect(
+        [
+          for (final path in ['emergency', 'ems_activated', 'ems_time', 'transport'])
+            serverAnswer(flags, 'red_flags.$path'),
+        ],
+        ['yes', 'yes', '10:05', 'yes'],
+      );
+      // The old value is in the note's history, struck through; the phone holds what shows now.
+      expect(
+        [
+          for (final h in server.history)
+            if (h['recordId'] == flags && h['field'] == 'data.red_flags.ems_activated') [h['previous'], h['value']],
+        ],
+        [
+          [null, 'no'],
+          ['no', 'yes'],
+        ],
+      );
+      expect(
+        [
+          for (final path in ['ems_activated', 'transport'])
+            p.store.record(flags)!.fields['data.red_flags.$path']?.value,
+        ],
+        ['yes', 'yes'],
+      );
+      // Nothing about the visit waits: a later note of it completes.
+      final later = await charted(r, visit, testMedical, {'vitals.pulse': 70});
+      final plan = (await r.openComplete(visit))!;
+      expect([plan.stops, for (final n in plan.notes) n.noteId], [isEmpty, later]);
+    });
+
+    test('a detail "Nothing more" hid, given again with it taken back, is taken from no version (review F2, '
+        'probe C)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'});
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      // "Nothing more" hides the detail. A change to the detail beside it is sent all the same: it showed
+      // before.
+      await r.correct(
+        visit,
+        n,
+        changes: {'more.none': true, 'more.detail': 'Demo: walks with a stick'},
+        reason: 'Demo: nothing more to say',
+      );
+      expect(
+        [for (final c in (createOf(p, entityCorrection).value! as Map)['changes'] as List) (c as Map)['field']],
+        ['data.more.none', 'data.more.detail'],
+      );
+      await sync(p);
+      serverTookAll(p);
+      expect(serverAnswer(n, 'more.detail'), 'Demo: walks with a stick');
+      expect(p.store.record(n)!.fields['data.more.detail'], isNull);
+
+      final id = await r.correct(
+        visit,
+        n,
+        changes: {'more.none': null, 'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: there was more',
+      );
+      expect(((createOf(p, entityCorrection).value! as Map)['changes'] as List).last, {
+        'field': 'data.more.detail',
+        'newValue': 'Demo: uses a walker',
+        'baseVersion': 0,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[id]!.attributes['changes'], [
+        {'field': 'data.more.none', 'oldValue': true, 'newValue': null},
+        {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a stick', 'newValue': 'Demo: uses a walker'},
+      ]);
+      final held = p.store.record(n)!.fields['data.more.detail']!;
+      expect([held.value, held.serverVersion], ['Demo: uses a walker', 3]);
+    });
+
+    /// The read [r] gives of [noteId]'s answer at [path], once the phone holds what the server made of
+    /// the [corrections]: a phone learns a correction's outcome by reading it (4.10).
+    Future<ReadItem?> readOf(
+      TestPhone p,
+      EncounterRepository r,
+      String noteId,
+      String path,
+      List<String> corrections,
+    ) async {
+      for (final id in corrections) {
+        expect(await p.engine.openServerRecord(entityCorrection, id), isTrue);
+      }
+      return r.readNote(noteId)!.read!.sections.expand((s) => s.items).where((i) => i.path == path).firstOrNull;
+    }
+
+    test('two corrections made offline in a row: the first hides the detail, the second changes it beside the pulse, '
+        'and the server writes it as the person saw it (review R1)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'};
+      final n = await charted(r, visit, testNote, answers);
+      final other = await charted(r, visit, testNote, answers);
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      serverTookAll(p);
+
+      // Offline, the phone's copy still shows the detail at the version the person saw while the first
+      // correction waits, so the second sends it at that version.
+      server.offline = true;
+      final hide = await r.correct(visit, n, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      final held = await r.correct(
+        visit,
+        n,
+        changes: {'vitals.pulse': 84, 'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: pulse and aid',
+      );
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {'field': 'data.vitals.pulse', 'newValue': 84, 'baseVersion': 1},
+        {'field': 'data.more.detail', 'newValue': 'Demo: uses a walker', 'baseVersion': 1},
+      ]);
+      // On the other note, the detail alone: once the first is taken it changes nothing the note shows,
+      // and the server stores it as no change (review F4).
+      final hideOther = await r.correct(visit, other, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      final alone = await r.correct(visit, other, changes: {'more.detail': 'Demo: uses a frame'}, reason: 'Demo: aid');
+      server.offline = false;
+      await sync(p);
+      serverTookAll(p);
+      expect(
+        [
+          for (final id in [hide, held, hideOther, alone]) server.records[id]!.status,
+        ],
+        ['corrected', 'corrected', 'corrected', 'no_change'],
+      );
+      expect(
+        [serverAnswer(n, 'vitals.pulse'), serverAnswer(n, 'more.detail'), serverAnswer(other, 'more.detail')],
+        [84, 'Demo: uses a walker', 'Demo: walks with a cane'],
+      );
+      expect(server.records[held]!.attributes['changes'], [
+        {'field': 'data.vitals.pulse', 'oldValue': 80, 'newValue': 84},
+        {'field': 'data.more.detail', 'oldValue': 'Demo: walks with a cane', 'newValue': 'Demo: uses a walker'},
+      ]);
+      // Hidden, the detail shows its old value struck through under the correction that changed it.
+      final hidden = (await readOf(p, r, n, 'more.detail', [hide, held]))!;
+      expect(
+        [hidden.value, for (final c in hidden.corrections) (c.old, c.reason)],
+        [null, ('Demo: walks with a cane', 'Demo: pulse and aid')],
+      );
+
+      // Shown again, it reads as the person corrected it.
+      final show = await r.correct(visit, n, changes: {'more.none': null}, reason: 'Demo: there was more');
+      await sync(p);
+      serverTookAll(p);
+      final shown = (await readOf(p, r, n, 'more.detail', [show]))!;
+      expect(
+        [shown.value, for (final c in shown.corrections) (c.old, c.reason)],
+        ['Demo: uses a walker', ('Demo: walks with a cane', 'Demo: pulse and aid')],
+      );
+    });
+
+    test('a correction beside the pulse to a detail the phone never held, which stays hidden, is neither written '
+        'nor named, so the read strikes nothing through (review R1)', () async {
+      final p = phone(alex);
+      final r = repo(p);
+      final visit = r.startEncounter(kind: VisitKind.nonMedical);
+      final n = await charted(r, visit, testNote, {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'});
+      r.complete((await r.openComplete(visit))!);
+      await sync(p);
+      final hide = await r.correct(visit, n, changes: {'more.none': true}, reason: 'Demo: nothing more');
+      await sync(p);
+      serverTookAll(p);
+      expect(p.store.record(n)!.fields['data.more.detail'], isNull);
+      // A correction of the pulse that sends the detail at no version, as one made elsewhere could.
+      final both = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.vitals.pulse', 'newValue': 84, 'baseVersion': 1},
+          {'field': 'data.more.detail', 'newValue': 'Demo: uses a frame', 'baseVersion': 0},
+        ],
+        'reason': 'Demo: pulse again',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[both]!.status, serverAnswer(n, 'more.detail')], ['corrected', 'Demo: walks with a cane']);
+      expect(await readOf(p, r, n, 'more.detail', [hide, both]), isNull);
+      final pulse = (await readOf(p, r, n, 'vitals.pulse', const []))!;
+      expect([pulse.value, for (final c in pulse.corrections) (c.old, c.reason)], ['84', ('80', 'Demo: pulse again')]);
+    });
+
+    test('Correct again sends the refused correction with the version now seen, after a correction made '
+        'elsewhere first', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88, 'care.plan': 'Demo: rest'}),
+      ]);
+      await sync(p);
+      // Alex corrects the pulse on another phone; this one still reads the first version.
+      server.serverEdit(n, 'data.vitals.pulse', 90, by: alex);
+      final id = await r.correct(
+        visit,
+        n,
+        changes: {'vitals.pulse': 86, 'care.plan': 'Demo: fluids'},
+        reason: 'Demo: counted twice',
+      );
+      await sync(p);
+      final refusal = p.store.needsAttention().single;
+      expect(refusal.details, {'problem': 'field_changed', 'field': 'data.vitals.pulse'});
+      // Only a refused correction is corrected again.
+      await r.addAddendum(visit, noteId: n, text: 'Demo: seen again');
+      for (final other in [createOf(p, entityAddendum).changeId, 'f0f00000-0000-4000-8000-0000000000ff']) {
+        await expectLater(r.correctAgain(other), throwsStateError);
+      }
+      p.store.freeze('Demo: handing over');
+      await expectLater(r.correctAgain(refusal.changeId), throwsA(isA<ChartingPaused>()));
+      p.store.unfreeze();
+
+      await r.correctAgain(refusal.changeId);
+      final seen = server.records[n]!.fields;
+      expect((p.store.outbox().last.value! as Map)['changes'], [
+        {'field': 'data.vitals.pulse', 'newValue': 86, 'baseVersion': seen['data.vitals.pulse']!.version},
+        {'field': 'data.care.plan', 'newValue': 'Demo: fluids', 'baseVersion': seen['data.care.plan']!.version},
+      ]);
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.receipts[refusal.changeId]!.resolved], ['corrected', true]);
+      expect([serverAnswer(n, 'vitals.pulse'), serverAnswer(n, 'care.plan')], [86, 'Demo: fluids']);
+    });
+
+    test('Correct again refuses what Correct refuses, sending nothing: a note reopened since, or one someone else '
+        'now acts as the author of; Leave it settles each, changing nothing (review R3)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      server.credentials[alex] = 'student';
+      final r = repo(p, credential: 'student');
+      final (visit, [_, n, other]) = await finished(r, patient, VisitKind.medical, [
+        (testRedFlags, {'flags.any': 'no'}),
+        (testMedical, {'vitals.pulse': 88, 'care.plan': 'Demo: rest'}),
+        (testMedical, {'vitals.pulse': 70, 'care.plan': 'Demo: rest'}),
+      ]);
+      await sync(p);
+      // Each pulse is corrected first on another phone of theirs; this one's corrections are refused.
+      server
+        ..serverEdit(n, 'data.vitals.pulse', 90, by: alex)
+        ..serverEdit(other, 'data.vitals.pulse', 72, by: alex);
+      final id = await r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: counted twice');
+      final otherId = await r.correct(visit, other, changes: {'vitals.pulse': 74}, reason: 'Demo: counted twice');
+      await sync(p);
+      final [refusal, otherRefusal] = p.store.needsAttention();
+      expect(
+        [
+          for (final x in [refusal, otherRefusal]) [x.recordId, x.details],
+        ],
+        [
+          [
+            id,
+            {'problem': 'field_changed', 'field': 'data.vitals.pulse'},
+          ],
+          [
+            otherId,
+            {'problem': 'field_changed', 'field': 'data.vitals.pulse'},
+          ],
+        ],
+      );
+
+      // The other phone reopens the first note, which this one then reads as a draft: the correction
+      // would be applied as a draft edit the person never saw.
+      final p2 = phone(alex);
+      final r2 = repo(p2, credential: 'student');
+      expect(await p2.engine.openServerRecord(entityEncounter, visit), isTrue);
+      expect(await p2.engine.openServerRecord(entityNote, n), isTrue);
+      expect(await r2.reopen(n), ReopenEffect.apply);
+      await sync(p2);
+      await sync(p);
+      expect(p.store.noteState(n)!.status, NoteStatus.draft);
+      // A Program Admin gives the other note to a teammate to act as its author (3.8).
+      server.records[other]!.assignedTo = blair;
+      expect(await p.engine.openServerRecord(entityNote, other), isTrue);
+      final outbox = p.store.outbox().length;
+      await expectLater(r.correctAgain(refusal.changeId), refused('draft'));
+      await expectLater(r.correctAgain(otherRefusal.changeId), refused('not_author'));
+      expect(p.store.outbox(), hasLength(outbox));
+      expect(p.store.needsAttention(), hasLength(2));
+
+      // Leave it keeps each note as it is: a draft edit that writes nothing, and a correction from
+      // someone who no longer acts as the author, stored as such.
+      await r.leaveIt(refusal.changeId);
+      await r.leaveIt(otherRefusal.changeId);
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[id]!.status, server.records[otherId]!.status], ['draft_edit', 'not_author']);
+      expect([serverAnswer(n, 'vitals.pulse'), serverAnswer(other, 'vitals.pulse')], [90, 72]);
+      expect(
+        [server.receipts[refusal.changeId]!.resolved, server.receipts[otherRefusal.changeId]!.resolved],
+        [true, true],
+      );
+    });
+
+    test('Leave it sends the refused correction again with each answer as the phone now holds it, leaving out an '
+        'answer it holds no row of, so the server keeps that answer and stores no change (review R2)', () async {
+      final p = phone(alex);
+      final patient = server.seedPatient();
+      final r = repo(p);
+      const answers = {'vitals.pulse': 80, 'more.detail': 'Demo: walks with a cane'};
+      final (visit, [n, alone]) = await finished(r, patient, VisitKind.nonMedical, [
+        (testNote, answers),
+        (testNote, answers),
+      ]);
+      await sync(p);
+      serverTookAll(p);
+      // Elsewhere, each detail is corrected, then "Nothing more" hides it.
+      for (final note in [n, alone]) {
+        server
+          ..serverEdit(note, 'data.more.detail', 'Demo: uses a stick', by: alex)
+          ..serverEdit(note, 'data.more.none', true, by: alex);
+      }
+      // This phone, from its old copy: one correction that would show the detail again with a new value,
+      // as an API client could send it (Correct leaves out an answer whose value it already holds), and
+      // one of the detail alone.
+      final shows = p.store.createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.more.none', 'newValue': null, 'baseVersion': 1},
+          {'field': 'data.more.detail', 'newValue': 'Demo: uses a walker', 'baseVersion': 1},
+        ],
+        'reason': 'Demo: there was more',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': null,
+      });
+      final detail = await r.correct(
+        visit,
+        alone,
+        changes: {'more.detail': 'Demo: uses a walker'},
+        reason: 'Demo: a walker now',
+      );
+      await sync(p);
+      final refusals = p.store.needsAttention();
+      expect(
+        [
+          for (final x in refusals) [x.recordId, x.details],
+        ],
+        [
+          [
+            shows,
+            {'problem': 'field_changed', 'field': 'data.more.detail'},
+          ],
+          [
+            detail,
+            {'problem': 'field_changed', 'field': 'data.more.detail'},
+          ],
+        ],
+      );
+      // The phone now reads the detail as hidden, and holds no row of it.
+      for (final note in [n, alone]) {
+        expect(p.store.record(note)!.fields['data.more.detail'], isNull);
+      }
+
+      var changed = 0;
+      r.onChanged = () => changed++;
+      for (final x in refusals) {
+        await r.leaveIt(x.changeId);
+      }
+      expect(changed, 2);
+      final fixes = [for (final x in refusals) p.store.outbox().singleWhere((e) => e.supersedes == x.changeId)];
+      expect(
+        [
+          for (final f in fixes) [f.recordId, (f.value! as Map)['changes']],
+        ],
+        [
+          // "Nothing more" as the phone holds it; the detail left out.
+          [
+            shows,
+            [
+              {'field': 'data.more.none', 'newValue': true, 'baseVersion': 1},
+            ],
+          ],
+          // None held: the detail alone, blank from no version, which changes nothing the note shows.
+          [
+            detail,
+            [
+              {'field': 'data.more.detail', 'newValue': null, 'baseVersion': 0},
+            ],
+          ],
+        ],
+      );
+      await sync(p);
+      serverTookAll(p);
+      expect([server.records[shows]!.status, server.records[detail]!.status], ['no_change', 'no_change']);
+      for (final note in [n, alone]) {
+        expect([serverAnswer(note, 'more.none'), serverAnswer(note, 'more.detail')], [true, 'Demo: uses a stick']);
+      }
+      expect([for (final x in refusals) server.receipts[x.changeId]!.resolved], [true, true]);
+      // Only a refused correction is left as it is.
+      await expectLater(r.leaveIt(fixes.first.changeId), throwsStateError);
+    });
+
+    test('a change to an answer that stays hidden is left out: alone, it is refused as no change, and nothing '
+        'is sent (review F4, probe D)', () async {
+      final p = phone(alex);
+      final (r, visit, flags) = await droppedAnswer(p);
+      final before = p.store.outbox().length;
+      // "EMS activated" shows only in an emergency, which the note still says there wasn't.
+      await expectLater(
+        r.correct(visit, flags, changes: {'red_flags.ems_activated': 'yes'}, reason: 'Demo: misread'),
+        refused('no_change'),
+      );
+      expect(p.store.outbox(), hasLength(before));
+      // Beside an answer that shows, it is left out of what is sent.
+      await r.correct(
+        visit,
+        flags,
+        changes: {
+          'disposition.disposition': ['pcp'],
+          'red_flags.ems_activated': 'yes',
+        },
+        reason: 'Demo: misread',
+      );
+      expect((createOf(p, entityCorrection).value! as Map)['changes'], [
+        {
+          'field': 'data.disposition.disposition',
+          'newValue': ['pcp'],
+          'baseVersion': 0,
+        },
+      ]);
+    });
+  });
+
+  group('a note that has left the phone (lifecycle 4.8, 8.2)', () {
+    test('an addendum or a correction opens it first, with a connection; offline it says to connect', () async {
+      final a = phone(alex);
+      final patient = server.seedPatient();
+      final ra = repo(a);
+      final (visit, [n]) = await finished(ra, patient, VisitKind.nonMedical, [
+        (testNote, {'vitals.pulse': 88}),
+      ]);
+      await sync(a);
+
+      // The author on another phone, which never held the visit.
+      final p = phone(alex);
+      final r = repo(p);
+      server.offline = true;
+      final notHere = isA<LocalValidationError>()
+          .having((e) => e.problem, 'problem', 'not_on_phone')
+          .having((e) => e.message, 'message', 'This note isn’t on this phone. Connect, then try again.');
+      await expectLater(r.addAddendum(visit, noteId: n, text: 'Demo: later'), throwsA(notHere));
+      await expectLater(r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: typo'), throwsA(notHere));
+      expect(p.store.outbox(), isEmpty);
+
+      server.offline = false;
+      final addendum = await r.addAddendum(visit, noteId: n, text: 'Demo: later');
+      final correction = await r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: counted twice');
+      // Opened first, so each is filed under the note's patient (4.8).
+      for (final id in [addendum, correction]) {
+        expect(p.store.record(id)!.patientId, patient, reason: id);
+      }
+      expect(p.store.record(n), isNotNull);
+      await sync(p);
+      serverTookAll(p);
+      expect(server.records[correction]!.status, 'corrected');
+      expect(server.records[addendum]!.attributes['noteId'], n);
+    });
+  });
+
+  test('every action waits while the store is frozen', () async {
+    final p = phone(alex);
+    final patient = server.seedPatient();
+    final r = repo(p);
+    final (visit, [n]) = await finished(r, patient, VisitKind.nonMedical, [
+      (testNote, {'vitals.pulse': 88}),
+    ]);
+    p.store.freeze('Demo: handing over');
+    final before = p.store.outbox().length;
+    await expectLater(r.reopen(n), throwsA(isA<ChartingPaused>()));
+    await expectLater(r.addAddendum(visit, noteId: n, text: 'Demo: later'), throwsA(isA<ChartingPaused>()));
+    await expectLater(
+      r.correct(visit, n, changes: {'vitals.pulse': 86}, reason: 'Demo: typo'),
+      throwsA(isA<ChartingPaused>()),
+    );
+    expect(p.store.outbox(), hasLength(before));
+    expect(p.store.record(n)!.attributes.containsKey('localEffect'), isTrue);
+    expect([for (final e in p.store.outbox()) e.entity].where((e) => e == entitySignoff), hasLength(1));
+  });
+}

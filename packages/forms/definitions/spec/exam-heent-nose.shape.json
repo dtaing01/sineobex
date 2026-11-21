@@ -1,0 +1,35 @@
+{
+  "piece": "exam-heent-nose",
+  "file": "modules/exam_heent_nose/v1.json",
+  "sections": [
+    { "id": "nose", "title": "Nose", "showWhen": { "field": "exam.systems", "is": "heent" }, "normal": true }
+  ],
+  "fields": [
+    {
+      "path": "nose.findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Nose",
+      "options": [
+        "normal",
+        "congestion",
+        "rhinorrhea",
+        "epistaxis",
+        "nasal_tenderness",
+        "swelling",
+        "lesion",
+        "septal_abnormality",
+        "purulent_discharge"
+      ],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "nose.sinuses",
+      "kind": "choice",
+      "many": true,
+      "label": "Sinuses",
+      "options": ["no_tenderness", "frontal_tenderness", "maxillary_tenderness", "ethmoid_tenderness"],
+      "flags": { "exclusive": ["no_tenderness"], "normal": ["no_tenderness"] }
+    }
+  ]
+}

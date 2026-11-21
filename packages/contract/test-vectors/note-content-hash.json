@@ -1,0 +1,501 @@
+{
+  "note": "Hand-written (phase 4 design, lifecycle 4.5). The hash a sign-off carries: sha256Hex of the canonical JSON of { v: 1, noteId, encounterId, patientId (or null), noteTypeKey, noteTypeVersion, summary (the encounter's summary, or null), answers }, where answers are effectiveAnswers(definition, answers): the answers that count, blanks and refused answers left out, keys in UTF-16 code-unit order. noteTypeKey and noteTypeVersion are the definition's. A case's definition names one of forms-conformance.json's definitions. effective is what effectiveAnswers gives, key for key and in order; content is the canonical text that is hashed; hash is its lowercase hex SHA-256; sameHashAs names a case the hash must equal. services/api/src/encounters/content-hash.ts and apps/mobile/lib/encounters/content_hash.dart must give every content and hash; the readers are services/api/test/note-content-hash.test.ts and apps/mobile/test/encounters/content_hash_test.dart. The content and hash were worked out apart from both implementations.",
+  "cases": [
+    {
+      "name": "a note: its answers that count, its visit, its patient and its summary",
+      "why": "lifecycle 4.5: what a signer saw",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "a56358192df6013f6b97185299dfcfc67dfa757df29755077ce390aaed47f83d"
+    },
+    {
+      "name": "the same note attached to another patient hashes otherwise",
+      "why": "lifecycle 4.5: a visit moved to another patient refuses the signature",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000002",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000002\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "95a99d14d799044857e62263a73eee99052023a5991942faf1551650e9013f3a"
+    },
+    {
+      "name": "no patient yet: patientId is null, and stays in what is hashed",
+      "why": "lifecycle 4.5: the encounter's patient, or null",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": null,
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":null,\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "e7540ebd2a31a7f8e170a96877daef01dc2ab1bf66f3d1ae6d83b2656bfe8175"
+    },
+    {
+      "name": "the summary rewritten hashes otherwise",
+      "why": "lifecycle 4.5: a rewritten summary refuses the signature",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, did not eat",
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, did not eat\",\"v\":1}",
+      "hash": "ecd8d77624623899dc5848b08919062baf381a66cb363405bf02c77fbdefb5c8"
+    },
+    {
+      "name": "no summary: summary is null, and stays in what is hashed",
+      "why": "lifecycle 4.5: the encounter's summary, or null",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": null,
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":null,\"v\":1}",
+      "hash": "186ba354ba810c668c4f3433fb1dcf0f712d71796c163c9e39927d9ce9637c30"
+    },
+    {
+      "name": "another note of the same visit with the same answers hashes otherwise",
+      "why": "lifecycle 4.5: the note's ID is in it, so a sign-off cannot be moved to another note",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000002",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2,
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "plan.followUp": "2026-12-01"
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000002\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "88143c27508a135f6797846e22248c304938841bb8436404ef97fde8b47fa361"
+    },
+    {
+      "name": "the same answers stored in another order hash the same",
+      "why": "lifecycle 4.5: canonicalJson orders the keys",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "plan.followUp": "2026-12-01",
+        "plan.notes": "Demo: ate today",
+        "plan.next": "wound",
+        "vitals.measured": "09:30",
+        "vitals.alert": "alert",
+        "vitals.temp": 37.2,
+        "vitals.pulse": 80
+      },
+      "effective": {
+        "plan.followUp": "2026-12-01",
+        "plan.next": "wound",
+        "plan.notes": "Demo: ate today",
+        "vitals.alert": "alert",
+        "vitals.measured": "09:30",
+        "vitals.pulse": 80,
+        "vitals.temp": 37.2
+      },
+      "sameHashAs": "a note: its answers that count, its visit, its patient and its summary",
+      "content": "{\"answers\":{\"plan.followUp\":\"2026-12-01\",\"plan.next\":\"wound\",\"plan.notes\":\"Demo: ate today\",\"vitals.alert\":\"alert\",\"vitals.measured\":\"09:30\",\"vitals.pulse\":80,\"vitals.temp\":37.2},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "a56358192df6013f6b97185299dfcfc67dfa757df29755077ce390aaed47f83d"
+    },
+    {
+      "name": "no answers: answers is an empty object",
+      "why": "lifecycle 4.5",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {},
+      "effective": {},
+      "content": "{\"answers\":{},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "be8846c7808380f16b72ef0e88da33af466805c08b646a19a38f88e13864fa55"
+    },
+    {
+      "name": "an answer in a hidden field is not in what is signed",
+      "why": "lifecycle 4.5: a signer is never shown it",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "meds.given": [
+          "ondansetron"
+        ],
+        "meds.doses": 2
+      },
+      "effective": {
+        "meds.given": [
+          "ondansetron"
+        ]
+      },
+      "sameHashAs": "the same note without the hidden answer",
+      "content": "{\"answers\":{\"meds.given\":[\"ondansetron\"]},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "996c216bda71177a58be1c77b742c43118ef9f720e9ea7738be57b1381d94fe5"
+    },
+    {
+      "name": "the same note without the hidden answer",
+      "why": "lifecycle 4.5",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "meds.given": [
+          "ondansetron"
+        ]
+      },
+      "effective": {
+        "meds.given": [
+          "ondansetron"
+        ]
+      },
+      "content": "{\"answers\":{\"meds.given\":[\"ondansetron\"]},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "996c216bda71177a58be1c77b742c43118ef9f720e9ea7738be57b1381d94fe5"
+    },
+    {
+      "name": "blanks are dropped: fields filled in and then cleared hash as fields never touched",
+      "why": "lifecycle 4.5: null, \"\", [] and {} are left out",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": null,
+        "plan.notes": "",
+        "meds.given": [],
+        "vitals.alert": "alert",
+        "plan.followUp": {}
+      },
+      "effective": {
+        "vitals.alert": "alert"
+      },
+      "sameHashAs": "only the answer that is not blank",
+      "content": "{\"answers\":{\"vitals.alert\":\"alert\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "bc1bee5378e80f96581cd18fa3a8c77e111078a6d2b093ac9cb6432d5cba2fc7"
+    },
+    {
+      "name": "only the answer that is not blank",
+      "why": "lifecycle 4.5",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.alert": "alert"
+      },
+      "effective": {
+        "vitals.alert": "alert"
+      },
+      "content": "{\"answers\":{\"vitals.alert\":\"alert\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "bc1bee5378e80f96581cd18fa3a8c77e111078a6d2b093ac9cb6432d5cba2fc7"
+    },
+    {
+      "name": "zero is an answer, not a blank",
+      "why": "lifecycle 4.5: only null, \"\", [] and {} are blanks",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.strength": 0,
+        "meds.given": [
+          "none"
+        ]
+      },
+      "effective": {
+        "meds.given": [
+          "none"
+        ],
+        "vitals.strength": 0
+      },
+      "content": "{\"answers\":{\"meds.given\":[\"none\"],\"vitals.strength\":0},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "216a99f67f45c0743aca785d202a539c0091604906b5fc6864f8b15c329790ab"
+    },
+    {
+      "name": "an answer checkAnswer refuses is not in what is signed",
+      "why": "forms 7.1: a refused answer does not count, so effectiveAnswers leaves it out",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": "fast",
+        "vitals.temp": 99,
+        "vitals.alert": "sleepy",
+        "plan.followUp": "2026-02-30",
+        "vitals.bp.systolic": 120.5,
+        "plan.next": "talk"
+      },
+      "effective": {
+        "plan.next": "talk"
+      },
+      "content": "{\"answers\":{\"plan.next\":\"talk\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "0f314331c0208c59c56c9812b81e6f56831153775cbe95aea132348264d839a5"
+    },
+    {
+      "name": "a removed entry is not in what is signed",
+      "why": "lifecycle 4.5: answers in entries that were not removed",
+      "definition": "wound",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "wounds.eaaaaaa1.entryAt": "2026-03-01T10:00:00Z",
+        "wounds.eaaaaaa1.entryRemoved": true,
+        "wounds.eaaaaaa1.type": "burn",
+        "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z",
+        "wounds.ebbbbbb2.type": "abscess"
+      },
+      "effective": {
+        "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z",
+        "wounds.ebbbbbb2.type": "abscess"
+      },
+      "sameHashAs": "the same note with only the entry that is there",
+      "content": "{\"answers\":{\"wounds.ebbbbbb2.entryAt\":\"2026-03-01T11:00:00Z\",\"wounds.ebbbbbb2.type\":\"abscess\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_wound\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "1e9c7e937cf9bc12bfef1e5e453972a7e81785477f3658b2d26ff75dc83eb5b2"
+    },
+    {
+      "name": "the same note with only the entry that is there",
+      "why": "lifecycle 4.5",
+      "definition": "wound",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z",
+        "wounds.ebbbbbb2.type": "abscess"
+      },
+      "effective": {
+        "wounds.ebbbbbb2.entryAt": "2026-03-01T11:00:00Z",
+        "wounds.ebbbbbb2.type": "abscess"
+      },
+      "content": "{\"answers\":{\"wounds.ebbbbbb2.entryAt\":\"2026-03-01T11:00:00Z\",\"wounds.ebbbbbb2.type\":\"abscess\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_wound\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "1e9c7e937cf9bc12bfef1e5e453972a7e81785477f3658b2d26ff75dc83eb5b2"
+    },
+    {
+      "name": "a hidden section's answers are not in what is signed",
+      "why": "lifecycle 4.5; forms 6.3: a system's sections show when it is picked",
+      "definition": "exam",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "systems.picked": [
+          "lungs"
+        ],
+        "heart.rhythm": "regular",
+        "heart.murmur": "none",
+        "lungs.sounds.right": "clear",
+        "lungs.sounds.left": "clear"
+      },
+      "effective": {
+        "lungs.sounds.left": "clear",
+        "lungs.sounds.right": "clear",
+        "systems.picked": [
+          "lungs"
+        ]
+      },
+      "content": "{\"answers\":{\"lungs.sounds.left\":\"clear\",\"lungs.sounds.right\":\"clear\",\"systems.picked\":[\"lungs\"]},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_exam\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "0e3c535fe7b8b98446c9513784235e999e41ed854cca5d02b5f16135944d80ea"
+    },
+    {
+      "name": "version 2 of a note type",
+      "why": "lifecycle 4.5: the note type's key and version",
+      "definition": "quick",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "hpi.concern": "yes",
+        "hpi.details": "Demo: sore foot",
+        "vitals.pulse": 88
+      },
+      "effective": {
+        "hpi.concern": "yes",
+        "hpi.details": "Demo: sore foot",
+        "vitals.pulse": 88
+      },
+      "content": "{\"answers\":{\"hpi.concern\":\"yes\",\"hpi.details\":\"Demo: sore foot\",\"vitals.pulse\":88},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_quick\",\"noteTypeVersion\":2,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "d7314c690a0bf4063d8ffa715f6b1c735972d6ae7fd5a95e632f2c40eff7c87c"
+    },
+    {
+      "name": "the same answers under version 1 of the note type hash otherwise",
+      "why": "lifecycle 4.5: the note type's key and version",
+      "definition": "quickOld",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "hpi.concern": "yes",
+        "hpi.details": "Demo: sore foot",
+        "vitals.pulse": 88
+      },
+      "effective": {
+        "hpi.concern": "yes",
+        "hpi.details": "Demo: sore foot",
+        "vitals.pulse": 88
+      },
+      "content": "{\"answers\":{\"hpi.concern\":\"yes\",\"hpi.details\":\"Demo: sore foot\",\"vitals.pulse\":88},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_quick\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "0664d166a75bfc6817e3591139f0790921610394da0aea3ba72d5031f99a22d2"
+    },
+    {
+      "name": "text is hashed as written: quotes, a tab, a line break, accents and an emoji",
+      "why": "lifecycle 4.5: canonicalJson's escapes, pinned by canonical-json.json",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: “back tomorrow” — näh\\ok",
+      "answers": {
+        "plan.notes": "Demo: said \"later\"\tthen\nslept at the café 😴",
+        "vitals.alert": "drowsy"
+      },
+      "effective": {
+        "plan.notes": "Demo: said \"later\"\tthen\nslept at the café 😴",
+        "vitals.alert": "drowsy"
+      },
+      "content": "{\"answers\":{\"plan.notes\":\"Demo: said \\\"later\\\"\\tthen\\nslept at the café 😴\",\"vitals.alert\":\"drowsy\"},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: “back tomorrow” — näh\\\\ok\",\"v\":1}",
+      "hash": "3fd552db0814656b21d22775d7570cc2ec0e0054acbdc6e479121e70e35400f7"
+    },
+    {
+      "name": "numbers: an integer, a decimal and a whole number written with a point",
+      "why": "lifecycle 4.5: 37.0 is written 37, as the server writes it",
+      "definition": "visit",
+      "noteId": "0a7e0000-0000-4000-8000-000000000001",
+      "encounterId": "e0c00000-0000-4000-8000-000000000001",
+      "patientId": "9a710000-0000-4000-8000-000000000001",
+      "summary": "Demo: seen by the river, ate today",
+      "answers": {
+        "vitals.pulse": 72,
+        "vitals.weight": 61.25,
+        "vitals.temp": 37.0
+      },
+      "effective": {
+        "vitals.pulse": 72,
+        "vitals.temp": 37.0,
+        "vitals.weight": 61.25
+      },
+      "content": "{\"answers\":{\"vitals.pulse\":72,\"vitals.temp\":37,\"vitals.weight\":61.25},\"encounterId\":\"e0c00000-0000-4000-8000-000000000001\",\"noteId\":\"0a7e0000-0000-4000-8000-000000000001\",\"noteTypeKey\":\"demo_visit\",\"noteTypeVersion\":1,\"patientId\":\"9a710000-0000-4000-8000-000000000001\",\"summary\":\"Demo: seen by the river, ate today\",\"v\":1}",
+      "hash": "0e821be67ba95ee2caaf430a31bdb04135ae4217489d5df1d383be9f94b291cf"
+    }
+  ]
+}

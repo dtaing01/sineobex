@@ -1,0 +1,261 @@
+import { readFileSync } from 'node:fs';
+import {
+  canonicalJson,
+  installPresets,
+  PresetDiffers,
+  sha256Hex,
+  type InstallSql,
+  type Preset,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { fixturePresets } from '../../packages/forms/test/fixtures/presets.ts';
+import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
+import { DEMO_TEAM_ID, installTestNoteTypes, seed } from '../seed/seed.ts';
+import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
+import { asApp, makeTeam, makeUser } from './helpers.ts';
+
+// installPresets (phase 4 design, forms 3.1 and 3.2) against 0017. Most cases install the made-up
+// fixture note types, whose versions they can edit and number; the last installs the released ones.
+
+type Row = { key: string; version: number; hash: string; origin: string; presetVersion: number | null };
+
+describe('installing the presets', () => {
+  let db: ScratchDatabase;
+  let user: string;
+  let presets: Preset[];
+
+  const rowsOf = (teamId: string) =>
+    db.owner<(Row & { definition: unknown; createdAt: Date })[]>`
+      select key, version, hash, origin, preset_version as "presetVersion", definition,
+             created_at as "createdAt"
+      from sineobex.note_type_versions where team_id = ${teamId} order by key, version`;
+  const asPlatform = <T>(fn: (tx: InstallSql) => Promise<T>) =>
+    asApp(db.appUrl, { userId: user, platform: true }, (tx) => fn(tx));
+  const asTeam = <T>(teamId: string, fn: (tx: InstallSql) => Promise<T>) =>
+    asApp(db.appUrl, { teamId, userId: user }, (tx) => fn(tx));
+  const keyVersions = (list: readonly { key: string; version: number }[]) =>
+    list.map(({ key, version }) => `${key} v${version}`);
+
+  /** The same key and version as `preset`, worded differently: what an edited release would be. */
+  async function edited(preset: Preset): Promise<Preset> {
+    const definition = { ...preset.definition, title: `${preset.definition.title} (edited)` };
+    return { ...preset, definition, hash: await sha256Hex(canonicalJson(definition)) };
+  }
+  /** The next version of `preset`'s key. */
+  async function nextVersion(preset: Preset): Promise<Preset> {
+    const definition = { ...preset.definition, version: preset.version + 1 };
+    return {
+      ...preset,
+      version: definition.version,
+      definition,
+      hash: await sha256Hex(canonicalJson(definition)),
+    };
+  }
+
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+    user = await makeUser(db.owner, 'forms-installer@example.com');
+    presets = await fixturePresets();
+    expect(presets.length).toBeGreaterThanOrEqual(2);
+  });
+  afterAll(() => db.drop());
+
+  it('gives a new team every preset, each naming the platform version it came from', async () => {
+    const team = await makeTeam(db.owner, 'Install Team New');
+    const result = await asPlatform((tx) => installPresets(tx, team, { presets }));
+    expect(keyVersions(result.installed)).toEqual(keyVersions(presets));
+    expect(result.differing).toEqual([]);
+    const rows = await rowsOf(team);
+    expect(
+      rows.map(({ key, version, hash, origin, presetVersion, definition }) => ({
+        key,
+        version,
+        hash,
+        origin,
+        presetVersion,
+        definition,
+      })),
+    ).toEqual(
+      presets.map((p) => ({
+        key: p.key,
+        version: p.version,
+        hash: p.hash,
+        origin: 'preset',
+        presetVersion: p.version,
+        definition: p.definition,
+      })),
+    );
+    // The stored definition hashes to the stored hash: what the server and the phone check.
+    for (const row of rows) expect(await sha256Hex(canonicalJson(row.definition))).toBe(row.hash);
+  });
+
+  it('changes nothing when it runs again', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Twice');
+    await asPlatform((tx) => installPresets(tx, team, { presets }));
+    const before = await rowsOf(team);
+    const again = await asPlatform((tx) => installPresets(tx, team, { presets }));
+    expect(again).toEqual({ installed: [], differing: [] });
+    expect(await rowsOf(team)).toEqual(before);
+  });
+
+  it('installs only what a team lacks: a new platform version joins the ones it has', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Later');
+    await asPlatform((tx) => installPresets(tx, team, { presets }));
+    const later = await nextVersion(presets[0]!);
+    const result = await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, later] }));
+    expect(keyVersions(result.installed)).toEqual(keyVersions([later]));
+    const rows = await rowsOf(team);
+    expect(keyVersions(rows)).toEqual(
+      keyVersions(
+        [...presets, later].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.version - b.version)),
+      ),
+    );
+    expect(rows.find((r) => r.key === later.key && r.version === later.version)).toMatchObject({
+      hash: later.hash,
+      origin: 'preset',
+      presetVersion: later.version,
+    });
+  });
+
+  it('keeps a team’s rows its own: a team installs its own presets, never another team’s', async () => {
+    const teamA = await makeTeam(db.owner, 'Install Team A');
+    const teamB = await makeTeam(db.owner, 'Install Team B');
+    // In the team's own scope, as the note types route installs a new platform version (3.2).
+    await asTeam(teamA, (tx) => installPresets(tx, teamA, { presets }));
+    expect(keyVersions(await rowsOf(teamA))).toEqual(keyVersions(presets));
+    // Acting in team A, nobody writes into team B, and team B sees none of team A's rows.
+    await expect(asTeam(teamA, (tx) => installPresets(tx, teamB, { presets }))).rejects.toThrow(
+      /row-level security/,
+    );
+    expect(await rowsOf(teamB)).toEqual([]);
+    const seenByB = await asApp(
+      db.appUrl,
+      { teamId: teamB, userId: user },
+      (tx) => tx<{ teamId: string }[]>`select distinct team_id as "teamId" from sineobex.note_type_versions`,
+    );
+    expect(seenByB).toEqual([]);
+  });
+
+  it('never overwrites a row whose definition differs, and refuses to pass over it in silence', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Edited');
+    const [first, ...rest] = presets;
+    const theirs = await edited(first!);
+    await asPlatform((tx) => installPresets(tx, team, { presets: [theirs] }));
+
+    // At team creation and in the seed it throws, naming the key and version, and the caller's
+    // transaction writes nothing.
+    const thrown = await asPlatform((tx) => installPresets(tx, team, { presets })).catch((e: unknown) => e);
+    expect(thrown).toBeInstanceOf(PresetDiffers);
+    expect(keyVersions((thrown as PresetDiffers).differing)).toEqual(keyVersions([first!]));
+    expect((thrown as Error).message).toMatch(new RegExp(`${first!.key} v${first!.version}`));
+    expect(keyVersions(await rowsOf(team))).toEqual(keyVersions([first!]));
+
+    // Where a throw would fail every sync (the note types route), the key is reported and skipped,
+    // every version of it, and every other key is installed.
+    const later = await nextVersion(first!);
+    const result = await asPlatform((tx) =>
+      installPresets(tx, team, { presets: [...presets, later], onDiffer: 'skip' }),
+    );
+    expect(keyVersions(result.differing)).toEqual(keyVersions([first!]));
+    expect(keyVersions(result.installed)).toEqual(keyVersions(rest));
+    const rows = await rowsOf(team);
+    expect(rows.find((r) => r.key === first!.key)).toMatchObject({ version: 1, hash: theirs.hash });
+    expect(rows.filter((r) => r.key === first!.key)).toHaveLength(1);
+  });
+
+  it('notices a differing row written by another transaction between its read and its insert', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Race');
+    const [first] = presets;
+    const theirs = await edited(first!);
+    // Runs the installer's statements in its transaction, and commits the other transaction's row
+    // just before the installer's insert, after its read.
+    const racing = (tx: InstallSql): InstallSql =>
+      (async (template: TemplateStringsArray, ...values: readonly (string | number)[]) => {
+        if (/insert into/.test(template.join('?')))
+          await db.owner`insert into sineobex.note_type_versions
+                         (team_id, key, version, definition, hash, origin, preset_version)
+                         values (${team}, ${theirs.key}, ${theirs.version}, ${db.owner.json(theirs.definition as never)},
+                                 ${theirs.hash}, 'preset', ${theirs.version})`;
+        return tx(template, ...values);
+      }) as InstallSql;
+
+    const thrown = await asPlatform((tx) => installPresets(racing(tx), team, { presets })).catch(
+      (e: unknown) => e,
+    );
+    expect(thrown).toBeInstanceOf(PresetDiffers);
+    expect(keyVersions((thrown as PresetDiffers).differing)).toEqual(keyVersions([first!]));
+    expect((await rowsOf(team)).map((r) => r.hash)).toEqual([theirs.hash]);
+  });
+
+  it('runs in the seed for each seeded team, and a second seed changes nothing', async () => {
+    await seed(db.owner, { presets });
+    const first = [await rowsOf(DEMO_TEAM_ID), await rowsOf(NEIGHBOUR_TEAM_ID)];
+    for (const rows of first) {
+      expect(keyVersions(rows)).toEqual(keyVersions(presets));
+      expect(rows.every((r) => r.origin === 'preset' && r.presetVersion === r.version)).toBe(true);
+    }
+    await seed(db.owner, { presets });
+    expect([await rowsOf(DEMO_TEAM_ID), await rowsOf(NEIGHBOUR_TEAM_ID)]).toEqual(first);
+  });
+
+  // Wave D released the nine note types (forms 3.2, 10.1): a team made now starts with every one.
+  it('gives a new team the nine released note types when no presets are named', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Released');
+    const result = await asPlatform((tx) => installPresets(tx, team));
+    expect(keyVersions(result.installed)).toEqual([
+      'general_primary_care v1',
+      'harm_reduction v1',
+      'outreach v1',
+      'psychological v1',
+      'quick_encounter v1',
+      'red_flags_disposition v1',
+      'sexual_reproductive v1',
+      'social_needs v1',
+      'wound_care v1',
+    ]);
+    for (const row of await rowsOf(team))
+      expect(await sha256Hex(canonicalJson(row.definition))).toBe(row.hash);
+  });
+});
+
+describe('installing the test-only note types', () => {
+  let db: ScratchDatabase;
+  const testTypes = (
+    JSON.parse(
+      readFileSync(
+        new URL('../../packages/contract/test-vectors/sync-note-types.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { noteTypes: ResolvedNoteType[] }
+  ).noteTypes;
+  const keysOf = async (teamId: string) =>
+    (
+      await db.owner<{ key: string; version: number; hash: string }[]>`
+        select key, version, hash from sineobex.note_type_versions where team_id = ${teamId}`
+    ).map((r) => `${r.key} v${r.version}`);
+
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+  });
+  afterAll(() => db.drop());
+
+  it('puts them in the demo team only, each under its own hash, and never in the seed itself', async () => {
+    await seed(db.owner, { presets: [] });
+    expect(await keysOf(DEMO_TEAM_ID)).toEqual([]);
+    await installTestNoteTypes(db.owner, testTypes);
+    await installTestNoteTypes(db.owner, testTypes);
+    const rows = await db.owner<{ key: string; hash: string; definition: ResolvedNoteType }[]>`
+      select key, hash, definition from sineobex.note_type_versions
+      where team_id = ${DEMO_TEAM_ID} order by key`;
+    expect(rows.map((r) => r.key)).toEqual(['test_medical', 'test_note']);
+    for (const r of rows) expect(r.hash).toBe(await sha256Hex(canonicalJson(r.definition)));
+    expect(await keysOf(NEIGHBOUR_TEAM_ID)).toEqual([]);
+  });
+
+  it('refuses a database not marked "test"', async () => {
+    await db.owner`alter table sineobex.environment disable trigger environment_write_once`;
+    await db.owner`update sineobex.environment set kind = 'preview'`;
+    await expect(installTestNoteTypes(db.owner, testTypes)).rejects.toThrow(/marked "preview"/);
+  });
+});

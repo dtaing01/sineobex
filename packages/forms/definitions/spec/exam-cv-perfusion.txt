@@ -1,0 +1,63 @@
+      C. Peripheral Perfusion
+
+      Pulses
+
+      For each pulse, document:
+
+      &#32;&#32;&#32;&#32;•   2+
+
+      &#32;&#32;&#32;&#32;•   1+
+
+      &#32;&#32;&#32;&#32;•   Trace
+
+      &#32;&#32;&#32;&#32;•   Absent
+
+      &#32;&#32;&#32;&#32;•   Unable to assess
+
+      Pulse sites:
+
+      &#32;&#32;&#32;&#32;•   Radial
+
+      &#32;&#32;&#32;&#32;•   Brachial
+
+      &#32;&#32;&#32;&#32;•   Femoral
+
+      &#32;&#32;&#32;&#32;•   Dorsalis pedis (DP)
+
+      &#32;&#32;&#32;&#32;•   Posterior tibial (PT)
+
+      D. Edema
+
+      Severity
+
+      &#32;&#32;&#32;&#32;•   None
+
+      &#32;&#32;&#32;&#32;•   Trace
+
+      &#32;&#32;&#32;&#32;•   1+
+
+      &#32;&#32;&#32;&#32;•   2+
+
+      &#32;&#32;&#32;&#32;•   3+
+
+      &#32;&#32;&#32;&#32;•   4+
+
+      Location
+
+      &#32;&#32;&#32;&#32;•   Bilateral lower extremities
+
+      &#32;&#32;&#32;&#32;•   Right
+
+      &#32;&#32;&#32;&#32;•   Left
+
+      &#32;&#32;&#32;&#32;•   Upper extremity
+
+      &#32;&#32;&#32;&#32;•   Generalized
+
+      E. Jugular Venous Distention (JVD)
+
+      &#32;&#32;&#32;&#32;•   None
+
+      &#32;&#32;&#32;&#32;•   Present
+
+      &#32;&#32;&#32;&#32;•   Unable to assess

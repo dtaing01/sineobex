@@ -1,0 +1,72 @@
+{
+  "piece": "psychological",
+  "notOptions": [
+    "Dictation (option in V2, not in MVP/V1)",
+    "SAFETY",
+    "+ COMPLETE SAFETY ASSESSMENT",
+    "+ OPEN MSE"
+  ],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Titled Behavioral health. A Medical note type, sensitive.",
+      "why": "inventory A42 (the title is to confirm), A7; PRD main 97, 400, 435"
+    },
+    {
+      "line": 4,
+      "what": "Choose-many. Other asks for a short text. Substance Use suggests Harm reduction on the summary screen.",
+      "why": "inventory A1, A2; PRD main 433 (suggested next steps)"
+    },
+    {
+      "line": 6,
+      "what": "Dictation is left out.",
+      "why": "PRD main 412 (V2)"
+    },
+    {
+      "line": 8,
+      "what": "SAFETY is the title of the Safety section, which holds the rows after it.",
+      "why": "inventory A40"
+    },
+    {
+      "line": 10,
+      "what": "Choose-one. Unable to assess is neither normal nor abnormal.",
+      "why": "inventory section 3.4; forms 2.2 (unable)"
+    },
+    {
+      "line": 12,
+      "what": "Choose-one. Unable to assess is neither normal nor abnormal.",
+      "why": "inventory section 3.4; forms 2.2 (unable)"
+    },
+    {
+      "line": 14,
+      "what": "Choose-one. Active suicidal or homicidal thoughts, or Yes here, show Go to Red flags and disposition.",
+      "why": "inventory A41; forms 6.2"
+    },
+    {
+      "line": 15,
+      "what": "+ COMPLETE SAFETY ASSESSMENT is a text box, Safety assessment, until the clinical team gives its fields.",
+      "why": "inventory A39"
+    },
+    {
+      "line": 17,
+      "what": "+ OPEN MSE is a text box, Mental status exam, until the clinical team gives its fields.",
+      "why": "inventory A39"
+    },
+    {
+      "line": 18,
+      "what": "Subsection 3 is the section Intervention and outcome.",
+      "why": "a section needs a title"
+    },
+    {
+      "line": 20,
+      "what": "Choose-many, with no Other.",
+      "why": "inventory section 3.4"
+    },
+    {
+      "line": 22,
+      "what": "Choose-many.",
+      "why": "inventory A1"
+    }
+  ]
+}

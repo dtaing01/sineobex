@@ -1,0 +1,27 @@
+{
+  "piece": "harm-reduction-2",
+  "notOptions": ["−", "+", "CONNECT TO RESOURCE"],
+  "added": [],
+  "differences": [
+    {
+      "line": 5,
+      "what": "The dose stepper shows only when Naloxone is Accepted, and starts at 1.",
+      "why": "inventory A36"
+    },
+    {
+      "line": 18,
+      "what": "The row has no label. Label added: Which treatment?",
+      "why": "a field needs a label"
+    },
+    {
+      "line": 17,
+      "what": "Shown for Yes and for Maybe.",
+      "why": "inventory A37a"
+    },
+    {
+      "line": 19,
+      "what": "Always shown; opens Add referral.",
+      "why": "inventory A38"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+   2. Subsection 2
+      1. Outreach / Community Encounter&#32;
+         1. Type
+            1. Buttons: \[ Outreach \] \[ Wellness check \] \[ Resource distribution \] \[ Navigation \] \[ Follow-up attempt \] \[ Relationship \]
+         2. Interaction&#32;
+            1. Buttons:  \[ Spoke with patient \] \[ Unable to locate \]  \[ Left message \] \[ Spoke with collateral \]
+         3. Support Provided
+            1. Buttons: \[ Food \] \[ Clothing \] \[ Hygiene \] \[ Phone \] \[ Charging \] \[ Transportation \] \[ Supplies \] \[ Information \]
+         4. New Need Identified
+            1. Buttons: \[ No \] \[ Medical \] \[ Behavioral \] \[ Social \] \[ Emergency \]
+         5. Notes
+            1. Text box&#32;
+               1. Dictation (option in V2, not in MVP/V1)
+         6. Follow-up
+            1. Buttons: \[ None \] \[ Patient follow-up \] \[ Team follow-up \]

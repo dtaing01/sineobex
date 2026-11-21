@@ -1,0 +1,96 @@
+{
+  "piece": "exam-skin",
+  "notOptions": [
+    "Body map",
+    "Side: Right / Left",
+    "Surface: Anterior / Posterior",
+    "Length: _____ cm",
+    "Width: _____ cm",
+    "Yes → Link to existing finding",
+    "No → Create new finding"
+  ],
+  "added": [
+    "Head",
+    "Upper Body",
+    "Abdomen",
+    "Back",
+    "Arms",
+    "Legs",
+    "Lower Body",
+    "Hands",
+    "Feet",
+    "Face",
+    "Groin",
+    "Right",
+    "Left",
+    "Midline",
+    "Anterior",
+    "Posterior",
+    "Yes",
+    "No",
+    "Unknown"
+  ],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_skin, that the General note type includes: its two sections, Skin (the overall skin) and Skin finding (one entry for each finding), show only while Skin (exam.systems is skin) is picked in the exam picker. Skin offers one-tap Normal; Skin finding does not (line 23).",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "The guidance line is not typed.",
+      "why": "focused-exam inventory construct 39"
+    },
+    {
+      "line": 5,
+      "what": "Overall skin is choose-many. Normal fills Warm and Dry, so neither is exclusive. Warm excludes Cool; Dry excludes Moist and Diaphoretic.",
+      "why": "focused-exam inventory 3.8, default 13, 17, 26; PLAN-OPEN (forms 10.1 #1): the pairs are this plan's reading of default 17"
+    },
+    {
+      "line": 23,
+      "what": "Skin Findings is a repeating section, Skin finding, one entry for each finding (Finding {n}, at most 20). It offers no one-tap Normal: no option of a finding is normal, so Normal would fill nothing, and it adds no entry.",
+      "why": "focused-exam inventory 3.8, construct 29, default 29; forms 2.4"
+    },
+    {
+      "line": 25,
+      "what": "+ Add Finding is the repeating section's own Add button, not a field.",
+      "why": "focused-exam inventory construct 29, 43"
+    },
+    {
+      "line": 29,
+      "what": "Location is one region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added, then Feet, Face and Groin (added: not in the quick form's lines)), with a side from Skin's list side_rlm (Right, Left, added, and Midline, added) and a surface from the shared list surface (Anterior, Posterior, added). The bullets Body map, Side and Surface are its three parts.",
+      "why": "PRD main 410; forms 4.4, 6.3; focused-exam inventory default 24, 38; PRD main 410 (the full module's body map), 416 (a wound found in the diabetic foot exam hands off to Wound care); PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
+    },
+    {
+      "line": 37,
+      "what": "Type is choose-many. Other asks for a short text. Picking Ulcer or Abscess shows an action, Chart in Wound care, which opens the encounter's Wound care note (open_note_type wound_care). Blister stays a Skin finding. While Ulcer or Abscess is picked, the finding stores only its location and type, and asks no Characteristics, Size or Photos: Wound care asks them of the wound, so nothing is charted twice.",
+      "why": "PRD main 416; forms 6.7; focused-exam inventory default 8, 13, 31"
+    },
+    {
+      "line": 67,
+      "what": "Characteristics is choose-many, with no normal option.",
+      "why": "focused-exam inventory default 13, 27"
+    },
+    {
+      "line": 87,
+      "what": "Size is a group, Size, of two numbers, Length and Width, in cm from 0.1 to 100 with one decimal, which can be typed in inches.",
+      "why": "PRD main 411; forms 4.3; wound (the same measurements)"
+    },
+    {
+      "line": 93,
+      "what": "Photo is a photo field, Photos, of at most 5: a placeholder until phase 8.",
+      "why": "forms 6.8; focused-exam inventory default 40"
+    },
+    {
+      "line": 97,
+      "what": "Longitudinal Tracking is one choose-one question at the end of each finding, Is this the same lesion/wound documented previously?, from the shared list yes_no_unknown (Yes, No, Unknown, added). The link to the earlier finding waits: the bullets are what the answer will do, not options.",
+      "why": "PRD main 416; forms 6.7, 6.8; focused-exam inventory default 41"
+    },
+    {
+      "line": 99,
+      "what": "After adding a finding, automatically ask: is not typed as a step: the question it introduces (line 101) is a field of every finding, asked beside its other parts.",
+      "why": "PRD main 416; focused-exam inventory default 41"
+    },
+    { "line": 107, "what": "The guidance line is not typed.", "why": "focused-exam inventory construct 39" }
+  ]
+}

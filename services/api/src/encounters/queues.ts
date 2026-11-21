@@ -1,0 +1,247 @@
+import { z } from '@hono/zod-openapi';
+import type { TeamScope } from '../auth/context.ts';
+import { CAPABILITIES } from '../auth/permissions.ts';
+import type { Tx } from '../db/database.ts';
+import { forbidden } from '../lib/errors.ts';
+import { Uuid } from '../routes/schemas.ts';
+import { loadEncounter } from '../sync/entities/encounter.ts';
+import { noteRules } from '../sync/entities/note.ts';
+import type { StoredRecord } from '../sync/records.ts';
+import { NoteHeldBecause, NoteTitle } from '../patients/schemas.ts';
+import { DateTime, UserRef } from '../sync/schemas.ts';
+import { preferredNames } from './read.ts';
+import {
+  actNote,
+  attestOf,
+  cosignOf,
+  secondPersonView,
+  type ActNote,
+  type HeldBecause,
+} from './second-person.ts';
+
+/**
+ * The co-sign queue and the attestation queue (lifecycle 3.7, 5.4): team-wide, every attending sees
+ * every note that waits (PRD main 216). One row per visit, oldest first, with its waiting notes.
+ *
+ * A note is listed as the visit read would give it to the caller (6.4 rule 2): a note they may not
+ * read at all is absent, as on the timeline, and a row left with no note is absent too. A note they
+ * may read but not act on is listed with canAct false, and with heldBecause, the visit read's own
+ * (second-person.ts secondPersonView), so the queue says why it waits for someone else in the
+ * visit page's words: an answer they may not see (6.4 rule 4), or a note they wrote, completed,
+ * act as the author of or signed. canAct is the act's own rule (cosignOf, attestOf) asked as if the
+ * hash matched, so the queue and the act never disagree. Nothing a note holds is listed: its type,
+ * author and times only.
+ */
+
+export const QueueNote = z
+  .object({
+    noteId: Uuid,
+    noteTypeKey: z.string(),
+    title: NoteTitle,
+    author: UserRef,
+    completedAt: DateTime.nullable(),
+    signedBefore: z.union([UserRef, z.null()]).openapi({
+      description: 'Who signed it before, when a correction sent it back; null otherwise',
+    }),
+    attestedBefore: z.union([UserRef, z.null()]).openapi({
+      description: 'Who attested it last, when a correction sent it back; null otherwise',
+    }),
+    canAct: z.boolean().openapi({
+      description:
+        'False for a note the caller may not co-sign or attest: one with an answer they may not see, or one they wrote or signed',
+    }),
+    heldBecause: NoteHeldBecause.optional().openapi({
+      description:
+        'Why the note waits for someone other than the caller, as the visit read gives it under the note (VisitNote.heldBecause), so the queue says why in the same words (lifecycle 5.4)',
+    }),
+  })
+  .openapi('QueueNote');
+
+export const QueueVisit = z
+  .object({
+    encounterId: Uuid,
+    patientId: Uuid.nullable(),
+    preferredName: z.string().nullable(),
+    startedAt: DateTime,
+    notes: z.array(QueueNote),
+  })
+  .openapi('QueueVisit');
+
+export const SignatureQueue = z.object({ rows: z.array(QueueVisit) }).openapi('SignatureQueue');
+
+export type SignatureQueueValue = z.infer<typeof SignatureQueue>;
+type QueueVisitValue = z.infer<typeof QueueVisit>;
+
+const QUEUES = {
+  cosign: {
+    action: 'cosign_queue.viewed',
+    refusal: 'cannot_sign',
+    message: 'Your credential can’t sign notes, so no note waits for your co-signature.',
+    mayAct: (scope: TeamScope) => CAPABILITIES[scope.team.credential].sign,
+    effect: cosignOf,
+  },
+  attestation: {
+    action: 'attestation_queue.viewed',
+    refusal: 'cannot_attest',
+    message: 'Your credential can’t attest notes, so no note waits for your attestation.',
+    mayAct: (scope: TeamScope) => CAPABILITIES[scope.team.credential].attest,
+    effect: attestOf,
+  },
+} as const;
+
+export type QueueName = keyof typeof QUEUES;
+
+interface WaitingRow {
+  id: string;
+  encounterId: string;
+  startedAt: Date;
+  patientId: string | null;
+}
+
+/** Whether the caller's credential does the queue's act: who may open it. */
+export const mayOpenQueue = (scope: TeamScope, which: QueueName) => QUEUES[which].mayAct(scope);
+
+/**
+ * GET /v1/team/cosign-queue and /v1/team/attestation-queue. The route has checked encounters.chart;
+ * a credential that cannot do the act is refused here (403 cannot_sign or cannot_attest), logged
+ * with the reason's name. The view is logged as one event naming the patients it shows in
+ * details.patientIds (D53), with how many rows (resultCount, as the offline list events name it).
+ */
+export async function readQueue(
+  scope: TeamScope,
+  which: QueueName,
+  route: string,
+): Promise<SignatureQueueValue> {
+  const queue = QUEUES[which];
+  if (!queue.mayAct(scope)) {
+    await scope.tx((_, audit) =>
+      audit({ action: 'access.denied', details: { reason: queue.refusal, route } }),
+    );
+    throw forbidden(queue.message, queue.refusal);
+  }
+  return scope.tx(async (tx, audit) => {
+    const rows = await queueRows(tx, scope, which);
+    await audit({
+      action: queue.action,
+      patientId: null,
+      details: {
+        patientIds: [...new Set(rows.flatMap((r) => (r.patientId ? [r.patientId] : [])))],
+        resultCount: rows.length,
+      },
+    });
+    return { rows };
+  });
+}
+
+/**
+ * The queue's rows as the caller is shown them, with no audit event: readQueue logs the patients it
+ * shows, and Home's count (counts.ts) is the number of these rows, so the two never drift.
+ */
+export async function queueRows(tx: Tx, scope: TeamScope, which: QueueName): Promise<QueueVisitValue[]> {
+  const queue = QUEUES[which];
+  const teamId = scope.team.teamId;
+  const waits =
+    which === 'cosign'
+      ? tx`n.status = 'completed' and n.medical`
+      : tx`n.status = 'signed' and n.attestation = 'waiting'`;
+  const waiting = await tx<WaitingRow[]>`
+    select n.id, n.encounter_id, e.started_at, e.patient_id
+    from sineobex.encounter_notes n
+    join sineobex.encounters e on e.team_id = n.team_id and e.id = n.encounter_id
+    where n.team_id = ${teamId} and ${waits}
+    order by e.started_at, e.id, n.created_at, n.id`;
+
+  const visits = new Map<string, StoredRecord | null>();
+  const shown: { row: WaitingRow; n: ActNote; canAct: boolean; heldBecause?: HeldBecause }[] = [];
+  for (const row of waiting) {
+    if (!visits.has(row.encounterId))
+      visits.set(row.encounterId, await loadEncounter(tx, row.encounterId, false));
+    const visit = visits.get(row.encounterId);
+    const note = await noteRules.load(tx, row.id, false);
+    if (!visit || !note) continue;
+    const n = await actNote(tx, scope, visit, note);
+    // As the visit read: a note the caller may not read, or with no definition to read it by, is absent.
+    if (!n.read || n.read.type === undefined) continue;
+    const effect = queue.effect(scope, n, true);
+    // The visit read's reason, by the same rule: a waiting note waits for this act alone.
+    const { heldBecause } = secondPersonView(scope, n);
+    shown.push({ row, n, canAct: !('refuse' in effect), ...(heldBecause ? { heldBecause } : {}) });
+  }
+
+  const ids = shown.map((s) => s.n.note.id);
+  const before = await signedAndAttestedBefore(tx, teamId, ids);
+  const authors = await displayNames(
+    tx,
+    shown.map((s) => s.n.note.authorUserId),
+  );
+  // The canonical chart's, as a merged ID's chart shows it; none without patients.view.
+  const names = await preferredNames(
+    tx,
+    scope,
+    shown.map((s) => s.row.patientId),
+  );
+  const rows: QueueVisitValue[] = [];
+  for (const { row, n, canAct, heldBecause } of shown) {
+    let visit = rows.at(-1);
+    if (visit?.encounterId !== row.encounterId) {
+      visit = {
+        encounterId: row.encounterId,
+        patientId: row.patientId,
+        preferredName: row.patientId ? (names.get(row.patientId) ?? null) : null,
+        startedAt: row.startedAt.toISOString(),
+        notes: [],
+      };
+      rows.push(visit);
+    }
+    const { note } = n;
+    visit.notes.push({
+      noteId: note.id,
+      noteTypeKey: note.attributes.noteTypeKey as string,
+      // Listed only with a definition to read it by (above).
+      title: n.read!.type!.title,
+      author: { userId: note.authorUserId, displayName: authors.get(note.authorUserId) ?? '' },
+      completedAt: note.attributes.completedAt as string | null,
+      signedBefore: before.signed.get(note.id) ?? null,
+      attestedBefore: before.attested.get(note.id) ?? null,
+      canAct,
+      ...(heldBecause ? { heldBecause } : {}),
+    });
+  }
+  return rows;
+}
+
+type Person = { userId: string; displayName: string };
+
+/**
+ * For each note: who made its latest signature other than the one it holds now, and who attested it
+ * last. A waiting note has either only when a correction sent it back (3.6), which is when the
+ * queue shows them (3.7). The names are the ones stored with the act, as the visit read shows them.
+ */
+async function signedAndAttestedBefore(tx: Tx, teamId: string, ids: string[]) {
+  const signed = new Map<string, Person>();
+  const attested = new Map<string, Person>();
+  if (ids.length === 0) return { signed, attested };
+  const signatures = await tx<{ noteId: string; userId: string; displayName: string }[]>`
+    select distinct on (s.note_id) s.note_id, s.signer_user_id as user_id, s.signer_name as display_name
+    from sineobex.note_signoffs s
+    join sineobex.encounter_notes n on n.team_id = s.team_id and n.id = s.note_id
+    where s.team_id = ${teamId} and s.note_id = any (${ids}::uuid[]) and s.effect = 'signed'
+      and s.id is distinct from n.signoff_id
+    order by s.note_id, s.received_at desc, s.id desc`;
+  for (const r of signatures) signed.set(r.noteId, { userId: r.userId, displayName: r.displayName });
+  const attestations = await tx<{ noteId: string; userId: string; displayName: string }[]>`
+    select distinct on (a.note_id) a.note_id, a.attending_user_id as user_id, a.attending_name as display_name
+    from sineobex.note_attestations a
+    where a.team_id = ${teamId} and a.note_id = any (${ids}::uuid[])
+    order by a.note_id, a.attested_at desc, a.id desc`;
+  for (const r of attestations) attested.set(r.noteId, { userId: r.userId, displayName: r.displayName });
+  return { signed, attested };
+}
+
+async function displayNames(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids)];
+  if (wanted.length === 0) return new Map();
+  const rows = await tx<{ id: string; displayName: string }[]>`
+    select id, display_name from sineobex.users where id = any (${wanted}::uuid[])`;
+  return new Map(rows.map((r) => [r.id, r.displayName]));
+}

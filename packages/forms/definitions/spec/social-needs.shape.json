@@ -1,0 +1,32 @@
+{
+  "piece": "social-needs",
+  "file": "note-types/social_needs/v1.json",
+  "header": {
+    "key": "social_needs",
+    "version": 1,
+    "title": "Social needs",
+    "kinds": ["medical", "non_medical"],
+    "group": "social",
+    "sensitivity": "none"
+  },
+  "sections": [{ "id": "needs", "title": "Social needs" }],
+  "fields": [
+    {
+      "path": "needs.needs",
+      "kind": "choice",
+      "many": true,
+      "label": "Current needs",
+      "options": { "list": "needs" }
+    },
+    {
+      "path": "needs.housing",
+      "kind": "choice",
+      "many": false,
+      "label": "Housing status",
+      "options": ["unsheltered", "shelter", "transitional", "permanent", "couch_surfing", "unknown", "other"],
+      "flags": { "other": ["other"] }
+    },
+    { "path": "needs.resources", "kind": "info", "label": "The resource directory is coming." },
+    { "path": "needs.referral", "kind": "action", "label": "Add referral", "action": "add_referral" }
+  ]
+}

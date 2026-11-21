@@ -1,0 +1,44 @@
+{
+  "name": "exam_heent_nose",
+  "version": 1,
+  "sections": [
+    {
+      "id": "nose",
+      "title": "Nose",
+      "spec": "exam-heent-nose",
+      "showWhen": { "field": "exam.systems", "is": "heent" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "findings",
+          "kind": "choice",
+          "many": true,
+          "label": "Nose",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "congestion", "label": "Congestion" },
+            { "code": "rhinorrhea", "label": "Rhinorrhea" },
+            { "code": "epistaxis", "label": "Epistaxis" },
+            { "code": "nasal_tenderness", "label": "Nasal tenderness" },
+            { "code": "swelling", "label": "Swelling" },
+            { "code": "lesion", "label": "Lesion" },
+            { "code": "septal_abnormality", "label": "Septal abnormality" },
+            { "code": "purulent_discharge", "label": "Purulent discharge" }
+          ]
+        },
+        {
+          "id": "sinuses",
+          "kind": "choice",
+          "many": true,
+          "label": "Sinuses",
+          "options": [
+            { "code": "no_tenderness", "label": "No tenderness", "exclusive": true, "normal": true },
+            { "code": "frontal_tenderness", "label": "Frontal tenderness" },
+            { "code": "maxillary_tenderness", "label": "Maxillary tenderness" },
+            { "code": "ethmoid_tenderness", "label": "Ethmoid tenderness" }
+          ]
+        }
+      ]
+    }
+  ]
+}

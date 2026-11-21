@@ -1,0 +1,31 @@
+5. Sexual and Reproductive&#32;
+   1. Subsection 1
+      1. Reason&#32;
+         1. Buttons: \[ STI concern \] \[ STI exposure \] \[ Testing \] \[ Pregnancy \] \[ Contraception \] \[ PrEP \] \[ PEP \] \[ Menstrual \] \[ Symptoms \] \[ Other \]
+            1. If \[ Pregnancy \]
+               1. Pregnancy
+                  1. Question: Pregnancy possible?
+                     1. Buttons: \[ No \] \[ Yes \] \[ Unsure \]
+                  2. Question: Pregnancy desired?
+                     1. Buttons:  \[ Yes \] \[ Unsure \] \[ No \] 
+                  3. LMP
+                     1. &#91; 09 / 12 / 2026 \] \[ Approximate \]
+                  4. Pregnancy Test
+                     1. Buttons: \[ Positive \] \[ Negative \] \[ Not done \]&#32;
+            2. If \[ Contraception \]
+               1. Contraception&#32;
+                  1. Current Method
+                     1. Buttons: \[ None \] \[ Pill \] \[ IUD \] \[ Implant \] \[ Injection \] \[ Condom \] \[ Other \]
+                  2. Question: Interested in changing method?&#32;
+                     1. Buttons: \[ Yes \] \[ No \] \[ Unsure \]
+            3. If \[ Menstrual Health \]&#32;
+               1. Menstrual Health&#32;
+                  1. Status
+                     1. Buttons: \[ Regular \] \[ Irregular \] \[ Amenorrhea \] \[ Postmenopausal \]
+                  2. LMP: \[ Date of LMP\]&#32;
+                     1. Typical Cycle: 28 days
+                     2. Typical Duration: 5 days
+                  3. Question: Heavy Bleeding?&#32;
+                     1. Buttons: \[ No \] \[ Yes \]
+                  4. Pain&#32;
+                     1. Out of 10 \[ 4 / 10 \]&#32;

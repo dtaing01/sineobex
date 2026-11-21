@@ -1,0 +1,192 @@
+{
+  "piece": "exam-msk",
+  "file": "modules/exam_msk/v1.json",
+  "sections": [
+    {
+      "id": "msk",
+      "title": "Musculoskeletal",
+      "showWhen": { "field": "exam.systems", "is": "msk" },
+      "normal": true,
+      "repeat": { "max": 10, "itemTitle": "Region {n}" }
+    },
+    {
+      "id": "msk_gait",
+      "title": "Gait",
+      "showWhen": { "field": "exam.systems", "is": "msk" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "msk.region",
+      "kind": "choice",
+      "many": false,
+      "label": "Where are you examining?",
+      "options": [
+        "head_neck",
+        "shoulder",
+        "elbow",
+        "wrist_hand",
+        "back",
+        "hip",
+        "knee",
+        "ankle_foot",
+        "other"
+      ],
+      "flags": { "other": ["other"] }
+    },
+    {
+      "path": "msk.side",
+      "kind": "choice",
+      "many": false,
+      "label": "Side",
+      "options": { "list": "side" },
+      "showWhen": {
+        "field": "./region",
+        "is": ["shoulder", "elbow", "wrist_hand", "hip", "knee", "ankle_foot", "other"]
+      }
+    },
+    {
+      "path": "msk.inspection",
+      "kind": "choice",
+      "many": true,
+      "label": "Inspection",
+      "options": ["normal", "swelling", "erythema", "bruising", "deformity", "atrophy", "wound", "asymmetry"],
+      "showWhen": { "field": "./region", "filled": true },
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "msk.palpation",
+      "kind": "choice",
+      "many": true,
+      "label": "Palpation",
+      "options": ["no_tenderness", "tenderness", "warmth", "crepitus", "mass", "effusion"],
+      "showWhen": { "field": "./region", "filled": true },
+      "flags": { "exclusive": ["no_tenderness"], "normal": ["no_tenderness"] }
+    },
+    {
+      "path": "msk.pain",
+      "kind": "number",
+      "label": "Pain",
+      "min": 0,
+      "max": 10,
+      "decimals": 0,
+      "display": "outOf",
+      "showWhen": { "field": "./palpation", "is": "tenderness" }
+    },
+    {
+      "path": "msk.rom_active",
+      "kind": "choice",
+      "many": true,
+      "label": "Active range of motion",
+      "options": { "list": "range_of_motion" },
+      "showWhen": { "field": "./region", "filled": true }
+    },
+    {
+      "path": "msk.rom_passive",
+      "kind": "choice",
+      "many": true,
+      "label": "Passive range of motion",
+      "options": { "list": "range_of_motion" },
+      "showWhen": { "field": "./region", "filled": true }
+    },
+    {
+      "path": "msk.strength_right",
+      "kind": "number",
+      "label": "Strength, right",
+      "min": 0,
+      "max": 5,
+      "decimals": 0,
+      "display": "outOf",
+      "normal": 5,
+      "showWhen": {
+        "any": [
+          { "field": "./side", "is": ["right", "bilateral"] },
+          { "field": "./region", "is": ["head_neck", "back"] }
+        ]
+      }
+    },
+    {
+      "path": "msk.strength_left",
+      "kind": "number",
+      "label": "Strength, left",
+      "min": 0,
+      "max": 5,
+      "decimals": 0,
+      "display": "outOf",
+      "normal": 5,
+      "showWhen": {
+        "any": [
+          { "field": "./side", "is": ["left", "bilateral"] },
+          { "field": "./region", "is": ["head_neck", "back"] }
+        ]
+      }
+    },
+    {
+      "path": "msk.tone",
+      "kind": "choice",
+      "many": false,
+      "label": "Tone",
+      "options": ["hypertonic", "hypotonic", "isotonic"],
+      "showWhen": { "field": "./region", "filled": true }
+    },
+    {
+      "path": "msk.sensation",
+      "kind": "choice",
+      "many": true,
+      "label": "Sensation",
+      "options": ["intact", "decreased", "numbness", "tingling"],
+      "showWhen": { "field": "./region", "filled": true },
+      "flags": { "exclusive": ["intact"], "normal": ["intact"] }
+    },
+    {
+      "path": "msk.pulses",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulses",
+      "options": ["intact", "decreased", "absent"],
+      "showWhen": { "field": "./region", "filled": true },
+      "flags": { "normal": ["intact"] }
+    },
+    {
+      "path": "msk.capillary_refill",
+      "kind": "choice",
+      "many": false,
+      "label": "Capillary refill",
+      "options": { "list": "capillary_refill" },
+      "showWhen": { "field": "./region", "filled": true }
+    },
+    {
+      "path": "msk.shoulder_tests",
+      "kind": "grid",
+      "label": "Shoulder tests",
+      "showWhen": { "field": "./region", "is": "shoulder" },
+      "rows": [
+        { "code": "neer", "label": "Neer's" },
+        "hawkins",
+        "empty_can",
+        "external_rotation",
+        "cross_body_adduction"
+      ]
+    },
+    {
+      "path": "msk.shoulder_tests.result",
+      "kind": "choice",
+      "many": false,
+      "label": "Result",
+      "options": { "list": "special_test_result" }
+    },
+    {
+      "path": "msk_gait.gait",
+      "kind": "choice",
+      "many": true,
+      "label": "Gait",
+      "options": ["normal", "antalgic", "unsteady", "ataxic", "unable_to_assess"],
+      "flags": {
+        "exclusive": ["normal", "unable_to_assess"],
+        "normal": ["normal"],
+        "unable": ["unable_to_assess"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "key": "full_demo",
+  "version": 1,
+  "title": "Full module (test)",
+  "kinds": ["medical"],
+  "group": "wound",
+  "sensitivity": "none",
+  "sections": [
+    {
+      "id": "history",
+      "title": "History",
+      "fields": [
+        { "id": "story", "kind": "text", "label": "What happened?", "lines": "many", "maxLength": 4000 },
+        {
+          "id": "length",
+          "kind": "number",
+          "label": "Length",
+          "min": 0,
+          "max": 200,
+          "decimals": 1,
+          "unit": "cm",
+          "sides": true
+        },
+        {
+          "id": "pressure",
+          "kind": "group",
+          "label": "Blood pressure",
+          "layout": "row",
+          "fields": [
+            { "id": "upper", "kind": "number", "label": "Upper", "min": 0, "max": 300, "decimals": 0 },
+            { "id": "lower", "kind": "number", "label": "Lower", "min": 0, "max": 300, "decimals": 0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wounds",
+      "title": "Wounds",
+      "repeat": { "max": 20, "itemTitle": "Wound {n}" },
+      "fields": [
+        {
+          "id": "where",
+          "kind": "region",
+          "label": "Where",
+          "options": { "list": "demo_regions" },
+          "side": "side",
+          "surface": true
+        },
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Type",
+          "options": [
+            { "code": "cut", "label": "Cut" },
+            { "code": "burn", "label": "Burn" },
+            { "code": "bite", "label": "Bite" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

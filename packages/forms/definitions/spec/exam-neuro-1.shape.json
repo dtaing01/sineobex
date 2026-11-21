@@ -1,0 +1,111 @@
+{
+  "piece": "exam-neuro-1",
+  "file": "modules/exam_neuro_1/v1.json",
+  "sections": [
+    {
+      "id": "neuro",
+      "title": "Neurologic: mental status and cranial nerves",
+      "showWhen": { "field": "exam.systems", "is": "neurologic" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "neuro.mental_status",
+      "kind": "choice",
+      "many": true,
+      "label": "Mental status",
+      "options": ["alert", "oriented_4", "oriented_3", "confused", "somnolent", "obtunded"],
+      "excludes": [
+        ["oriented_4", "oriented_3"],
+        ["alert", "somnolent"],
+        ["alert", "obtunded"],
+        ["somnolent", "obtunded"]
+      ],
+      "flags": { "normal": ["alert", "oriented_4"] }
+    },
+    {
+      "path": "neuro.cn_screen",
+      "kind": "choice",
+      "many": false,
+      "label": "Cranial nerve screen",
+      "options": ["grossly_intact", "abnormal"],
+      "flags": { "normal": ["grossly_intact"] }
+    },
+    {
+      "path": "neuro.cranial_nerves",
+      "kind": "group",
+      "label": "Cranial nerves",
+      "layout": "stack",
+      "showWhen": { "field": "neuro.cn_screen", "is": "abnormal" }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_ii",
+      "kind": "choice",
+      "many": false,
+      "label": "CN II",
+      "options": ["visual_fields_intact", "visual_deficit"],
+      "flags": { "normal": ["visual_fields_intact"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_iii_iv_vi",
+      "kind": "choice",
+      "many": true,
+      "label": "CN III / IV / VI",
+      "options": ["extraocular_movements_intact_eomi", "diplopia", "nystagmus", "ptosis"],
+      "flags": {
+        "exclusive": ["extraocular_movements_intact_eomi"],
+        "normal": ["extraocular_movements_intact_eomi"]
+      }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_v",
+      "kind": "choice",
+      "many": false,
+      "label": "CN V",
+      "options": ["facial_sensation_intact", "decreased_sensation"],
+      "flags": { "normal": ["facial_sensation_intact"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_vii",
+      "kind": "choice",
+      "many": false,
+      "label": "CN VII",
+      "options": ["symmetric_facial_movement", "facial_droop"],
+      "flags": { "normal": ["symmetric_facial_movement"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_viii",
+      "kind": "choice",
+      "many": false,
+      "label": "CN VIII",
+      "options": ["hearing_grossly_intact", "hearing_deficit"],
+      "flags": { "normal": ["hearing_grossly_intact"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_ix_x",
+      "kind": "choice",
+      "many": true,
+      "label": "CN IX / X",
+      "options": ["palate_symmetric", "dysarthria", "dysphagia"],
+      "flags": { "exclusive": ["palate_symmetric"], "normal": ["palate_symmetric"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_xi",
+      "kind": "choice",
+      "many": false,
+      "label": "CN XI",
+      "options": ["shoulder_shrug_intact", "weak"],
+      "flags": { "normal": ["shoulder_shrug_intact"] }
+    },
+    {
+      "path": "neuro.cranial_nerves.cn_xii",
+      "kind": "choice",
+      "many": false,
+      "label": "CN XII",
+      "options": ["tongue_midline", "deviation"],
+      "flags": { "normal": ["tongue_midline"] }
+    },
+    { "path": "neuro.notes", "kind": "text", "label": "Notes", "lines": "many", "maxLength": 2000 }
+  ]
+}
