@@ -10,7 +10,7 @@ session can pick it up.
 | What | Where |
 |---|---|
 | Product spec (the PRD) | [Sineobex Build & Strategy Plan](https://claude.ai/code/artifact/6f83b7b9-4134-4c36-ad0c-17a41eed3af3): the main tab is the source of truth for what each feature does; the Build plan tab sets the order. It lives outside the repo. |
-| Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D54, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
+| Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D126, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
 | The current phase's design and its unit status | `docs/design/phase-<n>-<name>.md`. Its **Status** section says which units are done, which are open and what each needs. Start there. |
 | Compliance mapping | `docs/compliance/` |
 | Task cards for a small model, and the recipes they point to | `docs/plan/` (start with its `README.md`) |
