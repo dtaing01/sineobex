@@ -399,7 +399,7 @@ The full list, with the reasoning, is section 14.1 of `docs/design/phase-3-patie
 | App-layer encryption of stored ID card tokens | Not in phase 3 (KMS at rest; a token is a pointer, not a credential) | Phase 12 risk analysis |
 | A human-readable chart number; contact phone, gender identity, pronouns | None in phase 3 (the UUID is the patient ID; a contact phone arrives with phase 7) | The team |
 | What a history entry can say about how a change was made | "On a phone" when the entry has a device time; it can't say "offline" | Phase 4, if the history should carry it |
-| **Android's clipboard rule** (departs from the PRD, module 13) | A copied ID link clears after 60 seconds on both platforms, not "as the user leaves the app" on Android, which made the link impossible to paste into a printing app | The project lead: change the PRD, or restore the rule and add a share sheet |
+| **Android's clipboard rule** (departs from the PRD, module 13) | A copied ID link clears after 60 seconds on both platforms, not "as the user leaves the app" on Android, which made the link impossible to paste into a printing app. On Android 10 and later a link whose minute ends while the app is in the background is cleared once the app is back in front, and on any Android not at all if Android ends the app first (risk 10) | The project lead: change the PRD, or restore the rule and add a share sheet |
 
 ---
 
