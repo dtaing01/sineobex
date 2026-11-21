@@ -1,4 +1,4 @@
-> **Reviewed (Nov 14).** Four reviewers checked this design and the lifecycle part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Section 10 lists what a person still has to decide. In build since Nov 16: which units are on the branch is in the Status table of `docs/design/phase-4-encounters.md`, and the sections marked "as built" say what the code does where it says more than the design did.
+> **Reviewed (Nov 14), built (Nov 16 to 21), and reviewed as built.** Four reviewers checked this design and the lifecycle part against the PRD, the code, the rules that never bend and the task-card rules; their 95 findings are applied. Every unit was reviewed as it landed, and the whole phase was then reviewed as built, with a second pass over the fixes (`docs/design/phase-4-encounters.md`, "What the review found"); each fix has a test that fails without it. Section 10 lists what a person still has to decide, and the sections marked "as built" say what the code does where it says more than the design did.
 
 # Phase 4 design, part 1: forms and note types
 
@@ -1437,7 +1437,9 @@ As built on the phone (unit F7, `apps/mobile/lib/encounters/expand_quick.dart` a
   first (review finding LFM-2), with one line under it: "Its answers are copied into a full note.
   This quick note keeps them.", or, for a draft that opens as it is or a finished note, "Opens the
   {title} note already in this visit. Nothing is copied.". It is not drawn on a read-only form, and
-  a second tap while the first runs does nothing.
+  a second tap while the first runs does nothing. Since the phase's review (finding PP-1) the
+  dialog that lists what a tap left out or did not copy sits in a dialog gate on the note screen's
+  services, so it closes on a freeze (D125; lifecycle 9, "Every modal route").
 
 ### 6.5 Sexual and reproductive branching
 
@@ -2206,7 +2208,12 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   points, as the server does, and is cut at its `maxLength`; its own counter shows from 90%, and
   says once that it is near the limit and once that it is at it, as phase 3's note counter does. The
   calendar and the time dial have no typing mode: theirs are text boxes without these settings,
-  which the keyboard would learn from. A date is typed in its own three boxes instead.
+  which the keyboard would learn from. A date is typed in its own three boxes instead. Since the
+  phase's review every such box is one `PrivateBox` (`apps/mobile/lib/design/widgets/private_box.dart`),
+  which `PhiField` is built on: its selection menu holds only cut, copy, paste and select all, and
+  its Copy and Cut, from that menu and from a hardware keyboard's shortcuts, go through
+  `secureCopy`, never the general pasteboard (findings PP-3, C-2 and C-4; lifecycle 10.2, D126,
+  which also say what a soft keyboard's own Copy still does).
 - **A date** is typed in three private boxes, Month, Day and Year, in one node named by the
   field's label: month first and a four-digit year (PLAN-OPEN, 10.1 #54), side by side, or one
   under another where they would not fit their labels (200% text). It is read as phase 3's birth
@@ -2220,7 +2227,11 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   button, in the phone's time format. Typed or picked, a date reaches a hundred years back and ten
   ahead, on the side of today the field's `range` allows (PLAN-OPEN, 10.1 #43). `checkAnswer` has
   no clock, so a stored date outside the range now, a follow-up that has passed, is still shown and
-  left alone until changed, and the picker opens on the nearest day it can show.
+  left alone until changed, and the picker opens on the nearest day it can show. Since the
+  phase's review (findings PP-1 and VA-3) the calendar, the time dial and the problem field's
+  questions gate themselves through the `DialogGateScope` of the route they are drawn on
+  (`DialogGate.over`), so each closes on a freeze; the correction sheet brings a scope of its own,
+  and since C-3 `DialogGate.over` reads phase 3's scope too (lifecycle 9, D125).
 - **A diagnosis** is a private search box carrying the field's label, which searches phase 3's
   problem code list on the phone by word or by code, with or without its dot, and lists eight
   matches at most, each a button read as its title and code. Only a code from that list can be
@@ -2264,7 +2275,11 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   referral and in Needs attention's Change the date, so it is typed in the same three private
   boxes and picked on the calendar alone. `DateField.onUnsaved` tells such a sheet whether the
   boxes hold a date not saved (being typed, half typed or refused), and the sheet adds or sends
-  nothing on it.
+  nothing on it. Since the second pass phase 3's Add problem's onset date is one too
+  (`DateDef.outside('onsetDate', 'Date it started')`, in a `DialogGateScope.patients`; finding
+  C-3), what the problem stores unchanged. A sheet saves a date still being typed as its button is
+  pressed by taking focus out of the boxes only when focus is in them (`commitTypedDate`), so focus
+  pressed on the button stays there (VX-1).
   `referrals_sheet_test.dart` opens the calendar in phase 3's five runs: in the app, whose demo
   banner leaves the dialog less height, iOS's 44 px also fails at 200% text (cells 34.6 px tall).
 
