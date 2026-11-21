@@ -1204,6 +1204,8 @@ class LocalStore {
       for (final s in ordered)
         if (_isRedFlags(s.note.definition)) s.note.encounterId,
     };
+    // What was refused only for naming a refused sign-off fixed now goes again after the fixes.
+    final named = _refusedNamingSignoff(_refusedSignoffsOf({for (final n in notes) n.noteId}));
     return _tx(() {
       final made = <String, LocalEffect>{};
       for (final (:asked, :note) in ordered) {
@@ -1215,8 +1217,55 @@ class LocalStore {
         final local = _finishNote(asked, note, signer, redFlagsDone);
         if (local != null) made[asked.noteId] = local;
       }
+      named.forEach(_sendCreateAgain);
       return made;
     });
+  }
+
+  /// The record IDs of the refused sign-offs of [noteIds] that nothing has superseded: completing
+  /// the note again sends each one's fix under the same ID (3.4).
+  Set<String> _refusedSignoffsOf(Set<String> noteIds) => {
+    for (final e in needsAttention())
+      if (e.entity == entitySignoff &&
+          e.op == 'create' &&
+          e.state == ChangeState.rejected &&
+          noteIds.contains((e.value as Map<String, Object?>?)?['noteId']))
+        e.recordId,
+  };
+
+  /// The refused creates of an addendum or a correction refused only because the sign-off they name
+  /// was not on the server (`stale_reference`, `note_signoff_missing`), where that sign-off is one of
+  /// [signoffs]: it was refused itself when they were sent beside it (review finding PS-1). The fix
+  /// of the sign-off puts it there, so each is sent again after the fix, as it was made.
+  List<OutboxEntry> _refusedNamingSignoff(Set<String> signoffs) => [
+    for (final e in needsAttention())
+      if ((e.entity == entityAddendum || e.entity == entityCorrection) &&
+          e.op == 'create' &&
+          e.state == ChangeState.rejected &&
+          e.reason == 'stale_reference' &&
+          e.details?['problem'] == 'note_signoff_missing' &&
+          signoffs.contains((e.value as Map<String, Object?>?)?['signoffId']))
+        e,
+  ];
+
+  /// [refused], a refused create, sent again as it was made: a new change of the same record,
+  /// superseding the refusal, which its receipt settles, after everything in the outbox now, as
+  /// [_resendDependants] sends what waited on a refused create (D49).
+  void _sendCreateAgain(OutboxEntry refused) {
+    final value = refused.value! as Map<String, Object?>;
+    final rules = rulesFor(refused.entity)!;
+    _checkCreate(rules, value);
+    final again = _append(
+      entity: refused.entity,
+      recordId: refused.recordId,
+      op: 'create',
+      value: value,
+      baseVersion: 0,
+      supersedes: refused.changeId,
+    );
+    _supersede(refused.changeId, by: again);
+    _db.execute('UPDATE fields SET pending_change = ? WHERE record_id = ?', [again, refused.recordId]);
+    _touch(refused.recordId);
   }
 
   /// Hard stop 2 (lifecycle 3.3): nothing about [visits] or their notes waits in Needs attention, a
@@ -1225,6 +1274,9 @@ class LocalStore {
   /// completing again is its fix (3.4). Otherwise a refused answer would be dropped by Complete, and
   /// the sign-off would cover a note without it (review finding SLK-4).
   void _checkNothingWaits(Set<String> visits, Set<String> completing) {
+    // What was refused only for naming a refused sign-off of a note completed now is sent again
+    // after that sign-off's fix (finishNotes, review finding PS-1), so it does not count either.
+    final sentAgain = {for (final e in _refusedNamingSignoff(_refusedSignoffsOf(completing))) e.changeId};
     final ids = {
       ...visits,
       for (final r in _db.select(
@@ -1240,7 +1292,7 @@ class LocalStore {
           e.op == 'create' &&
           value is Map<String, Object?> &&
           completing.contains(value['noteId']);
-      if (ownRefusedSignoff) continue;
+      if (ownRefusedSignoff || sentAgain.contains(e.changeId)) continue;
       if (ids.contains(e.recordId) ||
           parentsOf(entity: e.entity, op: e.op, field: e.field, value: e.value).any((p) => ids.contains(p.id))) {
         throw const LocalValidationError(

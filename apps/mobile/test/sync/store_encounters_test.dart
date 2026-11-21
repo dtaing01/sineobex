@@ -791,6 +791,110 @@ void main() {
       expect(server.records[n]!.fields['data.vitals.pulse']!.value, 90);
     });
 
+    group('what was refused only for naming a refused sign-off goes again with its fix (review finding PS-1)', () {
+      /// A note completed here and, before the push, changed by Demo Blair online: its sign-off is refused
+      /// content_changed, and whatever named it in the same push stale_reference note_signoff_missing.
+      Future<({TestPhone p, String visit, String n, String signoffId})> refusedBeside(
+        void Function(TestPhone p, String visit, String n, String signoffId) after,
+      ) async {
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final visit = p.store.createEncounter(kind: 'non_medical', patientId: patient);
+        final n = note(p, visit, testNote, {'vitals.pulse': 88, 'care.plan': 'Demo: rest and fluids'});
+        await sync(p);
+        expect(p.store.outbox(), isEmpty);
+        server.serverEdit(n, 'data.vitals.pulse', 90, by: blair);
+        final signoffId = complete(p, [finishing(p, n, testNote)])[n]!.signoffId;
+        after(p, visit, n, signoffId);
+        await sync(p);
+        expect(
+          [for (final e in p.store.needsAttention()) '${e.entity} ${e.reason} ${e.details?['problem']}'],
+          [
+            'note_signoff validation content_changed',
+            for (final e in p.store.outbox().where((e) => e.entity != entitySignoff && e.op == 'create'))
+              '${e.entity} stale_reference note_signoff_missing',
+          ],
+        );
+        return (p: p, visit: visit, n: n, signoffId: signoffId);
+      }
+
+      Future<void> completeAgain(TestPhone p, String n) async {
+        complete(p, [finishing(p, n, testNote)]);
+        await sync(p);
+        expect(p.store.needsAttention(), isEmpty);
+        expect(p.store.outbox(), isEmpty);
+        expect(server.records[n]!.fields['status']!.value, 'completed');
+      }
+
+      test('an addendum to the note', () async {
+        final r = await refusedBeside((p, visit, n, signoffId) {
+          p.store.createRecord(entityAddendum, {
+            'encounterId': visit,
+            'noteId': n,
+            'text': 'Demo: the swab came back clear',
+            'signoffId': signoffId,
+          });
+        });
+        await completeAgain(r.p, r.n);
+        final addendum = server.records.values.singleWhere((x) => x.entity == entityAddendum);
+        expect([addendum.attributes['noteId'], addendum.attributes['text']], [r.n, 'Demo: the swab came back clear']);
+      });
+
+      test('Add to the assessment: an addendum to the visit', () async {
+        final r = await refusedBeside((p, visit, n, signoffId) {
+          p.store.createRecord(entityAddendum, {
+            'encounterId': visit,
+            'noteId': null,
+            'text': 'Demo: added to the assessment',
+            'signoffId': signoffId,
+          });
+        });
+        await completeAgain(r.p, r.n);
+        final addendum = server.records.values.singleWhere((x) => x.entity == entityAddendum);
+        expect([addendum.attributes['noteId'], addendum.attributes['text']], [null, 'Demo: added to the assessment']);
+      });
+
+      test('a correction, which Leave it would otherwise have thrown away', () async {
+        final r = await refusedBeside((p, visit, n, signoffId) {
+          p.store.createRecord(entityCorrection, {
+            'noteId': n,
+            'changes': [
+              {'field': 'data.care.plan', 'newValue': 'Demo: rest, fluids and a recheck', 'baseVersion': 1},
+            ],
+            'reason': 'Demo: the recheck was left out',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': signoffId,
+          });
+        });
+        await completeAgain(r.p, r.n);
+        expect(server.records[r.n]!.fields['data.care.plan']!.value, 'Demo: rest, fluids and a recheck');
+      });
+
+      test('what names a sign-off of another note still waits', () async {
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final visit = p.store.createEncounter(kind: 'non_medical', patientId: patient);
+        final n = note(p, visit, testNote, {'vitals.pulse': 88});
+        final other = note(p, visit, testNote, {'vitals.pulse': 70});
+        await sync(p);
+        server.serverEdit(other, 'data.vitals.pulse', 72, by: blair);
+        final otherSignoff = complete(p, [finishing(p, other, testNote)])[other]!.signoffId;
+        p.store.createRecord(entityAddendum, {
+          'encounterId': visit,
+          'noteId': other,
+          'text': 'Demo: on the other note',
+          'signoffId': otherSignoff,
+        });
+        await sync(p);
+        expect(
+          () => complete(p, [finishing(p, n, testNote)]),
+          throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'needs_attention')),
+        );
+      });
+    });
+
     test('a sign-off is made and fixed only by Complete', () async {
       // Review finding SFN-3: createRecord took a sign-off, with any hash and no effect expected, and
       // the outbox held two sign-offs of one note.

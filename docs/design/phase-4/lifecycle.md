@@ -2576,7 +2576,15 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   as the fixed create, ahead of the sign-off; so this records the cost, the review's other choice
   (review finding SFN-6; D106). And an addendum sent in the same push as its note's sign-off, when the
   sign-off is refused, is refused `stale_reference`, as any child sent beside a refused parent is
-  (phase 2's rule), and is fixed from Needs attention (kept as built, the coordinator's decision).
+  (phase 2's rule). As first built nothing fixed it, and hard stop 2 then refused the sign-off's
+  fix for good (review finding PS-1). Since the review, completing the note again sends the fix and,
+  after it, each refused create of an addendum or a correction refused only for naming that sign-off
+  (`stale_reference`, `note_signoff_missing`), again as it was made, each a new change superseding
+  the refused one, as `_resendDependants` sends what waited on a refused create (D49); hard stop 2
+  leaves those out (`finishNotes`, `_refusedNamingSignoff`). So "Add to the assessment" goes again
+  with its Complete, and a correction is never left with Leave it as the only way out. One naming a
+  refused sign-off of a note not completed now still counts. Tested on the test server
+  (`store_encounters_test.dart`) and live (`live_api_test.dart`).
 - **Open the note on a `signoff_not_applied` notice** (9.13). The notice names a sign-off, and a
   held sign-off is not on the chart: the sync read loads a sign-off from `note_signoffs`
   (`note-signoff.ts`), while the held value is in `quarantine_items`, and the test server's held

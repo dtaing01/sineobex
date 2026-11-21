@@ -8,7 +8,7 @@ import 'package:sineobex_field/encounters/rules.dart';
 import 'package:sineobex_field/forms/definition.dart';
 import 'package:sineobex_field/patients/patient_providers.dart' show ServerNotices;
 import 'package:sineobex_field/sync/clock.dart';
-import 'package:sineobex_field/sync/entities.dart' show entitySignoff;
+import 'package:sineobex_field/sync/entities.dart' show entityAddendum, entityCorrection, entityNote, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -380,6 +380,88 @@ void main() {
     } finally {
       await credential(me['credential']! as String, me['credentialFields']);
     }
+  }, skip: skip);
+
+  test('what was sent beside a refused sign-off and refused for naming it goes again with Complete’s fix: an '
+      'addendum, Add to the assessment and a correction', () async {
+    // Review finding PS-1 against the real API: without it, hard stop 2 refused the fix for good.
+    final (a, aNet) = await phone('clinician@example.com');
+    final (b, _) = await phone('resident@example.com');
+    final definition = NoteTypeDef.fromJson(testNoteTypes.singleWhere((d) => d['key'] == testNote.key));
+    NoteTypeDef? definitionOf(String key, int version) =>
+        key == definition.key && version == definition.version ? definition : null;
+    const signer = Signer(credential: 'attending', canSign: true, needsAttestation: false);
+    Map<String, LocalEffect> complete(String n) => a.store.finishNotes(
+      [
+        NoteToFinish(
+          noteId: n,
+          shownHash: a.store.contentHashOf(n, definition),
+          act: SignoffAct.complete,
+          statementVersion: 'complete-2026-11',
+        ),
+      ],
+      signer: signer,
+      definitionOf: definitionOf,
+    );
+    final visit = a.store.createEncounter(kind: 'non_medical');
+    final n = a.store.createNote(
+      encounterId: visit,
+      noteTypeKey: testNote.key,
+      noteTypeVersion: testNote.version,
+      data: {'vitals.pulse': 88, 'care.plan': 'Demo: rest and fluids'},
+    );
+    expect(await a.engine.syncAll(force: true), isA<SyncDone>());
+    expect(a.store.outbox(), isEmpty);
+    final planVersion = a.store.record(n)!.fields['data.care.plan']!.serverVersion;
+    // A teammate changes the draft online; offline, the phone completes over what it holds and writes
+    // the three right after, each naming the sign-off still waiting.
+    expect(await b.engine.openServerRecord(entityNote, n), isTrue);
+    b.store.setField(n, 'data.vitals.pulse', 90);
+    expect(await b.engine.syncAll(force: true), isA<SyncDone>());
+    aNet.offline = true;
+    final signoffId = complete(n)[n]!.signoffId;
+    a.store
+      ..createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': n,
+        'text': 'Demo: the swab came back clear',
+        'signoffId': signoffId,
+      })
+      ..createRecord(entityAddendum, {
+        'encounterId': visit,
+        'noteId': null,
+        'text': 'Demo: added to the assessment',
+        'signoffId': signoffId,
+      })
+      ..createRecord(entityCorrection, {
+        'noteId': n,
+        'changes': [
+          {'field': 'data.care.plan', 'newValue': 'Demo: rest, fluids and a recheck', 'baseVersion': planVersion},
+        ],
+        'reason': 'Demo: the recheck was left out',
+        'requestedByPatient': false,
+        'declined': false,
+        'claimedCredential': null,
+        'signoffId': signoffId,
+      });
+    aNet.offline = false;
+    await a.engine.syncAll(force: true);
+    expect(
+      [for (final e in a.store.needsAttention()) '${e.entity} ${e.reason} ${e.details?['problem']}'],
+      [
+        'note_signoff validation content_changed',
+        'note_addendum stale_reference note_signoff_missing',
+        'note_addendum stale_reference note_signoff_missing',
+        'note_correction stale_reference note_signoff_missing',
+      ],
+    );
+    // The person reads the note again and completes it: the fix, then the three, settle everything.
+    complete(n);
+    await a.engine.syncAll(force: true);
+    expect(a.store.needsAttention(), isEmpty);
+    expect(a.store.outbox(), isEmpty);
+    final fields = await serverFields(b, n);
+    expect([b.store.record(n)!.status, fields['data.care.plan']], ['completed', 'Demo: rest, fluids and a recheck']);
   }, skip: skip);
 
   test('a slow, flaky network: timeouts after commit and a damaged hash never confirm wrongly', () async {
