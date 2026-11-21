@@ -180,6 +180,41 @@ void main() {
     expectNoteOpened(tester, social);
   });
 
+  testWidgets('once the store freezes, the reason shows in place of a note answer’s conflict, and nothing of it '
+      '(review finding PP-2)', (tester) async {
+    const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    final social = await chart(tester, h, visit, 'social_needs', {
+      'needs.housing': 'shelter',
+      'needs.needs': ['food'],
+    });
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.serverEdit(social, 'data.needs.needs', ['food', 'clothing'], by: blair);
+    h.encounters.repository.saveAnswer(social, 'needs.needs', ['hygiene']);
+    await syncAndRefresh(tester, h);
+    await openAttention(tester);
+    await expectShown(tester, find.text('Food, Clothing'));
+
+    h.server.offline = true;
+    h.sync.store!.freeze(frozen);
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.text(frozen), findsOneWidget);
+    expect(find.text('1 thing waits here until then.'), findsOneWidget);
+    for (final shown in [
+      'Food, Clothing',
+      'Hygiene',
+      'Current needs, in Social needs',
+      'Use my value',
+      'Keep theirs',
+    ]) {
+      expect(find.text(shown, skipOffstage: false), findsNothing, reason: shown);
+    }
+    await expectScreenOk(tester);
+  });
+
   testWidgets('an answer the server refused settles once it is changed: the next save is its fix', (tester) async {
     final h = await signInToChart(tester);
     final visit = startVisit(h, kind: VisitKind.nonMedical);

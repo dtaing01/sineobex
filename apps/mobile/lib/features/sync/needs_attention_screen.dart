@@ -37,7 +37,7 @@ import '../encounters/note_type_list.dart' show noteLocation;
 import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
 import '../patients/sheet_gate.dart' show DialogGate;
-import '../patients/patient_widgets.dart' show confirm, errorText, todayOf;
+import '../patients/patient_widgets.dart' show FrozenNotice, confirm, errorText, todayOf;
 import 'sync_labels.dart';
 
 /// Rejected changes and conflicts, until someone resolves them (module 9 "Rejections", Oct 19
@@ -82,8 +82,19 @@ class NeedsAttentionScreen extends ConsumerWidget {
           }
         }
 
+        // Once the store freezes for a hand-over, nothing of a chart stays here either (D125; the
+        // coordinator's decision on review finding PP-2): the reason in place of every card that
+        // names a record or holds a value, which may say that something waits, never what.
+        final frozen = store?.frozenMessage;
         final cards = <Widget>[
-          for (final e in items)
+          if (frozen != null && items.isNotEmpty) ...[
+            FrozenNotice(frozen),
+            Text(
+              '${plural(items.length, 'thing waits', 'things wait')} here until then.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+          for (final e in frozen == null ? items : const <OutboxEntry>[])
             if (e.state == ChangeState.conflict && store != null && e.entity == entityProblem && e.field == 'status')
               _ProblemConflictCard(
                 entry: e,
@@ -126,7 +137,7 @@ class NeedsAttentionScreen extends ConsumerWidget {
               )
             else
               _RejectionCard(entry: e, services: services, encounters: encounters, paused: snapshot.clock.paused),
-          if (snapshot.held > 0)
+          if (snapshot.held > 0 && frozen == null)
             Text(
               '${plural(snapshot.held, 'later change waits', 'later changes wait')} until these are resolved.',
               style: Theme.of(context).textTheme.bodyLarge,
