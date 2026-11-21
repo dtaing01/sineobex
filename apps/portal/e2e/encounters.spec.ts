@@ -56,14 +56,20 @@ function expectOnlyIds(addresses: string[]) {
     );
 }
 
-/** The text a PDF draws: pdf-lib writes each page as a Flate stream, each string in hex. */
+/**
+ * The text a PDF draws: pdf-lib writes each page as a Flate stream, each string in hex. A stream's
+ * data is read by its /Length, as a PDF reader reads it, not up to the line end before "endstream":
+ * compressed data can end in a carriage return, which that would cut off, and the file read as no
+ * text (about one page in 256; services/api/test/encounters-handoff.test.ts holds the same reader).
+ */
 function pdfText(bytes: Buffer): string {
   const raw = bytes.toString('latin1');
   const out: string[] = [];
-  for (const m of raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+  for (const m of raw.matchAll(/\/Length (\d+)[^>]*>>\s*stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
     let content: string;
     try {
-      content = inflateSync(Buffer.from(m[1]!, 'latin1')).toString('latin1');
+      content = inflateSync(Buffer.from(raw.slice(start, start + Number(m[1])), 'latin1')).toString('latin1');
     } catch {
       continue;
     }

@@ -104,15 +104,19 @@ const NEVER = ['Demo: no lesions seen', 'Demo: 8 mg', 'F11.20', 'opioid'];
 
 /**
  * The text a PDF draws, one string per text operator, in order. pdf-lib writes each page's content
- * as a Flate stream and each string of a standard font as WinAnsi bytes in hex.
+ * as a Flate stream and each string of a standard font as WinAnsi bytes in hex. A stream's data is
+ * read by its /Length, as a PDF reader reads it, not up to the line end before "endstream":
+ * compressed data can end in a carriage return, which that would cut off (about one page in 256;
+ * the portal's test reads the file the same way).
  */
 function pdfText(bytes: Uint8Array): string[] {
   const raw = Buffer.from(bytes).toString('latin1');
   const out: string[] = [];
-  for (const m of raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+  for (const m of raw.matchAll(STREAM)) {
+    const start = m.index! + m[0].length;
     let content: string;
     try {
-      content = inflateSync(Buffer.from(m[1]!, 'latin1')).toString('latin1');
+      content = inflateSync(Buffer.from(raw.slice(start, start + Number(m[1])), 'latin1')).toString('latin1');
     } catch {
       continue;
     }
@@ -120,6 +124,9 @@ function pdfText(bytes: Uint8Array): string[] {
   }
   return out;
 }
+
+/** A stream's dictionary, ending in its /Length or holding it, and the start of its data. */
+const STREAM = /\/Length (\d+)[^>]*>>\s*stream\r?\n/g;
 
 /** WinAnsi is Latin-1 but for 0x80 to 0x9F, where it keeps the typographic marks the copy uses. */
 const WIN_ANSI: Record<number, string> = {
@@ -519,6 +526,25 @@ describe('phase 4: the EMS handoff PDF', () => {
     });
     const text = all.join(' ');
     for (const line of lines) expect(text).toContain(rendered(line));
+  });
+
+  it('reads back a page whose compressed data ends in a carriage return', async () => {
+    // Flate data ends in a checksum whose last byte is the low byte of the sum of the bytes it
+    // unpacks to: about one page in 256 ends in 0x0D, which a reader taking the data up to the line
+    // end before "endstream" cut off, so it read no text (the portal test's failure of Nov 21).
+    // Pages whose text differs only in a few digits keep near one sum, so such a test can pass for
+    // days and fail for hours. Each "!" adds 99 to the sum (hex 21), which steps the last byte
+    // through every value; the first page here that ends in 0x0D is the one read.
+    for (let i = 0; i < 1000; i++) {
+      const bytes = await handoffPdf(input([field('Demo: item', '!'.repeat(i))]));
+      const raw = Buffer.from(bytes).toString('latin1');
+      // pdf-lib writes the page's content stream first.
+      const head = new RegExp(STREAM.source).exec(raw)!;
+      if (raw.charCodeAt(head.index + head[0].length + Number(head[1]) - 1) !== 0x0d) continue;
+      expect(pdfText(bytes).join(' ')).toContain(`Demo: item: ${'!'.repeat(i)}`);
+      return;
+    }
+    throw new Error('No page of the 1000 ends its data in a carriage return.');
   });
 
   it('wraps a long answer and keeps every word of it', async () => {
