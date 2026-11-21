@@ -104,19 +104,19 @@ What the code has at `c307a0b`. Phase 4 is done (`docs/design/phase-4-encounters
 11. **No new permission keys.** Writing presets needs `team.manage_presets`. Flagging a patient needs `patients.edit`. Seeing a sensitive flag needs what a sensitive problem needs.
 
 ## 4. Data model
-Migrations take the next free numbers after phase 4 (0022 and 0023 if nothing lands between). All are plain SQL, additive, one transaction. Both add policies, so both are level X.
+Two migrations, the next free numbers after phase 4's 0022. Both are plain SQL, additive, one transaction. Both add policies, so both are level X.
 
 | File | Adds |
 |---|---|
-| `0022_team_presets.sql` | `team_presets`, `team_preset_versions`, `team_preset_state`; the note type head `note_types` (4.3) |
-| `0023_patient_flag_changes.sql` | `patient_flag_changes`; `patient_of_change` learns the new entity (as phase 4's 0020 does) |
+| `0023_team_presets.sql` | `team_presets`, `team_preset_versions`, `team_preset_events`, `team_preset_state` (with a row for every existing team); the note type head `note_types` (4.3), filled from the versions present |
+| `0024_patient_flag_changes.sql` | `patient_flag_changes` (4.5); `patient_of_change` replaced whole, with 0020's body plus a `patient_flag_change` arm; `user_notices.patient_id`; the team index trigger on `patient_flag_changes`; the column comment on `patients.priority_flag_key` |
 
 ### 4.1 `team_presets` (head; the API may update, never delete)
 | Column | Type | Meaning and constraint |
 |---|---|---|
 | `team_id` | uuid not null | FK `teams`. `unique (team_id, id)` so later tables can point here with a composite key |
 | `id` | uuid primary key | Made by the server |
-| `kind` | text not null | One of `order_category`, `item`, `bundle`, `flag`, `field_supply_map`, `condition_supply_map`, `bag`, `settings`. Never changes. One `settings` row per team: `unique (team_id) where kind = 'settings'` |
+| `kind` | text not null | One of `order_category`, `item`, `bundle`, `flag`, `field_supply_map`, `condition_supply_map`, `bag`, `settings`; a later phase widens the check (phase 10 adds `billing_code_map`). Never changes. One `settings` row per team: `unique (team_id) where kind = 'settings'` |
 | `name` | text not null | Copy of `body.name`, 1 to 80 characters. Unique per `(team_id, kind, lower(name))` where `state = 'active'` |
 | `state` | text not null | `active` or `archived` |
 | `current_version` | integer not null | At least 1; equals the newest row in `team_preset_versions` |
@@ -128,7 +128,9 @@ Migrations take the next free numbers after phase 4 (0022 and 0023 if nothing la
 | `created_by`, `updated_by` | uuid | Null for the platform installer |
 | `created_at`, `updated_at` | timestamptz not null | Server time |
 
-### 4.2 `team_preset_versions` (append-only) and `team_preset_state`
+### 4.2 `team_preset_versions`, `team_preset_events` (both append-only) and `team_preset_state`
+`team_preset_versions`:
+
 | Column | Type | Meaning and constraint |
 |---|---|---|
 | `team_id`, `preset_id` | uuid not null | Composite FK to `team_presets (team_id, id)` |
@@ -138,39 +140,130 @@ Migrations take the next free numbers after phase 4 (0022 and 0023 if nothing la
 | `created_by` | uuid | Null when `source = 'platform'` |
 | `created_at` | timestamptz not null | Server time |
 
-`team_preset_state`: `team_id uuid primary key`, `revision bigint not null default 0`. Every preset write adds 1 and stamps the head row, after `lockTeamWrites` (the team's write lock, D32), so revisions are in order with no gaps. Security block for all three: the team policy of `0004_sync.sql:185-195`; `revoke delete` on all three; `revoke update` on `team_preset_versions`.
+`team_preset_events`, one row for every act on a preset or a note type, so a reason is kept for each (`main.md:930`, `:951`, `:955`) and the version history can show it:
+
+| Column | Type | Meaning and constraint |
+|---|---|---|
+| `team_id`, `id` | uuid not null | Primary key `id`, made by the server |
+| `preset_id`, `note_type_key` | uuid, text | Exactly one is set: the preset (composite FK to `team_presets`) or the note type (composite FK to `note_types`) |
+| `act` | text not null | `created`, `updated`, `archived`, `restored`, `update_taken`, `reordered`, `installed`, `platform_updated` |
+| `version` | integer not null | The version the act made, or stood on |
+| `reason` | text | Trimmed, 3 to 300 characters. Null exactly when `created_by` is null (the platform installer's acts). Admin text: never in audit details or logs |
+| `created_by` | uuid | Null for the installer |
+| `created_at` | timestamptz not null | Server time |
+
+`team_preset_state`: `team_id uuid primary key` (FK `teams`), `revision bigint not null default 0`, `epoch uuid not null default gen_random_uuid()`. 0023 inserts a row for every existing team; a team made later gets its row at its first write.
+
+**One function takes a revision**: `takeRevision(sql, teamId)` in `packages/presets/src/revision.ts`. It takes the team's write lock with the exact statement of `lockTeamWrites` (the package cannot import the API, section 2), then `insert … values (teamId, 1) on conflict (team_id) do update set revision = team_preset_state.revision + 1 returning revision`. Every writer calls it once per transaction and stamps every head it changed with the answer: the admin routes, the note type publish, both installers and the seed. None writes the revision itself. A route also takes `lockTeamWrites` as its first statement, for one lock order (D32); the second take is free, since advisory locks are re-entrant. With the lock held to commit, revisions commit in order with no gaps, which is what the phone's pull relies on (6.1). `db/test/preset-revision.test.ts` holds both statements to `append_audit`'s key.
+
+`epoch` is renewed after a database restore (a step of the restore procedure, which phase 12 writes; until then the step is `update sineobex.team_preset_state set epoch = gen_random_uuid()`), so a phone whose copy came from before the restore replaces it (6.1).
+
+Security block for all four: the team policy of `0004_sync.sql:185-195`; `revoke delete` on all four; `revoke update` and the `forbid_mutation` trigger on `team_preset_versions` and `team_preset_events`.
 
 ### 4.3 Note types
-Phase 4 owns `note_type_versions` (forms 3.1) and this phase changes none of its columns. A team's edit is a new row there with `origin = 'team'`, the next `version`, and `hash = sha256Hex(canonicalJson(definition))`. `0022_team_presets.sql` adds the head phase 4 left to this phase: `note_types (team_id, key, title, state, current_version, platform_latest, customized, revision, updated_by, updated_at)`, primary key `(team_id, key)`, filled from the existing versions. `title` is a copy of the definition's `title`. `platform_latest` is compared with the `preset_version` of the newest `preset` row. The head shares `team_preset_state.revision`. A key the team makes is `t_` and 12 hex characters, made by the server; it fits phase 4's key pattern.
+Phase 4 owns `note_type_versions` (forms 3.1) and this phase changes none of its columns. A team's edit, and a team's copy, is a new row with `origin = 'team'` and `preset_version` null. A platform version installed or taken is a row with `origin = 'preset'` and `preset_version` the platform's number (5.2).
+
+**Every stored definition names its own row** (D79, review finding NOT-8: `definitionFor` refuses any other, and the phone's store refuses a definition that names another key or version). Before the hash is taken, the definition's `key` and `version` are set to the row's: an edit sets `version` to the next version; a copy sets `key` to the new key and `version` to 1; a platform version installed or taken as the team's version N has its `version` rewritten to N. Where N is not the platform's own number, the hash is not the bundled preset's, so the phone downloads that definition rather than reading the bundle (`definition_store.dart` reads the bundle by hash). `hash = sha256Hex(canonicalJson(definition))`. Every row any path of this phase writes is read back through `definitionFor` in its tests.
+
+`0023_team_presets.sql` adds the head phase 4 left to this phase: `note_types (team_id, key, title, state, current_version, platform_latest, customized, revision, updated_by, updated_at)`, primary key `(team_id, key)`. 0023 fills it from the versions present: `title` from the newest definition, `platform_latest` from the newest `preset` row's `preset_version`, `customized` false. From then on the note type installer upserts the head of every key it installs or updates. `title` is a copy of the definition's `title`. The head shares `team_preset_state.revision`; its acts are rows of `team_preset_events` with `note_type_key`. A key the team makes is `t_` and 12 hex characters, made by the server; it fits 0017's key pattern and the contract's.
 
 ### 4.4 Body shapes (zod schemas in `packages/presets/src/schemas.ts`; `id` fields are preset ids of the same team)
 | Kind | Body | Fixed after creation |
 |---|---|---|
 | `order_category` | `{name, behaviour: 'supply' \| 'medication' \| 'lab', sort: int}` | `behaviour` |
-| `item` | `{name, categoryId, unit: text 1-20, medical: bool, captureLot: bool, result: null \| {type:'choice', options: text[2..12]} \| {type:'number', unit: text}}` | `unit`, `result.type` |
-| `bundle` | `{name, medical: bool, lines: [{itemId, qty: int 1-99, core: bool}] (1-40, no item twice)}` | none |
-| `flag` | `{name, tier: 'primary' \| 'secondary', criteria: text 0-500, color: one of 8 palette names, rank: int, sensitive: bool}` | `tier` |
-| `field_supply_map` | `{name, noteTypeKey, path, when: {equals: value} \| {includes: optionCode} \| {answered: true}, lines: [{itemId, qty: int 1-99 \| {fromPath: path}}] (1-10)}`. A path is written without an entry part, as `mapsTo` is (forms 2.2) | `noteTypeKey`, `path` |
-| `condition_supply_map` | `{name, codes: text[1..20] (ICD-10-CM, the format of `0010_problems.sql:14`), lines: [{itemId, qtyPerPatient: int 1-99}] (1-10)}` | none |
+| `item` | `{name, categoryId, unit: text 1-20, medical: bool, captureLot: bool, result: null \| {type:'choice', options: text[2..12]} \| {type:'number', unit: text}}` | `unit`, `result.type`. So `categoryId` may change, but never into or out of a `lab` category |
+| `bundle` | `{name, medical: bool, prompt: text 0-300 (default ''), lines: [{itemId, qty: int 1-99, core: bool}] (1-40, no item twice)}`. `prompt` is asked before the bundle is applied (`main.md:445`); phase 6 asks it. Empty means none | none |
+| `flag` | `{name, tier: 'primary' \| 'secondary', criteria: text 0-500 (default ''), color: one of 8 palette names, rank: int, sensitive: bool}`. Each palette entry has a plain colour name, and a pill reads "Red · High": the colour's name, then the flag's (`main.md:945`) | `tier`, `sensitive` |
+| `field_supply_map` | `{name, noteTypeKey, path?, when?, lines: [{itemId, qty: int 1-99 \| {fromPath: path}}] (1-10)}`. `path` and `when` are both there or both left out; left out, the map fires once for every note of the type (`main.md:188`, `:470`). `when` is `{equals: value} \| {includes: optionCode} \| {answered: true}`. A path is written without an entry part, as `mapsTo` is (forms 2.2) | `noteTypeKey`, `path` |
+| `condition_supply_map` | `{name, codes: text[1..20] (ICD-10-CM, the format of 0010_problems.sql:14), lines: [{itemId, qtyPerPatient: int 1-99}] (1-10)}` | none |
 | `bag` | `{name, minimums: [{itemId, min: int 1-999}] (0-200, no item twice)}` | none |
-| `settings` | `{bagMinimumsOn: bool, newBagMinimums: [{itemId, min}], problemCheckDays: int 7-365}` | none |
+| `settings` | `{name: 'Team settings', bagMinimumsOn: bool, newBagMinimums: [{itemId, min}] (0-200), problemCheckDays: int 7-365}` | none |
 
-Rules the schema cannot hold are in `validatePreset` (5.3): an item's category exists; `result` is set exactly when the category's behaviour is `lab`; `medical` is true when the behaviour is `medication` or `lab`; a bundle holding a `medication` item is `medical` (`main.md:447`); a `primary` flag is never `sensitive`; a mapping's `path` is a `choice`, `number` or `flag` field of the note type's current version (`fieldAt`, forms 7.1), and its option code is one of that field's.
+**The settings preset is the one store of this phase's team settings**: versioned, audited and sent to phones like every preset. `teams.settings` (`0002_identity_access.sql:16`) stays unused: nothing writes or reads it (section 2), and it is neither versioned, nor audited change by change, nor sent to phones. The other team settings the PRD names (section 1's Out table) join this body in the phase that builds each, optional with a default, so an older phone and an older body read the same (12.1, risk 3).
 
-### 4.5 `patient_flag_changes` (append-only; a synced entity)
+Rules the schema cannot hold are in `validatePreset` (5.3):
+
+- An item's category exists. `result` is set exactly when the category's behaviour is `lab`. `medical` is true when the behaviour is `medication` or `lab`, so the switch is free only in a `supply` category (section 11, row 15).
+- A bundle holding a `medication` item is `medical` (`main.md:447`).
+- A `primary` flag is never `sensitive`.
+- A field map's path names, in the note type's current version, what `fieldAt` (forms 7.1) points at as a field or as a grid cell (`<grid>.<row code>`, or `<grid>.<row code>.<child>` for a group cell), of kind `choice`, `number` or `flag`; with `{answered: true}`, also `text`, `date` or `duration`. A row code of a grid whose rows are picked is an option of the picking field. `equals` and `includes` name a code the field holds. `fromPath` names a number in the same entry, or the same row.
+- **`sensitive_path`**: a field map is refused when its path, or for a map with no path its note type, lies anywhere `visibleAnswers` may take out for some reader: a section marked `sensitiveExam` or `treatmentRecord`; an option, a row or a region marked `sensitiveExam`; a section that holds a diagnosis (a `problem` field), as forms 2.2's condition rule reads it; or a note type whose `sensitivity` is `sensitive`. A supply line is read by people with `inventory.view` and `billing.view_codes`, and would tell them what was found (D77's reason). The PRD's naloxone example is in the harm reduction note type, which is sensitive, so it cannot be mapped (12.2).
+- A condition map may name codes on phase 3's sensitive list. Phases 6 and 7 count such a code only for a reader who may see sensitive problems.
+- Every id names a preset of the same team and of the right kind; on create, edit and restore, none is archived (`reference_archived`). One `settings` row.
+
+### 4.5 `patient_flag_changes` (a synced entity: created once, marked entered in error at most once)
 | Column | Type | Meaning and constraint |
 |---|---|---|
-| `id` | uuid primary key | Made on the phone, or by the API for a portal change |
+| `id` | uuid primary key | Made on the phone, or by the API for a portal change. `unique (team_id, id)` |
 | `team_id`, `patient_id` | uuid not null | Composite FK to `patients (team_id, id)`. Listed in `CHART_TABLES` as `group`, so a merged chart shows both sides' flags (D27) |
-| `flag_id` | uuid not null | Composite FK to `team_presets (team_id, id)`. The API checks `kind = 'flag'` |
+| `flag_id` | uuid not null | Composite FK to `team_presets (team_id, id)`. The rule checks `kind = 'flag'` before the insert |
 | `action` | text not null | `set` or `clear` |
-| `reason` | text not null | 1 to 500 characters. Patient detail: never in audit details, logs or notices |
-| `effective_at` | timestamptz not null | Clock-corrected device time, as `encounters.started_at` |
+| `reason` | text not null | Trimmed, 1 to 500 code points, counted the same way in TypeScript and Dart (`sync-values.json`). Patient detail: never in audit details, logs or notices |
+| `effective_at` | timestamptz not null | The change's time, never later than when the server received it: the earlier of `when(c)` (the corrected time when the clock is verified, else the device time, `records.ts:670`) and `receivedAtOf` (a held change's hold time). Phase 4's rule for last seen (D90). Set by the server |
 | `device_time`, `clock_verified` | timestamptz, boolean | As on `encounters` (`0004_sync.sql:33-52`) |
-| `author_user_id`, `created_device_id` | uuid | Who and from where; device null for the portal |
-| `created_at` | timestamptz not null | Server receipt |
+| `author_user_id`, `created_device_id`, `change_id` | uuid | Who, from which phone (null for the portal), and the sync change that carried it (null for the portal) |
+| `approved_by` | uuid | The Program Admin who accepted it from review, as on `note_signoffs` |
+| `status` | text not null default `active` | `active` or `entered_in_error` |
+| `error_reason`, `error_by`, `error_at` | text, uuid, timestamptz | Trimmed, 3 to 300 characters; all three set exactly when `status = 'entered_in_error'` (the check of `0021_referrals.sql:33-34`) |
+| `version`, `field_versions`, `field_meta` | | The bookkeeping of a record with one field that can be set, as on `referrals` |
+| `received_at`, `updated_at` | timestamptz not null | Server receipt; the touch trigger |
 
-Index `(team_id, patient_id, effective_at, id)`. Security block: the team policy; `revoke update, delete`. `patients.priority_flag_key` stays unused (12.2).
+Index `(team_id, patient_id, effective_at, id)`. Security block: the team policy; `revoke delete`; a guard trigger that refuses every update but the one that marks the change entered in error, once, with its bookkeeping (the `set_once` rule of 6.2, held in the database too).
+
+0024 also: replaces `patient_of_change` whole, 0020's body plus an arm for `patient_flag_change` (the value's `patientId`); adds `user_notices.patient_id uuid` with a composite FK `(team_id, patient_id)` to `patients`, as 0022 added `note_id`, so a notice can name the patient a held change was about (6.2); adds the statement-level triggers after insert and update on `patient_flag_changes` that call `bump_team_index` (0009), since the team index carries flags (6.1); and sets `comment on column sineobex.patients.priority_flag_key` to say it is unused because a patient's flags are worked out from `patient_flag_changes` (12.2). 0009's line comment stays as merged.
+
+### 4.6 Platform data (`packages/presets/data/platform.json`)
+Each entry is `{originKey, platformVersion, kind, body}`, and a body names other entries by `originKey`. The contents come from the PRD's own words, the field specification's among them (the released definitions' labels, `main.md:406`), and nothing is invented beyond them. Every entry below is listed for Brooke and Mercy (section 11, rows 5, 15, 31 and 32).
+
+- **Categories**: OTC and Rx (`medication`), Labs (`lab`), Supplies (`supply`) (`main.md:104`; section 11, row 3).
+- **Flags**: primary Red · High, Yellow · Medium and Green · Low, ranked in that order, highest risk first (`main.md:317`, `:945`). Each carries as its criteria text the six suggested starting criteria of `main.md:319`, in the PRD's words, headed "Suggested starting criteria. Rewrite them for your team and say which put a patient at this level:", since the PRD does not say which criterion goes with which level. Secondary: Frost risk and Dehydration risk (`main.md:316`, `:318`) and Pregnancy, sensitive (`main.md:121`). No flag about substance use until counsel answers (`main.md:435`).
+- **Settings**: bag minimums off, no template lines, problem check after 90 days (`main.md:476`, `:477`).
+- **Items**:
+
+| Item | Category | Counted in | From |
+|---|---|---|---|
+| Pregnancy test | Labs | test; result a choice of Positive or Negative | `main.md:104`, `:417` |
+| Glucose test | Labs | test; result a number in mg/dL | `main.md:104` |
+| Doxycycline 100 mg | Rx | tablet | `main.md:127` |
+| Acetaminophen | OTC | tablet | `main.md:443` |
+| Hydrocortisone cream | OTC | each | `main.md:476` |
+| Naloxone kit | OTC | kit | `main.md:428`, `:442`; section 11, row 15 |
+| Electrolyte packet | Supplies | packet | `main.md:127` |
+| Gauze, Bandage | Supplies | each | `main.md:427`, `:437` |
+| Xeroform, Mepilex, ABD, Hydrocolloid, Aquacel, Compression: the other options of `wound_care`'s `wound.treatment.dressing`, by label | Supplies | each | `main.md:427` ("the dressing type chosen") |
+| Flu, COVID, Tdap, Hep A, Hep B, Pneumococcal, HPV and Shingles vaccine: the rows of `general_primary_care`'s `preventive.vaccine_status` | Rx, lot and expiry captured | dose | `main.md:426` |
+| Food kit, Hygiene kit | Supplies | kit | `main.md:429`, `:446` |
+| Socks, Handwarmers | Supplies | each | `quick_encounter`'s `social.support` |
+| A kit named after each bundle below with no contents in the PRD | Supplies; OTC for the Allergy and Cold and flu kits, which hold a medication (`main.md:447`) | kit | `main.md:439`, `:442` |
+
+- **Bundles**, the 18 of `main.md:439`. Every line is core but the antibiotic in Basic wound care, which is optional, so no antibiotic is pre-checked:
+
+| Bundle | Tag | Lines | From |
+|---|---|---|---|
+| Basic wound care | Medical | Gauze, Bandage, Doxycycline 100 mg (optional) | `main.md:437` ("gauze, bandages and antibiotics") |
+| General pain | Medical | Acetaminophen | `main.md:443`, `:447` |
+| Overdose response | Medical | Naloxone kit | `main.md:428` |
+| Summer/dehydration | Non-Medical | Electrolyte packet; prompt "Check for signs of heat illness before giving this bundle." | `main.md:127`, `:445` |
+| Winter/frostbite | Non-Medical | Socks, Handwarmers; prompt "Check for frostbite before giving this bundle." | `main.md:445` |
+| Cold/flu | Medical | Cold and flu kit; prompt "Ask about respiratory symptoms before giving this bundle." | `main.md:445`, `:447` |
+| Allergy | Medical | Allergy kit | `main.md:447` |
+| Hygiene | Non-Medical | Hygiene kit | `main.md:446`, `:447` |
+| Menstrual care, Foot protection | Non-Medical | the kit named after it | `main.md:447` |
+| Safe smoking, Safer crack use, Injection | Non-Medical | the kit named after it | `IMPLEMENTATION_PLAN.md:285` |
+| Advanced wound care, Abscess/drainage, Sexual health, Foot fungus, Dry skin/chafing | Medical | the kit named after it | `main.md:439` |
+
+- **Mappings**, each on a field of a released definition that records something given, the PRD's own examples first (`main.md:424-431`):
+
+| Map | Note type and path | When | Lines | From |
+|---|---|---|---|---|
+| A vaccine given, one map per row | `general_primary_care`, `preventive.vaccine_status.<row>` | equals `given_today` | that row's vaccine, 1 | `main.md:426` |
+| A dressing applied | `wound_care`, `wound.treatment.dressing`; `quick_encounter`, `wound.dressing` | answered | Gauze 1, Bandage 1 | `main.md:427` |
+| The dressing type chosen, one map per option but Gauze and Other | the same two paths | includes the option | its item, 1 | `main.md:427` |
+| Food or hygiene given | `outreach`, `outreach.support` (`food`, `hygiene`); `quick_encounter`, `social.support` (`food`, `hygiene_kit`) | includes the option | Food kit 1, or Hygiene kit 1 | `main.md:429`, `:431`: support given is the action field, not the needs asked about |
+| Socks or handwarmers given | `quick_encounter`, `social.support` | includes `socks`, or `handwarmers` | Socks 1, or Handwarmers 1 | the field records what was given |
+| Rash or dermatitis (a condition map) | codes R21 and L30.9 | | Hydrocortisone cream, 1 per patient | `main.md:476` |
+
+Not shipped: naloxone accepted (harm reduction is a sensitive note type, so `sensitive_path`); "Social needs tapped" on `social_needs`' `needs.needs`, which asks what is needed and gives nothing (`main.md:431`); a map for every wound care note, "wound care → 1 bandage" (`main.md:470`), which would count the bandage twice beside the dressing map.
 
 ## 5. Rules
 ### 5.1 States of a preset and of a note type
