@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 import { definitionModel, effectiveAnswers, type ResolvedNoteType } from '@sineobex/forms';
-import type { TeamScope } from '../auth/context.ts';
+import type { AuditFn, TeamScope } from '../auth/context.ts';
 import {
   CAPABILITIES,
   CREDENTIALS,
@@ -9,7 +9,7 @@ import {
   type Permission,
 } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { conflict, invalid, notFound } from '../lib/errors.ts';
+import { conflict, forbidden, invalid, notFound, type ApiError } from '../lib/errors.ts';
 import { Credential as CredentialSchema, Reason, Uuid } from '../routes/schemas.ts';
 import { loadEncounter } from '../sync/entities/encounter.ts';
 import { actingAuthor, noteRules } from '../sync/entities/note.ts';
@@ -22,6 +22,7 @@ import {
   sameValue,
   type StoredRecord,
 } from '../sync/records.ts';
+import { callerNow } from './cosign.ts';
 import { medicalHidden, noteAsRead, seenBy, type NoteRead } from './read.ts';
 import { mayAssign, type AssignRefusal } from './rules.ts';
 
@@ -239,51 +240,88 @@ function assignDecision(a: AssignedNote, assignee: Member | undefined) {
  * row, the note's assigned_user_id, one note.assigned event whose details name the two people and
  * not the reason, and a notice with no text to the assignee.
  */
-export function assignNote(
+export async function assignNote(
   scope: TeamScope,
   noteId: string,
   input: AssignInputValue,
+  route: string,
 ): Promise<NoteAssignedValue> {
-  return scope.tx(async (tx, audit) => {
-    const teamId = scope.team.teamId;
-    await lockTeamWrites(tx, teamId);
-    const loaded = await noteRules.load(tx, noteId, true);
-    // A note the caller may not read is not found, as its assignees route answers, so no answer
-    // tells its state (6.4 rule 5; review finding PAC-3).
-    const read = loaded?.teamId === teamId ? await noteAsRead(tx, scope, loaded) : null;
-    if (!read) throw notFound('note');
-    const { note } = read;
-    const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
-    if (!visit) throw notFound('note');
+  const outcome = await scope.tx(
+    async (tx, audit): Promise<{ answer: NoteAssignedValue } | { refused: ApiError }> => {
+      const teamId = scope.team.teamId;
+      await lockTeamWrites(tx, teamId);
+      // The caller as they are once the lock is theirs, as co-sign and attest read them (LAC-4; review
+      // finding PA-3): the assignment is asked of, and recorded as, who they are then.
+      const now = await callerNow(tx, scope);
+      if (!now) {
+        await audit({ action: 'access.denied', details: { reason: 'not_a_member', route } });
+        return { refused: forbidden('You are not a member of this team.', 'not_a_member') };
+      }
+      if (!now.can('team.manage_users')) {
+        await audit({ action: 'access.denied', details: { permission: 'team.manage_users', route } });
+        return { refused: forbidden() };
+      }
+      const loaded = await noteRules.load(tx, noteId, true);
+      // A note the caller may not read is not found, as its assignees route answers, so no answer
+      // tells its state (6.4 rule 5; review finding PAC-3); asking for it is logged (D98 as amended).
+      const read = loaded?.teamId === teamId ? await noteAsRead(tx, now, loaded) : null;
+      if (!read) {
+        if (loaded?.teamId === teamId) await cannotRead(tx, audit, loaded, route);
+        return { refused: notFound('note') };
+      }
+      const { note } = read;
+      const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
+      if (!visit) throw notFound('note');
 
-    const assigned = await assignedNote(tx, visit, read);
-    const { fromUserId } = assigned;
-    const decision = assignDecision(assigned, await memberOf(tx, teamId, input.toUserId));
-    if (decision !== 'ok') {
-      const { refuse } = decision;
-      throw refuse === 'author_active'
-        ? conflict(refuse, MESSAGES[refuse])
-        : invalid(refuse, MESSAGES[refuse]);
-    }
+      const assigned = await assignedNote(tx, visit, read);
+      const { fromUserId } = assigned;
+      const decision = assignDecision(assigned, await memberOf(tx, teamId, input.toUserId));
+      if (decision !== 'ok') {
+        const { refuse } = decision;
+        throw refuse === 'author_active'
+          ? conflict(refuse, MESSAGES[refuse])
+          : invalid(refuse, MESSAGES[refuse]);
+      }
 
-    const [assignment] = await tx<{ id: string }[]>`
+      const [assignment] = await tx<{ id: string }[]>`
       insert into sineobex.note_assignments (team_id, note_id, from_user_id, to_user_id, assigned_by, reason)
       values (${teamId}, ${note.id}, ${fromUserId}, ${input.toUserId}, ${scope.principal.userId}, ${input.reason})
       returning id`;
-    await tx`
+      await tx`
       update sineobex.encounter_notes set assigned_user_id = ${input.toUserId}
       where team_id = ${teamId} and id = ${note.id}`;
-    await audit({
-      action: 'note.assigned',
-      entity: 'encounter_note',
-      entityId: note.id,
-      patientId: visit.patientId,
-      details: { fromUserId, toUserId: input.toUserId },
-    });
-    await tx`
+      await audit({
+        action: 'note.assigned',
+        entity: 'encounter_note',
+        entityId: note.id,
+        patientId: visit.patientId,
+        details: { fromUserId, toUserId: input.toUserId },
+      });
+      await tx`
       insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
       values (${teamId}, ${input.toUserId}, 'note_assigned', 'encounter_note', ${note.id})`;
-    return { assignmentId: assignment!.id, noteId: note.id, fromUserId, toUserId: input.toUserId };
+      return {
+        answer: { assignmentId: assignment!.id, noteId: note.id, fromUserId, toUserId: input.toUserId },
+      };
+    },
+  );
+  if ('answer' in outcome) return outcome.answer;
+  throw outcome.refused;
+}
+
+/**
+ * A request naming a note the caller may not read at all is a refusal about the caller (the
+ * coordinator's decision on D98 in the phase's review): access.denied with reason cannot_read, on
+ * the note and its patient, in the request's transaction. The answer stays 404, telling nothing.
+ */
+async function cannotRead(tx: Tx, audit: AuditFn, note: StoredRecord, route: string) {
+  const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
+  await audit({
+    action: 'access.denied',
+    entity: 'encounter_note',
+    entityId: note.id,
+    patientId: visit?.patientId ?? null,
+    details: { reason: 'cannot_read', route, noteIds: [note.id] },
   });
 }
 
@@ -297,41 +335,52 @@ export function assignNote(
  * Neither is logged (lifecycle 10.1). The list is logged as one note.assignees_viewed on the note,
  * with its patient and how many it names: names are staff, and no event holds one.
  */
-export function noteAssignees(scope: TeamScope, noteId: string): Promise<NoteAssigneesValue> {
-  return scope.tx(async (tx, audit) => {
-    const teamId = scope.team.teamId;
-    const loaded = await noteRules.load(tx, noteId, false);
-    const read = loaded?.teamId === teamId ? await noteAsRead(tx, scope, loaded) : null;
-    if (!read) throw notFound('note');
-    const { note } = read;
-    const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
-    if (!visit) throw notFound('note');
-    const assigned = await assignedNote(tx, visit, read);
-    if (assigned.actingAuthorActive) throw conflict('author_active', MESSAGES.author_active);
+export async function noteAssignees(
+  scope: TeamScope,
+  noteId: string,
+  route: string,
+): Promise<NoteAssigneesValue> {
+  const outcome = await scope.tx(
+    async (tx, audit): Promise<{ answer: NoteAssigneesValue } | { refused: ApiError }> => {
+      const teamId = scope.team.teamId;
+      const loaded = await noteRules.load(tx, noteId, false);
+      const read = loaded?.teamId === teamId ? await noteAsRead(tx, scope, loaded) : null;
+      if (!read) {
+        if (loaded?.teamId === teamId) await cannotRead(tx, audit, loaded, route);
+        return { refused: notFound('note') };
+      }
+      const { note } = read;
+      const visit = await loadEncounter(tx, note.attributes.encounterId as string, false);
+      if (!visit) throw notFound('note');
+      const assigned = await assignedNote(tx, visit, read);
+      if (assigned.actingAuthorActive) throw conflict('author_active', MESSAGES.author_active);
 
-    const active = await tx<(Member & { userId: string; displayName: string })[]>`
+      const active = await tx<(Member & { userId: string; displayName: string })[]>`
       select m.user_id, u.display_name, m.status, m.credential, r.permissions
       from sineobex.team_memberships m
       join sineobex.roles r on r.id = m.role_id
       join sineobex.users u on u.id = m.user_id
       where m.team_id = ${teamId} and m.status = 'active'
       order by u.display_name, m.user_id`;
-    const assignees: NoteAssigneesValue['assignees'] = [];
-    for (const member of active) {
-      if (assignDecision(assigned, member) !== 'ok') continue;
-      assignees.push({
-        userId: member.userId,
-        displayName: member.displayName,
-        credential: credentialOf(member) ?? 'none',
+      const assignees: NoteAssigneesValue['assignees'] = [];
+      for (const member of active) {
+        if (assignDecision(assigned, member) !== 'ok') continue;
+        assignees.push({
+          userId: member.userId,
+          displayName: member.displayName,
+          credential: credentialOf(member) ?? 'none',
+        });
+      }
+      await audit({
+        action: 'note.assignees_viewed',
+        entity: 'encounter_note',
+        entityId: note.id,
+        patientId: visit.patientId,
+        details: { resultCount: assignees.length },
       });
-    }
-    await audit({
-      action: 'note.assignees_viewed',
-      entity: 'encounter_note',
-      entityId: note.id,
-      patientId: visit.patientId,
-      details: { resultCount: assignees.length },
-    });
-    return { assignees };
-  });
+      return { answer: { assignees } };
+    },
+  );
+  if ('answer' in outcome) return outcome.answer;
+  throw outcome.refused;
 }

@@ -214,7 +214,7 @@ describe('phase 4: assign a note', () => {
       expect((await assign(inSocial.noteId, w.eli.id)).status).toBe(200);
     });
 
-    it('a note the caller may not read is 404, as its assignees route answers, whatever its state, and nothing is written or logged', async () => {
+    it('a note the caller may not read is 404, as its assignees route answers, whatever its state; nothing is written and asking is logged as cannot_read', async () => {
       // Review finding PAC-3: the act took a note its picker hid as not found, and answered 409 about
       // the state of another. A role that manages the team without reading a Medical note.
       const role = await roleWith(h, w.t, 'Roster keeper', ['team.manage_users']);
@@ -230,7 +230,19 @@ describe('phase 4: assign a note', () => {
         expect((r.body as Json).error?.code).toBe('not_found');
       }
       await unassigned(v);
-      expect(await eventsAfter(h, mark)).toEqual([]);
+      // A refusal about the caller, on the note and its patient (the coordinator's decision on D98 in
+      // the phase's review), for the list and the act alike; the answer stays 404.
+      expect(await eventsAfter(h, mark)).toEqual(
+        [v.note, v.note, active.note, active.note].map((note) =>
+          expect.objectContaining({
+            action: 'access.denied',
+            entity: 'encounter_note',
+            entityId: note.noteId,
+            patientId: w.patientId,
+            details: expect.objectContaining({ reason: 'cannot_read', noteIds: [note.noteId] }),
+          }),
+        ),
+      );
     });
 
     it('a note the team does not have is 404; a reason too short or too long is 422', async () => {

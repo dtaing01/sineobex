@@ -244,7 +244,7 @@ describe('phase 4: co-sign', () => {
       expect((await noteRow(h, draft.note.noteId)).status).toBe('draft');
     });
 
-    it('a note the caller may not read at all does not wait for them, whatever its state', async () => {
+    it('a note the caller may not read at all does not wait for them, whatever its state, and asking is logged as cannot_read', async () => {
       // Review finding LAC-5: Eli charts and holds no patients.view, so he reads no Medical note.
       // A 403 for a waiting note and a 409 for a signed one would tell him which is which.
       const waits = await waitingForCosign(w);
@@ -260,7 +260,19 @@ describe('phase 4: co-sign', () => {
         [409, { code: 'not_waiting', noteIds: [waits.note.noteId] }],
         [409, { code: 'not_waiting', noteIds: [signed.note.noteId] }],
       ]);
-      expect(await eventsAfter(h, mark)).toEqual([]);
+      // A refusal about the caller, logged as LAC-7 logs one (the coordinator's decision on D98 in
+      // the phase's review); the answer tells nothing of the note.
+      expect(await eventsAfter(h, mark)).toEqual(
+        [waits, signed].map((v) =>
+          expect.objectContaining({
+            action: 'access.denied',
+            entity: 'encounter',
+            entityId: v.visit.encounterId,
+            patientId: w.patientId,
+            details: expect.objectContaining({ reason: 'cannot_read', noteIds: [v.note.noteId] }),
+          }),
+        ),
+      );
       await unchanged(waits.flags, waits.note);
     });
 

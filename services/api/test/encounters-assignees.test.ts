@@ -241,7 +241,7 @@ describe('phase 4: who may be assigned a note', () => {
     expect((await eventsAfter(h, mark)).filter((e) => e.action === 'note.assignees_viewed')).toEqual([]);
   });
 
-  it('a note the team does not have, or the caller may not read, is 404; an ID that is not one 422; none logged', async () => {
+  it('a note the team does not have, or the caller may not read, is 404; an ID that is not one 422; only the unreadable note is logged, as cannot_read', async () => {
     const v = await departed('resident');
     // An admin role that reads no Medical note (no patients.view).
     const role = await roleWith(h, w.t, 'Roster only', ['team.manage_users']);
@@ -250,7 +250,16 @@ describe('phase 4: who may be assigned a note', () => {
     expect((await assignees(v.note.noteId, ros.token)).status).toBe(404);
     expect((await assignees(randomUUID())).status).toBe(404);
     expect((await assignees('not-a-note')).status).toBe(422);
-    expect(await eventsAfter(h, mark)).toEqual([]);
+    // A note of the team the caller may not read is a refusal about them (the coordinator's decision
+    // on D98 in the phase's review); a note the team does not have stays unlogged.
+    expect(await eventsAfter(h, mark)).toEqual([
+      expect.objectContaining({
+        action: 'access.denied',
+        entity: 'encounter_note',
+        entityId: v.note.noteId,
+        details: expect.objectContaining({ reason: 'cannot_read', noteIds: [v.note.noteId] }),
+      }),
+    ]);
   });
 
   it('is logged as one view of the note, with its patient and how many people it lists, and no name', async () => {

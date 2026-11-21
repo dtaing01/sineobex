@@ -142,7 +142,7 @@ const CALLERS = new Set<ActRefusal>([
  * the lock first has committed since (lifecycle 3.5: moving down removes permissions at once; review
  * finding LAC-4). Null when they are no longer an active member.
  */
-async function callerNow(tx: Tx, scope: TeamScope): Promise<TeamScope | null> {
+export async function callerNow(tx: Tx, scope: TeamScope): Promise<TeamScope | null> {
   const [row] = await tx<
     {
       status: string;
@@ -219,6 +219,8 @@ export async function secondAct<W>(
     const refused = new Map<ActRefusal, string[]>();
     const refuse = (reason: ActRefusal, noteId: string) =>
       refused.set(reason, [...(refused.get(reason) ?? []), noteId]);
+    // The visit's notes named that the caller may not read at all (D98 as amended).
+    const unreadable: string[] = [];
     const acts: { n: ActNote; effect: W; contentHash: string }[] = [];
     for (const { noteId, contentHash } of input.notes) {
       const note = await noteRules.load(tx, noteId, true);
@@ -231,6 +233,7 @@ export async function secondAct<W>(
       // tell its state (6.4 rule 5, as the sync holds such a change; review finding LAC-5).
       if (!n.read) {
         refuse('not_waiting', noteId);
+        unreadable.push(noteId);
         continue;
       }
       const effect = act.effect(now, n, (await heldHash(visit, n)) === contentHash);
@@ -254,6 +257,17 @@ export async function secondAct<W>(
     // waiting, answered first, must not hide that they asked to act on one they may not (review
     // finding LAC-7). The first in the rule's order, with the notes it is about.
     const about = act.refusals.find((r) => CALLERS.has(r) && refused.has(r));
+    // So is asking to act on a note of the visit they may not read at all, answered as not_waiting
+    // so the answer tells nothing of it (the coordinator's decision on D98 in the phase's review).
+    if (unreadable.length > 0) {
+      await audit({
+        action: 'access.denied',
+        entity: 'encounter',
+        entityId: visit.id,
+        patientId: visit.patientId,
+        details: { reason: 'cannot_read', route, noteIds: unreadable },
+      });
+    }
     if (about !== undefined) {
       await audit({
         action: 'access.denied',

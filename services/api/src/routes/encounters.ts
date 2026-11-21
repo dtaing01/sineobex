@@ -283,12 +283,15 @@ export function registerEncounterRoutes(app: App, deps: Deps) {
 
   app.openapi(assignRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['team.manage_users'], recentAuth: true });
-    return c.json(await assignNote(scope, c.req.valid('param').noteId, c.req.valid('json')), 200);
+    return c.json(
+      await assignNote(scope, c.req.valid('param').noteId, c.req.valid('json'), c.req.routePath),
+      200,
+    );
   });
 
   app.openapi(assigneesRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['team.manage_users'] });
-    return c.json(await noteAssignees(scope, c.req.valid('param').noteId), 200);
+    return c.json(await noteAssignees(scope, c.req.valid('param').noteId, c.req.routePath), 200);
   });
 
   app.openapi(notesToFinishRoute, async (c) => {
