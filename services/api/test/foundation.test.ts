@@ -285,6 +285,120 @@ describe('phase 1 foundation', () => {
     expect(r.body.error?.code).toBe('owner_only');
   });
 
+  it('lets only a platform owner change a Program Admin’s credential, as an active member of the team', async () => {
+    // A team of its own, so its second Program Admin leaves the last-admin guard below alone.
+    const created = await call('/v1/owner/teams', {
+      method: 'POST',
+      token: ownerToken,
+      json: { name: 'Credentials Team' },
+    });
+    expect(created.status).toBe(201);
+    const crewId = created.body.id as string;
+    const attendingFields = (npi: string, licenseNumber: string) => ({
+      npi,
+      licenseNumber,
+      licenseState: 'MI',
+    });
+    const appoint = async (email: string, displayName: string, fields: Record<string, string>) => {
+      const r = await call(`/v1/owner/teams/${crewId}/program-admins`, {
+        method: 'POST',
+        token: ownerToken,
+        json: { email, displayName, credential: 'attending', credentialFields: fields },
+      });
+      expect(r.status).toBe(201);
+      await h.acknowledge(r.body.userId as string);
+      return {
+        membershipId: r.body.membershipId as string,
+        userId: r.body.userId as string,
+        token: await h.tokenFor(email),
+      };
+    };
+    const pamFields = attendingFields(NPI, 'MD-4402');
+    const quinnFields = attendingFields('1245319599', 'MD-4403');
+    const pam = await appoint('pam@example.com', 'Pam', pamFields);
+    const quinn = await appoint('quinn@example.com', 'Quinn', quinnFields);
+    const lower = (token: string, membershipId: string) =>
+      call(`/v1/team/members/${membershipId}/credential`, {
+        method: 'PUT',
+        token,
+        teamId: crewId,
+        json: { credential: 'chw', reason: 'License lapsed' },
+      });
+    const credentialChanges = () => h.scratch.owner<
+      { membershipId: string; oldValue: unknown; newValue: unknown; reason: string; changedBy: string }[]
+    >`
+      select membership_id as "membershipId", old_value as "oldValue", new_value as "newValue", reason,
+             changed_by as "changedBy"
+      from sineobex.membership_changes
+      where team_id = ${crewId} and kind = 'credential' order by changed_at`;
+    const credentialEvents = () => h.scratch.owner<
+      { actorUserId: string; entityId: string; details: Record<string, unknown> }[]
+    >`
+      select actor_user_id as "actorUserId", entity_id as "entityId", details from sineobex.audit_events
+      where team_id = ${crewId} and action = 'membership.credential_changed' order by id`;
+
+    // A Program Admin who is not an owner changes neither another Program Admin's credential nor
+    // their own.
+    for (const [target, fields] of [
+      [quinn, quinnFields],
+      [pam, pamFields],
+    ] as const) {
+      const refused = await lower(pam.token, target.membershipId);
+      expect(refused.status).toBe(403);
+      expect(refused.body.error?.code).toBe('owner_only');
+      const still = await call(`/v1/team/members/${target.membershipId}`, {
+        token: pam.token,
+        teamId: crewId,
+      });
+      expect(still.body).toMatchObject({ credential: 'attending', credentialFields: fields });
+    }
+    expect(await credentialChanges()).toEqual([]);
+    expect(await credentialEvents()).toEqual([]);
+
+    // An owner reaches the route only as an active member of the team with team.manage_users.
+    expect((await lower(ownerToken, quinn.membershipId)).body.error?.code).toBe('not_a_member');
+    const managers = await call('/v1/team/roles', {
+      method: 'POST',
+      token: pam.token,
+      teamId: crewId,
+      json: { name: 'Member managers', permissions: ['team.manage_users'] },
+    });
+    expect(managers.status).toBe(201);
+    const joined = await call('/v1/team/members', {
+      method: 'POST',
+      token: pam.token,
+      teamId: crewId,
+      json: { email: 'sarah@example.com', displayName: 'Sarah', roleId: managers.body.id },
+    });
+    expect(joined.status).toBe(201);
+    const ownerId = joined.body.userId as string;
+    const changed = await lower(ownerToken, quinn.membershipId);
+    expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ credential: 'chw', direction: 'down', credentialFields: {} });
+    expect(await credentialEvents()).toEqual([
+      {
+        actorUserId: ownerId,
+        entityId: quinn.membershipId,
+        details: {
+          userId: quinn.userId,
+          from: 'attending',
+          to: 'chw',
+          direction: 'down',
+          reason: 'License lapsed',
+        },
+      },
+    ]);
+    expect(await credentialChanges()).toEqual([
+      {
+        membershipId: quinn.membershipId,
+        oldValue: { credential: 'attending', fields: quinnFields },
+        newValue: { credential: 'chw', fields: {} },
+        reason: 'License lapsed',
+        changedBy: ownerId,
+      },
+    ]);
+  });
+
   it('keeps at least one Program Admin on every team', async () => {
     const members = await call('/v1/team/members', { token: mercyToken, teamId });
     const mercy = (members.body as unknown as { email: string; membershipId: string }[]).find(
