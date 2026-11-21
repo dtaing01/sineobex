@@ -332,7 +332,8 @@ async function cannotRead(tx: Tx, audit: AuditFn, note: StoredRecord, route: str
  * recent sign-in, and the assignment itself does. A note the team does not have, or the caller may
  * not read (noteAsRead, as the visit read leaves it out), is 404; one whose acting author is active
  * is 409 author_active, as the act answers, so the page offers Assign only where this answers 200.
- * Neither is logged (lifecycle 10.1). The list is logged as one note.assignees_viewed on the note,
+ * Neither is logged (lifecycle 10.1), but for a note the caller may not read, logged as access.denied
+ * cannot_read since the phase's review (cannotRead, D98 as amended). The list is logged as one note.assignees_viewed on the note,
  * with its patient and how many it names: names are staff, and no event holds one.
  */
 export async function noteAssignees(

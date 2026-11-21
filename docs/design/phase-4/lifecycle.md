@@ -2858,8 +2858,10 @@ version moves too.
   handed-over change that was rejected answers its retry with `decision: 'rejected'`, as
   `push.ts` does.
 
-As built since the phase's review: the fake mirrors each of the review's server fixes, each held
-to the API by a parity case: an addendum or a correction naming a sign-off a reviewer rejected,
+As built since the phase's review: the fake mirrors each of the review's fixes to the sync
+rules, each held to the API by a parity case (but not the read logged for a value sent back, PA-1,
+since the fake keeps no audit events of sync writes, below; and the online acts' fixes, PA-2 and
+PA-3, are routes it does not have): an addendum or a correction naming a sign-off a reviewer rejected,
 taken as naming none (`_rejectedInReview`, 4.7, finding PS-2); a Medical visit's summary set from
 a sender who may not read it, held before anything (`_set`, 4.3), and a conflict its sender may
 not see into, held (`_decide`, 4.4; VS-1); every value sent back, a retry's from `_Receipt.result`
@@ -3466,16 +3468,17 @@ team's incomplete notes are, and the assignment asks for one (the coordinator's 
 19). A note the team does not have, or the caller may not read (`noteAsRead`, as the visit read
 leaves one out), is 404, as the act answers since the review; a note whose acting author is an
 active member is 409 `author_active`, as the act answers, so the page offers Assign only where the
-list answers 200. Neither is logged (10.1). The list is logged as one `note.assignees_viewed` on
+list answers 200. Neither was logged as first built; since the phase's review a note the caller
+may not read is (below), and the others are not (10.1). The list is logged as one `note.assignees_viewed` on
 entity `encounter_note` and the note, with the visit's patient, `{ resultCount }`, no name. The
 visit page asks it of every note it shows, for a person with `team.manage_users` (9.12 as built;
 the coordinator's decision).
 
 As built since the phase's review (findings PA-3 and VA-2, and D98 as amended): once the team lock
 is theirs, assign reads the caller again, as co-sign and attest do (`callerNow`, from `cosign.ts`).
-One no longer an active member is refused `not_a_member`, and one whose role lost
-`team.manage_users` is refused `permission`, each logged as `access.denied` in the request's
-transaction; the note is read, and the assignment asked, by who they are then, so a role that lost
+One no longer an active member is refused 403 `not_a_member`, and one whose role lost
+`team.manage_users` is refused 403 `forbidden`, each logged as `access.denied` in the request's
+transaction (the second with the permission it lacks); the note is read, and the assignment asked, by who they are then, so a role that lost
 `patients.view` meanwhile is answered 404. A note the caller may not read, asked of the act or of
 the assignees route, is still 404, and is now logged as `access.denied` `cannot_read` on the note,
 with its patient; a note the team does not have is not. `assignNote` and `noteAssignees` return
@@ -4169,8 +4172,9 @@ a `DialogGateScope`.
 
 **Every modal route, as built** (the coordinator's decision on review findings VA-3 and VA-4; the
 first round's fix of PP-1 had gated a note's date and time pickers, the Referrals sheet's, a
-referral's Entered in error and Expand's “not copied” dialog, held by `freeze_pickers_test.dart`,
-and Expand's, which no released note type can bring up on the test harness, by the test below). Every
+referral's Entered in error and Expand's “not copied” dialog; `freeze_pickers_test.dart` holds all
+but Expand's, which no released note type can bring up on the test harness and the test below
+holds). Every
 `showDialog`, `showModalBottomSheet`, `showDatePicker` and `showTimePicker` in `apps/mobile/lib`, and
 every `confirm` and `askReason`, is gated: a `SheetGate` over a sheet, a `DialogGate` over a dialog or
 a question (`gate:`), and a `DialogGateScope` over every route that draws a form field, whose
@@ -5105,7 +5109,8 @@ words in `apps/portal/src/lib/encounters.ts` and `sign.ts`):
   dropped, so we can’t tell whether your co-signature went through. Read the visit again to
   see.") and offers **Read the visit again** in place of the act (PAC-4). Assign does the same.
   Since the phase's review (finding PX-4), the notice a whole load brings back after an act or
-  `/reauth` (`?signed=`, `?handoff=`) is a status region that takes focus as the page opens
+  `/reauth` (`?signed=`, `?handoff=`, and `?assign=` when it names no note on the page) is a
+  status region that takes focus as the page opens
   (`PageNotice.tsx`, 9.12 as built), since one already there at load is not announced.
 - **Export EMS handoff (PDF)** is a plain form posted to
   `POST /encounters/{encounterId}/ems-handoff`, with the browser's time zone filled in as it is
@@ -5225,7 +5230,7 @@ visit page's `AssignForm.tsx` and `assign/route.ts`; its words in
 
 A sign-off that was held for a Program Admin shows on its note as "Sent for review" (4.8).
 
-And six notices, shown on Home as phase 2's notices are:
+And seven notices, shown on Home as phase 2's notices are:
 
 | Notice | Sentence |
 |---|---|
@@ -5233,13 +5238,17 @@ And six notices, shown on Home as phase 2's notices are:
 | `late_change_kept` | "The note was already finished. Your change was kept in its history. Add an addendum if it matters." |
 | `change_not_applied` | "Only the note’s author can do that. Nothing was changed." |
 | `signoff_not_applied` (a held sign-off that will not reach the chart, 4.6) | "Your Complete of this note wasn’t applied. Open it and complete it again." With **Open the note** |
+| `correction_not_applied` (a held correction that will not reach the chart, 4.6, review finding VS-6) | "Your correction of this note wasn’t applied. Open it and correct it again." With **Open the note** |
 | `finished_differently` (the phone's own, from a sign-off that found its note finished over other content, 3.4) | "This note was already finished with different content. Open it and read what was finished." With **Open the note** |
 | `note_corrected` | "A note you signed was corrected. It needs your review again." |
 
 As built (the phone's store, unit L3, with its review): `noticeLabel` in `sync_labels.dart` holds
-the sentences of `change_not_applied`, `signoff_not_applied` and `finished_differently`, each
-worded by its kind alone, with no state of the phone's, and `sync_labels_test.dart` holds each
-("the notices of a note’s life are worded by their kind alone (lifecycle 3.4, 9.13)"). The other
+the sentences of `change_not_applied`, `signoff_not_applied`, `finished_differently` and, since the
+phase's review, `correction_not_applied` (`services/api/src/sync/review.ts`,
+`correctionNotApplied`), each worded by its kind alone, with no state of the phone's.
+`sync_labels_test.dart` holds the first three ("the notices of a note’s life are worded by their
+kind alone (lifecycle 3.4, 9.13)"), and `needs_attention_test.dart` the fourth, with its Open the
+note. The other
 notices' sentences, the problems' and the buttons come with the screens (L5). The design first
 gave `change_not_applied` a second sentence on a note shown as "Sent for review"; told apart by
 the phone's own record, it read "Only the note’s author can do that" on a second phone or after a
@@ -5892,11 +5901,12 @@ run here (13, "Not built in this phase").
 As built (the whole-phase review and its second pass, Nov 21): each confirmed finding's fix came
 with a test that fails without it, checked by a script that takes the fix's source out in a
 scratch worktree and runs the tests it added, and by mutating the rules the reviewers named; the
-second pass read each fix again and added the tests that did not yet hold one (VS-2, VS-4, VS-5,
-VA-2, VX-7, C-5). The new tests are mostly in `services/api/test/sync-answers-sent-back.test.ts`
+second pass read each fix again and found the ones no test held yet (VS-2, VS-4, VS-5, VA-2,
+VX-7, C-5), and the second round of fixes added their tests. The new tests are mostly in `services/api/test/sync-answers-sent-back.test.ts`
 (what a value sent back shows and logs, the held summary and the held conflict),
-`sync-signoffs.test.ts` (a create refused for naming a refused or rejected sign-off, a held
-correction's notice) and `encounters-acts-audit.test.ts` (each act's event in its transaction,
+`sync-signoffs.test.ts` (an addendum or a correction naming a sign-off a reviewer rejected, taken
+as naming none, and not once that sign-off is completed again under its ID; a held correction's
+notice) and `encounters-acts-audit.test.ts` (each act's event in its transaction,
 `cannot_read`, assign under the lock); on the phone in `test/sync/store_encounters_test.dart` and
 `live_api_test.dart` (Complete sends what waited on its sign-off), `fake_parity_test.dart` (the
 fake's copies), `test/encounters/visit_overlay_test.dart` (no act on the phone's own copy),

@@ -2276,7 +2276,7 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   boxes and picked on the calendar alone. `DateField.onUnsaved` tells such a sheet whether the
   boxes hold a date not saved (being typed, half typed or refused), and the sheet adds or sends
   nothing on it. Since the second pass phase 3's Add problem's onset date is one too
-  (`DateDef.outside('onsetDate', 'Date it started')`, in a `DialogGateScope.patients`; finding
+  (`DateDef.outside(id: 'onsetDate', label: 'Date it started')`, in a `DialogGateScope.patients`; finding
   C-3), what the problem stores unchanged. A sheet saves a date still being typed as its button is
   pressed by taking focus out of the boxes only when focus is in them (`commitTypedDate`), so focus
   pressed on the button stays there (VX-1).
