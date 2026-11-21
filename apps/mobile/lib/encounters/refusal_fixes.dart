@@ -154,9 +154,10 @@ extension RefusalFixes on EncounterRepository {
   }
 
   /// **Remove this note** (4.1, 9.13) for [changeId], a note's create the server refused for a note
-  /// type the team does not have: the note sent again as an empty draft on the version the team's
-  /// list gives for its key now, every answer cleared, as the fix of the refused one. The server
-  /// takes it, the refusal settles, and the note counts for nothing (3.1), as a note removed from
+  /// type the team does not have: the note sent again on the version the team's list gives for its
+  /// key now, as the fix of the refused one, carrying the answers the phone holds, so they reach the
+  /// server and its history, then each blanked by a set (review finding PS-4). The server takes it,
+  /// the refusal settles, and the note counts for nothing (3.1), as a note removed from
   /// the encounter screen does; choosing its type again then opens it on the version the team has
   /// (**Choose a note type**, `addNote`).
   ///
@@ -198,11 +199,20 @@ extension RefusalFixes on EncounterRepository {
       );
     }
     _mayChart(medical: isMedicalType(carrier));
-    store.fixRejected(changeId, {
-      'encounterId': value['encounterId'],
-      'noteTypeKey': carrier.key,
-      'noteTypeVersion': carrier.version,
-      'data': {for (final p in paths) p: null},
+    // The answers the phone holds reach the server and its history first, then are blanked as sets:
+    // nothing that never synced is deleted, which only a remote wipe and the tenth wrong PIN may do
+    // (the coordinator's decision on review finding PS-4).
+    final held = EncounterRepository._answersOf(rec);
+    store.transaction(() {
+      store.fixRejected(changeId, {
+        'encounterId': value['encounterId'],
+        'noteTypeKey': carrier.key,
+        'noteTypeVersion': carrier.version,
+        'data': {for (final p in paths) p: held[p]},
+      });
+      for (final p in paths) {
+        if (held[p] != null) store.setField(rec.id, 'data.$p', null);
+      }
     });
     onChanged?.call();
   }

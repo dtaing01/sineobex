@@ -1437,9 +1437,13 @@ Each problem gets one sentence in `apps/mobile/lib/features/sync/sync_labels.dar
 As built on the phone after unit L5's review, each fix of the first table has its button in Needs
 attention (9.13 as built), through the domain layer (4.8 as built): `medical_note_needs_patient` gives
 the visit its patient and sends the note's create again (`choosePatientFor`); `unknown_note_type`
-sends the create again as an empty draft on the version the team lists for its key now, and the
-type is then chosen again (`removeRefusedNote`; a type listed at no other version can't be settled
-yet); a problem of `checkAnswer` is settled by the next save of the answer (`saveAnswer`).
+sends the create again on the version the team lists for its key now, carrying the answers the
+phone holds so they reach the server and its history, then blanks each as a set, so the note counts
+for nothing and nothing that never synced is deleted (since the phase's review, finding PS-4, the
+coordinator's decision), and the type is then chosen again (`removeRefusedNote`; a type listed at no
+other version stays in Needs attention, D121, since the rules let only a remote wipe and the tenth
+wrong PIN delete unsynced data); a problem of `checkAnswer` is settled by the next save of the
+answer (`saveAnswer`).
 
 As built (unit L1, with wave D's review):
 

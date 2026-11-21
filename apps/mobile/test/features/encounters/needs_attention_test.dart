@@ -485,6 +485,16 @@ void main() {
     expect(store.heldCount(), 0);
     expect(h.server.records[social]!.attributes['noteTypeVersion'], 2);
     expect(answersOf(h, social).values.where((v) => v != null), isEmpty);
+    // The answer the person charted reached the server and its history, then was cleared: nothing
+    // that never synced was deleted (review finding PS-4).
+    expect(h.server.records[social]!.fields['data.needs.needs']!.value, isNull);
+    expect(
+      [
+        for (final x in h.server.history)
+          if (x['recordId'] == social && x['field'] == 'data.needs.needs') '${x['kind']} ${x['value']}',
+      ],
+      ['created [food]', 'set null'],
+    );
     // Choosing the type again opens a Social needs note on the version the team has now.
     await go(tester, '/encounters/$visit/note-types');
     await tapOn(tester, find.text('Social needs'));
