@@ -1201,6 +1201,98 @@ describe('phase 4 sync: sign-offs', () => {
       ]);
     });
 
+    // Review finding VS-4: withoutRejectedSignoff takes a sign-off as rejected only when it is not on
+    // the chart and no held create of it still waits; each clause matters when two changes share
+    // one sign-off ID (a held sign-off rejected, and its note completed again under the same ID).
+    describe('a sign-off a reviewer rejected, completed again under the same ID', () => {
+      const decide = async (c: Change, decision: 'accept' | 'reject') => {
+        const [item] = await h.scratch.owner<{ id: string }[]>`
+          select id from sineobex.quarantine_items where change_id = ${c.changeId}`;
+        return call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked' },
+        });
+      };
+      const addendum = (c: Who, n: Held, signoffId: string) =>
+        c.phone.change({
+          entity: 'note_addendum',
+          op: 'create',
+          value: { encounterId: n.encounterId, noteId: n.noteId, text: 'Demo: one more thing', signoffId },
+        });
+
+      /** [c]'s sign-off of [note], held for review and rejected; the change and its record ID. */
+      async function rejectedSignoff(c: Who) {
+        const { flags, note } = await chartedVisit(c);
+        const made = nowIso();
+        const s1 = await signoff(c, flags, 'sign', timed(made));
+        const s2 = await signoff(c, note, 'sign', timed(made));
+        await new Promise((r) => setTimeout(r, 5));
+        await setCredential(c.membershipId, 'chw');
+        expect((await c.send(s1, s2)).map((r) => r.reason)).toEqual(['permission', 'permission']);
+        expect((await decide(s1, 'reject')).status).toBe(200);
+        expect((await decide(s2, 'reject')).status).toBe(200);
+        return { flags, note, s1, s2 };
+      }
+
+      it('while its fix waits for review too, what names it waits with it, and is not taken as naming none', async () => {
+        const uma = await clinician('uma-vs4@example.com', 'Uma VS-4 (demo)', 'np');
+        const { flags, note, s1, s2 } = await rejectedSignoff(uma);
+        // Completed again, still with the lowered credential: the fixes are held under the same IDs.
+        const made = nowIso();
+        const again = [
+          await signoff(uma, flags, 'sign', {
+            ...timed(made),
+            recordId: s1.recordId,
+            supersedes: s1.changeId,
+          }),
+          await signoff(uma, note, 'sign', {
+            ...timed(made),
+            recordId: s2.recordId,
+            supersedes: s2.changeId,
+          }),
+        ];
+        expect((await uma.send(...again)).map((r) => [r.status, r.reason])).toEqual([
+          ['rejected', 'permission'],
+          ['rejected', 'permission'],
+        ]);
+        const add = await addendum(uma, note, s2.recordId);
+        expect(await uma.send(add)).toEqual([
+          expect.objectContaining({ status: 'rejected', reason: 'awaiting_review', quarantined: true }),
+        ]);
+        const [row] = await h.scratch.owner`select id from sineobex.note_addenda where id = ${add.recordId}`;
+        expect(row).toBeUndefined();
+      });
+
+      it('once its fix is on the chart, what names it is held to that sign-off as any is, never taken as naming none', async () => {
+        const vi = await clinician('vi-vs4@example.com', 'Vi VS-4 (demo)', 'np');
+        const { flags, note, s1, s2 } = await rejectedSignoff(vi);
+        // Vi's credential is back; completed again, the fixes reach the chart under the same IDs.
+        await setCredential(vi.membershipId, 'np');
+        const made = nowIso();
+        const again = [
+          await signoff(vi, flags, 'sign', {
+            ...timed(made),
+            recordId: s1.recordId,
+            supersedes: s1.changeId,
+          }),
+          await signoff(vi, note, 'sign', { ...timed(made), recordId: s2.recordId, supersedes: s2.changeId }),
+        ];
+        expect((await vi.send(...again)).map((r) => r.status)).toEqual(['accepted', 'accepted']);
+        // An addendum to another note of the visit naming that sign-off is refused, as one naming any
+        // sign-off of another note is (REC-3): the rejected held create does not make it name none.
+        const add = await addendum(vi, flags, s2.recordId);
+        expect(await vi.send(add)).toEqual([
+          expect.objectContaining({
+            status: 'rejected',
+            reason: 'stale_reference',
+            details: { problem: 'note_signoff_missing' },
+          }),
+        ]);
+      });
+    });
+
     it('a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed', async () => {
       // Review finding NOT-12: the phone let go of the sign-off when it was held.
       const ned = await clinician('ned@example.com', 'Ned (demo)', 'np');
