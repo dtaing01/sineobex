@@ -4082,6 +4082,22 @@ Problem 1?**, and Add to the problem list's question about a Resolved problem) s
 the screen to say why; the note form, which reads through no services, finds the note screen's in
 a `DialogGateScope`.
 
+**Every modal route, as built** (the coordinator's decision on review findings VA-3 and VA-4). Every
+`showDialog`, `showModalBottomSheet`, `showDatePicker` and `showTimePicker` in `apps/mobile/lib`, and
+every `confirm` and `askReason`, is gated: a `SheetGate` over a sheet, a `DialogGate` over a dialog or
+a question (`gate:`), and a `DialogGateScope` over every route that draws a form field, whose
+pickers (`DateField`, `TimeField`, the problem field's questions) gate themselves through it
+(`DialogGate.over`). The correction sheet (9.7) is a modal route of its own, outside the note
+screen's scope, so it brings one: a note's date or time picker opened from it closes on a freeze.
+Phase 3's **Add a street name**, with what is typed in it, Record consent, the reason for another
+ID card, Still has this?, Mark as Resolved? and a problem's Entered in error are gated, and so are
+the questions with no detail of their own asked over a chart (Remove this note?, Reopen?, Switch
+to Medical?, leaving an addition to the assessment, discarding an intake), since a freeze leaves
+nothing they could do. `apps/mobile/test/security/dialog_gates_test.dart` reads `lib` and fails on
+a call that is neither gated nor on its short list of calls that show nothing of a chart, each
+with why (the Start sheet, the lock screen's Sign out, Log out), and on a screen that draws a form
+field with no `DialogGateScope`.
+
 ### 9.1 The patient profile (phone)
 
 `apps/mobile/lib/features/patients/patient_screen.dart` gains:

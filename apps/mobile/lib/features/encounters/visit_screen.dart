@@ -29,6 +29,7 @@ import '../forms/note_read_view.dart';
 import '../forms/text_field.dart' show ReadOnlyAnswer;
 import '../patients/patient_labels.dart' show isoDay, longDate;
 import '../patients/patient_widgets.dart' show SectionHeading, WideButton, confirm, showDone;
+import '../patients/sheet_gate.dart' show DialogGate;
 import '../sync/sync_labels.dart' show timeOfDay;
 import 'addendum_sheet.dart';
 import 'correction_sheet.dart';
@@ -369,7 +370,14 @@ class _VisitState extends ConsumerState<_Visit> with VisitReading<_Visit> {
 
   Future<void> _reopen(NoteView note) async {
     setState(() => _problem = null);
-    final yes = await confirm(context, title: reopenTitle, body: reopenBody, yes: reopenYes);
+    final yes = await confirm(
+      context,
+      title: reopenTitle,
+      body: reopenBody,
+      yes: reopenYes,
+      // It goes with the store, as its Cancel would (D125).
+      gate: (dialog) => DialogGate<bool>(services: services, child: dialog),
+    );
     if (!yes || !mounted) return;
     try {
       final effect = await services.repository.reopen(note.noteId);

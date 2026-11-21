@@ -12,6 +12,7 @@ import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_services.dart';
 import '../patients/patient_widgets.dart' show SectionHeading, WideButton, confirm, focusInView, showDone;
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'kind_screen.dart';
@@ -70,7 +71,14 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
   }
 
   Future<void> _remove(NoteView note) async {
-    final yes = await confirm(context, title: removeNoteTitle, body: removeNoteBody, yes: removeNoteYes);
+    final yes = await confirm(
+      context,
+      title: removeNoteTitle,
+      body: removeNoteBody,
+      yes: removeNoteYes,
+      // It goes with the store, as its Cancel would (D125).
+      gate: (dialog) => DialogGate<bool>(services: services, child: dialog),
+    );
     if (!yes || !mounted) return;
     try {
       await services.repository.removeNote(note.noteId);

@@ -273,20 +273,26 @@ class _ProblemFieldState extends ConsumerState<ProblemField> {
 
   /// New or Ongoing, as Add problem asks (Resolved is not offered when a problem is added); null
   /// when the person cancels.
-  Future<String?> _chooseStatus() => showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      // Its words and three buttons outgrow a small phone at large text: it scrolls.
-      scrollable: true,
-      title: const Text('Add as New or Ongoing?'),
-      content: const Text('The note gives this diagnosis no status. Choose one for the problem list.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.of(context).pop('ongoing'), child: const Text('Ongoing')),
-        FilledButton(onPressed: () => Navigator.of(context).pop('new'), child: const Text('New')),
-      ],
-    ),
-  );
+  Future<String?> _chooseStatus() {
+    // It takes a status for the chart's problem list: it goes with the store (D125).
+    final gate = DialogGate.over<String>(context);
+    return showDialog<String>(
+      context: context,
+      builder: (context) => gate(
+        AlertDialog(
+          // Its words and three buttons outgrow a small phone at large text: it scrolls.
+          scrollable: true,
+          title: const Text('Add as New or Ongoing?'),
+          content: const Text('The note gives this diagnosis no status. Choose one for the problem list.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.of(context).pop('ongoing'), child: const Text('Ongoing')),
+            FilledButton(onPressed: () => Navigator.of(context).pop('new'), child: const Text('New')),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// Phase 3's recurrence question, in Add problem's words: true for a new episode of the Resolved
   /// problem named [title], false for a different problem; null when the person cancels, or when the

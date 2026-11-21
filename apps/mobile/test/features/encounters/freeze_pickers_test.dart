@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sineobex_field/encounters/encounter_repository.dart' hide Expanded;
+
 import 'encounter_kit.dart';
 
 /// D125: nothing of a chart stays on screen once the store freezes. A picker or a dialog is not
 /// under its screen's gate, so each that names a chart's detail sits in a dialog gate of its own and
 /// closes when the freeze is heard (review finding PP-1): a note's date and time pickers, a referral's
-/// Entered in error dialog with its typed reason, and the Referrals sheet's date picker.
+/// Entered in error dialog with its typed reason, the Referrals sheet's date picker, and the
+/// correction sheet's date and time pickers (VA-3).
 void main() {
   Future<void> openSection(WidgetTester tester, String id) => tapOn(tester, find.byKey(ValueKey('form.section.$id')));
   const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
@@ -90,5 +93,64 @@ void main() {
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await freeze(tester, h);
     expect(find.byType(DatePickerDialog), findsNothing);
+  });
+
+  /// A finished visit whose Red flags note holds a follow-up date and the time EMS was called.
+  Future<String> finishedWithDate(WidgetTester tester, AppHarness h) async {
+    final r = h.encounters.repository;
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    await tester.runAsync(() => r.openNote(flags));
+    final due = fixtureNow.add(const Duration(days: 9));
+    String two(int n) => n.toString().padLeft(2, '0');
+    r
+      ..saveAnswer(flags, 'red_flags.emergency', 'yes')
+      ..saveAnswer(flags, 'red_flags.ems_activated', 'yes')
+      ..saveAnswer(flags, 'red_flags.ems_time', '14:35')
+      ..saveAnswer(flags, 'follow_up.when', 'specific_date')
+      ..saveAnswer(flags, 'follow_up.date', '${due.year}-${two(due.month)}-${two(due.day)}');
+    r.saveSummary(visit, 'Demo: viral, rest and fluids');
+    r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+    return visit;
+  }
+
+  // Review finding VA-3: the correction sheet is a modal route of its own, outside the note
+  // screen's DialogGateScope, so it brings one.
+  testWidgets('the correction sheet’s date picker closes when the store freezes', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = await finishedWithDate(tester, h);
+    await openVisitScreen(tester, visit);
+    await tapOn(tester, find.bySemanticsLabel('Correct Follow-up date'));
+    expect(find.byType(BottomSheet), findsOneWidget);
+    await semanticTap(tester, RegExp('^Follow-up date: '));
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    final before = h.sync.store!.outbox().length;
+    await freeze(tester, h);
+    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(find.text('Follow-up date'), findsNothing);
+    expect(h.sync.store!.outbox().length, before);
+  });
+
+  testWidgets('the correction sheet’s time picker closes when the store freezes', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = await finishedWithDate(tester, h);
+    await openVisitScreen(tester, visit);
+    await tapOn(tester, find.bySemanticsLabel('Correct Time EMS called'));
+    expect(find.byType(BottomSheet), findsOneWidget);
+    final button = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.ancestor(
+        of: find.textContaining(RegExp('2:35|14:35')),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    await revealInSheet(tester, button.first);
+    await tester.tap(button.first);
+    await settle(tester);
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await freeze(tester, h);
+    expect(find.byType(TimePickerDialog), findsNothing);
+    expect(find.textContaining(RegExp('2:35|14:35')), findsNothing);
   });
 }

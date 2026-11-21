@@ -15,7 +15,7 @@ import '../../sync/local_store.dart' show ChartingPaused, LocalNotice;
 import 'patient_labels.dart';
 import 'patient_screen.dart' show copyOutcomeText;
 import 'patient_widgets.dart';
-import 'sheet_gate.dart' show DialogGate;
+import 'sheet_gate.dart' show DialogGate, SheetGate;
 
 /// The Street Medicine ID card (design 10.4): the card's state as a sentence with an icon, the
 /// conflict message first when another card won, **Copy link** (announced "Link copied. It clears
@@ -76,7 +76,11 @@ class _IdCardState extends ConsumerState<_IdCard> {
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
-        builder: (_) => _ReasonSheet(working: v.workingCards.length),
+        // It takes why this patient needs another card: it goes with the store (D125).
+        builder: (_) => SheetGate.patients(
+          services: _s,
+          child: _ReasonSheet(working: v.workingCards.length),
+        ),
       );
     }
     if (reason == null || !mounted) return;

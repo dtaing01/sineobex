@@ -7,6 +7,7 @@ import '../../encounters/encounter_models.dart';
 import '../../encounters/encounter_services.dart';
 import '../../patients/patient_providers.dart';
 import '../patients/patient_widgets.dart' show confirm, showDone;
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart' show choosePatient;
 
@@ -106,6 +107,8 @@ Future<String?> switchVisitToMedical(BuildContext context, EncounterServices ser
     title: switchToMedicalTitle,
     body: switchToMedicalBody,
     yes: switchToMedicalAction,
+    // It goes with the store, as its Cancel would (D125).
+    gate: (dialog) => DialogGate<bool>(services: services, child: dialog),
   );
   if (!yes || !context.mounted) return null;
   try {

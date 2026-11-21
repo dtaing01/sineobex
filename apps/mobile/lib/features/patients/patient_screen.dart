@@ -230,7 +230,12 @@ class _ProfileState extends ConsumerState<_Profile> {
   }
 
   Future<void> _addAlias() async {
-    final alias = await showDialog<String>(context: context, builder: (_) => const _AliasDialog());
+    // What is typed is a patient's identifier: it goes with the store, as its Cancel would (D125,
+    // review finding VA-4).
+    final alias = await showDialog<String>(
+      context: context,
+      builder: (_) => DialogGate<String>.patients(services: _s, child: const _AliasDialog()),
+    );
     if (alias == null || !mounted) return;
     await _run('Street name added', () => _s.patients.addAlias(_id, alias));
   }
@@ -277,7 +282,11 @@ class _ProfileState extends ConsumerState<_Profile> {
   }
 
   Future<void> _recordConsent() async {
-    final answer = await showDialog<ConsentAnswer>(context: context, builder: (_) => const _ConsentDialog());
+    final answer = await showDialog<ConsentAnswer>(
+      context: context,
+      // It takes this patient's answer: it goes with the store (D125).
+      builder: (_) => DialogGate<ConsentAnswer>.patients(services: _s, child: const _ConsentDialog()),
+    );
     if (answer == null || !mounted) return;
     await _run('Consent recorded', () => _s.patients.recordConsent(_id, answer));
   }

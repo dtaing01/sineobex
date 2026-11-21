@@ -17,6 +17,7 @@ import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import 'patient_labels.dart';
 import 'patient_screen.dart' show ProblemStatusChip;
 import 'patient_widgets.dart';
+import 'sheet_gate.dart' show DialogGate, SheetGate;
 
 /// One problem (design 9.1, 12.1): its status in words, only the moves allowed (forward; Resolved
 /// asks once), **Still ongoing** to confirm the status at a visit, **Still has this?** on a
@@ -109,6 +110,8 @@ class _ProblemState extends ConsumerState<_Problem> {
         title: 'Mark as Resolved?',
         body: 'It stops counting toward route supplies, and only a Program Admin can undo it.',
         yes: 'Mark as Resolved',
+        // It is about this problem: it goes with the store (D125).
+        gate: (dialog) => DialogGate<bool>.patients(services: _s, child: dialog),
       );
       if (!yes || !mounted) return;
     }
@@ -119,24 +122,28 @@ class _ProblemState extends ConsumerState<_Problem> {
     final cameBack = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Semantics(header: true, child: Text('Still has this?', style: Theme.of(context).textTheme.titleLarge)),
-              const SizedBox(height: FieldSpace.s2),
-              const Text('Either way a new entry is added as New, so care and supplies carry on now.'),
-              const SizedBox(height: FieldSpace.s3),
-              WideButton(label: 'It came back (a new episode)', onPressed: () => Navigator.of(context).pop(true)),
-              const SizedBox(height: FieldSpace.s2),
-              WideButton(
-                label: 'It never went away (marked Resolved by mistake)',
-                onPressed: () => Navigator.of(context).pop(false),
-              ),
-            ],
+      // It is about this problem: it goes with the store (D125).
+      builder: (context) => SheetGate.patients(
+        services: _s,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Semantics(header: true, child: Text('Still has this?', style: Theme.of(context).textTheme.titleLarge)),
+                const SizedBox(height: FieldSpace.s2),
+                const Text('Either way a new entry is added as New, so care and supplies carry on now.'),
+                const SizedBox(height: FieldSpace.s3),
+                WideButton(label: 'It came back (a new episode)', onPressed: () => Navigator.of(context).pop(true)),
+                const SizedBox(height: FieldSpace.s2),
+                WideButton(
+                  label: 'It never went away (marked Resolved by mistake)',
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -157,6 +164,7 @@ class _ProblemState extends ConsumerState<_Problem> {
       body: 'It leaves the problem list and stays in the chart’s history with your reason.',
       action: 'Mark entered in error',
       quick: const ['Wrong patient', 'Typed by mistake', 'Added twice'],
+      gate: (dialog) => DialogGate<String>.patients(services: _s, child: dialog),
     );
     if (reason == null || !mounted) return;
     _do('Marked entered in error', () => _s.problems.enteredInError(p.id, reason));

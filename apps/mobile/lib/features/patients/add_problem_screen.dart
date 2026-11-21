@@ -14,6 +14,7 @@ import '../../patients/problems.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import 'patient_labels.dart';
 import 'patient_widgets.dart';
+import 'sheet_gate.dart' show DialogGate;
 
 /// **Add problem** (design 9.5): a title, an optional code from the bundled ICD-10-CM list ("No
 /// code" allowed and explained), New or Ongoing (nothing preselected; Resolved isn't offered), an
@@ -84,6 +85,7 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
       firstDate: DateTime(1900),
       lastDate: now,
       helpText: 'When did it start?',
+      builder: (_, child) => DialogGate<DateTime>.patients(services: _s, child: child!),
     );
     if (picked != null && mounted) setState(() => _onset = picked);
   }

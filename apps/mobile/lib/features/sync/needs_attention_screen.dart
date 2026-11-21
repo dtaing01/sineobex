@@ -38,6 +38,7 @@ import '../encounters/referrals_sheet.dart' show askReferralDate, changeReferral
 import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
 import '../patients/patient_widgets.dart' show FrozenNotice, confirm, errorText, todayOf;
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'sync_labels.dart';
 
 /// Rejected changes and conflicts, until someone resolves them (module 9 "Rejections", Oct 19
@@ -544,7 +545,14 @@ class _RejectionCard extends ConsumerWidget {
     }
 
     Future<void> removeRefused() async {
-      final yes = await confirm(context, title: removeNoteTitle, body: removeNoteBody, yes: removeNoteYes);
+      final yes = await confirm(
+        context,
+        title: removeNoteTitle,
+        body: removeNoteBody,
+        yes: removeNoteYes,
+        // It goes with the store, as its Cancel would (D125).
+        gate: (dialog) => DialogGate<bool>(services: n!, child: dialog),
+      );
       if (!yes) return;
       await settle(() => n!.repository.removeRefusedNote(e.changeId));
     }

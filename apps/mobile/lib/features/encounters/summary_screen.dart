@@ -20,6 +20,7 @@ import '../../sync/local_store.dart' show ChartingPaused;
 import '../forms/text_field.dart' show NoteTextField, ReadOnlyAnswer;
 import '../../sync/canonical_json.dart' show canonicalJson;
 import '../patients/patient_widgets.dart' show SectionHeading, WideButton, confirm;
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'note_type_list.dart' show noteLocation;
@@ -178,7 +179,14 @@ class _SummaryState extends ConsumerState<_Summary> with VisitReading<_Summary> 
     if (!mounted) return;
     // What was added to a locked assessment goes only with Complete: asked before it is dropped.
     if (visit.envelopeLocked && (_addition?.trim().isNotEmpty ?? false)) {
-      final leave = await confirm(context, title: leaveAdditionTitle, body: leaveAdditionBody, yes: leaveAdditionYes);
+      final leave = await confirm(
+        context,
+        title: leaveAdditionTitle,
+        body: leaveAdditionBody,
+        yes: leaveAdditionYes,
+        // It is about what is typed into the assessment: it goes with the store (D125).
+        gate: (dialog) => DialogGate<bool>(services: services, child: dialog),
+      );
       if (!leave || !mounted) return;
     }
     // The app's messenger: the summary goes, and the chart under it says what was done.

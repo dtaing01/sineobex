@@ -18,7 +18,7 @@ import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count;
 import '../patients/patient_widgets.dart' show PhiField, WideButton, focusFollows, focusInView, showDone;
 import 'encounter_labels.dart';
-import 'encounter_widgets.dart' show SheetGate;
+import '../patients/sheet_gate.dart' show DialogGateScope, SheetGate;
 
 /// **Correct** (lifecycle 3.6, 9.7): "the author picks the wrong field, enters the right value and
 /// gives a reason" (PRD main 460). For each answer: its labels and its value now, then the field's own
@@ -46,7 +46,13 @@ Future<String?> showCorrectionSheet(
   showDragHandle: true,
   builder: (context) => SheetGate(
     services: services,
-    child: _Correction(services: services, note: note, path: path),
+    // The answer's own picker (a date, a time, the problem field's question) sits in a gate on these
+    // services, as on the note's screen: a modal route is not under that screen's scope (D125, review
+    // finding VA-3).
+    child: DialogGateScope(
+      services: services,
+      child: _Correction(services: services, note: note, path: path),
+    ),
   ),
 );
 

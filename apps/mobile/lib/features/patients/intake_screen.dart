@@ -701,6 +701,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           body: 'Nothing you changed here is saved.',
           yes: 'Discard',
           no: 'Keep editing',
+          // It is about what is typed of a patient: it goes with the store (D125).
+          gate: (dialog) => DialogGate<bool>.patients(services: _s, child: dialog),
         );
         if (!discard) return;
       }
@@ -725,15 +727,19 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         : '';
     final choice = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Keep this as a draft?'),
-        content: Text(
-          'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.$leftOut',
+      // It is about what is typed of a patient: it goes with the store (D125).
+      builder: (context) => DialogGate<bool>.patients(
+        services: _s,
+        child: AlertDialog(
+          title: const Text('Keep this as a draft?'),
+          content: Text(
+            'The draft stays encrypted on this phone. The Patients tab offers to continue it. Nothing is sent.$leftOut',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Discard')),
+            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Keep draft')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Discard')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Keep draft')),
-        ],
       ),
     );
     if (choice == null || !mounted) return;

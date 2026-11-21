@@ -276,9 +276,11 @@ void main() {
       seedP1(h.server);
       await syncAndRefresh(tester, h);
       await go(tester, '/patients/$p1Id');
-      h.sync.store!.freeze(frozen);
       await tapOn(tester, find.text('Add street name'));
       await type(tester, 'newAlias', 'Demo Red');
+      // Frozen with nothing told yet, so the dialog's own gate (VA-4) has not heard: the write is
+      // what refuses.
+      h.sync.store!.freeze(frozen);
       await tapOn(tester, find.widgetWithText(FilledButton, 'Add'));
       expect(tester.takeException(), isNull);
       expect(find.text(frozen), findsOneWidget);
@@ -328,6 +330,16 @@ void main() {
         final h = await openDel(tester);
         await tapOn(tester, find.text('Remove'));
         await freezeUnder(tester, h, find.text('Remove “Smitty”?'));
+      });
+
+      // Review finding VA-4: what is typed is a patient's identifier.
+      testWidgets('Add a street name: the dialog goes with the name typed into it: $how', (tester) async {
+        final h = await openDel(tester);
+        await tapOn(tester, find.text('Add street name'));
+        await type(tester, 'newAlias', 'Demo Red');
+        await freezeUnder(tester, h, find.text('Demo Red'));
+        expect(find.text('Demo Red', skipOffstage: false), findsNothing);
+        expect(h.sync.store!.outbox().where((e) => e.entity == entityAlias), isEmpty);
       });
 
       testWidgets('an allergy’s Entered in error: the question goes, naming it: $how', (tester) async {

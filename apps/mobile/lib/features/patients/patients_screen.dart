@@ -21,7 +21,7 @@ import '../../sync/sync_engine.dart' show RefreshReason;
 import 'patient_labels.dart';
 import 'patient_row.dart';
 import 'patient_widgets.dart';
-import 'sheet_gate.dart' show SheetGate;
+import 'sheet_gate.dart' show DialogGate, SheetGate;
 
 /// The Patients tab (design 12.1): find someone on or off line, or start a new patient.
 ///
@@ -182,6 +182,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       title: 'Discard the patient you were adding?',
       body: 'What was typed is deleted from this phone. Nothing was sent.',
       yes: 'Discard',
+      // It goes with the store, as its Cancel would (D125).
+      gate: (dialog) => DialogGate<bool>.patients(services: _s, child: dialog),
     );
     if (!yes || !mounted) return;
     _s.patients.discardDraft();
