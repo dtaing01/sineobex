@@ -5646,7 +5646,10 @@ As built for the phone's screens (unit L5, with its review):
   the text out only once `secureCopy` says it was copied. When it says no, nothing is copied and the
   box says “Nothing was copied: this phone couldn’t copy it privately.”; there is no fallback to the
   plain clipboard. On success the box says “Copied. It clears in 60 seconds.” under it, a live
-  region, a new one at every copy. Paste is the platform's own. The sign-in and PIN boxes take
+  region, a new one at every copy. The sentence is exact on iOS; on Android it holds only when the
+  app's process lives to the end of the minute and, from Android 10, the app is in front then
+  (above). The ID link's “Link copied. It clears in 60 seconds.” (`patient_screen.dart`) is the
+  same. Paste is the platform's own. The sign-in and PIN boxes take
   neither a patient's details nor a note's text and keep the platform's menu. **What does not go
   through it** (the coordinator's decision on the open question of review finding C-4): on Android
   a soft keyboard's own Copy or Cut (`performContextMenuAction`, which Gboard's text editing panel
