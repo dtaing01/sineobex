@@ -74,8 +74,16 @@ class DialogGate<T> extends ConsumerStatefulWidget {
   /// screen's are the scope's. Under none (the form drawn alone, as its own tests draw it) there is no
   /// team's store to hear, and the dialog is asked as it is.
   static Widget Function(Widget dialog) over<T>(BuildContext context, {T? cancel}) {
-    final services = context.getInheritedWidgetOfExactType<DialogGateScope>()?.services;
-    return (dialog) => services == null ? dialog : DialogGate<T>(services: services, cancel: cancel, child: dialog);
+    final scope = context.getInheritedWidgetOfExactType<DialogGateScope>();
+    return (dialog) => switch (scope) {
+      DialogGateScope(services: final services?) => DialogGate<T>(services: services, cancel: cancel, child: dialog),
+      DialogGateScope(patients: final patients?) => DialogGate<T>.patients(
+        services: patients,
+        cancel: cancel,
+        child: dialog,
+      ),
+      _ => dialog,
+    };
   }
 
   /// The team's store the screen under the dialog reads.
@@ -131,9 +139,18 @@ class _DialogGateState<T> extends ConsumerState<DialogGate<T>> {
 /// own (a note's form and its fields): the dialogs they ask sit in a [DialogGate] on them
 /// ([DialogGate.over]).
 class DialogGateScope extends InheritedWidget {
-  const DialogGateScope({super.key, required this.services, required super.child});
-  final EncounterServices services;
+  /// Over a visit's screens, reading through [services].
+  const DialogGateScope({super.key, required EncounterServices this.services, required super.child}) : patients = null;
+
+  /// Over a patient's (Add problem's onset date, C-3), reading through [patients].
+  const DialogGateScope.patients({super.key, required PatientServices services, required super.child})
+    : services = null,
+      patients = services;
+
+  final EncounterServices? services;
+  final PatientServices? patients;
 
   @override
-  bool updateShouldNotify(DialogGateScope oldWidget) => !identical(services, oldWidget.services);
+  bool updateShouldNotify(DialogGateScope oldWidget) =>
+      !identical(services, oldWidget.services) || !identical(patients, oldWidget.patients);
 }

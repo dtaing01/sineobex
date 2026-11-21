@@ -4120,7 +4120,8 @@ pickers (`DateField`, `TimeField`, the problem field's questions) gate themselve
 (`DialogGate.over`). The correction sheet (9.7) is a modal route of its own, outside the note
 screen's scope, so it brings one: a note's date or time picker opened from it closes on a freeze.
 Phase 3's **Add a street name**, with what is typed in it, Record consent, the reason for another
-ID card, Still has this?, Mark as Resolved? and a problem's Entered in error are gated, and so are
+ID card, Add problem's onset date (since C-3 the forms' typed date in three private boxes beside
+the calendar alone, in a `DialogGateScope.patients`, as the Referrals sheet's is: D92), Still has this?, Mark as Resolved? and a problem's Entered in error are gated, and so are
 the questions with no detail of their own asked over a chart (Remove this note?, Reopen?, Switch
 to Medical?, leaving an addition to the assessment, discarding an intake), since a freeze leaves
 nothing they could do. `apps/mobile/test/security/dialog_gates_test.dart` reads `lib` and fails on

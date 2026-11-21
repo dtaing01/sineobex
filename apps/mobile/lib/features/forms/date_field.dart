@@ -19,6 +19,17 @@ const datePickerYearsBack = 100;
 const datePickerYearsAhead = 10;
 
 /// `YYYY-MM-DD` of [day].
+/// Saves a date still being typed in a [DateField]'s boxes before a button acts on what the field
+/// holds: the boxes save as they are left, so focus leaves them. Focus anywhere else stays where it
+/// is, on the button a keyboard pressed among them, never nowhere (lifecycle 9; review finding
+/// VX-1).
+Future<void> commitTypedDate() async {
+  final focus = FocusManager.instance.primaryFocus;
+  if (focus?.context?.findAncestorWidgetOfExactType<DateField>() == null) return;
+  focus!.unfocus();
+  await Future<void>.delayed(Duration.zero);
+}
+
 String isoDate(DateTime day) =>
     '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
 

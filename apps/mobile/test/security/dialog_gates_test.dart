@@ -76,7 +76,9 @@ void main() {
     for (final file in dartFiles('lib')) {
       if (file.path.startsWith('lib/features/forms/')) continue;
       final source = file.readAsStringSync();
-      if (field.hasMatch(source) && !source.contains('DialogGateScope(')) unscoped.add(file.path);
+      if (field.hasMatch(source) && !RegExp(r'DialogGateScope(\.patients)?\(').hasMatch(source)) {
+        unscoped.add(file.path);
+      }
     }
     expect(unscoped, isEmpty);
   });

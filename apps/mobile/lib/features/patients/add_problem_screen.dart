@@ -9,12 +9,13 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/form_bits.dart';
 import '../../design/widgets/status_chip.dart';
+import '../../forms/definition.dart' show DateDef;
 import '../../patients/patient_providers.dart';
 import '../../patients/problems.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
-import 'patient_labels.dart';
+import '../forms/date_field.dart' show DateField, commitTypedDate;
 import 'patient_widgets.dart';
-import 'sheet_gate.dart' show DialogGate;
+import 'sheet_gate.dart' show DialogGateScope;
 
 /// **Add problem** (design 9.5): a title, an optional code from the bundled ICD-10-CM list ("No
 /// code" allowed and explained), New or Ongoing (nothing preselected; Resolved isn't offered), an
@@ -48,7 +49,12 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
   ProblemCode? _code;
   String? _status;
   bool _sensitive = false;
-  DateTime? _onset;
+
+  /// The onset date, `YYYY-MM-DD`, as the problem stores it.
+  String? _onset;
+
+  /// Whether the onset's boxes hold a date not saved (half typed, or refused).
+  bool _onsetUnsaved = false;
 
   /// The answer to "Is this the same problem coming back?": null until asked and answered.
   bool? _sameComingBack;
@@ -77,24 +83,18 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
     if (c.sensitive) _sensitive = true;
   });
 
-  Future<void> _pickOnset() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _onset ?? now,
-      firstDate: DateTime(1900),
-      lastDate: now,
-      helpText: 'When did it start?',
-      builder: (_, child) => DialogGate<DateTime>.patients(services: _s, child: child!),
-    );
-    if (picked != null && mounted) setState(() => _onset = picked);
-  }
-
-  void _save() {
+  Future<void> _save() async {
+    // A date being typed is saved as its boxes are left, so it is the one added.
+    await commitTypedDate();
+    if (!mounted) return;
     final title = _title.text.trim();
     setState(() {
       _titleError = title.isEmpty ? 'Give the problem a title.' : null;
-      _error = _status == null ? 'Choose New or Ongoing.' : null;
+      _error = _status == null
+          ? 'Choose New or Ongoing.'
+          : _onsetUnsaved
+          ? 'Fix the date it started first: what’s typed can’t be saved.'
+          : null;
     });
     if (_titleError != null) {
       _titleFocus.requestFocus();
@@ -113,7 +113,7 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
         code: _code?.value,
         status: _status!,
         sensitive: _sensitive || (_code?.sensitive ?? false),
-        onsetDate: _onset == null ? null : _iso(_onset!),
+        onsetDate: _onset,
         recurrenceOf: match != null && _sameComingBack == true ? match.id : null,
       );
       _s.changed();
@@ -125,9 +125,6 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
       setState(() => _error = e.message);
     }
   }
-
-  static String _iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -218,20 +215,25 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
               onSelected: (v) => setState(() => _status = v),
             ),
             const SectionHeading('Started'),
-            Wrap(
-              spacing: FieldSpace.s2,
-              runSpacing: FieldSpace.s2,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (_onset != null) Text(shortDate(_onset!, today), style: text.bodyLarge),
-                OutlinedButton.icon(
-                  onPressed: () => unawaited(_pickOnset()),
-                  icon: const Icon(LucideIcons.calendar),
-                  label: Text(_onset == null ? 'Add the date it started' : 'Change the date'),
-                ),
-                if (_onset != null)
-                  TextButton(onPressed: () => setState(() => _onset = null), child: const Text('Clear the date')),
-              ],
+            // Typed in three private boxes, or picked on the calendar alone, as a note's date and a
+            // referral's are (D92; the coordinator's decision on review finding C-3); the calendar
+            // closes on a freeze (D125). Today or earlier, as far back as a note's dates reach. The
+            // field's own Clear takes the date off.
+            DialogGateScope.patients(
+              // Keyed, so a line shown above it (Add problem's refusal) keeps what its boxes hold.
+              key: const ValueKey('onsetDate'),
+              services: _s,
+              child: DateField(
+                field: _onsetDate,
+                value: _onset,
+                today: today,
+                onChanged: (iso) {
+                  if (mounted) setState(() => _onset = iso);
+                },
+                onUnsaved: (unsaved) {
+                  if (mounted) setState(() => _onsetUnsaved = unsaved);
+                },
+              ),
             ),
             if (_s.problems.maySeeSensitive) ...[
               const SectionHeading('Sensitive'),
@@ -264,7 +266,7 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
             const SizedBox(height: FieldSpace.s5),
             SizedBox(
               height: FieldTap.large,
-              child: FilledButton(onPressed: _save, child: const Text('Add problem')),
+              child: FilledButton(onPressed: () => unawaited(_save()), child: const Text('Add problem')),
             ),
           ],
         ),
@@ -272,3 +274,6 @@ class _AddProblemState extends ConsumerState<_AddProblem> {
     );
   }
 }
+
+/// The date a problem started: today or earlier (C-3).
+final _onsetDate = DateDef.outside(id: 'onsetDate', label: 'Date it started');

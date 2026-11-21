@@ -74,6 +74,65 @@ void main() {
     });
   }
 
+  // The coordinator's decision on review finding C-3: the onset date is typed in three private boxes,
+  // as a note's date is (D92), beside the calendar alone; what the problem stores is unchanged.
+  for (final run in runs) {
+    testWidgets('the date it started is typed in three boxes, and saved as the problem stores it (${runName(run)})', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = await addProblem(tester, run: run);
+      await type(tester, 'problemTitle', 'Demo: cough');
+      await tapOn(tester, find.text('Ongoing'));
+      await type(tester, 'form.onsetDate.month', '3');
+      await type(tester, 'form.onsetDate.day', '7');
+      await type(tester, 'form.onsetDate.year', '2020');
+      await expectScreenOk(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+      expect(created(h)['onsetDate'], '2020-03-07');
+      handle.dispose();
+    });
+  }
+
+  testWidgets('a date it started that can’t be saved stops Add problem, and the field’s Clear takes it off', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await addProblem(tester);
+    await type(tester, 'problemTitle', 'Demo: cough');
+    await tapOn(tester, find.text('Ongoing'));
+    await type(tester, 'form.onsetDate.month', '3');
+    await type(tester, 'form.onsetDate.day', '7');
+    final before = h.sync.store!.outbox().length;
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    await expectShown(tester, find.text('Fix the date it started first: what’s typed can’t be saved.'));
+    expect(h.sync.store!.outbox(), hasLength(before));
+    await type(tester, 'form.onsetDate.year', '2020');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+    await tapOn(tester, find.bySemanticsLabel('Clear Date it started'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    expect(created(h)['onsetDate'], isNull);
+    handle.dispose();
+  });
+
+  testWidgets('the date it started’s calendar is the calendar alone, and closes when the store freezes', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await addProblem(tester);
+    await tapOn(tester, find.bySemanticsLabel(RegExp('^Date it started: ')));
+    final dialog = find.byType(DatePickerDialog);
+    expect(dialog, findsOneWidget);
+    // No typing mode: Material's is a box the keyboard would learn from.
+    expect(find.descendant(of: dialog, matching: find.byType(EditableText)), findsNothing);
+    h.sync.store!.freeze('Your access to this team ended. Saved records are being sent to a Program Admin.');
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.byType(DatePickerDialog), findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('a code result is a button Switch Access can activate (V6)', (tester) async {
     final handle = tester.ensureSemantics();
     await addProblem(tester);
