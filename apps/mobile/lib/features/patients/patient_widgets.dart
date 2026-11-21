@@ -89,6 +89,7 @@ class PhiField extends StatelessWidget {
     onSubmitted: onSubmitted,
     // The focused field scrolls above the keyboard (design 12.1).
     scrollPadding: const EdgeInsets.all(FieldSpace.s7 * 2),
+    contextMenuBuilder: _privateMenu,
     decoration: InputDecoration(
       labelText: label,
       hintText: hint,
@@ -101,6 +102,26 @@ class PhiField extends StatelessWidget {
     ),
   );
 }
+
+/// What a private box's selection menu offers: the platform's own cut, copy, paste and select all,
+/// and nothing that sends its text out of the app (lifecycle 10.2; the coordinator's decision on
+/// review finding PP-3). The platforms' Share, Search Web and Look Up, Android's text-processing
+/// apps (a translator) and iOS's Live Text are left out.
+Widget _privateMenu(BuildContext context, EditableTextState state) => AdaptiveTextSelectionToolbar.buttonItems(
+  anchors: state.contextMenuAnchors,
+  buttonItems: [
+    for (final item in state.contextMenuButtonItems)
+      if (privateMenuItems.contains(item.type)) item,
+  ],
+);
+
+/// The only items a private box's selection menu holds.
+const privateMenuItems = {
+  ContextMenuButtonType.cut,
+  ContextMenuButtonType.copy,
+  ContextMenuButtonType.paste,
+  ContextMenuButtonType.selectAll,
+};
 
 Widget? _noCounter(
   BuildContext context, {

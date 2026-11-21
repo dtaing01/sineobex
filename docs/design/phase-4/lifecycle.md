@@ -5395,7 +5395,11 @@ As built for the phone's screens (unit L5, with its review):
   Every box that takes a patient's details or a note's text is private, with no suggestions,
   autocorrect or learned words (phase 3's `PhiField`, the form's `NoteTextField`), the place typed at
   Where and Add to the assessment among them; selecting and copying inside such a box is the
-  platform's own, as in phase 3.
+  platform's own, as in phase 3. Since the phase's review (finding PP-3, the coordinator's
+  decision), its selection menu offers only cut, copy, paste and select all, on both platforms:
+  the platforms' Share, Search Web and Look Up, Android's text-processing apps and iOS's Live Text
+  are left out (`PhiField`'s `contextMenuBuilder`, pinned by
+  `test/features/patients/phi_field_menu_test.dart`). Copy stays the platform's own.
 - **The place.** A position joins the visit only on the tap (12.1 #15), kept in the encrypted
   database with the visit and sent in its create; no screen shows it as coordinates, no log holds it
   (10.1's details hold no value) and nothing about it is written to preferences. Outside the app's
