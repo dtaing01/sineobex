@@ -1666,9 +1666,17 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   the visit holds, before the draft rule or the envelope lock answers with the value (`set`,
   `services/api/src/sync/apply.ts`; the fake's `_set`), as a hidden note answer is (4.4, D88). It
   never meets a conflict it could not see into, which no choice of its sender's could settle, and a
-  blind Use my value never overwrites an assessment they never saw. An admin's accept passes, and
-  the reviewer, who may read both, decides; a choice made on such a conflict from before this rule
-  is held the same way.
+  blind Use my value never overwrites an assessment they never saw. A choice made on such a
+  conflict from before this rule is held the same way. What a value kept in history or a retry
+  sends such a sender of the summary is a field that holds nothing (`fieldForAnswer`, 6.4 rule 2;
+  review finding PA-4). An admin's accept applies the held set as it was made, at the version it
+  named, as `services/api/src/sync/review.ts` applies every held change (the coordinator's
+  decision on the second pass's open question): when the summary has moved to another value since,
+  the accept is refused `cannot_apply` and the reviewer can only reject it, and once a note of the visit is
+  finished it is kept in the visit's history, as any late change is (the envelope lock). So an
+  accept never puts a value over one its sender never saw. A reviewer who may read both can write
+  the visit's summary themselves, as anyone who charts may while no note of the visit is finished,
+  and after that add to it by an addendum (3.6).
 - **`hasFinishedNote`** (review finding SLK-1, as the coordinator decided, with the phone's store):
   the sync read's snapshot of a visit carries it in its attributes, true when a note of the visit
   that the reader is shown is `completed` or `signed`. It is worked out in `fetchRecords`' `asRead`
@@ -1733,7 +1741,13 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   sender may see it (`fieldForAnswer`, 6.4) holds nothing, the change is held for a Program Admin
   instead (`decide`, `services/api/src/sync/apply.ts`; the fake's `_decide`). A conflict writes
   nothing, so nothing is undone. A sender is never asked to choose between their value and one they
-  are not shown: that choice could never settle, and Use my value would overwrite blind.
+  are not shown: that choice could never settle, and Use my value would overwrite blind. An admin's
+  accept applies the held change as it was made, at the version it named, as `review.ts` applies
+  every held change (the coordinator's decision on the second pass's open question): while the
+  field holds a value at a later version than the one named, as it did when the conflict came, the
+  accept is refused `cannot_apply` and the reviewer can only reject it, and a record that takes no more
+  values keeps it in its history (3.6). So an accept never puts a value over one its sender never
+  saw. A reviewer who may read both can make the change themselves.
 - **An answer that will not count.** A `set` that lands in a field another phone has hidden, or
   in an entry another phone has removed, is accepted as usual. Its receipt carries
   `details.notCounted` (`hidden_field` or `removed_entry`), and the phone says so on the field:
@@ -5505,15 +5519,22 @@ As built for the phone's screens (unit L5, with its review):
   (the coordinator's decisions on review findings C-2 and C-4) every private box shares one
   `PrivateBox` (`apps/mobile/lib/design/widgets/private_box.dart`): `PhiField`, every box built on
   it, and the birth date box, which was a plain `TextField` with Share, Search Web and Look Up in
-  its menu. Its Copy and Cut, from the selection menu and from the keyboard alike (the copy and cut
-  text intent, which `EditableText` lets an ancestor override), go through `secureCopy`, as an ID
+  its menu. Its Copy and Cut, from the selection menu and from a hardware keyboard's shortcuts (the
+  copy and cut text intent, which `EditableText` lets an ancestor override), go through `secureCopy`, as an ID
   link does, never the general pasteboard: on iOS a local-only item, never Universal Clipboard, on
   Android a clip marked sensitive whose label names no one, each cleared after 60 seconds. Cut takes
   the text out only once `secureCopy` says it was copied. When it says no, nothing is copied and the
   box says “Nothing was copied: this phone couldn’t copy it privately.”; there is no fallback to the
   plain clipboard. On success the box says “Copied. It clears in 60 seconds.” under it, a live
   region, a new one at every copy. Paste is the platform's own. The sign-in and PIN boxes take
-  neither a patient's details nor a note's text and keep the platform's menu.
+  neither a patient's details nor a note's text and keep the platform's menu. **What does not go
+  through it** (the coordinator's decision on the open question of review finding C-4): on Android
+  a soft keyboard's own Copy or Cut (`performContextMenuAction`, which Gboard's text editing panel
+  sends) is handled inside the Flutter engine's Android embedding and writes a plain clip, neither
+  marked sensitive nor cleared; on iOS an edit action sent to the text view from outside Flutter
+  (an iPad keyboard's shortcut bar, for one) may do the same, which no device here has checked.
+  Closing it needs a hook that wraps the embedding's text input connection, which Flutter offers
+  only by replacing how the app hosts its view; it is not built in phase 4 (plan risk 10).
 - **The place.** A position joins the visit only on the tap (12.1 #15), kept in the encrypted
   database with the visit and sent in its create; no screen shows it as coordinates, no log holds it
   (10.1's details hold no value) and nothing about it is written to preferences. Outside the app's
