@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/encounters/referrals_sheet.dart' show referralDateMissing, referralDateUnsaved;
 import 'package:sineobex_field/sync/entities.dart' show entityReferral;
@@ -241,6 +242,68 @@ void main() {
       },
     );
   }
+
+  // Review findings VX-1 and VX-2: pressed from the keyboard, Add referral keeps focus, refused or
+  // not; and the same refusal on a second press is a new node, so it is said again.
+  group('Add referral from the keyboard', () {
+    Finder dateBox(String part) => inSheet(find.byKey(ValueKey('phi.form.referredOn.$part')));
+    final add = inSheet(find.widgetWithText(FilledButton, 'Add referral'));
+
+    Future<FocusNode?> focusAdd(WidgetTester tester) async {
+      await revealInSheet(tester, add);
+      Focus.of(tester.element(find.descendant(of: add, matching: find.text('Add referral')))).requestFocus();
+      await tester.pump();
+      return FocusManager.instance.primaryFocus;
+    }
+
+    testWidgets('a refused date: focus stays on Add referral, and a second press says the refusal again', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.bySemanticsLabel('Add a referral'));
+      // A day after the phone's: refused, so nothing can be added.
+      final after = fixtureNow.add(const Duration(days: 1));
+      for (final (part, text) in [('month', '${after.month}'), ('day', '${after.day}'), ('year', '${after.year}')]) {
+        await revealInSheet(tester, dateBox(part));
+        await tester.enterText(dateBox(part), text);
+        await tester.pump();
+      }
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.referralDetails')), 'Demo: shelter intake');
+      await tester.pump();
+      final before = await focusAdd(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+      expect(identical(FocusManager.instance.primaryFocus, before), isTrue);
+      final refusal = inSheet(find.bySemanticsLabel(referralDateUnsaved));
+      await revealInSheet(tester, refusal);
+      final first = tester.getSemantics(refusal);
+      expect(first.getSemanticsData().flagsCollection.isLiveRegion, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+      expect(tester.getSemantics(refusal).id, isNot(first.id));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityReferral), isEmpty);
+      handle.dispose();
+    });
+
+    testWidgets('a referral added: focus stays on Add referral, ready for the next', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.bySemanticsLabel('Add a referral'));
+      await tester.enterText(find.byKey(const ValueKey('phi.referralDetails')), 'Demo: shelter intake');
+      await tester.pump();
+      final before = await focusAdd(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityReferral && e.op == 'create'), hasLength(1));
+      expect(identical(FocusManager.instance.primaryFocus, before), isTrue);
+      handle.dispose();
+    });
+  });
 
   testWidgets('who may add and mark: a community health worker marks their own, never a teammate’s', (tester) async {
     final h = await signInToChart(tester);

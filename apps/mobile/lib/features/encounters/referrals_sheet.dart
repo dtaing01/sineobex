@@ -17,7 +17,7 @@ import '../../patients/chart_cache.dart' show chartMetaOf;
 import '../../sync/local_store.dart' show ChartingPaused;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../../forms/definition.dart' show DateDef;
-import '../forms/date_field.dart' show DateField, isoDate;
+import '../forms/date_field.dart' show DateField, commitTypedDate, isoDate;
 import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count, isoDay, longDate;
 import '../patients/patient_widgets.dart' show AskDialog, PhiField, WideButton, showDone, todayOf;
@@ -336,6 +336,9 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
 
   /// The date's boxes hold one not saved: typed, half typed or refused.
   bool _dateUnsaved = false;
+
+  /// Presses of Add referral, so each refusal is a new node.
+  int _tries = 0;
   String? _problem;
 
   @override
@@ -357,10 +360,11 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
   }
 
   Future<void> _add() async {
-    // A date being typed is saved as its boxes are left, so it is the one added.
-    FocusManager.instance.primaryFocus?.unfocus();
-    await Future<void>.delayed(Duration.zero);
+    // A date being typed is saved as its boxes are left, so it is the one added; focus pressed on the
+    // button stays there (review finding VX-1).
+    await commitTypedDate();
     if (!mounted) return;
+    _tries++;
     final on = isoDay(_on);
     if (_dateUnsaved || on == null) {
       return setState(() => _problem = _dateUnsaved ? referralDateUnsaved : referralDateMissing);
@@ -425,7 +429,11 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
         ),
         const SizedBox(height: FieldSpace.s1),
         Text('${count(_details.text.runes.length)} of ${count(referralDetailsMax)} characters', style: text.bodyMedium),
-        if (_problem != null) ...[const SizedBox(height: FieldSpace.s2), ErrorMessage(_problem!)],
+        // A new node at each press, so the same refusal twice is said twice (review finding VX-2).
+        if (_problem != null) ...[
+          const SizedBox(height: FieldSpace.s2),
+          ErrorMessage(_problem!, key: ValueKey('referral.problem.$_tries')),
+        ],
         const SizedBox(height: FieldSpace.s3),
         WideButton(label: addReferralButton, filled: true, onPressed: () => unawaited(_add())),
       ],
@@ -484,11 +492,15 @@ class _ReferralDateFormState extends State<_ReferralDateForm> {
   bool _unsaved = false;
   String? _problem;
 
+  /// Presses of Change the date, so each refusal is a new node.
+  int _tries = 0;
+
   Future<void> _change() async {
-    // A date being typed is saved as its boxes are left, so it is the one sent.
-    FocusManager.instance.primaryFocus?.unfocus();
-    await Future<void>.delayed(Duration.zero);
+    // A date being typed is saved as its boxes are left, so it is the one sent; focus pressed on the
+    // button stays there (VX-1).
+    await commitTypedDate();
     if (!mounted) return;
+    _tries++;
     if (_unsaved || _on == null) return setState(() => _problem = _unsaved ? referralDateUnsaved : referralDateMissing);
     Navigator.of(context).pop(_on);
   }
@@ -514,7 +526,10 @@ class _ReferralDateFormState extends State<_ReferralDateForm> {
             if (mounted) setState(() => _unsaved = unsaved);
           },
         ),
-        if (_problem != null) ...[const SizedBox(height: FieldSpace.s2), ErrorMessage(_problem!)],
+        if (_problem != null) ...[
+          const SizedBox(height: FieldSpace.s2),
+          ErrorMessage(_problem!, key: ValueKey('referral.date.problem.$_tries')),
+        ],
         const SizedBox(height: FieldSpace.s3),
         WideButton(label: changeReferralDateAction, filled: true, onPressed: () => unawaited(_change())),
       ],

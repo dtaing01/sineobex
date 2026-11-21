@@ -4917,7 +4917,10 @@ phone takes): Add referral's date, "Date referred", today by default, is the for
 Material's picker, whose typing box let the keyboard learn. The calendar closes on a freeze
 (`DialogGateScope`, D125). A date typed and not yet saved is saved as Add referral is pressed; one
 the boxes can't save (half typed, no such day, after today) adds nothing, and the sheet says "Fix
-the date first: what’s typed can’t be saved."; cleared, it asks for a date.
+the date first: what’s typed can’t be saved."; cleared, it asks for a date. The date is saved by
+taking focus out of its boxes only when focus is in them (`commitTypedDate`), so focus pressed on
+Add referral or Change the date stays on it, refused or not (review finding VX-1); and each press
+keys its refusal anew, so the same refusal twice is said twice (VX-2).
 
 ### 9.11 Portal: the visit page
 

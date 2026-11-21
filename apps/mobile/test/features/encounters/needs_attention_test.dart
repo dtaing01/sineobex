@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart'
     show CompletePlan, EncounterCompletion, NoteActions;
@@ -619,6 +620,46 @@ void main() {
       expect(h.server.records[referral]!.attributes['referredOn'], day);
     });
   }
+
+  // Review findings VX-1 and VX-2, for Change the date's sheet.
+  testWidgets('Change the date pressed from the keyboard keeps focus, and a second refused press is said again', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final now = h.server.now;
+    h.server.now = () => now().subtract(const Duration(days: 3));
+    h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic');
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.now = now;
+    await openAttention(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Change the date'));
+    final ask = find.byType(BottomSheet);
+    Finder box(String part) => find.descendant(of: ask, matching: find.byKey(ValueKey('phi.form.referredOn.$part')));
+    final after = fixtureNow.add(const Duration(days: 1));
+    for (final (part, typed) in [('month', '${after.month}'), ('day', '${after.day}'), ('year', '${after.year}')]) {
+      await tester.ensureVisible(box(part));
+      await tester.enterText(box(part), typed);
+      await tester.pump();
+    }
+    final change = find.descendant(of: ask, matching: find.widgetWithText(FilledButton, 'Change the date'));
+    await tester.ensureVisible(change);
+    Focus.of(tester.element(find.descendant(of: change, matching: find.text('Change the date')))).requestFocus();
+    await tester.pump();
+    final before = FocusManager.instance.primaryFocus;
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(identical(FocusManager.instance.primaryFocus, before), isTrue);
+    final refusal = find.bySemanticsLabel('Fix the date first: what’s typed can’t be saved.');
+    final first = tester.getSemantics(refusal);
+    expect(first.getSemanticsData().flagsCollection.isLiveRegion, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(tester.getSemantics(refusal).id, isNot(first.id));
+    expect(ask, findsOneWidget);
+    handle.dispose();
+  });
 
   testWidgets('Change the date’s sheet, its date typed, and the calendar over it go when the store freezes', (
     tester,
