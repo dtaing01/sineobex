@@ -112,6 +112,8 @@ repository; `CLAUDE.md` links it.
 
 ## Decisions to copy into the plan's D-table when the phase closes
 
+Copied into `IMPLEMENTATION_PLAN.md`'s D-table, word for word, as the phase closed (Nov 21).
+
 | # | Decision | Why |
 |---|---|---|
 | D55 | The note is the unit; the encounter's status is derived by a trigger; an empty draft counts for nothing | Several people chart one visit, each under their own rules; five code paths change a note's status |
@@ -202,6 +204,27 @@ All 95 are applied. Two were blockers: the stranded notes, and entry paths the s
 refuse, which would have made the wound in the Done when impossible to save. The first, with
 several of the major findings, came from one cause, the rule being on the visit and not on the
 note, which is why decision D56 exists.
+
+**The whole phase, as built (Nov 21).** Once every unit had landed, four reviewers read the whole
+phase, each with one lens: sync safety, audit and access, patient details on screen and off the
+phone, and accessibility. They found 20: four blockers, nine major, six minor and one question,
+which duplicated a blocker. The blockers: an addendum sent in the same push as a refused sign-off
+locked the visit for good, since Complete's fix could never be sent (PS-1); the visit screen could
+show the person's own copy of a note while Co-sign or Attest sent the server's hash (PA-5); a
+conflict or a value kept in history on a Medical visit's summary went to a sender the sync read
+withholds it from (PA-4); and a teammate's answer shown in a conflict was logged nowhere on a
+retry, and not on the patient the first time (PA-1). A second pass by three reviewers (sync;
+audit, access and patient details; accessibility) read every fix again: 11 held, five were
+incomplete and four broke something. It found 17 more (one blocker, three
+major, 13 minor), the blocker that a value sent back to a phone skipped the sync read's rules
+about who may read the record at all, and on a retry was logged as a read the read route refuses
+(VA-1); the coordinator added five (C-1 to C-5: three major, two minor), among them that a private
+box's Copy put a note's text on the general pasteboard. Every confirmed finding is fixed, and each
+fix has a test that fails without it, checked by a script that takes the fix out. One gap is
+recorded, not fixed: a soft keyboard's own Copy still writes a plain clip (D126, plan risk 10).
+Meanwhile the portal's Export EMS handoff test failed about one page in 256, its PDF readers
+dropping a last byte 0x0D before `endstream`; both now read a stream by its `/Length` (`3be7294`,
+test code only).
 
 ## What a person has to decide
 
