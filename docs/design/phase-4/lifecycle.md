@@ -5410,9 +5410,24 @@ As built on the portal (unit L6): the attending's half is "the Done when, its po
 attending opens the attestation queue and attests a resident’s visit in one action"
 (`attestation.spec.ts`), from the navigation through the queue, the visit page and one press of
 Attest to the rows, events and notice step 7 asserts, with axe in three themes and reflow at
-320 px. A phone's sync sends what steps 1 to 6 leave on the server, with answers written in the
-spec until L7's `encounters-done-when.json` is there. The shorter test is "an attending attests
+320 px. A phone's sync sends what steps 1 to 6 leave on the server, with the shared story's
+answers (`encounters-done-when.json`, unit L7). The shorter test is "an attending attests
 what they read whole; a note with a GU exam waits, says why, and a Program Admin attests it".
+
+As built (unit L7): the shared story names the seeded resident, attending and Program Admin, a
+made-up patient, the four notes in the order the phone makes them (General, then the Red flags
+note the app adds with it, Wound care, Social needs), the answers each step writes and what each
+step expects. `services/api/test/encounters-done-when.test.ts` runs steps 3, 5, 6 and 7 as raw
+changes and requests, and checks through each row's transaction ID that a sign-off, its change
+and its audit event share one transaction; it also holds the shorter test.
+`apps/mobile/test/encounters/done_when_test.dart` runs steps 1 to 6 on the phone's test server,
+with a real kill and restart at step 2. `live_encounters_test.dart`, run by `tools/live-sync.sh`
+in CI, runs steps 1 to 7 against the real API, the patient registered by the resident's phone.
+`apps/mobile/test/features/encounters/done_when_flow_test.dart` walks steps 1 to 6 through the
+screens in the three themes and at 200% text; its restart at step 2 locks the session and builds
+the app again over the same database, since the app harness cannot kill the app. The phone's
+test server writes no server audit events, so step 5's events are asserted by the API and live
+tests.
 
 ### 11.2 The test that holds each rule
 
