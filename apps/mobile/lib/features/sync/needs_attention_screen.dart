@@ -177,9 +177,10 @@ class NeedsAttentionScreen extends ConsumerWidget {
 }
 
 /// The note a notice of a note's life asks the person to open (lifecycle 9.13): the one a
-/// `signoff_not_applied` names beside its sign-off (D104), the one `finished_differently` is about.
+/// `signoff_not_applied` or a `correction_not_applied` names beside its sign-off or correction (D104,
+/// VS-6), the one `finished_differently` is about.
 String? _noteOf(LocalNotice n) => switch (n.kind) {
-  noticeSignoffNotApplied => n.noteId,
+  noticeSignoffNotApplied || noticeCorrectionNotApplied => n.noteId,
   noticeFinishedDifferently => n.recordId,
   _ => null,
 };

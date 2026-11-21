@@ -1427,6 +1427,100 @@ describe('phase 4 sync: sign-offs', () => {
       ).toEqual([{ kind: 'signoff_not_applied' }]);
     });
 
+    // Review finding VS-6: a held correction taken as naming none (PS-2) can still be refused at
+    // accept, and its phone let go of it when it was held.
+    it('a held correction refused at accept, or rejected, tells its sender, naming the note, with no text of it', async () => {
+      const zed = await clinician('zed-vs6@example.com', 'Zed VS-6 (demo)', 'np');
+      const tea = await clinician('tea-vs6@example.com', 'Tea VS-6 (demo)', 'attending');
+      const { flags, note } = await chartedVisit(zed);
+      const made = nowIso();
+      const s1 = await signoff(zed, flags, 'sign', timed(made));
+      const s2 = await signoff(zed, note, 'sign', timed(made));
+      const correction = (plan: string) =>
+        zed.phone.change({
+          entity: 'note_correction',
+          op: 'create',
+          value: {
+            noteId: note.noteId,
+            changes: [{ field: 'data.care.plan', newValue: plan, baseVersion: 1 }],
+            reason: 'Demo: the recheck was left out',
+            requestedByPatient: false,
+            declined: false,
+            claimedCredential: null,
+            signoffId: s2.recordId,
+          },
+        });
+      const fix = await correction('Demo: rest, fluids and a recheck');
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(zed.membershipId, 'chw');
+      expect((await zed.send(s1, s2, fix)).map((r) => [r.status, r.reason])).toEqual([
+        ['rejected', 'permission'],
+        ['rejected', 'permission'],
+        ['rejected', 'awaiting_review'],
+      ]);
+      const decide = async (c: Change, decision: 'accept' | 'reject') => {
+        const [item] = await h.scratch.owner<{ id: string }[]>`
+          select id from sineobex.quarantine_items where change_id = ${c.changeId}`;
+        return call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Zed' },
+        });
+      };
+      expect((await decide(s1, 'reject')).status).toBe(200);
+      expect((await decide(s2, 'reject')).status).toBe(200);
+      // A teammate edits the draft's answer: the correction's version is gone.
+      const teas = await tea.phone.change({
+        entity: 'encounter_note',
+        recordId: note.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: 'Demo: teammate plan',
+        baseVersion: 1,
+      });
+      expect((await tea.send(teas)).map((r) => r.status)).toEqual(['accepted']);
+      const mark = await auditMark(h);
+      const refused = await decide(fix, 'accept');
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toMatchObject({
+        code: 'cannot_apply',
+        details: { problem: 'field_changed' },
+      });
+      const told = await h.scratch.owner<{ kind: string; entity: string; noteId: string | null }[]>`
+        select kind, entity, note_id as "noteId" from sineobex.user_notices
+        where user_id = ${zed.id} and record_id = ${fix.recordId}`;
+      expect(told).toEqual([
+        { kind: 'correction_not_applied', entity: 'note_correction', noteId: note.noteId },
+      ]);
+      expect(await eventsAfter(mark)).toEqual([
+        expect.objectContaining({
+          action: 'quarantine.accept_refused',
+          entity: 'encounter_note',
+          entityId: note.noteId,
+        }),
+      ]);
+      // The item stays pending; the reject that follows tells nobody twice.
+      expect((await decide(fix, 'reject')).status).toBe(200);
+      expect(await noticesOn(fix.recordId)).toHaveLength(1);
+      // The notice holds no text of the correction, and is listed with its note.
+      const listed = (await call(h, '/v1/team/notices', { token: zed.token, teamId: t.teamId })).body as {
+        kind: string;
+        noteId: string | null;
+      }[];
+      expect(listed.filter((n) => n.kind === 'correction_not_applied')).toEqual([
+        expect.objectContaining({ entity: 'note_correction', recordId: fix.recordId, noteId: note.noteId }),
+      ]);
+      expect(JSON.stringify(listed)).not.toContain('Demo');
+      // A held correction rejected outright tells its sender too.
+      const again = await correction('Demo: rest and a recheck');
+      expect((await zed.send(again)).map((r) => r.status)).toEqual(['rejected']);
+      expect((await decide(again, 'reject')).status).toBe(200);
+      expect(await noticesOn(again.recordId)).toEqual([
+        { userId: zed.id, kind: 'correction_not_applied', entity: 'note_correction' },
+      ]);
+    });
+
     it('a held sign-off’s time is checked against when its push arrived, not when an admin accepted it', async () => {
       const quinn = await clinician('quinn@example.com', 'Quinn (demo)', 'np');
       const charted = await chartedVisit(quinn);

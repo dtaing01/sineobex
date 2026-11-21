@@ -390,8 +390,9 @@ class LocalNotice {
   final DateTime? readAt;
 
   /// The note a server notice names beside its record (D104): a [noticeSignoffNotApplied] names the
-  /// held sign-off, which no sync read gives, and this its note, so a phone that never held the
-  /// sign-off opens the note by it. Null for every other notice.
+  /// held sign-off, and a [noticeCorrectionNotApplied] the held correction, which no sync read gives,
+  /// and this its note, so a phone that never held it opens the note by it. Null for every other
+  /// notice.
   final String? noteId;
 }
 
@@ -416,6 +417,12 @@ const noticeChangeNotApplied = 'change_not_applied';
 /// the sign-off (entity `note_signoff`), and its kind alone words it: "Your Complete of this note
 /// wasn’t applied. Open it and complete it again."
 const noticeSignoffNotApplied = 'signoff_not_applied';
+
+/// The server's notice that a correction it held for review will not reach the chart (review finding
+/// VS-6): a Program Admin rejected it, or couldn't apply it to the note as it is now. It names the
+/// correction (entity `note_correction`) and its note, and holds no text of it: "Your correction of
+/// this note wasn’t applied. Open it and correct it again."
+const noticeCorrectionNotApplied = 'correction_not_applied';
 
 /// A sign-off that found its note already finished by a signature over other content (lifecycle
 /// 3.4): the person opens the note and reads what was signed.
@@ -2788,7 +2795,9 @@ class LocalStore {
         settled = true;
       }
     }
-    final notePatient = kind == noticeSignoffNotApplied ? _patientOfRecord(noteId ?? heldNote) : null;
+    final notePatient = kind == noticeSignoffNotApplied || kind == noticeCorrectionNotApplied
+        ? _patientOfRecord(noteId ?? heldNote)
+        : null;
     final id = _newId();
     _db.execute(
       'INSERT INTO local_notices (id, kind, patient_id, record_id, field, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?)',

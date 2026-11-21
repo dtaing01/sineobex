@@ -2119,7 +2119,20 @@ review):
   untouched; it answers 409 `cannot_apply` with `details.problem`, and is logged as
   `quarantine.accept_refused` on the note with its patient (10.1). Any other refused accept tells
   nobody, and its reviewer rejects it, which then does. Only a sign-off of a note on the chart
-  tells anyone: a held change of another kind, rejected, tells nobody. A refusal at accept time is
+  tells anyone, and, since the second pass, a correction: a held change of another kind, rejected,
+  tells nobody.
+- **A held correction that will not reach the chart** (review finding VS-6, as the coordinator
+  decided). A correction held for review is taken, once the sign-off it names is rejected, as
+  naming none (4.7, PS-2), and on a note still a draft that is an edit of the draft (3.6): if the
+  draft moved since (a teammate's edit of the answer, `field_changed`) the accept is refused
+  `cannot_apply`. Its phone let go of it when it was held, and Complete never makes it again, so
+  its sender gets `correction_not_applied` on entity `note_correction`, naming the held correction
+  and its note in `note_id` (`correctionNotApplied`, `services/api/src/sync/review.ts`; the fake's
+  `_correctionNotApplied`), so they can open the note and correct it again: on any refused accept
+  of a held correction of a note on the chart, logged as `quarantine.accept_refused` on the note,
+  and on its reject, once per correction. The notice holds no text of it. The phone words it by its
+  kind ("Your correction of this note wasn’t applied. Open it and correct it again.") and Needs
+  attention's card opens the note, as for `signoff_not_applied`. A refusal at accept time is
   not stored as a rejection of the change: the item is still the reviewer's to decide. The phone's
   half is the store's (4.8): the notice settles only the held sign-off it names, so its note is a
   draft to complete again, fetched again by the note the notice names if it had left the phone
@@ -2854,6 +2867,7 @@ retry, answered from its receipt, tells nobody again.
 | `late_change_kept`, on entity `encounter` | the sender, and whoever acts as the author of each finished note of the visit | a change to the patient, the place or the summary kept in history (4.3) |
 | `change_not_applied` | the sender alone | a reopen, a sign-off or a correction from someone who does not act as the author (4.1) |
 | `signoff_not_applied`, on entity `note_signoff` and the held sign-off, naming its note in `note_id` (the list's `noteId`, D104) | its sender | a held sign-off a Program Admin rejects, or whose accept is refused as `content_changed`; once per sign-off, whether or not an earlier notice was read (4.6). Until the phone's store it was `change_not_applied` on the note, unless an unread one named the note |
+| `correction_not_applied`, on entity `note_correction` and the held correction, naming its note in `note_id` | its sender | a held correction a Program Admin rejects, or whose accept is refused; once per correction (4.6, review finding VS-6) |
 | `note_saved_unsigned` | the signer | a sign-off saved unsigned (4.6) |
 | `note_corrected` | the co-signer whose co-signature a correction clears; every attester of the current signature when an attested note is no longer attested; never the corrector | a correction applied (4.7) |
 | `conflict_resolved` (phase 2) | the note's author, when the value kept was someone else's | an answer of `keep_server` that saw the current value, a finished note's included (4.3) |

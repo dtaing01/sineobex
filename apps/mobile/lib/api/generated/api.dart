@@ -3878,7 +3878,7 @@ class Notice {
   final String? entity;
   final String id;
   final String kind;
-  /// The note a `signoff_not_applied` notice is about: its record is the held sign-off, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
+  /// The note a `signoff_not_applied` or `correction_not_applied` notice is about: its record is the held sign-off or correction, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
   final String? noteId;
   final DateTime? readAt;
   final String? recordId;

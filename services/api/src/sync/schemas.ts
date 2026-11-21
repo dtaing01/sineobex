@@ -358,8 +358,9 @@ export const Notice = z
     recordId: Uuid.nullable(),
     noteId: Uuid.nullable().openapi({
       description:
-        'The note a `signoff_not_applied` notice is about: its record is the held sign-off, which no ' +
-        'sync read gives, so a phone that never held it opens the note by this. Null for every other notice',
+        'The note a `signoff_not_applied` or `correction_not_applied` notice is about: its record is the held ' +
+        'sign-off or correction, which no sync read gives, so a phone that never held it opens the note by ' +
+        'this. Null for every other notice',
     }),
     createdAt: DateTime,
     readAt: DateTime.nullable(),

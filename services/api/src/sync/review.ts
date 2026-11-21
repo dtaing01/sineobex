@@ -349,6 +349,34 @@ async function signoffNotApplied(
   return note.id;
 }
 
+/**
+ * A held correction that will not reach the chart: rejected, or its accept refused (review finding
+ * VS-6). Its phone let go of it when it was held, and Complete never makes it again, so its sender
+ * gets `correction_not_applied` naming it and its note (D104), once per correction, as
+ * signoffNotApplied tells of a sign-off; the notice holds no text of it. Only for a correction of a
+ * note on the chart; anything else tells nobody. The note's ID, or null.
+ */
+async function correctionNotApplied(
+  tx: Tx,
+  teamId: string,
+  item: Pick<QuarantineRow, 'entity' | 'op' | 'userId' | 'recordId' | 'value'>,
+): Promise<string | null> {
+  if (item.entity !== 'note_correction' || item.op !== 'create') return null;
+  const noteId = (item.value as { noteId?: unknown } | null)?.noteId;
+  if (typeof noteId !== 'string' || !UUID.test(noteId)) return null;
+  const [note] = await tx<{ id: string }[]>`
+    select id from sineobex.encounter_notes where id = ${noteId} and team_id = ${teamId}`;
+  if (!note) return null;
+  await tx`
+    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id, note_id)
+    select ${teamId}, ${item.userId}, 'correction_not_applied', 'note_correction', ${item.recordId}, ${note.id}
+    where not exists (
+      select 1 from sineobex.user_notices
+      where team_id = ${teamId} and user_id = ${item.userId} and kind = 'correction_not_applied'
+        and entity = 'note_correction' and record_id = ${item.recordId})`;
+  return note.id;
+}
+
 /** The patient a queue item is about, as the queue names it (migration 0020, patient_of_change). */
 async function patientOfItem(tx: Tx, itemId: string): Promise<string | null> {
   const [row] = await tx<{ patientId: string | null }[]>`
@@ -483,6 +511,22 @@ export async function decideQuarantine(
             ...(problem ? { problem } : {}),
           },
         );
+        // A held correction refused now (the draft moved since, a teammate's correction got there
+        // first): its phone let go of it when it was held, so its sender is told, naming the note,
+        // to correct it again, and the refusal is logged with it (review finding VS-6). The item
+        // stays pending, for the reviewer to reject.
+        if (item.entity === 'note_correction') {
+          const noteId = await correctionNotApplied(tx, scope.team.teamId, item);
+          if (!noteId) throw refused;
+          await audit({
+            action: 'quarantine.accept_refused',
+            entity: 'encounter_note',
+            entityId: noteId,
+            patientId: await patientOfItem(tx, itemId),
+            details: { itemId, changeId: item.changeId, problem },
+          });
+          return refused;
+        }
         if (item.entity !== 'note_signoff' || problem !== 'content_changed') throw refused;
         // A held sign-off the note no longer matches (review finding NOT-12): its phone let go of
         // it when it was held, so its sender is told the note needs completing again, and the
@@ -498,8 +542,12 @@ export async function decideQuarantine(
         return refused;
       }
     }
-    // A held sign-off rejected tells its sender the note needs completing again (NOT-12).
-    if (decision === 'reject') await signoffNotApplied(tx, scope.team.teamId, item);
+    // A held sign-off rejected tells its sender the note needs completing again (NOT-12), and a held
+    // correction that it needs correcting again (VS-6).
+    if (decision === 'reject') {
+      await signoffNotApplied(tx, scope.team.teamId, item);
+      await correctionNotApplied(tx, scope.team.teamId, item);
+    }
 
     await tx`
       update sineobex.quarantine_items set status = ${decision === 'accept' ? 'accepted' : 'rejected'},

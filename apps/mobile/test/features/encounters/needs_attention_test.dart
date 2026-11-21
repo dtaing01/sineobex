@@ -9,7 +9,7 @@ import 'package:sineobex_field/sync/canonical_json.dart' show valueHash;
 import 'package:sineobex_field/sync/entities.dart'
     show entityAddendum, entityCorrection, entityEncounter, entityNote, entityReferral, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart'
-    show ChangeState, noticeFinishedDifferently, noticeSignoffNotApplied;
+    show ChangeState, noticeCorrectionNotApplied, noticeFinishedDifferently, noticeSignoffNotApplied;
 
 import '../../sync/fake_server.dart' show FakeNotice;
 import 'encounter_kit.dart';
@@ -397,6 +397,42 @@ void main() {
     await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
     expectNoteOpened(tester, note);
     expect(h.sync.store!.record(note), isNotNull);
+  });
+
+  // Review finding VS-6: a held correction that won't reach the chart.
+  testWidgets('a notice that a correction wasn’t applied opens its note, and says nothing of what it held', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final visit = h.server.seed(entityEncounter, {'kind': 'non_medical', 'patientId': p1Id}, by: me);
+    final note = h.server.seed(entityNote, {
+      'encounterId': visit,
+      'noteTypeKey': 'social_needs',
+      'noteTypeVersion': 1,
+      'data': {
+        'needs.needs': ['food'],
+      },
+    }, by: me);
+    const correction = 'f1000000-0000-4000-8000-0000000000e3';
+    h.server.notices.add(
+      FakeNotice(
+        'f2000000-0000-4000-8000-0000000000e4',
+        me,
+        noticeCorrectionNotApplied,
+        entityCorrection,
+        correction,
+        h.wall,
+        noteId: note,
+      ),
+    );
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    await openAttention(tester);
+    await expectShown(tester, find.text('Your correction of this note wasn’t applied. Open it and correct it again.'));
+    expect(find.text('Open the chart'), findsNothing);
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
+    expectNoteOpened(tester, note);
   });
 
   testWidgets('a note finished with other content opens from its notice, read-only', (tester) async {

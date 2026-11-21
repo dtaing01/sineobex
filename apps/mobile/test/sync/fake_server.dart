@@ -437,10 +437,12 @@ class FakeSyncServer {
     final h = held[changeId]!;
     final outcome = _decide(_Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by), c);
     if (outcome['status'] != 'accepted') {
-      // Refused, the change stays held; a sign-off the note no longer matches tells its sender.
+      // Refused, the change stays held; a sign-off the note no longer matches tells its sender, and
+      // so does a correction refused now (review finding VS-6).
       if ((outcome['details'] as Map<String, Object?>?)?['problem'] == 'content_changed') {
         _signoffNotApplied(h.userId, c);
       }
+      _correctionNotApplied(h.userId, c);
       return outcome;
     }
     quarantine.remove(changeId);
@@ -483,6 +485,25 @@ class FakeSyncServer {
     final c = quarantine[changeId]!;
     rejectedHeld.add(changeId);
     _signoffNotApplied(held[changeId]!.userId, c);
+    _correctionNotApplied(held[changeId]!.userId, c);
+  }
+
+  /// A held correction that will not reach the chart (review.ts correctionNotApplied, review finding
+  /// VS-6): its sender gets `correction_not_applied` naming it and its note, once per correction.
+  /// Only for a correction of a note on the chart.
+  void _correctionNotApplied(String userId, Map<String, Object?> c) {
+    if (c['entity'] != entityCorrection || c['op'] != 'create') return;
+    final noteId = (c['value'] as Map<String, Object?>?)?['noteId'];
+    if (noteId is! String || records[noteId]?.entity != entityNote) return;
+    final correctionId = c['recordId']! as String;
+    final told = notices.any(
+      (n) =>
+          n.userId == userId &&
+          n.kind == 'correction_not_applied' &&
+          n.entity == entityCorrection &&
+          n.recordId == correctionId,
+    );
+    if (!told) _notify(userId, 'correction_not_applied', entityCorrection, correctionId, noteId: noteId);
   }
 
   /// A held sign-off that will not reach the chart (review.ts signoffNotApplied, review finding
@@ -3969,7 +3990,8 @@ class FakeNotice {
   final String entity;
   final String recordId;
 
-  /// The note a `signoff_not_applied` notice is about (user_notices.note_id, D104); null for any other.
+  /// The note a `signoff_not_applied` or `correction_not_applied` notice is about (user_notices.note_id,
+  /// D104, VS-6); null for any other.
   final String? noteId;
   final DateTime createdAt;
   DateTime? readAt;

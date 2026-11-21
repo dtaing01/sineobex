@@ -120,6 +120,8 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   // a kind of its own (4.6), so no state of the phone's words it.
   'change_not_applied' => 'Only the note’s author can do that. Nothing was changed.',
   'signoff_not_applied' => 'Your Complete of this note wasn’t applied. Open it and complete it again.',
+  // A held correction that won't reach the chart (review finding VS-6): its kind alone words it.
+  'correction_not_applied' => 'Your correction of this note wasn’t applied. Open it and correct it again.',
   // Lifecycle 3.4 asks for this, and 9.13 has no sentence for it: the coordinator's wording.
   'finished_differently' =>
     'This note was already finished with different content. Open it and read what was finished.',

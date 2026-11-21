@@ -3360,6 +3360,58 @@ void main() {
           ]);
         });
 
+        // services/api/test/sync-signoffs.test.ts, 'a held correction refused at accept, or rejected,
+        // tells its sender, naming the note, with no text of it' (review finding VS-6).
+        test('a held correction refused at accept, or rejected, tells its sender, naming the note', () async {
+          server.credentials[dana] = 'np';
+          final v = chartedVisit(dana);
+          final s1 = signoff(dana, v.flags, 'sign');
+          final s2 = signoff(dana, v.note, 'sign');
+          Map<String, Object?> correction(String plan) => change(entityCorrection, 'create', {
+            'noteId': v.note.noteId,
+            'changes': [
+              {'field': 'data.care.plan', 'newValue': plan, 'baseVersion': 1},
+            ],
+            'reason': 'Demo: the recheck was left out',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': s2['recordId'],
+          });
+          String id(Map<String, Object?> c) => c['recordId']! as String;
+          final fix = correction('Demo: rest, fluids and a recheck');
+          server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+          expect(
+            [
+              for (final r in await send(dana, [s1, s2, fix])) [r['status'], r['reason']],
+            ],
+            [
+              ['rejected', 'permission'],
+              ['rejected', 'permission'],
+              ['rejected', 'awaiting_review'],
+            ],
+          );
+          server
+            ..rejectHeld(s1['changeId']! as String)
+            ..rejectHeld(s2['changeId']! as String)
+            // A teammate edits the draft's answer: the correction's version is gone.
+            ..serverEdit(v.note.noteId, 'data.care.plan', 'Demo: teammate plan', by: alex);
+          expect(
+            server.acceptHeld(fix['changeId']! as String, by: admin)['details'],
+            containsPair('problem', 'field_changed'),
+          );
+          final told = ['$dana correction_not_applied $entityCorrection'];
+          expect(noticesOn(id(fix)), told);
+          expect(server.notices.where((n) => n.recordId == id(fix)).map((n) => n.noteId), [v.note.noteId]);
+          server.rejectHeld(fix['changeId']! as String);
+          expect(noticesOn(id(fix)), told);
+          // A held correction rejected outright tells its sender too.
+          final again = correction('Demo: rest and a recheck');
+          await send(dana, [again]);
+          server.rejectHeld(again['changeId']! as String);
+          expect(noticesOn(id(again)), ['$dana correction_not_applied $entityCorrection']);
+        });
+
         test('each held sign-off is told once, whether or not an earlier notice was read', () async {
           // Review findings SRC-1 and SRC-5: told by note, a second held Complete rejected before the
           // phone's read of the first notice arrived told nobody, and a late reject of the first one was
