@@ -6032,10 +6032,12 @@ change a Program Admin's credential, has no default the code builds; it is 12.2 
 6. **Who may change a Program Admin's credential after appointment** (raised with the project lead
    in the phase's review). No route is meant for it: the team's credential route takes a Program
    Admin's membership only from a platform owner who is an active member of the team with
-   `team.manage_users`, and an owner outside the team can only remove the Program Admin and appoint
-   them again under the credential they now hold. The project lead decides; recommended: an
-   owner-console route to change it, with a recent sign-in, a reason and its audit event, and
-   another Program Admin of the team may lower it but never raise it (plan section 6).
+   `team.manage_users`, and an owner outside the team must first appoint themselves the team's
+   Program Admin in the owner console, which gives them the team's patient data, or remove the
+   Program Admin and appoint them again under the credential they now hold. The project lead
+   decides; recommended: an owner-console route to change it, with a recent sign-in, a reason and
+   its audit event, and another Program Admin of the team may lower it but never raise it (plan
+   section 6).
 
 ### 12.3 Where this design departs from the PRD, or reads it a particular way
 
