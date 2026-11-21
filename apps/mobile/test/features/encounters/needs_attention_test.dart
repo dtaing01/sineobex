@@ -313,7 +313,9 @@ void main() {
     await tester.runAsync(() => h.sync.syncNow());
     await settle(tester);
     expect(find.text(frozen), findsOneWidget);
-    expect(find.text('1 thing waits here until then.'), findsOneWidget);
+    // Review finding VX-6: a sentence that stands on its own, whichever freeze reason is above it.
+    expect(find.text('1 change is still on this phone.'), findsOneWidget);
+    expect(find.textContaining('until then'), findsNothing);
     for (final shown in [
       'Food, Clothing',
       'Hygiene',

@@ -98,7 +98,9 @@ class NeedsAttentionScreen extends ConsumerWidget {
           if (frozen != null && items.isNotEmpty) ...[
             FrozenNotice(frozen),
             Text(
-              '${plural(items.length, 'thing waits', 'things wait')} here until then.',
+              // Words that stand on their own: once access ended, nothing here waits on this person
+              // (review finding VX-6).
+              '${plural(items.length, 'change is', 'changes are')} still on this phone.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
           ],
