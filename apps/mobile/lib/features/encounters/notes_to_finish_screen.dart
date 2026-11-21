@@ -62,7 +62,7 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
   String? _refused;
   String? _problem;
 
-  /// The row [_problem] is about, when it is about one.
+  /// The row [_problem] is about: every refusal here is about the row tapped, said under it.
   String? _problemAt;
 
   /// Each refusal counts, so a second identical one is a new live region (review finding PX-2).
@@ -180,10 +180,6 @@ class _NotesToFinishState extends ConsumerState<_NotesToFinish> {
           padding: const EdgeInsets.all(FieldSpace.s4),
           children: [
             if (!list.online) ...[const NoticeMessage(onlyThisPhone), const SizedBox(height: FieldSpace.s3)],
-            if (_problem != null && _problemAt == null) ...[
-              ErrorMessage(_problem!, key: ValueKey('finish.problem.$_tries')),
-              const SizedBox(height: FieldSpace.s3),
-            ],
             if (list.rows.isEmpty) Text(noNotesToFinish, style: text.bodyLarge),
             for (final row in list.rows) ...[
               _NoteRow(row: row, onOpen: _opening ? null : () => unawaited(_open(row))),

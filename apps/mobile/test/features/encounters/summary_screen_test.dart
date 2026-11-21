@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/encounters/encounter_repository.dart' show CompletePlan, EncounterCompletion;
 import 'package:sineobex_field/encounters/rules.dart' show NoteStatus;
@@ -486,5 +489,29 @@ void main() {
     await tapOn(tester, find.widgetWithText(OutlinedButton, 'Save & Close'));
     expect(location(tester), '/patients/$p1Id');
     expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Saved as a draft')), findsOneWidget);
+  });
+
+  // Review finding VX-7 (PX-7): while the server's read of the visit is on its way.
+  testWidgets('while the visit’s read waits, a screen reader finds that the visit is loading', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    // Sent, so a teammate may have added to it, and the server is asked whether it holds a finished
+    // Red flags note (lifecycle 8.2).
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final slow = Completer<Object?>();
+    routes.on('GET', '/v1/encounters/$visit', (_) => slow.future);
+    final context = tester.element(find.byType(Navigator).first);
+    unawaited(GoRouter.of(context).push('/encounters/$visit/summary'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.bySemanticsLabel('Loading the visit'), findsOneWidget);
+    slow.complete(visitJson(encounterId: visit, patientId: p1Id, status: 'draft', notes: const []));
+    await settle(tester);
+    expect(find.bySemanticsLabel('Loading the visit'), findsNothing);
+    handle.dispose();
   });
 }

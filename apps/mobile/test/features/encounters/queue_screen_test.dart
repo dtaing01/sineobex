@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_api.dart' show SecondAct;
@@ -140,6 +142,43 @@ void main() {
       handle.dispose();
     });
   }
+
+  // Review findings C-5 and VX-7: Try again's refusal is a live region, a new one at each press; and
+  // while the queue's read waits, a screen reader finds that it is loading (PX-7).
+  testWidgets('Try again refused twice is said twice, each a new live region', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    await scripted(tester, h);
+    await home(tester);
+    await tapOn(tester, find.bySemanticsLabel(RegExp('^Waiting for your co-signature')));
+    final refusal = find.bySemanticsLabel('Connect to see notes waiting for you.');
+    await expectShown(tester, refusal);
+    final first = tester.getSemantics(refusal);
+    expect(first, isSemantics(isLiveRegion: true));
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Try again'));
+    await expectShown(tester, refusal);
+    final second = tester.getSemantics(refusal);
+    expect(second, isSemantics(isLiveRegion: true));
+    expect(second.id, isNot(first.id));
+    handle.dispose();
+  });
+
+  testWidgets('while a queue’s read waits, a screen reader finds that the list is loading', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester, offline: false);
+    final routes = await scripted(tester, h);
+    final slow = Completer<Object?>();
+    routes.on('GET', '/v1/team/cosign-queue', (_) => slow.future);
+    await home(tester);
+    await tester.tap(find.bySemanticsLabel(RegExp('^Waiting for your co-signature')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.bySemanticsLabel('Loading the list'), findsOneWidget);
+    slow.complete(queue());
+    await settle(tester);
+    expect(find.bySemanticsLabel('Loading the list'), findsNothing);
+    handle.dispose();
+  });
 
   testWidgets('online, each tile shows the server’s number; back on top, the queue is asked again', (tester) async {
     final h = await signInToChart(tester, offline: false);

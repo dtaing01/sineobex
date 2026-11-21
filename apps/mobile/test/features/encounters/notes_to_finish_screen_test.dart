@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
@@ -144,10 +146,13 @@ void main() {
     expect(tester.getTopLeft(said).dy, greaterThan(tester.getBottomLeft(remote).dy));
     // Said once, as a live region (review finding PX-6).
     final handle = tester.ensureSemantics();
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('This note isn’t on this phone. Connect to open it.')),
-      isSemantics(isLiveRegion: true),
-    );
+    final first = tester.getSemantics(find.bySemanticsLabel('This note isn’t on this phone. Connect to open it.'));
+    expect(first, isSemantics(isLiveRegion: true));
+    // Tapped again, the same refusal is a new node, so it is said again (review finding VX-7).
+    await tapOn(tester, remote);
+    final second = tester.getSemantics(find.bySemanticsLabel('This note isn’t on this phone. Connect to open it.'));
+    expect(second, isSemantics(isLiveRegion: true));
+    expect(second.id, isNot(first.id));
     handle.dispose();
     expect(h.sync.store!.record(theirs), isNull);
 
@@ -155,6 +160,30 @@ void main() {
     await tapOn(tester, remote);
     expectNoteOpened(tester, theirs);
     expect(h.sync.store!.record(theirs), isNotNull);
+  });
+
+  // Review finding VX-7 (PX-7): while the server's list is on its way.
+  testWidgets('while the list’s read waits, a screen reader finds that the list is loading', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final routes = await withEncounterRoutes(tester, h);
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    final slow = Completer<Object?>();
+    routes
+      ..on('GET', '/v1/me/notes-to-finish', (_) => slow.future)
+      ..on('GET', '/v1/me/counts', (_) => {'notesToFinish': 1, 'notesOverdue': 0});
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    await home(tester);
+    await tester.tap(find.textContaining('note to finish'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.bySemanticsLabel('Loading the list'), findsOneWidget);
+    slow.complete({'notes': <Object?>[]});
+    await settle(tester);
+    expect(find.bySemanticsLabel('Loading the list'), findsNothing);
+    handle.dispose();
   });
 
   testWidgets('no tile while there is nothing to finish, and nothing while the store is frozen', (tester) async {

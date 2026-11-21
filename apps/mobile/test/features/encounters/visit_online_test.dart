@@ -419,6 +419,98 @@ void main() {
     );
   });
 
+  // Review findings C-5 and VX-7: each of the visit screen's refusals is a live region, and the same
+  // refusal on a second press is a new node, so it is said again.
+  group('the visit screen’s refusals, pressed twice', () {
+    Future<void> saidTwice(WidgetTester tester, String said, Future<void> Function() press) async {
+      await press();
+      final refusal = find.bySemanticsLabel(said);
+      await expectShown(tester, refusal);
+      final first = tester.getSemantics(refusal);
+      expect(first, isSemantics(isLiveRegion: true));
+      await press();
+      await expectShown(tester, refusal);
+      final second = tester.getSemantics(refusal);
+      expect(second, isSemantics(isLiveRegion: true));
+      expect(second.id, isNot(first.id));
+    }
+
+    testWidgets('Co-sign’s refusal', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      h.server.offline = false;
+      routes
+        ..on('GET', '/v1/encounters/$visit', (_) => waitingVisit())
+        ..refuse(
+          'POST',
+          '/v1/encounters/$visit/cosign',
+          409,
+          'content_changed',
+          details: {
+            'noteIds': [note],
+          },
+        );
+      await openVisitScreen(tester, visit);
+      await saidTwice(
+        tester,
+        'This visit changed. Read it again.',
+        () => tapOn(tester, find.widgetWithText(FilledButton, 'Co-sign')),
+      );
+      handle.dispose();
+    });
+
+    // A teammate's visit and the person's own draft read from the server, which this phone can't
+    // bring onto it: the server gives neither record.
+    Map<String, Object?> elsewhere() => visitJson(
+      encounterId: visit,
+      patientId: p1Id,
+      status: 'draft',
+      notes: [
+        visitNoteJson(
+          noteId: note,
+          author: meRef,
+          key: 'general_primary_care',
+          title: 'General / primary care',
+          status: 'draft',
+          completedAt: null,
+        ),
+      ],
+    );
+
+    testWidgets('Add or remove notes’ refusal, under the notes', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      h.server.offline = false;
+      routes.on('GET', '/v1/encounters/$visit', (_) => elsewhere());
+      await openVisitScreen(tester, visit);
+      expect(h.sync.store!.record(visit), isNull);
+      await saidTwice(
+        tester,
+        'This visit isn’t on this phone. Connect to open it.',
+        () => tapOn(tester, find.bySemanticsLabel(RegExp('^Add or remove notes'))),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a note’s own refusal, under the note', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      h.server.offline = false;
+      routes.on('GET', '/v1/encounters/$visit', (_) => elsewhere());
+      await openVisitScreen(tester, visit);
+      expect(h.sync.store!.record(note), isNull);
+      await saidTwice(
+        tester,
+        'This note isn’t on this phone. Connect to open it.',
+        () => tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note')),
+      );
+      handle.dispose();
+    });
+  });
+
   testWidgets('a note with a part the person can’t open says so, and offers nothing to sign', (tester) async {
     final h = await signInToChart(tester);
     final routes = await withEncounterRoutes(tester, h);
