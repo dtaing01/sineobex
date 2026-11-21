@@ -11,8 +11,9 @@ import 'package:sineobex_field/sync/device_channel.dart';
 /// A private box's selection menu offers only cut, copy, paste and select all, on both platforms:
 /// nothing that sends the chart's text out of the app (lifecycle 10.2; the coordinator's decision on
 /// review finding PP-3). Every box of a chart or a note is a PhiField, a note's text boxes included,
-/// and the birth date box shares its menu (C-2). Its Copy and Cut, from the menu and from the
-/// keyboard alike, go through secureCopy and never the general pasteboard (C-4).
+/// and the birth date box shares its menu (C-2). Its Copy and Cut, from the menu and from a
+/// hardware keyboard's shortcuts, go through secureCopy and never the general pasteboard (C-4); a
+/// soft keyboard's own Copy is outside it and no test here drives it (plan risk 10).
 void main() {
   /// What reached the app's native secure copy, and what reached the platform's plain clipboard.
   late List<String> secure;

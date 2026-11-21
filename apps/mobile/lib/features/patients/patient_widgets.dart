@@ -71,7 +71,9 @@ class PhiField extends StatelessWidget {
   final bool showCounter;
 
   /// A private box (`PrivateBox`): its selection menu holds only cut, copy, paste and select all,
-  /// and its Copy and Cut go through `secureCopy`, never the general pasteboard (lifecycle 10.2).
+  /// and its Copy and Cut, from that menu and a hardware keyboard's shortcuts, go through
+  /// `secureCopy`, never the general pasteboard; a soft keyboard's own Copy is outside it (lifecycle
+  /// 10.2, plan risk 10).
   @override
   Widget build(BuildContext context) => PrivateBox(
     controller: controller,

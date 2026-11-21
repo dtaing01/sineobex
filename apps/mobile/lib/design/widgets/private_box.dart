@@ -24,14 +24,17 @@ const notCopiedPrivately = 'Nothing was copied: this phone couldn’t copy it pr
 
 /// A box that takes a patient's details or a note's text (`PhiField`, the birth field, every box
 /// built on them): [builder] draws the box with [PrivateBoxState.menu] as its selection menu. Its
-/// Copy and Cut, from the menu and from the keyboard alike (the copy and cut text intent), go
-/// through [secureCopy], never the platform's general pasteboard: on iOS a local-only item, never
-/// Universal Clipboard, on Android a clip marked sensitive with a label naming no one, each gone
-/// after a minute (the coordinator's decision on review finding C-4). Cut takes the text out only
-/// once it was copied; when the phone won't copy privately nothing is copied and the box says so
-/// in a plain sentence, with no fallback to the plain clipboard. Each copy is said under the box as
-/// a live region, a new one at every copy, so the same sentence twice is read twice. Paste is the
-/// platform's own.
+/// Copy and Cut, from the menu and from a hardware keyboard's shortcuts (the copy and cut text
+/// intent), go through [secureCopy], never the platform's general pasteboard: on iOS a local-only
+/// item, never Universal Clipboard, gone after a minute; on Android a clip marked sensitive with a
+/// label naming no one, cleared after a minute or, when that minute ends in the background, once
+/// the app is back in front, as [secureCopy] says (the coordinator's decision on review finding
+/// C-4). A soft keyboard's own Copy or Cut (Android's `performContextMenuAction`, handled in
+/// Flutter's embedding) never reaches this widget and writes a plain clip (lifecycle 10.2, plan
+/// risk 10). Cut takes the text out only once it was copied; when the phone won't copy privately
+/// nothing is copied and the box says so in a plain sentence, with no fallback to the plain
+/// clipboard. Each copy is said under the box as a live region, a new one at every copy, so the
+/// same sentence twice is read twice. Paste is the platform's own.
 class PrivateBox extends StatefulWidget {
   const PrivateBox({super.key, required this.controller, required this.builder, this.onChanged});
 
@@ -105,7 +108,8 @@ class PrivateBoxState extends State<PrivateBox> {
 
   @override
   Widget build(BuildContext context) => Actions(
-    // EditableText's copy and cut are overridable (Action.overridable): this takes the keyboard's.
+    // EditableText's copy and cut are overridable (Action.overridable): this takes a hardware
+    // keyboard's shortcuts. A soft keyboard's own Copy goes round it (plan risk 10).
     actions: {
       CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
         onInvoke: (intent) {
