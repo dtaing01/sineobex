@@ -467,11 +467,16 @@ class _RejectionCard extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     // A note's life (lifecycle 9.13): the note a refused sign-off, correction or answer is about.
     final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
-    final noteId = switch (e.entity) {
-      entityNote => e.recordId,
-      entitySignoff || entityCorrection => value['noteId'] as String?,
-      _ => null,
-    };
+    // An addendum or a correction refused only for naming a refused sign-off goes again when its
+    // note is completed again (review findings PS-1, C-1): the card says so and opens that note.
+    final completedAgain = n?.store.noteCompletedAgainFor(e);
+    final noteId =
+        completedAgain ??
+        switch (e.entity) {
+          entityNote => e.recordId,
+          entitySignoff || entityCorrection => value['noteId'] as String?,
+          _ => null,
+        };
     final opensNote =
         n != null &&
         noteId != null &&
@@ -576,14 +581,19 @@ class _RejectionCard extends ConsumerWidget {
         children: [
           Semantics(header: true, child: Text(what, style: text.titleLarge)),
           const SizedBox(height: FieldSpace.s1),
-          Text(problemLabel(problem) ?? reasonLabel(e.reason), style: text.titleMedium),
-          if (problemLabel(problem) == null && e.message != null) ...[
+          Text(
+            completedAgain != null ? waitsForNoteLine : problemLabel(problem) ?? reasonLabel(e.reason),
+            style: text.titleMedium,
+          ),
+          if (completedAgain == null && problemLabel(problem) == null && e.message != null) ...[
             const SizedBox(height: FieldSpace.s1),
             Text(e.message!, style: text.bodyLarge),
           ],
           const SizedBox(height: FieldSpace.s1),
           Text(
-            patientSide
+            completedAgain != null
+                ? sentWithNoteLine
+                : patientSide
                 ? 'It stays on this phone until it is fixed, with what depends on it.'
                 : 'It stays on this phone until it is fixed. Open the record to fix it.',
             style: text.bodyMedium,
@@ -717,6 +727,10 @@ const correctAgainAction = 'Correct again';
 
 /// A note's answer whose value is more than a few words: the form shows it.
 const openTheNoteToSee = 'Open the note to see it';
+
+/// An addendum or a correction that waits for its note's sign-off (review finding C-1).
+const waitsForNoteLine = 'This waits for its note to be completed again.';
+const sentWithNoteLine = 'It’s sent, as you made it, when you complete the note again. Open the note to complete it.';
 const leaveItAction = 'Leave it';
 const chooseNoteTypeAction = 'Choose a note type';
 const choosePatientAction = 'Choose a patient';

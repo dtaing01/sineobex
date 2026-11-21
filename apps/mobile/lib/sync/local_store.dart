@@ -1263,6 +1263,24 @@ class LocalStore {
         e,
   ];
 
+  /// The note whose refused sign-off [e] names, when [e] is an addendum's or a correction's create
+  /// refused only for naming it (`stale_reference`, `note_signoff_missing`): completing that note
+  /// again sends [e] again with the sign-off's fix ([finishNotes], review finding PS-1), so Needs
+  /// attention says so and opens the note (the coordinator's decision on review finding C-1). Null
+  /// for anything else.
+  String? noteCompletedAgainFor(OutboxEntry e) {
+    if ((e.entity != entityAddendum && e.entity != entityCorrection) || e.op != 'create') return null;
+    final value = e.value;
+    final signoffId = value is Map<String, Object?> ? value['signoffId'] : null;
+    if (signoffId is! String) return null;
+    for (final s in needsAttention()) {
+      if (s.entity != entitySignoff || s.recordId != signoffId) continue;
+      final noteId = (s.value as Map<String, Object?>?)?['noteId'];
+      if (noteId is String && _refusedNamingSignoff({signoffId}).any((r) => r.changeId == e.changeId)) return noteId;
+    }
+    return null;
+  }
+
   /// [refused], a refused create, sent again as it was made: a new change of the same record,
   /// superseding the refusal, which its receipt settles, after everything in the outbox now, as
   /// [_resendDependants] sends what waited on a refused create (D49).

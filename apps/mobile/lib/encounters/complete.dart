@@ -458,7 +458,9 @@ extension EncounterCompletion on EncounterRepository {
 
   /// Hard stop 2 (3.3), as the store's `finishNotes` checks it: a change waiting in Needs attention
   /// to the visit or a note of it, or to a record that names one; a refused sign-off of a note of
-  /// [completing] does not count, since completing again is its fix (3.4).
+  /// [completing] does not count, since completing again is its fix (3.4), and neither does an
+  /// addendum or a correction refused only for naming it, which is sent again with that fix (review
+  /// finding PS-1; without this the summary refused the Complete the store would take, C-1).
   bool _waitsInNeedsAttention(_Held held, Set<String> completing) {
     final ids = {held.visit!.id, for (final n in held.notes) n.id};
     for (final e in store.needsAttention()) {
@@ -466,6 +468,7 @@ extension EncounterCompletion on EncounterRepository {
           when completing.contains(noteId)) {
         continue;
       }
+      if (completing.contains(store.noteCompletedAgainFor(e))) continue;
       if (ids.contains(e.recordId) ||
           parentsOf(entity: e.entity, op: e.op, field: e.field, value: e.value).any((p) => ids.contains(p.id))) {
         return true;

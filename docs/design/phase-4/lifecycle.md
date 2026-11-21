@@ -2624,7 +2624,17 @@ was taken out by a script to see its test fail; 11.2 names the one check no test
   leaves those out (`finishNotes`, `_refusedNamingSignoff`). So "Add to the assessment" goes again
   with its Complete, and a correction is never left with Leave it as the only way out. One naming a
   refused sign-off of a note not completed now still counts. Tested on the test server
-  (`store_encounters_test.dart`) and live (`live_api_test.dart`).
+  (`store_encounters_test.dart`) and live (`live_api_test.dart`). The summary's own hard stop 2
+  (`complete.dart`'s `_waitsInNeedsAttention`, which draws the stop before the store is asked)
+  leaves them out the same way, through the store's `noteCompletedAgainFor`: without it the summary
+  refused the Complete the store takes, so completing again from the app never sent them (found
+  building C-1). Needs attention's card for such a create says so, in plain words, “This waits for
+  its note to be completed again.” and “It’s sent, as you made it, when you complete the note
+  again. Open the note to complete it.”, and offers **Open the note**, the note whose refused
+  sign-off it names (for Add to the assessment, the note of that sign-off), as the refused
+  sign-off's own card does; a correction keeps Leave it beside it. Once Complete sends it again the
+  refused entry is superseded and the card is gone (the coordinator's decision on review finding
+  C-1; `test/features/encounters/needs_attention_test.dart`).
 - **Open the note on a `signoff_not_applied` notice** (9.13). The notice names a sign-off, and a
   held sign-off is not on the chart: the sync read loads a sign-off from `note_signoffs`
   (`note-signoff.ts`), while the held value is in `quarantine_items`, and the test server's held

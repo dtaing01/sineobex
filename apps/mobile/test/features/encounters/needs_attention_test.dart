@@ -7,7 +7,7 @@ import 'package:sineobex_field/encounters/encounter_repository.dart'
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/sync/canonical_json.dart' show valueHash;
 import 'package:sineobex_field/sync/entities.dart'
-    show entityCorrection, entityEncounter, entityNote, entityReferral, entitySignoff;
+    show entityAddendum, entityCorrection, entityEncounter, entityNote, entityReferral, entitySignoff;
 import 'package:sineobex_field/sync/local_store.dart'
     show ChangeState, noticeFinishedDifferently, noticeSignoffNotApplied;
 
@@ -92,6 +92,116 @@ void main() {
       await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open the note'));
       expectNoteOpened(tester, v.general);
       handle.dispose();
+    });
+  }
+
+  /// [refusedComplete], with an addendum to General's note, or a correction of it, made after its
+  /// Complete and sent beside its sign-off: the sign-off is refused `content_changed`, and the
+  /// addendum or correction `note_signoff_missing`, since the sign-off it names never reached the
+  /// server (review finding PS-1).
+  Future<({String visit, String general, String waits})> refusedBeside(
+    WidgetTester tester,
+    AppHarness h, {
+    required bool correction,
+  }) async {
+    final r = h.encounters.repository;
+    final store = h.sync.store!;
+    final visit = startVisit(h);
+    final general = await chart(tester, h, visit, 'general_primary_care', {'reason.concern': 'Demo: cough'});
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    await tester.runAsync(() => r.openNote(flags));
+    r.saveAnswer(flags, 'red_flags.emergency', 'no');
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    h.server.serverEdit(general, 'data.reason.concern', 'Demo: cough and a fever', by: blair);
+    r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+    final signoffId = store.localEffect(general)!.signoffId;
+    final waits = correction
+        ? store.createRecord(entityCorrection, {
+            'noteId': general,
+            'changes': [
+              // At the version Demo Blair's change left, so the correction itself is sound.
+              {'field': 'data.reason.concern', 'newValue': 'Demo: cough for a week', 'baseVersion': 2},
+            ],
+            'reason': 'Demo: how long was left out',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': signoffId,
+          })
+        : store.createRecord(entityAddendum, {
+            'encounterId': visit,
+            'noteId': general,
+            'text': 'Demo: the swab came back clear',
+            'signoffId': signoffId,
+          });
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    expect(
+      [for (final e in store.needsAttention()) '${e.entity} ${e.details?['problem']}'],
+      unorderedEquals([
+        '$entitySignoff content_changed',
+        '${correction ? entityCorrection : entityAddendum} note_signoff_missing',
+      ]),
+    );
+    return (visit: visit, general: general, waits: waits);
+  }
+
+  // The coordinator's decision on review finding C-1: such a card says what settles it, and opens
+  // the note whose Complete does.
+  for (final correction in [false, true]) {
+    final kind = correction ? 'Correction' : 'Addendum';
+    for (final run in runs) {
+      testWidgets('$kind refused for naming a refused sign-off: sent again when the note is completed again, and '
+          'Open the note (${runName(run)})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signInToChart(tester, run: run);
+        final v = await refusedBeside(tester, h, correction: correction);
+        // Offline, as synced: the card is drawn from the phone's own copy.
+        h.server.offline = true;
+        await openAttention(tester);
+        final card = find.ancestor(of: find.text(kind), matching: find.byType(Column)).first;
+        await expectShown(tester, find.text(kind));
+        expect(
+          find.descendant(of: card, matching: find.text('This waits for its note to be completed again.')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.text(
+              'It’s sent, as you made it, when you complete the note again. Open the note to complete it.',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(find.descendant(of: card, matching: find.text('Open the record to fix it.')), findsNothing);
+        expect(
+          find.descendant(of: card, matching: find.text('The note this belongs to isn’t on the team’s list.')),
+          findsNothing,
+        );
+        await expectScreenOk(tester);
+        await tapOn(tester, find.descendant(of: card, matching: find.widgetWithText(OutlinedButton, 'Open the note')));
+        expectNoteOpened(tester, v.general);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('$kind refused for naming a refused sign-off: once the note is completed again its card is gone, '
+        'and it reaches the server', (tester) async {
+      final h = await signInToChart(tester);
+      final v = await refusedBeside(tester, h, correction: correction);
+      final r = h.encounters.repository;
+      h.server.offline = true;
+      r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(v.visit)))!);
+      await openAttention(tester);
+      expect(find.text(kind), findsNothing);
+      expect(find.text('This waits for its note to be completed again.'), findsNothing);
+      h.server.offline = false;
+      await syncAndRefresh(tester, h);
+      expect([for (final e in h.sync.store!.needsAttention()) '${e.entity} ${e.reason} ${e.details}'], isEmpty);
+      expect(h.server.records[v.waits], isNotNull);
     });
   }
 
