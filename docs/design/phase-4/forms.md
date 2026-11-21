@@ -7,10 +7,12 @@ the portal, how the field specification becomes definitions, the rules that read
 the renderer, and the tests. The other part (`docs/design/phase-4/lifecycle.md`) covers how an
 encounter is stored, completed, signed, attested, corrected and synced.
 
-Who builds from this: a small local model, one task card at a time (`docs/plan/README.md`). The
-design puts the judgment in four places the small model does not write: the format, the
-generator and its checks, one small interpreter written twice and pinned by shared vectors, and
-one widget per kind of field. After that, a note type is data, and adding one is transcription.
+Who builds from this, as planned: a small local model, one task card at a time
+(`docs/plan/README.md`). The design puts the judgment in four places the small model does not write:
+the format, the generator and its checks, one small interpreter written twice and pinned by shared
+vectors, and one widget per kind of field. After that, a note type is data, and adding one is
+transcription. On Nov 16 the project lead decided that the frontier model builds this phase with
+helper agents, from the card index (`docs/design/phase-4-encounters.md`, "How this phase is built").
 
 Names used:
 

@@ -8,11 +8,13 @@ This part covers how an encounter is stored, saved, completed, signed, attested,
 synced, and the screens around it. The other part (`docs/design/phase-4/forms.md`) covers the form
 definitions, their generation from the field specification, the renderer and field validation.
 
-Who builds from this: a small local model, one task card at a time (`docs/plan/README.md`), with a
-frontier model or a person writing the tests for the safety-critical cards first. So the judgment
-sits in a few places the small model does not write: the migrations, the sync core, the phone
-store and the fake server (all level X), and a few small pure functions that are written twice
-(TypeScript and Dart) and pinned by shared test vectors. Everything else follows a pattern.
+Who builds from this, as planned: a small local model, one task card at a time
+(`docs/plan/README.md`), with a frontier model or a person writing the tests for the safety-critical
+cards first. So the judgment sits in a few places the small model does not write: the migrations,
+the sync core, the phone store and the fake server (all level X), and a few small pure functions
+that are written twice (TypeScript and Dart) and pinned by shared test vectors. Everything else
+follows a pattern. On Nov 16 the project lead decided that the frontier model builds this phase with
+helper agents, from the card index (`docs/design/phase-4-encounters.md`, "How this phase is built").
 
 Names used for the PRD files:
 
@@ -6065,8 +6067,9 @@ decisions, recorded in the sections' as-built paragraphs.
 5. **The membership history decides credentials.** `signedUnder` trusts
    `membership_changes`. If a credential is changed by hand in the database, signatures made
    offline before the change are recorded under the wrong one.
-6. **Card count.** See 13: about a third of this part's cards are level X. A small
-   model can't shorten that third.
+6. **Card count.** See 13: about a third of this part's cards are level X. As planned, a small
+   model couldn't shorten that third; since Nov 16 no card of this phase is run on one
+   (`docs/design/phase-4-encounters.md`, "How this phase is built").
 7. **A keyboard's own Copy skips the private copy** (as built, since the phase's review). A private
    box's menu and a hardware keyboard's shortcuts copy through `secureCopy`, but an Android soft
    keyboard's own Copy or Cut writes a plain clip, and an iOS edit action from outside Flutter may
@@ -6144,7 +6147,8 @@ fixes:
 
 This part is 94 of the phase's 218 cards: 4 at level S, 24 at T, 34 at R and 32 at X. The sync
 core, the phone's store and the phone's test server are where the X cards are, and a small model
-cannot shorten that third.
+could not have shortened that third; since Nov 16 the frontier model builds every card of the
+phase.
 
 ## What this part needs from the forms part
 
