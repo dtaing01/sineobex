@@ -805,8 +805,23 @@ class LocalStore {
     if (paths.isNotEmpty) {
       throw LocalValidationError('This entry has a problem. Check it and save again.', paths: paths);
     }
-    final problem = rules.valueProblem('create', null, value, _today);
+    final problem = rules.valueProblem('create', null, value, _today) ?? _unreferencedProblem(rules.entity, value);
     if (problem != null) throw LocalValidationError('This entry has a problem.', problem: problem);
+  }
+
+  /// A referral's date past the phone's own date while the clock has no reference (the coordinator's
+  /// decision on review finding PS-3): the server's day-ahead allowance is for a phone whose time it
+  /// has measured, and a referral does not pause with the clock (3.11), so an unmeasured clock may
+  /// be days ahead. The phone's date is its local day, or the UTC day where that is later.
+  String? _unreferencedProblem(String entity, Map<String, Object?> value) {
+    if (entity != entityReferral) return null;
+    final stamp = _stamp();
+    if (stamp.correctedTime != null) return null;
+    String day(DateTime t) => t.toIso8601String().substring(0, 10);
+    final local = day(stamp.deviceTime.toLocal()), utc = day(stamp.deviceTime.toUtc());
+    final limit = local.compareTo(utc) > 0 ? local : utc;
+    final on = value['referredOn'];
+    return on is String && on.compareTo(limit) > 0 ? 'referral_in_future' : null;
   }
 
   /// Which of a note's data goes in its create, and which follows it. One value holds at most

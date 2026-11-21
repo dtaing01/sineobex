@@ -319,11 +319,36 @@ void main() {
       );
       expect(() => r.add(patient, referredOn: DateTime(99, 3, 1), details: 'Demo: clinic'), refused('date'));
       expect(p.store.outbox(), isEmpty);
-      // A phone a time zone ahead may be on tomorrow already, as the server allows (4.7).
+      // A phone a time zone ahead may be on tomorrow already, as the server allows (4.7), once the
+      // phone's clock has a reference (review finding PS-3: without one, the phone's own date is the
+      // limit, the next test).
+      await sync(p);
       r.add(patient, referredOn: DateTime(2026, 10, 21), details: List.filled(2000, 'a').join());
       await sync(p);
       serverTookAll(p);
     });
+
+    test(
+      'while the clock has no reference, a date past the phone’s own is refused here (review finding PS-3)',
+      () async {
+        final p = phone(alex);
+        final patient = server.seedPatient();
+        final r = referrals(p);
+        expect(p.clock.status.paused, isFalse);
+        expect(
+          () => r.add(patient, referredOn: DateTime(2026, 10, 21), details: 'Demo: clinic'),
+          throwsA(
+            isA<LocalValidationError>()
+                .having((e) => e.problem, 'problem', 'referral_in_future')
+                .having((e) => e.message, 'message', 'A referral can’t be dated in the future.'),
+          ),
+        );
+        expect(p.store.outbox(), isEmpty);
+        r.add(patient, referredOn: DateTime(2026, 10, 20), details: 'Demo: clinic');
+        await sync(p);
+        serverTookAll(p);
+      },
+    );
 
     test('a referral never waits for the clock check', () async {
       final p = phone(alex);
@@ -333,6 +358,59 @@ void main() {
       expect(p.clock.status.paused, isTrue);
       final id = referrals(p).add(patient, referredOn: DateTime(2026, 10, 20), details: 'Demo: shelter intake');
       expect(p.store.outbox().single.recordId, id);
+    });
+  });
+
+  group('a referral the server refused for its date (review finding PS-3)', () {
+    /// A phone restarted offline with its clock three days ahead, so with no reference: a referral
+    /// dated by its own date passes here, and the server refuses it. Then the clock is set right.
+    Future<({TestPhone p, Referrals r, String patient, OutboxEntry refused, String? visit})> refusedForDate({
+      bool atVisit = false,
+    }) async {
+      final p = TestPhone(
+        userId: alex,
+        teamId: team,
+        transport: () => server.transportFor(alex, team),
+        wall: start.add(const Duration(days: 3)),
+      );
+      phones.add(p);
+      final patient = server.seedPatient();
+      final r = referrals(p);
+      final visit = atVisit ? p.store.createEncounter(kind: 'non_medical', patientId: patient) : null;
+      r.add(patient, referredOn: DateTime(2026, 10, 23), details: 'Demo: shelter intake', encounterId: visit);
+      await sync(p);
+      final refused = p.store.needsAttention().single;
+      expect(
+        [refused.entity, refused.details?['problem'], settledByDate(refused)],
+        [entityReferral, 'referral_in_future', isTrue],
+      );
+      p.wall = start;
+      await sync(p);
+      return (p: p, r: r, patient: patient, refused: refused, visit: visit);
+    }
+
+    test('Change the date sends it again on the date chosen, and the refusal settles', () async {
+      final x = await refusedForDate();
+      // A date the server would refuse again is refused here.
+      expect(() => x.r.changeRefusedDate(x.refused.changeId, DateTime(2026, 10, 23)), refused('referral_in_future'));
+      x.r.changeRefusedDate(x.refused.changeId, DateTime(2026, 10, 20));
+      await sync(x.p);
+      serverTookAll(x.p);
+      final referral = server.records[x.refused.recordId]!;
+      expect(
+        [referral.attributes['referredOn'], referral.attributes['details']],
+        ['2026-10-20', 'Demo: shelter intake'],
+      );
+      // Anything else is not this fix's.
+      expect(() => x.r.changeRefusedDate(x.refused.changeId, DateTime(2026, 10, 20)), throwsStateError);
+    });
+
+    test('made at a visit, once its date is changed the visit no longer waits in Needs attention', () async {
+      final x = await refusedForDate(atVisit: true);
+      x.r.changeRefusedDate(x.refused.changeId, DateTime(2026, 10, 19));
+      await sync(x.p);
+      serverTookAll(x.p);
+      expect(server.records[x.refused.recordId]!.attributes['encounterId'], x.visit);
     });
   });
 

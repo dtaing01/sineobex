@@ -382,6 +382,38 @@ void main() {
     expect(h.server.records[referral]!.attributes['encounterId'], isNull);
   });
 
+  for (final run in runs) {
+    testWidgets('a referral the server refused for its date: Change the date, on the calendar alone, settles it '
+        '(${runName(run)})', (tester) async {
+      // Review finding PS-3: a referral does not wait for the clock, and the server's date was behind.
+      final h = await signInToChart(tester, run: run);
+      final now = h.server.now;
+      h.server.now = () => now().subtract(const Duration(days: 3));
+      final referral = h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic');
+      h.server.offline = false;
+      await syncAndRefresh(tester, h);
+      final store = h.sync.store!;
+      expect([for (final e in store.needsAttention()) e.details?['problem']], ['referral_in_future']);
+      // The server's clock is set right, and the phone measures against it again.
+      h.server.now = now;
+      await syncAndRefresh(tester, h);
+      await openAttention(tester);
+      await expectShown(tester, find.text('A referral can’t be dated in the future.'));
+      await expectScreenOk(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Change the date'));
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      expect(find.text('Date referred'), findsOneWidget);
+      // The calendar alone: no typing box to switch to.
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      await tapOn(tester, find.text('OK'));
+      await settle(tester);
+      expect(store.needsAttention(), isEmpty);
+      final day = fixtureNow.toIso8601String().substring(0, 10);
+      expect(h.server.records[referral]!.attributes['referredOn'], day);
+    });
+  }
+
   testWidgets('a note on a version the team moved on from: Remove this note settles it, and its type opens anew', (
     tester,
   ) async {

@@ -14,6 +14,7 @@ import '../../encounters/encounter_models.dart' show VisitKind;
 import '../../encounters/encounter_repository.dart'
     show NoteActions, RefusalFixes, VisitChoice, settledByPatient, settledByRemoving, settledByVisit;
 import '../../encounters/encounter_services.dart';
+import '../../encounters/referrals.dart' show settledByDate;
 import '../../forms/definition.dart' show ChoiceDef;
 import '../../forms/field_at.dart' show fieldAt;
 import '../../forms/forms_api.dart' show NoteTypeVersion;
@@ -35,6 +36,7 @@ import '../encounters/encounter_widgets.dart' show ChoiceTile, SheetGate, choose
 import '../encounters/note_type_list.dart' show noteLocation;
 import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
+import '../patients/sheet_gate.dart' show DialogGate;
 import '../patients/patient_widgets.dart' show confirm, errorText, todayOf;
 import 'sync_labels.dart';
 
@@ -474,6 +476,9 @@ class _RejectionCard extends ConsumerWidget {
     final byVisit = n != null && settledByVisit(e);
     final byPatient = n != null && settledByPatient(e);
     final byRemoving = n != null && settledByRemoving(e);
+    // A referral dated past what the server takes: Change the date (review finding PS-3). A referral
+    // does not wait for the clock (3.11), so neither does its fix.
+    final byDate = n != null && settledByDate(e);
     final visitId = switch (e.entity) {
       entityEncounter => e.recordId,
       entityNote =>
@@ -519,6 +524,22 @@ class _RejectionCard extends ConsumerWidget {
           (patients == null ? null : (await choosePatient(context, patients, line: choosePatientLine))?.patientId);
       if (patientId == null) return;
       await settle(() async => n!.repository.choosePatientFor(e.changeId, patientId));
+    }
+
+    Future<void> changeDate() async {
+      final today = todayOf(ref);
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: today,
+        firstDate: DateTime(today.year - 100, today.month, today.day),
+        lastDate: today,
+        helpText: referralDateHelp,
+        // The calendar alone: its typing box would let the keyboard learn (D92, forms 8.2).
+        initialEntryMode: DatePickerEntryMode.calendarOnly,
+        builder: (_, child) => DialogGate<DateTime>(services: n!, child: child!),
+      );
+      if (picked == null) return;
+      await settle(() async => n!.referrals.changeRefusedDate(e.changeId, picked));
     }
 
     Future<void> removeRefused() async {
@@ -616,6 +637,8 @@ class _RejectionCard extends ConsumerWidget {
                   ),
                 if (attach)
                   FilledButton(onPressed: () => unawaited(attachTo()), child: const Text('Attach to another patient')),
+                if (byDate)
+                  FilledButton(onPressed: () => unawaited(changeDate()), child: const Text(changeReferralDateAction)),
                 if (byVisit && n.repository.hasVisitsToChoose(e.changeId))
                   FilledButton(
                     onPressed: paused ? null : () => unawaited(chooseVisit()),
@@ -682,6 +705,8 @@ class _NoticeCard extends StatelessWidget {
 }
 
 const correctAgainAction = 'Correct again';
+const changeReferralDateAction = 'Change the date';
+const referralDateHelp = 'Date referred';
 
 /// A note's answer whose value is more than a few words: the form shows it.
 const openTheNoteToSee = 'Open the note to see it';

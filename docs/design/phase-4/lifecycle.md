@@ -2286,6 +2286,15 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
   `enteredInError` takes `referrals.create`, then its author or anyone with `encounters.chart`;
   anyone else is held for review. A resolution on it is `nothing_to_resolve`; a second mark is
   kept in history. Its entered-in-error event names its visit (review finding REC-5).
+  Since the phase's review (finding PS-3, the coordinator's decision): a referral does not pause
+  with the clock (3.11), so a phone whose clock has no reference may be days ahead. The phone's own
+  check then takes no date past the phone's own day (its local day, or the UTC day where that is
+  later), the server's day ahead being for a clock it has measured (`LocalStore`
+  `_unreferencedProblem`). A referral the server refused `referral_in_future`, the one value
+  problem a referral meets there, gets **Change the date** in Needs attention: the calendar alone
+  (D92), in a dialog gate, and `Referrals.changeRefusedDate`, which sends the create again on the
+  date chosen through `fixRejected`, so the refusal settles and a visit it was made at no longer
+  waits in Needs attention.
 - **A visit of another patient** is checked by `visitOfOtherPatient` (`records.ts`) for the
   creates of a referral, a problem, an allergy and a problem note, whose patient is its problem's
   (review finding REC-7); a visit with no patient passes. A problem made at a visit is stored with

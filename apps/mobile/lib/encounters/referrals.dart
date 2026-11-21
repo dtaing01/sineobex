@@ -61,6 +61,15 @@ class ReferralView {
 }
 
 /// A team's referrals on this phone, for one person.
+/// Whether Needs attention offers **Change the date** for [e] (PS-3): a refused create of a referral
+/// dated after the server's day ahead (`referral_in_future`), the one value problem a referral meets
+/// on the server, since every other rule of its value is checked here before it is made.
+bool settledByDate(OutboxEntry e) =>
+    e.state == ChangeState.rejected &&
+    e.op == 'create' &&
+    e.entity == entityReferral &&
+    e.details?['problem'] == 'referral_in_future';
+
 class Referrals {
   Referrals(this.store, {required this.user, this.nameOf});
 
@@ -223,6 +232,28 @@ class Referrals {
       if (rec == null) store.importServerRecord(serverRecordFrom(copy!), open: false);
       store.setField(referralId, 'enteredInError', {'reason': text});
     });
+    onChanged?.call();
+  }
+
+  /// **Change the date** (the coordinator's decision on review finding PS-3): the referral whose
+  /// create [changeId] the server refused for its date ([settledByDate]) sent again as it was, dated
+  /// [referredOn], as the fix of the refused one, so the refusal settles once the server takes it.
+  ///
+  /// Throws, writing nothing: [ChartingPaused] while the store is frozen; `referral_in_future` for a
+  /// date the phone takes no more than the server did; a [StateError] for a change [settledByDate]
+  /// does not take.
+  void changeRefusedDate(String changeId, DateTime referredOn) {
+    _guardFrozen();
+    final refused = store.entry(changeId);
+    if (refused == null || !settledByDate(refused)) throw StateError('not a referral refused for its date');
+    try {
+      store.fixRejected(changeId, {...refused.value! as Map<String, Object?>, 'referredOn': _date(referredOn)});
+    } on LocalValidationError catch (e) {
+      if (e.problem == 'referral_in_future') {
+        throw const LocalValidationError(_inFuture, problem: 'referral_in_future', paths: {'referredOn'});
+      }
+      rethrow;
+    }
     onChanged?.call();
   }
 
