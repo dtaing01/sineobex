@@ -606,6 +606,33 @@ export async function createReceivedAt(
 }
 
 /**
+ * [v], an addendum's or a correction's create, as it is applied: one that names a sign-off a reviewer
+ * rejected, which is not on the chart, is taken as if it named none (the coordinator's decision on
+ * review finding PS-2). The link only orders it after that sign-off on the phone, which let go of
+ * both when they were held; the addendum has its own author and time and is taken in every state of
+ * its note (lifecycle 4.7), and a correction that then reaches a draft is an edit of the draft (3.6).
+ * Held behind the sign-off and accepted after its rejection, or sent later, either is applied.
+ */
+export async function withoutRejectedSignoff<V extends { signoffId: string | null }>(
+  tx: Tx,
+  teamId: string,
+  v: V,
+): Promise<V> {
+  if (v.signoffId === null) return v;
+  const [row] = await tx<{ rejected: boolean }[]>`
+    select not exists (select 1 from sineobex.note_signoffs where id = ${v.signoffId})
+       and exists (
+         select 1 from sineobex.quarantine_items
+         where team_id = ${teamId} and entity = 'note_signoff' and op = 'create'
+           and record_id = ${v.signoffId} and status = 'rejected')
+       and not exists (
+         select 1 from sineobex.quarantine_items
+         where team_id = ${teamId} and entity = 'note_signoff' and op = 'create'
+           and record_id = ${v.signoffId} and status = 'pending') as rejected`;
+  return row?.rejected ? { ...v, signoffId: null } : v;
+}
+
+/**
  * Whether the sign-off an addendum or a correction names is one of its note, or with no note, of a
  * note of its visit (the coordinator's decision on review finding REC-3): otherwise it is refused
  * as a missing parent is (stale_reference note_signoff_missing), never applied. The sign-off exists:

@@ -1100,6 +1100,107 @@ describe('phase 4 sync: sign-offs', () => {
       });
     });
 
+    it('an addendum or a correction held behind a held sign-off a reviewer rejects is accepted as if it named none, and so is one sent later', async () => {
+      // Review finding PS-2: accept answered cannot_apply note_signoff_missing for good, and the
+      // phone had let go of both.
+      const zed = await clinician('zed@example.com', 'Zed (demo)', 'np');
+      const { flags, note } = await chartedVisit(zed);
+      const made = nowIso();
+      const s1 = await signoff(zed, flags, 'sign', timed(made));
+      const s2 = await signoff(zed, note, 'sign', timed(made));
+      const add = await zed.phone.change({
+        entity: 'note_addendum',
+        op: 'create',
+        value: {
+          encounterId: note.encounterId,
+          noteId: null,
+          text: 'Demo: added to the assessment',
+          signoffId: s1.recordId,
+        },
+      });
+      const fix = await zed.phone.change({
+        entity: 'note_correction',
+        op: 'create',
+        value: {
+          noteId: note.noteId,
+          changes: [
+            { field: 'data.care.plan', newValue: 'Demo: rest, fluids and a recheck', baseVersion: 1 },
+          ],
+          reason: 'Demo: the recheck was left out',
+          requestedByPatient: false,
+          declined: false,
+          claimedCredential: null,
+          signoffId: s2.recordId,
+        },
+      });
+      await new Promise((r) => setTimeout(r, 5));
+      await setCredential(zed.membershipId, 'chw');
+      expect((await zed.send(s1, s2, add, fix)).map((r) => [r.status, r.reason, r.quarantined])).toEqual([
+        ['rejected', 'permission', true],
+        ['rejected', 'permission', true],
+        ['rejected', 'awaiting_review', true],
+        ['rejected', 'awaiting_review', true],
+      ]);
+      const decide = async (c: Change, decision: 'accept' | 'reject') => {
+        const [item] = await h.scratch.owner<{ id: string }[]>`
+          select id from sineobex.quarantine_items where change_id = ${c.changeId}`;
+        return call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+          method: 'POST',
+          token: t.adminToken,
+          teamId: t.teamId,
+          json: { decision, reason: 'Demo: checked with Zed' },
+        });
+      };
+      // While the sign-off waits, the addendum waits with it.
+      expect((await decide(add, 'accept')).body.error).toMatchObject({ code: 'waiting_on_record' });
+      expect((await decide(s1, 'reject')).status).toBe(200);
+      expect((await decide(s2, 'reject')).status).toBe(200);
+      // Rejected, the sign-offs named nothing the addendum and the correction need: each is taken as
+      // if it named none. The note was never finished, so the correction is an edit of the draft (3.6).
+      expect((await decide(add, 'accept')).status).toBe(200);
+      expect((await decide(fix, 'accept')).status).toBe(200);
+      const [addendum] = await h.scratch.owner<{ noteId: string | null; text: string }[]>`
+        select note_id as "noteId", text from sineobex.note_addenda where id = ${add.recordId}`;
+      expect(addendum).toEqual({ noteId: null, text: 'Demo: added to the assessment' });
+      const [correction] = await h.scratch.owner<{ outcome: string; reason: string }[]>`
+        select outcome, reason from sineobex.note_corrections where id = ${fix.recordId}`;
+      expect(correction).toEqual({ outcome: 'draft_edit', reason: 'Demo: the recheck was left out' });
+      expect(await noteRow(note.noteId)).toMatchObject({ status: 'draft' });
+      const [plan] = await h.scratch.owner<{ value: unknown }[]>`
+        select data -> 'care.plan' as value from sineobex.encounter_notes where id = ${note.noteId}`;
+      expect(plan!.value).toBe('Demo: rest, fluids and a recheck');
+      // One sent later, naming a sign-off a reviewer rejected, is taken the same way.
+      const later = await zed.phone.change({
+        entity: 'note_addendum',
+        op: 'create',
+        value: {
+          encounterId: note.encounterId,
+          noteId: note.noteId,
+          text: 'Demo: written later',
+          signoffId: s2.recordId,
+        },
+      });
+      expect((await zed.send(later)).map((r) => r.status)).toEqual(['accepted']);
+      // A sign-off that is simply not on the chart, rejected by no reviewer, is still a missing parent.
+      const unknown = await zed.phone.change({
+        entity: 'note_addendum',
+        op: 'create',
+        value: {
+          encounterId: note.encounterId,
+          noteId: note.noteId,
+          text: 'Demo: names nothing known',
+          signoffId: '00000000-0000-4000-8000-0000000000ff',
+        },
+      });
+      expect(await zed.send(unknown)).toEqual([
+        expect.objectContaining({
+          status: 'rejected',
+          reason: 'stale_reference',
+          details: { problem: 'note_signoff_missing' },
+        }),
+      ]);
+    });
+
     it('a held sign-off that will not reach the chart tells its sender the note needs completing again: rejected, or refused on accept as the note changed', async () => {
       // Review finding NOT-12: the phone let go of the sign-off when it was held.
       const ned = await clinician('ned@example.com', 'Ned (demo)', 'np');

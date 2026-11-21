@@ -2226,6 +2226,16 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
   finding REC-3). No Medical gate. Its `author_credential` is `signedUnder`'s with no claim, at the
   addendum's time, with `notBefore` when the server received the visit. It is taken in every
   state of its note, `serverVersion` 1, with no details.
+- **A sign-off a reviewer rejected** (since the phase's review, finding PS-2, the coordinator's
+  decision). An addendum or a correction whose `signoffId` names a sign-off that is not on the
+  chart, whose held create a Program Admin rejected, and of which no held create still waits, is
+  taken as if it named none (`records.ts` `withoutRejectedSignoff`, before the parents are
+  checked; the test server's `_rejectedInReview`). The link only orders it after the sign-off on
+  the phone, which let go of both when they were held. Held behind the sign-off (`awaiting_review`)
+  and accepted after its rejection, or sent later, it is applied: an addendum as any is, and a
+  correction, which then reaches a note that was never finished, as an edit of the draft (3.6,
+  "A correction that reaches a draft is applied as an edit to the draft"), stored with its reason
+  as `draft_edit`. A sign-off simply missing is still `note_signoff_missing`.
 - **A correction, in the order built.** The design's step numbers are kept, and the tests are
   named by them. Before step 1: a record ID already stored is `record_exists`, asked before
   anything is read; a `signoffId` of another note is `note_signoff_missing`; a note the sender may

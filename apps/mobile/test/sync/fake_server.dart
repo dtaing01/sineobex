@@ -464,6 +464,18 @@ class FakeSyncServer {
     return outcome;
   }
 
+  /// A sign-off a reviewer rejected, not on the chart and with no held create of it still waiting
+  /// (records.ts withoutRejectedSignoff).
+  bool _rejectedInReview(String? signoffId) {
+    if (signoffId == null || records.containsKey(signoffId)) return false;
+    bool create(String changeId) {
+      final c = quarantine[changeId];
+      return c != null && c['entity'] == entitySignoff && c['op'] == 'create' && c['recordId'] == signoffId;
+    }
+
+    return rejectedHeld.any(create) && !held.keys.where((id) => !rejectedHeld.contains(id)).any(create);
+  }
+
   /// A Program Admin rejects a change held for review (review.ts decideQuarantine): it stays held,
   /// decided, and a retry says so. A held sign-off rejected tells its sender the note needs
   /// completing again.
@@ -853,7 +865,13 @@ class FakeSyncServer {
     final value = c['value'];
     final issues = rules.createIssues(value);
     if (issues.isNotEmpty) return _rejected('validation', _problems(issues));
-    final v = value! as Map<String, Object?>;
+    var v = value! as Map<String, Object?>;
+    // An addendum or a correction naming a sign-off a reviewer rejected names none (records.ts
+    // withoutRejectedSignoff, review finding PS-2).
+    if ((rules.entity == entityAddendum || rules.entity == entityCorrection) &&
+        _rejectedInReview(v['signoffId'] as String?)) {
+      v = {...v, 'signoffId': null};
+    }
     // records.ts NoteCreate bounds the version as every version a change names is (review finding
     // FAK-1). The phone's registry does not yet; once it does, createIssues answers this first.
     if (rules.entity == entityNote && v['noteTypeVersion'] is int && (v['noteTypeVersion']! as int) > maxVersion) {

@@ -3210,6 +3210,83 @@ void main() {
           expect(server.records[other.note.noteId]!.fields['status']!.value, 'draft');
         });
 
+        test('an addendum or a correction held behind a held sign-off a reviewer rejects is accepted as if it named none, and so is one sent later', () async {
+          // Review finding PS-2.
+          server.credentials[dana] = 'np';
+          final v = chartedVisit(dana);
+          final s1 = signoff(dana, v.flags, 'sign');
+          final s2 = signoff(dana, v.note, 'sign');
+          final add = change(entityAddendum, 'create', {
+            'encounterId': v.visit,
+            'noteId': null,
+            'text': 'Demo: added to the assessment',
+            'signoffId': s1['recordId'],
+          });
+          final fix = change(entityCorrection, 'create', {
+            'noteId': v.note.noteId,
+            'changes': [
+              {'field': 'data.care.plan', 'newValue': 'Demo: rest, fluids and a recheck', 'baseVersion': 1},
+            ],
+            'reason': 'Demo: the recheck was left out',
+            'requestedByPatient': false,
+            'declined': false,
+            'claimedCredential': null,
+            'signoffId': s2['recordId'],
+          });
+          server.changeCredential(dana, 'chw', at: now.add(const Duration(minutes: 1)));
+          expect(
+            [
+              for (final r in await send(dana, [s1, s2, add, fix])) [r['status'], r['reason'], r['quarantined']],
+            ],
+            [
+              ['rejected', 'permission', true],
+              ['rejected', 'permission', true],
+              ['rejected', 'awaiting_review', true],
+              ['rejected', 'awaiting_review', true],
+            ],
+          );
+          server
+            ..rejectHeld(s1['changeId']! as String)
+            ..rejectHeld(s2['changeId']! as String);
+          expect(server.acceptHeld(add['changeId']! as String, by: admin)['status'], 'accepted');
+          expect(server.acceptHeld(fix['changeId']! as String, by: admin)['status'], 'accepted');
+          final addendum = server.records[add['recordId']]!;
+          expect([addendum.attributes['noteId'], addendum.attributes['text']], [null, 'Demo: added to the assessment']);
+          expect(server.records[fix['recordId']]!.status, 'draft_edit');
+          final note = server.records[v.note.noteId]!;
+          expect(
+            [note.fields['status']!.value, note.fields['data.care.plan']!.value],
+            ['draft', 'Demo: rest, fluids and a recheck'],
+          );
+          // One sent later, naming a sign-off a reviewer rejected, is taken the same way.
+          final later = change(entityAddendum, 'create', {
+            'encounterId': v.visit,
+            'noteId': v.note.noteId,
+            'text': 'Demo: written later',
+            'signoffId': s2['recordId'],
+          });
+          expect(
+            [
+              for (final r in await send(dana, [later])) r['status'],
+            ],
+            ['accepted'],
+          );
+          // A sign-off that is simply not on the chart, rejected by no reviewer, is still a missing parent.
+          final unknown = change(entityAddendum, 'create', {
+            'encounterId': v.visit,
+            'noteId': v.note.noteId,
+            'text': 'Demo: names nothing known',
+            'signoffId': '00000000-0000-4000-8000-0000000000ff',
+          });
+          expect(await send(dana, [unknown]), [
+            allOf(
+              containsPair('status', 'rejected'),
+              containsPair('reason', 'stale_reference'),
+              containsPair('details', {'problem': 'note_signoff_missing'}),
+            ),
+          ]);
+        });
+
         test('each held sign-off is told once, whether or not an earlier notice was read', () async {
           // Review findings SRC-1 and SRC-5: told by note, a second held Complete rejected before the
           // phone's read of the first notice arrived told nobody, and a late reject of the first one was

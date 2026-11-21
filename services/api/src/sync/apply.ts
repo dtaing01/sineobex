@@ -15,6 +15,7 @@ import {
   jsonProblem,
   MAX_VALUE_BYTES,
   rejected,
+  withoutRejectedSignoff,
   type ApplyActor,
   type ChangeContext,
   type EntityRules,
@@ -590,9 +591,14 @@ async function create(ctx: ChangeContext, rules: EntityRules): Promise<Outcome> 
   if (!parsed.success) return rejected('validation', issues(parsed.error));
   const problem = rules.valueProblem?.('create', undefined, parsed.data, today(ctx.actor));
   if (problem) return invalid(problem);
-  const missing = await missingParent(ctx.tx, ctx.actor.teamId, rules.parents(parsed.data));
+  // An addendum or a correction naming a sign-off a reviewer rejected names none (PS-2).
+  const value =
+    rules.entity === 'note_addendum' || rules.entity === 'note_correction'
+      ? await withoutRejectedSignoff(ctx.tx, ctx.actor.teamId, parsed.data as { signoffId: string | null })
+      : parsed.data;
+  const missing = await missingParent(ctx.tx, ctx.actor.teamId, rules.parents(value));
   if (missing) return rejected('stale_reference', { problem: missingProblem(missing) });
-  return rules.applyCreate(ctx, parsed.data);
+  return rules.applyCreate(ctx, value);
 }
 
 /**
