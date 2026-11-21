@@ -68,6 +68,30 @@ void main() {
     expectNoteOpened(tester, general);
   });
 
+  testWidgets('with a screen reader on, Remove this note leaves focus on the list’s Add button (review finding PX-5)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await chart(tester, h, visit, 'outreach', {'outreach.type': 'wellness_check'});
+    await openVisit(tester, visit);
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tapOn(tester, find.byTooltip('More for Social needs'));
+    await tapOn(tester, find.text('Remove this note'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Remove'));
+    expect(find.text('Note removed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'add a note type');
+    handle.dispose();
+  });
+
   testWidgets('Remove this note asks first, then blanks every answer, and the note counts for nothing', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signInToChart(tester);
@@ -87,11 +111,19 @@ void main() {
     await tapOn(tester, find.text('Cancel'));
     expect(answersOf(h, social)['needs.needs'], ['food']);
 
+    // With a screen reader on, focus goes on from the list's Add button once the row has gone
+    // (review finding PX-5).
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     await tapOn(tester, menu);
     await tapOn(tester, find.text('Remove this note'));
     await tapOn(tester, find.widgetWithText(FilledButton, 'Remove'));
     expect(answersOf(h, social).values.where((v) => v != null), isEmpty);
     expect(find.text('Note removed'), findsOneWidget);
+    // Its only note gone, the list became the note types: nothing to look up where the button was.
+    expect(tester.takeException(), isNull);
     // Empty, it is no longer listed: the visit offers its note types again.
     expect(find.bySemanticsLabel(RegExp(r'^Social needs, Draft')), findsNothing);
     await expectShown(tester, find.text('Choose a note type'));

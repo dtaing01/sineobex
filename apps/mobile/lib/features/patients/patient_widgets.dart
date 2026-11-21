@@ -262,7 +262,9 @@ bool focusFollows(BuildContext context, FocusNode from) => from.hasFocus || Medi
 /// went. Call it after the frame that put it there; a control that isn't there is left alone.
 void focusInView(FocusNode node) {
   final target = node.context;
-  if (target == null) return;
+  // A control the frame took away (a list that became another) is left alone too: asking for its
+  // place would look up a widget no longer there (review finding PX-5).
+  if (target == null || !target.mounted) return;
   node.requestFocus();
   for (final edge in [
     ScrollPositionAlignmentPolicy.keepVisibleAtEnd,

@@ -145,6 +145,22 @@ void main() {
     expect(find.text('Now: NO'), findsNothing);
     expect(find.bySemanticsLabel(RegExp('^Remove ')), findsNothing);
     expect(corrections(h), isEmpty);
+
+    // Added again and removed by its own tap action, as Switch Access and Voice Access reach it, with
+    // a screen reader on: focus goes to Correct another answer, not nowhere (review finding PX-5).
+    final handle = tester.ensureSemantics();
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tapInSheet(tester, find.widgetWithText(OutlinedButton, 'Correct another answer'));
+    await tapInSheet(tester, find.widgetWithText(OutlinedButton, 'Does the patient require emergency evaluation?'));
+    await revealInSheet(tester, find.text('Now: NO'));
+    await semanticTap(tester, 'Remove Does the patient require emergency evaluation? from this correction');
+    expect(find.text('Now: NO'), findsNothing);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'correct another answer');
+    expect(corrections(h), isEmpty);
+    handle.dispose();
   });
 
   testWidgets('a change that makes another answer needed asks for it, and both go together', (tester) async {

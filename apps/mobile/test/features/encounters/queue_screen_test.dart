@@ -147,6 +147,11 @@ void main() {
     await home(tester);
     await expectShown(tester, find.text('2 visits'));
     await expectShown(tester, find.text('1 visit'));
+    // The number is said once, in the subtitle's words: the badge only repeats it (review finding PX-5).
+    final handle = tester.ensureSemantics();
+    expect(find.bySemanticsLabel(RegExp(r'^Waiting for your co-signature\n2 visits$')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'2 visits\n2$')), findsNothing);
+    handle.dispose();
     await tapOn(tester, find.text('Waiting for attestation'));
     expect(location(tester), queueLocation(SecondAct.attest));
     await expectShown(tester, find.text('No visits waiting.'));

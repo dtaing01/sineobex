@@ -47,6 +47,8 @@ void main() {
       expectNoLegalName(tester);
       // Each note Complete finishes, under its type's name; the Red flags note the app added, last.
       await expectShown(tester, find.text('General / primary care'));
+      // Each recap's note title is a heading, so a screen reader moves note by note (review finding PX-5).
+      expect(tester.getSemantics(find.bySemanticsLabel('General / primary care').first), isSemantics(isHeader: true));
       await expectShown(tester, find.text('Chief concern: Demo: cough'));
       await expectShown(tester, find.text('Red flags and disposition'));
       await expectShown(tester, find.text('No answers yet.'));

@@ -50,7 +50,7 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
   String? _problem;
 
   /// **Add another note type**: where focus goes when a removed note's row, and its menu, go.
-  final _addFocus = FocusNode();
+  final _addFocus = FocusNode(debugLabel: 'add a note type');
 
   @override
   EncounterServices get services => widget.services;

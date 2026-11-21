@@ -16,7 +16,7 @@ import '../../sync/local_store.dart' show LocalValidationError;
 import '../forms/field_host.dart';
 import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count;
-import '../patients/patient_widgets.dart' show PhiField, WideButton, showDone;
+import '../patients/patient_widgets.dart' show PhiField, WideButton, focusFollows, focusInView, showDone;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart' show SheetGate;
 
@@ -87,8 +87,17 @@ class _CorrectionState extends State<_Correction> {
   @override
   void dispose() {
     _reason.dispose();
+    _anotherFocus.dispose();
+    for (final f in _removeFocus.values) {
+      f.dispose();
+    }
     super.dispose();
   }
+
+  /// Where focus goes when an answer's Remove takes it away: Correct another answer, which is there
+  /// once fewer answers are named (review finding PX-5).
+  final _anotherFocus = FocusNode(debugLabel: 'correct another answer');
+  final _removeFocus = <String, FocusNode>{};
 
   ReadItem? _item(String path) => _items.where((i) => i.path == path).firstOrNull;
 
@@ -110,13 +119,22 @@ class _CorrectionState extends State<_Correction> {
     };
   }
 
-  void _remove(String path) => setState(() {
-    _paths.remove(path);
-    _needed.remove(path);
-    for (final p in _touched.remove(path) ?? const <String>{}) {
-      _values[p] = _note.answers[p];
+  void _remove(String path) {
+    final follow = focusFollows(context, _removeFocus[path] ??= FocusNode());
+    setState(() {
+      _paths.remove(path);
+      _needed.remove(path);
+      for (final p in _touched.remove(path) ?? const <String>{}) {
+        _values[p] = _note.answers[p];
+      }
+    });
+    _removeFocus.remove(path)?.dispose();
+    if (follow) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) focusInView(_anotherFocus);
+      });
     }
-  });
+  }
 
   void _add(String path) => setState(() {
     if (!_paths.contains(path)) _paths.add(path);
@@ -213,6 +231,7 @@ class _CorrectionState extends State<_Correction> {
                 WideButton(
                   label: correctAnotherAction,
                   icon: LucideIcons.plus,
+                  focusNode: _anotherFocus,
                   onPressed: () => setState(() => _choosing = true),
                 )
               else ...[
@@ -295,6 +314,7 @@ class _CorrectionState extends State<_Correction> {
                 excludeSemantics: true,
                 onTap: () => _remove(path),
                 child: TextButton.icon(
+                  focusNode: _removeFocus[path] ??= FocusNode(debugLabel: 'remove $path'),
                   onPressed: () => _remove(path),
                   icon: const Icon(LucideIcons.x),
                   label: const Text(removeAnswerAction),
