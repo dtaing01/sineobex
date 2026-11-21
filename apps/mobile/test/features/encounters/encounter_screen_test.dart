@@ -92,6 +92,29 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('with a screen reader on, Remove this note on the only note leaves focus on the note types’ heading '
+      '(review finding VX-5)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    await openVisit(tester, visit);
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tapOn(tester, find.byTooltip('More for Social needs'));
+    await tapOn(tester, find.text('Remove this note'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Remove'));
+    expect(find.text('Note removed'), findsOneWidget);
+    expect(find.text('Choose a note type'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'choose a note type');
+    handle.dispose();
+  });
+
   testWidgets('Remove this note asks first, then blanks every answer, and the note counts for nothing', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signInToChart(tester);

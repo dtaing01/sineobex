@@ -53,6 +53,9 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
   /// **Add another note type**: where focus goes when a removed note's row, and its menu, go.
   final _addFocus = FocusNode(debugLabel: 'add a note type');
 
+  /// The note types' heading, where focus goes when the last note is removed.
+  final _typesFocus = FocusNode(debugLabel: 'choose a note type');
+
   @override
   EncounterServices get services => widget.services;
   @override
@@ -61,6 +64,7 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
   @override
   void dispose() {
     _addFocus.dispose();
+    _typesFocus.dispose();
     super.dispose();
   }
 
@@ -89,10 +93,13 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
     if (!mounted) return;
     setState(() => _problem = null);
     showDone(context, noteRemoved);
-    // The row and its menu went: someone moving by focus continues from the list's Add button.
+    // The row and its menu went: someone moving by focus continues from the list's Add button, or,
+    // when that was the visit's only note and the list became the note types, from their heading
+    // (review finding VX-5).
     if (MediaQuery.accessibleNavigationOf(context)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) focusInView(_addFocus);
+        if (!mounted) return;
+        focusInView((_addFocus.context?.mounted ?? false) ? _addFocus : _typesFocus);
       });
     }
   }
@@ -144,7 +151,7 @@ class _EncounterState extends ConsumerState<_Encounter> with VisitReading<_Encou
 
         // ---- the notes ----
         if (visit.notes.isEmpty) ...[
-          const SectionHeading(chooseNoteTypeHeading),
+          Focus(focusNode: _typesFocus, skipTraversal: true, child: const SectionHeading(chooseNoteTypeHeading)),
           NoteTypeList(services: services, visit: visit),
         ] else ...[
           const SectionHeading(notesHeading),

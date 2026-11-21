@@ -4129,6 +4129,12 @@ a call that is neither gated nor on its short list of calls that show nothing of
 with why (the Start sheet, the lock screen's Sign out, Log out), and on a screen that draws a form
 field with no `DialogGateScope`.
 
+**Focus after a Remove** (review findings PX-5 and VX-5). A control that goes takes focus to the one
+in its place, never nowhere: removing an answer from a correction closes Which answer? if it is
+open, so focus goes to Correct another answer; and Remove this note on a visit's only note, whose
+list then becomes the note types, sends focus to the Choose a note type heading, a focus target
+that is no Tab stop.
+
 ### 9.1 The patient profile (phone)
 
 `apps/mobile/lib/features/patients/patient_screen.dart` gains:

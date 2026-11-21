@@ -130,6 +130,9 @@ class _CorrectionState extends State<_Correction> {
     setState(() {
       _paths.remove(path);
       _needed.remove(path);
+      // The list of answers to choose closes, so Correct another answer is there for focus to go to
+      // (review finding VX-5).
+      _choosing = false;
       for (final p in _touched.remove(path) ?? const <String>{}) {
         _values[p] = _note.answers[p];
       }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/encounters/encounter_repository.dart' hide Expanded;
 import 'package:sineobex_field/features/forms/text_field.dart' show typingPause;
 import 'package:sineobex_field/sync/entities.dart' show entityCorrection;
 
@@ -160,6 +161,50 @@ void main() {
     expect(find.text('Now: NO'), findsNothing);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'correct another answer');
     expect(corrections(h), isEmpty);
+    handle.dispose();
+  });
+
+  testWidgets('an answer removed while Which answer? is open closes the list, and focus goes to Correct another '
+      'answer (review finding VX-5)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signInToChart(tester);
+    final r = h.encounters.repository;
+    final visit = startVisit(h);
+    await chart(tester, h, visit, 'general_primary_care', {
+      'reason.concern': 'Demo: cough',
+      'reason.reasons': ['new_concern'],
+      'hpi.narrative': 'Demo: three days',
+    });
+    final flags = noteOfType(h, visit, 'red_flags_disposition')!.id;
+    await tester.runAsync(() => r.openNote(flags));
+    r
+      ..saveAnswer(flags, 'red_flags.emergency', 'no')
+      ..saveAnswer(flags, 'follow_up.when', 'next_street_clinic');
+    r.saveSummary(visit, 'Demo: viral');
+    r.complete((await tester.runAsync<CompletePlan?>(() => r.openComplete(visit)))!);
+    await openVisitScreen(tester, visit);
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tapOn(tester, find.bySemanticsLabel('Correct Chief concern'));
+    await tapInSheet(tester, find.widgetWithText(OutlinedButton, 'Correct another answer'));
+    await revealInSheet(tester, find.text('Which answer?'));
+    final options = [
+      for (final e
+          in find
+              .descendant(of: find.byType(BottomSheet), matching: find.byType(OutlinedButton), skipOffstage: false)
+              .evaluate())
+        ((e.widget as OutlinedButton).child as Text?)?.data,
+    ].whereType<String>();
+    final pick = options.first;
+    await tapInSheet(tester, find.widgetWithText(OutlinedButton, pick));
+    await tapInSheet(tester, find.widgetWithText(OutlinedButton, 'Correct another answer'));
+    await revealInSheet(tester, find.text('Which answer?'));
+    await semanticTap(tester, 'Remove $pick from this correction');
+    expect(tester.takeException(), isNull);
+    expect(find.text('Which answer?'), findsNothing);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'correct another answer');
     handle.dispose();
   });
 
