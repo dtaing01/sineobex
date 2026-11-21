@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/encounter_models.dart' show VisitKind;
 import 'package:sineobex_field/features/encounters/encounter_labels.dart' show referralsHeading;
@@ -255,6 +257,122 @@ void main() {
       });
     }
 
+    // Review finding VX-4: what is said counts what came that the filter shows and that was not
+    // shown already; a page the filter hides all of is said in its own words.
+    testWidgets('with a type filter on, a page it hides is said as hidden, and focus goes to the heading', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      await cacheChart(tester, h, p1Id, {
+        'timeline': {
+          'encounters': pageOf(50),
+          'referrals': [
+            referralSnapshot(
+              'f0000000-0000-4000-8000-0000000000c1',
+              p1Id,
+              referredOn: '2026-10-18',
+              details: 'Demo: dental clinic',
+            ),
+          ],
+        },
+      });
+      routes.on(
+        'GET',
+        '/v1/patients/$p1Id/timeline',
+        (_) => {
+          'encounters': [
+            timelineVisit('e0000000-0000-4000-8000-000000000201', '2026-08-01T15:00:00.000Z', kind: 'non_medical'),
+          ],
+        },
+      );
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.widgetWithText(FilterChip, 'Referrals'));
+      await reveal(tester, find.widgetWithText(OutlinedButton, 'Show earlier visits'));
+      h.server.offline = false;
+      Focus.of(tester.element(find.text('Show earlier visits'))).requestFocus();
+      await tester.pump();
+      tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+      await settle(tester);
+      await settle(tester);
+      expect(find.text('1 earlier visit shown.'), findsNothing);
+      await expectShown(tester, find.text('Earlier visits were found. The filter hides them.'));
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'timeline heading');
+      handle.dispose();
+    });
+
+    testWidgets('a page holding a visit already shown counts only the new one', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      final first = pageOf(50);
+      await cacheChart(tester, h, p1Id, {
+        'timeline': {'encounters': first, 'referrals': <Object?>[]},
+      });
+      routes.on(
+        'GET',
+        '/v1/patients/$p1Id/timeline',
+        (_) => {
+          'encounters': [
+            first.last,
+            timelineVisit('e0000000-0000-4000-8000-000000000201', '2026-08-01T15:00:00.000Z', kind: 'non_medical'),
+          ],
+        },
+      );
+      await go(tester, '/patients/$p1Id');
+      await reveal(tester, find.widgetWithText(OutlinedButton, 'Show earlier visits'));
+      h.server.offline = false;
+      tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+      await settle(tester);
+      await settle(tester);
+      await expectShown(tester, find.text('1 earlier visit shown.'));
+      expect(find.text('2 earlier visits shown.'), findsNothing);
+      handle.dispose();
+    });
+
+    // Review finding VX-7: two full pages in a row say the same words, each as a new live region.
+    testWidgets('two full pages in a row are each said, as a new live region', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      await cacheChart(tester, h, p1Id, {
+        'timeline': {'encounters': pageOf(50), 'referrals': <Object?>[]},
+      });
+      var pages = 0;
+      routes.on('GET', '/v1/patients/$p1Id/timeline', (_) {
+        pages++;
+        return {
+          'encounters': [
+            for (var i = 0; i < 50; i++)
+              timelineVisit(
+                'e0000000-0000-4000-8000-0000000${pages}0${i.toString().padLeft(2, '0')}',
+                DateTime.utc(2026, 6, 1).subtract(Duration(days: pages * 60 + i)).toIso8601String(),
+                kind: 'non_medical',
+              ),
+          ],
+        };
+      });
+      await go(tester, '/patients/$p1Id');
+      h.server.offline = false;
+      Future<SemanticsNode> press() async {
+        await reveal(tester, find.widgetWithText(OutlinedButton, 'Show earlier visits'));
+        tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+        await settle(tester);
+        await settle(tester);
+        final said = find.bySemanticsLabel('50 earlier visits shown.');
+        await reveal(tester, said);
+        return tester.getSemantics(said);
+      }
+
+      final first = await press();
+      expect(first, isSemantics(isLiveRegion: true));
+      final second = await press();
+      expect(second, isSemantics(isLiveRegion: true));
+      expect(second.id, isNot(first.id));
+      handle.dispose();
+    });
+
     testWidgets('offline, a second press says its refusal again, as a new live region', (tester) async {
       final handle = tester.ensureSemantics();
       final h = await signInToChart(tester);
@@ -276,6 +394,29 @@ void main() {
       expect(second.id, isNot(first.id));
       handle.dispose();
     });
+  });
+
+  // Review finding VX-3: the heading is where focus goes after Show earlier visits, and never a Tab
+  // stop, as the portal's heading is tabIndex=-1.
+  testWidgets('the Timeline heading takes focus only when sent there, never by Tab', (tester) async {
+    final h = await signInToChart(tester);
+    await cacheChart(tester, h, p1Id, {
+      'timeline': {
+        'encounters': [
+          timelineVisit('e0000000-0000-4000-8000-000000000101', '2026-10-20T15:00:00.000Z', kind: 'non_medical'),
+        ],
+        'referrals': <Object?>[],
+      },
+    });
+    await go(tester, '/patients/$p1Id');
+    await expectShown(tester, find.text('Timeline'));
+    final heading = FocusManager.instance.rootScope.descendants.firstWhere((n) => n.debugLabel == 'timeline heading');
+    expect(heading.nearestScope!.traversalDescendants, isNot(contains(heading)));
+    for (var i = 0; i < 80; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus, isNot(heading), reason: 'Tab $i');
+    }
   });
 
   testWidgets('+ Encounter starts a visit for the patient; each quick action shows only to a role that may use it', (

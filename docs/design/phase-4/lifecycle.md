@@ -4152,7 +4152,10 @@ review"; a note the reader may not see, and an empty draft, are left out by the 
 rules, even when the cached chart still lists them (review finding LRA-5). A note only the chart
 lists is Medical by its type in the team's list, else by its visit's kind (3.10). A visit that comes
 again on the next page is listed once, and **Show earlier visits** is offered only after a full
-page of 50. The referral rows are the Referrals list's (7 as built). Newest first: a referral sorts
+page of 50. What it says counts the visits the page adds to what the type filter shows, as the
+portal counts `fresh`; a page the filter hides all of says "Earlier visits were found. The filter
+hides them.", and focus goes to the Timeline heading, which takes focus only when sent there and is
+never a Tab stop (review findings VX-3, VX-4). The referral rows are the Referrals list's (7 as built). Newest first: a referral sorts
 at midnight UTC of its date, a visit before a referral of the same moment, then by ID; a visit made
 here whose time the phone has not learned yet comes first. The timeline logs nothing of its own: it
 is part of the chart's logged read, as phase 3's chart lists its problems; opening a visit from it

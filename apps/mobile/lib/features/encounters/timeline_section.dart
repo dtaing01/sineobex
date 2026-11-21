@@ -152,13 +152,24 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
     try {
       final page = await _s.api.earlierVisits(widget.patientId, before: before);
       if (!mounted) return;
+      // What the filter showed before the page came, so the count is of the visits it adds to what
+      // is on screen, as the portal counts `fresh` (review finding VX-4).
+      final shownBefore = {for (final r in _view?.filtered(_groups) ?? const <TimelineRow>[]) ?_idOf(r)};
       _earlier.add(page);
       await _read();
       if (!mounted) return;
       final shown = {for (final r in _view?.filtered(_groups) ?? const <TimelineRow>[]) ?_idOf(r)};
+      final fresh = [
+        for (final v in page)
+          if (shown.contains(v.encounterId) && !shownBefore.contains(v.encounterId)) v.encounterId,
+      ];
       setState(() {
-        _firstNew = page.map((v) => v.encounterId).where(shown.contains).firstOrNull;
-        _earlierSaid = page.isEmpty ? noEarlierVisits : earlierVisitsShown(page.length);
+        _firstNew = fresh.firstOrNull;
+        _earlierSaid = page.isEmpty
+            ? noEarlierVisits
+            : fresh.isEmpty
+            ? earlierVisitsFiltered
+            : earlierVisitsShown(fresh.length);
       });
       if (follow) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -186,7 +197,9 @@ class _TimelineSectionState extends ConsumerState<TimelineSection> with Automati
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Focus(focusNode: _headingFocus, child: const SectionHeading(timelineHeading)),
+        // A place for focus to go, never a Tab stop: it does nothing, and draws no focus (review
+        // finding VX-3), as the portal's heading is tabIndex=-1.
+        Focus(focusNode: _headingFocus, skipTraversal: true, child: const SectionHeading(timelineHeading)),
         if (_refused case final message?)
           ErrorMessage(message)
         else if (view == null)

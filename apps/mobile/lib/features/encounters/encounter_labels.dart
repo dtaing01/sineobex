@@ -526,6 +526,9 @@ const loadingVisit = 'Loading the visit';
 const loadingList = 'Loading the list';
 String earlierVisitsShown(int n) => n == 1 ? '1 earlier visit shown.' : '$n earlier visits shown.';
 
+/// Earlier visits came, and the filter on hides every one (review finding VX-4).
+const earlierVisitsFiltered = 'Earlier visits were found. The filter hides them.';
+
 /// A visit made here whose time the phone hasn't learned yet.
 const startedHere = 'Started on this phone';
 
