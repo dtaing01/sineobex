@@ -5626,8 +5626,12 @@ As built for the phone's screens (unit L5, with its review):
   it, and the birth date box, which was a plain `TextField` with Share, Search Web and Look Up in
   its menu. Its Copy and Cut, from the selection menu and from a hardware keyboard's shortcuts (the
   copy and cut text intent, which `EditableText` lets an ancestor override), go through `secureCopy`, as an ID
-  link does, never the general pasteboard: on iOS a local-only item, never Universal Clipboard, on
-  Android a clip marked sensitive whose label names no one, each cleared after 60 seconds. Cut takes
+  link does, never the general pasteboard: on iOS a local-only item, never Universal Clipboard,
+  cleared after 60 seconds; on Android a clip marked sensitive whose label names no one, cleared
+  after 60 seconds if it is still the one there, though from Android 10 an app in the background
+  can't read the clipboard, so a copy whose time runs out there is cleared once the app is back in
+  front, and one whose process Android ends first is never cleared (`MainActivity.kt`; the tests
+  stand in for both platforms' native side, which no device here has run). Cut takes
   the text out only once `secureCopy` says it was copied. When it says no, nothing is copied and the
   box says “Nothing was copied: this phone couldn’t copy it privately.”; there is no fallback to the
   plain clipboard. On success the box says “Copied. It clears in 60 seconds.” under it, a live
