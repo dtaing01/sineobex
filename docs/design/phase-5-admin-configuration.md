@@ -1,7 +1,17 @@
-> Draft plan (Nov 14), checked against the reviewed phase 4 design and the designs of the phases before it. Check section 2 against the code before building, and write the task cards when the phase starts.
+> Reviewed on Nov 21 against the PRD and against the code as built (`c307a0b`, phase 4 closed) by four reviewers, and revised from the review: each of the 104 findings was applied, or refuted with evidence. Sections 1 to 12 are revised; section 13, the units and the card list, follows them.
 
 # Phase 5: Admin configuration
-PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies of the product spec). Code citations are paths on the pull request branch. "forms" and "lifecycle" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`).
+PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies of the product spec). Code citations are paths at `c307a0b`. "forms" and "lifecycle" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`).
+
+## How this phase is built (decided Nov 21)
+The project lead decided on Nov 21 that the frontier model builds this phase with helper agents, from the card index, as phase 4 was built (`docs/design/phase-4-encounters.md`, "How this phase is built (decided Nov 16)"). The cloud container has no model runner or GPU. What that changes:
+
+- **The card list of section 13 stays the work-list.** Each row's files, needs and order hold. No card is written in full, and `tools/card-run.mjs` is not used: the plan's "Which model" trial (`docs/plan/README.md`) moves to the first phase built from cards.
+- **A unit is built from the design sections its rows point to**, tests first, by one agent in its own worktree (`CLAUDE.md`, "Running units with helper agents"). Each unit's commits are also pushed to `claude/p5-wip-<unit>`, never merged; the project lead deletes those branches when the phase lands.
+- **What a card's checks gave is replaced.** Every rule is removed by a script to see its test fail. Each unit gets an independent review, each confirmed finding shown by a failing test before it is fixed. The whole-phase adversarial review at the end is unchanged.
+- **Levels still say where review is strictest.** An X row gets the coordinator's second review. What only a small model needs (a card's length, how much it may read, line ranges a driver fetches) does not apply here; unit order, who owns each file and each rule, which units run side by side, and each row's needs do.
+- **Nothing is asked of a person mid-build** (the project lead, Nov 21: "everything that needs human decision making should be called out in a document for review after full mvp creation"). Wherever a choice needs a person, the default of section 11 is built, marked `PLAN-OPEN` in the code where the PRD leaves it open, and listed in `docs/decisions-for-review.md` with who decides, the default built, the recommendation, what a later change costs and where it lives. That document is published for review once the MVP (phases 5 to 10) is built.
+- **This method is the default for phases 6 to 10**, and is listed in that document for review too.
 
 ## 1. Scope and Done when
 **Done when** (`build-plan.md:91`, `IMPLEMENTATION_PLAN.md:161`): an admin adds a Labs item, a bundle and a secondary flag, and a phone sees all three after its next sync.
