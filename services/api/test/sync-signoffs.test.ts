@@ -1596,10 +1596,8 @@ describe('phase 4 sync: sign-offs', () => {
       expect((await decide(fix, 'reject')).status).toBe(200);
       expect(await noticesOn(fix.recordId)).toHaveLength(1);
       // The notice holds no text of the correction, and is listed with its note.
-      const listed = (await call(h, '/v1/team/notices', { token: zed.token, teamId: t.teamId })).body as {
-        kind: string;
-        noteId: string | null;
-      }[];
+      const listed = (await call(h, '/v1/team/notices', { token: zed.token, teamId: t.teamId }))
+        .body as unknown as { kind: string; noteId: string | null }[];
       expect(listed.filter((n) => n.kind === 'correction_not_applied')).toEqual([
         expect.objectContaining({ entity: 'note_correction', recordId: fix.recordId, noteId: note.noteId }),
       ]);
