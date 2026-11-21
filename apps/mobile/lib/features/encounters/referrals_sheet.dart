@@ -20,6 +20,7 @@ import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count, isoDay, longDate;
 import '../patients/patient_widgets.dart' show AskDialog, PhiField, WideButton, showDone, todayOf;
 import 'encounter_labels.dart';
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'encounter_widgets.dart' show SheetGate, encountersOpen;
 
 /// Most characters a referral's details hold (lifecycle 7, 9.10).
@@ -162,17 +163,22 @@ class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
 
   /// Asks for the reason, and marks the referral in the dialog, which shows a refusal and stays.
   Future<void> _enterInError(ReferralView r) async {
+    // It holds the typed reason: it closes on a freeze (D125; review finding PP-1).
     final marked = await showDialog<bool>(
       context: context,
-      builder: (_) => _ReasonDialog(
-        mark: (reason) {
-          try {
-            _s.referrals.enterInError(r.id, reason, chart: _chart);
-            return null;
-          } on Exception catch (e) {
-            return encounterErrorText(e);
-          }
-        },
+      builder: (_) => DialogGate<bool>(
+        services: _s,
+        cancel: false,
+        child: _ReasonDialog(
+          mark: (reason) {
+            try {
+              _s.referrals.enterInError(r.id, reason, chart: _chart);
+              return null;
+            } on Exception catch (e) {
+              return encounterErrorText(e);
+            }
+          },
+        ),
       ),
     );
     if (marked == true && mounted) setState(() => _said = (text: referralMarked, added: false));
@@ -338,6 +344,8 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
       // As far back as a note's dates reach (forms 10.1 #43); never ahead, which the server refuses.
       firstDate: DateTime(today.year - 100, today.month, today.day),
       lastDate: today,
+      // It closes on a freeze, as every dialog over the sheet does (D125; review finding PP-1).
+      builder: (_, child) => DialogGate<DateTime>(services: widget.services, child: child!),
     );
     if (picked != null && mounted) setState(() => _on = picked);
   }

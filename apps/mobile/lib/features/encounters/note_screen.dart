@@ -21,7 +21,7 @@ import '../forms/note_form.dart';
 import '../forms/note_read_view.dart';
 import '../forms/problem_field.dart';
 import '../patients/patient_widgets.dart' show FrozenNotice, WideButton, showDone;
-import '../patients/sheet_gate.dart' show DialogGateScope;
+import '../patients/sheet_gate.dart' show DialogGate, DialogGateScope;
 import 'encounter_labels.dart';
 import 'encounter_widgets.dart';
 import 'note_type_list.dart' show noteLocation;
@@ -366,12 +366,16 @@ class _NoteState extends ConsumerState<_Note> {
       for (final path in done.notCopied) _labelOf(note.definition!, path),
     ];
     if (labels.isNotEmpty) {
+      // It names the quick note's answers left out: it closes on a freeze (D125; review finding PP-1).
       await showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text(notCopiedTitle),
-          content: SingleChildScrollView(child: Text(notCopiedBody(labels))),
-          actions: [FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text(notCopiedOk))],
+        builder: (context) => DialogGate<void>(
+          services: _s,
+          child: AlertDialog(
+            title: const Text(notCopiedTitle),
+            content: SingleChildScrollView(child: Text(notCopiedBody(labels))),
+            actions: [FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text(notCopiedOk))],
+          ),
         ),
       );
     }

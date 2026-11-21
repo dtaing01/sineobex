@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../design/tokens.dart';
 import '../../forms/definition.dart';
 import 'text_field.dart' show ReadOnlyAnswer;
+import '../patients/sheet_gate.dart' show DialogGate;
 
 final _hhmm = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$');
 
@@ -42,11 +43,14 @@ class TimeField extends StatelessWidget {
   final DateTime? now;
 
   Future<void> _pick(BuildContext context) async {
+    // It closes with the screen's gate when the store freezes (D125; review finding PP-1).
+    final gate = DialogGate.over<TimeOfDay>(context);
     final picked = await showTimePicker(
       context: context,
       initialTime: timeOf(value) ?? TimeOfDay.fromDateTime(now ?? DateTime.now()),
       helpText: field.label,
       initialEntryMode: TimePickerEntryMode.dialOnly,
+      builder: (_, child) => gate(child!),
     );
     if (picked != null) onChanged(hhmm(picked));
   }

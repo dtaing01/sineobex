@@ -9,6 +9,7 @@ import '../../forms/definition.dart';
 import '../../patients/dob.dart' show daysInMonth, monthNames;
 import '../patients/patient_labels.dart' show isoDay, longDate;
 import '../patients/patient_widgets.dart' show PhiField;
+import '../patients/sheet_gate.dart' show DialogGate;
 import 'text_field.dart' show ReadOnlyAnswer, TypingSaver;
 
 /// How far back and ahead a date may be picked or typed when its range allows. PLAN-OPEN: how far a
@@ -261,6 +262,9 @@ class _DateFieldState extends State<DateField> {
     var initial = isoDay(widget.value) ?? DateTime(_today.year, _today.month, _today.day);
     if (initial.isBefore(first)) initial = first;
     if (initial.isAfter(last)) initial = last;
+    // Headed with the field's label and open on the patient's date: it closes with the screen's gate
+    // when the store freezes (D125; review finding PP-1).
+    final gate = DialogGate.over<DateTime>(context);
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -269,6 +273,7 @@ class _DateFieldState extends State<DateField> {
       currentDate: DateTime(_today.year, _today.month, _today.day),
       helpText: widget.field.label,
       initialEntryMode: DatePickerEntryMode.calendarOnly,
+      builder: (_, child) => gate(child!),
     );
     if (picked != null && mounted) _set(isoDate(picked));
   }
