@@ -9,8 +9,10 @@ file expects for every case.
 
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md` lines 1194-1316 (section 3.12, from the types the ten
-  functions share to `isOverdue`): every signature, and the order of each function's checks.
+- `docs/design/phase-4/lifecycle.md` lines 1219-1345 (section 3.12, from "The types the ten
+  functions share" to `isOverdue`, as the design stood when phase 4 closed; the section and those
+  two ends are what to find if the lines have moved): every signature, and the order of each
+  function's checks.
 - `services/api/test/encounter-rules.test.ts`, all of it (about 60 lines) (made by L0-vectors):
   how the functions are called.
 

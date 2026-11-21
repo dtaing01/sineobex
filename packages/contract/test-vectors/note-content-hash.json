@@ -3,7 +3,7 @@
   "cases": [
     {
       "name": "a note: its answers that count, its visit, its patient and its summary",
-      "why": "lifecycle 4.5 lines 1384-1392: what a signer saw",
+      "why": "lifecycle 4.5: what a signer saw",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -32,7 +32,7 @@
     },
     {
       "name": "the same note attached to another patient hashes otherwise",
-      "why": "lifecycle 4.5 lines 1404-1407: a visit moved to another patient refuses the signature",
+      "why": "lifecycle 4.5: a visit moved to another patient refuses the signature",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -61,7 +61,7 @@
     },
     {
       "name": "no patient yet: patientId is null, and stays in what is hashed",
-      "why": "lifecycle 4.5 line 1387: the encounter's patient, or null",
+      "why": "lifecycle 4.5: the encounter's patient, or null",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -90,7 +90,7 @@
     },
     {
       "name": "the summary rewritten hashes otherwise",
-      "why": "lifecycle 4.5 lines 1404-1407: a rewritten summary refuses the signature",
+      "why": "lifecycle 4.5: a rewritten summary refuses the signature",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -119,7 +119,7 @@
     },
     {
       "name": "no summary: summary is null, and stays in what is hashed",
-      "why": "lifecycle 4.5 line 1389: the encounter's summary, or null",
+      "why": "lifecycle 4.5: the encounter's summary, or null",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -148,7 +148,7 @@
     },
     {
       "name": "another note of the same visit with the same answers hashes otherwise",
-      "why": "lifecycle 4.5 line 1386: the note's ID is in it, so a sign-off cannot be moved to another note",
+      "why": "lifecycle 4.5: the note's ID is in it, so a sign-off cannot be moved to another note",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000002",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -177,7 +177,7 @@
     },
     {
       "name": "the same answers stored in another order hash the same",
-      "why": "lifecycle 4.5 lines 1394-1396: canonicalJson orders the keys",
+      "why": "lifecycle 4.5: canonicalJson orders the keys",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -207,7 +207,7 @@
     },
     {
       "name": "no answers: answers is an empty object",
-      "why": "lifecycle 4.5 line 1390",
+      "why": "lifecycle 4.5",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -220,7 +220,7 @@
     },
     {
       "name": "an answer in a hidden field is not in what is signed",
-      "why": "lifecycle 4.5 lines 1397-1399: a signer is never shown it",
+      "why": "lifecycle 4.5: a signer is never shown it",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -243,7 +243,7 @@
     },
     {
       "name": "the same note without the hidden answer",
-      "why": "lifecycle 4.5 lines 1397-1399",
+      "why": "lifecycle 4.5",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -264,7 +264,7 @@
     },
     {
       "name": "blanks are dropped: fields filled in and then cleared hash as fields never touched",
-      "why": "lifecycle 4.5 lines 1400-1401: null, \"\", [] and {} are left out",
+      "why": "lifecycle 4.5: null, \"\", [] and {} are left out",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -286,7 +286,7 @@
     },
     {
       "name": "only the answer that is not blank",
-      "why": "lifecycle 4.5 lines 1400-1401",
+      "why": "lifecycle 4.5",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -303,7 +303,7 @@
     },
     {
       "name": "zero is an answer, not a blank",
-      "why": "lifecycle 4.5 line 1400: only null, \"\", [] and {} are blanks",
+      "why": "lifecycle 4.5: only null, \"\", [] and {} are blanks",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -348,7 +348,7 @@
     },
     {
       "name": "a removed entry is not in what is signed",
-      "why": "lifecycle 4.5 line 1398: answers in entries that were not removed",
+      "why": "lifecycle 4.5: answers in entries that were not removed",
       "definition": "wound",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -371,7 +371,7 @@
     },
     {
       "name": "the same note with only the entry that is there",
-      "why": "lifecycle 4.5 line 1398",
+      "why": "lifecycle 4.5",
       "definition": "wound",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -390,7 +390,7 @@
     },
     {
       "name": "a hidden section's answers are not in what is signed",
-      "why": "lifecycle 4.5 lines 1397-1399; forms 6.3: a system's sections show when it is picked",
+      "why": "lifecycle 4.5; forms 6.3: a system's sections show when it is picked",
       "definition": "exam",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -417,7 +417,7 @@
     },
     {
       "name": "version 2 of a note type",
-      "why": "lifecycle 4.5 line 1388: the note type's key and version",
+      "why": "lifecycle 4.5: the note type's key and version",
       "definition": "quick",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -438,7 +438,7 @@
     },
     {
       "name": "the same answers under version 1 of the note type hash otherwise",
-      "why": "lifecycle 4.5 line 1388: the note type's key and version",
+      "why": "lifecycle 4.5: the note type's key and version",
       "definition": "quickOld",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -459,7 +459,7 @@
     },
     {
       "name": "text is hashed as written: quotes, a tab, a line break, accents and an emoji",
-      "why": "lifecycle 4.5 lines 1394-1396: canonicalJson's escapes, pinned by canonical-json.json",
+      "why": "lifecycle 4.5: canonicalJson's escapes, pinned by canonical-json.json",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",
@@ -478,7 +478,7 @@
     },
     {
       "name": "numbers: an integer, a decimal and a whole number written with a point",
-      "why": "lifecycle 4.5 lines 1394-1396: 37.0 is written 37, as the server writes it",
+      "why": "lifecycle 4.5: 37.0 is written 37, as the server writes it",
       "definition": "visit",
       "noteId": "0a7e0000-0000-4000-8000-000000000001",
       "encounterId": "e0c00000-0000-4000-8000-000000000001",

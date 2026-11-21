@@ -11,8 +11,8 @@ The wave A review changed this migration; lifecycle section 2.2 describes it as 
 
 ## Read first
 
-- `docs/design/phase-4/lifecycle.md` lines 174-369 (section 2.2): every column, check, function
-  and trigger.
+- `docs/design/phase-4/lifecycle.md` lines 177-372 (section 2.2, its heading to the line before
+  2.3's, as the design stood when phase 4 closed): every column, check, function and trigger.
 - `docs/plan/patterns/migration.md` lines 52-121: the steps, the tests and the commands.
 
 ## Files

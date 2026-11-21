@@ -49,7 +49,7 @@ only once the edits have landed.
 - Tests cards write several units' test files at once. `F0-tests` writes seven, including E's
   `export.test.ts`, whose module comes in wave 3. `L0-vectors` writes one TS reader,
   `services/api/test/encounter-rules.test.ts`, which reads all three vector files
-  (`lifecycle.md:851-853`, `:2097`).
+  (`lifecycle.md` 3.12 and 11.2).
 - As a result, `L0-rules-ts`, `L0-signed-under-ts` and `L0-content-hash-ts` all run the same
   test file. Each fails until the other two exist, and `L0-content-hash-ts` also waits on
   `F1-effective`. None of the three can ever pass on its own, so the runner would send every one
@@ -57,7 +57,7 @@ only once the edits have landed.
 
 **[P] Corrections:**
 
-1. **One reader per implementation file.** In `lifecycle.md:851-853`, replace "both readers
+1. **One reader per implementation file.** In `lifecycle.md` 3.12, replace "both readers
    (`services/api/test/encounter-rules.test.ts`, `apps/mobile/test/encounters/rules_test.dart`)"
    with: "a reader per function file: `services/api/test/encounter-rules.test.ts`,
    `signed-under.test.ts`, `note-content-hash.test.ts`, `apps/mobile/test/encounters/rules_test.dart`,
@@ -103,7 +103,7 @@ keeps one branch per unit.
 ### 2.3 The fake falls behind the server for a whole wave [V]
 
 `CLAUDE.md`: "Any change to `services/api/src/sync/**` comes with the same change to the fake."
-`lifecycle.md` §4.9 (1382-1410) says the same, rule by rule. The order table (index 56-65) still
+`lifecycle.md` §4.9 says the same, rule by rule. The order table (index 56-65) still
 lands L1 in wave 4 and L3-fake-* in wave 5.
 
 **[P]** After index line 71, add: "L1 lands together with L3-fake-encounter, L3-fake-signoff,
@@ -130,7 +130,7 @@ L3-fake-rest and L3-parity, as one landing (2.2). L3's other cards may follow."
 |---|---|---|---|---|
 | L0-vectors-lifecycle | X | `vectors/note-lifecycle.json`, `api-test/encounter-rules.test.ts`, `phone-test/encounters/rules_test.dart`, `services/api/tsconfig.src.json` | none | Replaces part of L0-vectors (2.1). **Ready now** |
 | L0-vectors-signed-under | X | `vectors/signed-under.json`, `api-test/signed-under.test.ts` | none | The same. **Ready now** |
-| L0-vectors-content-hash | X | `vectors/note-content-hash.json`, `api-test/note-content-hash.test.ts`, `phone-test/encounters/content_hash_test.dart` | F0-schema, F1-vectors | The hash is over `effectiveAnswers(definition, data)` (`lifecycle.md:1172-1176`), so its cases embed form definitions, whose format F0-schema fixes. Each case also carries `effective`, the expected answers that count, so a reviewer can check a case by reading it rather than recomputing a hash |
+| L0-vectors-content-hash | X | `vectors/note-content-hash.json`, `api-test/note-content-hash.test.ts`, `phone-test/encounters/content_hash_test.dart` | F0-schema, F1-vectors | The hash is over `effectiveAnswers(definition, data)` (`lifecycle.md` 4.5), so its cases embed form definitions, whose format F0-schema fixes. Each case also carries `effective`, the expected answers that count, so a reviewer can check a case by reading it rather than recomputing a hash |
 | E-tests | X | `forms/test/export.test.ts` (moved out of F0-tests) | F0, F1 | F0 must land green (2.2); E-presets is wave 3. E-presets then needs E-tests |
 | F0-ci | X | `.github/workflows/ci.yml` line 88 and `tools/ci-local.sh` "Unit tests" line: add `--filter @sineobex/forms` | F0-package | [V] Both run unit tests from a fixed package list that leaves out forms, and no card adds it (E-drift adds only the drift step, index 122). Without it, F0's and F1's tests never run in CI. Lands in F0's first landing that has tests |
 | L2-pdf-dependency | X | `services/api/package.json`, the lockfile (`registry` lane) | none | Choosing a dependency is a supply-chain decision (L2-handoff-pdf's row, line 276). L2-handoff-pdf then needs it and writes code only |
@@ -151,8 +151,8 @@ L0-vectors itself is removed; the index lines that named it now name the split c
 
 | Card | Condition (added to the tests card that writes its test) |
 |---|---|
-| L2-cosign, L2-attest, L2-assign (index 270-273); P4-publish (phase 5, 448) | For every route: a refusal for each missing key or credential in `lifecycle.md` §6.1 (1583-1605), each refusal logged; and an audit write that fails rolls the action back |
-| L4-close-sweep (index 307) | L4-tests: a draft with any change waiting in the outbox is not closed; a finished note without its receipt is not closed. Each test checked to bite (`lifecycle.md:1728-1736`) |
+| L2-cosign, L2-attest, L2-assign (index 270-273); P4-publish (phase 5, 448) | For every route: a refusal for each missing key or credential in `lifecycle.md` §6.1, each refusal logged; and an audit write that fails rolls the action back |
+| L4-close-sweep (index 307) | L4-tests: a draft with any change waiting in the outbox is not closed; a finished note without its receipt is not closed. Each test checked to bite (`lifecycle.md` 8.2, "When a finished note leaves the phone") |
 | L5-needs-attention (index 337) | The card calls only L3's named store functions; Audit: no button discards a change (CLAUDE.md, "A rejected change is never dropped") |
 | B0-suppress (phase 10, 386) | B0-tests: vectors at n−1, n and n+1 of every threshold, and complementary suppression |
 
@@ -173,8 +173,8 @@ level X."
 
 | Card | Routes from | Keys from |
 |---|---|---|
-| F3-contract (index 144) | `forms.md` §3.3 (331-343) | `forms.md` §3.3, D37 |
-| L2-permissions (index 277) | `lifecycle.md` §5 (1427-1576) | `lifecycle.md` §6.1 (1583-1605) |
+| F3-contract (index 144) | `forms.md` §3.3 | `forms.md` §3.3, D37 |
+| L2-permissions (index 277) | `lifecycle.md` §5 | `lifecycle.md` §6.1 |
 | P1-, P4-, P5-permissions; I2-; W2-; Q2-; B1-, B2-; A1-permissions | Each design's §7 | Each design's §7 / permissions table |
 
 The planner fills each table **when the card is written**, not now: the routes don't exist yet.
@@ -195,7 +195,7 @@ The planner fills each table **when the card is written**, not now: the routes d
 | L1 lands together with L3-fake-* and L3-parity (2.3) | Phase 4 index, after 71 |
 | Phase n+1's cards are written only after a planner card has checked its design's §2 against a branch where every phase-n unit it names has landed | `docs/plan/README.md`, "The loop", step 1. The designs say "check section 2 against the code before building" (line 1 of each of 5–12) but never when |
 | Phase 12's A3/A4 deploy, release, restore-drill and db-verify cards: the factory writes the code and runs `cdk synth`, cdk-nag and the policy fixtures; a person runs them against AWS | Phase 12 design §13, and `IMPLEMENTATION_PLAN.md` §7 |
-| The field specification (forms question 10, `forms.md:723`) and the Nov 14 PRD export must be readable by the planner | `IMPLEMENTATION_PLAN.md` §7. Blocks F6's 36 transcription cards |
+| The field specification (forms question 10, `forms.md` 10.1 #10) and the Nov 14 PRD export must be readable by the planner | `IMPLEMENTATION_PLAN.md` §7. Blocks F6's 36 transcription cards |
 
 ## 8. The first card, written and tested [V]
 

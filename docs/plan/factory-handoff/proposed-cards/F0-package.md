@@ -11,7 +11,8 @@ cards call, and the lockfile knows it.
 
 - `packages/contract/package.json`, all of it (24 lines): the package to copy the shape of.
 - `packages/contract/tsconfig.json`, all of it (5 lines): the settings to copy.
-- `docs/design/phase-4/forms.md` lines 73-90: what the package will hold.
+- `docs/design/phase-4/forms.md` lines 75-97: what the package will hold (section 2.1, its heading
+  and file tree, as the design stood when phase 4 closed).
 
 ## Files
 
