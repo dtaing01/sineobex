@@ -5637,11 +5637,12 @@ As built for the phone's screens (unit L5, with its review):
   its menu. Its Copy and Cut, from the selection menu and from a hardware keyboard's shortcuts (the
   copy and cut text intent, which `EditableText` lets an ancestor override), go through `secureCopy`, as an ID
   link does, never the general pasteboard: on iOS a local-only item, never Universal Clipboard,
-  cleared after 60 seconds; on Android a clip marked sensitive whose label names no one, cleared
-  after 60 seconds if it is still the one there, though from Android 10 an app in the background
-  can't read the clipboard, so a copy whose time runs out there is cleared once the app is back in
-  front, and one whose process Android ends first is never cleared (`MainActivity.kt`; the tests
-  stand in for both platforms' native side, which no device here has run). Cut takes
+  cleared after 60 seconds; on Android a clip marked sensitive (honoured from Android 13) whose
+  label names no one, cleared after 60 seconds if it is still the one there, though from Android 10
+  an app in the background can't read the clipboard, so a copy whose time runs out there is cleared
+  once the app is back in front, and one whose process Android ends first is never cleared
+  (`MainActivity.kt`; the tests stand in for both platforms' native side, which no device here has
+  run). Cut takes
   the text out only once `secureCopy` says it was copied. When it says no, nothing is copied and the
   box says “Nothing was copied: this phone couldn’t copy it privately.”; there is no fallback to the
   plain clipboard. On success the box says “Copied. It clears in 60 seconds.” under it, a live
@@ -5964,7 +5965,7 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 34 | What happens to an addendum or a correction whose sign-off a Program Admin rejected in review? (review findings PS-2 and VS-6) | It is taken as naming none: an addendum is added to its note, and a correction that then reaches a note never finished is an edit of the draft, with its reason. A held correction whose accept is refused, or that is rejected, tells its sender to correct the note again (`correction_not_applied`, naming the note, with no text of it) (4.6, 4.7 as built) | Brooke and Mercy |
 | 35 | What does Remove this note keep of a note the server refused for a version of its type the team no longer lists? (review findings PS-4 and VS-3) | Its answers, in the server's history: the note is sent again on another listed version of its type that takes every answer it holds, carrying them, then each is cleared, so it counts for nothing. With no such version, or a type the team no longer lists at all, it stays in Needs attention: "This note can’t be removed on this phone. Tell a Program Admin." (4.1, 9.13 as built; D121) | Brooke and Mercy |
 | 36 | May a Program Admin's accept put a held change over a value its sender never saw? (the coordinator's decision on the second pass's open question; review finding VS-1) | No: it is applied as it was made, at the version it named, by the rule a push of it meets, so over a field that holds another value since it is refused (`cannot_apply`) and the reviewer can only reject it; a field cleared since takes it, and a record that takes no more values keeps it in its history. A Medical visit's summary set by a sender who may not read it, and a conflict its sender may not see into, are always held; a reviewer who may read both writes the value themselves (4.3, 4.4 as built; D88) | The team |
-| 37 | What may a private box's selection menu do with chart text, and how long does a copy last? (review findings PP-3, C-2 and C-4) | Only cut, copy, paste and select all, in every box that takes a patient's details or a note's text, the birth date box's included. Copy and Cut, from that menu and a hardware keyboard's shortcuts, go through `secureCopy`, whose 60 seconds are phase 3's Android clipboard rule; a refusal copies nothing. A soft keyboard's own Copy is not covered (10.2; D126; plan risk 10) | The project lead |
+| 37 | What may a private box's selection menu do with chart text, and how long does a copy last? (review findings PP-3, C-2 and C-4) | Only cut, copy, paste and select all, in every box that takes a patient's details or a note's text, the birth date box's included. Copy and Cut, from that menu and a hardware keyboard's shortcuts, go through `secureCopy`: on iOS a local-only item cleared after 60 seconds; on Android a clip marked sensitive (honoured from Android 13), cleared after 60 seconds if the app is in front then, otherwise (from Android 10) once it is back in front, and never if Android ended the app first; the 60 seconds are phase 3's Android clipboard rule; a refusal copies nothing. A soft keyboard's own Copy is not covered (10.2; D126; plan risk 10) | The project lead |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`

@@ -13,7 +13,9 @@ import '../tokens.dart';
 /// PLAN-OPEN: what may a private box's selection menu do with chart text, and how long does a copy
 /// last (lifecycle 12.1 #37; plan section 6)? These four only, in every box that takes a patient's
 /// details or a note's text; Copy and Cut through [secureCopy], whose 60 seconds are phase 3's
-/// Android clipboard rule (`secureCopyLifetime`).
+/// Android clipboard rule (`secureCopyLifetime`). From Android 10 a copy whose minute ends while
+/// the app is in the background is cleared once the app is back in front, and on any Android one
+/// is never cleared if Android ends the app first, as [secureCopy] says.
 const privateMenuItems = {
   ContextMenuButtonType.cut,
   ContextMenuButtonType.copy,

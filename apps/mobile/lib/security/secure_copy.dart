@@ -21,8 +21,9 @@ const secureCopyLifetime = Duration(seconds: 60);
 ///   preview hides it), cleared after [lifetime] if it is still the one on the clipboard, so it can
 ///   be pasted into another app meanwhile and nothing copied since is wiped (review P9). From
 ///   Android 10 an app in the background can't read the clipboard, so a link whose time runs out
-///   there is cleared when the app is back in front. Before Android 13 there is no sensitive flag;
-///   the clearing still applies.
+///   there is cleared when the app is back in front. Only the app's process remembers the copy, so
+///   one whose process Android ends before it is cleared stays on the clipboard. Before Android 13
+///   there is no sensitive flag; the clearing still applies.
 ///
 /// Returns false when nothing was copied: the platform refused, or there is no native side (tests
 /// and desktop builds). Never falls back to the plain clipboard, which would keep the text
