@@ -172,6 +172,11 @@ extension RefusalFixes on EncounterRepository {
   /// very version the list names (a build fault: the phone only offers listed versions, forms 3.4);
   /// either stays in Needs attention until the store can withdraw a create the server never took.
   ///
+  /// PLAN-OPEN: what does Remove this note keep of a note the server refused for a version of its
+  /// type the team no longer lists (lifecycle 12.1 #35; plan section 6)? Its answers, in the
+  /// server's history: sent on a listed version that takes every one, then cleared. With no such
+  /// version the card says to tell a Program Admin ([canRemoveRefusedNote]).
+  ///
   /// Throws, writing nothing: [ChartingPaused] while the store is frozen or the clock check fails;
   /// `not_charting` and `medical_credential` as [startEncounter]; `not_author` for a note the person
   /// does not act as the author of; [RecordLocked] for a note finished as this phone knows it;

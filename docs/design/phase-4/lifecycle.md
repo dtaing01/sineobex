@@ -5960,6 +5960,11 @@ Each is a `PLAN-OPEN:` comment in the code and a row in the plan's section 6.
 | 30 | What does Expand on a quick note do when the visit already has a note of the full type? (forms 6.4 says it "creates the full note type") | The draft the note types list would open is opened instead (the person's own first, then a teammate's they may see), as it is: nothing is copied into a draft that holds answers, so no second wound or set of vitals is written and no answer is written over. Else a finished note of the type the person may see (their own or a teammate's), on the phone or in the visit read online or from the cached chart, opens read-only, nothing copied, and an addendum or a correction adds to it. Only then is the person's own empty draft of the type filled as a new note would be, and the form says under Expand which a tap will do. A visit read that shows a finished Red flags note brings no second one, as with Add note (forms 6.4; unit F7; the coordinator's decision of Nov 18) | Brooke and Mercy |
 | 31 | Who may be assigned a note whose author left, when it holds, or its type could hold, a sensitive exam, a treatment record or a sensitive diagnosis? | Only someone whose role would see each of them. Where the person assigning sees such content, by what the note holds; where they could miss it, by the note's type and the assignee's keys, whatever the note holds, so the list tells them nothing they may not read (5.5; review finding PRD-1, the coordinator's decision of Nov 20). A note no active member qualifies for stays in Notes not complete. A note that holds such content needs someone who may see it, whoever assigns it; its type alone keeps it from someone only where the person assigning may not see that content (a manager whose role reads no sensitive exam, a Program Admin with no credential before a treatment record). So on a team whose attendings hold no `patients.view_sensitive_exams`, a General / primary care note stalls only when it holds a GU, breast or rectal exam, or when someone who reads none assigns it | Brooke and Mercy |
 | 32 | May Use my location ask Google's location service? | Yes. `geolocator` (MIT) asks Android's fused provider, through Google Play services' `play-services-location` 21.2.0 (Google's SDK terms), wherever Play services is on the phone: one fix, only on the tap, kept as the phone gives it (#15). On most Android phones the location service is Google's whatever a plugin is told, so forcing the platform's own provider would change little, and the team's device policy decides whether Google's location accuracy is on. The Play services libraries are outside `pubspec.lock` and its osv scan (plan risk 9) (9.2) | The security questionnaire and counsel |
+| 33 | How far ahead may a referral be dated while the phone's clock is unchecked? (review finding PS-3) | No later than the phone's own day, its local day or the UTC day where that is later; with a checked clock, up to a day ahead by the corrected date, as the server takes it. One the server refuses as in the future (`referral_in_future`) gets Change the date in Needs attention (3.11, 9.13 as built) | The team |
+| 34 | What happens to an addendum or a correction whose sign-off a Program Admin rejected in review? (review findings PS-2 and VS-6) | It is taken as naming none: an addendum is added to its note, and a correction that then reaches a note never finished is an edit of the draft, with its reason. A held correction whose accept is refused, or that is rejected, tells its sender to correct the note again (`correction_not_applied`, naming the note, with no text of it) (4.6, 4.7 as built) | Brooke and Mercy |
+| 35 | What does Remove this note keep of a note the server refused for a version of its type the team no longer lists? (review findings PS-4 and VS-3) | Its answers, in the server's history: the note is sent again on another listed version of its type that takes every answer it holds, carrying them, then each is cleared, so it counts for nothing. With no such version, or a type the team no longer lists at all, it stays in Needs attention: "This note can’t be removed on this phone. Tell a Program Admin." (4.1, 9.13 as built; D121) | Brooke and Mercy |
+| 36 | May a Program Admin's accept put a held change over a value its sender never saw? (the coordinator's decision on the second pass's open question; review finding VS-1) | No: it is applied as it was made, at the version it named, by the rule a push of it meets, so over a field that holds another value since it is refused (`cannot_apply`) and the reviewer can only reject it; a field cleared since takes it, and a record that takes no more values keeps it in its history. A Medical visit's summary set by a sender who may not read it, and a conflict its sender may not see into, are always held; a reviewer who may read both writes the value themselves (4.3, 4.4 as built; D88) | The team |
+| 37 | What may a private box's selection menu do with chart text, and how long does a copy last? (review findings PP-3, C-2 and C-4) | Only cut, copy, paste and select all, in every box that takes a patient's details or a note's text, the birth date box's included. Copy and Cut, from that menu and a hardware keyboard's shortcuts, go through `secureCopy`, whose 60 seconds are phase 3's Android clipboard rule; a refusal copies nothing. A soft keyboard's own Copy is not covered (10.2; D126; plan risk 10) | The project lead |
 
 Rows 23 to 26 came from wave D's review of the sync half. Row 25's `PLAN-OPEN:` comment is on
 the encounter's `afterWrite` (`services/api/src/sync/entities/encounter.ts`), row 26's on `hold`
@@ -6002,6 +6007,15 @@ on the statement versions (row 5) in `complete.dart` and `encounter_api.dart`, a
 `PLAN-OPEN:` comment of a question this table lacks: its other choices are the coordinator's
 decisions, recorded in the sections' as-built paragraphs.
 
+Rows 33 to 37 came from the whole-phase review and its second pass, each the coordinator's decision
+on the findings it names, and each has its row in the plan's section 6. Their `PLAN-OPEN:` comments
+are on `_unreferencedProblem` (row 33, `apps/mobile/lib/sync/local_store.dart`),
+`withoutRejectedSignoff` (row 34, `services/api/src/sync/records.ts`), `removeRefusedNote` (row 35,
+`apps/mobile/lib/encounters/refusal_fixes.dart`), `decideQuarantine` (row 36,
+`services/api/src/sync/review.ts`) and `privateMenuItems` (row 37,
+`apps/mobile/lib/design/widgets/private_box.dart`). The review's one other row in the plan, who may
+change a Program Admin's credential, has no default the code builds; it is 12.2 #6.
+
 ### 12.2 Questions that need a person and have no default
 
 1. **Whether NP attestation is a payer rule or the partner's policy** (PRD main 216). The code
@@ -6015,6 +6029,13 @@ decisions, recorded in the sections' as-built paragraphs.
 5. **A visit charted on the wrong patient, found after a note is finished.** The app has no way
    to move it. Each answer can be corrected and an addendum can say what happened. Whether a
    Program Admin needs a way to void or move a visit is not decided.
+6. **Who may change a Program Admin's credential after appointment** (raised with the project lead
+   in the phase's review). No route is meant for it: the team's credential route takes a Program
+   Admin's membership only from a platform owner who is an active member of the team with
+   `team.manage_users`, and an owner outside the team can only remove the Program Admin and appoint
+   them again under the credential they now hold. The project lead decides; recommended: an
+   owner-console route to change it, with a recent sign-in, a reason and its audit event, and
+   another Program Admin of the team may lower it but never raise it (plan section 6).
 
 ### 12.3 Where this design departs from the PRD, or reads it a particular way
 

@@ -397,6 +397,13 @@ const waitingOnRecord = () =>
  * is told, and a late change to a finished note is kept in its history as a push of it would be.
  * Only a reviewer who may read the change accepts it (403 `change_hidden`). Reject keeps the item,
  * with the reason, forever.
+ *
+ * PLAN-OPEN: may a Program Admin's accept put a held change over a value its sender never saw
+ * (lifecycle 12.1 #36; plan section 6)? No: it is applied as it was made, at the version it named,
+ * by the rule a push of it meets, so over a field that holds another value since it is refused
+ * (cannot_apply). A Medical visit's summary set by a sender who may not read it, and a conflict its
+ * sender may not see into, are always held (apply.ts); a reviewer who may read both writes the
+ * value themselves.
  */
 export async function decideQuarantine(
   scope: TeamScope,

@@ -9,6 +9,11 @@ import '../tokens.dart';
 /// nothing that sends its text out of the app (lifecycle 10.2; the coordinator's decisions on review
 /// findings PP-3 and C-2). The platforms' Share, Search Web and Look Up, Android's text-processing
 /// apps (a translator) and iOS's Live Text are left out.
+///
+/// PLAN-OPEN: what may a private box's selection menu do with chart text, and how long does a copy
+/// last (lifecycle 12.1 #37; plan section 6)? These four only, in every box that takes a patient's
+/// details or a note's text; Copy and Cut through [secureCopy], whose 60 seconds are phase 3's
+/// Android clipboard rule (`secureCopyLifetime`).
 const privateMenuItems = {
   ContextMenuButtonType.cut,
   ContextMenuButtonType.copy,

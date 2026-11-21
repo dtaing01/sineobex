@@ -228,8 +228,10 @@ test code only).
 
 ## What a person has to decide
 
-Every default is built, marked `PLAN-OPEN` and listed with who decides: 32 in
-`lifecycle.md` 12.1, 54 in `forms.md` 10.1, and eight questions with no default in 12.2 and 10.2.
+Every default is built, marked `PLAN-OPEN` and listed with who decides: 37 in
+`lifecycle.md` 12.1, 55 in `forms.md` 10.1, and nine questions with no default in 12.2 and 10.2.
+The phase's review added six of the defaults (12.1 #33 to #37, 10.1 #55) and one of the questions
+(12.2 #6), each also a row of the plan's section 6.
 The ones that would change the most if answered differently:
 
 1. **Who may co-sign or attest a note that has a GU, breast or rectal exam.** The default follows

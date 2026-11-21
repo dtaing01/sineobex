@@ -2444,6 +2444,11 @@ the rest of the visit page.
 | 52 | Does a conflict on an answer name the person who made the other change? | No: phase 2's words, "A teammate", "You, from another phone" or "On the server", with the time, the two values side by side (8.1). Lifecycle 9.5 asks for both values and phase 2's choice; the summary's lines name who changed an answer since the person last had the note open (lifecycle 9.6) | The team |
 | 53 | Is a section that `needs` a capability drawn for a credential without it? | No, even when it holds a teammate's answers: such a section is "shown to, and changed by" a credential with the capability (2.2, 6.4), and the form draws it only for one (8.1). The read view of a finished note shows it to every reader, as `needs` hides nothing from a reader (lifecycle 6.4) | Brooke and Mercy |
 | 54 | How a date is typed | In three private boxes, month, day and year: month first, as the US pilot writes a date and as phase 3's birth date is read (phase 3 design 14.1 #20), and a four-digit year, since a two-digit one could fall either side of today on a field whose range is `any`. The calendar is the second way in: its day cells can't be 48 px on a 320 px phone (8.2, review finding A11Y-3). Day-month order follows phase 3's team setting when there is one | The team |
+| 55 | How are a referral's date and a problem's onset date taken? (review findings PX-3 and C-3) | As a note's date (#54): three private boxes, month first, with the calendar alone beside them, in a dialog gate; a date half typed or refused adds or sends nothing, and what a problem stores is unchanged (8.2 as built; D92) | The team |
+
+Row 55 came from the whole-phase review and its second pass (the coordinator's decisions on
+findings PX-3 and C-3). Its `PLAN-OPEN:` comment is on `DateDef.outside`
+(`apps/mobile/lib/forms/definition.dart`), and its row is in the plan's section 6.
 
 ### 10.2 Questions that need a person and have no default
 

@@ -374,7 +374,12 @@ class DateDef extends FieldDef {
   DateDef._(super.c, {required this.range});
 
   /// A date the phone takes outside a note's form, typed and picked as a note's date is (D92): the
-  /// Referrals sheet's (review finding PX-3). [id] names its boxes.
+  /// Referrals sheet's and Change the date's (review finding PX-3), and phase 3's Add problem onset
+  /// date (C-3). [id] names its boxes.
+  ///
+  /// PLAN-OPEN: how are a referral's date and a problem's onset date taken (forms 10.1 #55; plan
+  /// section 6)? As a note's date: three private boxes, month first, with the calendar alone beside
+  /// them, in a dialog gate; a date half typed or refused adds or sends nothing.
   DateDef.outside({required String id, required String label, this.range = 'past'}) : super(_Common.plain(id, label));
 
   /// `past`, `future` or `any`: the picker's bound.

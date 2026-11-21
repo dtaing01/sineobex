@@ -820,6 +820,10 @@ class LocalStore {
   /// decision on review finding PS-3): the server's day-ahead allowance is for a phone whose time it
   /// has measured, and a referral does not pause with the clock (3.11), so an unmeasured clock may
   /// be days ahead. The phone's date is its local day, or the UTC day where that is later.
+  ///
+  /// PLAN-OPEN: how far ahead may a referral be dated while the phone's clock is unchecked
+  /// (lifecycle 12.1 #33; plan section 6)? No later than the phone's own day; with a checked clock,
+  /// up to the server's day ahead, and one it refuses gets Change the date in Needs attention.
   String? _unreferencedProblem(String entity, Map<String, Object?> value) {
     if (entity != entityReferral) return null;
     final stamp = _stamp();

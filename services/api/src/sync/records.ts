@@ -612,6 +612,11 @@ export async function createReceivedAt(
  * both when they were held; the addendum has its own author and time and is taken in every state of
  * its note (lifecycle 4.7), and a correction that then reaches a draft is an edit of the draft (3.6).
  * Held behind the sign-off and accepted after its rejection, or sent later, either is applied.
+ *
+ * PLAN-OPEN: what happens to an addendum or a correction whose sign-off a Program Admin rejected in
+ * review (lifecycle 12.1 #34; plan section 6)? It is taken as naming none, as here; a held
+ * correction whose accept is then refused, or that is rejected, tells its sender to correct the
+ * note again (review.ts, correctionNotApplied).
  */
 export async function withoutRejectedSignoff<V extends { signoffId: string | null }>(
   tx: Tx,
