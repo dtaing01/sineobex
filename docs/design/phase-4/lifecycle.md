@@ -6116,8 +6116,9 @@ fixes:
   them. (A freeze takes what it found off the sheet since `d713056`, as on Who.)
 - Show handoff for a visit the phone does not hold: the server's read can say it has one
   (`hasHandoff`), but the page reads the phone's copy only (9.8 as built).
-- A refused note create whose type the team lists at no other version, or that was refused on the
-  very version listed: Remove this note can't settle it, so it stays in Needs attention, and hard stop
+- A refused note create whose type the team lists at no other version, or at none that takes
+  every answer it holds (since the phase's review, finding VS-3), or that was refused on the very
+  version listed: Remove this note can't settle it, so it stays in Needs attention, and hard stop
   2 holds its visit's Complete, until the store can withdraw a create the server never took (9.13 as
   built). And whether the fix of such a create should keep the person's answers on the listed
   version, rather than clear them, as the design table's "Choose the note type again" would. (Since
