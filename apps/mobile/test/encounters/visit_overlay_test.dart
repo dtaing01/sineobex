@@ -65,24 +65,29 @@ void main() {
     canCosign: canCosign,
     canAttest: canAttest,
   );
-  VisitView visit(VisitSource source, List<NoteView> notes, {String? summary, Set<String> pendingFields = const {}}) =>
-      VisitView(
-        encounterId: visitId,
-        source: source,
-        patientId: null,
-        kind: VisitKind.medical,
-        status: notes.firstOrNull?.status ?? NoteStatus.draft,
-        startedAt: start,
-        clockVerified: true,
-        locationText: null,
-        summary: summary,
-        summaryHidden: false,
-        envelopeLocked: false,
-        addenda: const [],
-        notes: notes,
-        notSynced: false,
-        pendingFields: pendingFields,
-      );
+  VisitView visit(
+    VisitSource source,
+    List<NoteView> notes, {
+    String? summary,
+    String? patientId,
+    Set<String> pendingFields = const {},
+  }) => VisitView(
+    encounterId: visitId,
+    source: source,
+    patientId: patientId,
+    kind: VisitKind.medical,
+    status: notes.firstOrNull?.status ?? NoteStatus.draft,
+    startedAt: start,
+    clockVerified: true,
+    locationText: null,
+    summary: summary,
+    summaryHidden: false,
+    envelopeLocked: false,
+    addenda: const [],
+    notes: notes,
+    notSynced: false,
+    pendingFields: pendingFields,
+  );
 
   late EncounterApi api;
   setUp(() {
@@ -175,4 +180,21 @@ void main() {
       }
     },
   );
+
+  // Review finding VS-2: the patient branch of the same rule. Every note's hash covers the visit's
+  // patient, so one chosen on the phone and not sent yet takes both acts away too.
+  test('a note under a patient chosen on the phone, waiting to send, is offered neither act', () {
+    final mine = visit(
+      VisitSource.phone,
+      [],
+      patientId: 'c0000000-0000-4000-8000-00000000c0de',
+      pendingFields: {'patientId'},
+    );
+    for (final (base, plan) in [(waitingCosign, api.cosignPlan), (waitingAttest, api.attestPlan)]) {
+      final shown = withWaiting(base, mine);
+      final n = shown.notes.single;
+      expect([n.canCosign, n.canAttest, n.contentHash, n.sendFirst], [false, false, null, true]);
+      expect(plan(shown), isNull);
+    }
+  });
 }

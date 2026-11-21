@@ -872,6 +872,32 @@ void main() {
         expect(server.records[r.n]!.fields['data.care.plan']!.value, 'Demo: rest, fluids and a recheck');
       });
 
+      // Review finding VS-5: only what was refused for naming the sign-off goes again with its fix;
+      // one refused for a reason of its own still waits, and Complete still refuses for it.
+      test('a correction naming the refused sign-off but refused for a reason of its own still waits', () async {
+        final r = await refusedBeside((p, visit, n, signoffId) {});
+        final correction = r.p.store.createRecord(entityCorrection, {
+          'noteId': r.n,
+          'changes': [
+            {'field': 'data.care.plan', 'newValue': 'Demo: rest, fluids and a recheck', 'baseVersion': 1},
+          ],
+          'reason': 'Demo: the recheck was left out',
+          'requestedByPatient': false,
+          'declined': false,
+          'claimedCredential': null,
+          'signoffId': r.signoffId,
+        });
+        final create = r.p.store.outbox().singleWhere((e) => e.recordId == correction && e.op == 'create');
+        // As a server answers a value its schema refuses: validation, naming the sign-off all the same.
+        r.p.store.reject(create, reason: 'validation', details: {'problem': 'unstorable_value'});
+        expect(r.p.store.noteCompletedAgainFor(r.p.store.entry(create.changeId)!), isNull);
+        expect(
+          () => complete(r.p, [finishing(r.p, r.n, testNote)]),
+          throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'needs_attention')),
+        );
+        expect(r.p.store.outbox().where((e) => e.recordId == correction && e.op == 'create'), hasLength(1));
+      });
+
       test('what names a sign-off of another note still waits', () async {
         final p = phone(alex);
         final patient = server.seedPatient();
