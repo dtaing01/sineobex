@@ -1443,7 +1443,13 @@ for nothing and nothing that never synced is deleted (since the phase's review, 
 coordinator's decision), and the type is then chosen again (`removeRefusedNote`; a type listed at no
 other version stays in Needs attention, D121, since the rules let only a remote wipe and the tenth
 wrong PIN delete unsynced data); a problem of `checkAnswer` is settled by the next save of the
-answer (`saveAnswer`).
+answer (`saveAnswer`). The version the note is sent again on is one that takes every answer the
+phone holds of it (`checkAnswer`, as the server checks each), not only one that has each path: a
+version that dropped an option the note holds would refuse the create, and that refusal had no fix
+(review finding VS-3, as the coordinator decided; `_carrierOf`). With none, the refusal stays in
+Needs attention as D121 keeps a type listed at no version: its card asks the phone's files
+(`canRemoveRefusedNote`) and, in place of **Remove this note**, says “This note can’t be removed on
+this phone. Tell a Program Admin.”, and nothing is sent.
 
 As built (unit L1, with wave D's review):
 

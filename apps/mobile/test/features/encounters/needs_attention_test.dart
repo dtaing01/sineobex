@@ -649,6 +649,46 @@ void main() {
     h.sync.store!.unfreeze();
   });
 
+  // Review finding VS-3: a version that has the answer's path but no longer takes what it holds
+  // (an option it dropped) is no carrier; the refusal stays, and its card says why.
+  testWidgets('a note on a version the team moved on from that takes none of what it holds: the card says to tell '
+      'a Program Admin, and nothing is sent', (tester) async {
+    final h = await signInToChart(tester);
+    final visit = startVisit(h, kind: VisitKind.nonMedical);
+    await chart(tester, h, visit, 'social_needs', {
+      'needs.needs': ['food'],
+    });
+    final v1 = AppHarness.bundledPresets.cast<Map<String, Object?>>().firstWhere((v) => v['key'] == 'social_needs');
+    final d1 = v1['definition']! as Map<String, Object?>;
+    final sections = (jsonDecode(jsonEncode(d1['sections'])) as List<Object?>).cast<Map<String, Object?>>();
+    final needs = (sections.first['fields']! as List<Object?>).cast<Map<String, Object?>>().firstWhere(
+      (f) => f['id'] == 'needs',
+    );
+    needs['options'] = [
+      for (final o in (needs['options']! as List<Object?>).cast<Map<String, Object?>>())
+        if (o['code'] != 'food') o,
+    ];
+    final definition = {...d1, 'version': 2, 'sections': sections};
+    final v2 = {'key': 'social_needs', 'version': 2, 'hash': valueHash(definition), 'definition': definition};
+    for (final team in h.forms.teams.values) {
+      team.add(v2);
+    }
+    h.server.noteTypes
+      ..remove(('social_needs', 1))
+      ..[('social_needs', 2)] = definition;
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    final store = h.sync.store!;
+    expect([for (final e in store.needsAttention()) e.details?['problem']], ['unknown_note_type', 'record_missing']);
+    final before = store.outbox().length;
+    await openAttention(tester);
+    await expectShown(tester, find.text('This note can’t be removed on this phone. Tell a Program Admin.'));
+    expect(find.widgetWithText(OutlinedButton, 'Remove this note'), findsNothing);
+    await expectScreenOk(tester);
+    expect(store.outbox(), hasLength(before));
+    expect([for (final e in store.needsAttention()) e.details?['problem']], ['unknown_note_type', 'record_missing']);
+  });
+
   testWidgets('a note on a version the team moved on from: Remove this note settles it, and its type opens anew', (
     tester,
   ) async {

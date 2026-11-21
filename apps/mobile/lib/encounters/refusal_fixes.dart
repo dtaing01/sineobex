@@ -29,6 +29,10 @@ bool settledByPatient(OutboxEntry e) =>
     e.entity == entityNote &&
     e.details?['problem'] == 'medical_note_needs_patient';
 
+/// What Needs attention says of a refused note **Remove this note** can't settle on this phone
+/// (D121, review finding VS-3).
+const cannotRemoveRefusedNote = 'This note can’t be removed on this phone. Tell a Program Admin.';
+
 /// Whether Needs attention offers **Remove this note** for [e] (4.1): a refused create of a note on
 /// a key or version the team does not have (`unknown_note_type`).
 bool settledByRemoving(OutboxEntry e) =>
@@ -185,18 +189,10 @@ extension RefusalFixes on EncounterRepository {
     }
     if (store.noteState(rec.id)!.status != NoteStatus.draft) throw const RecordLocked();
     final value = refused.value! as Map<String, Object?>;
-    final key = value['noteTypeKey'] as String?;
     final paths = _answerPathsOf(rec);
-    final carrier = listed
-        .where(
-          (t) => t.key == key && t.version != value['noteTypeVersion'] && paths.every((p) => fieldAt(t, p) != null),
-        )
-        .firstOrNull;
+    final carrier = _carrierOf(refused, rec, listed);
     if (carrier == null) {
-      throw const LocalValidationError(
-        'This note can’t be removed on this phone. Tell a Program Admin.',
-        problem: 'definition_error',
-      );
+      throw const LocalValidationError(cannotRemoveRefusedNote, problem: 'definition_error');
     }
     _mayChart(medical: isMedicalType(carrier));
     // The answers the phone holds reach the server and its history first, then are blanked as sets:
@@ -215,6 +211,38 @@ extension RefusalFixes on EncounterRepository {
       }
     });
     onChanged?.call();
+  }
+
+  /// Whether **Remove this note** can settle [changeId] on this phone: the team's list gives its key
+  /// at a version that takes every answer the phone holds of it ([_carrierOf]). False otherwise, and
+  /// the refusal stays in Needs attention, its card saying to tell a Program Admin, as a type the
+  /// team lists at no version does (D121; the coordinator's decision on review finding VS-3). Reads
+  /// the phone's files only, and writes nothing.
+  Future<bool> canRemoveRefusedNote(String changeId) async {
+    final refused = store.entry(changeId);
+    if (refused == null || !settledByRemoving(refused)) return false;
+    final rec = store.record(refused.recordId);
+    if (rec == null || rec.entity != entityNote) return false;
+    return _carrierOf(refused, rec, await noteTypes()) != null;
+  }
+
+  /// The version [refused]'s note is sent again on by **Remove this note**: its key on the team's
+  /// list at another version than the one refused, that takes every answer the phone holds of the
+  /// note, as the server will check each (`checkAnswer`; review finding VS-3). A version that merely
+  /// has each path may refuse what the note holds (an option it dropped), and that refusal would have
+  /// no fix. Null when none does.
+  NoteTypeDef? _carrierOf(OutboxEntry refused, LocalRecord rec, Iterable<NoteTypeDef> listed) {
+    final value = refused.value! as Map<String, Object?>;
+    final held = EncounterRepository._answersOf(rec);
+    final paths = _answerPathsOf(rec);
+    return listed
+        .where(
+          (t) =>
+              t.key == value['noteTypeKey'] &&
+              t.version != value['noteTypeVersion'] &&
+              paths.every((p) => checkAnswer(t, p, held[p]) == null),
+        )
+        .firstOrNull;
   }
 
   OutboxEntry _visitRefusal(String changeId) {

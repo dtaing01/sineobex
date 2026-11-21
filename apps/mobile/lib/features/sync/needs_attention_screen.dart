@@ -12,7 +12,14 @@ import '../../design/tokens.dart';
 import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_models.dart' show VisitKind;
 import '../../encounters/encounter_repository.dart'
-    show NoteActions, RefusalFixes, VisitChoice, settledByPatient, settledByRemoving, settledByVisit;
+    show
+        NoteActions,
+        RefusalFixes,
+        VisitChoice,
+        cannotRemoveRefusedNote,
+        settledByPatient,
+        settledByRemoving,
+        settledByVisit;
 import '../../encounters/encounter_services.dart';
 import '../../encounters/referrals.dart' show settledByDate;
 import '../../forms/definition.dart' show ChoiceDef;
@@ -626,9 +633,10 @@ class _RejectionCard extends ConsumerWidget {
                     child: const Text(chooseNoteTypeAction),
                   ),
                 if (byRemoving)
-                  OutlinedButton(
+                  _RemoveRefusedNote(
+                    key: ValueKey('remove.${e.changeId}'),
+                    can: () => n.repository.canRemoveRefusedNote(e.changeId),
                     onPressed: paused ? null : () => unawaited(removeRefused()),
-                    child: const Text(removeNoteAction),
                   ),
                 if (correction)
                   OutlinedButton(
@@ -691,6 +699,32 @@ class _RejectionCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// **Remove this note** for a refused note of a type the team moved on from, when the team's list
+/// gives a version that takes every answer the phone holds of it; otherwise the card says to tell a
+/// Program Admin, and the refusal stays (D121; review finding VS-3). Asked of the phone's files once.
+class _RemoveRefusedNote extends StatefulWidget {
+  const _RemoveRefusedNote({super.key, required this.can, required this.onPressed});
+  final Future<bool> Function() can;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_RemoveRefusedNote> createState() => _RemoveRefusedNoteState();
+}
+
+class _RemoveRefusedNoteState extends State<_RemoveRefusedNote> {
+  late final Future<bool> _can = widget.can();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+    future: _can,
+    builder: (context, can) => switch (can.data) {
+      true => OutlinedButton(onPressed: widget.onPressed, child: const Text(removeNoteAction)),
+      false => Text(cannotRemoveRefusedNote, style: Theme.of(context).textTheme.bodyLarge),
+      null => const SizedBox.shrink(),
+    },
+  );
 }
 
 class _NoticeCard extends StatelessWidget {

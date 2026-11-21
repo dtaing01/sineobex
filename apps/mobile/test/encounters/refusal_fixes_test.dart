@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/encounters/credentials.dart';
 import 'package:sineobex_field/encounters/encounter_repository.dart';
@@ -124,6 +126,47 @@ void main() {
       expect(p.store.entry(x.changeId)!.state, ChangeState.rejected);
     },
   );
+
+  // Review finding VS-3: a version is a carrier only if it takes every answer the note holds, as
+  // the server checks each; one that merely has each path may refuse the create, with no fix.
+  test('Remove this note sends the note only on a version that takes every answer it holds', () async {
+    NoteTypeDef versionOf(int version, int followupLength) {
+      final json =
+          jsonDecode(jsonEncode(testNoteTypes.firstWhere((d) => d['key'] == testNote.key))) as Map<String, Object?>;
+      final care = (json['sections']! as List<Object?>).cast<Map<String, Object?>>().firstWhere(
+        (s) => s['id'] == 'care',
+      );
+      (care['fields']! as List<Object?>).cast<Map<String, Object?>>().firstWhere(
+        (f) => f['id'] == 'followup',
+      )['maxLength'] = followupLength;
+      return NoteTypeDef.fromJson({...json, 'version': version});
+    }
+
+    final narrower = versionOf(2, 5);
+    final wide = versionOf(3, 200);
+    final held = {'care.plan': 'Demo: rest', 'care.followup': 'Demo: recheck in a week'};
+    Future<({TestPhone p, EncounterRepository r, OutboxEntry x})> refusedNote(List<NoteTypeDef> listed) async {
+      final (:p, :r) = phone(listed: listed);
+      final visit = p.store.createEncounter(kind: 'non_medical');
+      final note = p.store.createNote(encounterId: visit, noteTypeKey: testNote.key, noteTypeVersion: 1, data: held);
+      return (p: p, r: r, x: refuse(p, note, 'validation', 'unknown_note_type'));
+    }
+
+    // Version 2 has every path, but takes no follow-up that long: no carrier, and nothing written.
+    final none = await refusedNote([narrower]);
+    expect(await none.r.canRemoveRefusedNote(none.x.changeId), isFalse);
+    final before = sent(none.p).length;
+    await expectLater(none.r.removeRefusedNote(none.x.changeId), refused('definition_error'));
+    expect(sent(none.p), hasLength(before));
+    expect(none.p.store.entry(none.x.changeId)!.state, ChangeState.rejected);
+
+    // Version 3 takes them: the note goes on it, carrying them.
+    final some = await refusedNote([narrower, wide]);
+    expect(await some.r.canRemoveRefusedNote(some.x.changeId), isTrue);
+    await some.r.removeRefusedNote(some.x.changeId);
+    final fix = sent(some.p).firstWhere((e) => e.supersedes == some.x.changeId);
+    expect(fix.value, allOf(containsPair('noteTypeVersion', 3), containsPair('data', held)));
+  });
 
   test('nothing is read or sent while the store is frozen', () async {
     final (:p, :r) = phone();
