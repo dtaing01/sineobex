@@ -504,35 +504,108 @@ void main() {
         },
       );
 
-      test('a Medical visit’s summary goes to a sender the sync read withholds it from as a field that holds nothing, kept in history and on a retry too', () async {
-        // Casey charts with encounters.chart alone: the sync read leaves a Medical visit's summary out
-        // (review finding PA-4).
-        server.permissions[casey] = {'encounters.chart'};
+      // services/api/test/sync-answers-sent-back.test.ts, 'is held for review from a sender the sync
+      // read withholds it from, whatever version it names', 'settles a choice … made on a conflict a
+      // phone holds from before the hold' and 'is held, not kept in history, after a finished note'
+      // (review findings PA-4, VS-1).
+      test(
+        'a Medical visit’s summary from a sender the sync read withholds it from is held, whatever version it names',
+        () async {
+          // Casey charts with encounters.chart alone: the sync read leaves a Medical visit's summary out,
+          // and a conflict he could never see into would never settle.
+          server.permissions[casey] = {'encounters.chart'};
+          final id = visitOf(by: casey);
+          final caseysFirst = setOn(entityEncounter, id, 'summary', 'Demo: Casey first words', 0);
+          expect(await send(casey, [caseysFirst]), [heldOnly(caseysFirst)]);
+          final alexs = setOn(entityEncounter, id, 'summary', 'Demo: Alex Medical assessment', 0);
+          expect(await send(alex, [alexs]), [taken(alexs, 1)]);
+          final caseys = setOn(entityEncounter, id, 'summary', 'Demo: Casey again', 1);
+          expect(await send(casey, [caseys]), [heldOnly(caseys)]);
+          expect(await send(casey, [caseys]), [
+            allOf(containsPair('status', 'rejected'), containsPair('quarantined', true)),
+          ]);
+          // A choice made on a conflict a phone holds from before the hold, at version 0: held too.
+          for (final resolution in ['replace', 'keep_server']) {
+            final choice = setOn(
+              entityEncounter,
+              id,
+              'summary',
+              'Demo: Casey again',
+              0,
+              more: {'conflictOf': uuid(), 'resolution': resolution},
+            );
+            expect(await send(casey, [choice]), [heldOnly(choice)], reason: resolution);
+          }
+          expect(server.records[id]!.fields['summary']!.value, 'Demo: Alex Medical assessment');
+          // Blair, who may read it, is sent it.
+          final blairs = setOn(entityEncounter, id, 'summary', 'Demo: Blair from an old copy', 0);
+          expect(
+            (await send(blair, [blairs])).single['server'],
+            containsPair('value', 'Demo: Alex Medical assessment'),
+          );
+          // Held, not kept in history, once the visit holds a finished note.
+          server.finishNote(noteOn(id));
+          final late = setOn(entityEncounter, id, 'summary', 'Demo: Casey late words', 1);
+          expect(await send(casey, [late]), [heldOnly(late)]);
+          // On a Non-Medical visit it goes as it is.
+          final outreach = visitOf(kind: 'non_medical', by: casey);
+          final words = setOn(entityEncounter, outreach, 'summary', 'Demo: Alex outreach words', 0);
+          await send(alex, [words]);
+          final mine = setOn(entityEncounter, outreach, 'summary', 'Demo: Casey outreach', 0);
+          expect((await send(casey, [mine])).single['server'], containsPair('value', 'Demo: Alex outreach words'));
+        },
+      );
+
+      // services/api/test/sync-answers-sent-back.test.ts, 'by the sync read’s rules for the record
+      // (VA-1)': A1, 'a first answer to a sender who may edit but not read the patient …', A3 and 'a
+      // conflict on it is held for review …'.
+      test('a value sent back follows the sync read’s rules for the record: nothing of what the sender may not read, and a conflict on it is held', () async {
         const nothing = {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null};
-        final id = visitOf(by: casey);
-        final alexs = setOn(entityEncounter, id, 'summary', 'Demo: Alex Medical assessment', 0);
-        expect(await send(alex, [alexs]), [taken(alexs, 1)]);
-        final caseys = setOn(entityEncounter, id, 'summary', 'Demo: Casey again', 0);
-        final first = await send(casey, [caseys]);
-        expect(first.single['status'], 'conflict');
-        expect(first.single['server'], nothing);
-        expect((await send(casey, [caseys])).single['server'], nothing);
-        // Blair, who may read it, is sent it.
-        final blairs = setOn(entityEncounter, id, 'summary', 'Demo: Blair from an old copy', 0);
-        expect((await send(blair, [blairs])).single['server'], containsPair('value', 'Demo: Alex Medical assessment'));
-        // Kept in history once the visit holds a finished note: the same.
-        server.finishNote(noteOn(id));
-        final late = setOn(entityEncounter, id, 'summary', 'Demo: Casey late words', 1);
-        final kept = await send(casey, [late]);
-        expect(kept.single['details'], {'outcome': 'history_only', 'problem': 'encounter_has_finished_note'});
-        expect(kept.single['server'], nothing);
-        expect((await send(casey, [late])).single['server'], nothing);
-        // On a Non-Medical visit it goes as it is.
-        final outreach = visitOf(kind: 'non_medical', by: casey);
-        final words = setOn(entityEncounter, outreach, 'summary', 'Demo: Alex outreach words', 0);
-        await send(alex, [words]);
-        final mine = setOn(entityEncounter, outreach, 'summary', 'Demo: Casey outreach', 0);
-        expect((await send(casey, [mine])).single['server'], containsPair('value', 'Demo: Alex outreach words'));
+        final p = server.seedPatient(preferredName: 'Demo Robin');
+        // A1: kept both, then the sender's role reads no patient record; the retry carries nothing.
+        final name = change(entityPatient, 'set', 'Demo Robbie', recordId: p, field: 'preferredName');
+        final first = (await send(dana, [name])).single;
+        expect(first['details'], containsPair('outcome', 'kept_both'));
+        expect(first['server'], containsPair('value', 'Demo Robin'));
+        server.permissions[dana] = {'encounters.chart'};
+        final reads = server.serverAudit.length;
+        expect((await send(dana, [name])).single['server'], nothing);
+        expect(server.serverAudit.length, reads);
+        // A first answer to a sender who may edit the patient but not read it.
+        server.permissions[casey] = {'patients.edit'};
+        final edit = change(entityPatient, 'set', 'Demo Robbie', recordId: p, field: 'preferredName');
+        final edited = (await send(casey, [edit])).single;
+        expect(edited['details'], containsPair('outcome', 'kept_both'));
+        expect(edited['server'], nothing);
+        // A3: a sensitive problem, to a sender without patients.view_sensitive.
+        server.permissions[blair] = {'patients.view', 'encounters.chart'};
+        final problem = server.seed(entityProblem, {
+          'patientId': p,
+          'title': 'Low mood',
+          'status': 'ongoing',
+          'code': {'system': 'icd10cm', 'code': 'F32.9'},
+        });
+        server.serverEdit(problem, 'status', const {'status': 'resolved', 'encounterId': null}, by: alex);
+        Map<String, Object?> observed(String at) => change(
+          entityProblem,
+          'set',
+          const {'status': 'ongoing', 'encounterId': null},
+          recordId: problem,
+          field: 'status',
+          baseVersion: 0,
+          more: {'deviceTime': at, 'correctedTime': at},
+        );
+        final older = observed('2000-01-01T00:00:00.000Z');
+        final kept = (await send(blair, [older])).single;
+        expect(kept['details'], containsPair('outcome', 'history_only'));
+        expect(kept['server'], nothing);
+        expect((await send(blair, [older])).single['server'], nothing);
+        // A newer observation out of Resolved is a conflict: held for review from this sender…
+        final newer = observed('2099-01-01T00:00:00.000Z');
+        expect(await send(blair, [newer]), [heldOnly(newer)]);
+        // …and the conflict it was from one who may read the problem.
+        final alexs = observed('2099-01-01T00:00:00.000Z');
+        expect((await send(alex, [alexs])).single, containsPair('status', 'conflict'));
       });
 
       test('a summary holds 1 to 4,000 characters and a place 1 to 200, with no space at either end', () async {

@@ -28,6 +28,7 @@ import {
 import { RULES, takesTeamLock } from './entities/index.ts';
 import { actingAuthor, answersOf, noteRules, noteTypeOf } from './entities/note.ts';
 import { lockTeamWrites } from './locks.ts';
+import { readsEntity, readsRecord, sensitiveHidden } from './read-rules.ts';
 import { isSensitiveCode } from './entities/problem.ts';
 import {
   answerHidden,
@@ -153,8 +154,9 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
 }
 
 /**
- * A held change as this reviewer may read it, by the sync read's rules (routes/sync.ts requireRead,
- * fetchRecords; lifecycle 6.4 rule 2, review finding RD-3), or null when they may not: Phase 4
+ * A held change as this reviewer may read it, by the sync read's rules (read-rules.ts, the one copy
+ * routes/sync.ts requireRead and fetchRecords use; lifecycle 6.4 rule 2, review findings RD-3 and
+ * VA-1), or null when they may not: Phase 4
  * sends the queue hidden answers and whole Medical notes on purpose. A visit's records need
  * encounters.chart, and a Medical visit's summary and its own addenda what reads its notes (RD-7);
  * a note's change needs a note they may read, with every answer it sends or would replace one they
@@ -167,12 +169,13 @@ async function shownChange(
   scope: TeamScope,
   r: Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value' | 'recordId'>,
 ): Promise<{ field: string | null; value: unknown } | null> {
+  // Whether they read a record of this kind at all: the sync read's one copy (read-rules.ts).
+  if (!readsEntity(scope.team.permissions, r.entity)) return null;
   const shown = { field: r.field, value: await shownValue(r) };
   const v = (typeof r.value === 'object' && r.value !== null ? r.value : {}) as Record<string, unknown>;
   const uuid = (x: unknown) => (typeof x === 'string' && UUID.test(x) ? x : null);
   switch (r.entity) {
     case 'encounter':
-      if (!scope.can('encounters.chart')) return null;
       return r.field === 'summary' && !readsMedical(scope) && (await medicalVisit(tx, r.recordId))
         ? null
         : shown;
@@ -180,20 +183,18 @@ async function shownChange(
     case 'note_signoff':
     case 'note_addendum':
     case 'note_correction':
-      if (!scope.can('encounters.chart')) return null;
       return (await noteChangeShown(tx, scope, r, v, uuid)) ? withoutUnseenHash(scope, r, v, shown) : null;
     case 'problem':
     case 'problem_note': {
-      if (!mayViewProblems(scope.team.permissions)) return null;
       if (scope.can('patients.view_sensitive')) return shown;
       if (r.entity === 'problem' && r.op === 'create') return sensitiveProblem(v) ? null : shown;
       // A set of a problem, or a note on one: the problem as it is, or its create held here.
       const problemId = r.entity === 'problem' ? r.recordId : uuid(v.problemId);
       const problem = problemId ? await RULES.problem.load(tx, problemId, false) : null;
-      return problem && problem.attributes.sensitive !== true ? shown : null;
+      return problem && !sensitiveHidden(scope.team.permissions, problem) ? shown : null;
     }
     default:
-      return scope.can('patients.view') ? shown : null;
+      return shown;
   }
 }
 
@@ -576,12 +577,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
         case 'problem':
-          return scope.can('patients.view_sensitive') || record.attributes.sensitive !== true ? record : null;
-        case 'problem_note': {
-          if (scope.can('patients.view_sensitive')) return record;
-          const problem = await RULES.problem.load(tx, record.attributes.problemId as string, false);
-          return problem?.attributes.sensitive !== true ? record : null;
-        }
+        case 'problem_note':
+          return (await readsRecord(tx, scope.team.permissions, record)) ? record : null;
         case 'encounter_note':
           return (await noteShown(record))?.note ?? null;
         case 'note_signoff': {

@@ -1,13 +1,22 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createWorld, finish, TEST_MEDICAL_TYPE, visitAt, type World } from './encounters-fixtures.ts';
+import {
+  createWorld,
+  finish,
+  roleWith,
+  TEST_MEDICAL_TYPE,
+  visitAt,
+  type World,
+} from './encounters-fixtures.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark } from './patient-fixtures.ts';
-import { call, noteOn, TEST_RED_FLAGS_TYPE } from './sync-fixtures.ts';
+import { call, clinician, createProblem, noteOn, setRole, TEST_RED_FLAGS_TYPE } from './sync-fixtures.ts';
 
 /**
  * A value the server sends back to a phone is a read (the coordinator's decisions on review
- * findings PA-1, PA-4 and PP-4): what a conflict, a value kept in history and a retry carry follows
- * the sync read's rules, and is logged on the record's patient in the push's transaction.
+ * findings PA-1, PA-4, PP-4, VA-1 and VS-1): what a conflict, a value kept in history and a retry
+ * carry follows the sync read's rules, all of them, and is logged on the record's patient in the
+ * push's transaction; a change the sender could only answer blind is held for review instead.
  */
 describe('a value sent back to a phone', () => {
   let h: Harness;
@@ -24,8 +33,22 @@ describe('a value sent back to a phone', () => {
     >`
       select action, patient_id as "patientId", entity, details from sineobex.audit_events where id > ${after}::bigint order by id`;
 
-  describe('a Medical visit’s summary (PA-4)', () => {
-    const summarySet = (c: World['eli'], encounterId: string, value: string, baseVersion: number) =>
+  const NOTHING = { value: null, version: 0, changedBy: null, changedAt: null };
+  const held = { status: 'rejected', reason: 'permission', quarantined: true };
+  const heldItem = async (changeId: string) =>
+    (
+      await h.scratch.owner<{ id: string; status: string }[]>`
+        select id, status from sineobex.quarantine_items where change_id = ${changeId}`
+    )[0];
+
+  describe('a Medical visit’s summary (PA-4, VS-1)', () => {
+    const summarySet = (
+      c: World['eli'],
+      encounterId: string,
+      value: string,
+      baseVersion: number,
+      extra: { conflictOf?: string; resolution?: 'replace' | 'keep_server' } = {},
+    ) =>
       c.phone.change({
         entity: 'encounter',
         recordId: encounterId,
@@ -33,21 +56,30 @@ describe('a value sent back to a phone', () => {
         field: 'summary',
         value,
         baseVersion,
+        ...extra,
       });
+    const summaryOf = async (encounterId: string) =>
+      (
+        await h.scratch.owner<{ summary: string | null }[]>`
+          select summary from sineobex.encounters where id = ${encounterId}`
+      )[0]!.summary;
 
-    it('goes to a sender the sync read withholds it from as a field that holds nothing', async () => {
+    it('is held for review from a sender the sync read withholds it from, whatever version it names', async () => {
       // Eli charts with encounters.chart alone: the sync read leaves a Medical visit's summary out.
+      // A conflict he could never see into would never settle (VS-1), so every set of it is held.
       const visit = await visitAt(w.eli, w.patientId);
-      expect(
-        (await w.eli.send(await summarySet(w.eli, visit.encounterId, 'Demo: eli first words', 0)))[0],
-      ).toMatchObject({ status: 'accepted' });
-      await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana Medical assessment', 1));
+      const firstWords = await summarySet(w.eli, visit.encounterId, 'Demo: eli first words', 0);
+      expect((await w.eli.send(firstWords))[0]).toMatchObject(held);
+      await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana Medical assessment', 0));
+      const mark = await auditMark(h);
       const eli = await summarySet(w.eli, visit.encounterId, 'Demo: eli again', 1);
       const [first] = await w.eli.send(eli);
-      expect(first).toMatchObject({ status: 'conflict', server: { value: null, version: 0 } });
-      // A retry is answered the same way.
-      const [retry] = await w.eli.send(eli);
-      expect(retry).toMatchObject({ status: 'conflict', server: { value: null, version: 0 } });
+      expect(first).toMatchObject(held);
+      expect(first!.server).toBeUndefined();
+      // A retry is answered the same way, and nothing of the summary was read or logged as read.
+      expect((await w.eli.send(eli))[0]).toMatchObject(held);
+      expect((await events(mark)).map((e) => e.action)).toEqual(['sync.quarantined']);
+      expect(await summaryOf(visit.encounterId)).toBe('Demo: Ana Medical assessment');
       // The sync read agrees: no summary.
       const read = await call(h, '/v1/sync/records', {
         method: 'POST',
@@ -56,6 +88,16 @@ describe('a value sent back to a phone', () => {
         json: { records: [{ entity: 'encounter', id: visit.encounterId }] },
       });
       expect(Object.keys((read.body.records as { fields: object }[])[0]!.fields)).not.toContain('summary');
+      // A reviewer who may read both decides: accepted at the version it named, it is a conflict the
+      // reviewer sees, so they reject it; the set Eli made at the right version goes on the chart.
+      const reject = await call(h, `/v1/team/quarantine/${(await heldItem(eli.changeId))!.id}/decision`, {
+        method: 'POST',
+        token: w.t.adminToken,
+        teamId: w.t.teamId,
+        json: { decision: 'reject', reason: 'Demo: Ana’s assessment stands' },
+      });
+      expect(reject.status).toBe(200);
+      expect((await heldItem(eli.changeId))!.status).toBe('rejected');
       // Ana, who may read it, is sent it.
       const [anas] = await w.ana.send(
         await summarySet(w.ana, visit.encounterId, 'Demo: Ana from an old copy', 0),
@@ -63,7 +105,22 @@ describe('a value sent back to a phone', () => {
       expect(anas).toMatchObject({ status: 'conflict', server: { value: 'Demo: Ana Medical assessment' } });
     });
 
-    it('is withheld from such a sender when it is kept in history after a finished note, and on a retry', async () => {
+    for (const resolution of ['replace', 'keep_server'] as const) {
+      it(`settles a choice (${resolution}) made on a conflict a phone holds from before the hold`, async () => {
+        // VS-1's case: a conflict answered with nothing shown, from before this rule, at version 0.
+        // The choice is held, so the phone lets go of it and the visit settles.
+        const visit = await visitAt(w.eli, w.patientId);
+        await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana Medical assessment', 0));
+        const choice = await summarySet(w.eli, visit.encounterId, 'Demo: eli again', 0, {
+          conflictOf: randomUUID(),
+          resolution,
+        });
+        expect((await w.eli.send(choice))[0]).toMatchObject(held);
+        expect(await summaryOf(visit.encounterId)).toBe('Demo: Ana Medical assessment');
+      });
+    }
+
+    it('is held, not kept in history, after a finished note', async () => {
       const visit = await visitAt(w.eli, w.patientId);
       await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana assessment, finished', 0));
       const withSummary = { ...visit, summary: 'Demo: Ana assessment, finished' };
@@ -72,10 +129,8 @@ describe('a value sent back to a phone', () => {
       await finish(w.ana, [flags, 'sign', 'signed'], [note, 'sign', 'signed']);
       const late = await summarySet(w.eli, visit.encounterId, 'Demo: eli late words', 1);
       const [kept] = await w.eli.send(late);
-      expect(kept).toMatchObject({ status: 'accepted', details: { outcome: 'history_only' } });
-      expect(kept!.server).toEqual({ value: null, version: 0, changedBy: null, changedAt: null });
-      const [retry] = await w.eli.send(late);
-      expect(retry!.server).toEqual({ value: null, version: 0, changedBy: null, changedAt: null });
+      expect(kept).toMatchObject(held);
+      expect((await w.eli.send(late))[0]).toMatchObject(held);
     });
 
     it('goes as it is on a Non-Medical visit', async () => {
@@ -83,6 +138,125 @@ describe('a value sent back to a phone', () => {
       await w.ana.send(await summarySet(w.ana, visit.encounterId, 'Demo: Ana outreach words', 0));
       const [first] = await w.eli.send(await summarySet(w.eli, visit.encounterId, 'Demo: eli outreach', 0));
       expect(first).toMatchObject({ status: 'conflict', server: { value: 'Demo: Ana outreach words' } });
+    });
+  });
+
+  describe('by the sync read’s rules for the record (VA-1)', () => {
+    it('A1: a retry after the sender lost patients.view carries nothing of the patient and logs no read', async () => {
+      const rae = await clinician(h, w.t, 'rae-a1@example.com', 'Rae A1 (demo)', 'resident');
+      const change = await rae.phone.change({
+        entity: 'patient',
+        recordId: w.patientId,
+        op: 'set',
+        field: 'preferredName',
+        value: 'Demo Robbie',
+        baseVersion: 0,
+      });
+      const [first] = await rae.send(change);
+      expect(first).toMatchObject({
+        status: 'accepted',
+        details: { outcome: 'kept_both' },
+        server: { value: w.preferredName },
+      });
+      // Rae moves to a role that charts and reads no patient record: the sync read refuses her.
+      await setRole(h, w.t, rae.membershipId, await roleWith(h, w.t, 'Chart only A1', ['encounters.chart']));
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: rae.token,
+        teamId: w.t.teamId,
+        json: { records: [{ entity: 'patient', id: w.patientId }] },
+      });
+      expect(read.status).toBe(403);
+      const mark = await auditMark(h);
+      const [retry] = await rae.send(change);
+      expect(retry).toMatchObject({ status: 'accepted', details: { outcome: 'kept_both' } });
+      expect(retry!.server).toEqual(NOTHING);
+      expect(await events(mark)).toEqual([]);
+    });
+
+    it('a first answer to a sender who may edit but not read the patient carries nothing and logs no read', async () => {
+      const edits = await roleWith(h, w.t, 'Edit without view', ['patients.edit']);
+      const ed = await clinician(h, w.t, 'ed-a1@example.com', 'Ed (demo)', 'none', edits);
+      const mark = await auditMark(h);
+      const [first] = await ed.send(
+        await ed.phone.change({
+          entity: 'patient',
+          recordId: w.patientId,
+          op: 'set',
+          field: 'preferredName',
+          value: 'Demo Robbie',
+          baseVersion: 0,
+        }),
+      );
+      expect(first).toMatchObject({ status: 'accepted', details: { outcome: 'kept_both' } });
+      expect(first!.server).toEqual(NOTHING);
+      expect((await events(mark)).filter((e) => e.action.endsWith('.viewed'))).toEqual([]);
+    });
+
+    describe('a sensitive problem, to a sender without patients.view_sensitive', () => {
+      const plainSender = async (email: string) =>
+        clinician(
+          h,
+          w.t,
+          email,
+          'Pat (demo)',
+          'attending',
+          await roleWith(h, w.t, `Plain charting ${email}`, ['patients.view', 'encounters.chart']),
+        );
+      const statusSet = (c: World['eli'], problemId: string, status: string, deviceTime: string) =>
+        c.phone.change({
+          entity: 'problem',
+          recordId: problemId,
+          op: 'set',
+          field: 'status',
+          value: { status, encounterId: null },
+          baseVersion: 1,
+          deviceTime,
+        });
+
+      it('A3: kept in history, it carries nothing of the problem, as the sync read reports it missing', async () => {
+        const pat = await plainSender('pat-a3@example.com');
+        const problemId = await createProblem(h, w.t.teamId, w.patientId, w.ana.id, {
+          statuses: ['new', 'resolved'],
+          sensitive: true,
+          title: 'Demo sensitive problem',
+        });
+        const read = await call(h, '/v1/sync/records', {
+          method: 'POST',
+          token: pat.token,
+          teamId: w.t.teamId,
+          json: { records: [{ entity: 'problem', id: problemId }] },
+        });
+        expect(read.body).toMatchObject({ records: [], missing: [{ entity: 'problem', id: problemId }] });
+        const mark = await auditMark(h);
+        const change = await statusSet(pat, problemId, 'ongoing', '2000-01-01T00:00:00.000Z');
+        const [first] = await pat.send(change);
+        expect(first).toMatchObject({ status: 'accepted', details: { outcome: 'history_only' } });
+        expect(first!.server).toEqual(NOTHING);
+        const [retry] = await pat.send(change);
+        expect(retry!.server).toEqual(NOTHING);
+        expect((await events(mark)).filter((e) => e.action.endsWith('.viewed'))).toEqual([]);
+      });
+
+      it('a conflict on it is held for review, not answered with a choice the sender cannot see into', async () => {
+        const pat = await plainSender('pat-hold@example.com');
+        const problemId = await createProblem(h, w.t.teamId, w.patientId, w.ana.id, {
+          statuses: ['new', 'resolved'],
+          sensitive: true,
+          title: 'Demo sensitive problem',
+        });
+        // A newer observation that moves out of Resolved is a conflict (problem.ts applyStatus).
+        const [first] = await pat.send(
+          await statusSet(pat, problemId, 'ongoing', '2099-01-01T00:00:00.000Z'),
+        );
+        expect(first).toMatchObject(held);
+        expect(first!.server).toBeUndefined();
+        // The same change from a sender who may read it is the conflict it was.
+        const [ana] = await w.ana.send(
+          await statusSet(w.ana, problemId, 'ongoing', '2099-01-01T00:00:00.000Z'),
+        );
+        expect(ana).toMatchObject({ status: 'conflict', server: { value: { status: 'resolved' } } });
+      });
     });
   });
 
@@ -135,21 +309,25 @@ describe('a value sent back to a phone', () => {
     });
 
     it('writes no read for a retry answered with nothing shown', async () => {
-      const visit = await visitAt(w.eli, w.patientId);
-      const set = (c: World['eli'], value: string, baseVersion: number) =>
-        c.phone.change({
-          entity: 'encounter',
-          recordId: visit.encounterId,
-          op: 'set',
-          field: 'summary',
-          value,
-          baseVersion,
-        });
-      await w.ana.send(await set(w.ana, 'Demo: Ana words', 0));
-      const eli = await set(w.eli, 'Demo: eli words', 0);
-      await w.eli.send(eli);
+      // A note answer's conflict, retried once the sender's role reads none of it (the note rule).
+      const visit = await visitAt(w.ana, w.patientId);
+      const note = await noteOn(w.ana, visit, TEST_MEDICAL_TYPE, {
+        'care.plan': 'Demo: first plan, no read',
+      });
+      const sam = await clinician(h, w.t, 'sam-noread@example.com', 'Sam (demo)', 'np');
+      const sams = await sam.phone.change({
+        entity: 'encounter_note',
+        recordId: note.noteId,
+        op: 'set',
+        field: 'data.care.plan',
+        value: 'Demo: sam plan',
+        baseVersion: 0,
+      });
+      expect((await sam.send(sams))[0]).toMatchObject({ status: 'conflict' });
+      await setRole(h, w.t, sam.membershipId, await roleWith(h, w.t, 'Nothing to read', ['inventory.view']));
       const mark = await auditMark(h);
-      await w.eli.send(eli);
+      const [retry] = await sam.send(sams);
+      expect(retry!.server).toEqual(NOTHING);
       expect((await events(mark)).filter((e) => e.action.endsWith('.viewed'))).toEqual([]);
     });
 

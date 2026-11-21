@@ -1653,6 +1653,16 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   and to whoever acts as the author of each finished note, once each (review finding REC-2: the
   patient and the summary are part of what they signed, 3.6). An encounter is never
   `record_locked`: a signed visit keeps a late change, and takes a new note.
+- **A Medical visit's summary from a sender who may not read it** (review finding VS-1, as the
+  coordinator decided). The sync read leaves a Medical visit's `summary` out for a sender who does
+  not read Medical notes (`medicalHidden`, 5.1). A set of it from such a sender is answered
+  `rejected('permission')` and so held for a Program Admin, whatever version it names and whatever
+  the visit holds, before the draft rule or the envelope lock answers with the value (`set`,
+  `services/api/src/sync/apply.ts`; the fake's `_set`), as a hidden note answer is (4.4, D88). It
+  never meets a conflict it could not see into, which no choice of its sender's could settle, and a
+  blind Use my value never overwrites an assessment they never saw. An admin's accept passes, and
+  the reviewer, who may read both, decides; a choice made on such a conflict from before this rule
+  is held the same way.
 - **`hasFinishedNote`** (review finding SLK-1, as the coordinator decided, with the phone's store):
   the sync read's snapshot of a visit carries it in its attributes, true when a note of the visit
   that the reader is shown is `completed` or `signed`. It is worked out in `fetchRecords`' `asRead`
@@ -1712,6 +1722,12 @@ As built (unit L1, `services/api/src/sync/entities/encounter.ts`, `fields.ts`, `
   draft and for a finished note alike, and a held change carries no `server` value: otherwise a
   set to a hidden path of a finished note would be answered with the answer it holds. The acting
   author may always set their own note's answers.
+- **A conflict its sender may not see into is held** (review finding VS-1, as the coordinator
+  decided), for every entity: when a change from a push meets a conflict and the field as that
+  sender may see it (`fieldForAnswer`, 6.4) holds nothing, the change is held for a Program Admin
+  instead (`decide`, `services/api/src/sync/apply.ts`; the fake's `_decide`). A conflict writes
+  nothing, so nothing is undone. A sender is never asked to choose between their value and one they
+  are not shown: that choice could never settle, and Use my value would overwrite blind.
 - **An answer that will not count.** A `set` that lands in a field another phone has hidden, or
   in an entry another phone has removed, is accepted as usual. Its receipt carries
   `details.notCounted` (`hidden_field` or `removed_entry`), and the phone says so on the field:
@@ -3687,8 +3703,20 @@ Rules:
 - **Rule 2 in the sync read** is 5.1's note: a note the reader may not read, or whose definition
   cannot be read, is missing; a hidden answer leaves no value, version or mark; a note's version
   and time follow what it shows.
-- **Rule 2 for a retry**: a change answered again from its receipt sends the field as the sender
-  may see it now (4.4).
+- **Rule 2 for a retry, and for every value sent back**: a change answered again from its receipt
+  sends the field as the sender may see it now (4.4). What a conflict, a value kept both or in
+  history, and a retry carry follows the sync read's rules, all of them, from one copy
+  (`services/api/src/sync/read-rules.ts`: `readNeed`, `readsEntity`, `readsRecord`,
+  `sensitiveHidden`), which `requireRead`, `fetchRecords`' `asRead`, the review queue's
+  `shownChange` and `apply.ts`'s `fieldForAnswer` all call, so they cannot drift (D99; review
+  finding VA-1, as the coordinator decided): first the record (`patients.view` for a patient-side
+  record and a referral, `encounters.chart` for a visit and what hangs off its notes,
+  `mayViewProblems` for a problem and its notes, `patients.view_sensitive` for a sensitive one),
+  then the note rule (`fieldForSender`) and the Medical summary rule. A field the sender may not
+  see goes as one that holds nothing (`NOTHING_SHOWN`), and no read is logged for it (`logSentBack`);
+  a conflict on it is held instead (4.4). So a retry from someone whose role lost `patients.view`
+  since the first answer, or an answer on a sensitive problem to a role without
+  `patients.view_sensitive`, carries nothing of it.
 - **Rule 2 in the review queue.** A held change's value goes only to a reviewer who may read it,
   by the sync read's rules (`shownChange`, `review.ts`; review finding RD-3, as the coordinator
   decided): a visit's records need `encounters.chart`, and a Medical visit's `summary` and its own

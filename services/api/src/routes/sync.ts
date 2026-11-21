@@ -1,6 +1,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { teamScope, type TeamScope } from '../auth/context.ts';
 import { push } from '../sync/push.ts';
+import { readNeed } from '../sync/read-rules.ts';
 import { fetchRecords, listNotices, markNoticeRead } from '../sync/review.ts';
 import {
   FetchRecords,
@@ -74,23 +75,13 @@ const readNoticeRoute = createRoute({
  * like any route's permission, for the whole request. The sync read feeds editing, so a visit's
  * records need encounters.chart; a sign-off, an addendum and a correction are read by whoever may
  * read their note (phase 4 lifecycle 6.1, 6.4 rule 7), which fetchRecords then checks note by note.
- * A referral is a patient's record, read with patients.view.
+ * A referral is a patient's record, read with patients.view. The rule is read-rules.ts readNeed, the
+ * one copy the review queue and every value sent back to a phone are held to as well (VA-1).
  */
 async function requireRead(scope: TeamScope, entity: AnyRecordEntityName) {
   const route = '/v1/sync/records';
-  switch (entity) {
-    case 'encounter':
-    case 'encounter_note':
-    case 'note_signoff':
-    case 'note_addendum':
-    case 'note_correction':
-      return scope.require('encounters.chart', route);
-    case 'problem':
-    case 'problem_note':
-      return scope.requireRule('mayViewProblems', route);
-    default:
-      return scope.require('patients.view', route);
-  }
+  const need = readNeed(entity);
+  return 'rule' in need ? scope.requireRule(need.rule, route) : scope.require(need.permission, route);
 }
 
 export function registerSyncRoutes(app: App, deps: Deps) {

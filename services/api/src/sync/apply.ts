@@ -6,6 +6,7 @@ import { applyField } from './entities/fields.ts';
 import { medicalHidden } from '../encounters/read.ts';
 import { fieldForSender, NOTHING_SHOWN } from './entities/note.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
+import { readsRecord } from './read-rules.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
   DefinitionError,
@@ -159,10 +160,20 @@ export const sameOwner = (a: ChangeOwner, b: ChangeOwner) =>
 type Sender = Pick<ApplyActor, 'teamId' | 'authorId' | 'permissions'>;
 
 /**
+ * A Medical visit's summary is Medical content (lifecycle 6.4 row 1; encounters/read.ts
+ * medicalHidden): the sync read leaves it out for a sender who does not read Medical notes.
+ */
+const summaryWithheld = (sender: Pick<ApplyActor, 'permissions'>, record: StoredRecord, field: string) =>
+  record.entity === 'encounter' &&
+  field === 'summary' &&
+  medicalHidden(sender.permissions, record.values.kind);
+
+/**
  * A record's field as it goes back to [sender] in an answer (D86): as the sync read would show it
- * to them. A note's answer they may not see all of is a field that holds nothing (note.ts
- * fieldForSender), and so is a Medical visit's summary for a sender the sync read withholds it from
- * (review.ts summaryHidden, lifecycle 6.4 row 1; the coordinator's decision on review finding PA-4).
+ * to them, by its one copy of the rules (the coordinator's decision on review findings VA-1 and
+ * VS-1). A record they may not read through sync at all (read-rules.ts readsRecord: its kind's key,
+ * a sensitive problem's), a note's answer they may not see all of (note.ts fieldForSender), and a
+ * Medical visit's summary withheld from them (summaryWithheld) are a field that holds nothing.
  */
 async function fieldForAnswer(
   tx: Tx,
@@ -170,15 +181,14 @@ async function fieldForAnswer(
   record: StoredRecord,
   field: string,
 ): Promise<FieldStateValue> {
+  if (!(await readsRecord(tx, sender.permissions, record))) return NOTHING_SHOWN;
   if (record.entity === 'encounter_note') return fieldForSender(tx, sender, record, field);
-  if (
-    record.entity === 'encounter' &&
-    field === 'summary' &&
-    medicalHidden(sender.permissions, record.values.kind)
-  )
-    return NOTHING_SHOWN;
+  if (summaryWithheld(sender, record, field)) return NOTHING_SHOWN;
   return fieldState(record, field);
 }
+
+/** A field that holds nothing tells its sender nothing (NOTHING_SHOWN). */
+const showsNothing = (shown: FieldStateValue) => shown.value === null && shown.version === 0;
 
 /**
  * The read a field sent back to a phone is (the coordinator's decisions on review findings PA-1
@@ -192,7 +202,7 @@ async function logSentBack(
   field: string,
   shown: FieldStateValue,
 ): Promise<void> {
-  if (shown.value === null && shown.version === 0) return;
+  if (showsNothing(shown)) return;
   await audit({
     action: viewedAction(record.entity),
     entity: record.entity,
@@ -503,6 +513,15 @@ async function decide(
   if (c.op !== 'create' && c.op !== 'set') return invalid('append_only_for_audit');
   const ctx: ChangeContext = { tx, audit, actor, change: c };
   const outcome = c.op === 'create' ? await create(ctx, rules) : await set(ctx, rules);
+  // A conflict asks the sender to choose between two values; one who may not see what the field
+  // holds now could never settle it, and a blind Use my value would overwrite what they never saw.
+  // It is held for a reviewer who may read both instead, as a hidden note answer is (lifecycle 6.4
+  // rule 5; the coordinator's decision on review finding VS-1). A conflict writes nothing.
+  if (actor.holdForReview && outcome.status === 'conflict' && c.field) {
+    const on = await onRecord(tx, c, outcome);
+    if (!on || showsNothing(await fieldForAnswer(tx, actor, on, c.field)))
+      return hold(tx, audit, actor, c, hash, 'permission');
+  }
   if (actor.holdForReview && outcome.status === 'rejected') {
     // Only known once the record is: a problem marked entered in error by someone else.
     if (outcome.reason === 'permission') return hold(tx, audit, actor, c, hash, 'permission');
@@ -623,6 +642,10 @@ async function set(ctx: ChangeContext, rules: EntityRules): Promise<Outcome> {
   const missing = await missingParent(tx, actor.teamId, rules.parentsOfSet(field, value));
   if (missing) return rejected('stale_reference', { problem: missingProblem(missing) });
   if (rules.mayChange && !rules.mayChange(actor, named, field)) return rejected('permission');
+  // A sender the sync read withholds a Medical visit's summary from sets it blind: held for a
+  // reviewer who may read it, whatever version it names, before anything answers with what it
+  // holds, as D88 holds a note answer by what it could hold (VS-1). An admin's accept passes.
+  if (actor.approvedBy === null && summaryWithheld(actor, named, field)) return rejected('permission');
 
   // A set naming a merged record applies to its survivor, as one that never saw the survivor's
   // value (design 2.7): a blank fills, the same value is a no-op, a different one is kept both.

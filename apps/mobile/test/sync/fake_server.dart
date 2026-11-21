@@ -736,6 +736,15 @@ class FakeSyncServer {
       // reads its definitions before it writes, so there is nothing to roll back.
       return _invalid('definition_error');
     }
+    // A conflict the sender may not see into is held for a reviewer who may read both instead (apply.ts
+    // decide, review finding VS-1). A conflict writes nothing.
+    if (actor.holdForReview && outcome['status'] == 'conflict' && c['field'] != null) {
+      final redirected = (outcome['details'] as Map<String, Object?>?)?['redirectedTo'] as String?;
+      final on = records[redirected ?? c['recordId']];
+      if (on == null || _showsNothing(_fieldForAnswer(actor.userId, on, c['field']! as String))) {
+        return _hold(actor, c, 'permission');
+      }
+    }
     if (actor.holdForReview && outcome['status'] == 'rejected') {
       // Known only once the record is: a problem marked entered in error by someone else.
       if (outcome['reason'] == 'permission') return _hold(actor, c, 'permission');
@@ -1220,6 +1229,11 @@ class FakeSyncServer {
         !actor.permissions.contains('encounters.chart')) {
       return _rejected('permission');
     }
+    // A Medical visit's summary from a sender the sync read withholds it from is held, whatever
+    // version it names, before anything answers with what it holds (apply.ts set, VS-1).
+    if (actor.approvedBy == null && _summaryWithheld(actor.permissions, named, field)) {
+      return _rejected('permission');
+    }
     // A set naming a merged record applies to its survivor, as one that never saw the survivor's
     // value (design 2.7), unless it answers a conflict that showed the survivor's value.
     final redirect = _redirect(named, field);
@@ -1634,6 +1648,25 @@ class FakeSyncServer {
       return _nothingShown;
     }
   }
+
+  /// A record's field as it goes back to [userId] in an answer (apply.ts fieldForAnswer, D86): as the
+  /// sync read would show it to them, by its one copy of the rules (review findings VA-1, VS-1). A
+  /// record they may not read through sync at all ([_readsRecord]), a note's answer they may not see
+  /// all of ([_fieldForSender]) and a Medical visit's summary withheld from them ([_summaryWithheld])
+  /// are a field that holds nothing.
+  Map<String, Object?> _fieldForAnswer(String userId, FakeRecord rec, String field) {
+    if (!_readsRecord(permissionsOf(userId), rec)) return _nothingShown;
+    if (rec.entity == entityNote) return _fieldForSender(userId, rec, field);
+    if (_summaryWithheld(permissionsOf(userId), rec, field)) return _nothingShown;
+    return rec.state(field);
+  }
+
+  /// A Medical visit's summary, which the sync read leaves out for [perms] (apply.ts summaryWithheld).
+  static bool _summaryWithheld(Set<String> perms, FakeRecord rec, String field) =>
+      rec.entity == entityEncounter && field == 'summary' && _medicalHidden(perms, rec);
+
+  /// A field that holds nothing tells its sender nothing (apply.ts showsNothing).
+  static bool _showsNothing(Map<String, Object?> shown) => shown['value'] == null && shown['version'] == 0;
 
   /// A person as visibleAnswers reads them (records.ts noteReader): their role's keys and their
   /// credential now. A Medical note is read by whoever may read the problem list (D37).
@@ -3314,16 +3347,9 @@ class FakeSyncServer {
     final refs = (b['records']! as List<Object?>).cast<Map<String, Object?>>();
     final perms = permissionsOf(userId);
     for (final entity in {for (final ref in refs) ref['entity']}) {
-      final may = switch (entity) {
-        entityEncounter ||
-        entityNote ||
-        entitySignoff ||
-        entityAddendum ||
-        entityCorrection => perms.contains('encounters.chart'),
-        entityProblem || entityProblemNote => mayViewProblems(perms),
-        _ => perms.contains('patients.view'),
-      };
-      if (!may) throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
+      if (!_readsEntity(perms, entity! as String)) {
+        throw const ApiException(403, 'forbidden', 'Your role does not allow this.');
+      }
     }
     final out = <Object?>[];
     final missing = <Object?>[];
@@ -3350,16 +3376,41 @@ class FakeSyncServer {
     return {'records': out, 'missing': missing};
   }
 
+  /// Who may read a record of each kind through sync at all (read-rules.ts readNeed, the one copy the
+  /// sync read, the review queue and every value sent back to a phone use; review findings VA-1 and
+  /// VS-1): a visit's records encounters.chart, a problem and its notes the problem list's rule, every
+  /// other record, a referral among them, patients.view.
+  static bool _readsEntity(Set<String> perms, String entity) => switch (entity) {
+    entityEncounter ||
+    entityNote ||
+    entitySignoff ||
+    entityAddendum ||
+    entityCorrection => perms.contains('encounters.chart'),
+    entityProblem || entityProblemNote => mayViewProblems(perms),
+    _ => perms.contains('patients.view'),
+  };
+
+  /// A sensitive problem, and a note on one, is read with patients.view_sensitive (read-rules.ts
+  /// sensitiveHidden).
+  static bool _sensitiveHidden(Set<String> perms, FakeRecord? problem) =>
+      problem?.attributes['sensitive'] == true && !perms.contains('patients.view_sensitive');
+
+  /// Whether [perms] read this record through sync at all (read-rules.ts readsRecord): its kind's
+  /// rule, then a sensitive problem's, for the problem and for a note on it.
+  bool _readsRecord(Set<String> perms, FakeRecord r) {
+    if (!_readsEntity(perms, r.entity)) return false;
+    if (r.entity == entityProblem) return !_sensitiveHidden(perms, r);
+    if (r.entity == entityProblemNote) return !_sensitiveHidden(perms, records[r.attributes['problemId']]);
+    return true;
+  }
+
   /// The record as [userId] may see it (review.ts asRead), or null when they may not see it at all.
   Map<String, Object?>? _asRead(String userId, Set<String> perms, FakeRecord r) {
-    final sensitive = perms.contains('patients.view_sensitive');
     switch (r.entity) {
       case entityProblem:
-        return sensitive || r.attributes['sensitive'] != true ? _problemSnapshot(r) : null;
+        return _readsRecord(perms, r) ? _problemSnapshot(r) : null;
       case entityProblemNote:
-        return sensitive || records[r.attributes['problemId']]?.attributes['sensitive'] != true
-            ? _readSnapshot(r)
-            : null;
+        return _readsRecord(perms, r) ? _readSnapshot(r) : null;
       case entityNote:
         return _noteAsRead(userId, perms, r)?.snapshot;
       // Its hash only to whoever acts as the author, its signer, and a reader who sees every answer of
@@ -4003,19 +4054,12 @@ class _Receipt {
 
   /// The answer for this change, as the API gives it: a conflict, and a value kept but not applied,
   /// show the field as the server holds it now, as its sender may see it (apply.ts
-  /// resultFromReceipt and fieldForAnswer, note.ts fieldForSender): a Medical visit's summary goes
-  /// to a sender the sync read withholds it from as a field that holds nothing (review finding PA-4).
+  /// resultFromReceipt and fieldForAnswer).
   Map<String, Object?> result(FakeSyncServer s, String changeId) {
     Map<String, Object?> current(String id) {
       final rec = s.records[id];
       if (rec == null) return FakeSyncServer._nothingShown;
-      if (rec.entity == entityNote) return s._fieldForSender(userId, rec, field ?? '');
-      if (rec.entity == entityEncounter &&
-          field == 'summary' &&
-          FakeSyncServer._medicalHidden(s.permissionsOf(userId), rec)) {
-        return FakeSyncServer._nothingShown;
-      }
-      return rec.state(field ?? '');
+      return s._fieldForAnswer(userId, rec, field ?? '');
     }
 
     // A redirected change was answered with the survivor's field, a conflict included.
