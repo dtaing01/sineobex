@@ -106,6 +106,11 @@ void main() {
       expect(location(tester), queueLocation(SecondAct.cosign));
       expect(find.widgetWithText(AppBar, 'Waiting for your co-signature'), findsOneWidget);
       await expectShown(tester, find.text('Connect to see notes waiting for you.'));
+      // Said once, as a live region (review finding PX-6).
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Connect to see notes waiting for you.')),
+        isSemantics(isLiveRegion: true),
+      );
       await expectScreenOk(tester);
       expect(routes.asked, isEmpty);
 

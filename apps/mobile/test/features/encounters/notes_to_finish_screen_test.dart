@@ -142,6 +142,13 @@ void main() {
     final said = find.text('This note isn’t on this phone. Connect to open it.');
     expect(said.hitTestable(), findsOneWidget);
     expect(tester.getTopLeft(said).dy, greaterThan(tester.getBottomLeft(remote).dy));
+    // Said once, as a live region (review finding PX-6).
+    final handle = tester.ensureSemantics();
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('This note isn’t on this phone. Connect to open it.')),
+      isSemantics(isLiveRegion: true),
+    );
+    handle.dispose();
     expect(h.sync.store!.record(theirs), isNull);
 
     h.server.offline = false;

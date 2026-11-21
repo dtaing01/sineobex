@@ -161,6 +161,13 @@ void main() {
     await tapOn(tester, button('Complete'));
     await settle(tester);
     await expectShown(tester, find.text('This note changed. Read it again.'));
+    // Said once, as a live region (review finding PX-6).
+    final handle = tester.ensureSemantics();
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('This note changed. Read it again.')),
+      isSemantics(isLiveRegion: true),
+    );
+    handle.dispose();
     await expectShown(tester, find.text('Current needs: Housing'));
     expect(h.sync.store!.noteState(social)!.status, NoteStatus.draft);
     expect(location(tester), '/encounters/$visit/summary');

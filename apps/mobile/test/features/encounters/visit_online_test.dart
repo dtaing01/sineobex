@@ -387,6 +387,13 @@ void main() {
     await openVisitScreen(tester, visit);
     await tapOn(tester, find.widgetWithText(FilledButton, 'Co-sign'));
     await expectShown(tester, find.text('This visit changed. Read it again.'));
+    // Said once, as a live region (review finding PX-6).
+    final handle = tester.ensureSemantics();
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('This visit changed. Read it again.')),
+      isSemantics(isLiveRegion: true),
+    );
+    handle.dispose();
     expect(
       [for (final a in routes.asked) '${a.method} ${a.path}'],
       ['GET /v1/encounters/$visit', 'POST /v1/encounters/$visit/cosign', 'GET /v1/encounters/$visit'],
