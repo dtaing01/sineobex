@@ -23,16 +23,23 @@
 
 ## Known gaps
 
-- **The one exception: the day cells of a note's date calendar** (`docs/design/phase-4/forms.md`
-  8.2). The calendar is Material's, seven day columns to a row, and seven columns of 48 px need
-  336 px, more than a 320 px wide phone has: its cells are 47.7 px wide on a 390 px phone and
-  37.7 px on a 320 px one (WCAG 2.2's minimum is 24 px). They fail Android's 48 px check in every
-  run and iOS's 44 px at 320 px. The way that meets every rule is the typed date beside the
-  calendar: three private boxes, month, day and year, which pass every guideline in every run
-  (three themes, 200% text, 320 px, and 200% text at 320 px), and the calendar stays as a second
-  way. `apps/mobile/test/features/forms/date_field_test.dart` opens the calendar in every run with
-  the guidelines on, holds its labels and contrast, and records which runs its cells can't meet, so
-  a change to Material that fixes them shows.
+- **The one exception: the day cells of the date calendar**, a note's and, since the phase 4
+  review, a referral's (Add referral and Needs attention's Change the date, finding PX-3)
+  (`docs/design/phase-4/forms.md` 8.2). The calendar is Material's, seven day columns to a row,
+  and seven columns of 48 px need 336 px, more than a 320 px wide phone has: its cells are 47.7 px
+  wide on a 390 px phone and 37.7 px on a 320 px one (WCAG 2.2's minimum is 24 px). They fail
+  Android's 48 px check in every run and iOS's 44 px at 320 px. The way that meets every rule is
+  the typed date beside the calendar: three private boxes, month, day and year, which pass every
+  guideline in every run (three themes, 200% text, 320 px, and 200% text at 320 px), and the
+  calendar stays as a second way. `apps/mobile/test/features/forms/date_field_test.dart` opens the
+  calendar in every run with the guidelines on, holds its labels and contrast, and records which
+  runs its cells can't meet, so a change to Material that fixes them shows;
+  `apps/mobile/test/features/encounters/referrals_sheet_test.dart` does the same in the app, where
+  the demo banner leaves the dialog less height and iOS's 44 px fails at 200% text too (cells 34.6
+  px tall). Every date a phase 4 screen takes is typed this way, and none of their calendars
+  offers its own typing mode, whose box the keyboard would learn from. Phase 3's Add problem still
+  asks its onset date on Material's picker alone, typing mode included: the coordinator's decision
+  that D92 covers every date the phone takes reaches it, and it is open.
 
 ## What automated checks cannot prove
 

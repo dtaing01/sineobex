@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/encounters/referrals_sheet.dart' show referralDateMissing, referralDateUnsaved;
 import 'package:sineobex_field/sync/entities.dart' show entityReferral;
 import 'package:sineobex_field/sync/local_store.dart' show entityAudit;
 
@@ -75,7 +76,7 @@ void main() {
 
       // Add referral: today by default; the domain layer's refusal in its words, then the referral,
       // at the top, waiting to send. The sheet stays open on the list.
-      await revealInSheet(tester, find.text('Date: October 22, 2026'));
+      await revealInSheet(tester, inSheet(find.bySemanticsLabel('Date referred: October 22, 2026')));
       final add = inSheet(find.widgetWithText(FilledButton, 'Add referral'));
       await tapInSheet(tester, add);
       await revealInSheet(tester, find.text('Write the referral’s details, up to 2,000 characters.'));
@@ -127,6 +128,118 @@ void main() {
       expect(referralReads(h).where((r) => r['entityId'] == r1), hasLength(1));
       handle.dispose();
     });
+  }
+
+  // A referral's date is a date the phone takes, so D92 holds for it as for a note's (the coordinator's
+  // decision on review finding PX-3): typed in three private boxes, or picked on the calendar alone,
+  // whose typing box would let the keyboard learn. The calendar's day cells are accessibility.md's one
+  // exception, beside the typed date; what each run's cells can't meet is recorded, as the date
+  // field's own test records it, so a change to Material that fixes them shows.
+  bool cellsMeetAndroid(Run run) => false; // 48 × 48: in no run
+  // 44 × 44: met at 390 wide, not at 320; nor at 200% text in the app, whose demo banner leaves the
+  // dialog less height than the forms' own test gives it (34.6 px tall cells).
+  bool cellsMeetIos(Run run) => !run.narrow && run.scale == 1;
+  Finder dateBox(String part) => inSheet(find.byKey(ValueKey('phi.form.referredOn.$part')));
+  String boxText(WidgetTester tester, String part) => tester.widget<TextField>(dateBox(part)).controller!.text;
+  Future<void> typeDate(WidgetTester tester, String month, String day, String year) async {
+    for (final (part, text) in [('month', month), ('day', day), ('year', year)]) {
+      await revealInSheet(tester, dateBox(part));
+      await tester.enterText(dateBox(part), text);
+      await tester.pump();
+    }
+  }
+
+  Future<void> leaveBoxes(WidgetTester tester) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+  }
+
+  for (final run in runs) {
+    testWidgets(
+      'Add referral’s date: typed in three private boxes, or picked on the calendar alone (${runName(run)})',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signInToChart(tester, run: run);
+        await openSheet(tester);
+        // Today by default, in the boxes and on the calendar's button.
+        await revealInSheet(tester, dateBox('year'));
+        expect(
+          [
+            for (final part in ['month', 'day', 'year']) boxText(tester, part),
+          ],
+          ['10', '22', '2026'],
+        );
+        final calendar = inSheet(find.bySemanticsLabel('Date referred: October 22, 2026'));
+        await revealInSheet(tester, calendar);
+        expect(tester.getSemantics(calendar), isSemantics(isButton: true, hasTapAction: true));
+        await expectScreenOk(tester);
+
+        // The calendar alone, headed by the date's label; its day cells are the one exception.
+        await tapInSheet(tester, calendar);
+        final dialog = find.byType(DatePickerDialog);
+        expect(dialog, findsOneWidget);
+        expect(find.descendant(of: dialog, matching: find.text('Date referred')), findsOneWidget);
+        expect(find.descendant(of: dialog, matching: find.byType(TextField)), findsNothing);
+        expect(find.descendant(of: dialog, matching: find.byIcon(Icons.edit_outlined)), findsNothing);
+        expect(tester.widget<DatePickerDialog>(dialog).lastDate, DateTime(2026, 10, 22));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        final android = await androidTapTargetGuideline.evaluate(tester);
+        final ios = await iOSTapTargetGuideline.evaluate(tester);
+        expect(android.passed, cellsMeetAndroid(run), reason: android.reason);
+        expect(ios.passed, cellsMeetIos(run), reason: ios.reason);
+        for (final evaluation in [android, if (!ios.passed) ios]) {
+          final small = (evaluation.reason ?? '').split('\n').where((l) => l.startsWith('SemanticsNode#'));
+          expect(small, isNotEmpty);
+          for (final target in small) {
+            expect(target, matches(RegExp(r'label: "\d{1,2}, [A-Z][a-z]+day, ')), reason: 'not a day cell');
+          }
+        }
+        await tester.tap(find.descendant(of: dialog, matching: find.text('3')));
+        await tester.tap(find.descendant(of: dialog, matching: find.text('OK')));
+        await settle(tester);
+        expect(
+          [
+            for (final part in ['month', 'day', 'year']) boxText(tester, part),
+          ],
+          ['10', '3', '2026'],
+        );
+
+        // Typed: a date after today is refused under the boxes, and Add referral adds nothing on it.
+        await typeDate(tester, '10', '23', '2026');
+        await leaveBoxes(tester);
+        await revealInSheet(tester, inSheet(find.text('The date can’t be after today.')));
+        await tester.enterText(find.byKey(const ValueKey('phi.referralDetails')), 'Demo: shelter intake on Monday');
+        await tester.pump();
+        final add = inSheet(find.widgetWithText(FilledButton, 'Add referral'));
+        await tapInSheet(tester, add);
+        await revealInSheet(tester, inSheet(find.text(referralDateUnsaved)));
+        expect(h.sync.store!.recordIds().where((id) => h.sync.store!.record(id)!.entity == entityReferral), isEmpty);
+        await expectScreenOk(tester);
+        // Typed right, and Add referral pressed with the year's box still in use: the date typed is the one added.
+        await typeDate(tester, '10', '5', '2026');
+        await tapInSheet(tester, add);
+        final made = inSheet(
+          find.bySemanticsLabel(
+            'Referral, October 5, 2026: Demo: shelter intake on Monday. Recorded by Jordan Lee (demo). Waiting to send',
+          ),
+        );
+        await revealInSheet(tester, made);
+        // The form starts again on today.
+        await revealInSheet(tester, dateBox('day'));
+        expect(boxText(tester, 'day'), '22');
+        // Cleared, the date is asked for.
+        await revealInSheet(tester, inSheet(find.bySemanticsLabel('Clear Date referred')));
+        tester.semantics.tap(find.semantics.byLabel('Clear Date referred'));
+        await settle(tester);
+        await tester.enterText(find.byKey(const ValueKey('phi.referralDetails')), 'Demo: food bank');
+        await tester.pump();
+        await tapInSheet(tester, add);
+        await revealInSheet(tester, inSheet(find.text(referralDateMissing)));
+        expect(find.bySemanticsLabel(RegExp('^Referral, .*: Demo: food bank')), findsNothing);
+        handle.dispose();
+      },
+    );
   }
 
   testWidgets('who may add and mark: a community health worker marks their own, never a teammate’s', (tester) async {

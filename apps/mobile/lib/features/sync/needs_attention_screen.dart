@@ -34,9 +34,9 @@ import '../encounters/encounter_labels.dart'
         visitKindText;
 import '../encounters/encounter_widgets.dart' show ChoiceTile, SheetGate, choosePatient, encountersOpen, fetchNote;
 import '../encounters/note_type_list.dart' show noteLocation;
+import '../encounters/referrals_sheet.dart' show askReferralDate, changeReferralDateAction;
 import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
-import '../patients/sheet_gate.dart' show DialogGate;
 import '../patients/patient_widgets.dart' show FrozenNotice, confirm, errorText, todayOf;
 import 'sync_labels.dart';
 
@@ -538,19 +538,9 @@ class _RejectionCard extends ConsumerWidget {
     }
 
     Future<void> changeDate() async {
-      final today = todayOf(ref);
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: today,
-        firstDate: DateTime(today.year - 100, today.month, today.day),
-        lastDate: today,
-        helpText: referralDateHelp,
-        // The calendar alone: its typing box would let the keyboard learn (D92, forms 8.2).
-        initialEntryMode: DatePickerEntryMode.calendarOnly,
-        builder: (_, child) => DialogGate<DateTime>(services: n!, child: child!),
-      );
+      final picked = await askReferralDate(context, n!, today: todayOf(ref));
       if (picked == null) return;
-      await settle(() async => n!.referrals.changeRefusedDate(e.changeId, picked));
+      await settle(() async => n.referrals.changeRefusedDate(e.changeId, picked));
     }
 
     Future<void> removeRefused() async {
@@ -716,8 +706,6 @@ class _NoticeCard extends StatelessWidget {
 }
 
 const correctAgainAction = 'Correct again';
-const changeReferralDateAction = 'Change the date';
-const referralDateHelp = 'Date referred';
 
 /// A note's answer whose value is more than a few words: the form shows it.
 const openTheNoteToSee = 'Open the note to see it';

@@ -136,8 +136,9 @@ void main() {
       await openNote(tester, social);
       await tapOn(tester, action('Add referral'));
       await settle(tester);
-      expect(find.text('Date: October 22, 2026'), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, 'Change date'), findsOneWidget);
+      // Typed in three private boxes, or picked on the calendar (D92; review finding PX-3).
+      expect(find.byKey(const ValueKey('phi.form.referredOn.month')), findsOneWidget);
+      expect(find.bySemanticsLabel('Date referred: October 22, 2026'), findsOneWidget);
       await expectScreenOk(tester);
       // Nothing typed: the domain layer's refusal, in its words, and nothing written.
       final referrals = h.sync.store!.recordIds().where((id) => h.sync.store!.record(id)!.entity == entityReferral);

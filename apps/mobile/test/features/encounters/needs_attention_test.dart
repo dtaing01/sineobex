@@ -418,7 +418,7 @@ void main() {
   });
 
   for (final run in runs) {
-    testWidgets('a referral the server refused for its date: Change the date, on the calendar alone, settles it '
+    testWidgets('a referral the server refused for its date: Change the date, typed or on the calendar, settles it '
         '(${runName(run)})', (tester) async {
       // Review finding PS-3: a referral does not wait for the clock, and the server's date was behind.
       final h = await signInToChart(tester, run: run);
@@ -436,18 +436,72 @@ void main() {
       await expectShown(tester, find.text('A referral can’t be dated in the future.'));
       await expectScreenOk(tester);
       await tapOn(tester, find.widgetWithText(FilledButton, 'Change the date'));
-      expect(find.byType(DatePickerDialog), findsOneWidget);
-      expect(find.text('Date referred'), findsOneWidget);
-      // The calendar alone: no typing box to switch to.
-      expect(find.byIcon(Icons.edit_outlined), findsNothing);
-      expect(find.byType(TextField), findsNothing);
-      await tapOn(tester, find.text('OK'));
+      // Typed in three private boxes, today by default, or picked on the calendar alone, as every
+      // date the phone takes is (D92; the coordinator's decision on review finding PX-3).
+      final ask = find.byType(BottomSheet);
+      Finder box(String part) => find.descendant(of: ask, matching: find.byKey(ValueKey('phi.form.referredOn.$part')));
+      final change = find.descendant(of: ask, matching: find.widgetWithText(FilledButton, 'Change the date'));
+      expect(box('month'), findsOneWidget);
+      await expectScreenOk(tester);
+      // A date after today is refused under the boxes, and nothing is sent on it.
+      for (final (part, typed) in [('month', '10'), ('day', '23'), ('year', '2026')]) {
+        await tester.ensureVisible(box(part));
+        await tester.enterText(box(part), typed);
+        await tester.pump();
+      }
+      await tapOn(tester, change);
       await settle(tester);
+      await expectShown(tester, find.text('The date can’t be after today.'));
+      await expectShown(tester, find.text('Fix the date first: what’s typed can’t be saved.'));
+      expect(store.needsAttention(), hasLength(1));
+      await expectScreenOk(tester);
+      // The calendar alone: no typing box to switch to. Its day cells are the one exception, beside
+      // the typed date (accessibility.md).
+      await tapOn(tester, find.bySemanticsLabel('Date referred: October 22, 2026'));
+      final calendar = find.byType(DatePickerDialog);
+      expect(calendar, findsOneWidget);
+      expect(find.descendant(of: calendar, matching: find.text('Date referred')), findsOneWidget);
+      expect(find.descendant(of: calendar, matching: find.byIcon(Icons.edit_outlined)), findsNothing);
+      expect(find.descendant(of: calendar, matching: find.byType(TextField)), findsNothing);
+      await tapOn(tester, find.descendant(of: calendar, matching: find.text('OK')));
+      await settle(tester);
+      await tapOn(tester, change);
+      await settle(tester);
+      expect(ask, findsNothing);
       expect(store.needsAttention(), isEmpty);
       final day = fixtureNow.toIso8601String().substring(0, 10);
       expect(h.server.records[referral]!.attributes['referredOn'], day);
     });
   }
+
+  testWidgets('Change the date’s sheet, its date typed, and the calendar over it go when the store freezes', (
+    tester,
+  ) async {
+    final h = await signInToChart(tester);
+    final now = h.server.now;
+    h.server.now = () => now().subtract(const Duration(days: 3));
+    h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic');
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    h.server.now = now;
+    await syncAndRefresh(tester, h);
+    await openAttention(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Change the date'));
+    final month = find.byKey(const ValueKey('phi.form.referredOn.month'));
+    await tester.enterText(month, '9');
+    await tester.pump();
+    await tapOn(tester, find.bySemanticsLabel('Date referred: October 22, 2026'));
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    // Offline, so the sync the controller speaks after takes nothing that would end the freeze.
+    h.server.offline = true;
+    h.sync.store!.freeze('Demo: handing over');
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(month, findsNothing);
+    expect(find.text('Demo: handing over'), findsWidgets);
+    h.sync.store!.unfreeze();
+  });
 
   testWidgets('a note on a version the team moved on from: Remove this note settles it, and its type opens anew', (
     tester,

@@ -109,6 +109,7 @@ class DateField extends StatefulWidget {
     required this.onChanged,
     this.enabled = true,
     this.today,
+    this.onUnsaved,
   });
 
   final DateDef field;
@@ -120,6 +121,11 @@ class DateField extends StatefulWidget {
 
   /// The phone's day; null reads the clock.
   final DateTime? today;
+
+  /// Told, each time it changes, whether the boxes hold a date not saved: one being typed, half typed,
+  /// or refused, the line under the boxes saying why. A sheet that adds what the field holds (the
+  /// Referrals sheet's) adds nothing while they do.
+  final ValueChanged<bool>? onUnsaved;
 
   @override
   State<DateField> createState() => _DateFieldState();
@@ -139,6 +145,9 @@ class _DateFieldState extends State<DateField> {
 
   /// A typed date was just saved: the line under the boxes reads it back, month spelled out.
   bool _readBack = false;
+
+  /// What [DateField.onUnsaved] was last told.
+  bool _toldUnsaved = false;
 
   DateTime get _today => widget.today ?? DateTime.now();
 
@@ -161,6 +170,8 @@ class _DateFieldState extends State<DateField> {
         _readBack = false;
       }
       _saved = widget.value;
+      // Not from here, in the build of the screen that is told.
+      if (widget.onUnsaved != null) WidgetsBinding.instance.addPostFrameCallback((_) => _tell());
     }
   }
 
@@ -198,6 +209,16 @@ class _DateFieldState extends State<DateField> {
 
   TypedDate _read() => readTypedDate(_month.text, _day.text, _year.text, widget.field, _today);
 
+  /// Tells [DateField.onUnsaved] whether the boxes hold a date not saved, when that changes.
+  void _tell() {
+    if (!mounted) return;
+    final typed = _read();
+    final unsaved = !_showsSaved && !(typed is DateTyped && typed.iso == _saved);
+    if (unsaved == _toldUnsaved) return;
+    _toldUnsaved = unsaved;
+    widget.onUnsaved?.call(unsaved);
+  }
+
   /// Saves what was typed, or says why it can't be saved: when typing pauses or the boxes are
   /// [left], never at a keystroke. A date half typed is said only once the boxes are left, so moving
   /// from the month to the day says nothing.
@@ -209,7 +230,7 @@ class _DateFieldState extends State<DateField> {
     }
     if (_showsSaved) {
       setState(() => _line = null);
-      return;
+      return _tell();
     }
     final typed = _read();
     switch (typed) {
@@ -228,6 +249,7 @@ class _DateFieldState extends State<DateField> {
         _saved = iso;
         widget.onChanged(iso);
     }
+    _tell();
   }
 
   void _changed(String _) {
@@ -238,6 +260,7 @@ class _DateFieldState extends State<DateField> {
       if (_read() is! DateRefused) _line = null;
     });
     _saver.typed();
+    _tell();
   }
 
   void _left(bool hasFocus) {
@@ -255,6 +278,7 @@ class _DateFieldState extends State<DateField> {
     });
     _saved = iso;
     widget.onChanged(iso);
+    _tell();
   }
 
   Future<void> _pick(BuildContext context) async {

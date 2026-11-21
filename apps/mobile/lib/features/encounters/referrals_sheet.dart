@@ -16,19 +16,22 @@ import '../../encounters/referrals.dart' show ReferralView;
 import '../../patients/chart_cache.dart' show chartMetaOf;
 import '../../sync/local_store.dart' show ChartingPaused;
 import '../../sync/sync_controller.dart' show SyncController;
+import '../../forms/definition.dart' show DateDef;
+import '../forms/date_field.dart' show DateField, isoDate;
 import '../forms/text_field.dart' show limitCodePoints;
 import '../patients/patient_labels.dart' show count, isoDay, longDate;
 import '../patients/patient_widgets.dart' show AskDialog, PhiField, WideButton, showDone, todayOf;
 import 'encounter_labels.dart';
-import '../patients/sheet_gate.dart' show DialogGate;
+import '../patients/sheet_gate.dart' show DialogGate, DialogGateScope;
 import 'encounter_widgets.dart' show SheetGate, encountersOpen;
 
 /// Most characters a referral's details hold (lifecycle 7, 9.10).
 const referralDetailsMax = 2000;
 
 const referralDetailsLabel = 'Details';
-const referralDateLabel = 'Date';
-const changeDateAction = 'Change date';
+const referralDateLabel = 'Date referred';
+const referralDateMissing = 'Type the date of the referral, or choose it on the calendar.';
+const referralDateUnsaved = 'Fix the date first: what’s typed can’t be saved.';
 const referralAdded = 'Referral added';
 const addReferralButton = 'Add referral';
 
@@ -327,27 +330,18 @@ class _AddReferral extends ConsumerStatefulWidget {
 
 class _AddReferralState extends ConsumerState<_AddReferral> {
   final _details = TextEditingController();
-  late DateTime _on = todayOf(ref);
+
+  /// The date, `YYYY-MM-DD`, or null once its boxes are cleared.
+  late String? _on = isoDate(todayOf(ref));
+
+  /// The date's boxes hold one not saved: typed, half typed or refused.
+  bool _dateUnsaved = false;
   String? _problem;
 
   @override
   void dispose() {
     _details.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    final today = todayOf(ref);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _on,
-      // As far back as a note's dates reach (forms 10.1 #43); never ahead, which the server refuses.
-      firstDate: DateTime(today.year - 100, today.month, today.day),
-      lastDate: today,
-      // It closes on a freeze, as every dialog over the sheet does (D125; review finding PP-1).
-      builder: (_, child) => DialogGate<DateTime>(services: widget.services, child: child!),
-    );
-    if (picked != null && mounted) setState(() => _on = picked);
   }
 
   /// Cut at the limit as the form's text boxes cut theirs: in code points, as the server counts.
@@ -362,18 +356,26 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
     setState(() {});
   }
 
-  void _add() {
+  Future<void> _add() async {
+    // A date being typed is saved as its boxes are left, so it is the one added.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    final on = isoDay(_on);
+    if (_dateUnsaved || on == null) {
+      return setState(() => _problem = _dateUnsaved ? referralDateUnsaved : referralDateMissing);
+    }
     try {
       final id = widget.services.referrals.add(
         widget.patientId,
-        referredOn: _on,
+        referredOn: on,
         details: _details.text,
         encounterId: widget.encounterId,
       );
       _details.clear();
       setState(() {
         _problem = null;
-        _on = todayOf(ref);
+        _on = isoDate(todayOf(ref));
       });
       widget.onAdded(id);
     } on Exception catch (e) {
@@ -389,9 +391,26 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
       children: [
         Semantics(header: true, child: Text(addReferralAction, style: text.titleLarge)),
         const SizedBox(height: FieldSpace.s3),
-        Text('$referralDateLabel: ${longDate(_on)}', style: text.bodyLarge),
-        const SizedBox(height: FieldSpace.s1),
-        WideButton(label: changeDateAction, icon: LucideIcons.calendar, onPressed: () => unawaited(_pickDate())),
+        // The boxes and the calendar's button say the label themselves, so it is heard once.
+        ExcludeSemantics(child: Text(referralDateLabel, style: text.titleMedium)),
+        const SizedBox(height: FieldSpace.s2),
+        // Typed in three private boxes, or picked on the calendar alone, as a note's date is (D92;
+        // the coordinator's decision on review finding PX-3); the calendar closes on a freeze, in the
+        // sheet's gate (D125). As far back as a note's dates reach (forms 10.1 #43), never ahead.
+        DialogGateScope(
+          services: widget.services,
+          child: DateField(
+            field: _referralDate,
+            value: _on,
+            today: todayOf(ref),
+            onChanged: (iso) {
+              if (mounted) setState(() => _on = iso);
+            },
+            onUnsaved: (unsaved) {
+              if (mounted) setState(() => _dateUnsaved = unsaved);
+            },
+          ),
+        ),
         const SizedBox(height: FieldSpace.s3),
         PhiField(
           name: 'referralDetails',
@@ -408,7 +427,96 @@ class _AddReferralState extends ConsumerState<_AddReferral> {
         Text('${count(_details.text.runes.length)} of ${count(referralDetailsMax)} characters', style: text.bodyMedium),
         if (_problem != null) ...[const SizedBox(height: FieldSpace.s2), ErrorMessage(_problem!)],
         const SizedBox(height: FieldSpace.s3),
-        WideButton(label: addReferralButton, filled: true, onPressed: _add),
+        WideButton(label: addReferralButton, filled: true, onPressed: () => unawaited(_add())),
+      ],
+    );
+  }
+}
+
+/// A referral's date: today or earlier, which the server takes on a clock it has measured.
+final _referralDate = DateDef.outside(id: 'referredOn', label: referralDateLabel);
+
+const changeReferralDateAction = 'Change the date';
+
+/// **Change the date** of a referral the server refused for its date, from Needs attention (review
+/// finding PS-3): a sheet whose date is typed in three private boxes or picked on the calendar alone,
+/// as Add referral's is (D92; the coordinator's decision on review finding PX-3), [today] by
+/// default. A sheet, as Add referral is, since a dialog sizes its content in a way the typed date's
+/// layout can't be; in [SheetGate], so a freeze takes it, and the calendar over it closes (D125).
+/// Gives the date chosen, or null when it was closed without one.
+Future<DateTime?> askReferralDate(BuildContext context, EncounterServices services, {required DateTime today}) async {
+  final iso = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SheetGate(
+      services: services,
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+            children: [
+              DialogGateScope(
+                services: services,
+                child: _ReferralDateForm(today: today),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  return isoDay(iso);
+}
+
+class _ReferralDateForm extends StatefulWidget {
+  const _ReferralDateForm({required this.today});
+  final DateTime today;
+
+  @override
+  State<_ReferralDateForm> createState() => _ReferralDateFormState();
+}
+
+class _ReferralDateFormState extends State<_ReferralDateForm> {
+  late String? _on = isoDate(widget.today);
+  bool _unsaved = false;
+  String? _problem;
+
+  Future<void> _change() async {
+    // A date being typed is saved as its boxes are left, so it is the one sent.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    if (_unsaved || _on == null) return setState(() => _problem = _unsaved ? referralDateUnsaved : referralDateMissing);
+    Navigator.of(context).pop(_on);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(header: true, child: Text(changeReferralDateAction, style: text.titleLarge)),
+        const SizedBox(height: FieldSpace.s3),
+        ExcludeSemantics(child: Text(referralDateLabel, style: text.titleMedium)),
+        const SizedBox(height: FieldSpace.s2),
+        DateField(
+          field: _referralDate,
+          value: _on,
+          today: widget.today,
+          onChanged: (iso) {
+            if (mounted) setState(() => _on = iso);
+          },
+          onUnsaved: (unsaved) {
+            if (mounted) setState(() => _unsaved = unsaved);
+          },
+        ),
+        if (_problem != null) ...[const SizedBox(height: FieldSpace.s2), ErrorMessage(_problem!)],
+        const SizedBox(height: FieldSpace.s3),
+        WideButton(label: changeReferralDateAction, filled: true, onPressed: () => unawaited(_change())),
       ],
     );
   }

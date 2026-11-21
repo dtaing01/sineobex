@@ -227,6 +227,29 @@ void main() {
       expect(tester.widget<TextField>(box(followUp, 'day')).controller!.text, '27');
     });
 
+    testWidgets('tells whether the boxes hold a date not saved: being typed, half typed or refused', (tester) async {
+      // What a sheet that adds what the field holds waits on (the Referrals sheet's; review finding PX-3).
+      final told = <bool>[];
+      await pumpField(
+        tester,
+        DateField(field: lmp, value: '2026-09-01', onChanged: (_) {}, today: today, onUnsaved: told.add),
+      );
+      await typeDate(tester, lmp, '10', '21', '2026');
+      await leave(tester);
+      expect(told, [true], reason: 'after today, refused');
+      await typeDate(tester, lmp, '9', '1', '2026');
+      await leave(tester);
+      expect(told, [true, false], reason: 'back to what is stored');
+      await tester.enterText(box(lmp, 'day'), '');
+      await leave(tester);
+      expect(told, [true, false, true], reason: 'half typed');
+      await tester.enterText(box(lmp, 'day'), '2');
+      await tester.pump();
+      expect(told, [true, false, true], reason: 'a date being typed is still not saved');
+      await tester.pump(typingPause);
+      expect(told, [true, false, true, false], reason: 'saved as typing pauses');
+    });
+
     testWidgets('a date typed and not yet saved is saved when the field goes', (tester) async {
       final changes = await open(tester, followUp);
       await typeDate(tester, followUp, '11', '2', '2026');

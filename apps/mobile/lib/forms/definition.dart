@@ -373,6 +373,10 @@ class FlagDef extends FieldDef {
 class DateDef extends FieldDef {
   DateDef._(super.c, {required this.range});
 
+  /// A date the phone takes outside a note's form, typed and picked as a note's date is (D92): the
+  /// Referrals sheet's (review finding PX-3). [id] names its boxes.
+  DateDef.outside({required String id, required String label, this.range = 'past'}) : super(_Common.plain(id, label));
+
   /// `past`, `future` or `any`: the picker's bound.
   final String range;
   @override
@@ -474,6 +478,17 @@ class _Common {
       recap = !r.has('recap') || r.boolean('recap'),
       handoff = r.flag('handoff'),
       mapsTo = r.maybeString('mapsTo');
+
+  /// A field that is no definition's: its ID and label, and nothing else.
+  _Common.plain(this.id, this.label)
+    : help = null,
+      showWhen = null,
+      required = false,
+      sides = false,
+      noNormal = false,
+      recap = true,
+      handoff = false,
+      mapsTo = null;
   final String id;
   final String label;
   final String? help;

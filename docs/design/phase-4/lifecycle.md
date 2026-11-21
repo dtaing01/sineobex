@@ -2295,10 +2295,11 @@ As built (unit L1, `services/api/src/sync/entities/{note-addendum,note-correctio
   check then takes no date past the phone's own day (its local day, or the UTC day where that is
   later), the server's day ahead being for a clock it has measured (`LocalStore`
   `_unreferencedProblem`). A referral the server refused `referral_in_future`, the one value
-  problem a referral meets there, gets **Change the date** in Needs attention: the calendar alone
-  (D92), in a dialog gate, and `Referrals.changeRefusedDate`, which sends the create again on the
-  date chosen through `fixRejected`, so the refusal settles and a visit it was made at no longer
-  waits in Needs attention.
+  problem a referral meets there, gets **Change the date** in Needs attention: a sheet in the
+  sheets' gate whose date is typed in three private boxes or picked on the calendar alone, as every
+  date the phone takes is (D92, review finding PX-3), and `Referrals.changeRefusedDate`, which sends
+  the create again on the date chosen through `fixRejected`, so the refusal settles and a visit it
+  was made at no longer waits in Needs attention.
 - **A visit of another patient** is checked by `visitOfOtherPatient` (`records.ts`) for the
   creates of a referral, a problem, an allergy and a problem note, whose patient is its problem's
   (review finding REC-7); a visit with no patient passes. A problem made at a visit is stored with
@@ -4834,6 +4835,14 @@ sheet did is said inside it, as a live region, "Referral added" under Add referr
 entered in error" under its heading: a SnackBar drawn under a sheet that stays open was neither seen
 nor heard (review finding SAX-6). Add referral from a note's action keeps its own sheet
 (`showAddReferral`), which closes once the referral is added.
+
+Since the phase's review (finding PX-3, the coordinator's decision that D92 covers every date the
+phone takes): Add referral's date, "Date referred", today by default, is the forms' typed date
+(forms 8.2), three private boxes with the calendar alone beside them, in place of a date line and
+Material's picker, whose typing box let the keyboard learn. The calendar closes on a freeze
+(`DialogGateScope`, D125). A date typed and not yet saved is saved as Add referral is pressed; one
+the boxes can't save (half typed, no such day, after today) adds nothing, and the sheet says "Fix
+the date first: what’s typed can’t be saved."; cleared, it asks for a date.
 
 ### 9.11 Portal: the visit page
 

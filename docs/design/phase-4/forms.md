@@ -2258,6 +2258,15 @@ The rules of `docs/plan/patterns/phone-screen.md`, plus these, each as built:
   calendar stays as a second way. `date_field_test.dart` opens the calendar in `formRuns` with the
   guidelines on, holds its labels and contrast, and records which runs its cells can't meet, so a
   Flutter change that fixes them shows.
+- **Every date the phone takes, since the phase's review** (the coordinator's decision on review
+  finding PX-3, D92): a referral's date is a `DateField` too, on a `DateDef.outside` (a field that
+  is no definition's, `referredOn`, "Date referred", range `past`), in the Referrals sheet's Add
+  referral and in Needs attention's Change the date, so it is typed in the same three private
+  boxes and picked on the calendar alone. `DateField.onUnsaved` tells such a sheet whether the
+  boxes hold a date not saved (being typed, half typed or refused), and the sheet adds or sends
+  nothing on it.
+  `referrals_sheet_test.dart` opens the calendar in phase 3's five runs: in the app, whose demo
+  banner leaves the dialog less height, iOS's 44 px also fails at 200% text (cells 34.6 px tall).
 
 ### 8.3 Tests without one test per form
 

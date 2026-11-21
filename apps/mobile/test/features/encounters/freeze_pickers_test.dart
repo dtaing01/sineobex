@@ -86,7 +86,7 @@ void main() {
     h.encounters.referrals.add(p1Id, referredOn: fixtureNow, details: 'Demo: dental clinic', encounterId: v.visit);
     await openVisitScreen(tester, v.visit);
     await tapOn(tester, find.bySemanticsLabel(RegExp('^Referral, .*: Demo: dental clinic')));
-    await tapInSheet(tester, find.text('Change date'));
+    await tapInSheet(tester, find.bySemanticsLabel(RegExp('^Date referred: ')));
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await freeze(tester, h);
     expect(find.byType(DatePickerDialog), findsNothing);
