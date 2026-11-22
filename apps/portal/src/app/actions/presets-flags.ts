@@ -43,7 +43,8 @@ const CONTEXT: Omit<PresetRefusalContext, 'act'> = {
     sensitive: LABELS.sensitive,
   },
   sentences: {
-    // The add form offers these alone, so a problem of the schema's here is that none was chosen.
+    // Fields where each of the schema's problems asks one thing: a list or a colour nobody chose,
+    // criteria past their length.
     tier: 'Choose Risk level or Conditions.',
     color: 'Choose a colour.',
     criteria: 'Keep it to 500 characters.',
