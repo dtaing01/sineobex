@@ -98,7 +98,7 @@ Rules for every migration: plain SQL, additive, one transaction, the next free n
 | `recorded_at`, `clock_verified`, `author_user_id`, `created_device_id` | | As on `patient_allergies` |
 | `field_versions`, `field_meta`, `version`, `created_at`, `updated_at` | | The bookkeeping every synced record carries |
 
-Index `(team_id, patient_id, recorded_at desc)`; the touch trigger; no `delete` for the app role. `patient_of_change` is replaced with the body of its newest version (phase 4's 0020, phase 5's 0023 and phase 6's orders migration each replace it) plus a `patient_payer_id` branch (the value's `patientId`). The same card adds `patient_payer_ids: 'group'` to `CHART_TABLES`.
+Index `(team_id, patient_id, recorded_at desc)`; the touch trigger; no `delete` for the app role. `patient_of_change` is replaced with the body of its newest version (phase 4's 0020, phase 5's 0024 and phase 6's orders migration each replace it) plus a `patient_payer_id` branch (the value's `patientId`). The same card adds `patient_payer_ids: 'group'` to `CHART_TABLES`.
 
 ### 4.2 `<next>_export_runs.sql` (level X: policies, append-only triggers)
 | Table | Append-only | Columns |

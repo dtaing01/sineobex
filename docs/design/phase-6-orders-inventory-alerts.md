@@ -2,7 +2,7 @@
 
 # Phase 6: orders, inventory and alerts
 
-"PRD main N" is a line of the product spec's main tab; "Build plan N" a line of its Build plan tab. Paths are from the repository root. "lifecycle" and "forms" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`); "phase 5" with a section number is `docs/design/phase-5-admin-configuration.md`. "Next free number" means the lowest unused migration number when the unit starts (phase 4 takes 0017 to 0021 and phase 5 takes 0022 and 0023, so 0024 to 0028 if nothing lands between).
+"PRD main N" is a line of the product spec's main tab; "Build plan N" a line of its Build plan tab. Paths are from the repository root. "lifecycle" and "forms" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`); "phase 5" with a section number is `docs/design/phase-5-admin-configuration.md`. "Next free number" means the lowest unused migration number when the unit starts (phase 4 took 0017 to 0022 and phase 5 takes 0023 and 0024, so 0025 to 0029 if nothing lands between).
 
 ## 1. Scope and Done when
 **Done when** (Build plan 98; `IMPLEMENTATION_PLAN.md` section 4, phase 6 row): dispensing 3 of an item a bag holds 1 of leaves it at −2 and alerts the Program Admin, Logistics and the route lead, with nothing shown to the field user during the run.
@@ -140,7 +140,7 @@ A location row is made by the server, never by a person: `ensureLocation` insert
 | `voided_at`, `voided_by`, `void_reason` | | Set once |
 | `author_user_id`, `ordered_at`, `clock_verified`, `created_device_id`, `change_id`, `version`, `field_versions`, `field_meta` | | As `patient_allergies` |
 
-The migration also replaces `patient_of_change` with a version that has a branch for `encounter_order` (through its encounter) and for `patient_alert`, as phase 5's 0023 does for its entity. No migration touches a preset table. The allergy check's terms are a new optional field of the `item` body, `allergenTerms` (0 to 20 terms of 2 to 60 characters, default none), added to phase 5's schema and Dart parser as phase 5's risk 3 asks: optional, with a default in both.
+The migration also replaces `patient_of_change` with a version that has a branch for `encounter_order` (through its encounter) and for `patient_alert`, as phase 5's 0024 does for its entity. No migration touches a preset table. The allergy check's terms are a new optional field of the `item` body, `allergenTerms` (0 to 20 terms of 2 to 60 characters, default none), added to phase 5's schema and Dart parser as phase 5's risk 3 asks: optional, with a default in both.
 
 ### 4.4 `<n>_patient_alerts.sql`
 `patient_alerts`: `id`, `patient_id` (composite foreign key), `kind` (`safety`, `clinical`, `other`), `text` (1 to 200), `sensitive boolean`, `author_user_id`, `recorded_at`, `clock_verified`, `device_id`, `change_id`, and the set-once `ended_at`, `ended_by`, `end_reason`. Listed in `CHART_TABLES` as `group`, so a merged chart shows both sides' alerts (D27).

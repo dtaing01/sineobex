@@ -12,6 +12,7 @@ session can pick it up.
 | Product spec (the PRD) | [Sineobex Build & Strategy Plan](https://claude.ai/code/artifact/6f83b7b9-4134-4c36-ad0c-17a41eed3af3): the main tab is the source of truth for what each feature does; the Build plan tab sets the order. It lives outside the repo. |
 | Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D126, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
 | The current phase's design and its unit status | `docs/design/phase-<n>-<name>.md`. Its **Status** section says which units are done, which are open and what each needs. Start there. |
+| Choices that need a person | `docs/decisions-for-review.md`: each one by who decides, with the default built, a recommendation, what a later change costs and where it lives. Reviewed once the MVP (phases 5 to 10) is built. |
 | Compliance mapping | `docs/compliance/` |
 | Task cards for a small model, and the recipes they point to | `docs/plan/` (start with its `README.md`) |
 | Deployment setup (accounts, secrets) | `docs/setup.md` |
@@ -75,6 +76,7 @@ that look like bugs.
 | Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
 | PHI guard | `node tools/phi-guard.mjs` |
 | Task cards (after writing or changing one) | `node tools/card-check.mjs` |
+| Decisions document (after adding or changing a `PLAN-OPEN` marker) | `node tools/decisions-check.mjs` |
 | Run a card with the small local model | `CARD_MODEL=<name> node tools/card-run.mjs <card>`; `--dry-run` shows what the model is sent (`docs/plan/README.md`, "Running a card") |
 | **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium tools/ci-local.sh` |
 
@@ -87,8 +89,10 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
 ## Conventions
 
 - Match the code around you: its comment density, naming and idiom. Comments say why, not what.
-- Every default the PRD leaves open is a `PLAN-OPEN:` comment naming the question, and a row in
-  `IMPLEMENTATION_PLAN.md` section 6.
+- Nothing is asked of a person mid-build (the project lead, Nov 21). Every default the PRD leaves
+  open, and every other choice that needs a person, is built as a default: a `PLAN-OPEN (<row>):`
+  comment naming its row and the question, that row in `docs/decisions-for-review.md` under who
+  decides, and, when its phase closes, a row in `IMPLEMENTATION_PLAN.md` section 6.
 - Generated files are never edited by hand: `packages/contract/openapi.json`,
   `packages/contract/src/generated/**`, `apps/mobile/lib/api/generated/**` and the
   `generated/` data modules. Never run `dart format` over `apps/mobile/lib/api/generated`
@@ -119,14 +123,16 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
    screens, tests mapped to the Done when, defaults, risks, and a **work breakdown into units**, each
    owning its files, in dependency order. Have it critiqued against the PRD and the code before
    anyone builds from it. Phase 3's design is the model.
-2. **Build in units.** From phase 5 on, a unit is built from task cards (`docs/plan/README.md`): a
-   small local model writes the code of each card, through `tools/card-run.mjs`; the frontier
-   model writes each card, writes the level X cards' code itself, writes the tests of level T
-   cards first, and audits every card and every unit. Phase 4 is the exception: the frontier
-   model builds it from its card index with helper agents, and no further cards are written for
-   it (`docs/design/phase-4-encounters.md`, "How this phase is built"). A unit that others depend on (the schema and contract unit) lands first, alone,
-   with CI green. Then units run in parallel only when they own disjoint files. Keep each unit's
-   **Status** row in the design doc current as it lands.
+2. **Build in units.** Phases 4 and 5 are built by the frontier model with helper agents, from the
+   card list in their design (D70, D127; each design's "How this phase is built"), and phases 6 to
+   10 the same way by default until the project lead decides otherwise (row PL-9 of
+   `docs/decisions-for-review.md`): no card is written in full and no small model runs. The
+   two-model build of `docs/plan/README.md` (a small local model writes each card's code through
+   `tools/card-run.mjs`; the frontier model writes each card, writes the level X cards' code
+   itself, writes the tests of level T cards first, and audits every card and every unit) waits
+   for a machine that can run the small model. A unit that others depend on (the schema and
+   contract unit) lands first, alone, with CI green. Then units run in parallel only when they
+   own disjoint files. Keep each unit's **Status** row in the design doc current as it lands.
 3. **Review.** An adversarial review of the whole phase (sync safety, audit, permissions, PHI,
    accessibility, the fake's fidelity). Every confirmed finding is fixed with a regression test.
 4. **Close.** Copy the phase's decisions into the plan's D-table, set its status to Done with the
