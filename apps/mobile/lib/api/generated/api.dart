@@ -902,6 +902,46 @@ enum ProblemStatus {
   String toJson() => wire;
 }
 
+/// A phone skips a kind it does not know
+enum PulledPresetKind {
+  orderCategory('order_category'),
+  item('item'),
+  bundle('bundle'),
+  flag('flag'),
+  fieldSupplyMap('field_supply_map'),
+  conditionSupplyMap('condition_supply_map'),
+  bag('bag'),
+  settings('settings'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const PulledPresetKind(this.wire);
+  final String wire;
+
+  static PulledPresetKind fromJson(String value) =>
+      PulledPresetKind.values.firstWhere((e) => e.wire == value, orElse: () => PulledPresetKind.unknown);
+
+  String toJson() => wire;
+}
+
+/// An archived preset is kept for its name
+enum PulledPresetState {
+  active('active'),
+  archived('archived'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const PulledPresetState(this.wire);
+  final String wire;
+
+  static PulledPresetState fromJson(String value) =>
+      PulledPresetState.values.firstWhere((e) => e.wire == value, orElse: () => PulledPresetState.unknown);
+
+  String toJson() => wire;
+}
+
 /// awaiting_review: it belongs to a record whose create is also waiting here, so that is decided first
 enum QuarantineItemReason {
   accessRemoved('access_removed'),
@@ -4421,6 +4461,38 @@ class PermissionInfo {
       };
 }
 
+class PresetsPull {
+  const PresetsPull({
+    required this.epoch,
+    required this.presets,
+    required this.reset,
+    required this.revision,
+  });
+
+  /// Send as epoch next time
+  final String epoch;
+  /// Every preset changed after since, or all of them; archived ones included
+  final List<PulledPreset> presets;
+  /// Replace the copy whole: the revision sent is above the team’s, or another epoch
+  final bool reset;
+  /// Send as since next time: the greatest revision among presets, else since
+  final int revision;
+
+  factory PresetsPull.fromJson(Map<String, dynamic> json) => PresetsPull(
+        epoch: json['epoch'] as String,
+        presets: (json['presets'] as List<dynamic>).map((e) => PulledPreset.fromJson(e as Map<String, dynamic>)).toList(),
+        reset: json['reset'] as bool,
+        revision: (json['revision'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'epoch': epoch,
+        'presets': presets.map((e) => e.toJson()).toList(),
+        'reset': reset,
+        'revision': revision,
+      };
+}
+
 class ProblemNoteView {
   const ProblemNoteView({
     required this.author,
@@ -4595,6 +4667,47 @@ class ProblemViewEnteredInError {
         'at': at.toUtc().toIso8601String(),
         'by': by.toJson(),
         'reason': reason,
+      };
+}
+
+class PulledPreset {
+  const PulledPreset({
+    required this.body,
+    required this.id,
+    required this.kind,
+    required this.originKey,
+    required this.state,
+    required this.version,
+  });
+
+  /// Its current version’s body, in the shape of @sineobex/presets for its kind
+  final Map<String, Object?> body;
+  final String id;
+  /// A phone skips a kind it does not know
+  final PulledPresetKind kind;
+  /// The platform preset it came from; null for the team’s own
+  final String? originKey;
+  /// An archived preset is kept for its name
+  final PulledPresetState state;
+  /// Its current version
+  final int version;
+
+  factory PulledPreset.fromJson(Map<String, dynamic> json) => PulledPreset(
+        body: Map<String, Object?>.from(json['body'] as Map),
+        id: json['id'] as String,
+        kind: PulledPresetKind.fromJson(json['kind'] as String),
+        originKey: json['originKey'] == null ? null : json['originKey'] as String,
+        state: PulledPresetState.fromJson(json['state'] as String),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'body': body,
+        'id': id,
+        'kind': kind.toJson(),
+        'originKey': originKey == null ? null : originKey!,
+        'state': state.toJson(),
+        'version': version,
       };
 }
 
@@ -6830,6 +6943,12 @@ class SineobexApi {
   Future<OwnerTeam> ownerSetTeamStatus({required String teamId, required TeamStatusChange body}) async {
     final json = await _transport.send('POST', '/v1/owner/teams/${Uri.encodeComponent(teamId)}/status', body: body.toJson());
     return OwnerTeam.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The team’s presets changed since a revision, for the phone’s copy (any member)
+  Future<PresetsPull> pullPresets({String? since, String? epoch}) async {
+    final json = await _transport.send('GET', '/v1/presets', query: <String, String>{if (since != null) 'since': (since).toString(), if (epoch != null) 'epoch': (epoch).toString()}, );
+    return PresetsPull.fromJson(json as Map<String, dynamic>);
   }
 
   /// Register this phone’s key for the current team

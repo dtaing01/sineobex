@@ -13,6 +13,7 @@ import { registerMeRoutes } from './routes/me.ts';
 import { registerMemberRoutes } from './routes/members.ts';
 import { registerOwnerRoutes } from './routes/owner.ts';
 import { registerPatientRoutes } from './routes/patients.ts';
+import { registerPresetRoutes } from './routes/presets.ts';
 import { registerProblemRoutes } from './routes/problems.ts';
 import { registerRoleRoutes } from './routes/roles.ts';
 import { registerSyncRoutes } from './routes/sync.ts';
@@ -113,6 +114,7 @@ export function createApp(deps: Deps): App {
   registerDeviceRoutes(app, deps);
   registerFormRoutes(app, deps);
   registerEncounterRoutes(app, deps);
+  registerPresetRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {
     app.doc31('/openapi.json', openApiInfo);
