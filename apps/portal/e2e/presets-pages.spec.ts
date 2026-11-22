@@ -1851,3 +1851,452 @@ test.describe('a bundle, /team/presets/bundles/[id]', () => {
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// Flags (8.1): Risk level and Conditions, each by rank, with Move up and Move down; Add a flag
+// ------------------------------------------------------------------------------------------------
+
+type FlagBody = {
+  name: string;
+  tier: 'primary' | 'secondary';
+  criteria: string;
+  color: string;
+  rank: number;
+  sensitive: boolean;
+};
+
+/** The palette's names (packages/presets FLAG_COLORS), which every pill reads first. */
+const COLOUR_NAMES: Record<string, string> = {
+  red: 'Red',
+  orange: 'Orange',
+  yellow: 'Yellow',
+  green: 'Green',
+  teal: 'Teal',
+  blue: 'Blue',
+  purple: 'Purple',
+  grey: 'Grey',
+};
+
+/** A flag as staff see it: "Red · High". */
+const pillOf = (f: Row<FlagBody>) => `${COLOUR_NAMES[f.body.color]} · ${f.name}`;
+
+/** A tier's active flags as the page lists them: by rank, then by name as the API sorts names. */
+async function tierOf(tier: 'primary' | 'secondary'): Promise<Row<FlagBody>[]> {
+  return (await listed<FlagBody>('flag'))
+    .filter((f) => f.state === 'active' && f.body.tier === tier)
+    .sort((a, b) => a.body.rank - b.body.rank || byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+}
+
+/** A condition of the team's own, made as another admin would make it, at the end of its list; its ID. */
+async function madeCondition(name: string, color: string): Promise<string> {
+  const ranks = (await listed<FlagBody>('flag'))
+    .filter((f) => f.body.tier === 'secondary')
+    .map((f) => f.body.rank);
+  return made('flag', {
+    name,
+    tier: 'secondary',
+    criteria: '',
+    color,
+    rank: Math.max(0, ...ranks) + 10,
+    sensitive: false,
+  });
+}
+
+/** A preset's history as the API answers it, oldest first. */
+async function historyOf(kind: string, id: string) {
+  const res = await apiCall(
+    await staffToken('admin@example.com'),
+    'GET',
+    `/v1/admin/presets/${kind}/${id}/history`,
+  );
+  expect(res.status).toBe(200);
+  return (await res.json()) as { act: string; version: number; reason: string | null }[];
+}
+
+/** 1st, 2nd, 3rd, 4th, as a move's line counts. */
+const ordinal = (n: number) =>
+  `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')}`;
+
+test.describe('flags, /team/presets/flags', () => {
+  const PAGE = '/team/presets/flags';
+
+  test('@responsive a Program Admin opens Flags from the hub and finds the risk levels, highest risk first, and the conditions, each as staff see it, accessible in all three themes', async ({
+    page,
+  }) => {
+    test.slow();
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    await page.getByRole('main').getByRole('link', { name: 'Flags', exact: true }).click();
+    await expect(page).toHaveURL(/\/team\/presets\/flags$/);
+    await expect(page).toHaveTitle('Flags · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Flags');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    const main = page.getByRole('main');
+    const removed = (await listed('flag')).filter((f) => f.state === 'archived').length;
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText([
+      'Risk level',
+      'Conditions',
+      'Add a flag',
+      ...(removed > 0 ? [`Removed (${removed})`] : []),
+    ]);
+    const risk = main.getByRole('region', { name: 'Risk level', exact: true });
+    const conditions = main.getByRole('region', { name: 'Conditions', exact: true });
+    const primary = await tierOf('primary');
+    const secondary = await tierOf('secondary');
+    // 8.1's default, highest risk first: no case of this file moves a risk level.
+    expect(primary.map(pillOf)).toEqual(['Red · High', 'Yellow · Medium', 'Green · Low']);
+    await expect(risk.getByRole('listitem').getByRole('link')).toHaveText(primary.map(pillOf));
+    await expect(conditions.getByRole('listitem').getByRole('link')).toHaveText(secondary.map(pillOf));
+    for (const f of [...primary, ...secondary])
+      await expect(main.getByRole('link', { name: pillOf(f), exact: true })).toHaveAttribute(
+        'href',
+        `${PAGE}/${f.id}`,
+      );
+    // The platform's sensitive condition says so (PRD main 121).
+    await expect(conditions.getByRole('listitem').filter({ hasText: 'Purple · Pregnancy' })).toContainText(
+      'Sensitive',
+    );
+    // Each moves up unless it is first, and down unless it is last, its button naming it.
+    await expect(risk.getByRole('button')).toHaveCount(4);
+    for (const name of ['Move down High', 'Move up Medium', 'Move down Medium', 'Move up Low'])
+      await expect(risk.getByRole('button', { name, exact: true })).toBeVisible();
+    await expect(
+      risk.getByRole('form', { name: 'Order of the risk levels' }).getByLabel('Reason for moving'),
+    ).toHaveAccessibleDescription('Don’t put patient names here.');
+    // The seeded team holds the platform's version of each: nothing is on offer.
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    const add = page.getByRole('form', { name: 'Add a flag' });
+    await expect(add.getByRole('group', { name: 'List', exact: true })).toHaveAccessibleDescription(
+      'Which list a flag is on can’t be changed later.',
+    );
+    await expect(add.getByRole('group', { name: 'Colour', exact: true }).getByRole('radio')).toHaveCount(8);
+    await expect(add.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(add.getByLabel('Criteria (optional)')).toHaveAccessibleDescription(
+      'Staff read these when they choose a flag. Nothing flags a patient by itself. Don’t put patient names here.',
+    );
+    const sensitive = add.getByLabel('Sensitive', { exact: true });
+    await expect(sensitive).not.toBeChecked();
+    await expect(sensitive).toHaveAccessibleDescription(
+      'Sensitive flags are hidden from Billing and Data. Whether a flag is sensitive can’t be changed later.',
+    );
+
+    await expectAccessible(page, PAGE);
+    await expectReflow(page, PAGE);
+    await expectNothingStored(page, PAGE);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('adding a flag asks for a reason, then each field, says each problem beside its field, keeps what was typed, and puts the new one at the end of its list', async ({
+    page,
+  }) => {
+    test.slow();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a flag' });
+    const name = form.getByLabel('Name', { exact: true });
+    const reason = form.getByLabel('Reason', { exact: true });
+    const criteria = form.getByLabel('Criteria (optional)');
+    const sensitive = form.getByLabel('Sensitive', { exact: true });
+    const radio = (label: string) => form.getByRole('radio', { name: label, exact: true });
+    const add = form.getByRole('button', { name: 'Add flag' });
+    const alert = form.getByRole('alert');
+    const conditions = page.getByRole('region', { name: 'Conditions', exact: true });
+
+    // Nothing typed: the reason is asked first, as the API reads the request before the body.
+    await add.click();
+    await expect(alert).toBeFocused();
+    await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+
+    // A reason, and still no name, list or colour: each said beside its field, the reason kept.
+    await reason.fill('Demo: wet weather this month');
+    await add.click();
+    await expect(alert.locator('.px-alert__title')).toHaveText(
+      'Some fields need changing. Check each one below.',
+    );
+    await expect(alert.getByRole('link', { name: 'Name: This is too short or too small.' })).toBeVisible();
+    await expect(alert.getByRole('link', { name: 'Colour: Choose a colour.' })).toBeVisible();
+    const chooseList = alert.getByRole('link', { name: 'List: Choose Risk level or Conditions.' });
+    await expect(chooseList).toBeVisible();
+    await expect(reason).toHaveValue('Demo: wet weather this month');
+    await expectAccessible(page, 'Add a flag, refused', { inPlace: true });
+    await expectReflow(page, 'Add a flag, refused');
+    await chooseList.click();
+    await expect(form.getByRole('group', { name: 'List', exact: true })).toBeFocused();
+
+    // A sensitive risk level: said beside Sensitive, keeping what was chosen and ticked.
+    await name.fill('Demo: Very high');
+    await radio('Risk level').check();
+    await radio('Red').check();
+    await sensitive.check();
+    await add.click();
+    await expect(alert.getByRole('link')).toHaveText(['Sensitive: A risk level can’t be sensitive.']);
+    await expect(sensitive).toBeChecked();
+    await expect(radio('Risk level')).toBeChecked();
+    await expect(radio('Red')).toBeChecked();
+    await expect(name).toHaveValue('Demo: Very high');
+
+    // A name another flag holds, in other letters.
+    await sensitive.uncheck();
+    await radio('Conditions').check();
+    await name.fill('frost risk');
+    await add.click();
+    await expect(alert.locator('.px-alert__title')).toHaveText('Another flag already has this name.');
+    await expect(name).toHaveValue('frost risk');
+    await expect(radio('Conditions')).toBeChecked();
+
+    // Added, after every condition the team holds.
+    const ranks = (await listed<FlagBody>('flag'))
+      .filter((f) => f.body.tier === 'secondary')
+      .map((f) => f.body.rank);
+    await name.fill('Demo: Wet feet');
+    await radio('Teal').check();
+    await criteria.fill('Demo: slept out in the rain.');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Wet feet. It’s on the phones after their next sync.',
+    );
+    const wet = await named<FlagBody>('flag', 'Demo: Wet feet');
+    expect(wet).toMatchObject({
+      version: 1,
+      body: {
+        name: 'Demo: Wet feet',
+        tier: 'secondary',
+        criteria: 'Demo: slept out in the rain.',
+        color: 'teal',
+        rank: Math.max(...ranks) + 10,
+        sensitive: false,
+      },
+    });
+    await expect(conditions.getByRole('listitem').getByRole('link').last()).toHaveText(
+      'Teal · Demo: Wet feet',
+    );
+    expect((await historyOf('flag', wet.id)).at(-1)).toMatchObject({
+      act: 'created',
+      version: 1,
+      reason: 'Demo: wet weather this month',
+    });
+    // The form is ready for the next one.
+    await expect(name).toHaveValue('');
+    await expect(reason).toHaveValue('');
+    await expect(criteria).toHaveValue('');
+    await expect(form.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(sensitive).not.toBeChecked();
+
+    // A second, on the first try: a sensitive condition, after the first.
+    await name.fill('Demo: Heat stroke risk');
+    await radio('Conditions').check();
+    await radio('Orange').check();
+    await sensitive.check();
+    await reason.fill('Demo: the heat wave');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Heat stroke risk. It’s on the phones after their next sync.',
+    );
+    const last = conditions.getByRole('listitem').last();
+    await expect(last.getByRole('link')).toHaveText('Orange · Demo: Heat stroke risk');
+    await expect(last).toContainText('Sensitive');
+    expect((await named<FlagBody>('flag', 'Demo: Heat stroke risk')).body).toMatchObject({
+      tier: 'secondary',
+      color: 'orange',
+      rank: wet.body.rank + 10,
+      sensitive: true,
+    });
+    await expect(name).toHaveValue('');
+    await expect(form.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(sensitive).not.toBeChecked();
+
+    await expectNothingStored(page, 'Flags after an add');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('Move up and Move down move a condition one place, by mouse and by keyboard, say where it went and keep focus on it', async ({
+    page,
+  }) => {
+    test.slow();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    let posted = 0;
+    page.on('request', (r) => void (r.method() === 'POST' && posted++));
+    await page.goto(PAGE);
+    const before = await tierOf('secondary');
+    expect(before.length).toBeGreaterThanOrEqual(3);
+    const [first, second] = before as [Row<FlagBody>, Row<FlagBody>];
+    const form = page.getByRole('form', { name: 'Order of the conditions' });
+    const status = form.getByRole('status');
+    const pills = page
+      .getByRole('region', { name: 'Conditions', exact: true })
+      .getByRole('listitem')
+      .getByRole('link');
+    const button = (label: string) => form.getByRole('button', { name: label, exact: true });
+    const reason = form.getByLabel('Reason for moving');
+    const REASON = 'Demo: what we see most this winter';
+    await reason.fill(REASON);
+
+    // Enter in the Reason box moves nothing.
+    await reason.press('Enter');
+    await page.waitForTimeout(1000);
+    expect(posted).toBe(0);
+    await expect(pills).toHaveText(before.map(pillOf));
+
+    // By mouse: the second moves up, to the top. It can't go further up, so focus is on its Move down.
+    await button(`Move up ${second.name}`).click();
+    await expect(status).toHaveText(`${second.name} moved up. It’s now 1st of ${before.length} conditions.`);
+    await expect(pills).toHaveText([second, first, ...before.slice(2)].map(pillOf));
+    await expect(button(`Move down ${second.name}`)).toBeFocused();
+    await expect(reason).toHaveValue(REASON);
+    const moved = await tierOf('secondary');
+    expect(moved.map((f) => f.id)).toEqual([second, first, ...before.slice(2)].map((f) => f.id));
+    // Each flag whose rank the move changed is at its next version, the move in its history.
+    for (const f of moved) {
+      const was = before.find((b) => b.id === f.id)!;
+      if (f.body.rank === was.body.rank) {
+        expect(f.version, f.name).toBe(was.version);
+        continue;
+      }
+      expect(f.version, f.name).toBe(was.version + 1);
+      expect((await historyOf('flag', f.id)).at(-1), f.name).toMatchObject({
+        act: 'reordered',
+        version: f.version,
+        reason: REASON,
+      });
+    }
+    await expectAccessible(page, 'Flags after a move', { inPlace: true });
+    await expectReflow(page, 'Flags after a move');
+
+    // By keyboard: Enter on its Move down takes it back; it can go further, so focus stays there.
+    await button(`Move down ${second.name}`).focus();
+    await page.keyboard.press('Enter');
+    await expect(status).toHaveText(
+      `${second.name} moved down. It’s now 2nd of ${before.length} conditions.`,
+    );
+    await expect(pills).toHaveText(before.map(pillOf));
+    await expect(button(`Move down ${second.name}`)).toBeFocused();
+    // Shift+Tab reaches its Move up, and Space takes it up again: focus goes to its Move down.
+    await page.keyboard.press('Shift+Tab');
+    await expect(button(`Move up ${second.name}`)).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(status).toHaveText(`${second.name} moved up. It’s now 1st of ${before.length} conditions.`);
+    await expect(pills).toHaveText([second, first, ...before.slice(2)].map(pillOf));
+    await expect(button(`Move down ${second.name}`)).toBeFocused();
+    expect((await tierOf('secondary')).map((f) => f.id)).toEqual(
+      [second, first, ...before.slice(2)].map((f) => f.id),
+    );
+
+    await expectNothingStored(page, 'Flags after a move');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('a move from a list another admin changed since is refused with the stale sentence, the list is read again, and the next move goes through', async ({
+    page,
+  }) => {
+    test.slow();
+    const id = await madeCondition('Demo: Chapped lips', 'grey');
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Order of the conditions' });
+    const region = page.getByRole('region', { name: 'Conditions', exact: true });
+    const button = (label: string) => form.getByRole('button', { name: label, exact: true });
+    const alert = form.getByRole('alert');
+    await form.getByLabel('Reason for moving').fill('Demo: lips before the rest');
+
+    // Another admin renames it meanwhile: the list the page shows is out of date.
+    await changedMeanwhile<FlagBody>('flag', id, (b) => ({ ...b, name: 'Demo: Cracked lips' }));
+    const before = await tierOf('secondary');
+    await button('Move up Demo: Chapped lips').click();
+    await expect(alert).toHaveText(STALE);
+    await expect(alert).toBeFocused();
+    // Read again: their change is on the page, and nothing moved.
+    await expect(region.getByRole('listitem').getByRole('link')).toHaveText(before.map(pillOf));
+    await expect(form.getByRole('status')).toHaveText('');
+    await expect(form.getByLabel('Reason for moving')).toHaveValue('Demo: lips before the rest');
+    expect((await tierOf('secondary')).map((f) => [f.id, f.version])).toEqual(
+      before.map((f) => [f.id, f.version]),
+    );
+    await expectAccessible(page, 'A move refused stale', { inPlace: true });
+
+    // The next move is made from the list as it is now, and goes through.
+    await button('Move up Demo: Cracked lips').click();
+    await expect(form.getByRole('status')).toHaveText(
+      `Demo: Cracked lips moved up. It’s now ${ordinal(before.length - 1)} of ${before.length} conditions.`,
+    );
+    await expect(button('Move up Demo: Cracked lips')).toBeFocused();
+    expect((await tierOf('secondary')).at(-2)!.id).toBe(id);
+
+    // Another admin adds a condition meanwhile: the list the page sends lacks it.
+    await madeCondition('Demo: Blisters', 'green');
+    const grown = await tierOf('secondary');
+    await button('Move down Demo: Cracked lips').click();
+    await expect(alert).toHaveText(STALE);
+    await expect(region.getByRole('listitem').getByRole('link')).toHaveText(grown.map(pillOf));
+    expect((await tierOf('secondary')).map((f) => [f.id, f.version])).toEqual(
+      grown.map((f) => [f.id, f.version]),
+    );
+    await button('Move down Demo: Cracked lips').click();
+    await expect(form.getByRole('status')).toHaveText(
+      `Demo: Cracked lips moved down. It’s now ${ordinal(grown.length - 1)} of ${grown.length} conditions.`,
+    );
+    expect((await tierOf('secondary')).map((f) => f.name).slice(-2)).toEqual([
+      'Demo: Cracked lips',
+      'Demo: Blisters',
+    ]);
+  });
+
+  test('a move asks for a reason first, and moves nothing without one', async ({ page }) => {
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const before = await tierOf('secondary');
+    const form = page.getByRole('form', { name: 'Order of the conditions' });
+    await form.getByRole('button', { name: `Move down ${before[0]!.name}`, exact: true }).click();
+    const alert = form.getByRole('alert');
+    await expect(alert).toBeFocused();
+    await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+    await expect(form.getByLabel('Reason for moving')).toHaveAttribute('aria-invalid', 'true');
+    await expectAccessible(page, 'A move without a reason', { inPlace: true });
+    await expectReflow(page, 'A move without a reason');
+    expect((await tierOf('secondary')).map((f) => [f.id, f.version])).toEqual(
+      before.map((f) => [f.id, f.version]),
+    );
+  });
+
+  test('a stale sign-in sends a move through /reauth and back to the page, moving nothing', async ({
+    page,
+  }) => {
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const before = await tierOf('secondary');
+    const form = page.getByRole('form', { name: 'Order of the conditions' });
+    await form.getByLabel('Reason for moving').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: `Move down ${before[0]!.name}`, exact: true }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Fflags$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Flags');
+    expect((await tierOf('secondary')).map((f) => [f.id, f.version])).toEqual(
+      before.map((f) => [f.id, f.version]),
+    );
+  });
+
+  test('staff without the permission are refused Flags at a typed address, logged once', async ({ page }) => {
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(PAGE);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    await expect(page.getByRole('main').getByRole('alert')).toHaveText(
+      'Your role doesn’t allow that screen. The attempt was logged.',
+    );
+    const after = await deniedOf('clinician@example.com');
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
