@@ -73,6 +73,9 @@ test('pages behind sign-in redirect to the sign-in page', async ({ page }) => {
     '/team/reviews',
     '/team/merges',
     '/team/problem-reversals',
+    '/team/presets',
+    '/team/presets/items',
+    '/team/presets/flags',
   ]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/sign-in$/);
@@ -201,6 +204,50 @@ test('@responsive a Program Admin’s phase 4 screens, and a visit page, are acc
   await expectAccessible(page, 'visit page');
   await expectReflow(page, 'visit page');
   await expectNothingStored(page, 'visit page');
+  expect(csp).toEqual([]);
+});
+
+// Phase 5's Team setup (design 8.1): the hub, each area's page, and a preset's own page for each
+// kind that has one, opened as a Program Admin finds them, each in all three themes and at 320 px.
+const TEAM_SETUP_AREAS = ['Categories', 'Items', 'Bundles', 'Flags', 'Condition supplies', 'Bag minimums'];
+const PRESET_PAGES: Record<string, { href: string; title: string }> = {
+  Items: { href: '/team/presets/items/', title: 'Item' },
+  Bundles: { href: '/team/presets/bundles/', title: 'Bundle' },
+  Flags: { href: '/team/presets/flags/', title: 'Flag' },
+};
+
+test('@responsive a Program Admin’s Team setup pages, and a preset’s own page of each kind with one, are accessible in all three themes and reflow at 320 px', async ({
+  page,
+}) => {
+  test.slow();
+  await signIn(page, 'admin@example.com');
+  const csp = watchCsp(page);
+  const presets = () => portalNav(page).getByRole('link', { name: 'Presets', exact: true });
+  const sweep = async (label: string) => {
+    await expectAccessible(page, label);
+    await expectReflow(page, label);
+    await expectNothingStored(page, label);
+  };
+  await expect(presets()).toHaveAttribute('href', '/team/presets');
+  await presets().click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Presets');
+  await sweep('/team/presets');
+  for (const area of TEAM_SETUP_AREAS) {
+    await presets().click();
+    await page.getByRole('main').getByRole('link', { name: area, exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(area);
+    await expect(page).toHaveTitle(`${area} · Sineobex`);
+    await sweep(area);
+    const own = PRESET_PAGES[area];
+    if (!own) continue;
+    // The first of the area's presets, as the list shows it.
+    const link = page.locator(`main a[href^="${own.href}"]`).first();
+    const href = (await link.getAttribute('href'))!;
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await expect(page).toHaveTitle(`${own.title} · Sineobex`);
+    await sweep(href);
+  }
   expect(csp).toEqual([]);
 });
 
