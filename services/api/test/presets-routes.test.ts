@@ -1,4 +1,5 @@
-import { changedFixedFields, PLATFORM, type PresetKind } from '@sineobex/presets';
+import type { InstallSql } from '@sineobex/forms';
+import { changedFixedFields, installTeamPresets, PLATFORM, type PresetKind } from '@sineobex/presets';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
 import { logSpy } from './patient-fixtures.ts';
@@ -1279,12 +1280,72 @@ describe('a preset’s history (design 7)', () => {
     ]);
   });
 
+  it('writes no audit event: the history holds the admins’ reasons and bodies, no patient data (PL-13)', async () => {
+    const mark = await auditMark(h);
+    expect((await api.history('flag', idOf(team, 'flag.high'))).status).toBe(200);
+    expect(await auditAfter(h, mark)).toEqual([]);
+  });
+
   it('answers 404 for a preset that is not one of this kind in this team', async () => {
     refused(await api.history('bundle', idOf(team, 'flag.high')), 404, 'not_found');
     refused(await api.history('flag', idOf(other, 'flag.high')), 404, 'not_found');
     refused(await api.history('flag', '00000000-0000-4000-8000-0000000000ad'), 404, 'not_found');
-    // And the route that answers them finds a preset that is one.
+    // And the route that answers them finds a preset that is one, its ID in capitals too.
     expect((await api.history('flag', idOf(team, 'flag.high'))).status).toBe(200);
+    expect((await api.history('flag', idOf(team, 'flag.high').toUpperCase())).status).toBe(200);
+  });
+
+  it('orders the acts by the version each made, though a pull’s transaction began before', async () => {
+    // A phone's pull begins, an admin takes the update on offer, then the pull installs a newer
+    // version in place (5.2). Its event's time is when its transaction began, before the admin's.
+    const t = await presetsTeam(h, 'Routes History Order');
+    const a = presetsApi(h, t.teamId, t.admin);
+    const medium = idOf(t, 'flag.medium');
+    const edited = { ...(await currentBody(medium)), criteria: 'Demo: the team’s own criteria' };
+    expect((await a.edit('flag', medium, 1, edited, 'Demo: our words')).status).toBe(200);
+    const unrelease = [
+      releasePlatform([nextVersion('flag.medium', (b) => ({ ...b, criteria: 'Demo: the second' }))]),
+    ];
+    let go = () => {};
+    let pull: Promise<unknown> = Promise.resolve();
+    try {
+      expect((await runInstaller(h, t.teamId)).offer).toEqual({ flag: 1 });
+      let begun!: () => void;
+      const started = new Promise<void>((resolve) => (begun = resolve));
+      const gate = new Promise<void>((resolve) => (go = resolve));
+      const held = h.scratch.owner.begin(async (tx) => {
+        await tx`select 1`;
+        begun();
+        await gate;
+        return installTeamPresets(tx as unknown as InstallSql, t.teamId);
+      });
+      pull = held;
+      await started;
+      const taken = await a.takeUpdate('flag', medium, 2, false, 'Demo: the platform’s words');
+      expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+      unrelease.push(
+        releasePlatform([nextVersion('flag.medium', (b) => ({ ...b, criteria: 'Demo: the third' }))]),
+      );
+      go();
+      expect((await held).update).toEqual({ flag: 1 });
+      const history = (await a.history('flag', medium)).body as unknown as {
+        act: string;
+        version: number;
+        at: string;
+      }[];
+      expect(history.map((x) => [x.act, x.version])).toEqual([
+        ['installed', 1],
+        ['updated', 2],
+        ['update_taken', 3],
+        ['platform_updated', 4],
+      ]);
+      expect(Date.parse(history[3]!.at)).toBeLessThan(Date.parse(history[2]!.at));
+    } finally {
+      // A case that fails part way still lets the pull's transaction end.
+      go();
+      await pull.catch(() => {});
+      for (const undo of unrelease.reverse()) undo();
+    }
   });
 });
 
@@ -1726,6 +1787,28 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
     );
     // And the route that answers them finds a preset that is one: a stale base, here.
     refused(await a.takeUpdate('flag', ids('flag.high'), 1, false), 409, 'stale');
+  });
+
+  it('refuses an asNew sent as text, which would read as true, as malformed: nothing taken either way', async () => {
+    for (const asNew of ['false', 0, null]) {
+      const before = await footprint(h, u.teamId);
+      const r = await a.send('POST', `/v1/admin/presets/flag/${ids('flag.high')}/take-update`, {
+        baseVersion: 2,
+        reason: REASON,
+        asNew,
+      });
+      expect(r.status, JSON.stringify(asNew)).toBe(422);
+      expect(errorOf(r).code).toBe('validation_failed');
+      await expectNothingWritten(h, u.teamId, before);
+    }
+  });
+
+  it('finds a preset whose ID the address writes in capitals, as the database reads a UUID', async () => {
+    const high = ids('flag.high');
+    const r = await a.takeUpdate('flag', high.toUpperCase(), 2, false);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toMatchObject({ id: high, version: 3 });
+    expect(await headOf(h, high)).toMatchObject({ currentVersion: 3, customized: false, originVersion: 2 });
   });
 
   /** The platform's body of a version, with the team's ids where it names an entry by origin key. */

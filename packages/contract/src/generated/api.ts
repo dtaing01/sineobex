@@ -52,6 +52,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/presets/{kind}/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every act on a preset, oldest first, with who, when and why, and the body of its version */
+        get: operations["getPresetHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/presets/{kind}/{id}/restore": {
         parameters: {
             query?: never;
@@ -63,6 +80,23 @@ export interface paths {
         put?: never;
         /** Restore an archived preset at the version it is at, with a reason (recent sign-in) */
         post: operations["restorePreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/presets/{kind}/{id}/take-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take the platform’s newer version of a preset, in place or as a new preset, with a reason (recent sign-in) */
+        post: operations["takePresetUpdate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2270,6 +2304,30 @@ export interface components {
             description: string;
             key: components["schemas"]["Permission"];
         };
+        PresetEvent: {
+            /**
+             * @description installed and platform_updated are the platform installer’s; every other act is a person’s
+             * @enum {string}
+             */
+            act: "created" | "updated" | "archived" | "restored" | "update_taken" | "reordered" | "installed" | "platform_updated";
+            /** Format: date-time */
+            at: string;
+            /** @description That version’s body, in the shape of @sineobex/presets for its kind */
+            body: {
+                [key: string]: unknown;
+            };
+            /** @description Who acted; null for the platform installer */
+            by: components["schemas"]["UserRef"] | null;
+            /** @description Why, as the person gave it; null for the platform installer */
+            reason: string | null;
+            /**
+             * @description Whose version it is: the team’s, or the platform’s, installed or taken by a person
+             * @enum {string}
+             */
+            source: "team" | "platform";
+            /** @description The version the act made, or stood on: an archive and a restore make none */
+            version: number;
+        };
         PresetRevision: {
             /** @description The team’s revision this write took: a phone’s next pull gets the change */
             revision: number;
@@ -2781,6 +2839,25 @@ export interface components {
             /** @enum {string} */
             status: "accepted" | "rejected" | "conflict";
         };
+        TakePresetUpdate: {
+            /** @description Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation */
+            asNew: boolean;
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
+        TakePresetUpdateResult: {
+            /**
+             * Format: uuid
+             * @description The preset that now holds the update: this one, or the new one
+             */
+            id: string;
+            /** @description The team’s revision this write took: a phone’s next pull gets the change */
+            revision: number;
+            /** @description Its version now: 1 for a new preset */
+            version: number;
+        };
         TeamDevice: {
             appVersion: string;
             clockFlagged: boolean;
@@ -3287,6 +3364,66 @@ export interface operations {
             };
         };
     };
+    getPresetHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Its history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetEvent"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     restorePreset: {
         parameters: {
             query?: never;
@@ -3311,6 +3448,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PresetRevision"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    takePresetUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TakePresetUpdate"];
+            };
+        };
+        responses: {
+            /** @description The preset that holds the update, at its version now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TakePresetUpdateResult"];
                 };
             };
             /** @description Not signed in, or the session expired */
