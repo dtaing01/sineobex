@@ -33,7 +33,11 @@ export function createSql(url: string, options: { max?: number; prepare?: boolea
 export function createDatabase(sql: Sql): Database {
   return {
     async tx<T>(ctx: TxContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
-      const result = await sql.begin(async (raw) => {
+      // Read committed whatever the database or its role defaults to: a writer that takes the team
+      // lock first (lockTeamWrites, D32) decides on what it reads under it, which holds only while
+      // each statement sees what committed before it began. At repeatable read the snapshot would
+      // be this transaction's first statement's, the set_config below, taken before the lock.
+      const result = await sql.begin('isolation level read committed', async (raw) => {
         const tx = raw as unknown as Tx;
         // set_config(..., true) is `set local`: the values vanish when the transaction ends,
         // so a pooled connection never carries one request's team into the next.

@@ -1,4 +1,5 @@
 import { reorderRanks } from '@sineobex/presets';
+import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
 import { createTeam } from './patient-fixtures.ts';
@@ -79,8 +80,12 @@ function changedHeads(before: readonly Head[], after: readonly Head[]): Head[] {
  * them waits on it, then lets it go: the requests reach the lock together, and the database
  * decides their order.
  */
-async function togetherAtTheLock<T>(teamId: string, requests: (() => Promise<T>)[]): Promise<T[]> {
-  const holder = await h.scratch.owner.reserve();
+async function togetherAtTheLock<T>(
+  teamId: string,
+  requests: (() => Promise<T>)[],
+  at: Harness = h,
+): Promise<T[]> {
+  const holder = await at.scratch.owner.reserve();
   try {
     await holder`begin`;
     await holder`set local lock_timeout = '10s'`;
@@ -88,7 +93,7 @@ async function togetherAtTheLock<T>(teamId: string, requests: (() => Promise<T>)
     const answers = requests.map((r) => r());
     let waiting = 0;
     for (let i = 0; i < 500 && waiting < requests.length; i++) {
-      const [row] = await h.scratch.owner<{ n: number }[]>`
+      const [row] = await at.scratch.owner<{ n: number }[]>`
         select count(*)::int as n from pg_stat_activity
         where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'`;
       waiting = row!.n;
@@ -170,6 +175,66 @@ describe('every preset write takes the team lock first (design 4.2, 7; D32)', ()
       join sineobex.team_presets c on c.team_id = p.team_id and c.id = (v.body ->> 'categoryId')::uuid
       where p.team_id = ${team.teamId} and p.kind = 'item' and p.state = 'active' and c.state = 'archived'`;
     expect(dangling).toEqual([]);
+  });
+});
+
+describe('the team lock first, whatever isolation the database defaults to (design 4.2; D32)', () => {
+  // A write decides under the team lock on what it reads there, which holds only while each of its
+  // statements sees what committed before it began: read committed. A database or its role may
+  // default to another level (a parameter group, say), under which the snapshot is taken at the
+  // scope's first statement, before the lock, and the second of two writers acts on what it read
+  // before the first committed. So every transaction begins read committed itself (db/database.ts).
+  let rr: Harness;
+  let rrTeam: PresetsTeam;
+
+  beforeAll(async () => {
+    rr = await createHarness();
+    // Before the API's pool opens its first connection, so each one it opens takes the default.
+    const login = new URL(rr.scratch.appUrl).username;
+    await rr.scratch.owner.unsafe(
+      `alter role ${login} in database ${rr.scratch.name} set default_transaction_isolation = 'repeatable read'`,
+    );
+    rrTeam = await presetsTeam(rr, 'Revision Repeatable Read');
+  });
+  afterAll(() => rr?.close());
+
+  it('runs every scope transaction read committed, where the API’s role defaults to repeatable read', async () => {
+    // The default took: a connection of the API's role opens a transaction at repeatable read.
+    const raw = postgres(rr.scratch.appUrl, { max: 1, onnotice: () => {} });
+    try {
+      const [plain] = await raw.begin(
+        (t) => t<{ level: string }[]>`select current_setting('transaction_isolation') as level`,
+      );
+      expect(plain!.level).toBe('repeatable read');
+    } finally {
+      await raw.end();
+    }
+    const [scoped] = await rr.db.tx(
+      { teamId: rrTeam.teamId, userId: rrTeam.admin.userId },
+      (t) => t<{ level: string }[]>`select current_setting('transaction_isolation') as level`,
+    );
+    expect(scoped!.level).toBe('read committed');
+  });
+
+  it('a create and an archive of what it points at, at once: still one taken and the other refused', async () => {
+    const a = presetsApi(rr, rrTeam.teamId, rrTeam.admin);
+    const m = bodies(rrTeam);
+    const category = await createdPreset(a, 'order_category', m.order_category());
+    const [create, archive] = await togetherAtTheLock(
+      rrTeam.teamId,
+      [
+        () => a.create('item', m.item({ categoryId: category.id })),
+        () => a.archive('order_category', category.id, 1),
+      ],
+      rr,
+    );
+    expect(
+      [
+        [201, 409],
+        [409, 200],
+      ],
+      JSON.stringify([create!.body, archive!.body]),
+    ).toContainEqual([create!.status, archive!.status]);
   });
 });
 
