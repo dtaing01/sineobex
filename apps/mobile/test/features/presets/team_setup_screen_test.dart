@@ -7,6 +7,7 @@ import 'package:sineobex_field/design/tokens.dart';
 import 'package:sineobex_field/design/widgets/flag_pill.dart';
 import 'package:sineobex_field/features/encounters/home_tiles.dart' show EncounterTiles;
 import 'package:sineobex_field/features/presets/team_setup_screen.dart';
+import 'package:sineobex_field/features/sync/sync_cards.dart' show SyncStatusCard;
 import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart' show RefreshReason;
@@ -428,8 +429,8 @@ void main() {
     expect(find.text(teamSetupTitle), findsNothing);
   });
 
-  testWidgets('Home’s row sits under phase 4’s tiles, names itself to a screen reader and opens Team setup by its '
-      'tap action', (tester) async {
+  testWidgets('Home’s row sits below phase 4’s tiles and the sync card, before Lock now, names itself to a screen '
+      'reader and opens Team setup by its tap action', (tester) async {
     final handle = tester.ensureSemantics();
     final h = await signIn(tester);
     await pulledEveryKind(tester, h);
@@ -437,12 +438,11 @@ void main() {
     final row = find.bySemanticsLabel(RegExp('^$teamSetupTitle\n$teamSetupRowDetail\$'));
     await reveal(tester, row);
     expect(tester.getSemantics(row), isSemantics(isButton: true, hasTapAction: true));
-    expect(tester.getTopLeft(row).dy, greaterThanOrEqualTo(tester.getBottomLeft(find.byType(EncounterTiles)).dy));
-    expect(
-      tester.getBottomLeft(row).dy,
-      lessThan(tester.getTopLeft(find.text('Lock now')).dy),
-      reason: 'above the sync card and the buttons',
-    );
+    double top(Finder f) => tester.getTopLeft(f).dy;
+    double bottom(Finder f) => tester.getBottomLeft(f).dy;
+    expect(top(row), greaterThanOrEqualTo(bottom(find.byType(EncounterTiles, skipOffstage: false))));
+    expect(top(row), greaterThanOrEqualTo(bottom(find.byType(SyncStatusCard, skipOffstage: false))));
+    expect(bottom(row), lessThanOrEqualTo(top(find.text('Lock now', skipOffstage: false))));
     await semanticTap(tester, RegExp('^$teamSetupTitle\n'));
     expect(location(tester), teamSetupLocation);
     await expectShown(tester, find.text('Demo: Glucose test'));

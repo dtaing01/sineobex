@@ -114,7 +114,8 @@ class TeamSetupScreen extends ConsumerWidget {
   }
 }
 
-/// Home's row to Team setup, under phase 4's tiles: a button with its words in full.
+/// Home's row to Team setup, below phase 4's tiles with the team's own actions: a button with its
+/// words in full.
 class TeamSetupRow extends StatelessWidget {
   const TeamSetupRow({super.key});
 

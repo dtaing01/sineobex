@@ -57,12 +57,6 @@ class HomeScreen extends ConsumerWidget {
               ],
               // Phase 4 (lifecycle 9.9): notes to finish and the queues, under Needs attention.
               const EncounterTiles(),
-              // Phase 5 (design 8.2): the team's setup, under the tiles. Nothing of the team's shows
-              // while it is handed over.
-              if (snapshot.open && snapshot.frozen == null) ...[
-                const TeamSetupRow(),
-                const SizedBox(height: FieldSpace.s4),
-              ],
               if (snapshot.open) ...[
                 SyncStatusCard(snapshot: snapshot, onSyncNow: () => unawaited(sync.syncNow())),
                 if (index != null && index.eligible) ...[
@@ -79,6 +73,13 @@ class HomeScreen extends ConsumerWidget {
               if (state.user.teams.length > 1)
                 OutlinedButton(onPressed: () => session.selectTeam(null), child: const Text('Switch team')),
               const SizedBox(height: FieldSpace.s3),
+              // Phase 5 (design 8.2): the team's setup, below the tiles with the team's own actions, so
+              // what phase 2 placed above keeps its place. Nothing of the team's shows while it is
+              // handed over.
+              if (snapshot.open && snapshot.frozen == null) ...[
+                const TeamSetupRow(),
+                const SizedBox(height: FieldSpace.s3),
+              ],
               OutlinedButton(onPressed: session.lock, child: const Text('Lock now')),
               const SizedBox(height: FieldSpace.s3),
               TextButton(
