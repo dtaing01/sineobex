@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { lockTeam, takeRevision, type InstallSql } from '@sineobex/forms';
 import postgres, { type ReservedSql, type Sql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -265,6 +267,32 @@ describe('the team revision', () => {
       } finally {
         conn.release();
       }
+    });
+
+    // Any role may set a setting, so a record written by hand would pass 0023's guard with no step
+    // taken, and a phone holding the team's revision would never be sent the head. No right can stop
+    // it; the code is held to it here instead. Tests write one by hand, and prose may name it.
+    it('is the one writer of its record, which 0023’s guard alone reads', () => {
+      const root = fileURLToPath(new URL('../../', import.meta.url));
+      // Every file git holds or would add, so no build output.
+      const grep = spawnSync('git', ['grep', '-l', '-F', '--untracked', '-e', 'app.revision_'], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      expect(grep.status, grep.error?.message ?? grep.stderr).toBe(0);
+      const naming = grep.stdout
+        .split('\n')
+        .filter(
+          (path) =>
+            path !== '' &&
+            !/(^|\/)(test|e2e)\//.test(path) &&
+            !/\.(test|spec)\.[cm]?[jt]sx?$/.test(path) &&
+            !path.endsWith('.md'),
+        );
+      expect(naming.sort()).toEqual([
+        'db/migrations/0023_team_presets.sql',
+        'packages/forms/src/revision.ts',
+      ]);
     });
 
     it('leaves no gap when a writer rolls back: the next writer takes the same step', async () => {
