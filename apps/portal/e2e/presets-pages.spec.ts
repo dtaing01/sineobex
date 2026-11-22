@@ -3061,3 +3061,585 @@ test.describe('condition supplies, /team/presets/condition-supplies', () => {
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// Bag minimums (8.1; PRD main 477, 930): the team's switch and its template for new bags, each bag
+// with its minimums, and Add bag, filled from the template or from a bag chosen under Copy from
+// ------------------------------------------------------------------------------------------------
+
+type BagBody = { name: string; minimums: Minimum[] };
+
+test.describe('bag minimums, /team/presets/bag-minimums', () => {
+  const PAGE = '/team/presets/bag-minimums';
+  const OFF = 'Bag minimums are off. Nobody is reminded to restock.';
+  const ON =
+    'Bag minimums are on. When a bag drops below a minimum, after a visit or a count, the team is reminded to restock it, whether or not a route is planned.';
+  const MINIMUMS_HINT =
+    'The least of each item a bag should hold. While bag minimums are on, the team is reminded to restock a bag that holds fewer.';
+  const COPY_HINT =
+    'Choosing one fills the minimums below with its list, in place of what they hold. Change them before you add the bag, or later.';
+
+  /** A minimum as the page says it: "Socks: at least 10". */
+  const minimumOf = (names: Record<string, string>) => (m: Minimum) =>
+    `${names[m.itemId]}: at least ${m.min}`;
+
+  /** The team's active bags A to Z, as the page lists them. */
+  const bagsInOrder = async () =>
+    (await listed<BagBody>('bag'))
+      .filter((b) => b.state === 'active')
+      .sort((a, b) => byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+
+  /**
+   * A bag with a long name, made once: Copy from offers it, so a reflow check at 320 px also checks
+   * the choice never widens the page, whichever cases ran before.
+   */
+  async function longBag(): Promise<void> {
+    const name = 'Demo: Winter outreach van bag for the shelter and the river camp';
+    if ((await listed('bag')).some((b) => b.name === name)) return;
+    await made('bag', { name, minimums: [] });
+  }
+
+  test('@responsive a Program Admin opens Bag minimums from the hub and finds the team’s switch and template, and each bag with its minimums, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    await page.getByRole('main').getByRole('link', { name: 'Bag minimums', exact: true }).click();
+    await expect(page).toHaveURL(/\/team\/presets\/bag-minimums$/);
+    await expect(page).toHaveTitle('Bag minimums · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Bag minimums');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    const active = await bagsInOrder();
+    const removed = (await listed('bag')).length - active.length;
+    const names = await itemNames();
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText([
+      'Your team’s settings',
+      ...active.map((b) => b.name),
+      'Add a bag',
+      ...(removed > 0 ? [`Removed (${removed})`] : []),
+    ]);
+
+    // The switch and the template, as the team's settings hold them.
+    const settings = await settingsRow();
+    const team = main.getByRole('region', { name: 'Your team’s settings' });
+    await expect(team).toContainText(settings.body.bagMinimumsOn ? ON : OFF);
+    const on = settings.body.bagMinimumsOn;
+    await expect(
+      team
+        .getByRole('form', { name: on ? 'Turn bag minimums off' : 'Turn bag minimums on' })
+        .getByRole('button', { name: on ? 'Turn off' : 'Turn on' }),
+    ).toBeVisible();
+    const template = team.getByRole('form', { name: 'Template for new bags' });
+    await expect(template.getByRole('group', { name: 'Minimums' })).toHaveAccessibleDescription(
+      MINIMUMS_HINT,
+    );
+    await expect(template.getByRole('group', { name: /^Line \d+$/ })).toHaveCount(
+      settings.body.newBagMinimums.length,
+    );
+    await expect(
+      team
+        .getByRole('region', { name: 'History of the team’s settings' })
+        .getByRole('row', { name: /Added by Sineobex, version 1/ }),
+    ).toBeVisible();
+
+    // Each bag A to Z, as the API sorts names, with its minimums, its acts and its history.
+    for (const b of active) {
+      const section = main.getByRole('region', { name: b.name, exact: true });
+      const minimums = factOf(section, 'Minimums');
+      if (b.body.minimums.length === 0) await expect(minimums).toHaveText('None');
+      else await expect(minimums.getByRole('listitem')).toHaveText(b.body.minimums.map(minimumOf(names)));
+      await expect(section.getByRole('button', { name: `Edit ${b.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('button', { name: `Remove ${b.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('region', { name: `History of ${b.name}` })).toBeVisible();
+    }
+    // The demo team's own bag, from the seed.
+    await expect(
+      factOf(
+        main.getByRole('region', { name: 'Demo: Outreach backpack', exact: true }),
+        'Minimums',
+      ).getByRole('listitem'),
+    ).toHaveText([
+      'Demo: Rain poncho: at least 4',
+      'Socks: at least 10',
+      'Gauze: at least 20',
+      'Bandage: at least 20',
+      'Naloxone kit: at least 2',
+    ]);
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    // Add a bag: its name, and Copy from the template, to start with, or any bag A to Z.
+    const add = page.getByRole('form', { name: 'Add a bag' });
+    await expect(add.getByLabel('Name', { exact: true })).toHaveAccessibleDescription(
+      'Such as Wound care bag or Harm reduction bag. Don’t put patient names here.',
+    );
+    const copyFrom = add.getByLabel('Copy from');
+    await expect(copyFrom).toHaveAccessibleDescription(COPY_HINT);
+    await expect(copyFrom).toHaveValue('template');
+    await expect(copyFrom.getByRole('option')).toHaveText([
+      'The template for new bags',
+      ...active.map((b) => b.name),
+    ]);
+    await expect(add.getByRole('group', { name: 'Minimums' })).toHaveAccessibleDescription(MINIMUMS_HINT);
+    await expect(add.getByRole('group', { name: /^Line \d+$/ })).toHaveCount(
+      settings.body.newBagMinimums.length,
+    );
+
+    await expectAccessible(page, PAGE);
+    await expectReflow(page, PAGE);
+    await expectNothingStored(page, PAGE);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('the switch turns bag minimums on and off for the team, each with its own reason, and a form sent after another admin’s change is refused stale', async ({
+    page,
+  }) => {
+    test.slow();
+    const before = await settingsRow();
+    try {
+      // Off to start with, whatever an earlier case left: the platform's default (design 11, row 35).
+      if (before.body.bagMinimumsOn)
+        await changedMeanwhile<SettingsBody>('settings', before.id, (b) => ({ ...b, bagMinimumsOn: false }));
+      const start = await settingsRow();
+      await signIn(page, 'admin@example.com');
+      const traffic = watchTraffic(page);
+      await page.goto(PAGE);
+      const team = page.getByRole('region', { name: 'Your team’s settings' });
+      await expect(team).toContainText(OFF);
+
+      // Turned on, with a reason, asked first.
+      let form = team.getByRole('form', { name: 'Turn bag minimums on' });
+      await form.getByRole('button', { name: 'Turn on' }).click();
+      await expect(form.getByRole('alert')).toContainText('Give a reason of 3 to 300 characters.');
+      await expectAccessible(page, 'Turn bag minimums on, refused', { inPlace: true });
+      await form.getByLabel('Reason').fill('Demo: remind us to restock');
+      await form.getByRole('button', { name: 'Turn on' }).click();
+      form = team.getByRole('form', { name: 'Turn bag minimums off' });
+      await expect(form.getByRole('status')).toHaveText(
+        'Saved: bag minimums are on. It’s on the phones after their next sync.',
+      );
+      await expect(team).toContainText(ON);
+      await expect(team).not.toContainText(OFF);
+      const turnedOn = await settingsRow();
+      expect(turnedOn).toMatchObject({
+        version: start.version + 1,
+        body: { ...start.body, bagMinimumsOn: true },
+      });
+      await expect(
+        team
+          .getByRole('region', { name: 'History of the team’s settings' })
+          .getByRole('row', { name: new RegExp(`Edited, version ${turnedOn.version}`) }),
+      ).toContainText('Demo: remind us to restock');
+      await expectAccessible(page, 'Bag minimums on', { inPlace: true });
+      await expectReflow(page, 'Bag minimums on');
+
+      // Another admin changes the settings meanwhile: this form, at the version it showed, is stale.
+      await changedMeanwhile<SettingsBody>('settings', turnedOn.id, (b) => ({ ...b, problemCheckDays: 120 }));
+      await form.getByLabel('Reason').fill('Demo: too many reminders');
+      await form.getByRole('button', { name: 'Turn off' }).click();
+      await expect(form.getByRole('alert')).toHaveText(STALE);
+      await expect(form.getByLabel('Reason')).toHaveValue('Demo: too many reminders');
+      expect((await settingsRow()).body).toMatchObject({ bagMinimumsOn: true, problemCheckDays: 120 });
+
+      // Reloaded, turned off: 8.1's sentence again.
+      await page.reload();
+      form = team.getByRole('form', { name: 'Turn bag minimums off' });
+      await form.getByLabel('Reason').fill('Demo: too many reminders');
+      await form.getByRole('button', { name: 'Turn off' }).click();
+      await expect(team.getByRole('form', { name: 'Turn bag minimums on' }).getByRole('status')).toHaveText(
+        'Saved: bag minimums are off. It’s on the phones after their next sync.',
+      );
+      await expect(team).toContainText(OFF);
+      expect((await settingsRow()).body).toMatchObject({ bagMinimumsOn: false, problemCheckDays: 120 });
+
+      await expectNothingStored(page, 'Bag minimums after the switch');
+      expectOnlyIds(traffic.addresses);
+    } finally {
+      await settingsBack(before.body);
+    }
+  });
+
+  test('the template for new bags saves its lines with its own reason, says each line’s problem beside it, and is what Add bag starts from', async ({
+    page,
+  }) => {
+    test.slow();
+    const before = await settingsRow();
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    const socks = await named<ItemBody>('item', 'Socks');
+    try {
+      await signIn(page, 'admin@example.com');
+      await page.goto(PAGE);
+      const form = page.getByRole('form', { name: 'Template for new bags' });
+      const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+      const save = form.getByRole('button', { name: 'Save' });
+      const alert = form.getByRole('alert');
+      for (let n = before.body.newBagMinimums.length; n > 0; n--)
+        await form.getByRole('button', { name: `Take out line ${n}` }).click();
+
+      // A minimum of none: said on its line, and kept as typed.
+      await form.getByRole('button', { name: 'Add an item' }).click();
+      await line(1).getByLabel('Item').selectOption({ label: 'Gauze' });
+      await line(1).getByLabel('Minimum').fill('0');
+      await form.getByLabel('Reason').fill('Demo: what every bag starts with');
+      await save.click();
+      await expect(alert.locator('.px-alert__title')).toHaveText(
+        'Some fields need changing. Check each one below.',
+      );
+      await expect(alert.getByRole('link')).toHaveText([
+        'Minimum on line 1: Enter a whole number from 1 to 999.',
+      ]);
+      await expect(line(1).getByLabel('Minimum')).toHaveValue('0');
+      await expect(line(1).getByLabel('Minimum')).toHaveAttribute('aria-invalid', 'true');
+      await expectAccessible(page, 'Template for new bags, refused', { inPlace: true });
+      await expectReflow(page, 'Template for new bags, refused');
+
+      // One item on two lines: said on the later line.
+      await line(1).getByLabel('Minimum').fill('15');
+      await form.getByRole('button', { name: 'Add an item' }).click();
+      await line(2).getByLabel('Item').selectOption({ label: 'Gauze' });
+      await save.click();
+      await expect(alert.getByRole('link')).toHaveText(['Item on line 2: This item is on the list twice.']);
+
+      // Saved: the template at the settings' next version, the rest of them as they were.
+      await line(2).getByLabel('Item').selectOption({ label: 'Socks' });
+      await line(2).getByLabel('Minimum').fill('6');
+      await save.click();
+      await expect(form.getByRole('status')).toHaveText(
+        'Saved: Template for new bags. It’s on the phones after their next sync.',
+      );
+      const saved = await settingsRow();
+      expect(saved).toMatchObject({
+        version: before.version + 1,
+        body: {
+          ...before.body,
+          newBagMinimums: [
+            { itemId: gauze.id, min: 15 },
+            { itemId: socks.id, min: 6 },
+          ],
+        },
+      });
+      await expect(
+        page
+          .getByRole('region', { name: 'History of the team’s settings' })
+          .getByRole('row', { name: new RegExp(`Edited, version ${saved.version}`) }),
+      ).toContainText('Demo: what every bag starts with');
+
+      // Add a bag starts from it.
+      const add = page.getByRole('form', { name: 'Add a bag' });
+      const addLine = (n: number) => add.getByRole('group', { name: `Line ${n}`, exact: true });
+      await expect(add.getByLabel('Copy from')).toHaveValue('template');
+      await expect(add.getByRole('group', { name: /^Line \d+$/ })).toHaveCount(2);
+      await expect(addLine(1).getByLabel('Item')).toHaveValue(gauze.id);
+      await expect(addLine(1).getByLabel('Minimum')).toHaveValue('15');
+      await expect(addLine(2).getByLabel('Item')).toHaveValue(socks.id);
+      await expect(addLine(2).getByLabel('Minimum')).toHaveValue('6');
+    } finally {
+      await settingsBack(before.body);
+    }
+  });
+
+  test('adding a bag fills its minimums from the template, or from a bag chosen under Copy from, also after a refusal, stores the lines sent, and lists the new one', async ({
+    page,
+  }) => {
+    test.slow();
+    await longBag();
+    const before = await settingsRow();
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    const backpack = await named<BagBody>('bag', 'Demo: Outreach backpack');
+    const template = [{ itemId: gauze.id, min: 15 }];
+    try {
+      await changedMeanwhile<SettingsBody>('settings', before.id, (b) => ({
+        ...b,
+        newBagMinimums: template,
+      }));
+      await signIn(page, 'admin@example.com');
+      const traffic = watchTraffic(page);
+      await page.goto(PAGE);
+      const form = page.getByRole('form', { name: 'Add a bag' });
+      const name = form.getByLabel('Name', { exact: true });
+      const copyFrom = form.getByLabel('Copy from');
+      const reason = form.getByLabel('Reason');
+      const add = form.getByRole('button', { name: 'Add bag' });
+      const alert = form.getByRole('alert');
+      const lines = form.getByRole('group', { name: /^Line \d+$/ });
+      const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+      // What the form says: its answer, or each fill of the lines, whichever it holds now.
+      const said = form.getByRole('status').filter({ hasText: /\S/ });
+
+      // From the template, to start with.
+      await expect(copyFrom).toHaveValue('template');
+      await expect(lines).toHaveCount(1);
+      await expect(line(1).getByLabel('Item')).toHaveValue(gauze.id);
+      await expect(line(1).getByLabel('Minimum')).toHaveValue('15');
+
+      // Nothing typed: the reason is asked first. Then the name, the lines kept as sent.
+      await add.click();
+      await expect(alert).toBeFocused();
+      await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+      await reason.fill('Demo: a bag for foot care');
+      await add.click();
+      await expect(alert.getByRole('link')).toHaveText(['Name: This is too short or too small.']);
+      await expect(line(1).getByLabel('Minimum')).toHaveValue('15');
+      await expectAccessible(page, 'Add a bag, refused', { inPlace: true });
+      await expectReflow(page, 'Add a bag, refused');
+
+      // Copy from a bag, after the refusal: its list fills the lines, and a screen reader is told.
+      await copyFrom.selectOption({ label: 'Demo: Outreach backpack' });
+      await expect(said).toHaveText(
+        `Minimums filled from Demo: Outreach backpack: ${backpack.body.minimums.length} items.`,
+      );
+      await expect(lines).toHaveCount(backpack.body.minimums.length);
+      for (const [i, m] of backpack.body.minimums.entries()) {
+        await expect(line(i + 1).getByLabel('Item')).toHaveValue(m.itemId);
+        await expect(line(i + 1).getByLabel('Minimum')).toHaveValue(String(m.min));
+      }
+      // Chosen again, the template fills them again; then the bag, changed before it is added.
+      await copyFrom.selectOption({ label: 'The template for new bags' });
+      await expect(lines).toHaveCount(1);
+      await copyFrom.selectOption({ label: 'Demo: Outreach backpack' });
+      await expect(lines).toHaveCount(backpack.body.minimums.length);
+      await line(2).getByLabel('Minimum').fill('12');
+      await form.getByRole('button', { name: `Take out line ${backpack.body.minimums.length}` }).click();
+
+      // A name another bag holds, in any case: said beside the name, the lines kept.
+      await name.fill('demo: outreach backpack');
+      await add.click();
+      await expect(alert.locator('.px-alert__title')).toHaveText('Another bag already has this name.');
+      await expect(copyFrom).toHaveValue(backpack.id);
+      await expect(lines).toHaveCount(backpack.body.minimums.length - 1);
+      await expect(line(2).getByLabel('Minimum')).toHaveValue('12');
+
+      // Added: what the form held is what is stored, never the list it was copied from.
+      await name.fill('Demo: Foot care bag');
+      await add.click();
+      await expect(said).toHaveText('Added: Demo: Foot care bag. It’s on the phones after their next sync.');
+      const sent = backpack.body.minimums.slice(0, -1).map((m, i) => (i === 1 ? { ...m, min: 12 } : m));
+      expect(await named<BagBody>('bag', 'Demo: Foot care bag')).toMatchObject({
+        version: 1,
+        body: { name: 'Demo: Foot care bag', minimums: sent },
+      });
+      expect((await named<BagBody>('bag', 'Demo: Outreach backpack')).body).toEqual(backpack.body);
+      const names = await itemNames();
+      const footCare = page.getByRole('region', { name: 'Demo: Foot care bag', exact: true });
+      await expect(factOf(footCare, 'Minimums').getByRole('listitem')).toHaveText(sent.map(minimumOf(names)));
+      await expect(
+        footCare
+          .getByRole('region', { name: 'History of Demo: Foot care bag' })
+          .getByRole('row', { name: /Added, version 1/ }),
+      ).toContainText('Demo: a bag for foot care');
+      // The form is ready for the next one, from the template again; Copy from offers the new bag.
+      await expect(name).toHaveValue('');
+      await expect(copyFrom).toHaveValue('template');
+      await expect(lines).toHaveCount(1);
+      await expect(line(1).getByLabel('Minimum')).toHaveValue('15');
+      await expect(copyFrom.getByRole('option', { name: 'Demo: Foot care bag' })).toHaveCount(1);
+      await expect(reason).toHaveValue('');
+
+      // Another added on the first try, from the template as it starts.
+      await name.fill('Demo: Wound care bag');
+      await reason.fill('Demo: a bag for wound care');
+      await add.click();
+      await expect(said).toHaveText('Added: Demo: Wound care bag. It’s on the phones after their next sync.');
+      expect((await named<BagBody>('bag', 'Demo: Wound care bag')).body.minimums).toEqual(template);
+
+      await expectNothingStored(page, 'Bag minimums after an add');
+      expectOnlyIds(traffic.addresses);
+    } finally {
+      await settingsBack(before.body);
+    }
+  });
+
+  test('editing a bag saves its name and minimums at its next version with its history, refuses a save that changes nothing, and stays stale until reloaded', async ({
+    page,
+  }) => {
+    test.slow();
+    const socks = await named<ItemBody>('item', 'Socks');
+    const bandage = await named<ItemBody>('item', 'Bandage');
+    const id = await made('bag', { name: 'Demo: Shelter bag', minimums: [{ itemId: socks.id, min: 5 }] });
+    const bag = async () => (await listed<BagBody>('bag')).find((b) => b.id === id);
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const section = (name: string) => page.getByRole('region', { name, exact: true });
+    await section('Demo: Shelter bag')
+      .getByRole('button', { name: 'Edit Demo: Shelter bag', exact: true })
+      .click();
+    let form = section('Demo: Shelter bag').getByRole('form', { name: 'Edit Demo: Shelter bag' });
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Demo: Shelter bag');
+    await expect(line(1).getByLabel('Item')).toHaveValue(socks.id);
+    await expect(line(1).getByLabel('Minimum')).toHaveValue('5');
+
+    // Saved as it is: nothing changed.
+    await form.getByLabel('Reason').fill('Demo: more for the shelter');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText('You haven’t changed anything.');
+
+    // Renamed, a minimum raised and a line added: saved at version 2.
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Night shelter bag');
+    await line(1).getByLabel('Minimum').fill('8');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(2).getByLabel('Item').selectOption({ label: 'Bandage' });
+    await line(2).getByLabel('Minimum').fill('3');
+    await form.getByRole('button', { name: 'Save' }).click();
+    form = section('Demo: Night shelter bag').getByRole('form', { name: 'Edit Demo: Night shelter bag' });
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Night shelter bag. It’s on the phones after their next sync.',
+    );
+    expect(await bag()).toMatchObject({
+      version: 2,
+      body: {
+        name: 'Demo: Night shelter bag',
+        minimums: [
+          { itemId: socks.id, min: 8 },
+          { itemId: bandage.id, min: 3 },
+        ],
+      },
+    });
+    const saved = section('Demo: Night shelter bag');
+    await expect(factOf(saved, 'Minimums').getByRole('listitem')).toHaveText([
+      'Socks: at least 8',
+      'Bandage: at least 3',
+    ]);
+    await expect(
+      saved
+        .getByRole('region', { name: 'History of Demo: Night shelter bag' })
+        .getByRole('row', { name: /Edited, version 2/ }),
+    ).toContainText('Demo: more for the shelter');
+
+    // Another admin edits it meanwhile: this form, at version 2, is stale, and stays so.
+    expect(
+      await changedMeanwhile<BagBody>('bag', id, (b) => ({ ...b, minimums: [{ itemId: socks.id, min: 9 }] })),
+    ).toBe(3);
+    await line(1).getByLabel('Minimum').fill('10');
+    await form.getByLabel('Reason').fill('Demo: winter is coming');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    await expect(line(1).getByLabel('Minimum')).toHaveValue('10');
+    await expectAccessible(page, 'Edit a bag, stale', { inPlace: true });
+    await expectReflow(page, 'Edit a bag, stale');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    expect(await bag()).toMatchObject({ version: 3, body: { minimums: [{ itemId: socks.id, min: 9 }] } });
+    // Reloaded, the page shows their version.
+    await page.reload();
+    await expect(factOf(section('Demo: Night shelter bag'), 'Minimums')).toHaveText('Socks: at least 9');
+  });
+
+  test('Remove moves a bag to Removed, and Restore brings it back once no other has its name, each with its reason in its history', async ({
+    page,
+  }) => {
+    test.slow();
+    const socks = await named<ItemBody>('item', 'Socks');
+    const body = { name: 'Demo: Spare bag', minimums: [{ itemId: socks.id, min: 2 }] };
+    const id = await made('bag', body);
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    await page.getByRole('button', { name: 'Remove Demo: Spare bag', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Spare bag' });
+    await remove.getByLabel('Reason').fill('Demo: lent to another team');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}\\?done=removed&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Removed: Demo: Spare bag' })).toBeFocused();
+    await expect(page.getByRole('region', { name: 'Demo: Spare bag', exact: true })).toHaveCount(0);
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    await expect(removed).toContainText('Demo: Spare bag');
+    // A removed bag is offered for no copy.
+    await expect(
+      page.getByRole('form', { name: 'Add a bag' }).getByLabel('Copy from').getByRole('option', {
+        name: 'Demo: Spare bag',
+      }),
+    ).toHaveCount(0);
+    await expectAccessible(page, 'Bag minimums after a remove');
+
+    // Another bag has taken its name since: the restore is refused.
+    const taker = await made('bag', body);
+    await page.reload();
+    await removed.getByRole('button', { name: 'Restore Demo: Spare bag', exact: true }).click();
+    const restore = removed.getByRole('form', { name: 'Restore Demo: Spare bag' });
+    await restore.getByLabel('Reason').fill('Demo: back from the other team');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(restore.getByRole('alert')).toHaveText(
+      'Another bag has this name now. Rename that one first.',
+    );
+    await expect(restore.getByLabel('Reason')).toHaveValue('Demo: back from the other team');
+    await expectAccessible(page, 'Restore a bag, refused', { inPlace: true });
+    await expectReflow(page, 'Restore a bag, refused');
+
+    // Once that one is renamed, restored at the version it was removed at.
+    await changedMeanwhile<BagBody>('bag', taker, (b) => ({ ...b, name: 'Demo: Spare bag, second' }));
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}\\?done=restored&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Restored: Demo: Spare bag' })).toBeFocused();
+    const history = page
+      .getByRole('region', { name: 'Demo: Spare bag', exact: true })
+      .getByRole('region', { name: 'History of Demo: Spare bag' });
+    await expect(history.getByRole('row', { name: /Removed, version 1/ })).toContainText(
+      'Demo: lent to another team',
+    );
+    await expect(history.getByRole('row', { name: /Restored, version 1/ })).toContainText(
+      'Demo: back from the other team',
+    );
+    expect((await listed('bag')).find((b) => b.id === id)).toMatchObject({ state: 'active', version: 1 });
+
+    await expectNothingStored(page, 'Bag minimums after a restore');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('a stale sign-in sends the switch through /reauth and back to the page, turning nothing', async ({
+    page,
+  }) => {
+    const before = await settingsRow();
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const on = before.body.bagMinimumsOn;
+    const turn = page.getByRole('form', { name: on ? 'Turn bag minimums off' : 'Turn bag minimums on' });
+    await turn.getByLabel('Reason').fill('Demo: an old sign-in');
+    await turn.getByRole('button', { name: on ? 'Turn off' : 'Turn on' }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Fbag-minimums$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Bag minimums');
+    expect(await settingsRow()).toMatchObject({ version: before.version, body: before.body });
+  });
+
+  test('a stale sign-in sends a bag being added through /reauth and back to the page, adding nothing', async ({
+    page,
+  }) => {
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a bag' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Never added bag');
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Add bag' }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Fbag-minimums$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Bag minimums');
+    expect((await listed('bag')).some((b) => b.name === 'Demo: Never added bag')).toBe(false);
+  });
+
+  test('staff without the permission are refused Bag minimums at a typed address, logged once', async ({
+    page,
+  }) => {
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(PAGE);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    const after = await deniedOf('clinician@example.com');
+    // The bags were asked, and refused: nothing else was.
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
