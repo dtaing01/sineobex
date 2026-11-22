@@ -151,3 +151,8 @@
   width: 100%;
   max-width: 24rem;
 }
+/* A box for a number of days, with "days" in it (a setting's window): as wide as a few digits and
+   the word need, not the form's width. */
+.days {
+  max-width: 12rem;
+}
