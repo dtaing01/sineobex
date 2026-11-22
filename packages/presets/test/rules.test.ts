@@ -11,7 +11,8 @@ import type { PresetWriteInput } from '../src/index.ts';
 // The exports these tests are written to, in packages/presets/src/rules.ts and exported from the
 // package index (P0-rules):
 //
-//   export type PresetAct = 'create' | 'edit' | 'archive' | 'restore' | 'take_update' | 'take_update_as_new';
+//   export type PresetAct =
+//     | 'create' | 'edit' | 'archive' | 'restore' | 'take_update' | 'take_update_as_new' | 'reorder';
 //   export type PresetWriteInput = {
 //     act: PresetAct;
 //     kind: PresetKind;
@@ -101,6 +102,7 @@ describe('the rules of a preset’s acts', () => {
       'archive',
       'create',
       'edit',
+      'reorder',
       'restore',
       'take_update',
       'take_update_as_new',

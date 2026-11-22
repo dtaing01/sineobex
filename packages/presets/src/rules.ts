@@ -8,7 +8,15 @@
  */
 import type { PresetBody, PresetKind } from './schemas.ts';
 
-export type PresetAct = 'create' | 'edit' | 'archive' | 'restore' | 'take_update' | 'take_update_as_new';
+export type PresetAct =
+  | 'create'
+  | 'edit'
+  | 'archive'
+  | 'restore'
+  | 'take_update'
+  | 'take_update_as_new'
+  /** What a reorder does to each flag reorderRanks moves. */
+  | 'reorder';
 
 /** What an act reads, worked out by the route from the head, the body sent and the team's presets. */
 export type PresetWriteInput = {
@@ -16,7 +24,7 @@ export type PresetWriteInput = {
   kind: PresetKind;
   /** The head's; null for a create. */
   state: 'active' | 'archived' | null;
-  /** The version the admin's form was loaded at; null for a create and a restore, which take none. */
+  /** The version the admin's form was loaded at; null for a create, a restore and a reorder. */
   baseVersion: number | null;
   /** The head's; null for a create. */
   currentVersion: number | null;
@@ -104,6 +112,8 @@ const REFUSALS: { readonly [A in PresetAct]: readonly Check[] } = {
     nameTaken,
     pointsAtArchived,
   ],
+  // A stale order is reorderRanks' ids_mismatch; only an active flag has a rank in a list.
+  reorder: [archived],
 };
 
 const head = (stateAfter: 'active' | 'archived', versionAfter: number, customizedAfter: boolean) => ({
@@ -113,9 +123,10 @@ const head = (stateAfter: 'active' | 'archived', versionAfter: number, customize
 });
 
 /**
- * What an act does to the head, or why it is refused. An edit, an archive and a restore make the
- * copy the team's own (`customized`), so no platform update overwrites it; taking an update gives
- * it back to the platform.
+ * What an act does to the head, or why it is refused. An edit, an archive, a restore and a reorder
+ * make the copy the team's own (`customized`), so no platform update overwrites it (PRD main 387):
+ * a platform version of a flag the team ranked would put its own rank back. Taking an update gives
+ * the copy back to the platform.
  */
 export function presetWriteEffect(input: PresetWriteInput): PresetWriteEffect {
   const refused = REFUSALS[input.act].find(([, holds]) => holds(input));
@@ -134,6 +145,8 @@ export function presetWriteEffect(input: PresetWriteInput): PresetWriteEffect {
       return head('active', version + 1, false);
     case 'take_update_as_new':
       return { ...head('archived', version, true), created: head('active', 1, false) };
+    case 'reorder':
+      return head('active', version + 1, true);
   }
 }
 
@@ -141,7 +154,8 @@ export function presetWriteEffect(input: PresetWriteInput): PresetWriteEffect {
  * The tier's flags whose rank a new order changes, in that order: each flag's rank is its place,
  * counting from 1, times 10, so a flag added later can be placed between two. `ordered` must hold
  * every active flag of the tier once, and nothing else: a list loaded before another admin's
- * change would otherwise drop or revive a flag.
+ * change would otherwise drop or revive a flag. Each flag it answers is written as
+ * presetWriteEffect's `reorder` says: its next version, the team's own.
  */
 export function reorderRanks(
   current: readonly { id: string; rank: number }[],

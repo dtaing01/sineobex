@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { PRESETS, type InstallSql, type PlatformUpdateInput, type ResolvedNoteType } from '@sineobex/forms';
 import { describe, expect, it } from 'vitest';
-import { installTeamPresets, PLATFORM, planTeamPresets } from '../src/index.ts';
+import { installTeamPresets, PLATFORM, planTeamPresets, presetWriteEffect } from '../src/index.ts';
 import type { HeldPreset, PlanStep, PlatformEntry, PresetBody } from '../src/index.ts';
 
 // The preset installer (phase 5 design 5.2, D133): its plan, here, and on a stand-in for the
@@ -294,6 +294,32 @@ describe('the preset installer', () => {
         },
         { effect: 'offer', originKey: GAUZE.originKey, kind: 'item', platformVersion: 2, id: id(3) },
         { effect: 'offer', originKey: FLAG.originKey, kind: 'flag', platformVersion: 2, id: id(1) },
+      ]);
+    });
+
+    it('only offers a newer version of a flag the team reordered: its rank is the team’s', () => {
+      const after = presetWriteEffect({
+        act: 'reorder',
+        kind: 'flag',
+        state: 'active',
+        baseVersion: null,
+        currentVersion: 1,
+        changedFixed: false,
+        sameBody: false,
+        referencedBy: {},
+        archivedRefs: 0,
+        nameTaken: false,
+        updateOnOffer: false,
+        updateChangesFixed: false,
+      });
+      if ('refuse' in after) throw new Error(`a reorder was refused: ${after.refuse}`);
+      const reordered = held(FLAG, 1, {
+        currentVersion: after.versionAfter,
+        customized: after.customizedAfter,
+        body: { ...FLAG.body, rank: 20 } as PresetBody,
+      });
+      expect(effects(plan([reordered], [v2(FLAG, { criteria: 'Demo: below freezing.' })]))).toEqual([
+        'flag.demo_frost offer',
       ]);
     });
 
