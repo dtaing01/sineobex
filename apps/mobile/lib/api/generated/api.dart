@@ -4698,6 +4698,33 @@ class PresetEvent {
       };
 }
 
+class PresetPlatformUpdate {
+  const PresetPlatformUpdate({
+    required this.body,
+    required this.changesFixed,
+    required this.platformVersion,
+  });
+
+  /// The platform’s body, naming the team’s presets: what taking it writes
+  final Map<String, Object?> body;
+  /// The fields fixed at creation it changes; with any, it is taken only as a new preset
+  final List<String> changesFixed;
+  /// Send it back as platformVersion to take this update and no other
+  final int platformVersion;
+
+  factory PresetPlatformUpdate.fromJson(Map<String, dynamic> json) => PresetPlatformUpdate(
+        body: Map<String, Object?>.from(json['body'] as Map),
+        changesFixed: (json['changesFixed'] as List<dynamic>).map((e) => e as String).toList(),
+        platformVersion: (json['platformVersion'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'body': body,
+        'changesFixed': changesFixed.map((e) => e).toList(),
+        'platformVersion': platformVersion,
+      };
+}
+
 class PresetRevision {
   const PresetRevision({
     required this.revision,
@@ -4723,6 +4750,7 @@ class PresetView {
     required this.name,
     required this.referencedBy,
     required this.state,
+    required this.update,
     required this.updateChangesFixed,
     required this.updateOnOffer,
     required this.version,
@@ -4738,6 +4766,8 @@ class PresetView {
   final Map<String, int> referencedBy;
   /// An archived preset is offered for no new work
   final PresetViewState state;
+  /// The update on offer, for the person to review before taking it; null when none is
+  final PresetPlatformUpdate? update;
   /// The update changes a field fixed at creation, so it is taken only as a new preset
   final bool updateChangesFixed;
   /// A newer platform version is on offer to take
@@ -4752,6 +4782,7 @@ class PresetView {
         name: json['name'] as String,
         referencedBy: (json['referencedBy'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
         state: PresetViewState.fromJson(json['state'] as String),
+        update: json['update'] == null ? null : PresetPlatformUpdate.fromJson(json['update'] as Map<String, dynamic>),
         updateChangesFixed: json['updateChangesFixed'] as bool,
         updateOnOffer: json['updateOnOffer'] as bool,
         version: (json['version'] as num).toInt(),
@@ -4764,6 +4795,7 @@ class PresetView {
         'name': name,
         'referencedBy': referencedBy.map((k, v) => MapEntry(k, v)),
         'state': state.toJson(),
+        'update': update == null ? null : update!.toJson(),
         'updateChangesFixed': updateChangesFixed,
         'updateOnOffer': updateOnOffer,
         'version': version,
@@ -6282,6 +6314,7 @@ class TakePresetUpdate {
   const TakePresetUpdate({
     required this.asNew,
     required this.baseVersion,
+    required this.platformVersion,
     required this.reason,
   });
 
@@ -6289,18 +6322,22 @@ class TakePresetUpdate {
   final bool asNew;
   /// The version you opened: any other is refused as stale, with the current one
   final int baseVersion;
+  /// The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale
+  final int platformVersion;
   /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
   final String reason;
 
   factory TakePresetUpdate.fromJson(Map<String, dynamic> json) => TakePresetUpdate(
         asNew: json['asNew'] as bool,
         baseVersion: (json['baseVersion'] as num).toInt(),
+        platformVersion: (json['platformVersion'] as num).toInt(),
         reason: json['reason'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'asNew': asNew,
         'baseVersion': baseVersion,
+        'platformVersion': platformVersion,
         'reason': reason,
       };
 }

@@ -87,6 +87,10 @@ const PresetRevision = z.object({ revision: Revision }).openapi('PresetRevision'
 const TakePresetUpdate = z
   .object({
     baseVersion: BaseVersion,
+    platformVersion: z.number().int().min(1).max(MAX_VERSION).openapi({
+      description:
+        'The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale',
+    }),
     reason: PresetReason,
     asNew: z.boolean().openapi({
       description:
@@ -161,6 +165,21 @@ const ReorderFlagsResult = z
   })
   .openapi('ReorderFlagsResult');
 
+/** The platform's newer version on offer to a copy, as taking it would write it. */
+const PresetPlatformUpdate = z
+  .object({
+    platformVersion: z.number().int().min(1).openapi({
+      description: 'Send it back as platformVersion to take this update and no other',
+    }),
+    body: z.record(z.string(), z.unknown()).openapi({
+      description: 'The platform’s body, naming the team’s presets: what taking it writes',
+    }),
+    changesFixed: z.array(z.string()).openapi({
+      description: 'The fields fixed at creation it changes; with any, it is taken only as a new preset',
+    }),
+  })
+  .openapi('PresetPlatformUpdate');
+
 const PresetView = z
   .object({
     id: Uuid,
@@ -175,6 +194,9 @@ const PresetView = z
     updateOnOffer: z.boolean().openapi({ description: 'A newer platform version is on offer to take' }),
     updateChangesFixed: z.boolean().openapi({
       description: 'The update changes a field fixed at creation, so it is taken only as a new preset',
+    }),
+    update: z.union([PresetPlatformUpdate, z.null()]).openapi({
+      description: 'The update on offer, for the person to review before taking it; null when none is',
     }),
     referencedBy: z.record(z.string(), z.number().int().min(1)).openapi({
       description:
@@ -326,6 +348,14 @@ function viewOf(team: TeamPresets, preset: HeldPreset): z.infer<typeof PresetVie
     // On offer exactly when taking it would not be refused no_update: the store reads it the same way.
     updateOnOffer: update !== null,
     updateChangesFixed: update !== null && update.changesFixed.length > 0,
+    update:
+      update === null
+        ? null
+        : {
+            platformVersion: update.entry.platformVersion,
+            body: update.body as Record<string, unknown>,
+            changesFixed: update.changesFixed,
+          },
     referencedBy: referencedBy(team, preset.id),
     body: preset.body as Record<string, unknown>,
   };
@@ -436,9 +466,12 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
   // place, such an update is refused fixed_field.
   app.openapi(takeUpdateRoute, async (c) => {
     const { kind, id } = presetIn(c.req.valid('param'));
-    const { baseVersion, asNew, reason } = c.req.valid('json');
+    const { baseVersion, platformVersion, asNew, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
-    return c.json(await takePlatformUpdate(scope, { kind, id, baseVersion, asNew, reason }), 200);
+    return c.json(
+      await takePlatformUpdate(scope, { kind, id, baseVersion, platformVersion, asNew, reason }),
+      200,
+    );
   });
 
   // PLAN-OPEN (PL-13): is reading the team's presets audited? No, nor their history: it holds the

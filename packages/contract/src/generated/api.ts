@@ -2345,6 +2345,16 @@ export interface components {
             /** @description The version the act made, or stood on: an archive and a restore make none */
             version: number;
         };
+        PresetPlatformUpdate: {
+            /** @description The platform’s body, naming the team’s presets: what taking it writes */
+            body: {
+                [key: string]: unknown;
+            };
+            /** @description The fields fixed at creation it changes; with any, it is taken only as a new preset */
+            changesFixed: string[];
+            /** @description Send it back as platformVersion to take this update and no other */
+            platformVersion: number;
+        };
         PresetRevision: {
             /** @description The team’s revision this write took: a phone’s next pull gets the change */
             revision: number;
@@ -2381,6 +2391,8 @@ export interface components {
              * @enum {string}
              */
             state: "active" | "archived";
+            /** @description The update on offer, for the person to review before taking it; null when none is */
+            update: components["schemas"]["PresetPlatformUpdate"] | null;
             /** @description The update changes a field fixed at creation, so it is taken only as a new preset */
             updateChangesFixed: boolean;
             /** @description A newer platform version is on offer to take */
@@ -2876,6 +2888,8 @@ export interface components {
             asNew: boolean;
             /** @description The version you opened: any other is refused as stale, with the current one */
             baseVersion: number;
+            /** @description The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale */
+            platformVersion: number;
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
         };

@@ -170,6 +170,7 @@ describe('every act takes the team lock first, then one revision (design 4.2)', 
             kind: 'flag',
             id: idOf(team, 'flag.high'),
             baseVersion: 1,
+            platformVersion: 1,
             asNew: false,
             reason: REASON,
           }).catch((e: unknown) => e),
@@ -410,6 +411,7 @@ describe('taking a platform update (design 5.1)', () => {
         kind: 'flag',
         id,
         baseVersion: 2,
+        platformVersion: 2,
         asNew: false,
         reason: REASON,
       });
@@ -451,6 +453,7 @@ describe('taking a platform update (design 5.1)', () => {
         kind: 'flag',
         id,
         baseVersion: 2,
+        platformVersion: 2,
         asNew: true,
         reason: REASON,
       });
@@ -574,6 +577,7 @@ describe('a new preset, as presetWriteEffect answers it (design 5.1, 13.3)', () 
         kind: 'flag',
         id,
         baseVersion: version,
+        platformVersion: 2,
         asNew: true,
         reason: REASON,
       });

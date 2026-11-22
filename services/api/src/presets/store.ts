@@ -492,11 +492,16 @@ function refusal(
     referencedBy?: Partial<Record<PresetKind, number>>;
     archived?: PresetProblem[];
     act?: PresetAct;
+    /** A take-update's: the platform version on offer now, null when none is. */
+    platformVersion?: number | null;
   } = {},
 ): ApiError {
   const details: Record<string, unknown> | undefined =
     code === 'stale'
-      ? { currentVersion: context.preset?.currentVersion }
+      ? {
+          currentVersion: context.preset?.currentVersion,
+          ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
+        }
       : code === 'fixed_field'
         ? { fields: context.fields ?? [] }
         : code === 'referenced'
@@ -717,11 +722,20 @@ function stateChange(
  * new preset, the platform's body becomes a new preset that takes the copy's origin key, and the old
  * copy is archived, if it was active, and is no longer the platform's; a field fixed at creation
  * may change that way, since the old preset keeps its meaning. Either way the version is the
- * platform's, by nobody (0023), while the event names the person and the reason.
+ * platform's, by nobody (0023), while the event names the person and the reason. Only the
+ * platform version the person reviewed is taken: any pull may offer a newer one meanwhile.
  */
 export function takePlatformUpdate(
   scope: PresetWriteScope,
-  input: { kind: PresetKind; id: string; baseVersion: number; asNew: boolean; reason: string },
+  input: {
+    kind: PresetKind;
+    id: string;
+    baseVersion: number;
+    /** The platform version the person was shown on offer (the list's `update`). */
+    platformVersion: number;
+    asNew: boolean;
+    reason: string;
+  },
 ): Promise<{ id: string; version: number; revision: number }> {
   const act: PresetAct = input.asNew ? 'take_update_as_new' : 'take_update';
   return presetWrite(scope, input.reason, async (w) => {
@@ -730,12 +744,16 @@ export function takePlatformUpdate(
     const update = platformUpdateOf(w.team, preset);
     const referenced = referencedBy(w.team, preset.id);
     const checked = update && (await problemsOf(w, kind, update.body, input.asNew ? null : preset.id));
+    // The person's form was loaded at the copy's version and at the platform version it offered: a
+    // newer one on offer since is a change they have not seen, so the take is stale, as a newer
+    // copy would make it (5.1), and they are shown it before they take it.
+    const reviewed = update === null || update.entry.platformVersion === input.platformVersion;
     const effect = presetWriteEffect(
       effectInput({
         act,
         kind,
         state: preset.state,
-        baseVersion: input.baseVersion,
+        baseVersion: reviewed ? input.baseVersion : null,
         currentVersion: preset.currentVersion,
         referencedBy: referenced,
         archivedRefs: checked?.archived.length ?? 0,
@@ -752,6 +770,7 @@ export function takePlatformUpdate(
         fields: update?.changesFixed,
         referencedBy: referenced,
         archived: checked?.archived,
+        platformVersion: update?.entry.platformVersion ?? null,
       });
     // An update the team's presets refuse for anything else is not written either.
     if (checked!.others.length > 0) throw refusedBody(checked!.problems);

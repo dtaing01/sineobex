@@ -3611,6 +3611,33 @@
         ],
         "type": "object"
       },
+      "PresetPlatformUpdate": {
+        "properties": {
+          "body": {
+            "additionalProperties": {},
+            "description": "The platform’s body, naming the team’s presets: what taking it writes",
+            "type": "object"
+          },
+          "changesFixed": {
+            "description": "The fields fixed at creation it changes; with any, it is taken only as a new preset",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "platformVersion": {
+            "description": "Send it back as platformVersion to take this update and no other",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platformVersion",
+          "body",
+          "changesFixed"
+        ],
+        "type": "object"
+      },
       "PresetRevision": {
         "properties": {
           "revision": {
@@ -3658,6 +3685,17 @@
             ],
             "type": "string"
           },
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PresetPlatformUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The update on offer, for the person to review before taking it; null when none is"
+          },
           "updateChangesFixed": {
             "description": "The update changes a field fixed at creation, so it is taken only as a new preset",
             "type": "boolean"
@@ -3680,6 +3718,7 @@
           "customized",
           "updateOnOffer",
           "updateChangesFixed",
+          "update",
           "referencedBy",
           "body"
         ],
@@ -5313,6 +5352,12 @@
             "minimum": 1,
             "type": "integer"
           },
+          "platformVersion": {
+            "description": "The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
           "reason": {
             "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
             "maxLength": 300,
@@ -5322,6 +5367,7 @@
         },
         "required": [
           "baseVersion",
+          "platformVersion",
           "reason",
           "asNew"
         ],

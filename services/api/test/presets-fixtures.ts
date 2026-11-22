@@ -165,8 +165,21 @@ export function presetsApi(h: Harness, teamId: string, who: Person, options: { t
       send('POST', at(kind, id, 'archive'), { baseVersion, reason }),
     restore: (kind: string, id: string, reason: unknown = REASON) =>
       send('POST', at(kind, id, 'restore'), { reason }),
-    takeUpdate: (kind: string, id: string, baseVersion: number, asNew: boolean, reason: unknown = REASON) =>
-      send('POST', at(kind, id, 'take-update'), { baseVersion, reason, asNew }),
+    takeUpdate: async (
+      kind: string,
+      id: string,
+      baseVersion: number,
+      asNew: boolean,
+      reason: unknown = REASON,
+      platformVersion?: number,
+    ) =>
+      send('POST', at(kind, id, 'take-update'), {
+        baseVersion,
+        // Unless a case names another, the person reviewed the version on offer when they send.
+        platformVersion: platformVersion ?? (await offeredTo(h, id)),
+        reason,
+        asNew,
+      }),
     history: (kind: string, id: string) => send('GET', at(kind, id, 'history')),
     reorder: (tier: string, ids: readonly string[], reason: unknown = REASON) =>
       send('POST', '/v1/admin/preset-order/flag', { tier, ids, reason }),
@@ -180,6 +193,16 @@ export function presetsApi(h: Harness, teamId: string, who: Person, options: { t
   };
 }
 export type PresetsApi = ReturnType<typeof presetsApi>;
+
+/**
+ * The platform version on offer to a preset, as its head records it (platform_latest): what the
+ * list showed a person who takes it. 1 for a preset of the team's own, or an ID that names none.
+ */
+async function offeredTo(h: Harness, id: string): Promise<number> {
+  const [row] = await h.scratch.owner<{ latest: number | null }[]>`
+    select platform_latest as latest from sineobex.team_presets where id::text = lower(${id})`;
+  return row?.latest ?? 1;
+}
 
 /** A preset made through the create route, which must answer 201. */
 export async function createdPreset(

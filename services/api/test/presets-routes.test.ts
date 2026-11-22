@@ -48,7 +48,7 @@ import {
 //   POST /v1/admin/presets/{kind}/{id}/restore           Admin, recent       200 {revision}
 //        {reason}
 //   POST /v1/admin/presets/{kind}/{id}/take-update       Admin, recent       200 {id, version, revision}
-//        {baseVersion, reason, asNew}                                         (as new: the new preset's
+//        {baseVersion, platformVersion, reason, asNew}                        (as new: the new preset's
 //                                                                             id, version 1)
 //   GET  /v1/admin/presets/{kind}/{id}/history           Admin               200 [event]
 //   POST /v1/admin/preset-order/flag                     Admin, recent       200 {changed}
@@ -56,14 +56,17 @@ import {
 //
 // {kind} is one of the eight kinds, else 422 validation_failed. {id} names a preset of that kind in
 // the caller's team, else 404 not_found (an unknown ID, another kind's, another team's). A list
-// row is {id, name, state, version, customized, updateOnOffer, updateChangesFixed, referencedBy,
-// body}, one for every preset of the kind, archived ones included: `referencedBy` counts the active
-// presets whose body names it, by kind, only the kinds that do ({} when none); `updateOnOffer` is
-// platform_latest above origin_version, and `updateChangesFixed` whether that platform version
-// changes a field fixed at creation (false with no offer). A history row is {act, version, source,
-// by, at, reason, body} for each of the preset's events, oldest first: `source` and `body` the
-// version the act made or stood on, `by` {userId, displayName}, null for the installer, `at` the
-// event's time as an ISO 8601 string, `reason` null for the installer.
+// row is {id, name, state, version, customized, updateOnOffer, updateChangesFixed, update,
+// referencedBy, body}, one for every preset of the kind, archived ones included: `referencedBy`
+// counts the active presets whose body names it, by kind, only the kinds that do ({} when none);
+// `updateOnOffer` is platform_latest above origin_version, and `updateChangesFixed` whether that
+// platform version changes a field fixed at creation (false with no offer); `update` is that
+// version for review, {platformVersion, body (the platform's, naming the team's presets),
+// changesFixed}, or null with no offer, and a take-update sends back the platformVersion it
+// reviewed. A history row is {act, version, source, by, at, reason, body} for each of the preset's
+// events, oldest first: `source` and `body` the version the act made or stood on, `by` {userId,
+// displayName}, null for the installer, `at` the event's time as an ISO 8601 string, `reason` null
+// for the installer.
 //
 // A write's reason is `reason`: a string, trimmed, 3 to 300 characters counted in code points, as
 // the database counts them; anything else is 422 validation_failed, with `reason` among
@@ -81,7 +84,9 @@ import {
 //   409 name_taken       another active preset of the kind holds the name, as the database folds
 //                        names (lower(), the unique index team_presets_active_name); a 23505 on
 //                        that index is this answer too, never a 500.
-//   409 stale            details.currentVersion: baseVersion is not the head's current version.
+//   409 stale            details.currentVersion: baseVersion is not the head's current version;
+//                        or a take-update's platformVersion is not the one on offer now, which
+//                        details.platformVersion gives (null when none is).
 //   409 archived, not_archived, referenced (details.referencedBy, as a list row's), not_removable,
 //       no_update
 //   409 fixed_field      take-update in place, details.fields; 422 fixed_field on an edit,
@@ -500,6 +505,7 @@ describe('a request that is not well formed (design 7)', () => {
         () =>
           api.send('POST', `/v1/admin/presets/flag/${id}/take-update`, {
             baseVersion: 1,
+            platformVersion: 1,
             reason: REASON,
             asNew: 'yes',
           }),
@@ -1842,6 +1848,7 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
       const before = await footprint(h, u.teamId);
       const r = await a.send('POST', `/v1/admin/presets/flag/${ids('flag.high')}/take-update`, {
         baseVersion: 2,
+        platformVersion: 2,
         reason: REASON,
         asNew,
       });
@@ -1873,7 +1880,7 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
   }
 });
 
-describe('taking a platform update: what it names and what it renames (design 4.1, 5.1; risk 12.1.1)', () => {
+describe('taking a platform update: what was reviewed, what it names and what it renames (design 4.1, 5.1, 8.1; risk 12.1.1)', () => {
   // A team of its own, each case releasing the version it takes, so no case leans on another's.
   let v: PresetsTeam;
   let a: PresetsApi;
@@ -1895,6 +1902,152 @@ describe('taking a platform update: what it names and what it renames (design 4.
 
   const rowOf = async (kind: PresetKind, id: string) =>
     ((await a.list(kind)).body as unknown as Record<string, unknown>[]).find((r) => r.id === id);
+
+  /** The update a list row offers for review. */
+  type Offered = { platformVersion: number; body: Body; changesFixed: string[] } | null;
+
+  it('lists the update on offer as taking it would write it, for review, and none where none is', async () => {
+    // Team setup's Review shows what Replace with the new version writes (8.1): the platform's body
+    // with the team's IDs, which version it is, and what it changes that is fixed at creation.
+    const winter = idOf(v, 'bundle.winter_frostbite');
+    const version = await edited('bundle', winter, (b) => ({ ...b, prompt: 'Demo: ask about their feet.' }));
+    const release = nextVersion('bundle.winter_frostbite', (b) => ({
+      ...b,
+      lines: [...(b.lines as Body[]), { itemId: 'item.gauze', qty: 1, core: false }],
+    }));
+    const undo = releasePlatform([release]);
+    try {
+      await runInstaller(h, v.teamId);
+      const row = await rowOf('bundle', winter);
+      expect(row).toMatchObject({ version, updateOnOffer: true, updateChangesFixed: false });
+      expect(row!.update).toEqual({
+        platformVersion: release.platformVersion,
+        body: {
+          ...release.body,
+          lines: [
+            { itemId: idOf(v, 'item.socks'), qty: 1, core: true },
+            { itemId: idOf(v, 'item.handwarmers'), qty: 1, core: true },
+            { itemId: idOf(v, 'item.gauze'), qty: 1, core: false },
+          ],
+        },
+        changesFixed: [],
+      });
+      // A copy offered nothing, and a team's own preset, offer nothing to review.
+      expect((await rowOf('bundle', idOf(v, 'bundle.allergy')))!.update).toBeNull();
+      const own = await createdPreset(a, 'bundle', m.bundle());
+      expect((await rowOf('bundle', own.id))!.update).toBeNull();
+    } finally {
+      undo();
+    }
+  });
+
+  it('refuses as stale, in place, an update newer than the one the person reviewed: nothing written', async () => {
+    // Any phone's pull runs the installer, which offers a newer release without moving the copy's
+    // own version: only the platform version sent back tells the update reviewed from one that is not.
+    const frost = idOf(v, 'flag.frost_risk');
+    const version = await edited('flag', frost, (b) => ({ ...b, criteria: 'Demo: our frost criteria' }));
+    const reviewed = nextVersion('flag.frost_risk', (b) => ({
+      ...b,
+      criteria: 'Demo: the criteria reviewed',
+    }));
+    const undoReviewed = releasePlatform([reviewed]);
+    try {
+      await runInstaller(h, v.teamId);
+      const shown = (await rowOf('flag', frost))!.update as Offered;
+      expect(shown).toEqual({
+        platformVersion: reviewed.platformVersion,
+        body: reviewed.body,
+        changesFixed: [],
+      });
+      const unseen = nextVersion('flag.frost_risk', (b) => ({
+        ...b,
+        criteria: 'Demo: criteria nobody reviewed',
+        color: 'red',
+      }));
+      const undoUnseen = releasePlatform([unseen]);
+      try {
+        expect((await presetsApi(h, v.teamId, v.staff).pull()).status).toBe(200);
+        const details = await refusedUnwritten(
+          () => a.takeUpdate('flag', frost, version, false, REASON, shown!.platformVersion),
+          409,
+          'stale',
+          v.teamId,
+        );
+        expect(details).toEqual({ currentVersion: version, platformVersion: unseen.platformVersion });
+        // Reloaded, the person is shown the newer one, and takes that.
+        expect(((await rowOf('flag', frost))!.update as Offered)!.platformVersion).toBe(
+          unseen.platformVersion,
+        );
+        const r = await a.takeUpdate('flag', frost, version, false, REASON, unseen.platformVersion);
+        expect(r.status, JSON.stringify(r.body)).toBe(200);
+        expect(await currentBody(frost)).toEqual(unseen.body);
+      } finally {
+        undoUnseen();
+      }
+    } finally {
+      undoReviewed();
+    }
+  });
+
+  it('refuses as stale, as new, an update newer than the one reviewed: a fixed field is never changed unseen', async () => {
+    // The release reviewed changes only the criteria; the one after it turns sensitive off, which
+    // taken as a new flag would show its patients' flag to readers it is hidden from today.
+    const pregnancy = idOf(v, 'flag.pregnancy');
+    const version = await edited('flag', pregnancy, (b) => ({ ...b, criteria: 'Demo: our own words' }));
+    const reviewed = nextVersion('flag.pregnancy', (b) => ({ ...b, criteria: 'Demo: the words reviewed' }));
+    const undoReviewed = releasePlatform([reviewed]);
+    try {
+      await runInstaller(h, v.teamId);
+      expect(await rowOf('flag', pregnancy)).toMatchObject({ updateChangesFixed: false });
+      const unseen = nextVersion('flag.pregnancy', (b) => ({ ...b, sensitive: false }));
+      const undoUnseen = releasePlatform([unseen]);
+      try {
+        expect((await presetsApi(h, v.teamId, v.staff).pull()).status).toBe(200);
+        const details = await refusedUnwritten(
+          () => a.takeUpdate('flag', pregnancy, version, true, REASON, reviewed.platformVersion),
+          409,
+          'stale',
+          v.teamId,
+        );
+        expect(details).toEqual({ currentVersion: version, platformVersion: unseen.platformVersion });
+        // What the person is shown now says the field it changes.
+        expect(await rowOf('flag', pregnancy)).toMatchObject({
+          updateChangesFixed: true,
+          update: { platformVersion: unseen.platformVersion, changesFixed: ['sensitive'] },
+        });
+      } finally {
+        undoUnseen();
+      }
+    } finally {
+      undoReviewed();
+    }
+  });
+
+  it('refuses a platform version that is not a whole number from 1 as malformed, naming it', async () => {
+    const high = idOf(v, 'flag.high');
+    for (const [label, sent] of [
+      ['as text', { platformVersion: '1' }],
+      ['zero', { platformVersion: 0 }],
+      ['fractional', { platformVersion: 1.5 }],
+      ['null', { platformVersion: null }],
+      ['left out', {}],
+    ] as const) {
+      const before = await footprint(h, v.teamId);
+      const r = await a.send('POST', `/v1/admin/presets/flag/${high}/take-update`, {
+        baseVersion: 1,
+        ...sent,
+        reason: REASON,
+        asNew: false,
+      });
+      expect(r.status, `${label}: ${JSON.stringify(r.body)}`).toBe(422);
+      expect(errorOf(r).code, label).toBe('validation_failed');
+      expect(
+        (errorOf(r).details!.fields as { path: string }[]).map((f) => f.path),
+        label,
+      ).toEqual(['platformVersion']);
+      await expectNothingWritten(h, v.teamId, before);
+    }
+  });
 
   it('refuses an update the team’s presets refuse for anything but an archived preset, in place and as new: 422 invalid', async () => {
     // Ids in a body have no foreign key (risk 12.1.1): an offered version can name an entry the team
