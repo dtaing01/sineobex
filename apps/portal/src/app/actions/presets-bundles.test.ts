@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Api from '@/lib/api';
 import type { ActionState } from '@/lib/forms';
-import { addBundleAction } from './presets-bundles';
+import { addBundleAction, saveBundleAction } from './presets-bundles';
 
 // Adding a bundle and editing one (phase 5 design 4.4, 5.1, 7, 8.1), as the Bundles pages' forms
 // send them. The API is a stand-in that records each request and answers it by its method: the
@@ -207,5 +207,133 @@ describe('adding a bundle', () => {
     answer = refusal(403, 'reauth_required');
     expect((await run(addBundleAction, fields)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fbundles');
     expect(revalidated).toEqual([]);
+  });
+});
+
+describe('editing a bundle', () => {
+  const now = {
+    name: 'Demo: Wound care',
+    medical: true,
+    prompt: '',
+    lines: [{ itemId: GAUZE, qty: 1, core: true }],
+  };
+  const row = (body: Record<string, unknown>, version = 2) => ({
+    id: WOUND,
+    name: body.name,
+    state: 'active',
+    version,
+    customized: true,
+    updateOnOffer: false,
+    updateChangesFixed: false,
+    update: null,
+    referencedBy: {},
+    body,
+  });
+  const fields = {
+    id: WOUND,
+    baseVersion: '2',
+    name: 'Demo: Wound care ',
+    medical: 'true',
+    'lines.count': '2',
+    'lines.0.itemId': GAUZE,
+    'lines.0.qty': '3',
+    'lines.0.core': 'on',
+    'lines.1.itemId': DOXY,
+    'lines.1.qty': '1',
+    prompt: 'Demo: Ask how it happened.',
+    reason: 'Demo: an antibiotic, if needed',
+  };
+  const writes = () => requests.filter((r) => r.method !== 'GET');
+
+  beforeEach(() => {
+    pathname = `/team/presets/bundles/${WOUND}`;
+    listed = [row(now)];
+    answer = { status: 200, body: { version: 3, revision: 9 } };
+  });
+
+  it('sends the bundle as the API holds it with the form’s fields over it, at the version shown', async () => {
+    const r = await run(saveBundleAction, fields);
+    expect(writes()).toEqual([
+      {
+        method: 'PUT',
+        path: '/v1/admin/presets/{kind}/{id}',
+        init: {
+          params: { path: { kind: 'bundle', id: WOUND } },
+          body: {
+            baseVersion: 2,
+            body: {
+              name: 'Demo: Wound care',
+              medical: true,
+              prompt: 'Demo: Ask how it happened.',
+              lines: [
+                { itemId: GAUZE, qty: 3, core: true },
+                { itemId: DOXY, qty: 1, core: false },
+              ],
+            },
+            reason: 'Demo: an antibiotic, if needed',
+          },
+        },
+      },
+    ]);
+    expect(r.state).toEqual({
+      ok: true,
+      message: 'Saved: Demo: Wound care. It’s on the phones after their next sync.',
+    });
+    expect(revalidated).toEqual([`/team/presets/bundles/${WOUND}`, '/team/presets/bundles']);
+  });
+
+  it('keeps every field of the body the form doesn’t show', async () => {
+    listed = [row({ ...now, icon: 'kit' })];
+    await run(saveBundleAction, fields);
+    expect(sentBody()).toMatchObject({ icon: 'kit', name: 'Demo: Wound care' });
+  });
+
+  it('says in 8.1’s words that a bundle holding a medication must be Medical, beside its tag', async () => {
+    answer = refusal(422, 'invalid', { problems: [{ path: 'medical', code: 'bundle_not_medical' }] });
+    const r = await run(saveBundleAction, { ...fields, medical: 'false' });
+    expect(r.state?.error).toBe('This bundle holds a medication, so it must be Medical.');
+    expect(r.state?.fieldErrors).toEqual({
+      medical: 'Medical or Non-Medical: This bundle holds a medication, so it must be Medical.',
+    });
+    expect(revalidated).toEqual([]);
+  });
+
+  it('says someone else changed it, nothing was changed, or it was removed', async () => {
+    answer = refusal(409, 'stale', { currentVersion: 3 });
+    expect((await run(saveBundleAction, fields)).state).toEqual({
+      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      values: fields,
+    });
+    answer = refusal(422, 'no_change');
+    expect((await run(saveBundleAction, fields)).state?.error).toBe('You haven’t changed anything.');
+    answer = refusal(409, 'archived');
+    expect((await run(saveBundleAction, fields)).state?.error).toBe('This was removed. Restore it first.');
+    expect(revalidated).toEqual([]);
+  });
+
+  it('says a bundle no longer on the list isn’t, and asks nothing more', async () => {
+    listed = [];
+    const r = await run(saveBundleAction, fields);
+    expect(r.state?.error).toBe(
+      'This isn’t on your team’s list. Reload the page to see the list as it is now.',
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  it('asks nothing of the API for a form the page doesn’t write', async () => {
+    for (const bad of [
+      { ...fields, id: 'not-an-id' },
+      { ...fields, baseVersion: '' },
+      { ...fields, baseVersion: '-2' },
+    ])
+      expect((await run(saveBundleAction, bad)).state?.error).toBe('This can’t be found. Reload the page.');
+    expect(requests).toEqual([]);
+  });
+
+  it('goes through /reauth and back to the bundle’s page when the sign-in is too old', async () => {
+    answer = refusal(403, 'reauth_required');
+    expect((await run(saveBundleAction, fields)).to).toBe(
+      `/reauth?next=${encodeURIComponent(`/team/presets/bundles/${WOUND}`)}`,
+    );
   });
 });
