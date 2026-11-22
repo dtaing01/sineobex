@@ -49,20 +49,29 @@ describe('0023 team presets', () => {
   const as = <T>(teamId: string, run: (tx: TransactionSql) => Promise<T>) =>
     asApp(db.appUrl, { teamId, userId: admin }, run);
   const inTeam = <T>(run: (tx: TransactionSql) => Promise<T>) => as(team, run);
+  /** As the owner, whom no policy stops, in one transaction. */
+  const asOwner = async <T>(run: (tx: TransactionSql) => Promise<T>) => (await db.owner.begin(run)) as T;
+  /** A head's revision, as every writer stamps it: the one its write takes (takeRevision). */
+  const TAKEN = Symbol('the revision its write takes');
   const values = (tx: Sql | TransactionSql, row: Row) => {
     const out: Row = { ...row };
+    if (out.revision === TAKEN) throw new Error('a head was written without its write’s revision');
     if (out.body !== undefined && out.body !== null) out.body = tx.json(out.body as never);
     return tx(out);
   };
+  /** The row with the revision its write takes, in the write's transaction, where it asks for one. */
+  const stamped = async (tx: TransactionSql, teamId: string, row: Row): Promise<Row> =>
+    row.revision === TAKEN ? { ...row, revision: await takeRevision(tx, teamId) } : row;
 
-  // Whole rows, as the API writes them.
+  // Whole rows, as the API writes them. A test of the revision, or of a value it reads back, names
+  // its own.
   const head = (over: Row = {}): Row => ({
     id: randomUUID(),
     team_id: team,
     kind: 'item',
     name: `Demo: item ${++made}`,
     current_version: 1,
-    revision: 1,
+    revision: TAKEN,
     created_by: admin,
     updated_by: admin,
     ...over,
@@ -89,18 +98,42 @@ describe('0023 team presets', () => {
     key: `demo_type_${++made}`,
     title: 'Demo: a note type',
     current_version: 1,
-    revision: 1,
+    revision: TAKEN,
     ...over,
   });
 
+  // Each write as the app role in `teamId`'s scope, a head stamped with the revision its write takes.
   const insertHead = (row: Row, teamId = team) =>
-    as(teamId, (tx) => tx`insert into sineobex.team_presets ${values(tx, row)}`);
+    as(
+      teamId,
+      async (tx) => tx`insert into sineobex.team_presets ${values(tx, await stamped(tx, teamId, row))}`,
+    );
   const insertVersion = (row: Row, teamId = team) =>
     as(teamId, (tx) => tx`insert into sineobex.team_preset_versions ${values(tx, row)}`);
   const insertEvent = (row: Row, teamId = team) =>
     as(teamId, (tx) => tx`insert into sineobex.team_preset_events ${values(tx, row)}`);
   const insertNoteType = (row: Row, teamId = team) =>
-    as(teamId, (tx) => tx`insert into sineobex.note_types ${values(tx, row)}`);
+    as(
+      teamId,
+      async (tx) => tx`insert into sineobex.note_types ${values(tx, await stamped(tx, teamId, row))}`,
+    );
+  const updateHead = (id: string, set: Row, teamId = team) =>
+    as(
+      teamId,
+      async (tx) =>
+        tx`update sineobex.team_presets set ${tx(await stamped(tx, teamId, { revision: TAKEN, ...set }))}
+           where id = ${id}`,
+    );
+  const updateNoteType = (key: string, set: Row, teamId = team) =>
+    as(
+      teamId,
+      async (tx) =>
+        tx`update sineobex.note_types set ${tx(await stamped(tx, teamId, { revision: TAKEN, ...set }))}
+           where key = ${key}`,
+    );
+  /** A head written as the owner, whom no policy stops, stamped as its write would be. */
+  const insertAsOwner = (table: 'team_presets' | 'note_types', row: Row) =>
+    asOwner(async (tx) => tx`insert into sineobex.${tx(table)} ${values(tx, await stamped(tx, team, row))}`);
 
   /** The team's revision row, as its first write makes it (takeRevision's upsert). */
   const firstWrite = (teamId: string) =>
@@ -128,16 +161,23 @@ describe('0023 team presets', () => {
 
   describe('a preset head', () => {
     it('is taken from the app role and given back, with what a new head leaves out filled in', async () => {
+      // A team's third write: the two before it took revisions 1 and 2, and this one takes 3.
+      const fresh = await makeTeam(db.owner, 'Preset Head Team');
+      for (let i = 0; i < 2; i++) await as(fresh, (tx) => takeRevision(tx, fresh));
       const id = randomUUID();
-      await insertHead({
-        id,
-        team_id: team,
-        kind: 'flag',
-        name: 'Demo: Frost risk',
-        current_version: 1,
-        revision: 3,
-      });
-      const [row] = await inTeam(
+      await insertHead(
+        {
+          id,
+          team_id: fresh,
+          kind: 'flag',
+          name: 'Demo: Frost risk',
+          current_version: 1,
+          revision: TAKEN,
+        },
+        fresh,
+      );
+      const [row] = await as(
+        fresh,
         (tx) => tx`
           select kind, name, state, current_version, origin_key, origin_version, platform_latest, customized,
                  revision, created_by, updated_by, updated_at = created_at as untouched,
@@ -183,12 +223,16 @@ describe('0023 team presets', () => {
       ]);
       const { id: _, ...rest } = head();
       const [row] = await inTeam(
-        (tx) => tx<{ id: string }[]>`insert into sineobex.team_presets ${values(tx, rest)} returning id`,
+        async (tx) =>
+          tx<{ id: string }[]>`insert into sineobex.team_presets ${values(tx, await stamped(tx, team, rest))}
+                               returning id`,
       );
       expect(row!.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     it('refuses a head with a part missing', async () => {
+      // As the owner, each head whole and stamped as its write would be, but for the one part.
+      const insert = (row: Row) => refusal(insertAsOwner('team_presets', row));
       for (const column of [
         'team_id',
         'kind',
@@ -198,19 +242,11 @@ describe('0023 team presets', () => {
         'customized',
         'revision',
       ]) {
-        expect(
-          await refusal(
-            db.owner`insert into sineobex.team_presets ${values(db.owner, head({ [column]: null }))}`,
-          ),
-          column,
-        ).toEqual({ code: NOT_NULL });
+        expect(await insert(head({ [column]: null })), column).toEqual({ code: NOT_NULL });
       }
       for (const column of ['kind', 'name', 'current_version', 'revision']) {
         const rest = Object.fromEntries(Object.entries(head()).filter(([c]) => c !== column));
-        expect(
-          await refusal(db.owner`insert into sineobex.team_presets ${values(db.owner, rest)}`),
-          `no ${column}`,
-        ).toEqual({ code: NOT_NULL });
+        expect(await insert(rest), `no ${column}`).toEqual({ code: NOT_NULL });
       }
     });
 
@@ -228,22 +264,23 @@ describe('0023 team presets', () => {
 
     it('keeps its kind for good, whatever else changes', async () => {
       const id = await preset({ kind: 'flag' });
-      const change = (set: Row) =>
-        refusal(inTeam((tx) => tx`update sineobex.team_presets set ${tx(set)} where id = ${id}`));
+      const change = (set: Row) => refusal(updateHead(id, set));
       expect(await change({ kind: 'item' })).toEqual({ code: CHECK, constraint: 'team_presets_kind_fixed' });
       expect(await change({ kind: 'item', name: 'Demo: Frost risk, renamed' })).toEqual({
         code: CHECK,
         constraint: 'team_presets_kind_fixed',
       });
       // As the owner too: it is the table's rule, not a right.
-      expect(await refusal(db.owner`update sineobex.team_presets set kind = 'bag' where id = ${id}`)).toEqual(
-        {
-          code: CHECK,
-          constraint: 'team_presets_kind_fixed',
-        },
-      );
+      expect(
+        await refusal(
+          asOwner(async (tx) => {
+            const revision = await takeRevision(tx, team);
+            return tx`update sineobex.team_presets set kind = 'bag', revision = ${revision} where id = ${id}`;
+          }),
+        ),
+      ).toEqual({ code: CHECK, constraint: 'team_presets_kind_fixed' });
       expect(await change({ kind: 'flag' })).toBeNull();
-      expect(await change({ name: 'Demo: Frost risk, renamed', current_version: 2, revision: 2 })).toBeNull();
+      expect(await change({ name: 'Demo: Frost risk, renamed', current_version: 2 })).toBeNull();
       const [row] = await db.owner`select kind, name from sineobex.team_presets where id = ${id}`;
       expect(row).toEqual({ kind: 'flag', name: 'Demo: Frost risk, renamed' });
     });
@@ -273,13 +310,9 @@ describe('0023 team presets', () => {
         ),
       ).toBeNull();
       // Archived, the first keeps its name and gives it up; restoring it while the name is taken fails.
-      await inTeam((tx) => tx`update sineobex.team_presets set state = 'archived' where id = ${first}`);
+      await updateHead(first, { state: 'archived' });
       const second = await preset({ kind: 'bundle', name: 'Demo: Foot check' });
-      expect(
-        await refusal(
-          inTeam((tx) => tx`update sineobex.team_presets set state = 'active' where id = ${first}`),
-        ),
-      ).toEqual(taken);
+      expect(await refusal(updateHead(first, { state: 'active' }))).toEqual(taken);
       const rows = await db.owner<{ id: string; name: string; state: string }[]>`
         select id, name, state from sineobex.team_presets
         where team_id = ${team} and kind = 'bundle' and lower(name) = 'demo: foot check' order by state`;
@@ -358,20 +391,17 @@ describe('0023 team presets', () => {
           constraint: `team_presets_${column}_fkey`,
         });
       }
-      // As the owner, so a made-up team is answered by the key and not by the team policy.
-      expect(
-        await refusal(
-          db.owner`insert into sineobex.team_presets ${values(db.owner, head({ team_id: nobody }))}`,
-        ),
-      ).toEqual({ code: FOREIGN_KEY, constraint: 'team_presets_team_id_fkey' });
+      // As the owner, so a made-up team is answered by the key and not by the team policy. The key
+      // answers before the check of the revision, which a made-up team has never taken.
+      expect(await refusal(insertAsOwner('team_presets', head({ team_id: nobody })))).toEqual({
+        code: FOREIGN_KEY,
+        constraint: 'team_presets_team_id_fkey',
+      });
     });
 
     it('moves its time of last change when it changes', async () => {
       const id = await preset();
-      await inTeam(
-        (tx) => tx`update sineobex.team_presets set current_version = 2, revision = 2, customized = true
-                   where id = ${id}`,
-      );
+      await updateHead(id, { current_version: 2, customized: true });
       const [row] = await db.owner<{ moved: boolean }[]>`
         select updated_at > created_at as moved from sineobex.team_presets where id = ${id}`;
       expect(row).toEqual({ moved: true });
@@ -810,17 +840,155 @@ describe('0023 team presets', () => {
     });
   });
 
+  // A phone asks for the heads above the revision it holds (phase 5 design 6.1; D130): a head left
+  // below its team's revision would never reach a phone that pulled since, and one above it would
+  // make a phone skip the revisions between. So every head carries its team's revision as its write
+  // left it: the one takeRevision gave that write.
+  describe('the revision a head carries', () => {
+    type Write = <T>(teamId: string, run: (tx: TransactionSql) => Promise<T>) => Promise<T>;
+    // As the app role the check reads the state row under the team policy, which in a team's scope
+    // shows the team's own row only: the head's, since the head's own policy writes no other team's.
+    const WRITERS: [string, Write][] = [
+      ['the app role in the team’s scope', (teamId, run) => as(teamId, run)],
+      [
+        'the app role in platform scope',
+        (_, run) => asApp(db.appUrl, { userId: admin, platform: true }, run),
+      ],
+      ['the owner', (_, run) => asOwner(run)],
+    ];
+    // A head of each table at a revision, and a change to one.
+    const HEADS = [
+      {
+        table: 'team_presets',
+        insert: (tx: TransactionSql, teamId: string, revision: number) =>
+          tx<{ ref: string }[]>`
+            insert into sineobex.team_presets ${values(tx, head({ team_id: teamId, revision }))}
+            returning id::text as ref`,
+        update: (tx: TransactionSql, teamId: string, ref: string, set: Row) =>
+          tx`update sineobex.team_presets set ${tx(set)} where team_id = ${teamId} and id = ${ref}`,
+      },
+      {
+        table: 'note_types',
+        insert: (tx: TransactionSql, teamId: string, revision: number) =>
+          tx<{ ref: string }[]>`
+            insert into sineobex.note_types ${values(tx, noteType({ team_id: teamId, revision }))}
+            returning key as ref`,
+        update: (tx: TransactionSql, teamId: string, ref: string, set: Row) =>
+          tx`update sineobex.note_types set ${tx(set)} where team_id = ${teamId} and key = ${ref}`,
+      },
+    ];
+    const cases = () =>
+      WRITERS.flatMap(([who, write]) =>
+        HEADS.map((h) => ({
+          ...h,
+          write,
+          label: `${h.table}, ${who}`,
+          refused: { code: CHECK, constraint: `${h.table}_revision_taken` },
+        })),
+      );
+
+    it('is the revision its write took: one for the write, on every head it changes', async () => {
+      for (const { write, table, insert, update, label } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Stamped Team');
+        // One revision for the write, and two heads stamped with it, as an installer's run.
+        const refs = await write(fresh, async (tx) => {
+          const revision = await takeRevision(tx, fresh);
+          return [(await insert(tx, fresh, revision))[0]!.ref, (await insert(tx, fresh, revision))[0]!.ref];
+        });
+        // The next write changes one of them.
+        await write(fresh, async (tx) =>
+          update(tx, fresh, refs[0]!, { state: 'archived', revision: await takeRevision(tx, fresh) }),
+        );
+        expect(
+          await db.owner`select revision::int as revision, state from sineobex.${db.owner(table)}
+                         where team_id = ${fresh} order by revision`,
+          label,
+        ).toEqual([
+          { revision: 1, state: 'active' },
+          { revision: 2, state: 'archived' },
+        ]);
+      }
+    });
+
+    it('refuses a head below or above its team’s revision, or of a team that has taken none', async () => {
+      for (const { write, insert, update, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Refused Team');
+        const written: string[] = [];
+        const insertAt = (revision: number) =>
+          refusal(write(fresh, async (tx) => written.push((await insert(tx, fresh, revision))[0]!.ref)));
+        expect(await insertAt(1), `${label}: none taken`).toEqual(refused);
+        for (let i = 0; i < 3; i++) await as(fresh, (tx) => takeRevision(tx, fresh));
+        expect(await insertAt(2), `${label}: below`).toEqual(refused);
+        expect(await insertAt(4), `${label}: above`).toEqual(refused);
+        expect(await insertAt(3), `${label}: at it`).toBeNull();
+        // A change, the same.
+        const changeTo = (revision: number) =>
+          refusal(write(fresh, (tx) => update(tx, fresh, written[0]!, { revision })));
+        expect(await changeTo(2), `${label}: changed to below`).toEqual(refused);
+        expect(await changeTo(4), `${label}: changed to above`).toEqual(refused);
+        expect(await changeTo(3), `${label}: changed at it`).toBeNull();
+        expect(written).toHaveLength(1);
+      }
+    });
+
+    it('is checked at every change: one that leaves it behind its team’s revision is refused', async () => {
+      for (const { write, insert, update, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Left Team');
+        const ref = await write(
+          fresh,
+          async (tx) => (await insert(tx, fresh, await takeRevision(tx, fresh)))[0]!.ref,
+        );
+        // A write that takes the next revision and forgets to stamp it.
+        expect(
+          await refusal(
+            write(fresh, async (tx) => {
+              await takeRevision(tx, fresh);
+              return update(tx, fresh, ref, { state: 'archived' });
+            }),
+          ),
+          `${label}: taken and not stamped`,
+        ).toEqual(refused);
+        // A write that takes none, once another write has taken the next.
+        await as(fresh, (tx) => takeRevision(tx, fresh));
+        expect(
+          await refusal(write(fresh, (tx) => update(tx, fresh, ref, { state: 'archived' }))),
+          `${label}: none taken`,
+        ).toEqual(refused);
+        expect(
+          await refusal(write(fresh, (tx) => update(tx, fresh, ref, { state: 'archived', revision: 1 }))),
+          `${label}: its revision written again`,
+        ).toEqual(refused);
+        // Stamped with the revision its write takes, it stands.
+        expect(
+          await refusal(
+            write(fresh, async (tx) =>
+              update(tx, fresh, ref, { state: 'archived', revision: await takeRevision(tx, fresh) }),
+            ),
+          ),
+          `${label}: stamped`,
+        ).toBeNull();
+      }
+    });
+  });
+
   describe('a note type head', () => {
     it('is taken from the app role and given back, with what a new head leaves out filled in', async () => {
+      // At revision 0, as 0023 fills the heads of the teams it finds, whose state rows it puts at 0.
+      const fresh = await makeTeam(db.owner, 'Preset Note Type Head Team');
+      await as(fresh, (tx) => tx`insert into sineobex.team_preset_state (team_id) values (${fresh})`);
       const key = noteType().key as string;
-      await insertNoteType({
-        team_id: team,
-        key,
-        title: 'Demo: a note type',
-        current_version: 2,
-        revision: 0,
-      });
-      const [row] = await inTeam(
+      await insertNoteType(
+        {
+          team_id: fresh,
+          key,
+          title: 'Demo: a note type',
+          current_version: 2,
+          revision: 0,
+        },
+        fresh,
+      );
+      const [row] = await as(
+        fresh,
         (tx) => tx`
           select title, state, current_version, platform_latest, customized, revision, updated_by,
                  extract(epoch from now() - updated_at)::float8 < 60 as recent
@@ -892,12 +1060,10 @@ describe('0023 team presets', () => {
         'customized',
         'revision',
       ]) {
-        expect(
-          await refusal(
-            db.owner`insert into sineobex.note_types ${values(db.owner, noteType({ [column]: null }))}`,
-          ),
-          column,
-        ).toEqual({ code: NOT_NULL });
+        // As the owner, the head whole and stamped as its write would be, but for the one part.
+        expect(await refusal(insertAsOwner('note_types', noteType({ [column]: null }))), column).toEqual({
+          code: NOT_NULL,
+        });
       }
       expect(await refusal(insertNoteType(noteType({ updated_by: randomUUID() })))).toEqual({
         code: FOREIGN_KEY,
@@ -910,10 +1076,7 @@ describe('0023 team presets', () => {
       await insertNoteType(noteType({ key }));
       const [before] = await db.owner<{ at: Date }[]>`
         select updated_at as at from sineobex.note_types where team_id = ${team} and key = ${key}`;
-      await inTeam(
-        (tx) => tx`update sineobex.note_types set state = 'archived', customized = true, revision = 2,
-                   updated_by = ${admin} where key = ${key}`,
-      );
+      await updateNoteType(key, { state: 'archived', customized: true, updated_by: admin });
       const [after] = await db.owner<{ at: Date; state: string }[]>`
         select updated_at as at, state from sineobex.note_types where team_id = ${team} and key = ${key}`;
       expect(after!.state).toBe('archived');
@@ -958,7 +1121,7 @@ describe('0023 team presets', () => {
       const id = await preset();
       const key = noteType().key as string;
       await insertNoteType(noteType({ key }));
-      // Acting in the other team, nobody writes into this one.
+      // Acting in the other team, at its own revision, nobody writes into this one.
       expect(await refusal(insertHead(head(), otherTeam))).toEqual({ code: DENIED });
       expect(await refusal(insertVersion(version(id, { version: 2 }), otherTeam))).toEqual({ code: DENIED });
       expect(await refusal(insertEvent(event({ preset_id: id }), otherTeam))).toEqual({ code: DENIED });
@@ -970,28 +1133,29 @@ describe('0023 team presets', () => {
         ),
       ).toEqual({ code: DENIED });
       // Nor changes what is here.
-      const changed = await as(otherTeam, async (tx) => [
-        ...(await tx`update sineobex.team_presets set name = 'Demo: renamed' where id = ${id} returning id`),
-        ...(await tx`update sineobex.note_types set state = 'archived' where key = ${key} returning key`),
-        ...(await tx`update sineobex.team_preset_state set revision = revision + 1 where team_id = ${team}
-                     returning team_id`),
-      ]);
+      const changed = await as(otherTeam, async (tx) => {
+        const revision = await takeRevision(tx, otherTeam);
+        return [
+          ...(await tx`update sineobex.team_presets set name = 'Demo: renamed', revision = ${revision}
+                       where id = ${id} returning id`),
+          ...(await tx`update sineobex.note_types set state = 'archived', revision = ${revision}
+                       where key = ${key} returning key`),
+          ...(await tx`update sineobex.team_preset_state set revision = revision + 1 where team_id = ${team}
+                       returning team_id`),
+        ];
+      });
       expect(changed).toEqual([]);
       // Nor moves its own preset into this team.
       const own = await preset({}, otherTeam);
-      expect(
-        await refusal(
-          as(otherTeam, (tx) => tx`update sineobex.team_presets set team_id = ${team} where id = ${own}`),
-        ),
-      ).toEqual({ code: DENIED });
+      expect(await refusal(updateHead(own, { team_id: team }, otherTeam))).toEqual({ code: DENIED });
     });
 
     it('lets a platform-scope request write and read any team’s presets, as team creation installs them', async () => {
       const fresh = await makeTeam(db.owner, 'Preset Platform Team');
       const row = head({ team_id: fresh, kind: 'bundle', origin_key: 'bundle.demo_kit', created_by: null });
       const seen = await asApp(db.appUrl, { userId: admin, platform: true }, async (tx) => {
-        await tx`insert into sineobex.team_preset_state (team_id, revision) values (${fresh}, 1)`;
-        await tx`insert into sineobex.team_presets ${values(tx, { ...row, updated_by: null })}`;
+        const installed = await stamped(tx, fresh, { ...row, updated_by: null });
+        await tx`insert into sineobex.team_presets ${values(tx, installed)}`;
         await tx`insert into sineobex.team_preset_versions ${values(
           tx,
           version(row.id as string, { team_id: fresh, source: 'platform', created_by: null }),

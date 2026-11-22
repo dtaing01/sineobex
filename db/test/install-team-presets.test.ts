@@ -504,7 +504,11 @@ describe('installing the platform presets', () => {
       const team = await makeTeam(db.owner, 'Install Presets Update Writer Team');
       await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));
       // As an admin's take of an earlier update leaves a copy: the platform's again, by a person.
-      await db.owner`update sineobex.team_presets set updated_by = ${user} where team_id = ${team}`;
+      await asTeam(team, async (tx) => {
+        const revision = await takeRevision(tx, team);
+        await tx`update sineobex.team_presets set updated_by = ${user}, revision = ${revision}
+                 where team_id = ${team}`;
+      });
       await asTeam(team, (tx) =>
         installTeamPresets(tx, team, { platform: [CATEGORY, next(CATEGORY, { sort: 11 })] }),
       );
@@ -583,10 +587,13 @@ describe('installing the platform presets', () => {
 
     it('undoes its run when a writer that took no team lock holds the name first', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Unlocked Writer Team');
+      // An earlier write left the team at revision 1.
+      await asTeam(team, (tx) => takeRevision(tx, team));
       const writer = await openWriter(team);
       let thrown: unknown = null;
       try {
-        // A writer that never took the team lock, so neither plan saw its row.
+        // A writer that never took the team lock, so neither plan saw its row. It takes no revision
+        // and stamps the one the team holds, which is all the database can check.
         await writer.conn`
           insert into sineobex.team_presets (team_id, kind, name, current_version, revision, created_by, updated_by)
           values (${team}, 'order_category', 'Demo: Supplies', 1, 1, ${user}, ${user})`;
@@ -603,12 +610,13 @@ describe('installing the platform presets', () => {
       } finally {
         await writer.rollback();
       }
-      // Its item would have named a category that is not there: nothing of the run is kept.
+      // Its item would have named a category that is not there: nothing of the run is kept, not even
+      // its revision.
       expect(thrown).toBeInstanceOf(Error);
       expect(await headsOf(team)).toMatchObject([{ kind: 'order_category', originKey: null }]);
       expect(await versionsOf(team)).toEqual([]);
       expect(await eventsOf(team)).toEqual([]);
-      expect(await revisionOf(team)).toBeNull();
+      expect(await revisionOf(team)).toBe(1);
     });
   });
 
@@ -618,7 +626,13 @@ describe('installing the platform presets', () => {
     it('is held: never installed again, nothing written over it, no revision taken', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Unread Head Team');
       await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));
-      await db.owner`update sineobex.team_presets set current_version = 2 where team_id = ${team}`;
+      // By a writer that stamps the revision it takes, as every writer does, and moves the head to a
+      // version that is not there.
+      await db.owner.begin(async (tx) => {
+        const revision = await takeRevision(tx, team);
+        await tx`update sineobex.team_presets set current_version = 2, revision = ${revision}
+                 where team_id = ${team}`;
+      });
       const before = await snapshot(team);
       for (let run = 0; run < 2; run++)
         expect(await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }))).toEqual(
@@ -644,13 +658,19 @@ describe('installing the platform presets', () => {
         .filter((h) => h.kind === 'field_supply_map')
         .map((h) => h.originKey)
         .sort();
+    /** Wound care's head at version 1, as the team's write makes it: at the revision it takes. */
+    const woundCareHead = (teamId: string, state: 'active' | 'archived') =>
+      asTeam(teamId, async (tx) => {
+        const revision = await takeRevision(tx, teamId);
+        await tx`
+          insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
+          values (${teamId}, 'wound_care', 'Wound care', ${state}, 1, ${revision})`;
+      });
 
     it('installs no map on a note type the team archived', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Archived Note Type Team');
       await asPlatform((tx) => installPresets(tx, team));
-      await db.owner`
-        insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
-        values (${team}, 'wound_care', 'Wound care', 'archived', 1, 0)`;
+      await woundCareHead(team, 'archived');
       const counts = await asPlatform((tx) => installTeamPresets(tx, team));
       expect(counts.skipped).toEqual({ field_supply_map: mapsOn('wound_care').length });
       const expected = newestOf(PLATFORM)
@@ -672,9 +692,7 @@ describe('installing the platform presets', () => {
         field_supply_map: mapsOn('wound_care').length,
       });
       // The team's head says version 1 is current: the maps are checked against it, and installed.
-      await db.owner`
-        insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
-        values (${team}, 'wound_care', 'Wound care', 'active', 1, 0)`;
+      await woundCareHead(team, 'active');
       const counts = await asPlatform((tx) => installTeamPresets(tx, team));
       expect(counts).toEqual({
         install: { field_supply_map: mapsOn('wound_care').length },

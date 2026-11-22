@@ -150,6 +150,28 @@ from (
   group by team_id, key
 ) newest;
 
+-- A head carries the revision its write took: its team's revision, as takeRevision left it. A phone
+-- asks for the heads above the revision it holds, so a head left below its team's revision never
+-- reaches a phone that pulled since, and one above it makes a phone skip the revisions between. A
+-- team with no state row has taken no revision for a head to carry. Checked after the row is
+-- written, so its own checks and keys answer first; the heads filled above, at their teams' 0, are
+-- not checked. Class 23, as 0018's guards; it holds for the owner too.
+create function sineobex.keep_head_at_team_revision() returns trigger
+language plpgsql as $$
+begin
+  if new.revision is distinct from
+     (select s.revision from sineobex.team_preset_state s where s.team_id = new.team_id) then
+    raise exception 'a head carries the revision its write took'
+      using errcode = 'check_violation', constraint = tg_table_name || '_revision_taken';
+  end if;
+  return null;
+end $$;
+
+create trigger team_presets_revision_taken after insert or update on sineobex.team_presets
+  for each row execute function sineobex.keep_head_at_team_revision();
+create trigger note_types_revision_taken after insert or update on sineobex.note_types
+  for each row execute function sineobex.keep_head_at_team_revision();
+
 -- One row for every act on a preset or a note type, so the reason a person gave is kept with the
 -- act and the history can show it (PRD main 930, 951, 955). A reason is admin text: it lives here
 -- only, never in the audit log's details or in logs (phase 5 design 9).
