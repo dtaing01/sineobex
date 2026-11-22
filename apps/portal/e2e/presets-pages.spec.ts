@@ -2300,3 +2300,252 @@ test.describe('flags, /team/presets/flags', () => {
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
 });
+
+test.describe('a flag, /team/presets/flags/[id]', () => {
+  const LIST = '/team/presets/flags';
+
+  test('@responsive a Program Admin opens a flag from the list and finds its form as the flag is, its list and Sensitive fixed, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    const high = await named<FlagBody>('flag', 'High');
+    await page.goto(LIST);
+    await page.getByRole('link', { name: 'Red · High', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${high.id}$`));
+    await expect(page).toHaveTitle('Flag · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('High');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+      'A risk level, shown to staff as Red · High.',
+    );
+
+    const form = page.getByRole('form', { name: 'Edit High' });
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('High');
+    const list = form.getByLabel('List', { exact: true });
+    await expect(list).toHaveValue('Risk level');
+    await expect(list).not.toBeEditable();
+    await expect(list).toHaveAccessibleDescription('Which list a flag is on can’t be changed later.');
+    await expect(form.getByRole('radio', { name: 'Red', exact: true })).toBeChecked();
+    await expect(form.getByRole('radio', { checked: true })).toHaveCount(1);
+    await expect(form.getByLabel('Criteria (optional)')).toHaveValue(high.body.criteria);
+    const sensitive = form.getByLabel('Sensitive', { exact: true });
+    await expect(sensitive).toHaveValue('No');
+    await expect(sensitive).not.toBeEditable();
+    await expect(sensitive).toHaveAccessibleDescription(
+      'Sensitive flags are hidden from Billing and Data. Whether a flag is sensitive can’t be changed later.',
+    );
+    await expect(page.getByRole('button', { name: 'Remove High', exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'History' })
+        .getByRole('row', { name: /Added by Sineobex, version 1/ }),
+    ).toHaveCount(1);
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    const here = `${LIST}/${high.id}`;
+    await expectAccessible(page, here);
+    await expectReflow(page, here);
+    await expectNothingStored(page, here);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('a sensitive condition’s page says so, and shows Sensitive fixed at Yes', async ({ page }) => {
+    await signIn(page, 'admin@example.com');
+    const pregnancy = await named<FlagBody>('flag', 'Pregnancy');
+    await page.goto(`${LIST}/${pregnancy.id}`);
+    await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+      'A sensitive condition, shown to staff as Purple · Pregnancy.',
+    );
+    const form = page.getByRole('form', { name: 'Edit Pregnancy' });
+    await expect(form.getByLabel('List', { exact: true })).toHaveValue('Conditions');
+    await expect(form.getByLabel('Sensitive', { exact: true })).toHaveValue('Yes');
+    await expectAccessible(page, 'A sensitive condition');
+  });
+
+  test('editing a flag saves its name, colour and criteria with a reason, in its place on the list; nothing changed, a name taken, criteria too long and an edit made stale meanwhile are each refused with their sentence', async ({
+    page,
+  }) => {
+    test.slow();
+    const id = await madeCondition('Demo: Sore feet', 'grey');
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(`${LIST}/${id}`);
+    let form = page.getByRole('form', { name: 'Edit Demo: Sore feet' });
+    const name = form.getByLabel('Name', { exact: true });
+    const criteria = form.getByLabel('Criteria (optional)');
+    const reason = form.getByLabel('Reason');
+    const save = form.getByRole('button', { name: 'Save' });
+    const alert = form.getByRole('alert');
+
+    // Saved as it is: nothing changed.
+    await reason.fill('Demo: our own words for it');
+    await save.click();
+    await expect(alert).toHaveText('You haven’t changed anything.');
+
+    // A name another flag holds, in other letters: said beside the name, kept as typed.
+    await name.fill('high');
+    await save.click();
+    await expect(alert.locator('.px-alert__title')).toHaveText('Another flag already has this name.');
+    await expect(name).toHaveValue('high');
+
+    // Criteria too long: said beside them, kept as typed.
+    const long = `Demo: ${'walks all day '.repeat(40)}`.trim();
+    await name.fill('Demo: Sore feet');
+    await criteria.fill(long);
+    await save.click();
+    await expect(alert.getByRole('link')).toHaveText(['Criteria: Keep it to 500 characters.']);
+    await expect(criteria).toHaveValue(long);
+    await expect(criteria).toHaveAttribute('aria-invalid', 'true');
+    await expectAccessible(page, 'Edit a flag, refused', { inPlace: true });
+    await expectReflow(page, 'Edit a flag, refused');
+
+    // Renamed, in blue, with criteria: saved at its next version, in the same place on the list.
+    const place = (await tierOf('secondary')).findIndex((f) => f.id === id);
+    await name.fill('Demo: Sore toes');
+    await form.getByRole('radio', { name: 'Blue', exact: true }).check();
+    await criteria.fill('Demo: walked all night in wet shoes.');
+    await save.click();
+    form = page.getByRole('form', { name: 'Edit Demo: Sore toes' });
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Sore toes. It’s on the phones after their next sync.',
+    );
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Sore toes');
+    await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+      'A condition, shown to staff as Blue · Demo: Sore toes.',
+    );
+    const saved = (await listed<FlagBody>('flag')).find((f) => f.id === id)!;
+    expect(saved).toMatchObject({
+      version: 2,
+      body: { name: 'Demo: Sore toes', tier: 'secondary', color: 'blue', sensitive: false },
+    });
+    expect(saved.body.criteria).toBe('Demo: walked all night in wet shoes.');
+    expect((await tierOf('secondary')).findIndex((f) => f.id === id)).toBe(place);
+    await expect(form.getByRole('radio', { name: 'Blue', exact: true })).toBeChecked();
+    await expect(form.getByLabel('Reason')).toHaveValue('');
+    await expect(
+      page.getByRole('region', { name: 'History' }).getByRole('row', { name: /Edited, version 2/ }),
+    ).toContainText('Demo: our own words for it');
+
+    // Another admin edits it meanwhile: this form, at version 2, is stale, and stays so.
+    expect(await changedMeanwhile<FlagBody>('flag', id, (b) => ({ ...b, criteria: '' }))).toBe(3);
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Sore soles');
+    await form.getByLabel('Reason').fill('Demo: a better name');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Demo: Sore soles');
+    await expectAccessible(page, 'Edit a flag, stale', { inPlace: true });
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    // Reloaded, the page shows their version.
+    await page.reload();
+    await expect(
+      page.getByRole('form', { name: 'Edit Demo: Sore toes' }).getByLabel('Criteria (optional)'),
+    ).toHaveValue('');
+    await expectNothingStored(page, 'A flag after an edit');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('Remove on a flag’s page says patients keep it, moves it to the Removed list, and Restore on its page brings it back to its list', async ({
+    page,
+  }) => {
+    test.slow();
+    const id = await madeCondition('Demo: Spare flag', 'green');
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(`${LIST}/${id}`);
+    await page.getByRole('button', { name: 'Remove Demo: Spare flag', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Spare flag' });
+    await expect(remove).toContainText('Patients who have this flag keep it until someone clears it.');
+    await expectAccessible(page, 'Remove a flag', { inPlace: true });
+    await remove.getByLabel('Reason').fill('Demo: nobody uses it');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}\\?done=removed&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Removed: Demo: Spare flag' })).toBeFocused();
+    const conditions = page.getByRole('region', { name: 'Conditions', exact: true });
+    await expect(conditions.getByRole('link', { name: 'Green · Demo: Spare flag' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: /^Removed \(\d+\)$/ })).toContainText('Demo: Spare flag');
+    await expectAccessible(page, 'Flags after a remove');
+
+    await page.goto(`${LIST}/${id}`);
+    await expect(page.getByRole('form', { name: 'Edit Demo: Spare flag' })).toHaveCount(0);
+    const gone = page.getByRole('region', { name: 'Removed', exact: true });
+    await expect(gone).toContainText(
+      'This flag isn’t offered when staff flag a patient, and patients who have it keep it until someone clears it. Restore it to offer it again.',
+    );
+    await expectAccessible(page, 'A removed flag');
+    await gone.getByLabel('Reason').fill('Demo: needed after all');
+    await gone.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${id}\\?done=restored&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Restored: Demo: Spare flag' })).toBeFocused();
+    await expect(page.getByRole('form', { name: 'Edit Demo: Spare flag' })).toBeVisible();
+    const history = page.getByRole('region', { name: 'History' });
+    await expect(history.getByRole('row', { name: /Removed, version 1/ })).toContainText(
+      'Demo: nobody uses it',
+    );
+    await expect(history.getByRole('row', { name: /Restored, version 1/ })).toContainText(
+      'Demo: needed after all',
+    );
+    // Back in its list, at the rank it was removed at.
+    await page.goto(LIST);
+    await expect(conditions.getByRole('listitem').getByRole('link')).toHaveText(
+      (await tierOf('secondary')).map(pillOf),
+    );
+    await expect(
+      conditions.getByRole('link', { name: 'Green · Demo: Spare flag', exact: true }),
+    ).toBeVisible();
+
+    await expectNothingStored(page, 'A flag after a restore');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('an address that names no flag of the team’s is no page', async ({ page }) => {
+    await signIn(page, 'admin@example.com');
+    const gauze = await named('item', 'Gauze');
+    for (const id of ['30f00000-0000-4000-8000-0000000000fe', gauze.id, 'not-an-id']) {
+      await page.goto(`${LIST}/${id}`);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
+    }
+  });
+
+  test('a stale sign-in sends a flag being saved through /reauth and back to its page, saving nothing', async ({
+    page,
+  }) => {
+    const id = await madeCondition('Demo: Sun burn', 'orange');
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(`${LIST}/${id}`);
+    const form = page.getByRole('form', { name: 'Edit Demo: Sun burn' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Sunburn');
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(page).toHaveURL(new RegExp(`/reauth\\?next=${encodeURIComponent(`${LIST}/${id}`)}$`));
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${id}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Sun burn');
+    expect((await listed('flag')).find((f) => f.id === id)).toMatchObject({
+      version: 1,
+      name: 'Demo: Sun burn',
+    });
+  });
+
+  test('staff without the permission are refused a flag at a typed address, logged once', async ({
+    page,
+  }) => {
+    const high = await named('flag', 'High');
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(`${LIST}/${high.id}`);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    const after = await deniedOf('clinician@example.com');
+    // The flags were asked, and refused: nothing else was.
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});

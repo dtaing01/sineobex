@@ -7,18 +7,20 @@ import { PortalApiError } from '@/lib/api';
 import type { ActionState } from '@/lib/forms';
 import {
   createPreset,
+  editPreset,
   listPresets,
   namedPreset,
   presetFailure,
+  presetNow,
   reorderFlags,
   sentValues,
   type PresetRow,
 } from '@/lib/presets';
-import type { PresetRefusalContext } from '@/lib/refusals';
+import { presetRefusalState, type PresetRefusalContext } from '@/lib/refusals';
 
 /**
- * Adding a flag and moving one up or down its list (phase 5 design 4.4, 5.1, 7, 8.1): the Flags
- * page's own forms. Remove, Restore and taking Sineobex's update are every page's
+ * Adding a flag, moving one up or down its list and editing one (phase 5 design 4.4, 5.1, 7, 8.1):
+ * the Flags pages' own forms. Remove, Restore and taking Sineobex's update are every page's
  * (actions/presets.ts). The API is the one judge of a body and of an order (D114): each form sends
  * what was typed or shown, the API refuses with the path of each problem, and the form says it
  * beside the field, keeping what was typed. A stale sign-in goes to /reauth and back to the page
@@ -87,6 +89,35 @@ export async function addFlagAction(_: ActionState, form: FormData): Promise<Act
   }
   revalidatePath(PAGE);
   return { ok: true, message: `Added: ${name}. It’s on the phones after their next sync.` };
+}
+
+/**
+ * Edits a flag at the version shown: its name, its colour and its criteria. The rest of its body
+ * is sent as the API lists it now: which list it is on and whether it is sensitive can't change
+ * (4.4), and its rank is the list's to move, so none is ever the form's to send.
+ */
+export async function saveFlagAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = sentValues(form);
+  const preset = namedPreset({ ...values, kind: KIND });
+  if (!preset || preset.baseVersion === null) return { error: LOST, values };
+  const context = { ...CONTEXT, act: 'save' as const };
+  const name = typed(values, 'name');
+  try {
+    const now = await presetNow(KIND, preset.id);
+    if (!now) return presetRefusalState({ code: 'not_found', message: '' }, values, context);
+    await editPreset(
+      KIND,
+      preset.id,
+      preset.baseVersion,
+      { ...now.body, name, color: values.color, criteria: typed(values, 'criteria') },
+      values.reason ?? '',
+    );
+  } catch (err) {
+    return presetFailure(err, values, context);
+  }
+  revalidatePath(`${PAGE}/${preset.id}`);
+  revalidatePath(PAGE);
+  return { ok: true, message: `Saved: ${name}. It’s on the phones after their next sync.` };
 }
 
 type Listed = { id: string; baseVersion: number };
