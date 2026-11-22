@@ -16,7 +16,7 @@ import { RemovedList } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
 import { describeField, FIELD_LABELS } from '@/components/presets/review';
 import { TextList } from '@/components/presets/TextList';
-import { UpdateOffer } from '@/components/presets/UpdateOffer';
+import { DescribedValue, UpdateOffer } from '@/components/presets/UpdateOffer';
 import { HistoryTable } from '@/components/presets/VersionHistory';
 import type { ConditionSupplyBody, PresetEvent, PresetRow } from '@/lib/presets';
 import { DaysField } from './DaysField';
@@ -93,19 +93,6 @@ function EditMapping({ row, items }: { row: ConditionSupply; items: readonly Ite
   );
 }
 
-/** A list of lines in words, or None. */
-function Described({ lines }: { lines: string | readonly string[] }) {
-  if (typeof lines === 'string') return lines;
-  if (lines.length === 0) return 'None';
-  return (
-    <ul className="px-list">
-      {lines.map((line, i) => (
-        <li key={i}>{line}</li>
-      ))}
-    </ul>
-  );
-}
-
 /** One mapping: its codes and its items per patient, its acts, any update, and its history. */
 function MappingSection({
   row,
@@ -128,13 +115,13 @@ function MappingSection({
         <div>
           <dt>{LABELS.codes}</dt>
           <dd>
-            <Described lines={describeField(KIND, 'codes', row.body.codes, names)} />
+            <DescribedValue value={describeField(KIND, 'codes', row.body.codes, names)} />
           </dd>
         </div>
         <div>
           <dt>{LABELS.lines}</dt>
           <dd>
-            <Described lines={describeField(KIND, 'lines', row.body.lines, names)} />
+            <DescribedValue value={describeField(KIND, 'lines', row.body.lines, names)} />
           </dd>
         </div>
       </dl>

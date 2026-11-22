@@ -64,6 +64,12 @@ export interface ItemLinesProps {
   hint?: string;
   /** How many lines the kind holds at most: the API refuses more, and the form offers no more. */
   max: number;
+  /**
+   * Set while `lines` come from a list the person has just chosen to fill them from, such as a new
+   * bag's Copy from: they start from `lines` whatever a refused form sent, and again each time the
+   * choice changes. Unset, a refused form keeps the lines it sent.
+   */
+  fill?: string;
 }
 
 /**
@@ -74,12 +80,13 @@ export interface ItemLinesProps {
  */
 export function ItemLines(props: ItemLinesProps) {
   const state = useFormState();
-  const sent = sentLines(state.values, props.name, props.quantity.field);
-  // A refused form starts again from what it sent; a saved one from what is stored now, and an
-  // add form, once its preset is added, from none.
+  const sent = props.fill === undefined ? sentLines(state.values, props.name, props.quantity.field) : null;
+  // A refused form starts again from what it sent; a saved one from what is stored now, an add
+  // form, once its preset is added, from none, and lines filled from a choice from that choice.
+  const from = props.fill === undefined ? 'stored' : `fill:${props.fill}`;
   const key = sent
     ? `sent:${JSON.stringify(sent)}`
-    : `stored:${answerKey(state)}:${JSON.stringify(props.lines)}`;
+    : `${from}:${answerKey(state)}:${JSON.stringify(props.lines)}`;
   return <Lines key={key} {...props} start={sent ?? props.lines} />;
 }
 
