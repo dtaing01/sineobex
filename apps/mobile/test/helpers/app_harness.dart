@@ -60,12 +60,12 @@ class AppHarness {
       autoSync: false,
       now: () => wall,
       monotonic: () => boot.elapsed,
-      // As the app wires it (app_providers.dart `appRefreshers`), with a clipboard the test reads:
-      // the team's presets, the patient services, then the encounter services for the person the
-      // session unlocked.
+      // As the app wires it (app_providers.dart `appRefreshers`), in its order, with a clipboard
+      // the test reads: the patient services, the team's presets (after the index, whose expiry
+      // and refusals clear them), then the encounter services for the person the session unlocked.
       refreshers: (team) => [
-        ...presetRefreshers(team, openStore: () => sync.store),
         ...PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
+        ...presetRefreshers(team, openStore: () => sync.store),
         ...encounterRefreshers(
           team,
           person: switch (session.state) {

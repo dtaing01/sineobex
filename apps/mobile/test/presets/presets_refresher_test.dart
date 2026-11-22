@@ -7,6 +7,8 @@ import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/app_providers.dart' show appRefreshers;
 import 'package:sineobex_field/auth/session_controller.dart';
+import 'package:sineobex_field/patients/patient_providers.dart' show PatientServices;
+import 'package:sineobex_field/patients/team_index.dart' show IndexRemoval, TeamIndex;
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/security/key_vault.dart';
@@ -389,15 +391,19 @@ void main() {
     late SyncController sync;
     var teams = 1;
 
+    /// The person's keys in each team; null is the demo user's own (`encounters.chart`).
+    List<String>? permissions;
+
     /// Runs at sign-out once the server's copies are cleared, before the session ends.
     Future<void> Function()? afterClear;
 
     Future<void> launch() async {
+      final keys = permissions;
       session = SessionController(
         auth: FakeAuth(),
         vault: vault,
         store: secure,
-        fetchMe: (_) async => demoUser(teams: teams),
+        fetchMe: (_) async => keys == null ? demoUser(teams: teams) : _holding(demoUser(teams: teams), keys),
         localData: _AfterClear(DeferredLocalData(() => sync), () async => afterClear?.call()),
       );
       sync = SyncController(
@@ -422,6 +428,7 @@ void main() {
     setUp(() async {
       dir = Directory.systemTemp.createTempSync('presets-app');
       teams = 1;
+      permissions = null;
       afterClear = null;
       server = FakeSyncServer(now: () => wall);
       standIn = PresetsStandIn();
@@ -586,8 +593,65 @@ void main() {
       expect(open().presets().map((p) => p.id), [glucoseId]);
       expect([open().revision, open().epoch], [3, epochA]);
     });
+
+    // The team index's 7-day expiry and its refusals clear every server copy, the presets among
+    // them (clearServerData). The presets' pull runs after the index's refresher, so the run that
+    // cleared the copy pulls it whole again: before it, the copy would be gone until the next run,
+    // and Team setup would say to connect on a phone that is online.
+    group('beside the team index, which Healthcare Staff hold:', () {
+      Future<TeamIndex> signInHoldingTheIndex() async {
+        permissions = FakeSyncServer.healthcareStaff.toList();
+        server
+          ..permissions[userId] = FakeSyncServer.healthcareStaff.toSet()
+          ..seedPatient(preferredName: 'Demo Quill');
+        sync.dispose();
+        await launch();
+        await signIn();
+        final index = PatientServices.of(sync.store!)!.index;
+        await until(() => open().downloaded && index.state.present);
+        await sync.refreshNow();
+        expect([open().downloaded, index.state.present], [true, true]);
+        return index;
+      }
+
+      test('a run that finds the index a week old ends with the copy pulled whole again', () async {
+        final index = await signInHoldingTheIndex();
+        // Eight days out of signal, and no search meanwhile: the index was last confirmed then.
+        sync.store!.setKv('index.refreshedAt', wall.subtract(const Duration(days: 8)).toIso8601String());
+        final asked = standIn.queriesOf('team-0').length;
+        await sync.refreshNow();
+        expect(index.state.present, isTrue, reason: 'the index downloaded again');
+        expect(open().downloaded, isTrue);
+        expect(open().preset(labsId), isNotNull);
+        // The run's one pull came after the clear, and asked for everything.
+        expect(standIn.queriesOf('team-0').skip(asked), [<String, String>{}]);
+      });
+
+      test('a run in which the server refuses the index ends with the copy pulled whole again', () async {
+        final index = await signInHoldingTheIndex();
+        // The role changed at the desk: the index's download is refused (403 index_not_permitted).
+        server.permissions[userId] = {'encounters.chart'};
+        final asked = standIn.queriesOf('team-0').length;
+        await sync.refreshNow();
+        expect(index.state.removed, IndexRemoval.notPermitted);
+        expect(open().downloaded, isTrue);
+        expect(open().preset(labsId), isNotNull);
+        expect(standIn.queriesOf('team-0').skip(asked), [<String, String>{}]);
+      });
+    });
   });
 }
+
+/// [user] with [permissions] in each of its teams, as /v1/me would give them.
+LocalUser _holding(LocalUser user, List<String> permissions) => LocalUser(
+  userId: user.userId,
+  email: user.email,
+  displayName: user.displayName,
+  teams: [
+    for (final t in user.teams)
+      TeamRef(id: t.id, name: t.name, roleName: t.roleName, credential: t.credential, permissions: permissions),
+  ],
+);
 
 /// [LocalData] that runs [after] once the server's copies are cleared, before the session ends.
 class _AfterClear implements LocalData {

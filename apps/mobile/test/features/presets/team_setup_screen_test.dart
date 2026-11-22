@@ -8,6 +8,7 @@ import 'package:sineobex_field/design/widgets/flag_pill.dart';
 import 'package:sineobex_field/features/encounters/home_tiles.dart' show EncounterTiles;
 import 'package:sineobex_field/features/presets/team_setup_screen.dart';
 import 'package:sineobex_field/features/sync/sync_cards.dart' show SyncStatusCard;
+import 'package:sineobex_field/patients/patient_providers.dart' show PatientServices;
 import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart' show RefreshReason;
@@ -378,6 +379,24 @@ void main() {
       find.descendant(of: part('category.${ids['supplies']}'), matching: find.text('Demo: Pulse oximeter')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('online, a pull to refresh that finds the team index a week old still shows the copy', (tester) async {
+    // Healthcare Staff hold the team index. Its 7-day expiry clears every server copy, the presets
+    // among them; the presets' pull, after the index's refresher in the same run, brings them back.
+    final h = await signIn(tester);
+    await pulledEveryKind(tester, h);
+    final index = PatientServices.of(h.sync.store!)!.index;
+    expect(index.state.present, isTrue);
+    await openTeamSetup(tester);
+    expect(find.textContaining(updatedToday), findsOneWidget);
+    final weekOld = h.wall.subtract(const Duration(days: 8));
+    h.sync.store!.setKv('index.refreshedAt', weekOld.toIso8601String());
+    await pullToRefresh(tester);
+    expect(index.state.present, isTrue);
+    expect(index.state.refreshedAt!.isAfter(weekOld), isTrue, reason: 'the run downloaded the index again');
+    expect(find.text(setupNotDownloaded), findsNothing);
+    await expectShown(tester, find.text('Demo: Glucose test'));
   });
 
   testWidgets('a copy from another day says the day it was updated', (tester) async {

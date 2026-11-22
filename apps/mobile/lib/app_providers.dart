@@ -138,15 +138,16 @@ DefinitionStore appDefinitionStore({Future<String> Function() databases = databa
 
 const appVersion = String.fromEnvironment('SINEOBEX_APP_VERSION', defaultValue: '0.2.0');
 
-/// What the sync controller makes for each team database it opens (its `refreshers`): the team's
-/// presets ([presetRefreshers]), the team index, the chart cache and the card hook
-/// ([patientRefreshers]), then the visits and notes, with the close sweep among their refreshers
-/// ([encounterRefreshers]). Each is made for the person the [session] unlocked: the presets written
-/// only while [sync] holds the team's store open, the patient services with the keys the controller
-/// opened the team with, the encounter services with the credential and name of the same profile,
-/// the definitions [sync] holds, and the engine [sync] just opened for the team, which brings a
-/// record that left the phone back to add to it. Copy link must work on a phone that never
-/// downloaded a chart with a card, so [idLinkBaseUrl] is the sign-in's `/v1/me` address.
+/// What the sync controller makes for each team database it opens (its `refreshers`), run in this
+/// order: the team index, the chart cache and the card hook ([patientRefreshers]), the team's
+/// presets ([presetRefreshers]), then the visits and notes, with the close sweep among their
+/// refreshers ([encounterRefreshers]). Each is made for the person the [session] unlocked: the
+/// presets written only while [sync] holds the team's store open, the patient services with the
+/// keys the controller opened the team with, the encounter services with the credential and name
+/// of the same profile, the definitions [sync] holds, and the engine [sync] just opened for the
+/// team, which brings a record that left the phone back to add to it. Copy link must work on a
+/// phone that never downloaded a chart with a card, so [idLinkBaseUrl] is the sign-in's `/v1/me`
+/// address.
 RefresherFactory appRefreshers({
   required SessionController session,
   required SyncController Function() sync,
@@ -155,10 +156,11 @@ RefresherFactory appRefreshers({
   final controller = sync();
   final engine = controller.engine;
   return [
-    // First: the presets are a small answer that Team setup reads, and a slow index download
-    // shouldn't hold them up.
-    ...presetRefreshers(team, openStore: () => controller.store),
     ...patientRefreshers(team, idLinkBaseUrl: idLinkBaseUrl?.call()),
+    // After the team index's refresher: its 7-day expiry and its refusals clear every server copy,
+    // the presets among them (LocalStore.clearServerData), so a pull before it would be lost until
+    // the next run. After it, the run that cleared the copy pulls it whole again.
+    ...presetRefreshers(team, openStore: () => controller.store),
     ...encounterRefreshers(
       team,
       person: switch (session.state) {
