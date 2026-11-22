@@ -10,6 +10,7 @@ import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
 import { seedDemoEncounters } from './demo-encounters.ts';
 import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
+import { seedDemoPresets } from './demo-presets.ts';
 
 /**
  * Loads made-up teams, staff, patients, visits, routes and bags for the preview.
@@ -178,6 +179,15 @@ export async function seed(
           `${presets.offer} offered, ${presets.skipped} skipped`,
       );
     }
+
+    // The demo team's own presets name the platform's, so they come after them. Their author is the
+    // seed's, who is in every demo environment, so unlike the visits they need no seeded staff.
+    const demoPresets = await seedDemoPresets(tx, DEMO_TEAM_ID, author!.id);
+    log(
+      demoPresets.skipped
+        ? `  no demo presets: ${demoPresets.skipped}`
+        : `  ${demoPresets.presets} made-up preset(s)`,
+    );
 
     // Visits need the note types above, and staff whose credentials sign them: the preview has
     // none (people are invited there), so it gets no visit.
