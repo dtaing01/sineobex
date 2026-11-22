@@ -48,7 +48,7 @@ const hidden = (html: string, name: string) => {
 describe('the update offer', () => {
   it('says Sineobex updated the preset, in 8.1’s words, with Review and Replace with the new version', () => {
     const html = offer(flag());
-    expect(html).toContain('Update available<span class="sr-only">: Frost risk</span>');
+    expect(html).toContain('Update available<span class="sr-only"> for Frost risk</span>');
     expect(html).toContain('<p>Sineobex updated this preset. Your edited copy hasn’t changed.</p>');
     expect(html).toContain('<summary>Review</summary>');
     expect(html).toContain('Replace with the new version</button>');

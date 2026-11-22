@@ -27,7 +27,7 @@ function Review({ children }: { children: ReactNode }) {
     toggled && toggled.at === state ? toggled.open : state.error !== undefined || (toggled?.open ?? false);
   return (
     <details
-      className={styles.disclosure}
+      className={styles.reviewDetails}
       open={open}
       onToggle={(e) => setToggled({ open: e.currentTarget.open, at: state })}
     >
@@ -75,7 +75,7 @@ export function OfferForm({
   return (
     <section aria-labelledby={`offer-${id}`} className="px-panel">
       <Heading id={`offer-${id}`} className={headingClass}>
-        Update available<span className="sr-only">: {name}</span>
+        Update available<span className="sr-only"> for {name}</span>
       </Heading>
       <ActionForm id={`take-${id}`} action={take} label={`Take Sineobex’s update to ${name}`}>
         {offer ? (
