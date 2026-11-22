@@ -133,6 +133,7 @@ A location row is made by the server, never by a person: `ensureLocation` insert
 | `outing_id` | uuid null | Stored null when the server does not know it |
 | `source` | text | `manual`, `bundle`, `mapping` |
 | `bundle_id`, `bundle_version`, `map_id` | uuid null, integer null, uuid null | Where a suggested line came from (phase 5 6.4); for phase 10's codes |
+| `note_id` | uuid null | The note a mapping fired on, set exactly when `map_id` is: the line is read as that note is read (`orderVisibleTo`), since what it gives tells what the note recorded (phase 5 4.4, BM-77) |
 | `lab_result` | text null | 1 to 120: one of the item's `result` options, or a number as text; only for an item with a `result` (PRD main 104) |
 | `lot`, `expiry` | text null (1 to 40), date null | For an item with `captureLot` (PRD main 426) |
 | `override_allergy_ids`, `override_reason` | uuid[] null, text null (3 to 300) | Both or neither |
@@ -192,7 +193,7 @@ Each is written once in TypeScript and once in Dart, with no database or network
 | `order-rules.json` | `mayOrderItem({itemMedical, behaviour, chartMedical, orderMedications})` → flags: `needs_medical_credential` when the item is Medical and `chartMedical` is false; `needs_ordering_credential` when `behaviour` is `medication` and `orderMedications` is false | `services/api/src/orders/rules.ts` | `apps/mobile/lib/orders/rules.dart` |
 | | `itemOffered({visitKind, hasPatient, itemMedical, behaviour, chartMedical, orderMedications})` → `listed`, `disabled` or `hidden` (5.1) | none | same |
 | | `orderProblem(value, item)` → null or `result_invalid`: a result on an item with no `result`, an option the item does not have, or text that is not a number for a number result | same | same |
-| | `orderVisibleTo({itemMedical, isAuthor, canViewPatients, canChart, canViewCodes})` → bool: the author always; a Non-Medical item with `patients.view`; a Medical item as a Medical note is read (lifecycle 6.4): `patients.view` with `encounters.chart` or `billing.view_codes` | same | same |
+| | `orderVisibleTo({itemMedical, isAuthor, canViewPatients, canChart, canViewCodes, fromNote})` → bool: the author always; a line a mapping suggested (`fromNote` is `{readable}`, whether `visibleAnswers` gives the reader that note) only when its note is readable, whatever its item; otherwise a Non-Medical item with `patients.view`; a Medical item as a Medical note is read (lifecycle 6.4): `patients.view` with `encounters.chart` or `billing.view_codes` | same | same |
 | `allergy-check.json` | `allergyMatches({itemName, allergenTerms, allergies: [{id, substance, status}]})` → sorted allergy IDs. Rule in 5.4 | `services/api/src/orders/allergy-check.ts` | `apps/mobile/lib/orders/allergy_check.dart` |
 | | `allergyOutcome({matches, overrideIds})` → `clear`, `overridden` (every match is in `overrideIds`) or `unchecked` | same | same |
 | `chart-banners.json` | `chartBanners({allergyScreen, alerts, canSeeSensitive, labOrders, today})` → ordered `[{key, tone, alertId?}]` (5.5) | `services/api/src/alerts/banners.ts` | `apps/mobile/lib/alerts/banners.dart` |
@@ -214,7 +215,7 @@ Adding an alert (`kind`, `text`, `sensitive`) and ending one with a reason both 
 Both entities follow lifecycle 4.1 and 4.2: no new reject reason (a refused rule is `validation` with a `details.problem`); every change takes the team lock (D32); a sender without the key is held for a Program Admin, never refused; a throw while reading a preset body or running a check is caught and stored as `validation`, `preset_error`, so no fault here stops a queue.
 
 ### 6.1 `encounter_order`
-Create value (strict): `encounterId`, `itemId`, `itemVersion`, `quantity`, `locationId` (null allowed), `outingId` (null allowed), `source`, `bundleId`, `bundleVersion`, `mapId`, `labResult`, `lot`, `expiry` (a date), `allergyOverride` (`{allergyIds: 1 to 30 IDs, reason: 3 to 300}` or null). One settable field: `voided` (`{reason}`, class `set_once`, the `Retraction` shape of `values.ts`). Permission `encounters.chart` for create and for `voided`; `mayChange` for `voided` is the order's author. Parent: the encounter (missing: held as `encounter_missing`, as today). Clock pause: follows encounters (D35). Sync read: `encounters.chart`, then `orderVisibleTo`; an order the reader may not see is absent.
+Create value (strict): `encounterId`, `itemId`, `itemVersion`, `quantity`, `locationId` (null allowed), `outingId` (null allowed), `source`, `bundleId`, `bundleVersion`, `mapId`, `noteId` (with `mapId` exactly, a note of the same visit), `labResult`, `lot`, `expiry` (a date), `allergyOverride` (`{allergyIds: 1 to 30 IDs, reason: 3 to 300}` or null). One settable field: `voided` (`{reason}`, class `set_once`, the `Retraction` shape of `values.ts`). Permission `encounters.chart` for create and for `voided`; `mayChange` for `voided` is the order's author. Parent: the encounter (missing: held as `encounter_missing`, as today). Clock pause: follows encounters (D35). Sync read: `encounters.chart`, then `orderVisibleTo`; an order the reader may not see is absent.
 
 | Case | The server answers |
 |---|---|
@@ -346,7 +347,7 @@ The Done when, as steps. It runs three times: against the API (`services/api/tes
 | Audit in the same transaction; the team lock first | Force the audit insert to fail: no order, no movement, no alert row. Each writing route is seen to take the lock before its first read |
 | No stock detail reaches a field user | Receipts carry no stock keys (API and fake parity); `alertVisibleTo` vectors |
 | No patient detail in a push or audit | `push_outbox` column pin; a scan of every new event's details for the seeded name, item text, reason and alert text; `/v1/me/counts` writes no audit row |
-| Permissions, and who reads an order | One refusal test per route and key; the count correction refused for Logistics; `orderVisibleTo` vectors; a Medical item's order is absent from the visit read, `recentVisits` and the sync read for the CHW preset |
+| Permissions, and who reads an order | One refusal test per route and key; the count correction refused for Logistics; `orderVisibleTo` vectors; a Medical item's order, and a Non-Medical line a mapping suggested from a Medical-only note, are absent from the visit read, `recentVisits` and the sync read for the CHW preset |
 | Sensitive alerts | Absent for a role without `patients.view_sensitive`, in the chart answer, the sync read and `chartBanners` vectors |
 | Accessibility | Each new screen in three themes at narrow width (phone golden and semantics tests; Playwright and axe) |
 

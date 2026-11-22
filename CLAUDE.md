@@ -149,6 +149,11 @@ Local Postgres is 16; CI also runs 17, so don't rely on version-specific behavio
 - Tell it to commit working pieces as it goes and to report early when other units wait on part of
   its work. Usage limits stop agents mid-task; whatever is committed survives, and nothing else
   does.
+- An agent that pushes a backup branch first runs the secret scan on its new commits:
+  `gitleaks git --redact --exit-code 1 --log-opts="<base>..HEAD" .`. CI's checkout fetches every
+  branch and its scan reads them all, so a false positive on a backup branch turns the PR's check
+  red. Reword a made-up value the scan flags (a low-entropy one, such as `t_000000000001`) before
+  pushing; a fingerprint in `.gitleaksignore` is for a value that must stay as it is.
 - The coordinating session merges each unit onto the PR branch (fast-forward when the agent rebased,
   otherwise cherry-pick), runs the full local CI, pushes, and tells the units that wait on it.
   Worktrees under `.claude/worktrees/` are scratch: nothing in them counts until it is on the branch.

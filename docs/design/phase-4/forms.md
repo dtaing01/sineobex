@@ -258,7 +258,7 @@ F2) can then rely on:
     taken out. Picked rows may not be picked among options of which one is marked. A condition in
     a grid's cell is checked in every row, so an absolute path into another row is caught.
   - **A section that holds a diagnosis.** A condition or picked rows outside a section that does
-    not repeat and holds a `problem` field may not read any answer of that section, not only the
+    not repeat and holds a `problem` field, at any depth (in a group too), may not read any answer of that section, not only the
     diagnosis's code. A sensitive diagnosis takes its whole section with it for a reader without
     `patients.view_sensitive`, so a field elsewhere that one of its answers shows would say a
     diagnosis is there. A repeating section is out of reach already (`path_into_repeat`).
