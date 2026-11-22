@@ -590,13 +590,16 @@ describe('installing the platform presets', () => {
         await writer.conn`
           insert into sineobex.team_presets (team_id, kind, name, current_version, revision, created_by, updated_by)
           values (${team}, 'order_category', 'Demo: Supplies', 1, 1, ${user}, ${user})`;
-        const install = asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY, GAUZE] }));
-        await someoneWaitsForTheLock('transactionid');
-        await writer.commit();
-        thrown = await install.then(
+        // Its outcome is taken at once, so a failure here leaves no rejection unheard.
+        const install = asTeam(team, (tx) =>
+          installTeamPresets(tx, team, { platform: [CATEGORY, GAUZE] }),
+        ).then(
           () => null,
           (e: unknown) => e,
         );
+        await someoneWaitsForTheLock('transactionid');
+        await writer.commit();
+        thrown = await install;
       } finally {
         await writer.rollback();
       }
