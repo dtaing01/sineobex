@@ -1682,6 +1682,30 @@ describe('a tier’s flag order from a list changed since (design 5.1, 7)', () =
     await expectNothingWritten(h, s.teamId, before);
   });
 
+  it('names each flag changed since in the order sent, whatever its rank now or its ID', async () => {
+    // The second of two orders from one list, above, names its flags in an order their ranks give
+    // too; here the order sent and the ranks disagree.
+    const listed = await adminB.flagList('secondary');
+    const [x, y, z] = listed as [ListedFlag, ListedFlag, ListedFlag];
+    expect((await ranks([x.id, y.id, z.id])).map((r) => r[1])).toEqual([10, 20, 30]);
+    // A moves X below Y and rewrites Z: by rank now Y 20, X 25, Z 30.
+    const xNow = await editedByA(x.id, (b) => ({ ...b, rank: 25 }));
+    const zNow = await editedByA(z.id, (b) => ({ ...b, criteria: 'Demo: rewritten by A' }));
+    expect(await activeFlags('secondary', s.teamId)).toEqual([y.id, x.id, z.id]);
+    const named = (...flags: ListedFlag[]) => ({
+      flags: flags.map((f) => ({ id: f.id, currentVersion: f === x ? xNow : zNow })),
+    });
+    // From B's list, Z before X, where by rank X comes first.
+    expect(
+      await refusedUnwritten(() => adminB.reorder('secondary', [z, y, x]), 409, 'stale', s.teamId),
+    ).toEqual(named(z, x));
+    // Then X before Z: named as sent again, where an order fixed beforehand, by ID say, would name
+    // the two alike both times.
+    expect(
+      await refusedUnwritten(() => adminB.reorder('secondary', [x, y, z]), 409, 'stale', s.teamId),
+    ).toEqual(named(x, z));
+  });
+
   it('answers a list that has gained a flag as ids_mismatch before it answers a flag changed since', async () => {
     const listed = await adminB.flagList('secondary');
     await editedByA(listed[1]!.id, (b) => ({ ...b, criteria: 'Demo: changed again by A' }));
