@@ -12,12 +12,10 @@ import type { PresetBody, PresetKind, PresetProblem, PresetRef } from '../src/in
 // The signature these tests are written to, in packages/presets/src/validate.ts and exported from
 // the package index (P0-validate):
 //
-//   export type PresetRef = {
-//     kind: PresetKind;
-//     state: 'active' | 'archived';
-//     /** An order_category's behaviour, or an item's category's. */
-//     behaviour?: 'supply' | 'medication' | 'lab';
-//   };
+//   /** A category's behaviour, or an item's category's; a preset of another kind has none. */
+//   export type PresetRef =
+//     | { kind: 'order_category' | 'item'; state: 'active' | 'archived'; behaviour: 'supply' | 'medication' | 'lab' }
+//     | { kind: Exclude<PresetKind, 'order_category' | 'item'>; state: 'active' | 'archived' };
 //   export type PresetProblemCode = 'unknown_reference' | 'wrong_kind' | 'reference_archived'
 //     | 'result_mismatch' | 'medical_mismatch' | 'bundle_not_medical' | 'primary_sensitive'
 //     | 'unknown_note_type' | 'unknown_path' | 'path_kind' | 'when_invalid' | 'from_path'

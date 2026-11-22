@@ -105,15 +105,21 @@ function idsOf(
 }
 
 /** The team's presets, as validatePreset reads them, once every entry is installed. */
+type Behaviour = Extract<PresetRef, { behaviour: unknown }>['behaviour'];
 const refs: Record<string, PresetRef> = {};
 for (const e of current) {
   const behaviour =
     e.kind === 'order_category'
-      ? (e.body.behaviour as PresetRef['behaviour'])
+      ? (e.body.behaviour as Behaviour)
       : e.kind === 'item'
-        ? (newest.get(e.body.categoryId as string)?.body.behaviour as PresetRef['behaviour'])
+        ? (newest.get(e.body.categoryId as string)?.body.behaviour as Behaviour)
         : undefined;
-  refs[idOf.get(e.originKey)!] = { kind: e.kind, state: 'active', ...(behaviour ? { behaviour } : {}) };
+  // An item whose category the data lacks gets no behaviour, and validatePreset refuses what names it.
+  refs[idOf.get(e.originKey)!] = {
+    kind: e.kind,
+    state: 'active',
+    ...(behaviour ? { behaviour } : {}),
+  } as PresetRef;
 }
 
 /** The released note types a team holds, each at its newest version. */

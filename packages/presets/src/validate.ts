@@ -22,13 +22,32 @@ import type {
   SettingsBody,
 } from './schemas.ts';
 
-/** A preset of the team, as the rules read it. */
-export type PresetRef = {
-  kind: PresetKind;
-  state: 'active' | 'archived';
-  /** An order_category's behaviour, or an item's category's. */
-  behaviour?: 'supply' | 'medication' | 'lab';
-};
+/**
+ * A preset of the team, as the rules read it. A category carries its behaviour and an item its
+ * category's, since the rules on results, the Medical switch and a bundle's tag read it; the heads
+ * hold none, so a caller reads it from the bodies. A preset of any other kind carries none.
+ */
+export type PresetRef =
+  | {
+      kind: 'order_category' | 'item';
+      state: 'active' | 'archived';
+      behaviour: 'supply' | 'medication' | 'lab';
+    }
+  | { kind: Exclude<PresetKind, 'order_category' | 'item'>; state: 'active' | 'archived' };
+
+const BEHAVIOURS: ReadonlySet<unknown> = new Set(['supply', 'medication', 'lab']);
+
+/**
+ * Whether a ref carries what the rules read of its kind. A category or an item given without a
+ * behaviour, as refs read from the heads alone would be, is not: the result, Medical and bundle
+ * rules would pass whatever they were asked for want of it.
+ */
+const readable = (ref: PresetRef) =>
+  (ref.kind !== 'order_category' && ref.kind !== 'item') ||
+  BEHAVIOURS.has((ref as { behaviour?: unknown }).behaviour);
+
+const behaviourOf = (ref: PresetRef | null) =>
+  ref !== null && 'behaviour' in ref ? ref.behaviour : undefined;
 
 export type PresetProblemCode =
   | 'unknown_reference'
@@ -70,8 +89,9 @@ export function validatePreset(input: {
   /** The preset an id names, if it is one of the team's of the right kind; null otherwise. */
   const ref = (path: string, id: string, kind: PresetKind): PresetRef | null => {
     const found = Object.hasOwn(refs, id) ? refs[id] : undefined;
-    // Another team's preset is not among refs, so it is unknown here too.
-    if (!found) problems.push({ path, code: 'unknown_reference' });
+    // Another team's preset is not among refs, so it is unknown here too; so is one given without
+    // what the rules read of it, which nothing here guesses.
+    if (!found || !readable(found)) problems.push({ path, code: 'unknown_reference' });
     else if (found.kind !== kind) problems.push({ path, code: 'wrong_kind' });
     else {
       if (found.state === 'archived') problems.push({ path, code: 'reference_archived' });
@@ -88,7 +108,7 @@ export function validatePreset(input: {
     case 'item': {
       const body = input.body as ItemBody;
       // Nothing is read from a category that is not one.
-      const behaviour = ref('categoryId', body.categoryId, 'order_category')?.behaviour;
+      const behaviour = behaviourOf(ref('categoryId', body.categoryId, 'order_category'));
       if (behaviour === undefined) break;
       // What a category's behaviour asks of its items is why it is fixed at creation (rules.ts): an
       // item never moves into or out of a lab category.
@@ -104,7 +124,7 @@ export function validatePreset(input: {
     case 'bundle': {
       const body = input.body as BundleBody;
       // A bundle holding a medication is Medical (PRD main 447); a Labs item does not make it so.
-      const medication = items('lines', body.lines).some((item) => item?.behaviour === 'medication');
+      const medication = items('lines', body.lines).some((item) => behaviourOf(item) === 'medication');
       if (medication && !body.medical) problems.push({ path: 'medical', code: 'bundle_not_medical' });
       break;
     }

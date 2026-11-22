@@ -109,19 +109,22 @@ export function planTeamPresets(input: {
     const ref = Object.hasOwn(refs, categoryId) ? refs[categoryId] : undefined;
     return ref?.kind === 'order_category' ? ref.behaviour : undefined;
   };
-  const refOf = (kind: PresetKind, state: HeldPreset['state'], body: PresetBody): PresetRef => {
-    const behaviour =
-      kind === 'order_category'
-        ? (body as OrderCategoryBody).behaviour
-        : kind === 'item'
-          ? behaviourOf((body as ItemBody).categoryId)
-          : undefined;
-    return behaviour === undefined ? { kind, state } : { kind, state, behaviour };
+  // An item whose category is not among them has no behaviour to read, so it is left out too.
+  const setRef = (id: string, kind: PresetKind, state: HeldPreset['state'], body: PresetBody) => {
+    let ref: PresetRef | null = null;
+    if (kind === 'order_category') ref = { kind, state, behaviour: (body as OrderCategoryBody).behaviour };
+    else if (kind !== 'item') ref = { kind, state };
+    else {
+      const behaviour = behaviourOf((body as ItemBody).categoryId);
+      if (behaviour !== undefined) ref = { kind, state, behaviour };
+    }
+    if (ref) refs[id] = ref;
+    else delete refs[id];
   };
   for (const h of input.held)
-    if (h.kind === 'order_category' && h.body !== null) refs[h.id] = refOf(h.kind, h.state, h.body);
+    if (h.kind === 'order_category' && h.body !== null) setRef(h.id, h.kind, h.state, h.body);
   for (const h of input.held)
-    if (h.kind !== 'order_category' && h.body !== null) refs[h.id] = refOf(h.kind, h.state, h.body);
+    if (h.kind !== 'order_category' && h.body !== null) setRef(h.id, h.kind, h.state, h.body);
 
   const nameKey = (kind: PresetKind, name: string) => `${kind}\u0000${input.fold(name)}`;
   // Every name an active head holds, by kind, as it is now, and every name the plan gives: a head's
@@ -185,10 +188,10 @@ export function planTeamPresets(input: {
     if (effect === 'install') {
       const id = input.newId();
       ids.set(entry.originKey, id);
-      refs[id] = refOf(entry.kind, 'active', body);
+      setRef(id, entry.kind, 'active', body);
       steps.push({ ...step, effect, id, body });
     } else {
-      refs[copy!.id] = refOf(entry.kind, 'active', body);
+      setRef(copy!.id, entry.kind, 'active', body);
       steps.push({ ...step, effect, id: copy!.id, version: copy!.currentVersion + 1, body });
     }
   }

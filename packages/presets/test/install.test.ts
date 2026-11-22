@@ -618,6 +618,18 @@ describe('the preset installer', () => {
           problems: [{ path: 'currentVersion', code: 'version_missing' }],
         },
       ]);
+      // An item the team holds in it has no behaviour to read, so a bundle naming that item is not
+      // checked against a guess: it is skipped.
+      const gauze = held(GAUZE, 2, {}, { [CATEGORY.originKey]: id(1) });
+      expect(plan([unread, gauze], [BUNDLE])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: BUNDLE.originKey,
+          kind: 'bundle',
+          platformVersion: 1,
+          problems: [{ path: 'lines.0.itemId', code: 'unknown_reference' }],
+        },
+      ]);
       // Its name stays taken, and nothing that names it is written, since it cannot be checked.
       const sameName = { ...CATEGORY, originKey: 'order_category.demo_other' };
       expect(effects(plan([unread], [CATEGORY, sameName, GAUZE]))).toEqual([
