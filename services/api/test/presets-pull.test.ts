@@ -41,8 +41,9 @@ import {
 //     they are (presets-revision.test.ts holds a writer committing between two reads); `since` when
 //     it holds none, and 0 when `since` is left out too.
 //   - epoch: the team's (team_preset_state.epoch, renewed after a database restore).
-//   - reset: true exactly when `since` is sent and is above the team's revision, or `epoch` is not
-//     the team's (left out included), and `presets` then holds every head; false otherwise.
+//   - reset: true exactly when `since` is left out, or is above the team's revision, or `epoch` is
+//     not the team's (left out included), and `presets` then holds every head, which the phone puts
+//     in place of its copy; false otherwise.
 //   `since` is a whole number from 0 and `epoch` a UUID: anything else is 422 validation_failed.
 // It runs the preset installer first, in the same transaction (design 5.2). When the installer
 // wrote (an install, an update or an offer) the pull audits preset.platform_installed: entity team,
@@ -143,7 +144,7 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
     await editDirect(h, team.teamId, flu, { ...current!.body, captureLot: false }, team.admin.userId);
 
     const answer = pulled(await asStaff().pull());
-    expect(answer.reset).toBe(false);
+    expect(answer.reset).toBe(true);
     expect(answer.epoch).toBe((await stateOf(h, team.teamId))!.epoch);
     expect(answer.revision).toBe(await greatestRevision(h, team.teamId));
     expect(byId(answer.presets)).toEqual(await heldAbove(h, team.teamId));
@@ -271,13 +272,15 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
     });
   });
 
-  it('answers no reset when no revision is sent, whatever the epoch', async () => {
+  it('answers everything as a reset when no revision is sent, whatever the epoch', async () => {
+    // Everything is sent either way, so the phone puts it in place of its copy: a phone that lost
+    // its revision but kept rows a restored server no longer has keeps none of them (design 6.1).
+    const { epoch } = (await stateOf(h, team.teamId))!;
     const everything = await heldAbove(h, team.teamId);
-    for (const answer of [
-      pulled(await asStaff().pull()),
-      pulled(await asStaff().pull({ epoch: randomUUID() })),
-    ]) {
-      expect(answer.reset).toBe(false);
+    for (const query of [{}, { epoch }, { epoch: randomUUID() }]) {
+      const answer = pulled(await asStaff().pull(query));
+      expect(answer, JSON.stringify(query)).toMatchObject({ reset: true, epoch });
+      expect(answer.revision).toBe(await greatestRevision(h, team.teamId));
       expect(byId(answer.presets)).toEqual(everything);
     }
   });
@@ -358,7 +361,7 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
       const mark = await auditMark(h);
 
       const first = pulled(await presetsApi(h, teamId, member).pull());
-      expect(first.reset).toBe(false);
+      expect(first.reset).toBe(true);
       expect(first.revision).toBe(1);
       expect(new Set(first.presets.map((p) => p.originKey))).toEqual(
         new Set(installable.map((e) => e.originKey)),

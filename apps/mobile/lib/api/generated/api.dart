@@ -4782,7 +4782,7 @@ class PresetsPull {
   final String epoch;
   /// Every preset changed after since, or all of them; archived ones included
   final List<PulledPreset> presets;
-  /// Replace the copy whole: the revision sent is above the team’s, or another epoch
+  /// Replace the copy whole: no revision was sent, the revision sent is above the team’s, or another epoch
   final bool reset;
   /// Send as since next time: the greatest revision among presets, else since
   final int revision;

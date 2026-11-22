@@ -59,7 +59,8 @@ const PulledPreset = z
 export const PresetsPull = z
   .object({
     reset: z.boolean().openapi({
-      description: 'Replace the copy whole: the revision sent is above the team’s, or another epoch',
+      description:
+        'Replace the copy whole: no revision was sent, the revision sent is above the team’s, or another epoch',
     }),
     revision: z
       .number()
@@ -106,8 +107,10 @@ interface PulledRow {
  * takes its revision under the team lock and holds it to commit (4.2), so once a revision is read
  * no lower one can commit later, and what this read did not see, a pull since its answer does.
  * A revision above the team's, or another epoch (a restored database, setup.md), answers a reset,
- * and everything with it. A head whose current version is missing is a fault, as for every reader
- * of presets: left out under a revision above it, it would never be asked for again.
+ * and everything with it; so does a pull with no revision, which is sent everything anyway, so a
+ * phone that lost its revision but kept rows a restored server no longer has replaces them too. A
+ * head whose current version is missing is a fault, as for every reader of presets: left out under
+ * a revision above it, it would never be asked for again.
  */
 async function pullPresets(
   scope: TeamScope,
@@ -115,9 +118,9 @@ async function pullPresets(
 ): Promise<z.infer<typeof PresetsPull>> {
   const { teamId } = scope.team;
   const sent = query.since === undefined ? null : Number(query.since);
-  // A revision no team can have taken (above what a JavaScript number counts) is above the team's.
-  const beyond = sent !== null && !Number.isSafeInteger(sent);
-  const since = beyond ? null : sent;
+  // A revision no team can have taken (above what a JavaScript number counts) is above the team's,
+  // and answered as one never sent: everything, as a reset.
+  const since = sent !== null && Number.isSafeInteger(sent) ? sent : null;
   return scope.tx(async (tx, audit) => {
     await installPlatformPresets(tx, audit, { teamId, log: scope.deps.log, requestId: scope.meta.requestId });
     const rows = await tx<PulledRow[]>`
@@ -129,10 +132,8 @@ async function pullPresets(
         left join sineobex.team_preset_state s on s.team_id = ${teamId}::uuid
       ) st
       cross join lateral (
-        select ${beyond}::boolean
-               or (${since}::bigint is not null
-                   and (${since}::bigint > st.revision or ${query.epoch ?? null}::uuid is distinct from st.epoch))
-               as reset
+        select ${since}::bigint is null or ${since}::bigint > st.revision
+               or ${query.epoch ?? null}::uuid is distinct from st.epoch as reset
       ) r
       left join lateral (
         select h.id, h.kind, h.state, h.current_version as version, h.origin_key, v.body, h.revision
@@ -140,7 +141,7 @@ async function pullPresets(
         left join sineobex.team_preset_versions v
           on v.team_id = h.team_id and v.preset_id = h.id and v.version = h.current_version
         where h.team_id = ${teamId}::uuid and h.kind = any(${[...PULLED_KINDS]}::text[])
-          and (r.reset or ${since}::bigint is null or h.revision > ${since}::bigint)
+          and (r.reset or h.revision > ${since}::bigint)
       ) p on true
       order by p.revision, p.id`;
     const { reset, epoch } = rows[0]!;
