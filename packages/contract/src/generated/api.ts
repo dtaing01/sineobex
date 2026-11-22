@@ -18,6 +18,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/presets/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Give a preset its next version, with a reason (recent sign-in); what is fixed at creation stays */
+        put: operations["editPreset"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/devices": {
         parameters: {
             query?: never;
@@ -1541,6 +1558,19 @@ export interface components {
         DuplicateSource: "sync" | "edit" | "merge_rematch" | "correction" | "staff_report";
         /** @enum {string} */
         DuplicateStatus: "open" | "not_sure" | "keep_separate" | "merged" | "superseded";
+        EditPreset: {
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            /** @description Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
+            body?: unknown;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
+        EditPresetResult: {
+            /** @description The team’s revision this write took: a phone’s next pull gets the change */
+            revision: number;
+            version: number;
+        };
         /** @enum {string} */
         EncounterKind: "medical" | "non_medical";
         ErrorResponse: {
@@ -3036,6 +3066,79 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    editPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditPreset"];
+            };
+        };
+        responses: {
+            /** @description Its next version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditPresetResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

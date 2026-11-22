@@ -3,6 +3,7 @@ import { PRESET_KINDS, type HeldPreset, type PresetKind } from '@sineobex/preset
 import type { TeamScope } from '../auth/context.ts';
 import {
   createPreset,
+  editPreset,
   loadTeamPresets,
   platformUpdateOf,
   presetReadScope,
@@ -12,6 +13,7 @@ import {
   type TeamPresets,
 } from '../presets/store.ts';
 import type { App } from '../app.ts';
+import { MAX_VERSION } from '../sync/schemas.ts';
 import type { Deps } from '../types.ts';
 import { errors, Uuid } from './schemas.ts';
 
@@ -29,6 +31,7 @@ const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json
 
 const Kind = z.enum(PRESET_KINDS).openapi({ description: 'The kind of preset' });
 const kindParam = z.object({ kind: Kind });
+const presetParam = z.object({ kind: Kind, id: Uuid });
 
 /**
  * The body as it is sent: the store parses it by its kind's schema and answers 422 invalid with the
@@ -45,11 +48,27 @@ const Revision = z
   .min(1)
   .openapi({ description: 'The team’s revision this write took: a phone’s next pull gets the change' });
 
+/** The version the person opened, so a write never undoes a change they have not seen. */
+const BaseVersion = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_VERSION)
+  .openapi({ description: 'The version you opened: any other is refused as stale, with the current one' });
+
 const CreatePreset = z.object({ body: SentBody, reason: PresetReason }).openapi('CreatePreset');
 
 const CreatePresetResult = z
   .object({ id: Uuid, version: z.literal(1), revision: Revision })
   .openapi('CreatePresetResult');
+
+const EditPreset = z
+  .object({ baseVersion: BaseVersion, body: SentBody, reason: PresetReason })
+  .openapi('EditPreset');
+
+const EditPresetResult = z
+  .object({ version: z.number().int().min(2), revision: Revision })
+  .openapi('EditPresetResult');
 
 const PresetView = z
   .object({
@@ -101,13 +120,36 @@ const createPresetRoute = createRoute({
   },
 });
 
+const editPresetRoute = createRoute({
+  method: 'put',
+  path: '/v1/admin/presets/{kind}/{id}',
+  operationId: 'editPreset',
+  tags: ['presets'],
+  summary: 'Give a preset its next version, with a reason (recent sign-in); what is fixed at creation stays',
+  security: [{ bearer: [] }],
+  request: { params: presetParam, body: { required: true, ...json(EditPreset) } },
+  responses: {
+    200: { description: 'Its next version', ...json(EditPresetResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+/**
+ * The preset an address names, as the store reads IDs: in lowercase, as the database writes a UUID,
+ * so one sent in capitals still names its preset.
+ */
+const presetIn = (param: { kind: PresetKind; id: string }) => ({
+  kind: param.kind,
+  id: param.id.toLowerCase(),
+});
+
 // The pages list a kind by name, in one order whatever the database's collation (CI runs two
 // PostgreSQL versions), the ID settling two names a reader would sort alike.
 const byName = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
 /** A preset as Team setup's pages show it: a fault, never a row, when its current version is missing. */
 function viewOf(team: TeamPresets, preset: HeldPreset): z.infer<typeof PresetView> {
-  // Every writer writes a head with its version (store.ts, the installer), as 0023 cannot hold.
+  // Every writer writes a head with its version (store.ts, the installer); 0023 cannot hold it.
   if (preset.body === null) throw new Error('a preset’s current version is missing');
   const update = platformUpdateOf(team, preset);
   return {
@@ -150,5 +192,12 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
     const { body, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     return c.json(await createPreset(scope, { kind, body, reason }), 201);
+  });
+
+  app.openapi(editPresetRoute, async (c) => {
+    const { kind, id } = presetIn(c.req.valid('param'));
+    const { baseVersion, body, reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await editPreset(scope, { kind, id, baseVersion, body, reason }), 200);
   });
 }

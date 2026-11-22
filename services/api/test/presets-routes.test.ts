@@ -765,6 +765,14 @@ describe('editing a preset (design 5.1, 7)', () => {
     // And the route that answers them finds a preset that is one.
     expect((await api.edit('flag', id, 1, make.flag())).status).toBe(200);
   });
+
+  it('finds a preset whose ID the address writes in capitals, as the database reads a UUID', async () => {
+    const body = make.flag();
+    const { id } = await createdPreset(api, 'flag', body);
+    const r = await api.edit('flag', id.toUpperCase(), 1, FREE_CHANGE.flag(body));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(await headOf(h, id)).toMatchObject({ currentVersion: 2 });
+  });
 });
 
 describe('archiving and restoring a preset (design 5.1, 7)', () => {
