@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Api from '@/lib/api';
 import type { ActionState } from '@/lib/forms';
-import { addFlagAction, moveFlagAction } from './presets-flags';
+import { addFlagAction, moveFlagAction, saveFlagAction } from './presets-flags';
 
 // Adding a flag and moving one up or down its list (phase 5 design 4.4, 5.1, 7, 8.1), as the Flags
 // page's forms send them. The API is a stand-in that records each request and answers it by its
@@ -212,6 +212,119 @@ describe('adding a flag', () => {
     answer = refusal(403, 'reauth_required');
     expect((await run(addFlagAction, fields)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fflags');
     expect(revalidated).toEqual([]);
+  });
+});
+
+describe('editing a flag', () => {
+  const fields = {
+    id: PREGNANCY,
+    baseVersion: '1',
+    name: ' Pregnancy ',
+    color: 'teal',
+    criteria: ' Demo: says so, or a test says so. ',
+    reason: 'Demo: our own words',
+  };
+
+  beforeEach(() => {
+    answer = { status: 200, body: { version: 2, revision: 10 } };
+  });
+
+  it('sends the flag as the API holds it with the form’s name, colour and criteria, at the version shown', async () => {
+    const r = await run(saveFlagAction, fields);
+    expect(writes()).toEqual([
+      {
+        method: 'PUT',
+        path: '/v1/admin/presets/{kind}/{id}',
+        init: {
+          params: { path: { kind: 'flag', id: PREGNANCY } },
+          body: {
+            baseVersion: 1,
+            // Its list, Sensitive and its rank are the API's, never the form's (4.4).
+            body: {
+              name: 'Pregnancy',
+              tier: 'secondary',
+              criteria: 'Demo: says so, or a test says so.',
+              color: 'teal',
+              rank: 30,
+              sensitive: true,
+            },
+            reason: 'Demo: our own words',
+          },
+        },
+      },
+    ]);
+    expect(r.state).toEqual({
+      ok: true,
+      message: 'Saved: Pregnancy. It’s on the phones after their next sync.',
+    });
+    expect(revalidated).toEqual([`/team/presets/flags/${PREGNANCY}`, '/team/presets/flags']);
+  });
+
+  it('never sends a list, Sensitive or a rank a form sends, and keeps every field it doesn’t show', async () => {
+    listed = [
+      {
+        ...flag(PREGNANCY, 'Pregnancy', 'secondary', 30, { sensitive: true }),
+        body: { ...flag(PREGNANCY, 'Pregnancy', 'secondary', 30, { sensitive: true }).body, icon: 'demo' },
+      },
+    ];
+    await run(saveFlagAction, { ...fields, tier: 'primary', sensitive: '', rank: '5' });
+    expect(sentBody()).toMatchObject({ tier: 'secondary', sensitive: true, rank: 30, icon: 'demo' });
+  });
+
+  it('says someone else changed it, keeps what was typed, and leaves the page as it is', async () => {
+    answer = refusal(409, 'stale', { currentVersion: 2 });
+    const r = await run(saveFlagAction, fields);
+    expect(r.state).toEqual({
+      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      values: fields,
+    });
+    expect(revalidated).toEqual([]);
+  });
+
+  it('says nothing was changed, and a name another flag holds beside the name', async () => {
+    answer = refusal(422, 'no_change');
+    expect((await run(saveFlagAction, fields)).state?.error).toBe('You haven’t changed anything.');
+    answer = refusal(409, 'name_taken');
+    expect((await run(saveFlagAction, { ...fields, name: 'high' })).state?.fieldErrors).toEqual({
+      name: 'Another flag already has this name.',
+    });
+  });
+
+  it('says each problem with a field beside it', async () => {
+    answer = refusal(422, 'invalid', {
+      problems: [
+        { path: 'criteria', code: 'too_big' },
+        { path: 'color', code: 'invalid_value' },
+      ],
+    });
+    expect((await run(saveFlagAction, fields)).state?.fieldErrors).toEqual({
+      criteria: 'Criteria: Keep it to 500 characters.',
+      color: 'Colour: Choose a colour.',
+    });
+  });
+
+  it('says a flag no longer on the list isn’t, and asks nothing more', async () => {
+    listed = [flag(HIGH, 'High', 'primary', 10)];
+    const r = await run(saveFlagAction, fields);
+    expect(r.state?.error).toBe(
+      'This isn’t on your team’s list. Reload the page to see the list as it is now.',
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  it('asks nothing of the API for a form the page doesn’t write', async () => {
+    for (const bad of [
+      { ...fields, id: 'not-an-id' },
+      { ...fields, baseVersion: '' },
+      { ...fields, baseVersion: '0' },
+    ])
+      expect((await run(saveFlagAction, bad)).state?.error).toBe('This can’t be found. Reload the page.');
+    expect(requests).toEqual([]);
+  });
+
+  it('goes through /reauth and back to the page the form was sent from when the sign-in is too old', async () => {
+    answer = refusal(403, 'reauth_required');
+    expect((await run(saveFlagAction, fields)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fflags');
   });
 });
 
