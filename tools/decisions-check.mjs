@@ -318,12 +318,23 @@ export function readRows(doc) {
   const rows = new Map();
   const problems = [];
   let header = null;
+  let fence = null;
+  let comment = false;
   doc
     .replace(/\r\n/g, '\n')
     .split('\n')
     .forEach((line, i) => {
       const at = `${DOC}:${i + 1}`;
-      if (!line.trimStart().startsWith('|')) {
+      // A row the page doesn't show lists nothing: one in a fenced block (``` or ~~~), an HTML
+      // comment or a block indented as code is an example or a row put away, as Markdown reads it.
+      const open = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      const shown = fence === null && !comment && !open && !/^ {0,3}<!--/.test(line);
+      if (comment) comment = !line.includes('-->');
+      else if (fence !== null) {
+        if (open?.[0] === fence[0] && open.length >= fence.length && line.trim() === open) fence = null;
+      } else if (open) fence = open;
+      else if (!shown) comment = !line.includes('-->');
+      if (!shown || !/^ {0,3}\|/.test(line)) {
         header = null;
         return;
       }

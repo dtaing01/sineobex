@@ -165,6 +165,36 @@ describe('the decisions document check', () => {
     expect(check({ doc: other })).toEqual([]);
   });
 
+  it('reads no row the page does not show: none in a code block or an HTML comment', () => {
+    const table = [...HEADER, row('TM-7', '`services/api/src/services/memberships.ts`')];
+    const sources = {
+      ...SOURCES,
+      'services/api/src/services/memberships.ts': `${SOURCES['services/api/src/services/memberships.ts']}// PLAN-OPEN (TM-7): who is told?\n`,
+    };
+    for (const hidden of [
+      ['```', ...table, '```'],
+      ['~~~md', ...table, '~~~'],
+      // A fence closes only on a line of its own kind, as long, with nothing after it.
+      ['````', '```', ...table, '````'],
+      ['```', '```md', ...table, '```'],
+      ['```', '~~~', ...table, '```'],
+      ['<!--', ...table, '-->'],
+      ['<!-- An example:', ...table, 'which is not a row. -->'],
+      table.map((l) => `    ${l}`),
+    ]) {
+      const doc = `${BASE}\n${hidden.join('\n')}\n`;
+      expect(check({ doc, sources }), hidden[0]).toEqual([
+        `services/api/src/services/memberships.ts:3: names row TM-7, which is not in ${DOC}`,
+      ]);
+    }
+    // Shown, the row holds the marker; a fence closed before it hides nothing.
+    expect(check({ doc: `${BASE}\n${table.join('\n')}\n`, sources })).toEqual([]);
+    expect(check({ doc: `${BASE}\n\`\`\`\nx\n\`\`\`\n\n${table.join('\n')}\n`, sources })).toEqual([]);
+    // A fence inside a comment, or a comment inside a fence, is text: the other still closes.
+    expect(check({ doc: `${BASE}\n<!--\n\`\`\`\n-->\n\n${table.join('\n')}\n`, sources })).toEqual([]);
+    expect(check({ doc: `${BASE}\n\`\`\`\n<!--\n\`\`\`\n\n${table.join('\n')}\n`, sources })).toEqual([]);
+  });
+
   it('names in a Where only paths that exist, braces and "*" included', () => {
     const gone = edit('plan section 6', 'plan section 6; `services/api/src/gone.ts`');
     expect(check({ doc: gone })).toEqual([
