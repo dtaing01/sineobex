@@ -504,35 +504,43 @@ A stale sign-in (`reauth_required`) is not logged (D98).
 
 ## 10. Tests
 ### 10.1 The Done when
-Runs as `services/api/test/presets-done-when.test.ts`, `apps/mobile/test/presets/done_when_presets_test.dart` (against the fake), `live_presets_test.dart` (real API, under the lock) and `apps/portal/e2e/presets.spec.ts`. Steps and names come from `packages/contract/test-vectors/presets-done-when.json`.
+One shared story, `packages/contract/test-vectors/presets-done-when.json`, written before any test that walks it, gives the steps and the names. It runs as `services/api/test/presets-done-when.test.ts` (steps 2 to 5), `apps/mobile/test/presets/done_when_presets_test.dart` (steps 1, 6, 7 and 8, against the fake), `live_presets_test.dart` (steps 1 to 8 against the real API, in `tools/live-sync.sh`, under the lock), a run of steps 7 and 8 on the screens in the three themes and at 200% text, and the portal's `apps/portal/e2e/presets.spec.ts`.
 
 | Step | Asserts |
 |---|---|
 | 1. A phone signs in, syncs, then goes offline | It holds the platform presets and revision R |
-| 2. A Program Admin adds the item "Demo: Glucose test" in Labs, counted in "test", result a number in mg/dL | 201, version 1; `preset.created` in the same transaction; revision R+1 |
-| 3 and 4. The admin adds the bundle "Demo: Foot check" with that item as a core line, then the secondary flag "Demo: Frost risk" | 201 each; revision R+2, then R+3 |
-| 5. A Healthcare Staff member tries step 2 | 403; `access.denied` written; revision unchanged |
+| 2. A Program Admin, signed in within the last 15 minutes, adds the item "Demo: Glucose test" in Labs, counted in "test", result a number in mg/dL, with a reason | 201, version 1; `preset.created` in the same transaction, without the reason; the reason in `team_preset_events`; revision R+1 |
+| 3 and 4. The admin adds the bundle "Demo: Foot check" with that item as a core line, then the secondary flag "Demo: Frost risk", each with a reason | 201 each; revision R+2, then R+3 |
+| 5. A Healthcare Staff member tries step 2; then the admin tries it with a sign-in older than 15 minutes | 403 with `access.denied` written; then 403 `reauth_required`, not logged; the revision unchanged |
 | 6. The phone comes online and syncs | One pull with `since=R` returns exactly the three; the phone holds revision R+3 |
 | 7. The phone goes offline; Team setup is opened | The Labs item under Labs, the bundle with its line, the flag under Conditions |
-| 8. Still offline, staff set "Demo: Frost risk" on a made-up patient with a reason; then sync | Accepted with a hash-matched receipt; the portal chart shows the flag; `patient.flag_changed` carries no reason |
+| 8. Still offline, staff set "Demo: Frost risk" on a made-up patient with a reason; then sync | Accepted with a hash-matched receipt; the portal's chart shows the flag; `patient_flag.changed` carries no reason |
 
-### 10.2 The test that holds each rule (each is checked to bite)
+The portal's half adds the three through the pages, then asks `GET /v1/presets?since=R` as a phone member would and finds exactly the three, by the names in the story, so what the portal adds is what a phone's pull returns (`build-plan.md:91`). Step 8's portal check, the flag on the patient page, reads the same story in the patient page's spec.
+
+### 10.2 The test that holds each rule (each is checked to bite: the rule is removed by a script and its test must fail)
 | Rule | Test |
 |---|---|
-| Shapes, validation, write effects, platform updates, flags, suggestions, note type edits | The vector files of 5.3, read by Vitest and by `flutter test` |
-| Versions are append-only; no delete; team isolation | `db/test`: update and delete as the app role fail; a second team sees nothing |
-| The revision moves once per write, with no gap, under two writers at once; every write audits in its transaction (a failed audit rolls the write back) | `presets-revision.test.ts`, `presets-audit.test.ts` |
-| Every admin route refuses without `team.manage_presets` and logs it | `presets-permissions.test.ts`, one case per route |
-| A platform update never overwrites an edited or archived copy | `presets-install.test.ts`: edit, raise the platform version, install, compare bodies |
-| A fixed field cannot change; a referenced preset cannot be archived; every body's ids point at presets of the same team | `presets-routes.test.ts`; `presets-refs.test.ts` (a walk over all kinds) |
-| A draft begun on version 1 completes, and is later corrected, on version 1 after version 2 is published; another phone can open it; an archived type leaves the list and its drafts finish | `note-type-versions.test.ts`; phone `note_type_version_test.dart` |
-| No operation changes a mark, `kinds`, `group` or `sensitivity`; a protected part cannot be hidden or reworded; no id or code is reused; every result passes phase 4's validator; what `visibleAnswers` gives each reader of forms 7.1 is the same before and after any edit | `note-type-edit.json`, one case per mark; `note-types-admin.test.ts` |
+| Shapes, validation (`sensitive_path`, grid cells and whole-note maps among them), write effects, platform updates, current flags, suggestions, note type edits, the status check | The vector files of 5.3, read by Vitest and by `flutter test` |
+| The platform data is valid: every entry passes its schema and `validatePreset`, every `originKey` it names exists, names are unique per kind, a fixed-field change is reported | `packages/presets/test/platform-data.test.ts` |
+| Versions and events are append-only; no delete; team isolation; a flag change is changed only by its one mark, once | `db/test`: update and delete as the app role fail; a second team sees nothing; the guard trigger refuses any other update |
+| The revision is taken by one function, under the team lock: it moves once per write, with no gap, under two writers at once; a writer that commits between a pull's two reads is never skipped; an install and a publish of one key at once never collide; every write audits in its transaction (a failed audit rolls the write back) | `db/test/preset-revision.test.ts` (its lock is `append_audit`'s), `presets-revision.test.ts`, `presets-audit.test.ts` |
+| Every admin route refuses without `team.manage_presets` and logs it; every admin write refuses a stale sign-in with `reauth_required` and logs nothing | the `ROUTES` table of `services/api/test/permissions.test.ts`, one row per route; a stale-sign-in case per write route |
+| Every write needs a reason, keeps it in `team_preset_events`, shows it in the history and never puts it in audit details | `presets-routes.test.ts` |
+| A platform update never overwrites an edited or archived copy, and never changes a fixed field; the installer is idempotent, leaves a second team alone, and plans again under the lock | `db/test/install-team-presets.test.ts`: install, skip, update, offer; edit, raise the platform version, install, compare bodies |
+| The note type installer as changed: a team's version 2, then platform versions 2 and 3, installed twice: nothing thrown, no row added, `platform_latest` 3; every row any path writes passes `definitionFor` | `packages/forms/test/install-update.test.ts`, `db/test/install-presets.test.ts` |
+| A fixed field cannot change; a referenced preset cannot be archived; every body's ids point at presets of the same team; a bag made from the template or from another bag holds those minimums | `presets-routes.test.ts`; `presets-refs.test.ts` (a walk over all kinds) |
+| A draft begun on version 1 completes, and is later corrected, on version 1 after version 2 is published; another phone can open it; after a publish, `definitionFor(team, key, newVersion)` answers the definition and a note created on it is accepted; an archived type leaves the list and its drafts finish | `note-type-versions.test.ts`; phone `note_type_version_test.dart` |
+| No operation changes a mark, `kinds`, `group` or `sensitivity`; a protected part cannot be hidden or reworded, also when an option operation reaches it through `mapsTo`; a copied section keeps its marks and is refused from a type of other kinds, group, sensitivity or flags; no id or code is reused; every result passes phase 4's validator, version rules, the JSON Schema check and the phone's reader; what `visibleAnswers` gives each reader of forms 7.1 is the same before and after any edit | `note-type-edit.json`, one case per mark; `packages/forms/test/edit.test.ts`; `note-types-admin.test.ts` |
 | Every route that writes takes the team lock first | `presets-revision.test.ts` (two writers); `patients-flags-route.test.ts` |
-| A flag change is never refused for what its sender cannot fix: a lowered role is held, an unknown flag is settled by choosing again | `sync-flag-change.test.ts`; `fake_parity_test.dart` |
-| A pull cut short leaves the old copy whole; `reset` replaces it | `presets_refresher_test.dart` |
-| Two phones offline flag the same patient: both changes kept, the later one current | `sync_scenarios_test.dart`, new scenario |
-| A sensitive flag never reaches a reader without the key | `patients-flags-sensitive.test.ts` (records, chart, search) |
-| Screens | Playwright with axe in three themes and 320 px for each page; phone widget tests in three themes, offline |
+| A flag change is never refused for what its sender cannot fix: a lowered role is held, a hidden flag is held, an unknown flag is settled by Choose a flag, a bad reason by Change the reason; a held change that will not apply tells its sender | `sync-flag-change.test.ts`; `fake_parity_test.dart`; the phone's Needs attention test |
+| A clear takes off only the flag it names; a change's time is never later than its receipt; a change entered in error drops out of the current flags, and its reasons reach only its author and Program Admins; an archived flag stays | `flag-current.json`; `sync-flag-change.test.ts` |
+| Two phones offline flag the same patient: both changes kept; a clear of another flag takes nothing off | `sync_scenarios_test.dart`, new scenario |
+| A sensitive flag never reaches a reader the flag rule hides it from: the sync read, the review queue (neither listed nor accepted), the value sent back on a retry, the chart, the team index, search and the flag route | `patients-flags-sensitive.test.ts` |
+| A flag set on another phone appears after one index refresh; a sensitive one is missing from the index of a reader without it | `patients-index.test.ts`; the phone's index test |
+| A pull cut short leaves the old copy whole; `reset` and a new epoch replace it; `clearServerData` deletes the presets and both keys, so the next pull has no `since`; a sign-out that keeps work leaves no presets; an answer arriving after a sign-out or a team switch writes nothing | `presets_refresher_test.dart`; `local_store` tests |
+| A version 2 database file keeps its work through `_v3` | `local_db_test.dart` |
+| Screens | Playwright with axe in the three themes and at 320 px for each page, `expectNothingStored` and the address check, and the sweep in `e2e/a11y.spec.ts`; phone widget tests in the three themes, at 200% text and at 320 px, offline, and for roles without `patients.edit` or without sight of sensitive flags; the flags sheet with the store frozen while it is open draws nothing; `test/security/dialog_gates_test.dart` passes with the new sheets |
 
 ## 11. Defaults chosen (PLAN-OPEN) and questions for people
 | # | Question the PRD leaves open | Default | Who decides |
