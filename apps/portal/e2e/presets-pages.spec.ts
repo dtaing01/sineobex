@@ -4021,3 +4021,168 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
     expectOnlyIds(traffic.addresses);
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// Shared on every page (8.1): Remove, Restore and a save, after another admin acted meanwhile
+// ------------------------------------------------------------------------------------------------
+
+// A refused act reads the page again, as a done one does. Where another admin's act changed what
+// the page draws for the preset (removed or restored it), the page draws it as it is now, and the
+// form that was refused, with its sentence and what was typed, goes with the preset's old state.
+test.describe('acts after another admin acted meanwhile', () => {
+  /** An item of the team's own among its supplies, as another admin would add it; its ID. */
+  async function supply(name: string): Promise<string> {
+    const { id: categoryId } = await named<CategoryBody>('order_category', 'Supplies');
+    return made('item', { name, categoryId, unit: 'each', medical: false, captureLot: false, result: null });
+  }
+
+  /** A Non-Medical bundle of one item, as another admin would add it; its ID. */
+  async function bundleOf(name: string, itemId: string): Promise<string> {
+    return made('bundle', { name, medical: false, prompt: '', lines: [{ itemId, qty: 1, core: true }] });
+  }
+
+  test('Remove is refused stale after another admin changed the bundle meanwhile, and after another admin removed it the page shows it removed; neither removes it again', async ({
+    page,
+  }) => {
+    const splint = await supply('Demo: Finger splint');
+    const id = await bundleOf('Demo: Splinting', splint);
+    const here = `/team/presets/bundles/${id}`;
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    const remove = page.getByRole('form', { name: 'Remove Demo: Splinting' });
+
+    // Changed meanwhile: the version the form holds is stale.
+    await page.goto(here);
+    await page.getByRole('button', { name: 'Remove Demo: Splinting', exact: true }).click();
+    await remove.getByLabel('Reason').fill('Demo: we stopped splinting');
+    await changedMeanwhile<BundleBody>('bundle', id, (b) => ({
+      ...b,
+      prompt: 'Demo: check the finger first.',
+    }));
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(remove.getByRole('alert')).toHaveText(STALE);
+    await expect(remove.getByLabel('Reason')).toHaveValue('Demo: we stopped splinting');
+    await expectAccessible(page, 'Remove refused stale', { inPlace: true });
+    expect((await listed('bundle')).find((b) => b.id === id)).toMatchObject({ state: 'active', version: 2 });
+
+    // Read again, then removed meanwhile: refused, the page shows it removed, with Restore.
+    await page.goto(here);
+    await page.getByRole('button', { name: 'Remove Demo: Splinting', exact: true }).click();
+    await remove.getByLabel('Reason').fill('Demo: we stopped splinting');
+    await actedMeanwhile('bundle', id, 'archive');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    const removed = page.getByRole('region', { name: 'Removed', exact: true });
+    await expect(removed).toContainText(
+      'This bundle isn’t offered for new work. Restore it to offer it again.',
+    );
+    await expect(remove).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`${here}$`));
+    await expect(
+      page.getByRole('region', { name: 'History' }).getByRole('row', { name: /Removed, version 2/ }),
+    ).toContainText('Demo: another admin’s act');
+    expect((await historyOf('bundle', id)).filter((e) => e.act === 'archived')).toHaveLength(1);
+    await expectAccessible(page, 'A bundle removed meanwhile');
+    await expectNothingStored(page, 'Remove after another admin acted');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('Restore after another admin restored the bundle meanwhile shows it back on the list, and Restore of a bundle whose item was removed since is refused with its sentence', async ({
+    page,
+  }) => {
+    const sling = await supply('Demo: Arm sling');
+    const id = await bundleOf('Demo: Sling care', sling);
+    await actedMeanwhile('bundle', id, 'archive');
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    const restore = page.getByRole('form', { name: 'Restore Demo: Sling care' });
+
+    // Restored meanwhile: the page's Removed list was read before it.
+    await page.goto('/team/presets/bundles');
+    await removed.getByRole('button', { name: 'Restore Demo: Sling care', exact: true }).click();
+    await restore.getByLabel('Reason').fill('Demo: slings are back');
+    await actedMeanwhile('bundle', id, 'restore');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(
+      page
+        .getByRole('region', { name: 'Your team’s bundles' })
+        .getByRole('link', { name: 'Demo: Sling care', exact: true }),
+    ).toBeVisible();
+    await expect(restore).toHaveCount(0);
+    await expect(removed.getByText('Demo: Sling care', { exact: true })).toHaveCount(0);
+    expect((await historyOf('bundle', id)).filter((e) => e.act === 'restored')).toMatchObject([
+      { reason: 'Demo: another admin’s act' },
+    ]);
+
+    // Removed again, and its item removed since: it can't come back naming what was removed.
+    await actedMeanwhile('bundle', id, 'archive');
+    await actedMeanwhile('item', sling, 'archive');
+    await page.goto('/team/presets/bundles');
+    await removed.getByRole('button', { name: 'Restore Demo: Sling care', exact: true }).click();
+    await restore.getByLabel('Reason').fill('Demo: slings are back');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(restore.getByRole('alert')).toHaveText(
+      'It names something that was removed since. Restore that first.',
+    );
+    await expect(restore.getByLabel('Reason')).toHaveValue('Demo: slings are back');
+    await expectAccessible(page, 'Restore refused, its item removed', { inPlace: true });
+    await expectReflow(page, 'Restore refused, its item removed');
+    expect((await listed('bundle')).find((b) => b.id === id)).toMatchObject({ state: 'archived' });
+    await expectNothingStored(page, 'Restore after another admin acted');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('a bundle saved naming an item removed meanwhile is refused with its sentence on the line, keeping what was typed; an item saved after another admin removed it shows it removed, saving nothing', async ({
+    page,
+  }) => {
+    const wrap = await supply('Demo: Crepe wrap');
+    const pad = await supply('Demo: Heel pad');
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+
+    // A bundle whose line names an item removed while the form was open: said on the line.
+    await page.goto('/team/presets/bundles');
+    const form = page.getByRole('form', { name: 'Add a bundle' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Sprain wrap');
+    await form.getByRole('radio', { name: 'Non-Medical' }).check();
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    const line = form.getByRole('group', { name: 'Line 1', exact: true });
+    await line.getByLabel('Item').selectOption({ label: 'Demo: Crepe wrap' });
+    await form.getByLabel('Reason').fill('Demo: what we give for a sprain');
+    await actedMeanwhile('item', wrap, 'archive');
+    await form.getByRole('button', { name: 'Add bundle' }).click();
+    const alert = form.getByRole('alert');
+    await expect(alert.locator('.px-alert__title')).toHaveText(
+      'It names something that was removed. Choose another, or restore that one first.',
+    );
+    await expect(alert.getByRole('link')).toHaveText([
+      'Item on line 1: This was removed. Choose another, or restore it first.',
+    ]);
+    // The line keeps the item it named, now marked as removed.
+    await expect(line.getByLabel('Item').locator('option:checked')).toHaveText('Demo: Crepe wrap (removed)');
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Demo: Sprain wrap');
+    await expectAccessible(page, 'Add a bundle, its item removed meanwhile', { inPlace: true });
+    await expectReflow(page, 'Add a bundle, its item removed meanwhile');
+    expect((await listed('bundle')).some((b) => b.name === 'Demo: Sprain wrap')).toBe(false);
+
+    // An item's edit, sent after another admin removed it: refused, and its page shows it removed.
+    await page.goto(`/team/presets/items/${pad}`);
+    const edit = page.getByRole('form', { name: 'Edit Demo: Heel pad' });
+    await edit.getByLabel('Name', { exact: true }).fill('Demo: Heel cushion');
+    await edit.getByLabel('Reason').fill('Demo: what the box says');
+    await actedMeanwhile('item', pad, 'archive');
+    await edit.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('region', { name: 'Removed', exact: true })).toContainText(
+      'This item isn’t offered for new work. Restore it to offer it again.',
+    );
+    await expect(edit).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Heel pad');
+    expect((await listed('item')).find((i) => i.id === pad)).toMatchObject({
+      name: 'Demo: Heel pad',
+      state: 'archived',
+      version: 1,
+    });
+    await expectNothingStored(page, 'A save after another admin acted');
+    expectOnlyIds(traffic.addresses);
+  });
+});
