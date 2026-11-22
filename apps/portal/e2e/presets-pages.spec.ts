@@ -2549,3 +2549,515 @@ test.describe('a flag, /team/presets/flags/[id]', () => {
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// The team's settings, which Condition supplies and Bag minimums each edit a field of
+// ------------------------------------------------------------------------------------------------
+
+type ConditionBody = { name: string; codes: string[]; lines: { itemId: string; qtyPerPatient: number }[] };
+
+type Minimum = { itemId: string; min: number };
+
+type SettingsBody = {
+  name: 'Team settings';
+  bagMinimumsOn: boolean;
+  newBagMinimums: Minimum[];
+  problemCheckDays: number;
+};
+
+/** The team's settings as the API lists them: the one preset of its kind. */
+async function settingsRow(): Promise<Row<SettingsBody>> {
+  const [row] = await listed<SettingsBody>('settings');
+  expect(row, 'the team’s settings').toBeDefined();
+  return row!;
+}
+
+/**
+ * The team's settings put back as a case found them, as another admin would: the window and the
+ * switch other specs read are the platform's again, and no item stays in the template, where it
+ * could not be removed.
+ */
+async function settingsBack(body: SettingsBody) {
+  const now = await settingsRow();
+  if (JSON.stringify(now.body) !== JSON.stringify(body))
+    await changedMeanwhile<SettingsBody>('settings', now.id, () => body);
+}
+
+/** Each item's name by its ID, removed ones too, as the pages name a line's item. */
+async function itemNames(): Promise<Record<string, string>> {
+  return Object.fromEntries((await listed<ItemBody>('item')).map((i) => [i.id, i.name]));
+}
+
+/** A fact of a preset's section, by its term. */
+const factOf = (section: Locator, term: string) => section.locator(`dt:text-is("${term}") + dd`);
+
+// ------------------------------------------------------------------------------------------------
+// Condition supplies (8.1): condition codes, items and a quantity per patient; the status check
+// window, "Check problems not updated in [90] days"
+// ------------------------------------------------------------------------------------------------
+
+test.describe('condition supplies, /team/presets/condition-supplies', () => {
+  const PAGE = '/team/presets/condition-supplies';
+  const CODES_HINT =
+    'ICD-10-CM codes, such as R21 or L30.9: 1 to 20 of them. A problem counts only when its code is one of these exactly, so L30 doesn’t count L30.9.';
+  const LINES_HINT =
+    'For each patient on a route with one of these conditions, New or Ongoing, the bag check counts this many of each item.';
+  const WINDOW = 'Check problems not updated in: Enter a whole number of days from 7 to 365.';
+
+  /** A line as the page says it: "Hydrocortisone cream × 1 per patient". */
+  const lineOf = (names: Record<string, string>) => (l: ConditionBody['lines'][number]) =>
+    `${names[l.itemId]} × ${l.qtyPerPatient} per patient`;
+
+  test('@responsive a Program Admin opens Condition supplies from the hub and finds each mapping with its codes and items, and the status check window, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    await page.getByRole('main').getByRole('link', { name: 'Condition supplies', exact: true }).click();
+    await expect(page).toHaveURL(/\/team\/presets\/condition-supplies$/);
+    await expect(page).toHaveTitle('Condition supplies · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Condition supplies');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    const all = await listed<ConditionBody>('condition_supply_map');
+    const active = all
+      .filter((m) => m.state === 'active')
+      .sort((a, b) => byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+    const removed = all.length - active.length;
+    const names = await itemNames();
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText([
+      ...active.map((m) => m.name),
+      'Add a mapping',
+      ...(removed > 0 ? [`Removed (${removed})`] : []),
+      'Status check',
+    ]);
+    // Each mapping A to Z, as the API sorts names, with its codes, its items per patient, its acts
+    // and its history.
+    for (const m of active) {
+      const section = main.getByRole('region', { name: m.name, exact: true });
+      await expect(factOf(section, 'Condition codes')).toHaveText(m.body.codes.join(', '));
+      await expect(factOf(section, 'Items').getByRole('listitem')).toHaveText(
+        m.body.lines.map(lineOf(names)),
+      );
+      await expect(section.getByRole('button', { name: `Edit ${m.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('button', { name: `Remove ${m.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('region', { name: `History of ${m.name}` })).toBeVisible();
+    }
+    // The platform's, from the PRD's own example (main 476).
+    const rash = main.getByRole('region', { name: 'Rash or dermatitis', exact: true });
+    await expect(factOf(rash, 'Condition codes')).toHaveText('R21, L30.9');
+    await expect(factOf(rash, 'Items')).toHaveText('Hydrocortisone cream × 1 per patient');
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    const add = page.getByRole('form', { name: 'Add a mapping' });
+    await expect(add.getByLabel('Name', { exact: true })).toHaveAccessibleDescription(
+      'What the condition is called, such as Rash or dermatitis. Don’t put patient names here.',
+    );
+    await expect(add.getByRole('group', { name: 'Condition codes' })).toHaveAccessibleDescription(CODES_HINT);
+    const first = add.getByLabel('Condition code 1', { exact: true });
+    await expect(first).toHaveValue('');
+    await expect(first).toHaveAccessibleDescription('Don’t put patient names here.');
+    await expect(add.getByRole('group', { name: 'Items' })).toHaveAccessibleDescription(LINES_HINT);
+
+    // The window, as the team's settings hold it, with its history.
+    const settings = await settingsRow();
+    const check = main.getByRole('region', { name: 'Status check', exact: true });
+    const days = check
+      .getByRole('form', { name: 'Status check' })
+      .getByLabel('Check problems not updated in');
+    await expect(days).toHaveValue(String(settings.body.problemCheckDays));
+    await expect(days).toHaveAccessibleDescription('days');
+    await expect(
+      check
+        .getByRole('region', { name: 'History of the team’s settings' })
+        .getByRole('row', { name: /Added by Sineobex, version 1/ }),
+    ).toBeVisible();
+
+    await expectAccessible(page, PAGE);
+    await expectReflow(page, PAGE);
+    await expectNothingStored(page, PAGE);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('adding a mapping asks for a reason, then each field, says each code’s and each line’s problem beside it, keeps what was typed, and lists the new one', async ({
+    page,
+  }) => {
+    test.slow();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a mapping' });
+    const name = form.getByLabel('Name', { exact: true });
+    const code = (n: number) => form.getByLabel(`Condition code ${n}`, { exact: true });
+    const reason = form.getByLabel('Reason');
+    const add = form.getByRole('button', { name: 'Add mapping' });
+    const alert = form.getByRole('alert');
+    const title = alert.locator('.px-alert__title');
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+
+    // Nothing typed: the reason is asked first, as the API reads the request before the body.
+    await add.click();
+    await expect(alert).toBeFocused();
+    await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+
+    // A reason, and nothing else: each field said beside it.
+    await reason.fill('Demo: what a sunburn needs');
+    await add.click();
+    await expect(title).toHaveText('Some fields need changing. Check each one below.');
+    await expect(alert.getByRole('link')).toHaveText([
+      'Name: This is too short or too small.',
+      'Condition code 1: Enter a code as a problem records it, such as R21 or L30.9.',
+      'Items: Give the mapping 1 to 10 items.',
+    ]);
+    await expectAccessible(page, 'Add a mapping, refused', { inPlace: true });
+    await expectReflow(page, 'Add a mapping, refused');
+    await alert.getByRole('link', { name: /^Condition code 1:/ }).click();
+    await expect(code(1)).toBeFocused();
+
+    // A code that isn't one, a code added and one taken out, and a line with no item and a
+    // quantity that isn't one: each said beside it, and kept as typed.
+    await name.fill('Demo: Sunburn');
+    await code(1).fill('l55.9');
+    await form.getByRole('button', { name: 'Add a code' }).click();
+    await code(2).fill('L55');
+    await form.getByRole('button', { name: 'Add a code' }).click();
+    await code(3).fill('L55.0');
+    await form.getByRole('button', { name: 'Take out condition code 3' }).click();
+    await expect(code(3)).toHaveCount(0);
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Quantity per patient').fill('lots');
+    await add.click();
+    await expect(alert.getByRole('link')).toHaveText([
+      'Condition code 1: Enter a code as a problem records it, such as R21 or L30.9.',
+      'Item on line 1: Choose one from the list.',
+      'Quantity per patient on line 1: Enter a whole number from 1 to 99.',
+    ]);
+    await expect(code(1)).toHaveValue('l55.9');
+    await expect(code(1)).toHaveAttribute('aria-invalid', 'true');
+    await expect(code(2)).toHaveValue('L55');
+    await expect(line(1).getByLabel('Quantity per patient')).toHaveValue('lots');
+    await expectAccessible(page, 'Add a mapping, a code and a line refused', { inPlace: true });
+    await expectReflow(page, 'Add a mapping, a code and a line refused');
+
+    // A name another mapping holds, in any case: said beside the name.
+    await code(1).fill('L55.9');
+    await line(1).getByLabel('Item').selectOption({ label: 'Hydrocortisone cream' });
+    await line(1).getByLabel('Quantity per patient').fill('1');
+    await name.fill('rash or dermatitis');
+    await add.click();
+    await expect(title).toHaveText('Another condition mapping already has this name.');
+    await expect(name).toHaveValue('rash or dermatitis');
+    await expect(code(2)).toHaveValue('L55');
+
+    // Added, and listed with its history.
+    await name.fill('Demo: Sunburn');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Sunburn. It’s on the phones after their next sync.',
+    );
+    const cream = await named<ItemBody>('item', 'Hydrocortisone cream');
+    expect(await named<ConditionBody>('condition_supply_map', 'Demo: Sunburn')).toMatchObject({
+      version: 1,
+      body: {
+        name: 'Demo: Sunburn',
+        codes: ['L55.9', 'L55'],
+        lines: [{ itemId: cream.id, qtyPerPatient: 1 }],
+      },
+    });
+    const sunburn = page.getByRole('region', { name: 'Demo: Sunburn', exact: true });
+    await expect(factOf(sunburn, 'Condition codes')).toHaveText('L55.9, L55');
+    await expect(factOf(sunburn, 'Items')).toHaveText('Hydrocortisone cream × 1 per patient');
+    const added = sunburn
+      .getByRole('region', { name: 'History of Demo: Sunburn' })
+      .getByRole('row', { name: /Added, version 1/ });
+    await expect(added).toContainText('Alex Rivera (demo)');
+    await expect(added).toContainText('Demo: what a sunburn needs');
+    // The form is ready for the next one.
+    await expect(name).toHaveValue('');
+    await expect(code(1)).toHaveValue('');
+    await expect(code(2)).toHaveCount(0);
+    await expect(form.getByRole('group', { name: 'Items' })).toContainText('None yet.');
+    await expect(reason).toHaveValue('');
+
+    // Another added on the first try, with nothing refused before it: its codes and lines go with it.
+    await name.fill('Demo: Chafing');
+    await code(1).fill('L30.4');
+    await form.getByRole('button', { name: 'Add a code' }).click();
+    await code(2).fill('L30.8');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Item').selectOption({ label: 'Dry skin and chafing kit' });
+    await reason.fill('Demo: what chafing needs');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Chafing. It’s on the phones after their next sync.',
+    );
+    await expect(code(1)).toHaveValue('');
+    await expect(code(2)).toHaveCount(0);
+    await expect(form.getByRole('group', { name: /^Line \d+$/ })).toHaveCount(0);
+
+    await expectNothingStored(page, 'Condition supplies after an add');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('editing a mapping saves its codes and lines at its next version with its history, refuses a save that changes nothing, and stays stale until reloaded', async ({
+    page,
+  }) => {
+    test.slow();
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    const bandage = await named<ItemBody>('item', 'Bandage');
+    const id = await made('condition_supply_map', {
+      name: 'Demo: Blisters',
+      codes: ['T14.8'],
+      lines: [{ itemId: gauze.id, qtyPerPatient: 2 }],
+    });
+    const mapping = async () =>
+      (await listed<ConditionBody>('condition_supply_map')).find((m) => m.id === id);
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const section = (name: string) => page.getByRole('region', { name, exact: true });
+    await section('Demo: Blisters').getByRole('button', { name: 'Edit Demo: Blisters', exact: true }).click();
+    let form = section('Demo: Blisters').getByRole('form', { name: 'Edit Demo: Blisters' });
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Demo: Blisters');
+    await expect(form.getByLabel('Condition code 1', { exact: true })).toHaveValue('T14.8');
+    await expect(line(1).getByLabel('Item')).toHaveValue(gauze.id);
+    await expect(line(1).getByLabel('Quantity per patient')).toHaveValue('2');
+    await expect(form.getByLabel('Reason')).toHaveValue('');
+
+    // Saved as it is: nothing changed.
+    await form.getByLabel('Reason').fill('Demo: blisters from new shoes');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText('You haven’t changed anything.');
+
+    // Renamed, a code and a line added, a quantity changed: saved at version 2.
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Blisters on the feet');
+    await form.getByRole('button', { name: 'Add a code' }).click();
+    await form.getByLabel('Condition code 2', { exact: true }).fill('L98.8');
+    await line(1).getByLabel('Quantity per patient').fill('3');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(2).getByLabel('Item').selectOption({ label: 'Bandage' });
+    await form.getByRole('button', { name: 'Save' }).click();
+    form = section('Demo: Blisters on the feet').getByRole('form', {
+      name: 'Edit Demo: Blisters on the feet',
+    });
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Blisters on the feet. It’s on the phones after their next sync.',
+    );
+    expect(await mapping()).toMatchObject({
+      version: 2,
+      body: {
+        name: 'Demo: Blisters on the feet',
+        codes: ['T14.8', 'L98.8'],
+        lines: [
+          { itemId: gauze.id, qtyPerPatient: 3 },
+          { itemId: bandage.id, qtyPerPatient: 1 },
+        ],
+      },
+    });
+    const saved = section('Demo: Blisters on the feet');
+    await expect(factOf(saved, 'Condition codes')).toHaveText('T14.8, L98.8');
+    await expect(factOf(saved, 'Items').getByRole('listitem')).toHaveText([
+      'Gauze × 3 per patient',
+      'Bandage × 1 per patient',
+    ]);
+    await expect(
+      saved
+        .getByRole('region', { name: 'History of Demo: Blisters on the feet' })
+        .getByRole('row', { name: /Edited, version 2/ }),
+    ).toContainText('Demo: blisters from new shoes');
+
+    // Another admin edits it meanwhile: this form, at version 2, is stale, and stays so.
+    expect(
+      await changedMeanwhile<ConditionBody>('condition_supply_map', id, (b) => ({ ...b, codes: ['T14.8'] })),
+    ).toBe(3);
+    await form.getByRole('button', { name: 'Add a code' }).click();
+    await form.getByLabel('Condition code 3', { exact: true }).fill('L60.8');
+    await form.getByLabel('Reason').fill('Demo: toenails too');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    await expect(form.getByLabel('Condition code 3', { exact: true })).toHaveValue('L60.8');
+    await expectAccessible(page, 'Edit a mapping, stale', { inPlace: true });
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    expect(await mapping()).toMatchObject({ version: 3, body: { codes: ['T14.8'] } });
+    // Reloaded, the page shows their version.
+    await page.reload();
+    await expect(factOf(section('Demo: Blisters on the feet'), 'Condition codes')).toHaveText('T14.8');
+  });
+
+  test('Remove moves a mapping to Removed, and Restore brings it back once no other has its name, each with its reason in its history', async ({
+    page,
+  }) => {
+    test.slow();
+    const cream = await named<ItemBody>('item', 'Hydrocortisone cream');
+    const body = {
+      name: 'Demo: Heat rash',
+      codes: ['L74.0'],
+      lines: [{ itemId: cream.id, qtyPerPatient: 1 }],
+    };
+    const id = await made('condition_supply_map', body);
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    await page.getByRole('button', { name: 'Remove Demo: Heat rash', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Heat rash' });
+    await remove.getByLabel('Reason').fill('Demo: not this summer');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}\\?done=removed&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Removed: Demo: Heat rash' })).toBeFocused();
+    await expect(page.getByRole('region', { name: 'Demo: Heat rash', exact: true })).toHaveCount(0);
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    await expect(removed).toContainText('Demo: Heat rash');
+    await expectAccessible(page, 'Condition supplies after a remove');
+
+    // Another mapping has taken its name since: the restore is refused.
+    const taker = await made('condition_supply_map', body);
+    await page.reload();
+    await removed.getByRole('button', { name: 'Restore Demo: Heat rash', exact: true }).click();
+    const restore = removed.getByRole('form', { name: 'Restore Demo: Heat rash' });
+    await restore.getByLabel('Reason').fill('Demo: summer again');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(restore.getByRole('alert')).toHaveText(
+      'Another condition mapping has this name now. Rename that one first.',
+    );
+    await expect(restore.getByLabel('Reason')).toHaveValue('Demo: summer again');
+    await expectAccessible(page, 'Restore a mapping, refused', { inPlace: true });
+    await expectReflow(page, 'Restore a mapping, refused');
+
+    // Once that one is renamed, restored at the version it was removed at.
+    await changedMeanwhile<ConditionBody>('condition_supply_map', taker, (b) => ({
+      ...b,
+      name: 'Demo: Heat rash, second',
+    }));
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}\\?done=restored&preset=${id}$`));
+    await expect(page.getByRole('heading', { name: 'Restored: Demo: Heat rash' })).toBeFocused();
+    const history = page
+      .getByRole('region', { name: 'Demo: Heat rash', exact: true })
+      .getByRole('region', { name: 'History of Demo: Heat rash' });
+    await expect(history.getByRole('row', { name: /Removed, version 1/ })).toContainText(
+      'Demo: not this summer',
+    );
+    await expect(history.getByRole('row', { name: /Restored, version 1/ })).toContainText(
+      'Demo: summer again',
+    );
+    expect((await listed('condition_supply_map')).find((m) => m.id === id)).toMatchObject({
+      state: 'active',
+      version: 1,
+    });
+
+    await expectNothingStored(page, 'Condition supplies after a restore');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('the status check window saves the team’s number of days with its own reason, says its range beside the box, and stays stale once another admin changed the settings', async ({
+    page,
+  }) => {
+    test.slow();
+    const before = await settingsRow();
+    try {
+      await signIn(page, 'admin@example.com');
+      const traffic = watchTraffic(page);
+      await page.goto(PAGE);
+      const form = page.getByRole('form', { name: 'Status check' });
+      const days = form.getByLabel('Check problems not updated in');
+      const save = form.getByRole('button', { name: 'Save' });
+      await expect(days).toHaveValue(String(before.body.problemCheckDays));
+
+      // Not a number of days: said beside the box, and kept as typed.
+      await days.fill('ninety');
+      await form.getByLabel('Reason').fill('Demo: check problems sooner');
+      await save.click();
+      await expect(form.getByRole('alert').getByRole('link')).toHaveText([WINDOW]);
+      await expect(days).toHaveValue('ninety');
+      await expect(days).toHaveAttribute('aria-invalid', 'true');
+      await expect(days).toHaveAccessibleDescription(`days ${WINDOW}`);
+      await expectAccessible(page, 'Status check, refused', { inPlace: true });
+      await expectReflow(page, 'Status check, refused');
+
+      // Saved: the team's settings at their next version, the rest of them as they were.
+      await days.fill('60');
+      await save.click();
+      await expect(form.getByRole('status')).toHaveText(
+        'Saved: Check problems not updated in 60 days. It’s on the phones after their next sync.',
+      );
+      const saved = await settingsRow();
+      expect(saved).toMatchObject({
+        version: before.version + 1,
+        body: { ...before.body, problemCheckDays: 60 },
+      });
+      await expect(days).toHaveValue('60');
+      await expect(
+        page
+          .getByRole('region', { name: 'History of the team’s settings' })
+          .getByRole('row', { name: new RegExp(`Edited, version ${saved.version}`) }),
+      ).toContainText('Demo: check problems sooner');
+
+      // Another admin changes the settings meanwhile: this form is stale, and stays so.
+      await changedMeanwhile<SettingsBody>('settings', saved.id, (b) => ({ ...b, problemCheckDays: 45 }));
+      await days.fill('30');
+      await form.getByLabel('Reason').fill('Demo: sooner still');
+      await save.click();
+      await expect(form.getByRole('alert')).toHaveText(STALE);
+      await expect(days).toHaveValue('30');
+      await expectAccessible(page, 'Status check, stale', { inPlace: true });
+      await save.click();
+      await expect(form.getByRole('alert')).toHaveText(STALE);
+      expect((await settingsRow()).body.problemCheckDays).toBe(45);
+      // Reloaded, the page shows their number.
+      await page.reload();
+      await expect(days).toHaveValue('45');
+
+      await expectNothingStored(page, 'Condition supplies after the window is saved');
+      expectOnlyIds(traffic.addresses);
+    } finally {
+      await settingsBack(before.body);
+    }
+  });
+
+  test('a stale sign-in sends a mapping being added through /reauth and back to the page, adding nothing', async ({
+    page,
+  }) => {
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a mapping' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Never added mapping');
+    await form.getByLabel('Condition code 1', { exact: true }).fill('R21');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await form
+      .getByRole('group', { name: 'Line 1', exact: true })
+      .getByLabel('Item')
+      .selectOption({ label: 'Gauze' });
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Add mapping' }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Fcondition-supplies$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Condition supplies');
+    expect((await listed('condition_supply_map')).some((m) => m.name === 'Demo: Never added mapping')).toBe(
+      false,
+    );
+  });
+
+  test('staff without the permission are refused Condition supplies at a typed address, logged once', async ({
+    page,
+  }) => {
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(PAGE);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    const after = await deniedOf('clinician@example.com');
+    // The mappings were asked, and refused: nothing else was.
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
