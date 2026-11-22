@@ -14,6 +14,8 @@ export * from './shape-check.ts';
 export * from './install.ts';
 // The team lock and the revision every preset and note type write takes (phase 5 design 4.2).
 export * from './revision.ts';
+// What a platform update does to a team's copy, for both installers (phase 5 design 5.2).
+export * from './platform-effect.ts';
 // The interpreter (7.1): pure functions of a definition and a note's answers.
 export * from './interp/field-at.ts';
 export * from './interp/check-answer.ts';
