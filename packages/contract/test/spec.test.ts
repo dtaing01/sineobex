@@ -71,6 +71,32 @@ describe('openapi.json, patient data in requests and refusals', () => {
   const FORM_PATH_PATTERNS: Record<string, Record<string, string>> = {
     '/v1/forms/note-types/{key}/{version}': { key: '^[a-z][a-z0-9_]{1,60}$', version: '^[1-9][0-9]{0,8}$' },
   };
+  // A preset's kind names a kind of team setting, never a patient (phase 5 design 7). It is let
+  // through only on the admin preset paths, and only as the enum of exactly these kinds: a kind a
+  // later phase adds (phase 10's billing_code_map) joins this list on purpose.
+  const PRESET_KIND_PATHS = [
+    '/v1/admin/presets/{kind}',
+    '/v1/admin/presets/{kind}/{id}',
+    '/v1/admin/presets/{kind}/{id}/archive',
+    '/v1/admin/presets/{kind}/{id}/restore',
+    '/v1/admin/presets/{kind}/{id}/take-update',
+    '/v1/admin/presets/{kind}/{id}/history',
+  ];
+  const PRESET_KINDS = [
+    'bag',
+    'bundle',
+    'condition_supply_map',
+    'field_supply_map',
+    'flag',
+    'item',
+    'order_category',
+    'settings',
+  ];
+  const isPresetKind = (path: string, name: string, s: Schema) =>
+    name === 'kind' &&
+    PRESET_KIND_PATHS.includes(path) &&
+    Array.isArray(s.enum) &&
+    JSON.stringify([...s.enum].sort()) === JSON.stringify(PRESET_KINDS);
   // The reader's time zone names a place, never a patient: the handoff prints its times in it
   // (lifecycle 5.7). Only on that route's query, and only with exactly the API's pattern.
   const QUERY_PATTERNS: Record<string, Record<string, string>> = {
@@ -93,7 +119,8 @@ describe('openapi.json, patient data in requests and refusals', () => {
             ALLOWED_PATTERNS.includes(s.pattern ?? '') ||
             (s.pattern !== undefined && QUERY_PATTERNS[path]?.[p.name] === s.pattern);
           const formPart = s.pattern !== undefined && FORM_PATH_PATTERNS[path]?.[p.name] === s.pattern;
-          const ok = p.in === 'path' ? uuid || formPart : p.in === 'query' && query;
+          const ok =
+            p.in === 'path' ? uuid || formPart || isPresetKind(path, p.name, s) : p.in === 'query' && query;
           if (!ok) bad.push(`${method.toUpperCase()} ${path} ${p.in} ${p.name}`);
         }
       }

@@ -885,6 +885,23 @@ enum Permission {
   String toJson() => wire;
 }
 
+/// An archived preset is offered for no new work
+enum PresetViewState {
+  active('active'),
+  archived('archived'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const PresetViewState(this.wire);
+  final String wire;
+
+  static PresetViewState fromJson(String value) =>
+      PresetViewState.values.firstWhere((e) => e.wire == value, orElse: () => PresetViewState.unknown);
+
+  String toJson() => wire;
+}
+
 enum ProblemStatus {
   newValue('new'),
   ongoing('ongoing'),
@@ -1871,6 +1888,53 @@ class CorrectionView {
         'outcome': outcome.toJson(),
         'reason': reason,
         'requestedByPatient': requestedByPatient,
+      };
+}
+
+class CreatePreset {
+  const CreatePreset({
+    this.body,
+    required this.reason,
+  });
+
+  /// Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
+  final Object? body;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory CreatePreset.fromJson(Map<String, dynamic> json) => CreatePreset(
+        body: json['body'],
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'body': body,
+        'reason': reason,
+      };
+}
+
+class CreatePresetResult {
+  const CreatePresetResult({
+    required this.id,
+    required this.revision,
+    required this.version,
+  });
+
+  final String id;
+  /// The team’s revision this write took: a phone’s next pull gets the change
+  final int revision;
+  final int version;
+
+  factory CreatePresetResult.fromJson(Map<String, dynamic> json) => CreatePresetResult(
+        id: json['id'] as String,
+        revision: (json['revision'] as num).toInt(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'revision': revision,
+        'version': version,
       };
 }
 
@@ -4461,6 +4525,61 @@ class PermissionInfo {
       };
 }
 
+class PresetView {
+  const PresetView({
+    required this.body,
+    required this.customized,
+    required this.id,
+    required this.name,
+    required this.referencedBy,
+    required this.state,
+    required this.updateChangesFixed,
+    required this.updateOnOffer,
+    required this.version,
+  });
+
+  /// Its current version’s body, in the shape of @sineobex/presets for its kind
+  final Map<String, Object?> body;
+  /// The team edited, archived or restored it: a platform version is then only offered
+  final bool customized;
+  final String id;
+  final String name;
+  /// How many active presets name it, by their kind; only kinds that do. It can’t be archived while any do
+  final Map<String, int> referencedBy;
+  /// An archived preset is offered for no new work
+  final PresetViewState state;
+  /// The update changes a field fixed at creation, so it is taken only as a new preset
+  final bool updateChangesFixed;
+  /// A newer platform version is on offer to take
+  final bool updateOnOffer;
+  /// Its current version: an edit sends it back
+  final int version;
+
+  factory PresetView.fromJson(Map<String, dynamic> json) => PresetView(
+        body: Map<String, Object?>.from(json['body'] as Map),
+        customized: json['customized'] as bool,
+        id: json['id'] as String,
+        name: json['name'] as String,
+        referencedBy: (json['referencedBy'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
+        state: PresetViewState.fromJson(json['state'] as String),
+        updateChangesFixed: json['updateChangesFixed'] as bool,
+        updateOnOffer: json['updateOnOffer'] as bool,
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'body': body,
+        'customized': customized,
+        'id': id,
+        'name': name,
+        'referencedBy': referencedBy.map((k, v) => MapEntry(k, v)),
+        'state': state.toJson(),
+        'updateChangesFixed': updateChangesFixed,
+        'updateOnOffer': updateOnOffer,
+        'version': version,
+      };
+}
+
 class PresetsPull {
   const PresetsPull({
     required this.epoch,
@@ -6651,6 +6770,12 @@ class SineobexApi {
     return NoteActResult.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Add a preset of the team’s own, with a reason (recent sign-in)
+  Future<CreatePresetResult> createPreset({required String kind, required CreatePreset body}) async {
+    final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}', body: body.toJson());
+    return CreatePresetResult.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Create a custom role from existing permissions
   Future<Role> createRole({required RoleInput body}) async {
     final json = await _transport.send('POST', '/v1/team/roles', body: body.toJson());
@@ -6878,6 +7003,12 @@ class SineobexApi {
   Future<List<PermissionInfo>> listPermissions() async {
     final json = await _transport.send('GET', '/v1/permissions');
     return (json as List<dynamic>).map((e) => PermissionInfo.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Every preset of a kind, archived ones too, with what names each and any update on offer
+  Future<List<PresetView>> listPresets({required String kind}) async {
+    final json = await _transport.send('GET', '/v1/admin/presets/${Uri.encodeComponent(kind)}');
+    return (json as List<dynamic>).map((e) => PresetView.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// Problems staff marked Resolved by mistake, waiting for an admin
