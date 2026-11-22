@@ -100,31 +100,9 @@ export function planTeamPresets(input: {
 }): PlanStep[] {
   const copies = copiesByOrigin(input.held);
   const ids = new Map([...copies].map(([key, copy]) => [key, copy.id]));
-
-  // The team's presets as validatePreset reads them. A category's behaviour is read before its
-  // items', so an item takes the behaviour of the category it names. A preset whose body cannot be
-  // read is not among them, so whatever names it is refused, never checked against a guess.
-  const refs: Record<string, PresetRef> = {};
-  const behaviourOf = (categoryId: string) => {
-    const ref = Object.hasOwn(refs, categoryId) ? refs[categoryId] : undefined;
-    return ref?.kind === 'order_category' ? ref.behaviour : undefined;
-  };
-  // An item whose category is not among them has no behaviour to read, so it is left out too.
-  const setRef = (id: string, kind: PresetKind, state: HeldPreset['state'], body: PresetBody) => {
-    let ref: PresetRef | null = null;
-    if (kind === 'order_category') ref = { kind, state, behaviour: (body as OrderCategoryBody).behaviour };
-    else if (kind !== 'item') ref = { kind, state };
-    else {
-      const behaviour = behaviourOf((body as ItemBody).categoryId);
-      if (behaviour !== undefined) ref = { kind, state, behaviour };
-    }
-    if (ref) refs[id] = ref;
-    else delete refs[id];
-  };
-  for (const h of input.held)
-    if (h.kind === 'order_category' && h.body !== null) setRef(h.id, h.kind, h.state, h.body);
-  for (const h of input.held)
-    if (h.kind !== 'order_category' && h.body !== null) setRef(h.id, h.kind, h.state, h.body);
+  const refs = presetRefs(input.held);
+  const setRef = (id: string, kind: PresetKind, state: HeldPreset['state'], body: PresetBody) =>
+    putRef(refs, id, kind, state, body);
 
   const nameKey = (kind: PresetKind, name: string) => `${kind}\u0000${input.fold(name)}`;
   // Every name an active head holds, by kind, as it is now, and every name the plan gives: a head's
@@ -196,6 +174,47 @@ export function planTeamPresets(input: {
     }
   }
   return steps;
+}
+
+/**
+ * The team's presets as validatePreset reads them (its `refs`), from their heads and current
+ * bodies: the one way to build them, which the installer's plan and the API's preset writes both
+ * read. A category's behaviour is read before its items', so an item takes the behaviour of the
+ * category it names, whatever order the presets come in. A preset whose body cannot be read is not
+ * among them, so whatever names it is refused, never checked against a guess.
+ */
+export function presetRefs(
+  presets: readonly Pick<HeldPreset, 'id' | 'kind' | 'state' | 'body'>[],
+): Record<string, PresetRef> {
+  const refs: Record<string, PresetRef> = {};
+  for (const p of presets)
+    if (p.kind === 'order_category' && p.body !== null) putRef(refs, p.id, p.kind, p.state, p.body);
+  for (const p of presets)
+    if (p.kind !== 'order_category' && p.body !== null) putRef(refs, p.id, p.kind, p.state, p.body);
+  return refs;
+}
+
+/**
+ * Puts one preset among refs as presetRefs reads it, over what it was. An item whose category is
+ * not among them has no behaviour to read, so it is left out.
+ */
+function putRef(
+  refs: Record<string, PresetRef>,
+  id: string,
+  kind: PresetKind,
+  state: HeldPreset['state'],
+  body: PresetBody,
+): void {
+  let ref: PresetRef | null = null;
+  if (kind === 'order_category') ref = { kind, state, behaviour: (body as OrderCategoryBody).behaviour };
+  else if (kind !== 'item') ref = { kind, state };
+  else {
+    const categoryId = (body as ItemBody).categoryId;
+    const category = Object.hasOwn(refs, categoryId) ? refs[categoryId] : undefined;
+    if (category?.kind === 'order_category') ref = { kind, state, behaviour: category.behaviour };
+  }
+  if (ref) refs[id] = ref;
+  else delete refs[id];
 }
 
 /**
@@ -285,8 +304,11 @@ function effectInput(
   };
 }
 
-/** The body with each origin key it holds as an id put as the team's id, where the team has one. */
-function withIds(
+/**
+ * The body with each origin key it holds as an id put as the team's id, where the team has one: how
+ * a platform body names the team's presets, in the installer's plan and in an update an admin takes.
+ */
+export function withIds(
   kind: PresetKind,
   body: Record<string, unknown>,
   ids: ReadonlyMap<string, string>,
@@ -358,10 +380,13 @@ async function foldOf(sql: InstallSql, names: readonly string[]): Promise<(name:
   };
 }
 
-// Every column is read under a name with no underscore, so a caller's column-name transform (the
-// API's toCamel) changes nothing the installer reads. Every head is read, with its current body
-// where that version is there: a head left out would be installed again at every run.
-async function heldBy(sql: InstallSql, teamId: string): Promise<HeldPreset[]> {
+/**
+ * Every head of the team, with its current body where that version is there: what the installer
+ * plans from, and what the API's preset writes work out their effect from. A head left out would
+ * be installed again at every run. Every column is read under a name with no underscore, so a
+ * caller's column-name transform (the API's toCamel) changes nothing it reads.
+ */
+export async function heldBy(sql: InstallSql, teamId: string): Promise<HeldPreset[]> {
   const rows = await sql<HeldPreset[]>`
     select p.id, p.kind, p.name, p.state, p.origin_key as "originKey", p.origin_version as "originVersion",
            p.platform_latest as "platformLatest", p.customized, p.current_version as "currentVersion",
@@ -376,9 +401,9 @@ async function heldBy(sql: InstallSql, teamId: string): Promise<HeldPreset[]> {
 /**
  * Each named note type's current definition, where the team offers it: its head's current version,
  * or, for a key a team made after 0023 holds no head for yet, its newest version. An archived note
- * type is not offered, so no map is installed on it.
+ * type is not offered, so no map is installed on it, nor made or edited by an admin.
  */
-async function definitionsOf(
+export async function definitionsOf(
   sql: InstallSql,
   teamId: string,
   keys: readonly string[],
