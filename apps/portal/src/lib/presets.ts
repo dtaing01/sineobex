@@ -1,0 +1,378 @@
+import 'server-only';
+import type { paths, Schemas } from '@sineobex/contract';
+import { unstable_rethrow } from 'next/navigation';
+import { api, unwrap } from './api';
+
+/**
+ * The admin preset routes as the portal's preset pages call them (phase 5 design 7, 8.1): every
+ * list, history and act, typed from the generated contract. The API is the one judge of a preset:
+ * it parses each body by its kind's schema, checks it against the team's other presets, and
+ * refuses by presetWriteEffect, so nothing here repeats a rule of its own (D114). A page only reads
+ * a body in its kind's shape (4.4), which the API holds every stored version to.
+ */
+
+/** A kind of preset, as the admin routes' address names it. */
+export type PresetKind = paths['/v1/admin/presets/{kind}']['get']['parameters']['path']['kind'];
+
+/** Every kind, so an action can check the one a form sent before it reaches an address. */
+export const PRESET_KINDS = [
+  'order_category',
+  'item',
+  'bundle',
+  'flag',
+  'field_supply_map',
+  'condition_supply_map',
+  'bag',
+  'settings',
+] as const satisfies readonly PresetKind[];
+
+// The contract's kinds, every one listed above: a kind the API adds fails the typecheck here.
+const EVERY_KIND: Exclude<PresetKind, (typeof PRESET_KINDS)[number]> extends never ? true : never = true;
+void EVERY_KIND;
+
+export function isPresetKind(value: unknown): value is PresetKind {
+  return (PRESET_KINDS as readonly unknown[]).includes(value);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Each kind's body, as the pages read it (design 4.4; packages/presets/src/schemas.ts)
+// ------------------------------------------------------------------------------------------------
+
+export interface CategoryBody {
+  name: string;
+  /** What its items are: Supplies, Medications or Tests. Fixed at creation. */
+  behaviour: 'supply' | 'medication' | 'lab';
+  sort: number;
+}
+
+export type LabResult = { type: 'choice'; options: string[] } | { type: 'number'; unit: string };
+
+export interface ItemBody {
+  name: string;
+  categoryId: string;
+  /** What 1 of it is. Fixed at creation. */
+  unit: string;
+  medical: boolean;
+  captureLot: boolean;
+  /** Set exactly when its category holds tests. Its type is fixed at creation. */
+  result: LabResult | null;
+}
+
+export interface BundleLine {
+  itemId: string;
+  qty: number;
+  core: boolean;
+}
+
+export interface BundleBody {
+  name: string;
+  medical: boolean;
+  /** Asked before the bundle is applied; empty asks nothing. */
+  prompt: string;
+  lines: BundleLine[];
+}
+
+/** The eight colours a flag can have, each with the plain name its pill shows first ("Red · High"). */
+export const FLAG_COLOR_NAMES = {
+  red: 'Red',
+  orange: 'Orange',
+  yellow: 'Yellow',
+  green: 'Green',
+  teal: 'Teal',
+  blue: 'Blue',
+  purple: 'Purple',
+  grey: 'Grey',
+} as const;
+export type FlagColor = keyof typeof FLAG_COLOR_NAMES;
+
+export interface FlagBody {
+  name: string;
+  /** The risk level (primary) or a condition (secondary). Fixed at creation. */
+  tier: 'primary' | 'secondary';
+  criteria: string;
+  color: FlagColor;
+  /** Its place in its tier's list, lowest first. */
+  rank: number;
+  /** Fixed at creation. */
+  sensitive: boolean;
+}
+
+export type AnswerTest = { equals: string | number | true } | { includes: string } | { answered: true };
+
+export interface FieldSupplyBody {
+  name: string;
+  noteTypeKey: string;
+  /** With `when`, or neither: then the map fires once for every note of the type. */
+  path?: string;
+  when?: AnswerTest;
+  lines: { itemId: string; qty: number | { fromPath: string } }[];
+}
+
+export interface ConditionSupplyBody {
+  name: string;
+  codes: string[];
+  lines: { itemId: string; qtyPerPatient: number }[];
+}
+
+export interface Minimum {
+  itemId: string;
+  min: number;
+}
+
+export interface BagBody {
+  name: string;
+  minimums: Minimum[];
+}
+
+export interface SettingsBody {
+  name: 'Team settings';
+  bagMinimumsOn: boolean;
+  newBagMinimums: Minimum[];
+  problemCheckDays: number;
+}
+
+interface PresetBodies {
+  order_category: CategoryBody;
+  item: ItemBody;
+  bundle: BundleBody;
+  flag: FlagBody;
+  field_supply_map: FieldSupplyBody;
+  condition_supply_map: ConditionSupplyBody;
+  bag: BagBody;
+  settings: SettingsBody;
+}
+
+/** The body of a preset of kind K. A kind the API adds that has none here fails the typecheck. */
+export type BodyOf<K extends PresetKind> = { [P in PresetKind]: PresetBodies[P] }[K];
+
+/** The platform's newer version on offer to a copy, for the person to review before taking it. */
+export interface PresetUpdate<K extends PresetKind = PresetKind> {
+  /** Sent back with a take, so only the version reviewed is taken (5.1). */
+  platformVersion: number;
+  /** What taking it writes: the platform's body, naming the team's presets. */
+  body: BodyOf<K>;
+  /** The fields fixed at creation it changes: with any, it is taken only as a new preset. */
+  changesFixed: string[];
+}
+
+/** A row of the admin list: a preset with its current body, what names it, and any update. */
+export type PresetRow<K extends PresetKind = PresetKind> = Omit<Schemas['PresetView'], 'body' | 'update'> & {
+  body: BodyOf<K>;
+  update: PresetUpdate<K> | null;
+};
+
+export type PresetEvent = Schemas['PresetEvent'];
+
+// ------------------------------------------------------------------------------------------------
+// The calls
+// ------------------------------------------------------------------------------------------------
+
+/** Every preset of the kind, archived ones included, by name; reading them is not audited (PL-13). */
+export async function listPresets<K extends PresetKind>(kind: K): Promise<PresetRow<K>[]> {
+  const rows = await unwrap((await api()).GET('/v1/admin/presets/{kind}', { params: { path: { kind } } }));
+  return rows as unknown as PresetRow<K>[];
+}
+
+/** Every act on one preset, oldest first, with who, when, whose version and why. */
+export async function presetHistory(kind: PresetKind, id: string): Promise<PresetEvent[]> {
+  return unwrap(
+    (await api()).GET('/v1/admin/presets/{kind}/{id}/history', { params: { path: { kind, id } } }),
+  );
+}
+
+/**
+ * Adds a preset of the team's own at version 1. `body` is what the form sent, in its kind's shape
+ * as far as the form can make it: the API answers where it is wrong (`invalid`, with paths).
+ */
+export async function createPreset(kind: PresetKind, body: unknown, reason: string) {
+  return unwrap(
+    (await api()).POST('/v1/admin/presets/{kind}', { params: { path: { kind } }, body: { body, reason } }),
+  );
+}
+
+/** Gives a preset its next version; `baseVersion` is the one the person opened. */
+export async function editPreset(
+  kind: PresetKind,
+  id: string,
+  baseVersion: number,
+  body: unknown,
+  reason: string,
+) {
+  return unwrap(
+    (await api()).PUT('/v1/admin/presets/{kind}/{id}', {
+      params: { path: { kind, id } },
+      body: { baseVersion, body, reason },
+    }),
+  );
+}
+
+/** Removes a preset (it is archived, never deleted), at the version the person was shown. */
+export async function archivePreset(kind: PresetKind, id: string, baseVersion: number, reason: string) {
+  return unwrap(
+    (await api()).POST('/v1/admin/presets/{kind}/{id}/archive', {
+      params: { path: { kind, id } },
+      body: { baseVersion, reason },
+    }),
+  );
+}
+
+export async function restorePreset(kind: PresetKind, id: string, reason: string) {
+  return unwrap(
+    (await api()).POST('/v1/admin/presets/{kind}/{id}/restore', {
+      params: { path: { kind, id } },
+      body: { reason },
+    }),
+  );
+}
+
+/**
+ * Takes the platform update on offer, in place or as a new preset. `platformVersion` is the list
+ * row's `update.platformVersion` and `baseVersion` the version shown beside it: any other answers
+ * stale, so only what the person reviewed is taken (5.1).
+ */
+export async function takePresetUpdate(kind: PresetKind, id: string, take: Schemas['TakePresetUpdate']) {
+  return unwrap(
+    (await api()).POST('/v1/admin/presets/{kind}/{id}/take-update', {
+      params: { path: { kind, id } },
+      body: take,
+    }),
+  );
+}
+
+/**
+ * Puts a tier's flags in a new order. `flags` is every active flag of the tier, each with the
+ * version the list showed it at; the answer is how many moved, so a page reloads the tier before
+ * its next move, or that move is refused stale by design (7).
+ */
+export async function reorderFlags(order: Schemas['ReorderFlags']) {
+  return unwrap((await api()).POST('/v1/admin/preset-order/flag', { body: order }));
+}
+
+// ------------------------------------------------------------------------------------------------
+// The hub (8.1): a card per area, with its count and "Update available"
+// ------------------------------------------------------------------------------------------------
+
+/** One area of Team setup: a page under /team/presets and the kinds of preset it shows. */
+export interface PresetArea {
+  key: string;
+  title: string;
+  href: string;
+  /** The kind its count counts. */
+  counted: PresetKind;
+  /** Every kind the page shows, whose update on offer it offers: the settings show on two pages. */
+  kinds: readonly PresetKind[];
+  noun: readonly [one: string, many: string];
+}
+
+// The note types and field supplies cards are unit P4's (phase 5 design 13.4): each joins this
+// list with its page.
+export const PRESET_AREAS: readonly PresetArea[] = [
+  {
+    key: 'categories',
+    title: 'Categories',
+    href: '/team/presets/categories',
+    counted: 'order_category',
+    kinds: ['order_category'],
+    noun: ['category', 'categories'],
+  },
+  {
+    key: 'items',
+    title: 'Items',
+    href: '/team/presets/items',
+    counted: 'item',
+    kinds: ['item'],
+    noun: ['item', 'items'],
+  },
+  {
+    key: 'bundles',
+    title: 'Bundles',
+    href: '/team/presets/bundles',
+    counted: 'bundle',
+    kinds: ['bundle'],
+    noun: ['bundle', 'bundles'],
+  },
+  {
+    key: 'flags',
+    title: 'Flags',
+    href: '/team/presets/flags',
+    counted: 'flag',
+    kinds: ['flag'],
+    noun: ['flag', 'flags'],
+  },
+  {
+    key: 'condition-supplies',
+    title: 'Condition supplies',
+    href: '/team/presets/condition-supplies',
+    counted: 'condition_supply_map',
+    kinds: ['condition_supply_map', 'settings'],
+    noun: ['mapping', 'mappings'],
+  },
+  {
+    key: 'bag-minimums',
+    title: 'Bag minimums',
+    href: '/team/presets/bag-minimums',
+    counted: 'bag',
+    kinds: ['bag', 'settings'],
+    noun: ['bag', 'bags'],
+  },
+];
+
+/** A card of the hub: its count of active presets and whether any is offered an update, or neither. */
+export type HubArea = Pick<PresetArea, 'key' | 'title' | 'href' | 'noun'> &
+  ({ loaded: true; count: number; updateAvailable: boolean } | { loaded: false });
+
+/** Each kind's list as the hub read it, or 'error' where the API could not be read. */
+export type HubLists = Partial<
+  Record<PresetKind, readonly Pick<PresetRow, 'state' | 'updateOnOffer'>[] | 'error'>
+>;
+
+/**
+ * The hub's cards from the lists it read. A card counts its kind's active presets, and offers an
+ * update when an active preset it shows has one: an archived one is restored before anything is
+ * offered of it, so a badge never points at an offer its page does not show.
+ */
+export function hubAreas(lists: HubLists, areas: readonly PresetArea[] = PRESET_AREAS): HubArea[] {
+  return areas.map((area) => {
+    const { key, title, href, noun } = area;
+    const read = area.kinds.map((kind) => lists[kind]);
+    if (read.some((list) => list === undefined || list === 'error'))
+      return { key, title, href, noun, loaded: false };
+    const rows = (kind: PresetKind) =>
+      (lists[kind] as Pick<PresetRow, 'state' | 'updateOnOffer'>[]).filter((r) => r.state === 'active');
+    return {
+      key,
+      title,
+      href,
+      noun,
+      loaded: true,
+      count: rows(area.counted).length,
+      updateAvailable: area.kinds.some((kind) => rows(kind).some((r) => r.updateOnOffer)),
+    };
+  });
+}
+
+/**
+ * Reads what the hub's cards show. The first list is asked alone: a person without
+ * team.manage_presets is refused there, logged once (access.denied), and sent where the portal
+ * sends every refused page, before the others are asked. A list the API cannot answer leaves its
+ * cards unloaded, never the whole page; Next's own redirects pass through.
+ */
+export async function readHub(areas: readonly PresetArea[] = PRESET_AREAS): Promise<HubArea[]> {
+  const kinds = [...new Set(areas.flatMap((a) => a.kinds))];
+  const settle = async (kind: PresetKind) => {
+    try {
+      return [kind, await listPresets(kind)] as const;
+    } catch (err) {
+      unstable_rethrow(err);
+      return [kind, 'error'] as const;
+    }
+  };
+  const [first, ...rest] = kinds;
+  const lists: HubLists = {};
+  if (first) {
+    const [kind, rows] = await settle(first);
+    lists[kind] = rows;
+  }
+  for (const [kind, rows] of await Promise.all(rest.map(settle))) lists[kind] = rows;
+  return hubAreas(lists, areas);
+}
