@@ -1,0 +1,22 @@
+{
+  "name": "@sineobex/presets",
+  "private": true,
+  "type": "module",
+  "description": "Team presets as data: their shapes and the rules every write follows, the platform's presets and the installer that gives them to a team.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sineobex/forms": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}
