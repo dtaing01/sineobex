@@ -10,3 +10,5 @@ export * from './schemas.ts';
 export * from './problem-check.ts';
 // What a body's schema cannot hold: the team's other presets and its note types (4.4).
 export * from './validate.ts';
+// What each act on a preset does and refuses, and what is fixed at creation (5.1).
+export * from './rules.ts';
