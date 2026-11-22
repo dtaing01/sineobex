@@ -640,89 +640,218 @@ Each row is built as its default, marked `PLAN-OPEN` in the code where the PRD l
 - An archived flag stays on the patients who carry it (5.1), where "remove" might be read as taking it off them.
 - The PRD names no alert rules (`main.md:190`), so none are built (section 11, row 28).
 
-## 13. Units and first card list
-Units: P0 schema and core rules, P1 API, P2 phone cache, P3 portal presets, P4 note type editing, P5 flags on patients, P6 the Done when and the close. The names share nothing with phase 4's units (F, E, L). A card's ID is its unit and a short name. Each unit with T cards has one `tests` card (level X) that writes those cards' test files and vectors first. P0 lands first, alone, with CI green. Then P1. Then P2 and P3 together. P4 after P1 and phase 4's F3. P5 after P1, P2 and phase 4's L2 and L5. P6 last. Levels follow `docs/plan/README.md`: an always-X path is X, a screen or a page is R, and S is kept for a card whose every mistake a machine check catches. A contract card regenerates the contract after its unit's routes. Files phase 4 also edits, phase 4's cards first: `api/app.ts`, `api/routes/owner.ts`, `db/seed/seed.ts`, `api-test/permissions.test.ts`, `forms/src/install.ts`, `api/forms/definitions.ts`, `api/patients/projection.ts` and `schemas.ts`, the fake, `home_screen.dart`, `patient_screen.dart`, `chart_cache.dart`, `sync_labels.dart`, the generated contract. Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `forms/` is `packages/forms/`, `presets/` is `packages/presets/`, `vectors/` is `packages/contract/test-vectors/`, `portal/` is `apps/portal/src/app/(app)/team/presets/`, `parts/` is `apps/portal/src/components/presets/`.
+## 13. Units and the card list
+This section is the work-list ("How this phase is built"): no card is written in full, so there is no card folder under `docs/plan/`. Each row says what a card builds, its files, its level and the cards that must be on the branch first. A unit is built from the design sections its rows point to, tests first, by one agent in its own worktree.
 
+Units: P0 schema and core rules, P1 the API, P2 the phone's copy, P3 the portal's preset pages, P4 note type editing, P5 flags on patients, P6 the Done when, the whole-phase review and the close. The names share nothing with phase 4's units (F, E, L, H). A card's ID is its unit and a short name. Phase 4 is done (`c307a0b`), so no row needs one of its cards.
+
+### 13.1 Order
+A unit starts when the cards it needs are on the branch with CI green. At most two units are built at once (`CLAUDE.md`).
+
+| Wave | Units | Why this order |
+|---|---|---|
+| 1 | **P0** | Everything reads its tables, shapes, revision and platform data. It lands alone, with CI green, its migration only after its review |
+| 2 | **P1** | The phone and the portal read its routes and the generated contract |
+| 3 | **P2** with **P3** | Disjoint: P2 is under `apps/mobile/`, P3 under `apps/portal/`. Each needs P1-contract |
+| 4 | **P4** with **P5** | P4's server half needs P1 and its pages P3's parts; P5 needs P1 and P2. They share four files (13.2): P4 edits the permissions table, the refusals and the accessibility sweep first, and whichever lands second regenerates the contract |
+| 5 | **P6** | The Done when needs every unit; then the whole-phase review, then the close |
+
+**P5 lands in two parts.** The first, P5-migration to P5-fake-reads, needs only P1 and P2, so it can land while P4 is built. The second, from P5-permissions on, edits the files P4 edits first and starts once P4-contract (the permissions table and the contract) and P4-e2e (the refusals table and the accessibility sweep) are on the branch.
+
+**Sync rules land with their mirror.** P5-entity-values, P5-read-rule, P5-entity, P5-phone-entity and P5-fake land in one push, and so do P5-chart-read, P5-index, P5-search and P5-fake-reads: the phone's test server mirrors the server's rules by hand, and the two never land apart (`CLAUDE.md`; lifecycle 4.9). P2-fake lands with P1's pull already on the branch.
+
+### 13.2 Files more than one unit edits, and the order
+- `services/api/test/permissions.test.ts`: P1-permissions, P4-permissions, P5-permissions. `services/api/test/presets-revision.test.ts`: P1-tests, then P4-tests (an install and a publish of one key at once).
+- The generated contract (`pnpm contract:generate`): every card that changes a route or a schema regenerates it in its own commit (`CLAUDE.md`), and P1-contract, P4-contract and P5-contract close each unit's. `packages/contract/test/spec.test.ts`: P1-contract (`{kind}`), then P4-contract (`{key}`). Where two units both changed the contract, the second to land regenerates it on top of the first; generated files are never merged by hand.
+- `apps/portal/src/lib/refusals.ts`: P3-parts, then P4's pages, then P5-portal-panel. `apps/portal/e2e/a11y.spec.ts`: P3-e2e, P4-e2e, P5-e2e.
+- `services/api/src/app.ts`: P1-pull, P1-create, then P4-list.
+- `services/api/src/routes/owner.ts`: P0-install. `db/seed/seed.ts`: P0-install, then P1-seed.
+- `packages/forms/src/index.ts`: P0-revision, P0-hideable, P0-platform, then P4-protected, P4-edit-basic and P4-fanout. `packages/presets/src/index.ts`: P0's cards, each exporting what it adds, then P5-current-ts.
+- `apps/mobile/lib/sync/local_store.dart`: P2-local-db, then P5-phone-entity. `apps/mobile/test/sync/fake_server.dart` and `fake_parity_test.dart`: P2-fake, then P5-fake and P5-fake-reads.
+- `apps/portal/src/app/(app)/team/presets/page.tsx`, the hub: P3-hub, then P4-list-page.
+- `apps/mobile/test/helpers/app_harness.dart` is a shared helper with one owner: P2-store's wiring in it is the coordinator's edit, made in the same commit.
+
+Within a unit, a file two cards edit is edited in the order of their Needs (`api/patients/schemas.ts`: P5-chart-read, P5-index, P5-route, P5-search). Every other file an earlier phase built is named in the row that edits it, and the tests that phase wrote for it keep passing unchanged, with this phase's cases beside them (12.1, risk 2).
+
+### 13.3 Who owns each rule
+Each rule of sections 4 to 9 is written once, by the card named here; other cards call it.
+
+| Rule | Section | Card |
+|---|---|---|
+| The four preset tables and the note type head: constraints, the team policy, no delete, versions and events append-only, a state row for every team, the reason only with a person | 4.1 to 4.3 | P0-migration |
+| One function takes a revision, under the team lock; `lockTeam` is `lockTeamWrites`' statement | 4.2 | P0-revision |
+| The body shapes and the eight named colours; a phone skips an unknown kind and ignores an unknown field | 4.4, 5.3 | P0-schemas-catalog, P0-schemas-rest; on the phone P2-models |
+| What is fixed after creation, and what each act refuses | 4.4, 5.1 | P0-rules (`presetWriteEffect`, `reorderRanks`); the routes refuse by it |
+| `validatePreset` | 4.4 | P0-validate |
+| Where `visibleAnswers` may take something out (`sensitive_path`) | 4.4 | P0-hideable |
+| The platform data, from the PRD's own words | 4.6 | P0-data-catalog, P0-data-maps; checked by P0-tests' `platform-data.test.ts` |
+| A platform update's effect: install, skip, update or offer | 5.2 | P0-platform |
+| The preset installer: plan, lock, plan again, one revision, counts, no audit | 5.2 | P0-install; its callers audit (P0-install for team creation and the seed, P1-pull) |
+| Suggestions and a bundle's lines | 5.3 | P0-supplies; on the phone P2-supplies |
+| The problem status check | 5.3 | P0-problem-check, read by P5-chart-read; on the phone P2-problem-check, read by P5-status-check |
+| Every preset and note type write: a recent sign-in, a reason kept in `team_preset_events`, the team lock first, its audit event in the transaction, never the reason | 7, 9 | P1-store; P1's route cards, P4-publish, P4-fanout and P4-lifecycle call it |
+| Path parameters that are not ids: `{kind}` and `{key}`, on these paths only | 7 | P1-contract, P4-contract |
+| The pull: by revision and epoch, `reset`, archived rows, never `billing_code_map`, the installer first, its skips logged by count | 6.1, 7 | P1-pull; mirrored by P2-fake |
+| The phone's copy: written only into the database it was asked for while the same sign-in holds it open and unfrozen; gone on a 403 | 6.1 | P2-store |
+| The phone's `presets` table, and its going with `clearServerData` | 6.1 | P2-local-db |
+| Where the presets are not held: "Your team’s setup hasn’t downloaded yet. Connect to finish." | 6.1 | P2-setup-screen, P5-phone-sheet, P5-intake |
+| A flag is never shown by colour alone: its pill reads "Red · High" | 8 | P2-setup-screen (`flag_pill.dart`) and P3-flags (`FlagPill.tsx`); every pill is drawn by them |
+| What a note type edit may not touch; no operation writes a mark | 5.4 | P4-protected |
+| The operations and the renames they yield; `copy_section`'s refusals | 5.4 | P4-edit-basic, P4-edit-options, P4-edit-add |
+| One master list per field: the `mapsTo` fan-out, refused at a protected field, never reaching an `auto` type | 5.4 rule 5 | P4-fanout |
+| The note type installer: each key by `platformUpdateEffect`, the next version, `PresetDiffers` narrowed, the head and its revision | 4.3, 5.2 | P4-install |
+| Every stored definition names its own row's key and version | 4.3 | P4-publish (an edit), P4-lifecycle (a copy, an update taken), P4-install (a platform version) |
+| A publish passes `validate`, `versionProblems` against every earlier version and the size limit | 5.4 | P4-publish |
+| Adding, removing and restoring a note type; the `auto` type is not removable; a mapped type is `referenced` | 5.4 | P4-lifecycle |
+| An archived note type leaves the list; every stored version still serves | 6.1, 6.4, 7 | P4-offered; mirrored in `forms_fake.dart` by the same card |
+| The flag change table: created once, one mark, the guard trigger; `patient_of_change`; the notice's patient; the index triggers; the column comment | 4.5 | P5-migration |
+| Current flags: the fold, entered in error left out, archived flags kept, hidden ones left out | 5.3 | P5-current-ts, P5-current-dart |
+| A flag change's value: the reason trimmed and counted in code points, the `enteredInError` retraction | 4.5, 6.2 | P5-entity-values; on the phone P5-phone-entity |
+| The flag rule (`flagHidden`, `flagChangeShown`) and every sync read of it: `readsRecord`, the review queue, a value sent back; the held change's notice | 6.2, 9 | P5-read-rule |
+| The entity: its key, `mayChange`, the check in order (`unknown_flag`, the kind, the reason, the flag rule) with `coalesce` and no casts, `effective_at`, `set_once`, an archived flag accepted, the audit event naming a flag only when it is not sensitive, all in `insertFlagChange`, which the routes call too | 4.5, 5.1, 6.2, 7, 9 | P5-entity |
+| The phone's registry: the outbox category, the clock pause, `set_once`, filed under the patient; the notice's kind | 6.2 | P5-phone-entity |
+| The phone's test server mirrors 6.3's list | 6.3 | P2-fake, P5-fake, P5-fake-reads |
+| The chart's `flagChanges`, `flags` and `statusCheckDue`, filtered by the flag rule | 6.1, 7 | P5-chart-read |
+| The team index's flags | 6.1 | P5-index; on the phone P5-phone-index |
+| The two flag routes: both keys, an id once per form, a set of an archived flag refused, a hidden flag's 403 logged | 7, 9 | P5-route |
+| Search by flags, in the request's body | 7, 8.1 | P5-search; the portal's form P5-portal-filters |
+| A patient's current flags on the phone, with the person's flag rule (`mayViewProblems` of `access.dart` and `patients.view_sensitive`, as the server's `Projection.sensitive`, held to it role by role in `flags_test.dart`); recording a change; Choose a flag and Change the reason | 6.1, 6.2, 8.2 | P5-phone-domain |
+| Intake's risk level, a dependent of the patient create, saved without it while presets are missing or the clock is paused | 8.2 | P5-phone-domain (`createPatient`), P5-intake |
+| The PHI guard reads `packages/presets/`, and CI runs the package's tests | 9 | P0-ci |
+
+### 13.4 The cards
+Levels follow `docs/plan/README.md`. An always-X path is X: the API's `sync/` code, the phone's `lib/sync/`, the phone's test server, a migration with policies or triggers, `.github/` and `tools/`. So is a card whose wrong line would lose a write or show something to the wrong reader where no other card's test would catch it: the revision (4.2), where answers may be hidden (`mayBeHidden`, 4.4), what a note type edit may not touch (5.4). Each unit's tests card is X, since what it writes is what the T cards are held to, and so is the Done when's story. A screen or a page is R, and so are the contract cards, the seed and the tests that walk the Done when. A T card's tests are written first, by its unit's tests card. No row is S: none is left to a machine check alone. Levels say where review is strictest ("How this phase is built").
+
+Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `forms/` is `packages/forms/`, `presets/` is `packages/presets/`, `vectors/` is `packages/contract/test-vectors/`, `(app)/` is `apps/portal/src/app/(app)/`, `portal/` is `(app)/team/presets/`, `parts/` is `apps/portal/src/components/presets/`, `actions/` is `apps/portal/src/app/actions/`, `e2e/` is `apps/portal/e2e/`. A file that does not exist yet is new; every other is edited.
+
+#### P0 Schema and core rules (4.1 to 4.4, 4.6, 5.1 to 5.3)
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| P0-migration | X | `db/migrations/0022_team_presets.sql`, `db/test/team-presets.test.ts` | phase 4's F3-migration |
-| P0-package | R | `presets/package.json`, `presets/tsconfig.json`, `pnpm-lock.yaml` | — |
-| P0-tests | X | `vectors/{preset-bodies,preset-validate,preset-rules,platform-update,supply-suggest}.json`, their readers under `presets/test/`, `presets/test/install.test.ts` | P0-package |
-| P0-schemas-catalog | T | `presets/src/schemas.ts` (category, item, bundle) | P0-tests |
-| P0-schemas-rest | T | `presets/src/schemas.ts` (flag, both mappings, bag, settings) | P0-schemas-catalog |
-| P0-validate | T | `presets/src/validate.ts` | P0-schemas-rest |
-| P0-rules | T | `presets/src/rules.ts` (`presetWriteEffect`, `reorderRanks`) | P0-schemas-catalog |
-| P0-platform | T | `presets/src/platform.ts` | P0-tests |
-| P0-supplies | T | `presets/src/supplies.ts` (`suggestSupplies`, `bundleLines`) | P0-schemas-rest |
-| P0-data-catalog | R | `presets/data/platform.json` (categories, flags, settings, starter items, 18 bundles) | P0-validate; question 1 |
-| P0-data-maps | R | `presets/data/platform.json` (default mappings) | P0-data-catalog; question 2; phase 4's F6 |
-| P0-install | T | `presets/src/install.ts`, `api/routes/owner.ts`, `db/seed/seed.ts` | P0-migration, P0-platform, P0-data-catalog |
-| P1-tests | X | `api-test/presets-{store,pull,routes,revision,audit,install,refs}.test.ts` | P0 |
-| P1-store | T | `api/presets/store.ts` (load refs, write a version, bump the revision after the team lock) | P1-tests |
-| P1-pull | T | `api/routes/presets.ts`, `api/app.ts` (the register line) | P1-store |
-| P1-create | T | `api/routes/presets.ts` (admin list and create) | P1-store |
-| P1-edit | T | `api/routes/presets.ts` | P1-create |
-| P1-archive | T | `api/routes/presets.ts`, `api/presets/store.ts` (archive, restore) | P1-create |
-| P1-update | T | `api/routes/presets.ts` (take update, versions) | P1-edit |
-| P1-order | T | `api/routes/presets.ts` (flag order) | P1-edit |
-| P1-permissions | R | `api-test/permissions.test.ts` | the route cards above |
-| P1-contract | S | The generated contract | P1-permissions |
-| P1-seed | S | `db/seed/demo-presets.ts`, `db/seed/seed.ts` (recipe `seed-data.md`; the PHI guard checks it) | P1-create |
-| P2-tests | X | `phone-test/presets/{models,preset_store,presets_refresher,supplies}_test.dart` | P1-contract |
-| P2-local-db | X | `phone/sync/local_db.dart` (the `presets` table) | P1-contract |
-| P2-fake | X | `phone-test/sync/fake_server.dart`, `fake_parity_test.dart` (`GET /v1/presets`) | P1-contract |
-| P2-models | T | `phone/presets/models.dart` | P2-tests |
-| P2-store | T | `phone/presets/preset_store.dart`, `presets_refresher.dart`, `phone/patients/patient_providers.dart` | P2-local-db, P2-fake, P2-models |
-| P2-supplies | T | `phone/presets/supplies.dart` | P2-models, P0-supplies |
-| P2-setup-screen | R | `phone/features/presets/team_setup_screen.dart`, `phone/features/home/home_screen.dart`, their widget test | P2-store |
-| P3-hub | R | `portal/page.tsx`, `(app)/layout.tsx`, `apps/portal/src/lib/presets.ts` | P1-contract |
-| P3-parts | R | `parts/ItemLines.tsx`, `RemovedList.tsx`, `refusals.ts` | P3-hub |
-| P3-categories | R | `portal/categories/page.tsx`, `actions.ts` | P3-parts |
-| P3-items | R | `portal/items/page.tsx`, `actions.ts` | P3-categories |
-| P3-item-edit | R | `portal/items/[id]/page.tsx` | P3-items |
-| P3-bundles | R | `portal/bundles/page.tsx`, `actions.ts` | P3-items |
-| P3-bundle-edit | R | `portal/bundles/[id]/page.tsx` | P3-bundles |
-| P3-flags | R | `portal/flags/page.tsx`, `actions.ts` (Move up, Move down) | P3-parts |
-| P3-flag-edit | R | `portal/flags/[id]/page.tsx` | P3-flags |
-| P3-field-supplies | R | `portal/field-supplies/page.tsx`, `actions.ts` | P3-items; phase 4's F3 |
-| P3-condition-supplies | R | `portal/condition-supplies/page.tsx`, `actions.ts` | P3-items |
-| P3-bag-minimums | R | `portal/bag-minimums/page.tsx`, `actions.ts` | P3-items |
-| P3-history | R | `parts/UpdateOffer.tsx`, `VersionHistory.tsx` | P3-parts |
-| P3-e2e | R | `apps/portal/e2e/presets.spec.ts` (the portal half of the Done when, with axe) | P3-items, P3-bundles, P3-flags |
-| P4-tests | X | `vectors/note-type-edit.json`, `forms/test/{edit,install-update}.test.ts`, `api-test/{note-types-admin,note-type-versions}.test.ts`, `phone-test/forms/note_type_version_test.dart` | phase 4's F3 and L1; P1-store |
-| P4-edit-basic | T | `forms/src/edit.ts` (rename, hide and show, relabel, the protected rule) | P4-tests |
-| P4-edit-options | T | `forms/src/edit-options.ts` | P4-edit-basic |
-| P4-edit-add | T | `forms/src/edit-add.ts` | P4-edit-basic |
-| P4-install | T | `forms/src/install.ts` (5.2: `platformUpdateEffect`, `preset_version`, `platform_latest`) | P4-tests, P0-platform |
-| P4-offered | T | `api/forms/definitions.ts` (the list reads `note_types`) | P4-tests |
-| P4-publish | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts`, `api/app.ts` (list, publish, the `mapsTo` fan-out) | P4-edit-options, P4-edit-add |
-| P4-lifecycle | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts` (add, archive, restore, take update) | P4-publish, P4-install |
-| P4-permissions | R | `api-test/permissions.test.ts` | P4-lifecycle |
-| P4-contract | S | The generated contract | P4-permissions |
-| P4-list-page | R | `portal/note-types/page.tsx`, `actions.ts` | P4-contract, P3-parts |
-| P4-editor | R | `portal/note-types/[key]/page.tsx`, `actions.ts` (sections and fields) | P4-list-page |
-| P4-editor-options | R | `portal/note-types/[key]/OptionEditor.tsx`, `AddField.tsx` | P4-editor |
-| P5-migration | X | `db/migrations/0023_patient_flag_changes.sql`, `db/test/patient-flag-changes.test.ts` | P0-migration |
-| P5-tests | X | `vectors/flag-current.json`, its two readers, `api-test/{sync-flag-change,patients-flags-route,patients-flags-sensitive}.test.ts`, the new scenario in `sync_scenarios_test.dart` | P5-migration |
-| P5-current-ts | T | `presets/src/flags.ts` | P5-tests |
-| P5-current-dart | T | `phone/presets/flags.dart` | P5-tests, P2-models |
-| P5-entity | X | `api/sync/entities/patient-flag-change.ts`, `api/sync/entities/index.ts`, `api/patients/charts.ts` (`CHART_TABLES`) | P5-tests |
-| P5-read-rule | X | `api/routes/sync.ts` (the entity's read rule, 6.2) | P5-entity |
-| P5-phone-entity | X | `phone/sync/entities.dart`, `phone-test/sync/fake_server.dart`, `fake_parity_test.dart` | P5-read-rule |
-| P5-chart-read | T | `api/patients/projection.ts`, `schemas.ts` (`flags`, with the sensitive filter) | P5-current-ts, P5-entity |
-| P5-route | T | `api/routes/patients.ts`, `api/patients/flags.ts` (`POST …/flags`) | P5-entity |
-| P5-search | T | `api/patients/search.ts`, `api/routes/patients.ts` | P5-chart-read |
-| P5-permissions | R | `api-test/permissions.test.ts` | P5-route, P5-search |
-| P5-contract | S | The generated contract | P5-permissions |
-| P5-chart-cache | R | `phone/patients/chart_cache.dart`, its test (keeps `flags`) | P5-contract |
-| P5-phone-sheet | R | `phone/features/patients/flag_sheet.dart`, `patient_screen.dart`, `phone/features/sync/sync_labels.dart` | P5-current-dart, P5-phone-entity, P5-chart-cache, P2-store |
-| P5-portal-panel | R | `parts/FlagsPanel.tsx`, `patients/[patientId]/page.tsx`, its `actions.ts` | P5-contract |
-| P5-portal-filters | R | `patients/page.tsx`, `SearchForm.tsx` | P5-contract |
-| P6-vectors | X | `vectors/presets-done-when.json` | P0 |
-| P6-server | T | `api-test/presets-done-when.test.ts` (steps 2 to 5) | P1, P6-vectors |
-| P6-phone | T | `phone-test/presets/done_when_presets_test.dart` (steps 1, 6, 7, 8, against the fake) | P2, P5-phone-sheet |
-| P6-live | X | `phone-test/presets/live_presets_test.dart`, `tools/live-sync.sh` | P6-phone |
-| P6-recipe | R | `docs/plan/patterns/preset-kind.md` | P1, P2, P3 |
-| P6-docs | R | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` (the D-table, section 6 rows), the PR description | all |
+| P0-migration | X | `db/migrations/0023_team_presets.sql`, `db/test/team-presets.test.ts` (4.1 to 4.3: updates and deletes as the app role fail on versions and events, no delete on any, a second team sees nothing, one settings row, a state row for every team, the reason null exactly for the installer, the note type head filled from the versions present) | — |
+| P0-package | R | `presets/package.json`, `presets/tsconfig.json`, `presets/src/index.ts` (kept safe for the API's edge bundle), `presets/test/import-path.test.ts`; `db/package.json` and `services/api/package.json` depend on the package; the lockfile `pnpm install` writes | — |
+| P0-ci | X | `tools/ci-local.sh` and `.github/workflows/ci.yml` (`--filter @sineobex/presets`), `tools/phi-guard-rules.mjs` (`packages/presets/` joins the fixture list), `tools/test/phi-guard.test.mjs` (its case) | P0-package |
+| P0-revision | X | `forms/src/revision.ts` (`lockTeam`, `takeRevision`: 4.2), `forms/src/index.ts`, `db/test/preset-revision.test.ts` (two writers at once: one step each, no gap; the lock's key is `append_audit`'s and `lockTeamWrites`') | P0-migration |
+| P0-tests | X | `vectors/{preset-bodies,preset-validate,preset-rules,platform-update,supply-suggest,problem-check}.json` (`sensitive_path`, grid cells, whole-note maps, the bundle's prompt, a fixed field changed by a platform version among them); their readers `presets/test/{schemas,validate,rules,supplies,problem-check}.test.ts` and `forms/test/platform-effect.test.ts`; `forms/test/interp/may-be-hidden.test.ts` (on every released note type and every reader of forms 7.1, what `visibleAnswers` takes out lies where `mayBeHidden` is true); `presets/test/install.test.ts` (the plan, on a stand-in `InstallSql`); `presets/test/platform-data.test.ts` (5.2); `db/test/install-team-presets.test.ts` (install, skip, update, offer; an edited copy and an archived one untouched; idempotent; a second team untouched; planned again under the lock; one revision; an entry `validatePreset` refuses skipped and counted) | P0-package, P0-migration |
+| P0-schemas-catalog | T | `presets/src/schemas.ts` (category, item, bundle with its prompt) | P0-tests |
+| P0-schemas-rest | T | `presets/src/schemas.ts` (flag and the eight named colours, both mappings with a field map's optional path and `when`, bag, settings) | P0-schemas-catalog |
+| P0-hideable | X | `forms/src/interp/may-be-hidden.ts` (`mayBeHidden(definition, path)`, and for a whole note type: 4.4), `forms/src/index.ts` | P0-tests |
+| P0-validate | T | `presets/src/validate.ts` (4.4: ids of the right kind and team, `reference_archived`, a result exactly in a Labs category, `medical` by behaviour, a bundle with a medication Medical, a primary flag never sensitive, a map's path, grid cell, `when` and `fromPath` through `fieldAt`, `sensitive_path` through `mayBeHidden`, one settings row) | P0-schemas-rest, P0-hideable |
+| P0-rules | T | `presets/src/rules.ts` (`presetWriteEffect` with each kind's fixed fields, `reorderRanks`: 5.1, 5.3) | P0-schemas-rest |
+| P0-platform | T | `forms/src/platform-effect.ts` (`platformUpdateEffect`: 5.2), `forms/src/index.ts` | P0-tests |
+| P0-supplies | T | `presets/src/supplies.ts` (`suggestSupplies` on the suggesting person's `visibleAnswers`, with whole-note maps and grid cells; `bundleLines`) | P0-schemas-rest |
+| P0-problem-check | T | `presets/src/problem-check.ts` (`problemCheckDue`) | P0-tests |
+| P0-data-catalog | R | `presets/data/platform.json` (categories, flags, settings, items, the 18 bundles with their three prompts: 4.6) | P0-validate, P0-rules |
+| P0-data-maps | R | `presets/data/platform.json` (the default mappings of 4.6, and what is not shipped) | P0-data-catalog |
+| P0-install | T | `presets/src/install.ts` (`installTeamPresets`: 5.2), `api/routes/owner.ts` (team creation installs and audits `preset.platform_installed`), `db/seed/seed.ts` (both seeded teams) | P0-revision, P0-platform, P0-data-maps |
 
-**Count: 79 cards. S 4, T 31, R 30, X 14.** By unit: P0 12, P1 11, P2 7, P3 14, P4 13, P5 16, P6 6. No card changes more than three source files.
+#### P1 The API (6.1's pull, 7, 9)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P1-done-when | X | `vectors/presets-done-when.json` (10.1's steps and names, written before any test that walks them) | P0-install |
+| P1-tests | X | `api-test/presets-pull.test.ts` (`since`, the revision read with the rows in one statement, `reset` and the epoch, archived rows, never a `billing_code_map`, membership, the installer first and its skips logged by count); `api-test/presets-routes.test.ts` (every write's reason kept, shown in the history and never audited; a stale sign-in answered `reauth_required` and not logged; every refusal of 5.1 and 7; a fixed field; `referenced` with its counts; a bag made from the template or from another bag; take as new); `api-test/presets-revision.test.ts` (two writers; a writer that commits between a pull's reads is never skipped; every write takes the lock first); `api-test/presets-audit.test.ts` (each event in its write's transaction, a failed audit rolling the write back; field names only); `api-test/presets-refs.test.ts` (a walk over every kind) | P1-done-when, P0-install, P0-rules, P0-validate |
+| P1-store | T | `api/presets/store.ts` (load references; write a version with its event and reason; archive and restore; `lockTeamWrites` first, then `takeRevision`; the audit event in the same transaction) | P1-tests |
+| P1-pull | T | `api/routes/presets.ts` (`GET /v1/presets`, after the installer), `api/app.ts` (its register line) | P1-store |
+| P1-create | T | `api/routes/presets-admin.ts` (the admin list and create, with `recentAuth`), `api/app.ts` (its register line) | P1-pull |
+| P1-edit | T | `api/routes/presets-admin.ts` (edit) | P1-create |
+| P1-archive | T | `api/routes/presets-admin.ts` (archive, restore) | P1-edit |
+| P1-update | T | `api/routes/presets-admin.ts` (take the update, as a new preset too; the history) | P1-archive |
+| P1-order | T | `api/routes/presets-admin.ts` (a tier's flag order) | P1-update |
+| P1-permissions | R | `api-test/permissions.test.ts` (a `ROUTES` row for every route of this unit; a stale-sign-in case for every write) | P1-order |
+| P1-contract | R | The generated contract; `packages/contract/test/spec.test.ts` (`{kind}` as the enum of the kinds, on these paths only: 7) | P1-permissions |
+| P1-seed | R | `db/seed/demo-presets.ts` (the demo team's own made-up item, bundle and bag, each named "Demo: …", written as `demo-encounters.ts` writes its visits and stamped with one `takeRevision`), `db/seed/seed.ts`, `db/test/demo-presets.test.ts` (every seeded body passes its schema and `validatePreset`; each version has its event and reason; the revision has no gap; a second run writes nothing) | P0-install |
+
+#### P2 The phone's copy (6.1, 8.2's Team setup)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P2-tests | X | `phone-test/presets/{models,preset_store,presets_refresher,supplies,problem_check}_test.dart` (the Dart readers of `preset-bodies.json`, `supply-suggest.json` and `problem-check.json`; a pull cut short leaves the old copy whole; `reset` and a new epoch replace it; a 403 deletes it; an answer arriving after a sign-out or a team switch writes nothing); cases in `phone-test/sync/local_db_test.dart` (a version 2 file keeps its work through `_v3`) and `phone-test/sync/local_store_test.dart` (`clearServerData` takes the presets and both keys, so the next pull has no `since`; a sign-out that keeps work leaves none) | P1-contract |
+| P2-local-db | X | `phone/sync/local_db.dart` (`_v3`, `schemaVersion` 3: the `presets` table), `phone/sync/local_store.dart` (`clearServerData` deletes its rows and both keys) | P2-tests |
+| P2-fake | X | `phone-test/sync/fake_server.dart` (`GET /v1/presets` as 6.3 lists it; the header says what the fake does not mirror), `phone-test/sync/fake_parity_test.dart` (cases named as the API's) | P1-contract |
+| P2-models | T | `phone/presets/models.dart` (`parsePreset` for every kind; the named colours) | P2-tests |
+| P2-store | T | `phone/presets/preset_store.dart`, `phone/presets/presets_refresher.dart` (`PresetsRefresher`), `phone/app_providers.dart` (made in `appRefreshers`), `phone-test/helpers/app_harness.dart` (the same wiring; 13.2) | P2-local-db, P2-fake, P2-models |
+| P2-supplies | T | `phone/presets/supplies.dart` (`suggestSupplies`, `bundleLines`) | P2-models |
+| P2-problem-check | T | `phone/presets/problem_check.dart` (`problemCheckDue`) | P2-models |
+| P2-setup-screen | R | `phone/features/presets/team_setup_screen.dart`, `phone/design/widgets/flag_pill.dart` ("Red · High", never colour alone), `phone/features/home/home_screen.dart` (its row), `phone/app.dart` (its route), `phone-test/features/presets/team_setup_screen_test.dart` (three themes, 200% text, 320 px; offline; not downloaded yet) | P2-store |
+
+#### P3 The portal's preset pages (8.1)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P3-hub | R | `portal/page.tsx` (a card per area with its count and "Update available"; the note types card is P4-list-page's), `(app)/layout.tsx` (the nav item, only with `team.manage_presets`), `apps/portal/src/lib/presets.ts` (the API's calls) | P1-contract |
+| P3-parts | R | `parts/ReasonBox.tsx` (3 to 300 characters, `autoComplete="off"`, the hint), `parts/ItemLines.tsx`, `parts/RemovedList.tsx`, `actions/presets.ts` (archive and restore, each with a reason; `reauth_required` to `/reauth` and back), `apps/portal/src/lib/refusals.ts` (8.1's sentences) | P3-hub |
+| P3-categories | R | `portal/categories/page.tsx`, `actions/presets-categories.ts` | P3-parts |
+| P3-recipe | R | `docs/plan/patterns/preset-kind.md`, `docs/plan/patterns/README.md` (a preset kind's steps, from P1's routes and the first page, read by the pages after it) | P3-categories |
+| P3-items | R | `portal/items/page.tsx`, `actions/presets-items.ts` | P3-recipe |
+| P3-item-edit | R | `portal/items/[id]/page.tsx` | P3-items |
+| P3-bundles | R | `portal/bundles/page.tsx`, `actions/presets-bundles.ts` | P3-items |
+| P3-bundle-edit | R | `portal/bundles/[id]/page.tsx` (its lines, Core, Ask before applying) | P3-bundles |
+| P3-flags | R | `portal/flags/page.tsx`, `actions/presets-flags.ts` (Move up, Move down), `parts/FlagPill.tsx` | P3-recipe |
+| P3-flag-edit | R | `portal/flags/[id]/page.tsx` | P3-flags |
+| P3-condition-supplies | R | `portal/condition-supplies/page.tsx`, `actions/presets-condition-supplies.ts` (with the status-check window) | P3-items |
+| P3-bag-minimums | R | `portal/bag-minimums/page.tsx`, `actions/presets-bags.ts` (the switch, the template, Add bag from it or Copy from) | P3-items |
+| P3-history | R | `parts/UpdateOffer.tsx`, `parts/VersionHistory.tsx`, `actions/presets.ts` (take the update, or add it as new) | P3-parts |
+| P3-e2e | R | `e2e/presets.spec.ts` (the portal half of the Done when, read from `presets-done-when.json`, ending with a phone member's `GET /v1/presets?since=R`), `e2e/presets-pages.spec.ts` (each P3 page's states and wording; axe in three themes and at 320 px; `expectNothingStored`; addresses carry only ids), `e2e/a11y.spec.ts` (the pages join the sweep) | P3-item-edit, P3-bundle-edit, P3-flag-edit, P3-condition-supplies, P3-bag-minimums, P3-history, P1-done-when |
+
+#### P4 Note type editing (4.3, 5.2's note types, 5.4, 8.1's note type pages)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P4-tests | X | `vectors/note-type-edit.json` (one case per mark; every operation, `copy_section` among them; the fan-out reaching a protected field; the renames yielded); `forms/test/edit.test.ts` (every result passes `validate`, `versionProblems` and `checkFile`, and `visibleAnswers` gives each reader of forms 7.1 the same before and after); `forms/test/install-update.test.ts` (the plan per key); new cases in `db/test/install-presets.test.ts` (a team's version 2, then platform versions 2 and 3, installed twice: nothing thrown, no row added, `platform_latest` 3; a team made after 0023 gets its heads; the file's phase 4 cases unchanged); `api-test/note-types-admin.test.ts` (every route, its reason and recent sign-in; every row any path writes read back through `definitionFor`, and a note created on it accepted); `api-test/note-type-versions.test.ts` (a draft on version 1 completes, and is corrected, on version 1 after version 2; an archived type leaves the list and its drafts finish); a case in `api-test/presets-revision.test.ts` (an install and a publish of one key at once never collide); `phone-test/forms/note_type_edit_test.dart` (`NoteTypeDef.fromJson` reads every result); `phone-test/forms/note_type_version_test.dart` | P1-store, P0-platform |
+| P4-protected | X | `forms/src/edit-protected.ts` (the one function that says what is protected, and the copy of marks every operation uses: 5.4), `forms/src/index.ts` | P4-tests |
+| P4-edit-basic | T | `forms/src/edit.ts` (`applyNoteTypeEdit`: rename the type, hide and show, relabel; the renames yielded), `forms/src/index.ts` | P4-protected |
+| P4-edit-options | T | `forms/src/edit-options.ts` (the four option operations) | P4-edit-basic |
+| P4-edit-add | T | `forms/src/edit-add.ts` (`add_field`, `add_section`, `copy_section`) | P4-edit-basic |
+| P4-install | T | `forms/src/install.ts` (5.2: each key by `platformUpdateEffect`; the next version, its `version` rewritten; `preset_version`; the head upserted, with `platform_latest` and one `takeRevision`; `PresetDiffers` narrowed; plan, `lockTeam`, plan again) | P4-tests, P0-revision |
+| P4-offered | T | `api/forms/definitions.ts` (the list reads `note_types` and offers only active keys), `phone-test/forms/forms_fake.dart` (an archived key leaves the list while every version still serves), its case in `phone-test/forms/definition_store_test.dart` | P4-install |
+| P4-list | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts` (`GET /v1/admin/note-types`, with what is protected), `api/app.ts` (its register line) | P4-protected, P4-install |
+| P4-publish | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts` (`PUT`: every row oldest first, the operations, the version rewritten, `validate`, `versionProblems`, the size limit, the reason, `recentAuth`, the lock, one revision) | P4-list, P4-edit-options, P4-edit-add, P1-store |
+| P4-fanout | T | `forms/src/edit-fanout.ts` (the team fields an option operation reaches through `mapsTo`), `forms/src/index.ts`, `api/presets/note-types.ts` (each type reached gets its next version in the same transaction, one audit event each) | P4-publish |
+| P4-lifecycle | T | `api/presets/note-types.ts`, `api/routes/note-types-admin.ts` (add, blank with kinds and a group or a copy, with a `t_` key; archive, restore; take the update) | P4-fanout |
+| P4-permissions | R | `api-test/permissions.test.ts` (a `ROUTES` row for every route of this unit; a stale-sign-in case for every write) | P4-lifecycle, P1-permissions |
+| P4-contract | R | The generated contract; `packages/contract/test/spec.test.ts` (`{key}` with 0017's pattern on the admin note type paths) | P4-permissions, P1-contract |
+| P4-list-page | R | `portal/note-types/page.tsx`, `actions/presets-note-types.ts`, `portal/page.tsx` (the hub's note types card), `apps/portal/src/lib/refusals.ts` (the note type pages' sentences of 8.1) | P4-contract, P3-history |
+| P4-editor | R | `portal/note-types/[key]/page.tsx`, `portal/note-types/[key]/NoteTypeEditor.tsx` (a client component that holds the operations until Publish), `portal/note-types/[key]/publish/route.ts` (Publish, a route handler: D115) | P4-list-page |
+| P4-editor-options | R | `parts/OptionEditor.tsx`, `parts/AddField.tsx`, `parts/CopySection.tsx` | P4-editor |
+| P4-field-supplies | R | `portal/field-supplies/page.tsx`, `actions/presets-field-supplies.ts` (a field, a grid cell or every note of a type, read from `GET /v1/admin/note-types`) | P4-contract, P3-history |
+| P4-e2e | R | `e2e/note-types.spec.ts` (the note type pages and the field supplies page: their wording, protected rows, Publish, a copy refused, `sensitive_path`'s refusal; axe in three themes and at 320 px; `expectNothingStored`; addresses carry only ids), `e2e/a11y.spec.ts` | P4-editor-options, P4-field-supplies, P3-e2e |
+
+#### P5 Flags on patients (4.5, 5.3's current flags, 6, 7's flag routes, 8)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P5-migration | X | `db/migrations/0024_patient_flag_changes.sql` (4.5), `db/test/patient-flag-changes.test.ts` (no delete; a second team sees nothing; the guard trigger refuses every update but the one mark, once; a notice names its patient) | P0-migration |
+| P5-tests | X | `vectors/flag-current.json` (the fold, the two-phone clear, entered in error, an archived flag, a hidden one) with its readers `presets/test/current-flags.test.ts` and `phone-test/presets/current_flags_test.dart`; the flag change's cases in `vectors/sync-values.json`; `api-test/sync-flag-change.test.ts` (every row of 6.2; the time never later than the receipt; the notice); `api-test/patients-flags-route.test.ts`; `api-test/patients-flags-sensitive.test.ts` (the sync read, the review queue neither listing nor accepting, a retry's answer, the chart, the index, search and the routes); new cases in `api-test/patients-index.test.ts`, `api-test/patients-charts.test.ts` (flags, `statusCheckDue`) and `api-test/patients-search.test.ts` (`flagIds` filters by current flags, both tiers); `phone-test/patients/flags_test.dart` (the domain class, offline); new cases in `phone-test/patients/chart_cache_test.dart` and `team_index_test.dart`; the two-phone scenario in `phone-test/sync/sync_scenarios_test.dart` | P5-migration, P1-contract |
+| P5-current-ts | T | `presets/src/current-flags.ts` (`currentFlags`), `presets/src/index.ts` | P5-tests |
+| P5-current-dart | T | `phone/presets/current_flags.dart` | P5-tests, P2-models |
+| P5-entity-values | X | `api/sync/schemas.ts` (the entity lists; the notice's kind and `Notice.patientId`), `api/sync/entities/values.ts` (the create's value and parent, the retraction, the reason) | P5-tests |
+| P5-read-rule | X | `api/sync/read-rules.ts` (`flagHidden`, `flagChangeShown`, `readsRecord`'s branch), `api/sync/review.ts` (cases in `asRead` and `shownChange`; `flag_change_not_applied`) | P5-entity-values |
+| P5-entity | X | `api/sync/entities/patient-flag-change.ts` (6.2's settings and `insertFlagChange`), `api/sync/entities/index.ts`, `api/patients/charts.ts` (`CHART_TABLES`) | P5-read-rule |
+| P5-phone-entity | X | `phone/sync/entities.dart`, `phone/sync/local_store.dart` (filed under the patient; the notice's kind), `phone-test/patients/entities_test.dart` | P5-entity-values, P2-local-db |
+| P5-fake | X | `phone-test/sync/fake_server.dart` (every row of 6.2, the server's `effective_at`, the notice's shape), `phone-test/sync/fake_parity_test.dart` | P5-entity, P5-phone-entity |
+| P5-chart-read | T | `api/patients/charts.ts` (`loadGroupCharts`: `flagChanges`, `flags`, each problem's `statusCheckDue`), `api/patients/projection.ts` (`projectChart` through the flag rule), `api/patients/schemas.ts` (`PatientChart`) | P5-entity, P5-current-ts, P0-problem-check |
+| P5-index | T | `api/patients/team-index.ts` (each entry's `flags`; `idx1+sens`), `api/patients/schemas.ts` (the entry) | P5-chart-read |
+| P5-route | T | `api/patients/flags.ts` (both flag routes, through `insertFlagChange` and `flagHidden`), `api/routes/patients.ts`, `api/patients/schemas.ts` (their bodies) | P5-index |
+| P5-search | T | `api/patients/search.ts`, `api/patients/schemas.ts` (`PatientSearch`'s `flagIds`), `api/routes/patients.ts` (the count in the search's event) | P5-route |
+| P5-fake-reads | X | `phone-test/sync/fake_server.dart` (the chart's `flagChanges` and `flags`, the index's `flags`, search's `flagIds`), `phone-test/sync/fake_reads_test.dart` | P5-search, P5-fake |
+| P5-permissions | R | `api-test/permissions.test.ts` (the two flag routes; a hidden flag's 403 logged) | P5-search, P4-contract |
+| P5-contract | R | The generated contract | P5-permissions |
+| P5-chart-cache | T | `phone/patients/chart_cache.dart` (imports `flagChanges`; keeps `flagChangeIds` and `flags`) | P5-contract |
+| P5-phone-index | T | `phone/patients/team_index.dart` (each entry's `flags`, and filtering by them offline) | P5-contract |
+| P5-phone-domain | T | `phone/patients/flags.dart` (the domain class of 8.2), `phone/patients/patient_repository.dart` (intake's risk level in `createPatient`'s transaction), `phone/patients/patient_providers.dart` | P5-chart-cache, P5-current-dart, P5-phone-entity, P2-store |
+| P5-phone-sheet | R | `phone/features/patients/flag_sheet.dart`, `phone/features/patients/patient_screen.dart` (the pills and the flags row), `phone-test/features/patients/flag_sheet_test.dart` (three themes, 200% text, 320 px; offline; without `patients.edit`; without sight of sensitive flags; a freeze while open draws nothing); `phone-test/security/dialog_gates_test.dart` passes | P5-phone-domain, P2-setup-screen |
+| P5-intake | R | `phone/features/patients/intake_screen.dart` (Risk level and its reason), `phone-test/features/patients/intake_screen_test.dart` (offline; presets not held; the clock paused) | P5-phone-domain, P2-setup-screen |
+| P5-phone-list | R | `phone/features/patients/patients_screen.dart` (each row's pill; Risk level and Conditions filters), `phone-test/features/patients/patients_screen_test.dart` | P5-phone-index, P2-setup-screen |
+| P5-status-check | R | `phone/features/patients/problem_screen.dart`, `phone/features/patients/patient_screen.dart` (the profile's problem list), their tests | P5-phone-sheet, P2-problem-check |
+| P5-needs-attention | R | `phone/features/sync/needs_attention_screen.dart` (Choose a flag, Change the reason, Open patient), `phone/features/sync/sync_labels.dart`, `phone-test/features/sync_labels_test.dart`, cases in `phone-test/features/patients/needs_attention_patients_test.dart` | P5-phone-sheet |
+| P5-portal-header | R | `apps/portal/src/components/PatientHeader.tsx` (the pills, through `parts/FlagPill.tsx`) | P5-contract, P3-flags |
+| P5-portal-panel | R | `parts/FlagsPanel.tsx` (a client component), `(app)/patients/[patientId]/page.tsx` (the panel; "Status check due" on the problem list), `(app)/patients/[patientId]/flags/route.ts` and `(app)/patients/[patientId]/flag-changes/[changeId]/entered-in-error/route.ts` (route handlers, each with an id made once per form: D115), `apps/portal/src/lib/refusals.ts` | P5-portal-header, P4-e2e |
+| P5-portal-filters | R | `(app)/patients/SearchForm.tsx` (Risk level and Conditions in the POST body), `(app)/patients/page.tsx` | P5-contract |
+| P5-e2e | R | `e2e/patient-flags.spec.ts` (the header, the panel, Entered in error, the filters, "Status check due", a sensitive flag absent for a reader the rule hides it from, step 8's portal check read from `presets-done-when.json`; axe in three themes and at 320 px; `expectNothingStored`; addresses carry only ids), `e2e/a11y.spec.ts` | P5-portal-panel, P5-portal-filters, P1-done-when |
+
+#### P6 The Done when, the whole-phase review and the close (10.1)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| P6-server | R | `api-test/presets-done-when.test.ts` (steps 2 to 5) | P1-done-when, P1-permissions |
+| P6-phone | R | `phone-test/presets/done_when_presets_test.dart` (steps 1, 6, 7 and 8, against the fake) | P1-done-when, P2-setup-screen, P5-phone-sheet, P5-fake-reads |
+| P6-screens | R | `phone-test/presets/done_when_screens_test.dart` (steps 7 and 8 on Team setup and the flags sheet, in three themes and at 200% text, offline) | P6-phone |
+| P6-live | X | `phone-test/presets/live_presets_test.dart` (steps 1 to 8 against the real API), `tools/live-sync.sh` | P6-phone |
+| P6-review | X | No files of its own: each confirmed finding of the whole-phase review (sync safety, audit, permissions, PHI, accessibility, the fakes' fidelity) is fixed, in the files it names, with a test shown failing first | P6-server, P6-screens, P6-live, P3-e2e, P4-e2e, P5-e2e |
+| P6-close | X | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` (D127 on, section 6's rows, the phase's row), this design's Status and as-built lines, the phase 5 rows of `docs/decisions-for-review.md`. The PR description is the coordinator's | P6-review |
+
+**Count: 102 cards: T 37, R 42, X 23, and no S.** By unit: P0 16, P1 12, P2 8, P3 14, P4 18, P5 28, P6 6. The first list had 79 (S 4, T 31, R 30, X 14); the review's findings added the cards they name, made the contract cards, the seed and the Done when's tests R, and gave the revision, where answers may be hidden and what an edit may not touch an X card each.
