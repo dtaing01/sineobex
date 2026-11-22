@@ -907,6 +907,22 @@ test.describe('items, /team/presets/items', () => {
     await expect(form.getByLabel('Unit of the result')).toHaveCount(0);
     await expect(form.getByLabel('Medical', { exact: true })).not.toBeChecked();
 
+    // Another added on the first try, with nothing refused before it: the form starts afresh again.
+    await name.fill('Demo: Lactate test');
+    await category.selectOption({ label: 'Labs' });
+    await unit.fill('strip');
+    await form.getByLabel('Medical', { exact: true }).check();
+    await form.getByRole('radio', { name: 'A number' }).check();
+    await form.getByLabel('Unit of the result').fill('mmol/L');
+    await reason.fill('Demo: lactate strips for the van');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Lactate test. It’s on the phones after their next sync.',
+    );
+    await expect(form.getByRole('radio', { name: 'None' })).toBeChecked();
+    await expect(form.getByLabel('Unit of the result')).toHaveCount(0);
+    await expect(name).toHaveValue('');
+
     await expectNothingStored(page, 'Items after an add');
     expectOnlyIds(traffic.addresses);
   });
@@ -1476,6 +1492,19 @@ test.describe('bundles, /team/presets/bundles', () => {
     await expect(form.getByRole('group', { name: 'Items' })).toContainText('None yet.');
     await expect(form.getByLabel('Ask before applying (optional)')).toHaveValue('');
     await expect(reason).toHaveValue('');
+
+    // Another added on the first try, with nothing refused before it: its lines go with it.
+    await name.fill('Demo: Bite care');
+    await form.getByRole('radio', { name: 'Non-Medical' }).check();
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Item').selectOption({ label: 'Gauze' });
+    await reason.fill('Demo: what we give for a bite');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Bite care. It’s on the phones after their next sync.',
+    );
+    await expect(form.getByRole('group', { name: 'Items' })).toContainText('None yet.');
+    await expect(form.getByRole('group', { name: /^Line \d+$/ })).toHaveCount(0);
 
     await expectNothingStored(page, 'Bundles after an add');
     expectOnlyIds(traffic.addresses);
