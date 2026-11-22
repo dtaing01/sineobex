@@ -1,7 +1,9 @@
 import 'server-only';
 import type { paths, Schemas } from '@sineobex/contract';
 import { unstable_rethrow } from 'next/navigation';
-import { api, unwrap } from './api';
+import { api, PortalApiError, unwrap } from './api';
+import type { ActionState } from './forms';
+import { presetRefusalState, type PresetRefusalContext } from './refusals';
 
 /**
  * The admin preset routes as the portal's preset pages call them (phase 5 design 7, 8.1): every
@@ -375,4 +377,99 @@ export async function readHub(areas: readonly PresetArea[] = PRESET_AREAS): Prom
   }
   for (const [kind, rows] of await Promise.all(rest.map(settle))) lists[kind] = rows;
   return hubAreas(lists, areas);
+}
+
+// ------------------------------------------------------------------------------------------------
+// What a preset form sends, and what it is told
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Every text the form sent, so a refused form keeps what was typed, its lines among them; React's
+ * own fields for the action are left out.
+ */
+export function sentValues(form: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of form.entries())
+    if (typeof value === 'string' && !key.startsWith('$ACTION')) out[key] = value;
+  return out;
+}
+
+/** What a line's quantity is called in its kind's body: a bundle's, a map's, a bag's. */
+export type LineQuantity = 'qty' | 'qtyPerPatient' | 'min';
+
+/**
+ * The lines ItemLines posted under `name` (`lines.0.itemId`, `lines.0.qty`, `lines.0.core`), in
+ * order, as the body holds them. A quantity that is not a whole number is sent as typed, so the
+ * API answers its path, and the form shows the person which line to fix.
+ */
+export function readLines(
+  form: FormData,
+  name: string,
+  options: { quantity: LineQuantity; core?: boolean },
+): Record<string, unknown>[] {
+  const prefix = `${name}.`;
+  let count = 0;
+  for (const key of form.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const index = Number(key.slice(prefix.length).split('.')[0]);
+    if (Number.isInteger(index) && index >= 0) count = Math.max(count, index + 1);
+  }
+  return Array.from({ length: count }, (_, i) => {
+    const text = (field: string) => {
+      const v = form.get(`${prefix}${i}.${field}`);
+      return typeof v === 'string' ? v : '';
+    };
+    const raw = text(options.quantity).trim();
+    return {
+      itemId: text('itemId'),
+      [options.quantity]: /^\d{1,6}$/.test(raw) ? Number(raw) : raw,
+      ...(options.core ? { core: form.get(`${prefix}${i}.core`) === 'on' } : {}),
+    };
+  });
+}
+
+/** A page under /team/presets, by path alone: where an act on a preset comes back to. */
+const PRESET_PAGE = /^\/team\/presets(\/[a-z0-9-]+)*$/;
+
+/**
+ * Where an act comes back to: the page the form asked for, else the one it was sent from, so long
+ * as either is a page of Team setup's (a crafted `back` never leaves it); else the hub.
+ */
+export function presetPage(...paths: (string | null | undefined)[]): string {
+  return paths.find((p): p is string => typeof p === 'string' && PRESET_PAGE.test(p)) ?? '/team/presets';
+}
+
+/** The page again, saying what was done to which preset: an act's name and an ID, nothing else. */
+export function donePath(page: string, done: string, id: string): string {
+  return `${page}?${new URLSearchParams({ done, preset: id })}`;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The preset a form names, as its page wrote it: a kind, an ID and, where the act needs one, the
+ * version shown. Null for anything else, which no page of the portal sends.
+ */
+export function namedPreset(
+  values: Record<string, string>,
+): { kind: PresetKind; id: string; baseVersion: number | null } | null {
+  const { kind, id } = values;
+  if (!isPresetKind(kind) || !UUID.test(id ?? '')) return null;
+  const base = values.baseVersion === undefined ? null : Number(values.baseVersion);
+  if (base !== null && !(Number.isSafeInteger(base) && base >= 1)) return null;
+  return { kind, id: id!, baseVersion: base };
+}
+
+/**
+ * What a preset form shows when the API refused it: the sentence for its refusal (lib/refusals.ts)
+ * and, where the API names fields, each beside its field. Anything that is no refusal, Next's
+ * redirects among them (reauth_required to /reauth and back), goes on up.
+ */
+export function presetFailure(
+  err: unknown,
+  values: Record<string, string>,
+  context: PresetRefusalContext,
+): ActionState {
+  if (!(err instanceof PortalApiError)) throw err;
+  return presetRefusalState(err, values, context);
 }
