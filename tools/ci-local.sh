@@ -13,6 +13,7 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 step "Secret scan";              gitleaks git --redact --exit-code 1 . >/dev/null
 step "PHI guard";                node tools/phi-guard.mjs
 step "Task card check";         node tools/card-check.mjs
+step "Decisions document check"; node tools/decisions-check.mjs
 step "Lint, format, types";      pnpm -s lint; pnpm -s format:check; pnpm -s typecheck >/dev/null
 step "Unit tests";               pnpm -s --filter @sineobex/contract --filter @sineobex/tools --filter @sineobex/forms --filter @sineobex/portal test
 step "Migrations on scratch DB"
