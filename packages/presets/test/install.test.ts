@@ -1,0 +1,519 @@
+import { readFileSync } from 'node:fs';
+import { PRESETS, type InstallSql, type PlatformUpdateInput, type ResolvedNoteType } from '@sineobex/forms';
+import { describe, expect, it } from 'vitest';
+import { installTeamPresets, PLATFORM, planTeamPresets } from '../src/index.ts';
+import type { HeldPreset, PlanStep, PlatformEntry, PresetBody } from '../src/index.ts';
+
+// The preset installer (phase 5 design 5.2, D133): its plan, here, and on a stand-in for the
+// caller's transaction; db/test/install-team-presets.test.ts runs it against the database, where
+// it writes. The plan decides each platform entry by platformUpdateEffect, the one rule both
+// installers share (platform-update.json, which this file reads too), and checks what it would
+// write with validatePreset against the team's presets, skipping and counting what is refused.
+//
+// The signatures these tests are written to, in packages/presets/src/install.ts and exported from
+// the package index (P0-install):
+//
+//   /** One entry of packages/presets/data/platform.json: a body names other entries by origin key. */
+//   export type PlatformEntry = { originKey: string; platformVersion: number; kind: PresetKind; body: Record<string, unknown> };
+//   /** The data file's entries, in its order. Several versions of one origin key may be there. */
+//   export const PLATFORM: readonly PlatformEntry[];
+//
+//   /** A team's preset as the installer reads it: its head, and its current version's body. */
+//   export type HeldPreset = {
+//     id: string;
+//     kind: PresetKind;
+//     state: 'active' | 'archived';
+//     originKey: string | null;
+//     originVersion: number | null;
+//     platformLatest: number | null;
+//     customized: boolean;
+//     currentVersion: number;
+//     body: PresetBody;
+//   };
+//   export type PlanStep = { originKey: string; kind: PresetKind; platformVersion: number } & (
+//     | { effect: 'install'; id: string; body: PresetBody }
+//     | { effect: 'update'; id: string; version: number; body: PresetBody }
+//     | { effect: 'offer'; id: string }
+//     | { effect: 'skipped'; problems: PresetProblem[] }
+//   );
+//   /**
+//    * For each origin key, its newest platform version, in the order the file first names the key:
+//    * install, update or offer by platformUpdateEffect (changesFixed from changedFixedFields against
+//    * the held body), with the body's origin keys put as the team's ids (a held preset's, or the
+//    * new id of one installed earlier in the plan); an install or an update validatePreset refuses
+//    * against the held presets and those installed before it is `skipped`, with its problems; an
+//    * offer is a step only while platformLatest is below the platform version; a skip is no step.
+//    * Pure: newId is called once for each install, and for nothing else.
+//    */
+//   export function planTeamPresets(input: {
+//     held: readonly HeldPreset[];
+//     platform: readonly PlatformEntry[];
+//     /** The current definition of each of the team's active note types. */
+//     definitions: Readonly<Record<string, ResolvedNoteType>>;
+//     newId: () => string;
+//   }): PlanStep[];
+//
+//   /** Counts by kind; `skipped` is what validatePreset refused. */
+//   export type TeamPresetsInstalled = Record<'install' | 'update' | 'offer' | 'skipped', Partial<Record<PresetKind, number>>>;
+//   export function installTeamPresets(
+//     sql: InstallSql,
+//     teamId: string,
+//     options?: { platform?: readonly PlatformEntry[]; newId?: () => string },
+//   ): Promise<TeamPresetsInstalled>;
+
+const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+/** Ids as a team's install gives them, one by one. */
+const ids = (from = 0x100) => {
+  let next = from;
+  const made: string[] = [];
+  const newId = () => {
+    const made1 = id(next++);
+    made.push(made1);
+    return made1;
+  };
+  return { newId, made };
+};
+
+const CATEGORY: PlatformEntry = {
+  originKey: 'order_category.demo_supplies',
+  platformVersion: 1,
+  kind: 'order_category',
+  body: { name: 'Demo: Supplies', behaviour: 'supply', sort: 10 },
+};
+const MEDS: PlatformEntry = {
+  originKey: 'order_category.demo_otc',
+  platformVersion: 1,
+  kind: 'order_category',
+  body: { name: 'Demo: OTC', behaviour: 'medication', sort: 20 },
+};
+const GAUZE: PlatformEntry = {
+  originKey: 'item.demo_gauze',
+  platformVersion: 1,
+  kind: 'item',
+  body: {
+    name: 'Demo: Gauze',
+    categoryId: 'order_category.demo_supplies',
+    unit: 'each',
+    medical: false,
+    captureLot: false,
+    result: null,
+  },
+};
+const PAIN: PlatformEntry = {
+  originKey: 'item.demo_pain',
+  platformVersion: 1,
+  kind: 'item',
+  body: {
+    name: 'Demo: Pain tablet',
+    categoryId: 'order_category.demo_otc',
+    unit: 'tablet',
+    medical: true,
+    captureLot: false,
+    result: null,
+  },
+};
+const BUNDLE: PlatformEntry = {
+  originKey: 'bundle.demo_wound',
+  platformVersion: 1,
+  kind: 'bundle',
+  body: {
+    name: 'Demo: Wound bundle',
+    medical: false,
+    prompt: '',
+    lines: [{ itemId: 'item.demo_gauze', qty: 2, core: true }],
+  },
+};
+const FLAG: PlatformEntry = {
+  originKey: 'flag.demo_frost',
+  platformVersion: 1,
+  kind: 'flag',
+  body: {
+    name: 'Demo: Frost risk',
+    tier: 'secondary',
+    criteria: '',
+    color: 'blue',
+    rank: 10,
+    sensitive: false,
+  },
+};
+const MAP: PlatformEntry = {
+  originKey: 'field_supply_map.demo_dressing',
+  platformVersion: 1,
+  kind: 'field_supply_map',
+  body: {
+    name: 'Demo: Dressing applied',
+    noteTypeKey: 'wound_care',
+    path: 'wound.treatment.dressing',
+    when: { answered: true },
+    lines: [{ itemId: 'item.demo_gauze', qty: 1 }],
+  },
+};
+const SETTINGS: PlatformEntry = {
+  originKey: 'settings.team',
+  platformVersion: 1,
+  kind: 'settings',
+  body: { name: 'Team settings', bagMinimumsOn: false, newBagMinimums: [], problemCheckDays: 90 },
+};
+
+/** The next platform version of an entry, with its body changed. */
+const v2 = (entry: PlatformEntry, change: Record<string, unknown>, version = 2): PlatformEntry => ({
+  ...entry,
+  platformVersion: version,
+  body: { ...entry.body, ...change },
+});
+
+/** What a team holds of an entry it was given at `version`, its body's origin keys as its ids. */
+function held(
+  entry: PlatformEntry,
+  n: number,
+  over: Partial<HeldPreset> = {},
+  idsByKey: Record<string, string> = {},
+): HeldPreset {
+  const body = JSON.parse(
+    JSON.stringify(entry.body, (_, v: unknown) => (typeof v === 'string' && idsByKey[v] ? idsByKey[v] : v)),
+  ) as PresetBody;
+  return {
+    id: id(n),
+    kind: entry.kind,
+    state: 'active',
+    originKey: entry.originKey,
+    originVersion: entry.platformVersion,
+    platformLatest: entry.platformVersion,
+    customized: false,
+    currentVersion: 1,
+    body,
+    ...over,
+  };
+}
+
+const definitions: Record<string, ResolvedNoteType> = {};
+for (const p of PRESETS)
+  if ((definitions[p.key]?.version ?? 0) < p.version) definitions[p.key] = p.definition;
+
+const plan = (heldPresets: HeldPreset[], platform: PlatformEntry[], newId = ids().newId) =>
+  planTeamPresets({ held: heldPresets, platform, definitions, newId });
+const effects = (steps: PlanStep[]) => steps.map((s) => `${s.originKey} ${s.effect}`);
+
+describe('the preset installer', () => {
+  it('is exported from the package index, with the platform data', () => {
+    expect(typeof planTeamPresets).toBe('function');
+    expect(typeof installTeamPresets).toBe('function');
+    const file = JSON.parse(readFileSync(new URL('../data/platform.json', import.meta.url), 'utf8'));
+    expect(PLATFORM).toEqual(file);
+  });
+
+  describe('its plan', () => {
+    it('installs every entry in a team that holds none, in the file’s order, naming the ids it gives', () => {
+      const { newId, made } = ids();
+      const steps = plan([], [CATEGORY, GAUZE, BUNDLE, FLAG, SETTINGS], newId);
+      expect(effects(steps)).toEqual([
+        'order_category.demo_supplies install',
+        'item.demo_gauze install',
+        'bundle.demo_wound install',
+        'flag.demo_frost install',
+        'settings.team install',
+      ]);
+      expect(made).toHaveLength(5);
+      const [category, gauze, bundle] = steps as Extract<PlanStep, { effect: 'install' }>[];
+      expect(category!.id).toBe(made[0]);
+      expect(gauze).toMatchObject({ id: made[1], platformVersion: 1, kind: 'item' });
+      expect(gauze!.body).toEqual({ ...GAUZE.body, categoryId: made[0] });
+      expect(bundle!.body).toEqual({ ...BUNDLE.body, lines: [{ itemId: made[1], qty: 2, core: true }] });
+    });
+
+    it('names a preset the team holds by its own id', () => {
+      const category = held(CATEGORY, 1);
+      const steps = plan([category], [CATEGORY, GAUZE]);
+      expect(effects(steps)).toEqual(['item.demo_gauze install']);
+      expect((steps[0] as Extract<PlanStep, { effect: 'install' }>).body).toMatchObject({
+        categoryId: id(1),
+      });
+    });
+
+    it('has nothing to do for a team that holds every entry at the platform’s version', () => {
+      const { newId, made } = ids();
+      const category = held(CATEGORY, 1);
+      const gauze = held(GAUZE, 2, {}, { [CATEGORY.originKey]: id(1) });
+      expect(plan([category, gauze], [CATEGORY, GAUZE], newId)).toEqual([]);
+      expect(made).toEqual([]);
+    });
+
+    it('gives a team the newest version of an entry the file holds twice, never the older', () => {
+      const newer = v2(CATEGORY, { name: 'Demo: Supplies and kits' });
+      const steps = plan([], [CATEGORY, newer, GAUZE]);
+      expect(effects(steps)).toEqual(['order_category.demo_supplies install', 'item.demo_gauze install']);
+      expect(steps[0]).toMatchObject({ platformVersion: 2, body: newer.body });
+    });
+
+    it('updates a copy the team never edited to the next version, and names the version it makes', () => {
+      const category = held(CATEGORY, 1, { currentVersion: 3, originVersion: 1, platformLatest: 1 });
+      const newer = v2(CATEGORY, { name: 'Demo: Supplies and kits', sort: 15 });
+      expect(plan([category], [newer])).toEqual([
+        {
+          effect: 'update',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 2,
+          id: id(1),
+          version: 4,
+          body: newer.body,
+        },
+      ]);
+    });
+
+    it('offers, never writes, an update to a copy the team edited, archived, or whose fixed field it changes', () => {
+      const edited = held(FLAG, 1, { customized: true, currentVersion: 2 });
+      const archived = held(CATEGORY, 2, { state: 'archived', customized: true });
+      const gauze = held(GAUZE, 3, {}, { [CATEGORY.originKey]: id(2) });
+      const steps = plan(
+        [edited, archived, gauze],
+        [
+          v2(CATEGORY, { sort: 11 }),
+          v2(GAUZE, { unit: 'box' }),
+          v2(FLAG, { criteria: 'Demo: below freezing.' }),
+        ],
+      );
+      expect(steps).toEqual([
+        {
+          effect: 'offer',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 2,
+          id: id(2),
+        },
+        { effect: 'offer', originKey: GAUZE.originKey, kind: 'item', platformVersion: 2, id: id(3) },
+        { effect: 'offer', originKey: FLAG.originKey, kind: 'flag', platformVersion: 2, id: id(1) },
+      ]);
+    });
+
+    it('offers an update once: a copy whose newest platform version is offered already is no step', () => {
+      const edited = held(FLAG, 1, { customized: true, currentVersion: 2, platformLatest: 2 });
+      expect(plan([edited], [v2(FLAG, { criteria: 'Demo: below freezing.' })])).toEqual([]);
+      // A newer one is offered again.
+      expect(effects(plan([edited], [v2(FLAG, { criteria: 'Demo: freezing.' }, 3)]))).toEqual([
+        'flag.demo_frost offer',
+      ]);
+    });
+
+    it('decides every case of platform-update.json as platformUpdateEffect does', () => {
+      const vectors = JSON.parse(
+        readFileSync(new URL('../../contract/test-vectors/platform-update.json', import.meta.url), 'utf8'),
+      ) as { cases: { name: string; input: PlatformUpdateInput; expected: string }[] };
+      for (const { name, input, expected } of vectors.cases) {
+        const entry = input.changesFixed
+          ? v2(FLAG, { tier: 'primary' }, input.platformVersion)
+          : v2(FLAG, { criteria: 'Demo: newer.' }, input.platformVersion);
+        const team = input.exists
+          ? [
+              held(FLAG, 1, {
+                state: input.state!,
+                customized: input.customized,
+                originVersion: input.originVersion,
+                platformLatest: input.originVersion,
+                currentVersion: 1,
+              }),
+            ]
+          : [];
+        const steps = plan(team, [entry]);
+        expect(
+          steps.map((s) => s.effect),
+          name,
+        ).toEqual(expected === 'skip' ? [] : [expected]);
+      }
+    });
+
+    it('skips and reports an entry validatePreset refuses: a new bundle whose item the team archived', () => {
+      const category = held(CATEGORY, 1);
+      const gauze = held(GAUZE, 2, { state: 'archived', customized: true }, { [CATEGORY.originKey]: id(1) });
+      const steps = plan([category, gauze], [CATEGORY, GAUZE, BUNDLE]);
+      expect(steps).toEqual([
+        {
+          effect: 'skipped',
+          originKey: BUNDLE.originKey,
+          kind: 'bundle',
+          platformVersion: 1,
+          problems: [{ path: 'lines.0.itemId', code: 'reference_archived' }],
+        },
+      ]);
+    });
+
+    it('skips an update validatePreset refuses, and never writes its body', () => {
+      const category = held(CATEGORY, 1);
+      const gauze = held(GAUZE, 2, { state: 'archived', customized: true }, { [CATEGORY.originKey]: id(1) });
+      const bundle = held(BUNDLE, 3, {}, { [GAUZE.originKey]: id(2) });
+      const steps = plan(
+        [category, gauze, bundle],
+        [CATEGORY, GAUZE, v2(BUNDLE, { prompt: 'Demo: ask first.' })],
+      );
+      expect(steps.map((s) => s.effect)).toEqual(['skipped']);
+      expect((steps[0] as Extract<PlanStep, { effect: 'skipped' }>).problems).toEqual([
+        { path: 'lines.0.itemId', code: 'reference_archived' },
+      ]);
+    });
+
+    it('skips an entry that names one the team neither holds nor is given', () => {
+      // The item's category is neither among the entries given nor held by the team.
+      const steps = plan([], [GAUZE]);
+      expect(steps.map((s) => s.effect)).toEqual(['skipped']);
+      expect((steps[0] as Extract<PlanStep, { effect: 'skipped' }>).problems.map((p) => p.code)).toContain(
+        'unknown_reference',
+      );
+    });
+
+    it('checks a map against the team’s note types, and refuses a second settings preset', () => {
+      expect(effects(plan([], [CATEGORY, GAUZE, MAP]))).toEqual([
+        'order_category.demo_supplies install',
+        'item.demo_gauze install',
+        'field_supply_map.demo_dressing install',
+      ]);
+      const noNoteTypes = planTeamPresets({
+        held: [],
+        platform: [CATEGORY, GAUZE, MAP],
+        definitions: {},
+        newId: ids().newId,
+      });
+      expect(noNoteTypes.at(-1)).toMatchObject({
+        effect: 'skipped',
+        problems: [{ path: 'noteTypeKey', code: 'unknown_note_type' }],
+      });
+      const own: HeldPreset = {
+        ...held(SETTINGS, 9),
+        originKey: null,
+        originVersion: null,
+        platformLatest: null,
+      };
+      expect(plan([own], [SETTINGS])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: SETTINGS.originKey,
+          kind: 'settings',
+          platformVersion: 1,
+          problems: [{ path: '', code: 'settings_taken' }],
+        },
+      ]);
+    });
+
+    it('checks a medication item against the category it is given in the same plan', () => {
+      const painBundle = {
+        ...BUNDLE,
+        body: { ...BUNDLE.body, lines: [{ itemId: 'item.demo_pain', qty: 1, core: true }] },
+      };
+      const steps = plan([], [MEDS, PAIN, painBundle]);
+      // The bundle holds a medication and is Non-Medical: refused, as an admin's would be.
+      expect(effects(steps)).toEqual([
+        'order_category.demo_otc install',
+        'item.demo_pain install',
+        'bundle.demo_wound skipped',
+      ]);
+      expect((steps[2] as Extract<PlanStep, { effect: 'skipped' }>).problems).toEqual([
+        { path: 'medical', code: 'bundle_not_medical' },
+      ]);
+    });
+
+    it('leaves alone a held preset the platform no longer names, and a team’s own', () => {
+      const gone = held(FLAG, 1);
+      const own: HeldPreset = {
+        ...held(CATEGORY, 2),
+        originKey: null,
+        originVersion: null,
+        platformLatest: null,
+      };
+      expect(plan([gone, own], [])).toEqual([]);
+    });
+
+    it('is pure: what it is given is not changed', () => {
+      const team = [held(CATEGORY, 1)];
+      const platform = [CATEGORY, GAUZE, BUNDLE];
+      const before = structuredClone({ team, platform });
+      plan(team, platform);
+      expect({ team, platform }).toEqual(before);
+    });
+  });
+
+  describe('on a stand-in for the caller’s transaction', () => {
+    type Kind =
+      | 'lock'
+      | 'revision'
+      | 'read'
+      | 'head insert'
+      | 'head update'
+      | 'version insert'
+      | 'event insert'
+      | 'audit';
+    /** A transaction in which the team holds nothing: every read answers no rows. */
+    function standIn() {
+      const asked: { kind: Kind; text: string }[] = [];
+      const sql: InstallSql = async (template) => {
+        const text = template.join('?').replace(/\s+/g, ' ');
+        const kind: Kind = /pg_advisory_xact_lock/.test(text)
+          ? 'lock'
+          : /team_preset_state/.test(text)
+            ? 'revision'
+            : /audit/.test(text)
+              ? 'audit'
+              : /insert into sineobex\.team_presets\b/.test(text)
+                ? 'head insert'
+                : /update sineobex\.team_presets\b/.test(text)
+                  ? 'head update'
+                  : /insert into sineobex\.team_preset_versions/.test(text)
+                    ? 'version insert'
+                    : /insert into sineobex\.team_preset_events/.test(text)
+                      ? 'event insert'
+                      : 'read';
+        asked.push({ kind, text });
+        return (kind === 'revision' ? [{ revision: '7' }] : []) as never;
+      };
+      return { sql, asked };
+    }
+    const TEAM = '00000000-0000-4000-8000-0000000000aa';
+
+    it('asks nothing, locks nothing and takes no revision when the platform has no entries', async () => {
+      const { sql, asked } = standIn();
+      expect(await installTeamPresets(sql, TEAM, { platform: [] })).toEqual({
+        install: {},
+        update: {},
+        offer: {},
+        skipped: {},
+      });
+      expect(asked).toEqual([]);
+    });
+
+    it('takes no lock and writes nothing when all it would do is skip, and counts the skips', async () => {
+      // No note types in the stand-in's team: the map is refused.
+      const { sql, asked } = standIn();
+      const map = { ...MAP, body: { ...MAP.body, lines: [{ itemId: id(5), qty: 1 }] } };
+      const counts = await installTeamPresets(sql, TEAM, { platform: [map] });
+      expect(counts).toEqual({ install: {}, update: {}, offer: {}, skipped: { field_supply_map: 1 } });
+      expect(asked.map((a) => a.kind).filter((k) => k !== 'read')).toEqual([]);
+    });
+
+    it('reads, then locks and works its plan out again, then takes one revision, then writes, auditing nothing', async () => {
+      const { sql, asked } = standIn();
+      const { newId } = ids();
+      const counts = await installTeamPresets(sql, TEAM, { platform: [CATEGORY, GAUZE, FLAG], newId });
+      expect(counts).toEqual({
+        install: { order_category: 1, item: 1, flag: 1 },
+        update: {},
+        offer: {},
+        skipped: {},
+      });
+      const kinds = asked.map((a) => a.kind);
+      const first = (k: Kind) => kinds.indexOf(k);
+      const writes = kinds.flatMap((k, i) => (/insert|update/.test(k) ? [i] : []));
+      expect(first('read')).toBe(0);
+      expect(first('lock')).toBeGreaterThan(first('read'));
+      // The plan is worked out again under the lock: a read between the lock and the first write.
+      expect(kinds.slice(first('lock') + 1, writes[0]).includes('read')).toBe(true);
+      // One revision for the whole run, taken before any head is written (a head needs it).
+      expect(kinds.filter((k) => k === 'revision')).toHaveLength(1);
+      expect(first('revision')).toBeLessThan(Math.min(...writes));
+      expect(kinds).not.toContain('audit');
+      // Each head written with on conflict do nothing; each entry its version and its event.
+      for (const a of asked.filter((x) => x.kind === 'head insert')) expect(a.text).toMatch(/on conflict/);
+      for (const k of ['head insert', 'version insert', 'event insert'] as Kind[])
+        expect(kinds, k).toContain(k);
+      // Nothing after the run's last write is a lock or a revision.
+      expect(kinds.slice(Math.max(...writes)).filter((k) => k === 'lock' || k === 'revision')).toEqual([]);
+    });
+  });
+});
