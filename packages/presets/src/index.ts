@@ -12,3 +12,5 @@ export * from './problem-check.ts';
 export * from './validate.ts';
 // What each act on a preset does and refuses, and what is fixed at creation (5.1).
 export * from './rules.ts';
+// What a note suggests, and what a bundle applies (5.3).
+export * from './supplies.ts';
