@@ -37,7 +37,7 @@
     "psychological": {"released": 1},
     "sexual_reproductive": {"released": 1},
     "demo_supplies": {"key": "demo_supplies", "version": 1, "title": "Demo supplies", "kinds": ["medical", "non_medical"], "group": "social", "sensitivity": "none", "sections": [{"id": "supplies", "title": "Demo supplies given", "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": true, "options": [{"code": "water", "label": "Water"}, {"code": "socks", "label": "Socks"}, {"code": "other", "label": "Other", "other": true}]}, {"id": "size", "label": "Demo size", "kind": "choice", "many": false, "options": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "amount", "label": "Demo amount", "kind": "number", "min": 0, "max": 10, "decimals": 1, "unit": "L"}, {"id": "kit", "label": "Demo kit given", "kind": "flag"}, {"id": "notes", "label": "Demo notes", "kind": "text", "lines": "one", "maxLength": 200}, {"id": "when", "label": "Demo date", "kind": "date", "range": "any"}, {"id": "for", "label": "Demo how long", "kind": "duration"}, {"id": "at", "label": "Demo time", "kind": "time"}, {"id": "pair", "label": "Demo pair", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}], "sides": true}, {"id": "spot", "label": "Demo spot", "kind": "region", "options": [{"code": "arm", "label": "Arm"}, {"code": "leg", "label": "Leg"}]}, {"id": "pack", "label": "Demo pack", "kind": "group", "layout": "stack", "fields": [{"id": "contents", "label": "Demo contents", "kind": "choice", "many": true, "options": [{"code": "gauze", "label": "Gauze"}, {"code": "tape", "label": "Tape"}]}]}, {"id": "kits", "label": "Demo kits", "kind": "grid", "rows": [{"code": "food", "label": "Food"}, {"code": "hygiene", "label": "Hygiene"}], "cell": {"id": "kit", "label": "Demo kit", "kind": "group", "layout": "row", "fields": [{"id": "handed", "label": "Demo handed out", "kind": "flag"}, {"id": "count", "label": "Demo how many", "kind": "number", "min": 0, "max": 20, "decimals": 0}]}}, {"id": "boxes", "label": "Demo boxes", "kind": "grid", "rows": [{"code": "food", "label": "Food"}, {"code": "hygiene", "label": "Hygiene"}], "cell": {"id": "count", "label": "Demo boxes given", "kind": "number", "min": 0, "max": 20, "decimals": 0}}, {"id": "info", "label": "Demo: count what was given.", "kind": "info"}, {"id": "photo", "label": "Demo photo", "kind": "photo", "max": 1}]}, {"id": "visits", "title": "Demo stops", "repeat": {"max": 5, "itemTitle": "Demo stop {n}"}, "fields": [{"id": "type", "label": "Demo stop type", "kind": "choice", "many": false, "options": [{"code": "food", "label": "Food"}, {"code": "water", "label": "Water"}]}, {"id": "n", "label": "Demo handed out", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "packs", "label": "Demo packs", "kind": "grid", "rows": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}], "cell": {"id": "count", "label": "Demo packs given", "kind": "number", "min": 0, "max": 99, "decimals": 0}}]}, {"id": "later", "title": "Demo later", "fields": [{"id": "extra", "label": "Demo extra", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}]},
-    "demo_marked": {"key": "demo_marked", "version": 1, "title": "Demo marked", "kinds": ["medical"], "group": "clinical", "sensitivity": "none", "sections": [{"id": "care", "title": "Demo treatment", "treatmentRecord": true, "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 9, "decimals": 0}]}, {"id": "checks", "title": "Demo checks", "fields": [{"id": "exam", "label": "Demo exams", "kind": "grid", "rows": [{"code": "skin_check", "label": "Skin"}, {"code": "pelvic_check", "label": "Pelvic", "sensitiveExam": true}], "cell": {"id": "result", "label": "Demo result", "kind": "choice", "many": false, "options": [{"code": "done", "label": "Done"}, {"code": "not_done", "label": "Not done"}]}}]}, {"id": "dx", "title": "Demo assessment", "fields": [{"id": "diagnosis", "label": "Demo diagnosis", "kind": "problem"}, {"id": "plan", "label": "Demo plan", "kind": "choice", "many": false, "options": [{"code": "supplies", "label": "Supplies"}, {"code": "none", "label": "None"}]}]}, {"id": "other", "title": "Demo other", "fields": [{"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}]}
+    "demo_marked": {"key": "demo_marked", "version": 1, "title": "Demo marked", "kinds": ["medical"], "group": "clinical", "sensitivity": "none", "sections": [{"id": "care", "title": "Demo treatment", "treatmentRecord": true, "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 9, "decimals": 0}]}, {"id": "checks", "title": "Demo checks", "fields": [{"id": "exam", "label": "Demo exams", "kind": "grid", "rows": [{"code": "skin_check", "label": "Skin"}, {"code": "pelvic_check", "label": "Pelvic", "sensitiveExam": true}], "cell": {"id": "result", "label": "Demo result", "kind": "choice", "many": false, "options": [{"code": "done", "label": "Done"}, {"code": "not_done", "label": "Not done"}]}}]}, {"id": "dx", "title": "Demo assessment", "fields": [{"id": "diagnosis", "label": "Demo diagnosis", "kind": "problem"}, {"id": "plan", "label": "Demo plan", "kind": "choice", "many": false, "options": [{"code": "supplies", "label": "Supplies"}, {"code": "none", "label": "None"}]}]}, {"id": "other", "title": "Demo other", "fields": [{"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "focus", "label": "Demo focus", "kind": "choice", "many": false, "options": [{"code": "skin", "label": "Skin"}, {"code": "pelvic", "label": "Pelvic", "sensitiveExam": true}]}]}]}
   },
   "cases": [
     {
@@ -665,6 +665,34 @@
       "name": "sensitive_path: an unmarked row of the same grid is let through",
       "kind": "field_supply_map",
       "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "checks.exam.skin_check", "when": {"equals": "done"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "sensitive_path: equals of a choose-one's marked code, whose answer a reader without view_sensitive_exams loses whole",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"equals": "pelvic"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: includes of a choose-one's marked code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"includes": "pelvic"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: answered on a choose-one that holds a marked code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: an unmarked code of the same choose-one is let through, its answer kept for every reader",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"equals": "skin"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
       "id": null,
       "expected": []
     },
