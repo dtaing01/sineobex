@@ -9,6 +9,11 @@ import type { PresetRow } from '@/lib/presets';
 export const PRESET_DONE = {
   removed: { heading: 'Removed', text: 'It’s in the Removed list, where it can be restored.' },
   restored: { heading: 'Restored', text: 'It’s offered again, on the phones after their next sync.' },
+  updated: {
+    heading: 'Update taken',
+    text: 'Sineobex’s new version is in place, on the phones after their next sync.',
+  },
+  added: { heading: 'Added as a new one', text: 'The old one is removed, and kept in the history.' },
 } as const;
 export type PresetDone = keyof typeof PRESET_DONE;
 
