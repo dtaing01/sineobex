@@ -577,6 +577,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The team’s presets changed since a revision, for the phone’s copy (any member) */
+        get: operations["pullPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/problems/{problemId}/merge": {
         parameters: {
             query?: never;
@@ -2151,6 +2168,19 @@ export interface components {
             description: string;
             key: components["schemas"]["Permission"];
         };
+        PresetsPull: {
+            /**
+             * Format: uuid
+             * @description Send as epoch next time
+             */
+            epoch: string;
+            /** @description Every preset changed after since, or all of them; archived ones included */
+            presets: components["schemas"]["PulledPreset"][];
+            /** @description Replace the copy whole: the revision sent is above the team’s, or another epoch */
+            reset: boolean;
+            /** @description Send as since next time: the greatest revision among presets, else since */
+            revision: number;
+        };
         ProblemNoteView: {
             author: components["schemas"]["UserRef"];
             /** Format: uuid */
@@ -2207,6 +2237,28 @@ export interface components {
             status: components["schemas"]["ProblemStatus"];
             statusHistory: components["schemas"]["ProblemStatusEvent"][];
             title: string;
+        };
+        PulledPreset: {
+            /** @description Its current version’s body, in the shape of @sineobex/presets for its kind */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description A phone skips a kind it does not know
+             * @enum {string}
+             */
+            kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            /** @description The platform preset it came from; null for the team’s own */
+            originKey: string | null;
+            /**
+             * @description An archived preset is kept for its name
+             * @enum {string}
+             */
+            state: "active" | "archived";
+            /** @description Its current version */
+            version: number;
         };
         QuarantineItem: {
             /** Format: uuid */
@@ -4663,6 +4715,58 @@ export interface operations {
             };
             /** @description Not signed in, or the session expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    pullPresets: {
+        parameters: {
+            query?: {
+                /** @description The epoch the phone’s copy came from */
+                epoch?: string;
+                /** @description The revision the phone holds; everything when absent */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetsPull"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

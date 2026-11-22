@@ -3436,6 +3436,38 @@
         ],
         "type": "object"
       },
+      "PresetsPull": {
+        "properties": {
+          "epoch": {
+            "description": "Send as epoch next time",
+            "format": "uuid",
+            "type": "string"
+          },
+          "presets": {
+            "description": "Every preset changed after since, or all of them; archived ones included",
+            "items": {
+              "$ref": "#/components/schemas/PulledPreset"
+            },
+            "type": "array"
+          },
+          "reset": {
+            "description": "Replace the copy whole: the revision sent is above the team’s, or another epoch",
+            "type": "boolean"
+          },
+          "revision": {
+            "description": "Send as since next time: the greatest revision among presets, else since",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reset",
+          "revision",
+          "epoch",
+          "presets"
+        ],
+        "type": "object"
+      },
       "ProblemNoteView": {
         "properties": {
           "author": {
@@ -3653,6 +3685,62 @@
           "enteredInError",
           "createdAt",
           "author"
+        ],
+        "type": "object"
+      },
+      "PulledPreset": {
+        "properties": {
+          "body": {
+            "additionalProperties": {},
+            "description": "Its current version’s body, in the shape of @sineobex/presets for its kind",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "A phone skips a kind it does not know",
+            "enum": [
+              "order_category",
+              "item",
+              "bundle",
+              "flag",
+              "field_supply_map",
+              "condition_supply_map",
+              "bag",
+              "settings"
+            ],
+            "type": "string"
+          },
+          "originKey": {
+            "description": "The platform preset it came from; null for the team’s own",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "An archived preset is kept for its name",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Its current version",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "version",
+          "originKey",
+          "body"
         ],
         "type": "object"
       },
@@ -8148,6 +8236,86 @@
         "summary": "Every permission a role can hold, with a plain description",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/v1/presets": {
+      "get": {
+        "operationId": "pullPresets",
+        "parameters": [
+          {
+            "description": "The revision the phone holds; everything when absent",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "The revision the phone holds; everything when absent",
+              "pattern": "^\\d{1,19}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The epoch the phone’s copy came from",
+            "in": "query",
+            "name": "epoch",
+            "required": false,
+            "schema": {
+              "description": "The epoch the phone’s copy came from",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetsPull"
+                }
+              }
+            },
+            "description": "Presets"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team’s presets changed since a revision, for the phone’s copy (any member)",
+        "tags": [
+          "presets"
         ]
       }
     },

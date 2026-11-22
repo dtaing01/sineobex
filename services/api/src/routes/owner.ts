@@ -1,9 +1,9 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { installPresets } from '@sineobex/forms';
-import { installTeamPresets, totalsOf } from '@sineobex/presets';
 import { ownerScope } from '../auth/context.ts';
 import { CHW_PRESET } from '../auth/permissions.ts';
 import { conflict, notFound } from '../lib/errors.ts';
+import { installPlatformPresets } from '../presets/store.ts';
 import { inviteMember, removeMember } from '../services/memberships.ts';
 import type { App } from '../app.ts';
 import type { Tx } from '../db/database.ts';
@@ -154,23 +154,13 @@ export function registerOwnerRoutes(app: App, deps: Deps): void {
           details: { installed },
         });
       // And every platform preset (phase 5 design 5.2), its maps checked against the note types just
-      // installed. The details are counts by kind, never a preset's key or name (9).
-      const presets = await installTeamPresets(tx, teamId);
-      const totals = totalsOf(presets);
-      if (totals.install + totals.update + totals.offer > 0)
-        await audit(teamId, {
-          action: 'preset.platform_installed',
-          entity: 'team',
-          entityId: teamId,
-          details: presets,
-        });
-      // An entry the platform's own note types refuse: logged by count, as the log names no key.
-      if (totals.skipped > 0)
-        deps.log.error('preset.platform_skipped', {
-          requestId: c.get('requestId'),
-          teamId,
-          count: totals.skipped,
-        });
+      // installed, audited and its skips logged as the phone's pull does it: counts by kind, never a
+      // preset's key or name (9).
+      await installPlatformPresets(tx, (e) => audit(teamId, e), {
+        teamId,
+        log: deps.log,
+        requestId: c.get('requestId'),
+      });
       return (await teamsView(tx, teamId))[0]!;
     });
     return c.json(team, 201);
