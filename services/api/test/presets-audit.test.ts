@@ -145,6 +145,23 @@ describe('each preset write’s audit event (design 9)', () => {
     expect(new Set([...(await writesOf(id)), events[0]!.xid])).toEqual(new Set([head]));
   });
 
+  it('a create of a body that leaves out what its schema fills in names every field as stored', async () => {
+    // A bundle's prompt defaults to '' (design 4.4): the version stored holds it, so the event names
+    // it, whatever the person sent.
+    const sent = secretBody(make.bundle());
+    delete sent.prompt;
+    const mark = await auditMark(h);
+    const r = await api.create('bundle', sent, reasonOf('a create with a default'));
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const stored = (await versionsOf(h, r.body.id as string))[0]!.body;
+    expect(stored.prompt).toBe('');
+    const events = await presetEvents(mark);
+    expect(events.map((e) => e.details)).toEqual([
+      { kind: 'bundle', version: 1, revision: r.body.revision, fields: fieldsOf(stored) },
+    ]);
+    expect(events[0]!.details.fields).toContain('prompt');
+  });
+
   it('an edit: preset.updated with the names of the fields it changed, and nothing of their values', async () => {
     const body = secretBody(make.flag());
     const { id } = await createdPreset(api, 'flag', body);
