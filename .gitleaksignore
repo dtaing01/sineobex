@@ -25,3 +25,13 @@
 # rotate. The line now names the ID in a constant of its own, so it no longer matches. Scoped to
 # this one commit, file, rule and line so any new finding still fails the scan.
 ff5b5dbf2aa2b25cabb5d89ce55e4e8584c94ed8:services/api/test/encounters-handoff.test.ts:generic-api-key:310
+
+# False positive, confirmed 2026-11-22. gitleaks' generic-api-key rule matched a made-up note type
+# key ('t_' and 12 hex digits, the form a key a team makes takes) in phase 5's database tests, in a
+# commit on the backup branch claude/p5-wip-p0, which CI's full-history checkout also fetches and
+# scans. It is a test's input, not a credential. Nothing to rotate. When the work lands on this
+# branch its keys are ones the rule doesn't match. Scoped to this one commit, file, rule and line
+# so any new finding still fails the scan.
+d0b8add059f15cbca4e8ae461c04e03a3af816f6:db/test/team-presets.test.ts:generic-api-key:790
+d0b8add059f15cbca4e8ae461c04e03a3af816f6:db/test/team-presets.test.ts:generic-api-key:791
+d0b8add059f15cbca4e8ae461c04e03a3af816f6:db/test/team-presets.test.ts:generic-api-key:796
