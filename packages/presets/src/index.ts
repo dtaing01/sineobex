@@ -8,3 +8,5 @@
 export * from './schemas.ts';
 // When a problem is due a status check (5.3).
 export * from './problem-check.ts';
+// What a body's schema cannot hold: the team's other presets and its note types (4.4).
+export * from './validate.ts';
