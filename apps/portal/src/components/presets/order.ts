@@ -24,6 +24,16 @@ export function inPlace<T extends Category>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => a.body.sort - b.body.sort || byName.compare(a.name, b.name) || byId(a, b));
 }
 
+type Flag = Pick<PresetRow<'flag'>, 'id' | 'name' | 'body'>;
+
+/**
+ * A tier's flags as staff see them: by rank, lowest first (a risk level's highest risk first), then
+ * by name, as two flags an update gave one rank are ordered (design 5.1, 5.3).
+ */
+export function inRank<T extends Flag>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => a.body.rank - b.body.rank || byName.compare(a.name, b.name) || byId(a, b));
+}
+
 /** Each preset's name by its ID, archived ones too: what an update's review names IDs by. */
 export function namesOf(...lists: readonly (readonly Named[])[]): Record<string, string> {
   return Object.fromEntries(lists.flatMap((rows) => rows.map((r) => [r.id, r.name] as const)));

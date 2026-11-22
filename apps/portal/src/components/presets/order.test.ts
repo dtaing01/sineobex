@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CategoryBody, ItemBody } from '@/lib/presets';
-import { aToZ, inPlace, itemChoices, namesOf } from './order';
+import type { CategoryBody, FlagBody, ItemBody } from '@/lib/presets';
+import { aToZ, inPlace, inRank, itemChoices, namesOf } from './order';
 
 // The orders the preset pages list presets in (phase 5 design 8.1), as the API sorts its lists.
 // Every name is made up.
@@ -44,6 +44,27 @@ describe('the preset pages’ orders', () => {
   it('list categories by their place, then by name', () => {
     const rows = [category(LABS, 'Labs', 30), category(OWN, 'Demo: Kits', 30), category(OTC, 'OTC', 10)];
     expect(inPlace(rows).map((r) => r.name)).toEqual(['OTC', 'Demo: Kits', 'Labs']);
+  });
+
+  it('list a tier’s flags by rank, lowest first, then by name, as two flags an update gave one rank', () => {
+    const flag = (n: number, name: string, rank: number) => ({
+      id: id(n),
+      name,
+      body: {
+        name,
+        tier: 'secondary',
+        criteria: '',
+        color: 'blue',
+        rank,
+        sensitive: false,
+      } satisfies FlagBody,
+    });
+    const rows = [
+      flag(1, 'Demo: Wet feet', 20),
+      flag(2, 'Demo: Heat risk', 20),
+      flag(3, 'Demo: Sun risk', 10),
+    ];
+    expect(inRank(rows).map((r) => r.name)).toEqual(['Demo: Sun risk', 'Demo: Heat risk', 'Demo: Wet feet']);
   });
 
   it('offer a line’s items by category, in the categories’ order, each A to Z, a removed one marked', () => {
