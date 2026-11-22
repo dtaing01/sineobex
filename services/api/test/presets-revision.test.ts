@@ -59,16 +59,6 @@ const currentBody = async (id: string) => {
   return (await versionsOf(h, id)).find((v) => v.version === head!.currentVersion)!.body;
 };
 
-/** The team's active flags of a tier, by rank. */
-async function activeFlags(teamId: string, tier: 'primary' | 'secondary'): Promise<string[]> {
-  const rows = await h.scratch.owner<{ id: string }[]>`
-    select p.id from sineobex.team_presets p
-    join sineobex.team_preset_versions v on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-    where p.team_id = ${teamId} and p.kind = 'flag' and p.state = 'active' and v.body ->> 'tier' = ${tier}
-    order by (v.body ->> 'rank')::int, p.name`;
-  return rows.map((r) => r.id);
-}
-
 /** The heads a write changed: those whose row is not as it was before. */
 function changedHeads(before: readonly Head[], after: readonly Head[]): Head[] {
   const was = new Map(before.map((x) => [x.id, JSON.stringify(x)]));
@@ -116,7 +106,7 @@ describe('every preset write takes the team lock first (design 4.2, 7; D32)', ()
     const gone = await createdPreset(api, 'flag', make.flag());
     expect((await api.archive('flag', gone.id, 1)).status).toBe(200);
     const doomed = await createdPreset(api, 'flag', make.flag());
-    const tier = await activeFlags(team.teamId, 'primary');
+    const tier = await api.flagList('primary');
     return [
       ['create', () => api.create('flag', make.flag()), 201],
       ['edit', () => api.edit('flag', id, 1, { ...body, criteria: 'Demo: edited under the lock' }), 200],
@@ -135,6 +125,32 @@ describe('every preset write takes the team lock first (design 4.2, 7; D32)', ()
       expect(relations, `${name} touched no table before the team lock`).toEqual([]);
       expect(answer.status, `${name}: ${JSON.stringify(answer.body)}`).toBe(status);
     }
+  });
+
+  it('two orders from one list: the second waits for the first and is refused as stale, never two orders', async () => {
+    // Two admins, or two tabs, put the tier in order from the same list, and both reach the lock.
+    const listed = await api.flagList('primary');
+    expect(listed.length).toBe(3);
+    const orders = [[...listed].reverse(), [listed[1]!, listed[0]!, listed[2]!]];
+    const r0 = await revisionOf(h, team.teamId);
+    const answers = await togetherAtTheLock(
+      team.teamId,
+      orders.map((order) => () => api.reorder('primary', order)),
+    );
+    const statuses = answers.map((a) => a.status).sort();
+    expect(statuses, JSON.stringify(answers.map((a) => a.body))).toEqual([200, 409]);
+    const lost = answers.findIndex((a) => a.status === 409);
+    expect(errorOf(answers[lost]!).code).toBe('stale');
+    // The loser names each flag of its order that the winner moved, at its version now.
+    const now = new Map((await api.flagList('primary')).map((f) => [f.id, f.baseVersion]));
+    expect(errorOf(answers[lost]!).details).toEqual({
+      flags: orders[lost]!.flatMap((f) =>
+        now.get(f.id) === f.baseVersion ? [] : [{ id: f.id, currentVersion: now.get(f.id) }],
+      ),
+    });
+    // The tier is in the winner's order, at one revision: one order, never a mix of the two.
+    expect([...now.keys()]).toEqual(orders[1 - lost]!.map((f) => f.id));
+    expect(await revisionOf(h, team.teamId)).toBe(r0 + 1);
   });
 
   it('two edits from one base: the second waits for the first and is refused as stale, never a second version 2', async () => {
@@ -256,19 +272,26 @@ describe('one revision for each write (design 4.2, 6.1)', () => {
     const body = make.flag();
     const { id } = await createdPreset(api, 'flag', body);
     const gone = await createdPreset(api, 'flag', make.flag());
-    const tier = await activeFlags(team.teamId, 'secondary');
-    // Every flag of the tier whose rank the reversed order changes, as reorderRanks answers it.
-    const ranked = await Promise.all(
-      tier.map(async (id) => ({ id, rank: (await currentBody(id)).rank as number })),
-    );
-    const moved = reorderRanks(ranked, [...tier].reverse());
-    if ('refuse' in moved) throw new Error('the tier’s own flags are refused');
-    const steps: [string, () => Promise<Answer>, number][] = [
-      ['create', () => api.create('bag', make.bag()), 1],
-      ['edit', () => api.edit('flag', id, 1, { ...body, rank: 81 }), 1],
-      ['archive', () => api.archive('flag', gone.id, 1), 1],
-      ['restore', () => api.restore('flag', gone.id), 1],
-      ['reorder', () => api.reorder('secondary', [...tier].reverse()), moved.length],
+    // The tier reversed, from its list as the order is sent, after the edit above moved one of its
+    // flags on; and every flag whose rank that changes, as reorderRanks answers it.
+    let moved = 0;
+    const reversed = async () => {
+      const order = (await api.flagList('secondary')).reverse();
+      const ids = order.map((f) => f.id);
+      const ranked = await Promise.all(
+        ids.map(async (id) => ({ id, rank: (await currentBody(id)).rank as number })),
+      );
+      const changes = reorderRanks(ranked, ids);
+      if ('refuse' in changes) throw new Error('the tier’s own flags are refused');
+      moved = changes.length;
+      return api.reorder('secondary', order);
+    };
+    const steps: [string, () => Promise<Answer>, () => number][] = [
+      ['create', () => api.create('bag', make.bag()), () => 1],
+      ['edit', () => api.edit('flag', id, 1, { ...body, rank: 81 }), () => 1],
+      ['archive', () => api.archive('flag', gone.id, 1), () => 1],
+      ['restore', () => api.restore('flag', gone.id), () => 1],
+      ['reorder', reversed, () => moved],
     ];
     for (const [name, write, touches] of steps) {
       const before = await footprint(h, team.teamId);
@@ -277,7 +300,7 @@ describe('one revision for each write (design 4.2, 6.1)', () => {
       const after = await footprint(h, team.teamId);
       expect(after.revision, name).toBe(before.revision + 1);
       const changed = changedHeads(before.heads, after.heads);
-      expect(changed.length, name).toBe(touches);
+      expect(changed.length, name).toBe(touches());
       for (const head of changed) expect(head.revision, `${name} stamps ${head.id}`).toBe(after.revision);
       if (r.body.revision !== undefined) expect(r.body.revision, name).toBe(after.revision);
     }

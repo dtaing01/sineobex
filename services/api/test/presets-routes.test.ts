@@ -15,6 +15,7 @@ import {
   footprint,
   headOf,
   idOf,
+  memberOf,
   nextVersion,
   presetsApi,
   presetsTeam,
@@ -28,6 +29,7 @@ import {
   versionsOf,
   type Answer,
   type Body,
+  type ListedFlag,
   type PresetsApi,
   type PresetsTeam,
 } from './presets-fixtures.ts';
@@ -52,7 +54,7 @@ import {
 //                                                                             id, version 1)
 //   GET  /v1/admin/presets/{kind}/{id}/history           Admin               200 [event]
 //   POST /v1/admin/preset-order/flag                     Admin, recent       200 {changed}
-//        {tier, ids, reason}                                                  (how many flags moved)
+//        {tier, flags: [{id, baseVersion}], reason}                           (how many flags moved)
 //
 // {kind} is one of the eight kinds, else 422 validation_failed. {id} names a preset of that kind in
 // the caller's team, else 404 not_found (an unknown ID, another kind's, another team's). A list
@@ -86,7 +88,10 @@ import {
 //                        that index is this answer too, never a 500.
 //   409 stale            details.currentVersion: baseVersion is not the head's current version;
 //                        or a take-update's platformVersion is not the one on offer now, which
-//                        details.platformVersion gives (null when none is).
+//                        details.platformVersion gives (null when none is). A reorder sends each
+//                        flag with the version its list showed it at; any flag of the order, moved
+//                        or not, at another refuses the whole order: details.flags [{id,
+//                        currentVersion}], each such flag in the order sent.
 //   409 archived, not_archived, referenced (details.referencedBy, as a list row's), not_removable,
 //       no_update
 //   409 fixed_field      take-update in place, details.fields; 422 fixed_field on an edit,
@@ -95,8 +100,9 @@ import {
 //                        would leave that many active Non-Medical bundles holding a medication
 //                        (4.4); a restored bundle holding one is 422 invalid, as a written one is.
 //   422 no_change        the body sent, as its schema parses it, is the current one.
-//   422 ids_mismatch     a reorder's ids are not exactly the tier's active flags (an archived one,
-//                        another tier's, one twice, one left out, one unknown).
+//   422 ids_mismatch     a reorder's flags are not exactly the tier's active flags (an archived
+//                        one, another tier's, one twice, one left out, one unknown), tried before
+//                        stale.
 // What each write stores (design 4.1, 4.2, 5.1): every head it touches carries the one revision
 // the write took, its team's next; a version a person writes is source 'team', created_by them; a
 // version taken from the platform is source 'platform', created_by null, while its event names the
@@ -485,11 +491,11 @@ describe('creating a preset (design 5.1, 7)', () => {
 });
 
 describe('a request that is not well formed (design 7)', () => {
-  it('refuses a base version, an asNew, ids or an ID in the address that are not what they say, never with a 500', async () => {
+  it('refuses a base version, an asNew, an order or an ID in the address that are not what they say, never with a 500', async () => {
     const body = make.flag();
     const { id } = await createdPreset(api, 'flag', body);
     const changed = FREE_CHANGE.flag(body);
-    const tier = await activeFlags('secondary');
+    const tier = await api.flagList('secondary');
     const sends: [string, () => Promise<Answer>][] = [
       [
         'a base version as text',
@@ -514,15 +520,27 @@ describe('a request that is not well formed (design 7)', () => {
           }),
       ],
       [
-        'ids that are not a list',
+        'flags that are not a list',
         () =>
           api.send('POST', '/v1/admin/preset-order/flag', {
             tier: 'secondary',
-            ids: tier[0],
+            flags: tier[0],
             reason: REASON,
           }),
       ],
-      ['an id that is no UUID', () => api.reorder('secondary', [...tier.slice(1), 'not-a-uuid'])],
+      [
+        'an id that is no UUID',
+        () => api.reorder('secondary', [...tier.slice(1), { id: 'not-a-uuid', baseVersion: 1 }]),
+      ],
+      [
+        'ids with no versions, as an order was sent before',
+        () =>
+          api.send('POST', '/v1/admin/preset-order/flag', {
+            tier: 'secondary',
+            ids: tier.map((f) => f.id),
+            reason: REASON,
+          }),
+      ],
     ];
     // Refused, as a malformed request or by what it then means, and nothing written.
     for (const [label, send] of sends) {
@@ -1072,7 +1090,7 @@ describe('a write’s reason (design 7; PL-14)', () => {
   }
 
   it('reorder and take-update refuse a bad reason too', async () => {
-    const tier = await activeFlags('secondary');
+    const tier = await api.flagList('secondary');
     for (const [label, reason] of refusedReasons) {
       const before = await footprint(h, team.teamId);
       expectReasonRefused(await api.reorder('secondary', [...tier].reverse(), reason), label);
@@ -1083,7 +1101,7 @@ describe('a write’s reason (design 7; PL-14)', () => {
     const before = await footprint(h, team.teamId);
     expectReasonRefused(await api.send('POST', '/v1/admin/presets/flag', { body: make.flag() }), 'left out');
     expectReasonRefused(
-      await api.send('POST', '/v1/admin/preset-order/flag', { tier: 'secondary', ids: tier }),
+      await api.send('POST', '/v1/admin/preset-order/flag', { tier: 'secondary', flags: tier }),
       'left out',
     );
     await expectNothingWritten(h, team.teamId, before);
@@ -1107,7 +1125,7 @@ describe('who may write, and a recent sign-in (design 7; D98)', () => {
     const { id } = await createdPreset(api, 'flag', body);
     const gone = await createdPreset(api, 'flag', make.flag());
     expect((await api.archive('flag', gone.id, 1)).status).toBe(200);
-    const tier = await activeFlags('primary');
+    const tier = await api.flagList('primary');
     return [
       ['create', (a) => a.create('flag', make.flag())],
       ['edit', (a) => a.edit('flag', id, 1, FREE_CHANGE.flag(body))],
@@ -1408,6 +1426,16 @@ describe('bags and their minimums (design 4.4, 8.1)', () => {
   });
 });
 
+/** Each flag's rank in its newest version, and its current version, in the order given. */
+const ranks = async (ids: readonly string[]) =>
+  Promise.all(
+    ids.map(async (id) => [
+      id,
+      (await versionsOf(h, id)).at(-1)!.body.rank,
+      (await headOf(h, id))!.currentVersion,
+    ]),
+  );
+
 describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
   let t: PresetsTeam;
   let a: PresetsApi;
@@ -1415,20 +1443,12 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
     t = await presetsTeam(h, 'Routes Order');
     a = presetsApi(h, t.teamId, t.admin);
   });
-  const ranks = async (ids: readonly string[]) =>
-    Promise.all(
-      ids.map(async (id) => [
-        id,
-        (await versionsOf(h, id)).at(-1)!.body.rank,
-        (await headOf(h, id))!.currentVersion,
-      ]),
-    );
-
   it('gives each flag whose rank changes its next version, the team’s own, at one revision', async () => {
     const [high, medium, low] = [idOf(t, 'flag.high'), idOf(t, 'flag.medium'), idOf(t, 'flag.low')];
-    expect(await activeFlags('primary', t.teamId)).toEqual([high, medium, low]);
+    const listed = await a.flagList('primary');
+    expect(listed).toEqual([high, medium, low].map((id) => ({ id, baseVersion: 1 })));
     const r0 = await revisionOf(h, t.teamId);
-    const r = await a.reorder('primary', [low, medium, high], ' Demo: low risk first for the test ');
+    const r = await a.reorder('primary', [...listed].reverse(), ' Demo: low risk first for the test ');
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body).toEqual({ changed: 2 });
     expect(await ranks([low, medium, high])).toEqual([
@@ -1458,7 +1478,7 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
   });
 
   it('writes nothing for an order that changes no rank', async () => {
-    const tier = await activeFlags('secondary', t.teamId);
+    const tier = await a.flagList('secondary');
     const before = await footprint(h, t.teamId);
     const r = await a.reorder('secondary', tier);
     expect(r.status).toBe(200);
@@ -1466,45 +1486,76 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
     await expectNothingWritten(h, t.teamId, before);
   });
 
-  it('refuses ids that are not exactly the tier’s active flags: 422 ids_mismatch', async () => {
-    const tier = await activeFlags('secondary', t.teamId);
+  it('refuses flags that are not exactly the tier’s active flags: 422 ids_mismatch', async () => {
+    const tier = await a.flagList('secondary');
     const gone = await createdPreset(a, 'flag', bodies(t).flag());
     expect((await a.archive('flag', gone.id, 1)).status).toBe(200);
-    const primary = await activeFlags('primary', t.teamId);
-    for (const ids of [
+    const primary = await a.flagList('primary');
+    for (const flags of [
       tier.slice(1),
       [...tier, primary[0]!],
       [...tier, tier[0]!],
-      [...tier, gone.id],
-      [...tier.slice(1), '00000000-0000-4000-8000-0000000000ae'],
+      [...tier, { id: gone.id, baseVersion: 1 }],
+      [...tier.slice(1), { id: '00000000-0000-4000-8000-0000000000ae', baseVersion: 1 }],
       [],
     ]) {
-      await refusedUnwritten(() => a.reorder('secondary', ids), 422, 'ids_mismatch', t.teamId);
+      await refusedUnwritten(() => a.reorder('secondary', flags), 422, 'ids_mismatch', t.teamId);
     }
     // The tier is its active flags: with the archived one left out, the order is taken.
     expect((await a.reorder('secondary', [...tier].reverse())).status).toBe(200);
   });
 
   it('takes an order whose IDs are written in capitals, as the database reads a UUID', async () => {
-    const tier = await activeFlags('secondary', t.teamId);
+    const tier = await a.flagList('secondary');
     const r = await a.reorder(
       'secondary',
-      [...tier].reverse().map((id) => id.toUpperCase()),
+      [...tier].reverse().map((f) => ({ ...f, id: f.id.toUpperCase() })),
     );
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect((r.body as { changed: number }).changed).toBeGreaterThan(0);
-    expect(await activeFlags('secondary', t.teamId)).toEqual([...tier].reverse());
+    expect(await activeFlags('secondary', t.teamId)).toEqual([...tier].reverse().map((f) => f.id));
   });
 
-  it('refuses an ID that is no UUID as malformed, naming it, never as a list that changed', async () => {
-    // As ids_mismatch, the answer would send the person to reload a list nobody changed.
-    const tier = await activeFlags('secondary', t.teamId);
+  it('refuses a flag that is no UUID or has no version from 1 as malformed, naming it, never as a list that changed or stale', async () => {
+    // As ids_mismatch or stale, the answer would send the person to reload a list nobody changed.
+    const tier = await a.flagList('secondary');
+    const last = tier.length - 1;
+    const flag = tier[last]!;
+    const cases: [string, unknown, string][] = [
+      ['an ID that is no UUID', { ...flag, id: 'not-a-uuid' }, `flags.${last}.id`],
+      ['no ID', { baseVersion: flag.baseVersion }, `flags.${last}.id`],
+      ['no version', { id: flag.id }, `flags.${last}.baseVersion`],
+      ['a version of 0', { ...flag, baseVersion: 0 }, `flags.${last}.baseVersion`],
+      ['a version as text', { ...flag, baseVersion: String(flag.baseVersion) }, `flags.${last}.baseVersion`],
+      ['a fractional version', { ...flag, baseVersion: 1.5 }, `flags.${last}.baseVersion`],
+      ['a version past the largest', { ...flag, baseVersion: 2_147_483_648 }, `flags.${last}.baseVersion`],
+      ['an ID alone, as an order was sent before', flag.id, `flags.${last}`],
+    ];
+    for (const [label, entry, path] of cases) {
+      const before = await footprint(h, t.teamId);
+      const r = await a.send('POST', '/v1/admin/preset-order/flag', {
+        tier: 'secondary',
+        flags: [...tier.slice(0, last), entry],
+        reason: REASON,
+      });
+      expect(r.status, `${label}: ${JSON.stringify(r.body)}`).toBe(422);
+      expect(errorOf(r), label).toMatchObject({
+        code: 'validation_failed',
+        details: { fields: [expect.objectContaining({ path })] },
+      });
+      await expectNothingWritten(h, t.teamId, before);
+    }
+    // An order as it was sent before, IDs with no versions, is refused for the flags it leaves out.
     const before = await footprint(h, t.teamId);
-    const r = await a.reorder('secondary', [...tier.slice(1), 'not-a-uuid']);
-    expect(r.status).toBe(422);
-    expect(errorOf(r)).toMatchObject({
+    const old = await a.send('POST', '/v1/admin/preset-order/flag', {
+      tier: 'secondary',
+      ids: tier.map((f) => f.id),
+      reason: REASON,
+    });
+    expect(old.status).toBe(422);
+    expect(errorOf(old)).toMatchObject({
       code: 'validation_failed',
-      details: { fields: [expect.objectContaining({ path: `ids.${tier.length - 1}` })] },
+      details: { fields: [expect.objectContaining({ path: 'flags' })] },
     });
     await expectNothingWritten(h, t.teamId, before);
   });
@@ -1515,6 +1566,125 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
     expect(r.status).toBe(422);
     expect(errorOf(r).code).toBe('validation_failed');
     await expectNothingWritten(h, t.teamId, before);
+  });
+});
+
+describe('a tier’s flag order from a list changed since (design 5.1, 7)', () => {
+  // Two admins of a team of its own, each with Team setup open: B's order is made from the list B
+  // loaded, so it sends each flag with the version that list showed, and any flag of it another
+  // write has changed since refuses the whole order, as every other preset write is refused stale.
+  let s: PresetsTeam;
+  let adminA: PresetsApi;
+  let adminB: PresetsApi;
+  beforeAll(async () => {
+    s = await presetsTeam(h, 'Routes Order Stale');
+    adminA = presetsApi(h, s.teamId, s.admin);
+    adminB = presetsApi(h, s.teamId, await memberOf(h, s.teamId, ['team.manage_presets'], 'Order B Admin'));
+  });
+  /** Admin A's edit of a flag, from its current version, as A's own form would send it. */
+  const editedByA = async (id: string, change: (body: Body) => Body) => {
+    const version = (await headOf(h, id))!.currentVersion;
+    const r = await adminA.edit('flag', id, version, change(await currentBody(id)));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return version + 1;
+  };
+  /** Each flag's version now, in the order given. */
+  const versionsNow = (flags: readonly ListedFlag[]) =>
+    Promise.all(flags.map(async (f) => (await headOf(h, f.id))!.currentVersion));
+
+  it('refuses an order that would put back a rank another admin set since: 409 stale, naming that flag, nothing written', async () => {
+    const [frost, dehydration, pregnancy] = [
+      idOf(s, 'flag.frost_risk'),
+      idOf(s, 'flag.dehydration_risk'),
+      idOf(s, 'flag.pregnancy'),
+    ];
+    // B lists the conditions: Frost risk 10, Dehydration risk 20, Pregnancy 30.
+    const listed = await adminB.flagList('secondary');
+    expect(listed).toEqual([frost, dehydration, pregnancy].map((id) => ({ id, baseVersion: 1 })));
+    // A puts Pregnancy first, at rank 5.
+    const pregnancyNow = await editedByA(pregnancy, (b) => ({ ...b, rank: 5 }));
+    expect(await activeFlags('secondary', s.teamId)).toEqual([pregnancy, frost, dehydration]);
+    // From B's list, B puts Dehydration risk before Frost risk: taken, the order would put
+    // Pregnancy back at 30, undoing a rank B never saw.
+    const fromB = [listed[1]!, listed[0]!, listed[2]!];
+    const details = await refusedUnwritten(() => adminB.reorder('secondary', fromB), 409, 'stale', s.teamId);
+    expect(details).toEqual({ flags: [{ id: pregnancy, currentVersion: pregnancyNow }] });
+    expect(await activeFlags('secondary', s.teamId)).toEqual([pregnancy, frost, dehydration]);
+    // B lists again, sees A's change, and keeps it: Pregnancy first, then Dehydration, then Frost.
+    const relisted = await adminB.flagList('secondary');
+    expect(relisted).toEqual([
+      { id: pregnancy, baseVersion: pregnancyNow },
+      { id: frost, baseVersion: 1 },
+      { id: dehydration, baseVersion: 1 },
+    ]);
+    const r = await adminB.reorder('secondary', [relisted[0]!, relisted[2]!, relisted[1]!]);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toEqual({ changed: 2 });
+    expect(await ranks([pregnancy, dehydration, frost])).toEqual([
+      [pregnancy, 10, pregnancyNow + 1],
+      [dehydration, 20, 1],
+      [frost, 30, 2],
+    ]);
+  });
+
+  it('refuses the second of two orders made from one list: the first moved its flags on', async () => {
+    const listed = await adminB.flagList('secondary');
+    const order = [...listed].reverse();
+    const first = await adminB.reorder('secondary', order);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const { changed } = first.body as { changed: number };
+    expect(changed).toBeGreaterThan(0);
+    // Sent again, the same order would move nothing now; it is refused all the same, naming each
+    // flag the first one moved, in the order sent.
+    const details = await refusedUnwritten(() => adminB.reorder('secondary', order), 409, 'stale', s.teamId);
+    const now = await versionsNow(order);
+    expect(details).toEqual({
+      flags: order.flatMap((f, i) =>
+        now[i] === f.baseVersion ? [] : [{ id: f.id, currentVersion: now[i] }],
+      ),
+    });
+    expect((details.flags as unknown[]).length).toBe(changed);
+  });
+
+  it('refuses an order a flag of which another admin changed since, though the order does not move it', async () => {
+    const listed = await adminB.flagList('secondary');
+    expect(listed.length).toBe(3);
+    const [top, middle, bottom] = listed as [ListedFlag, ListedFlag, ListedFlag];
+    // A rewrites the bottom flag's criteria; B's order swaps the other two and leaves it where it is.
+    const bottomNow = await editedByA(bottom.id, (b) => ({ ...b, criteria: 'Demo: the team’s own words' }));
+    const details = await refusedUnwritten(
+      () => adminB.reorder('secondary', [middle, top, bottom]),
+      409,
+      'stale',
+      s.teamId,
+    );
+    expect(details).toEqual({ flags: [{ id: bottom.id, currentVersion: bottomNow }] });
+  });
+
+  it('refuses a stale order that would move nothing, as stale', async () => {
+    const listed = await adminB.flagList('secondary');
+    const changedNow = await editedByA(listed[0]!.id, (b) => ({ ...b, color: 'teal' }));
+    // The order as it is: it moves no flag, yet the list it was made from is out of date.
+    const details = await refusedUnwritten(() => adminB.reorder('secondary', listed), 409, 'stale', s.teamId);
+    expect(details).toEqual({ flags: [{ id: listed[0]!.id, currentVersion: changedNow }] });
+    // Listed again, the order as it is moves nothing and writes nothing.
+    const before = await footprint(h, s.teamId);
+    const r = await adminB.reorder('secondary', await adminB.flagList('secondary'));
+    expect([r.status, r.body]).toEqual([200, { changed: 0 }]);
+    await expectNothingWritten(h, s.teamId, before);
+  });
+
+  it('answers a list that has gained a flag as ids_mismatch before it answers a flag changed since', async () => {
+    const listed = await adminB.flagList('secondary');
+    await editedByA(listed[1]!.id, (b) => ({ ...b, criteria: 'Demo: changed again by A' }));
+    // A adds a flag to the tier, which B's list does not hold.
+    await createdPreset(adminA, 'flag', bodies(s).flag({ name: 'Demo: Heat risk' }));
+    await refusedUnwritten(
+      () => adminB.reorder('secondary', [...listed].reverse()),
+      422,
+      'ids_mismatch',
+      s.teamId,
+    );
   });
 });
 
@@ -1549,7 +1719,7 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
     expect((await a.archive('item', ids('item.glucose_test'), 1)).status).toBe(200);
     expect((await a.archive('flag', ids('flag.low'), 1)).status).toBe(200);
     // A flag the team ranked: its next version is only offered (5.1, reorder).
-    const tier = await activeFlags('primary', u.teamId);
+    const tier = await a.flagList('primary');
     expect((await a.reorder('primary', [...tier].reverse())).status).toBe(200);
 
     unrelease = releasePlatform([

@@ -498,9 +498,10 @@ const MESSAGES: Record<PresetRefusal, string> = {
 
 /**
  * A refusal presetWriteEffect answered, with what the person needs to fix it: the current version
- * when stale, the fields when a fixed one changed, the counts when referenced, the paths when an
- * archived preset is named. Every refusal is 409 but what the sent body alone gets wrong: an edit's
- * fixed field and an edit that changes nothing are 422.
+ * when stale (for a reorder, each flag sent at another, with its own), the fields when a fixed one
+ * changed, the counts when referenced, the paths when an archived preset is named. Every refusal
+ * is 409 but what the sent body alone gets wrong: an edit's fixed field and an edit that changes
+ * nothing are 422.
  */
 function refusal(
   code: PresetRefusal,
@@ -512,14 +513,19 @@ function refusal(
     act?: PresetAct;
     /** A take-update's: the platform version on offer now, null when none is. */
     platformVersion?: number | null;
+    /** A reorder's: each flag it refused stale, in the order sent, at the version it is at now. */
+    flags?: { id: string; currentVersion: number }[];
   } = {},
 ): ApiError {
+  const reorder = context.act === 'reorder';
   const details: Record<string, unknown> | undefined =
     code === 'stale'
-      ? {
-          currentVersion: context.preset?.currentVersion,
-          ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
-        }
+      ? reorder
+        ? { flags: context.flags ?? [] }
+        : {
+            currentVersion: context.preset?.currentVersion,
+            ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
+          }
       : code === 'fixed_field'
         ? { fields: context.fields ?? [] }
         : code === 'referenced'
@@ -531,7 +537,9 @@ function refusal(
   const message =
     code === 'fixed_field' && context.act === 'take_update'
       ? 'This update changes a field that can’t change. Take it as a new preset instead.'
-      : MESSAGES[code];
+      : code === 'stale' && reorder
+        ? 'Someone changed these flags since you opened them. Reload them and try again.'
+        : MESSAGES[code];
   return new ApiError(status, code, message, details);
 }
 
@@ -874,13 +882,22 @@ export function takePlatformUpdate(
 }
 
 /**
- * Puts a tier's active flags in the order sent: each flag whose rank the order changes gets its
- * next version, the team's own, so a platform version of it is only offered and never puts the
- * platform's rank back (5.1). An order that moves none writes nothing, an audit event included.
+ * Puts a tier's active flags in the order sent, each sent with the version the admin's list showed
+ * it at (5.1). A list that is not the tier's active flags, each once, is 422 ids_mismatch, as
+ * reorderRanks answers it. Then every flag of the order, moved or not, is asked of presetWriteEffect
+ * at the version sent, and any one it refuses stale refuses the whole order, naming each such flag
+ * with its version now: the order was made from a list another write has changed since, and would
+ * put back a rank the admin never saw. Each flag whose rank the order changes gets its next
+ * version, the team's own, so a platform version of it is only offered and never puts the
+ * platform's rank back. An order that moves none writes nothing, an audit event included.
  */
 export function reorderFlags(
   scope: PresetWriteScope,
-  input: { tier: 'primary' | 'secondary'; ids: readonly string[]; reason: string },
+  input: {
+    tier: 'primary' | 'secondary';
+    flags: readonly { id: string; baseVersion: number }[];
+    reason: string;
+  },
 ): Promise<{ changed: number }> {
   return presetWrite(scope, input.reason, async (w) => {
     const flags = w.team.all.filter(
@@ -891,10 +908,29 @@ export function reorderFlags(
     );
     const moved = reorderRanks(
       flags.map((f) => ({ id: f.id, rank: (bodyOf(f) as { rank: number }).rank })),
-      input.ids,
+      input.flags.map((f) => f.id),
     );
     if ('refuse' in moved)
       throw invalid('ids_mismatch', 'The list of flags has changed. Reload it and try again.');
+    // Each flag sent is one of the tier's, once (reorderRanks), so each has a head.
+    const effects = new Map<string, PresetHeadAfter>();
+    const stale: { id: string; currentVersion: number }[] = [];
+    for (const { id, baseVersion } of input.flags) {
+      const flag = w.team.get(id)!;
+      const effect = presetWriteEffect(
+        effectInput({
+          act: 'reorder',
+          kind: 'flag',
+          state: flag.state,
+          baseVersion,
+          currentVersion: flag.currentVersion,
+        }),
+      );
+      if (!('refuse' in effect)) effects.set(id, effect);
+      else if (effect.refuse === 'stale') stale.push({ id, currentVersion: flag.currentVersion });
+      else throw refusal(effect.refuse, { act: 'reorder', preset: flag });
+    }
+    if (stale.length > 0) throw refusal('stale', { act: 'reorder', flags: stale });
     if (moved.length === 0) return { changes: null, answer: () => ({ changed: 0 }) };
     const changes: Changes = {
       made: [],
@@ -911,10 +947,7 @@ export function reorderFlags(
     };
     for (const { id, rank } of moved) {
       const flag = w.team.get(id)!;
-      const effect = presetWriteEffect(
-        effectInput({ act: 'reorder', kind: 'flag', state: flag.state, currentVersion: flag.currentVersion }),
-      );
-      if ('refuse' in effect) throw refusal(effect.refuse, { preset: flag });
+      const effect = effects.get(id)!;
       const version = effect.versionAfter;
       changes.changed.push({ id, version, customized: effect.customizedAfter });
       changes.versions.push({ id, version, body: { ...bodyOf(flag), rank } as PresetBody, source: 'team' });

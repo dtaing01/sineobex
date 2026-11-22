@@ -9,7 +9,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Put a tier’s active flags in the order sent, with a reason (recent sign-in) */
+        /** Put a tier’s active flags in the order sent, each at the version its list showed, with a reason (recent sign-in) */
         post: operations["reorderFlags"];
         delete?: never;
         options?: never;
@@ -2646,9 +2646,15 @@ export interface components {
             /** @description Why, in a few words. Logged. */
             reason: string;
         };
+        ReorderedFlag: {
+            /** @description The version the list showed this flag at: any other refuses the whole order as stale, with the current one */
+            baseVersion: number;
+            /** Format: uuid */
+            id: string;
+        };
         ReorderFlags: {
-            /** @description Every active flag of the tier, each once, in the order its list shows them */
-            ids: string[];
+            /** @description Every active flag of the tier, each once, in the order its list shows them, each with the version it was listed at */
+            flags: components["schemas"]["ReorderedFlag"][];
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
             /**
@@ -3184,6 +3190,15 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

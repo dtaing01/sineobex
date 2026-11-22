@@ -145,13 +145,25 @@ const PresetEvent = z
   })
   .openapi('PresetEvent');
 
+/** A flag of an order, with the version the person's list showed it at, as an edit sends its own. */
+const ReorderedFlag = z
+  .object({
+    id: Uuid,
+    baseVersion: BaseVersion.openapi({
+      description:
+        'The version the list showed this flag at: any other refuses the whole order as stale, with the current one',
+    }),
+  })
+  .openapi('ReorderedFlag');
+
 const ReorderFlags = z
   .object({
     tier: z
       .enum(['primary', 'secondary'])
       .openapi({ description: 'The risk level (primary) or the conditions (secondary)' }),
-    ids: z.array(Uuid).openapi({
-      description: 'Every active flag of the tier, each once, in the order its list shows them',
+    flags: z.array(ReorderedFlag).openapi({
+      description:
+        'Every active flag of the tier, each once, in the order its list shows them, each with the version it was listed at',
     }),
     reason: PresetReason,
   })
@@ -312,12 +324,13 @@ const reorderFlagsRoute = createRoute({
   path: '/v1/admin/preset-order/flag',
   operationId: 'reorderFlags',
   tags: ['presets'],
-  summary: 'Put a tier’s active flags in the order sent, with a reason (recent sign-in)',
+  summary:
+    'Put a tier’s active flags in the order sent, each at the version its list showed, with a reason (recent sign-in)',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(ReorderFlags) } },
   responses: {
     200: { description: 'How many flags moved', ...json(ReorderFlagsResult) },
-    ...errors(401, 403, 422),
+    ...errors(401, 403, 409, 422),
   },
 });
 
@@ -483,10 +496,10 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
   });
 
   app.openapi(reorderFlagsRoute, async (c) => {
-    const { tier, ids, reason } = c.req.valid('json');
+    const { tier, flags, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     // In lowercase, as the store reads IDs, so an order that writes one in capitals still names it.
-    const order = ids.map((id) => id.toLowerCase());
-    return c.json(await reorderFlags(scope, { tier, ids: order, reason }), 200);
+    const order = flags.map(({ id, baseVersion }) => ({ id: id.toLowerCase(), baseVersion }));
+    return c.json(await reorderFlags(scope, { tier, flags: order, reason }), 200);
   });
 }

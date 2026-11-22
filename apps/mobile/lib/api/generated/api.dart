@@ -5563,26 +5563,26 @@ class RemoveMember {
 
 class ReorderFlags {
   const ReorderFlags({
-    required this.ids,
+    required this.flags,
     required this.reason,
     required this.tier,
   });
 
-  /// Every active flag of the tier, each once, in the order its list shows them
-  final List<String> ids;
+  /// Every active flag of the tier, each once, in the order its list shows them, each with the version it was listed at
+  final List<ReorderedFlag> flags;
   /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
   final String reason;
   /// The risk level (primary) or the conditions (secondary)
   final ReorderFlagsTier tier;
 
   factory ReorderFlags.fromJson(Map<String, dynamic> json) => ReorderFlags(
-        ids: (json['ids'] as List<dynamic>).map((e) => e as String).toList(),
+        flags: (json['flags'] as List<dynamic>).map((e) => ReorderedFlag.fromJson(e as Map<String, dynamic>)).toList(),
         reason: json['reason'] as String,
         tier: ReorderFlagsTier.fromJson(json['tier'] as String),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'ids': ids.map((e) => e).toList(),
+        'flags': flags.map((e) => e.toJson()).toList(),
         'reason': reason,
         'tier': tier.toJson(),
       };
@@ -5602,6 +5602,27 @@ class ReorderFlagsResult {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'changed': changed,
+      };
+}
+
+class ReorderedFlag {
+  const ReorderedFlag({
+    required this.baseVersion,
+    required this.id,
+  });
+
+  /// The version the list showed this flag at: any other refuses the whole order as stale, with the current one
+  final int baseVersion;
+  final String id;
+
+  factory ReorderedFlag.fromJson(Map<String, dynamic> json) => ReorderedFlag(
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        id: json['id'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'baseVersion': baseVersion,
+        'id': id,
       };
 }
 
@@ -7454,7 +7475,7 @@ class SineobexApi {
     return Member.fromJson(json as Map<String, dynamic>);
   }
 
-  /// Put a tier’s active flags in the order sent, with a reason (recent sign-in)
+  /// Put a tier’s active flags in the order sent, each at the version its list showed, with a reason (recent sign-in)
   Future<ReorderFlagsResult> reorderFlags({required ReorderFlags body}) async {
     final json = await _transport.send('POST', '/v1/admin/preset-order/flag', body: body.toJson());
     return ReorderFlagsResult.fromJson(json as Map<String, dynamic>);

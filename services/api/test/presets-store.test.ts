@@ -36,6 +36,7 @@ import {
   whileLocked,
   type Answer,
   type Body,
+  type ListedFlag,
   type Person,
   type PresetsTeam,
 } from './presets-fixtures.ts';
@@ -143,7 +144,7 @@ describe('every act takes the team lock first, then one revision (design 4.2)', 
     const gone = await createPreset(admin(), { kind: 'flag', body: make.flag(), reason: REASON });
     await archivePreset(admin(), { kind: 'flag', id: gone.id, baseVersion: 1, reason: REASON });
     const doomed = await createPreset(admin(), { kind: 'flag', body: make.flag(), reason: REASON });
-    const tier = await activeFlags('primary');
+    const tier = await listedFlags('primary');
     const acts: [string, () => Promise<unknown>][] = [
       ['create', () => createPreset(admin(), { kind: 'flag', body: make.flag(), reason: REASON })],
       [
@@ -175,7 +176,10 @@ describe('every act takes the team lock first, then one revision (design 4.2)', 
             reason: REASON,
           }).catch((e: unknown) => e),
       ],
-      ['reorder', () => reorderFlags(admin(), { tier: 'primary', ids: [...tier].reverse(), reason: REASON })],
+      [
+        'reorder',
+        () => reorderFlags(admin(), { tier: 'primary', flags: [...tier].reverse(), reason: REASON }),
+      ],
     ];
     for (const [name, act] of acts) {
       const { waited, relations } = await whileLocked(h, team.teamId, act);
@@ -312,9 +316,21 @@ describe('a refusal writes nothing and takes no revision (design 5.1)', () => {
       ],
       [
         'ids mismatch',
-        () => reorderFlags(admin(), { tier: 'primary', ids: [id], reason: REASON }),
+        () => reorderFlags(admin(), { tier: 'primary', flags: [{ id, baseVersion: 1 }], reason: REASON }),
         422,
         'ids_mismatch',
+      ],
+      [
+        'stale order',
+        async () =>
+          reorderFlags(admin(), {
+            tier: 'primary',
+            // Each at a version it has not reached: the list it was made from is not the tier's now.
+            flags: (await listedFlags('primary')).map((f) => ({ ...f, baseVersion: f.baseVersion + 1 })),
+            reason: REASON,
+          }),
+        409,
+        'stale',
       ],
       [
         'not found',
@@ -477,27 +493,70 @@ describe('taking a platform update (design 5.1)', () => {
   });
 });
 
+/** Answers once as the real effect would, its head after the act changed by `change`. */
+const answerOnce = (change: (answer: PresetHeadAfter & { created?: PresetHeadAfter }) => object) => {
+  const effect = vi.mocked(presetWriteEffect);
+  const real = effect.getMockImplementation()!;
+  effect.mockImplementationOnce((input) => {
+    const answer = real(input);
+    return 'refuse' in answer ? answer : ({ ...answer, ...change(answer) } as typeof answer);
+  });
+};
+
 describe('a tier’s flag order (design 5.1)', () => {
   it('gives only the flags whose rank changes their next version, and writes nothing for an order as it is', async () => {
-    const tier = await activeFlags('secondary');
-    const ranks = await Promise.all(tier.map(async (id) => (await currentBody(id)).rank as number));
+    const tier = await listedFlags('secondary');
+    const ranks = await Promise.all(tier.map(async (f) => (await currentBody(f.id)).rank as number));
     const r0 = await revisionOf(h, team.teamId);
-    const { changed } = await reorderFlags(admin(), {
-      tier: 'secondary',
-      ids: [...tier].reverse(),
-      reason: REASON,
-    });
-    const moved = [...tier].reverse().filter((id, i) => ranks[tier.indexOf(id)] !== (i + 1) * 10);
+    const order = [...tier].reverse();
+    const { changed } = await reorderFlags(admin(), { tier: 'secondary', flags: order, reason: REASON });
+    const moved = order.filter((f, i) => ranks[tier.indexOf(f)] !== (i + 1) * 10);
     expect(changed).toBe(moved.length);
     expect(await revisionOf(h, team.teamId)).toBe(r0 + 1);
-    for (const id of moved) expect(await headOf(h, id)).toMatchObject({ revision: r0 + 1, customized: true });
+    for (const f of moved)
+      expect(await headOf(h, f.id)).toMatchObject({
+        currentVersion: f.baseVersion + 1,
+        revision: r0 + 1,
+        customized: true,
+      });
+    // Sent again from the same list, the order is stale: the flags it moved are at their next
+    // version. It names each of them, in the order sent, and writes nothing.
     const before = await footprint(h, team.teamId);
-    expect(
-      await reorderFlags(admin(), { tier: 'secondary', ids: [...tier].reverse(), reason: REASON }),
-    ).toEqual({
+    const stale = await refused(reorderFlags(admin(), { tier: 'secondary', flags: order, reason: REASON }));
+    expect(stale).toMatchObject({ status: 409, code: 'stale' });
+    expect(stale.details).toEqual({
+      flags: moved.map((f) => ({ id: f.id, currentVersion: f.baseVersion + 1 })),
+    });
+    await expectNothingWritten(h, team.teamId, before);
+    // From a list loaded now, the order as it is moves none and writes nothing.
+    const relisted = await listedFlags('secondary');
+    expect(relisted.map((f) => f.id)).toEqual(order.map((f) => f.id));
+    expect(await reorderFlags(admin(), { tier: 'secondary', flags: relisted, reason: REASON })).toEqual({
       changed: 0,
     });
     await expectNothingWritten(h, team.teamId, before);
+  });
+
+  it('writes each flag it moves as presetWriteEffect answers it for that flag (design 13.3)', async () => {
+    // The tier as a reorder above left it, at 10, 20 and 30: reversed, the first and last move.
+    const order = (await listedFlags('primary')).reverse();
+    expect(order.length).toBe(3);
+    const [first, middle, last] = order as [ListedFlag, ListedFlag, ListedFlag];
+    // The effect is asked of each flag in the order sent; an answer no reorder gives today, for the
+    // first only, so only a store that writes each flag's own answer shows it.
+    answerOnce(() => ({ customizedAfter: false }));
+    expect(await reorderFlags(admin(), { tier: 'primary', flags: order, reason: REASON })).toEqual({
+      changed: 2,
+    });
+    expect(await headOf(h, first.id)).toMatchObject({
+      currentVersion: first.baseVersion + 1,
+      customized: false,
+    });
+    expect(await headOf(h, last.id)).toMatchObject({
+      currentVersion: last.baseVersion + 1,
+      customized: true,
+    });
+    expect((await headOf(h, middle.id))!.currentVersion).toBe(middle.baseVersion);
   });
 });
 
@@ -536,16 +595,6 @@ describe('the pull of a team the platform has given nothing yet (routes/presets.
 describe('a new preset, as presetWriteEffect answers it (design 5.1, 13.3)', () => {
   // The effect is the one authority on what an act does: the store writes its answer, never a value
   // of its own, so the store and the seed, the other writer of a team's own presets, never drift.
-  /** Answers once as the real effect would, its head after the act changed by `change`. */
-  const answerOnce = (change: (answer: PresetHeadAfter & { created?: PresetHeadAfter }) => object) => {
-    const effect = vi.mocked(presetWriteEffect);
-    const real = effect.getMockImplementation()!;
-    effect.mockImplementationOnce((input) => {
-      const answer = real(input);
-      return 'refuse' in answer ? answer : ({ ...answer, ...change(answer) } as typeof answer);
-    });
-  };
-
   it('takes a created head’s state, version and customized from the effect', async () => {
     // An answer no create gives today, so only a store that writes the effect's answer shows it.
     answerOnce(() => ({ stateAfter: 'archived', customizedAfter: true }));
@@ -593,12 +642,12 @@ describe('a new preset, as presetWriteEffect answers it (design 5.1, 13.3)', () 
   });
 });
 
-/** The team's active flags of a tier, by rank. */
-async function activeFlags(tier: 'primary' | 'secondary'): Promise<string[]> {
-  const rows = await h.scratch.owner<{ id: string }[]>`
-    select p.id from sineobex.team_presets p
+/** The team's active flags of a tier, by rank, each at its version: the list an order is made from. */
+async function listedFlags(tier: 'primary' | 'secondary'): Promise<ListedFlag[]> {
+  const rows = await h.scratch.owner<ListedFlag[]>`
+    select p.id, p.current_version as "baseVersion" from sineobex.team_presets p
     join sineobex.team_preset_versions v on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
     where p.team_id = ${team.teamId} and p.kind = 'flag' and p.state = 'active' and v.body ->> 'tier' = ${tier}
     order by (v.body ->> 'rank')::int, p.id`;
-  return rows.map((r) => r.id);
+  return rows.map((r) => ({ id: r.id, baseVersion: r.baseVersion }));
 }

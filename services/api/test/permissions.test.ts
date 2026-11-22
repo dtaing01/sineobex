@@ -739,7 +739,7 @@ const PRESET_ROUTES: RouteCase[] = [
   {
     method: 'POST',
     path: '/v1/admin/preset-order/flag',
-    body: { tier: 'secondary', ids: [], reason: REASON },
+    body: { tier: 'secondary', flags: [], reason: REASON },
     allowed: [MANAGE_PRESETS],
     refused: ALL_BUT_PRESETS,
     logged: { permission: MANAGE_PRESETS },
@@ -923,16 +923,18 @@ describe('phase 5 preset writes, with a stale sign-in', () => {
         const rows = (await api.list('flag')).body as unknown as {
           id: string;
           state: string;
+          version: number;
           body: { tier: string; rank: number };
         }[];
+        // Each flag with the version the list shows it at, as an order is sent.
         const tier = rows
           .filter((r) => r.state === 'active' && r.body.tier === 'primary')
           .sort((a, b) => a.body.rank - b.body.rank)
-          .map((r) => r.id);
+          .map((r) => ({ id: r.id, baseVersion: r.version }));
         return {
           method: 'POST',
           path: '/v1/admin/preset-order/flag',
-          body: { tier: 'primary', ids: tier.reverse(), reason: REASON },
+          body: { tier: 'primary', flags: tier.reverse(), reason: REASON },
           done: 200,
         };
       },

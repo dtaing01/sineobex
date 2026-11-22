@@ -4619,11 +4619,10 @@
       },
       "ReorderFlags": {
         "properties": {
-          "ids": {
-            "description": "Every active flag of the tier, each once, in the order its list shows them",
+          "flags": {
+            "description": "Every active flag of the tier, each once, in the order its list shows them, each with the version it was listed at",
             "items": {
-              "format": "uuid",
-              "type": "string"
+              "$ref": "#/components/schemas/ReorderedFlag"
             },
             "type": "array"
           },
@@ -4644,7 +4643,7 @@
         },
         "required": [
           "tier",
-          "ids",
+          "flags",
           "reason"
         ],
         "type": "object"
@@ -4659,6 +4658,25 @@
         },
         "required": [
           "changed"
+        ],
+        "type": "object"
+      },
+      "ReorderedFlag": {
+        "properties": {
+          "baseVersion": {
+            "description": "The version the list showed this flag at: any other refuses the whole order as stale, with the current one",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "baseVersion"
         ],
         "type": "object"
       },
@@ -6199,6 +6217,16 @@
             },
             "description": "Not allowed; the refusal is logged"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6215,7 +6243,7 @@
             "bearer": []
           }
         ],
-        "summary": "Put a tier’s active flags in the order sent, with a reason (recent sign-in)",
+        "summary": "Put a tier’s active flags in the order sent, each at the version its list showed, with a reason (recent sign-in)",
         "tags": [
           "presets"
         ]

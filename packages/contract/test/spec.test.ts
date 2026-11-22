@@ -198,7 +198,9 @@ describe('openapi.json, patient data in requests and refusals', () => {
     expect(required('ArchivePreset')).toEqual(['baseVersion', 'reason']);
     expect(required('RestorePreset')).toEqual(['reason']);
     expect(required('TakePresetUpdate')).toEqual(['asNew', 'baseVersion', 'platformVersion', 'reason']);
-    expect(required('ReorderFlags')).toEqual(['ids', 'reason', 'tier']);
+    expect(required('ReorderFlags')).toEqual(['flags', 'reason', 'tier']);
+    // Each flag with the version its list showed: an order from a list changed since is stale.
+    expect(required('ReorderedFlag')).toEqual(['baseVersion', 'id']);
   });
 
   it('defines every phase 5 preset route, under the name its clients call', async () => {

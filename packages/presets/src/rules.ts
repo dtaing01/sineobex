@@ -15,7 +15,10 @@ export type PresetAct =
   | 'restore'
   | 'take_update'
   | 'take_update_as_new'
-  /** What a reorder does to each flag reorderRanks moves. */
+  /**
+   * What a reorder does to each flag of the tier it sends: whether it refuses the order, and what
+   * it writes for each one reorderRanks moves.
+   */
   | 'reorder';
 
 /** What an act reads, worked out by the route from the head, the body sent and the team's presets. */
@@ -24,7 +27,10 @@ export type PresetWriteInput = {
   kind: PresetKind;
   /** The head's; null for a create. */
   state: 'active' | 'archived' | null;
-  /** The version the admin's form was loaded at; null for a create, a restore and a reorder. */
+  /**
+   * The version the admin's form was loaded at, or a reorder's list showed the flag at; null for a
+   * create and a restore.
+   */
   baseVersion: number | null;
   /** The head's; null for a create. */
   currentVersion: number | null;
@@ -112,8 +118,10 @@ const REFUSALS: { readonly [A in PresetAct]: readonly Check[] } = {
     nameTaken,
     pointsAtArchived,
   ],
-  // A stale order is reorderRanks' ids_mismatch; only an active flag has a rank in a list.
-  reorder: [archived],
+  // Each flag of the tier is read at the version the admin's list showed it, moved or not, so an
+  // order never puts back a rank another write set since; a list that has gained or lost a flag
+  // is reorderRanks' ids_mismatch. Only an active flag has a rank in a list.
+  reorder: [archived, stale],
 };
 
 const head = (stateAfter: 'active' | 'archived', versionAfter: number, customizedAfter: boolean) => ({
@@ -154,8 +162,9 @@ export function presetWriteEffect(input: PresetWriteInput): PresetWriteEffect {
  * The tier's flags whose rank a new order changes, in that order: each flag's rank is its place,
  * counting from 1, times 10, so a flag added later can be placed between two. `ordered` must hold
  * every active flag of the tier once, and nothing else: a list loaded before another admin's
- * change would otherwise drop or revive a flag. Each flag it answers is written as
- * presetWriteEffect's `reorder` says: its next version, the team's own.
+ * change would otherwise drop or revive a flag. Every flag of the order is then asked of
+ * presetWriteEffect's `reorder` at the version the list showed it, and each flag this answers is
+ * written as that says: its next version, the team's own.
  */
 export function reorderRanks(
   current: readonly { id: string; rank: number }[],

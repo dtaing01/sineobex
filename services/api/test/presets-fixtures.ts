@@ -43,6 +43,12 @@ export interface PresetsTeam {
 /** A reason of the length every write asks for (3 to 300 characters), made up. */
 export const REASON = 'Demo: the team asked for this change';
 
+/** A flag of an order, as a reorder sends it: its ID and the version the admin's list showed it at. */
+export interface ListedFlag {
+  id: string;
+  baseVersion: number;
+}
+
 const owners = new WeakMap<Harness, string>();
 let made = 0;
 
@@ -181,8 +187,21 @@ export function presetsApi(h: Harness, teamId: string, who: Person, options: { t
         asNew,
       }),
     history: (kind: string, id: string) => send('GET', at(kind, id, 'history')),
-    reorder: (tier: string, ids: readonly string[], reason: unknown = REASON) =>
-      send('POST', '/v1/admin/preset-order/flag', { tier, ids, reason }),
+    /**
+     * The tier's active flags by rank, each at the version the list shows it: what an admin's order
+     * is made from, read as Team setup's page reads it, through the list.
+     */
+    flagList: async (tier: 'primary' | 'secondary'): Promise<ListedFlag[]> => {
+      const r = await send('GET', at('flag'));
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const rows = r.body as unknown as ListRow[];
+      return rows
+        .filter((row) => row.state === 'active' && row.body.tier === tier)
+        .sort((x, y) => x.body.rank - y.body.rank || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
+        .map((row) => ({ id: row.id, baseVersion: row.version }));
+    },
+    reorder: (tier: string, flags: readonly ListedFlag[], reason: unknown = REASON) =>
+      send('POST', '/v1/admin/preset-order/flag', { tier, flags, reason }),
     pull: (query: { since?: number | string; epoch?: string } = {}) => {
       const q = new URLSearchParams();
       if (query.since !== undefined) q.set('since', String(query.since));
@@ -193,6 +212,14 @@ export function presetsApi(h: Harness, teamId: string, who: Person, options: { t
   };
 }
 export type PresetsApi = ReturnType<typeof presetsApi>;
+
+/** The parts of a flag's list row an order is made from. */
+interface ListRow {
+  id: string;
+  state: 'active' | 'archived';
+  version: number;
+  body: { tier: string; rank: number };
+}
 
 /**
  * The platform version on offer to a preset, as its head records it (platform_latest): what the

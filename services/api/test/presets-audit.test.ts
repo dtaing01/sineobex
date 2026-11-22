@@ -274,15 +274,11 @@ describe('each preset write’s audit event (design 9)', () => {
   });
 
   it('a reorder: one preset.reordered for the tier, with how many flags it moved', async () => {
-    const tier = await h.scratch.owner<{ id: string }[]>`
-      select p.id from sineobex.team_presets p
-      join sineobex.team_preset_versions v on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-      where p.team_id = ${team.teamId} and p.kind = 'flag' and p.state = 'active' and v.body ->> 'tier' = 'primary'
-      order by (v.body ->> 'rank')::int`;
+    const tier = await api.flagList('primary');
     const ids = tier.map((x) => x.id);
     expect(ids.length).toBe(3);
     const mark = await auditMark(h);
-    const r = await api.reorder('primary', [...ids].reverse(), reasonOf('a reorder'));
+    const r = await api.reorder('primary', [...tier].reverse(), reasonOf('a reorder'));
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body).toEqual({ changed: 2 });
     const events = await presetEvents(mark);
@@ -306,15 +302,15 @@ describe('each preset write’s audit event (design 9)', () => {
     expect((await api.archive('settings', settings, 1)).status).toBe(409);
     expect((await api.create('flag', make.flag({ color: 'nope' }))).status).toBe(422);
     // The primary flags as the reorder above left them, at ranks 10, 20 and 30: sent as they are.
-    const tier = await h.scratch.owner<{ id: string }[]>`
-      select p.id from sineobex.team_presets p
-      join sineobex.team_preset_versions v on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-      where p.team_id = ${team.teamId} and p.kind = 'flag' and p.state = 'active' and v.body ->> 'tier' = 'primary'
-      order by (v.body ->> 'rank')::int, p.name`;
-    const r = await api.reorder(
+    const tier = await api.flagList('primary');
+    // An order sent at versions its flags are not at: refused stale.
+    const stale = await api.reorder(
       'primary',
-      tier.map((x) => x.id),
+      [...tier].reverse().map((f) => ({ ...f, baseVersion: f.baseVersion + 1 })),
     );
+    expect(stale.status, JSON.stringify(stale.body)).toBe(409);
+    expect(stale.body).toMatchObject({ error: { code: 'stale' } });
+    const r = await api.reorder('primary', tier);
     expect(r.body).toEqual({ changed: 0 });
     expect(await auditAfter(h, mark)).toEqual([]);
   });
@@ -345,11 +341,7 @@ describe('a write whose audit event cannot be written is undone whole (design 7,
     const { id } = await createdPreset(api, 'flag', body);
     const gone = await createdPreset(api, 'flag', make.flag());
     expect((await api.archive('flag', gone.id, 1)).status).toBe(200);
-    const tier = await h.scratch.owner<{ id: string }[]>`
-      select p.id from sineobex.team_presets p
-      join sineobex.team_preset_versions v on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-      where p.team_id = ${team.teamId} and p.kind = 'flag' and p.state = 'active' and v.body ->> 'tier' = 'primary'
-      order by (v.body ->> 'rank')::int`;
+    const tier = await api.flagList('primary');
     const medium = idOf(team, 'flag.medium');
     const mediumVersion = (await headOf(h, medium))!.currentVersion;
     const cases: [string, string, () => Promise<Answer>][] = [
@@ -367,7 +359,7 @@ describe('a write whose audit event cannot be written is undone whole (design 7,
         'preset.platform_update_taken',
         () => api.takeUpdate('flag', medium, mediumVersion, true),
       ],
-      ['reorder', 'preset.reordered', () => api.reorder('primary', tier.map((x) => x.id).reverse())],
+      ['reorder', 'preset.reordered', () => api.reorder('primary', [...tier].reverse())],
     ];
     for (const [name, action, act] of cases) {
       const before = await footprint(h, team.teamId);
