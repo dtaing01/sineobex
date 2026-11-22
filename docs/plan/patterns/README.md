@@ -36,6 +36,7 @@ line ranges are from. Read `docs/plan/README.md` first: it defines the card leve
 |---|---|
 | [contract.md](contract.md) | Regenerate the contract after a route, schema or data-file change, and commit what the generator wrote |
 | [portal-page.md](portal-page.md) | Add a portal page with its server action and its end-to-end test (axe in three themes, reflow at 320 px) |
+| [preset-kind.md](preset-kind.md) | Add a Team setup page for one kind of preset (phase 5): its list and forms, its add and edit actions, the shared parts placed (Reason box, Remove, Restore, the update offer, the history), every refusal's sentence, and its tests |
 | [seed-data.md](seed-data.md) | Add made-up demo data to the seed that the PHI guard accepts |
 
 ## Phone
