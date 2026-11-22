@@ -1,12 +1,14 @@
 import { expect, test, type Locator } from '@playwright/test';
 import {
   apiCall,
+  customRole,
   expectAccessible,
   expectNothingStored,
   expectReflow,
   IDP,
   MFA_CODE,
   portalNav,
+  setRole,
   signIn,
   staffToken,
   watchCsp,
@@ -150,6 +152,43 @@ test.describe('the hub, /team/presets', () => {
     // One list was asked, and refused: the others never were.
     expect(after).toHaveLength(before + 1);
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+
+  test('only team.manage_presets opens Presets: every other seeded role is refused it, and a role holding that key alone has it', async ({
+    page,
+  }) => {
+    test.slow();
+    // The seeded members of every standard role but Program Admin, and the community health worker
+    // preset: none holds the key, so none has the item, and the hub is refused at a typed address.
+    for (const email of [
+      'logistics@example.com',
+      'resident@example.com',
+      'billing@example.com',
+      'chw@example.com',
+    ]) {
+      await signIn(page, email);
+      await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true }), email).toHaveCount(0);
+      await page.goto('/team/presets');
+      await expect(page, email).toHaveURL(/\/home\?denied=1$/);
+    }
+
+    // The nav and the pages follow the key, not the role's name: a custom role of it alone opens them.
+    const role = await customRole('Presets only', ['team.manage_presets']);
+    await setRole('resident@example.com', role);
+    try {
+      await signIn(page, 'resident@example.com');
+      const link = portalNav(page).getByRole('link', { name: 'Presets', exact: true });
+      await link.click();
+      await expect(page).toHaveURL(/\/team\/presets$/);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Presets');
+      await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(AREAS.length);
+      for (const area of AREAS) {
+        await page.goto(area.href);
+        await expect(page.getByRole('heading', { level: 1 }), area.title).toHaveText(area.title);
+      }
+    } finally {
+      await setRole('resident@example.com', 'healthcare_staff');
+    }
   });
 });
 
