@@ -136,7 +136,7 @@
     },
     {
       "name": "a check time after now, from a clock that ran ahead, is not due",
-      "problem": { "status": "new", "statusCheckedAt": "2026-04-02T00:00:00Z", "enteredInError": false },
+      "problem": { "status": "new", "statusCheckedAt": "2026-04-20T00:00:00Z", "enteredInError": false },
       "now": "2026-04-01T00:00:00Z",
       "problemCheckDays": 7,
       "due": false
