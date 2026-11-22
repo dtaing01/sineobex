@@ -863,7 +863,8 @@ describe('0023 team presets', () => {
       },
       { who: 'the owner', write: (_, run) => asOwner(run), anyTeam: true },
     ];
-    // A head of each table at a revision, and a change to one.
+    // A head of each table at a revision, a change to one, and a new value for each column a write
+    // changes in the head `insert` writes.
     const HEADS = [
       {
         table: 'team_presets',
@@ -873,6 +874,16 @@ describe('0023 team presets', () => {
             returning id::text as ref`,
         update: (tx: Sql | TransactionSql, teamId: string, ref: string, set: Row) =>
           tx`update sineobex.team_presets set ${tx(set)} where team_id = ${teamId} and id = ${ref}`,
+        changes: (): Row => ({
+          name: 'Demo: an item, renamed',
+          state: 'archived',
+          current_version: 2,
+          origin_key: 'item.demo_renamed',
+          origin_version: 2,
+          platform_latest: 2,
+          customized: true,
+          updated_by: null,
+        }),
       },
       {
         table: 'note_types',
@@ -882,8 +893,20 @@ describe('0023 team presets', () => {
             returning key as ref`,
         update: (tx: Sql | TransactionSql, teamId: string, ref: string, set: Row) =>
           tx`update sineobex.note_types set ${tx(set)} where team_id = ${teamId} and key = ${ref}`,
+        changes: (): Row => ({
+          title: 'Demo: a note type, retitled',
+          state: 'archived',
+          current_version: 2,
+          platform_latest: 2,
+          customized: true,
+          updated_by: admin,
+        }),
       },
     ];
+    // What no write changes: a head's keys, its kind (0023 refuses that first), who made it and when,
+    // the time of its last change, which the database keeps, and its revision, which the other tests
+    // here change.
+    const KEPT = ['id', 'team_id', 'key', 'kind', 'created_by', 'created_at', 'updated_at', 'revision'];
     const cases = (writers = WRITERS) =>
       writers.flatMap(({ who, write }) =>
         HEADS.map((h) => ({
@@ -1040,6 +1063,32 @@ describe('0023 team presets', () => {
           update(tx, fresh, ref, { state: 'archived', revision: await takeRevision(tx, fresh) }),
         );
         expect(await headsOf(table, fresh), label).toEqual([{ revision: 2, state: 'archived' }]);
+      }
+    });
+
+    // A change need move neither the state nor the revision to be one a phone must be sent: an edit,
+    // a rename, an offer, the name of its writer. A guard that looked at those two columns alone would
+    // let each through at a revision a phone that pulled the write before it holds already.
+    it('refuses a change to any column of a head by a write that took no revision', async () => {
+      for (const { table, changes } of HEADS) {
+        const columns = (await columnsOf(db.owner, table)).map((c) => c.name);
+        expect(Object.keys(changes()).sort(), `${table}: every column a write changes`).toEqual(
+          columns.filter((c) => !KEPT.includes(c)).sort(),
+        );
+      }
+      for (const { write, table, insert, update, changes, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Column Team');
+        const ref = await write(
+          fresh,
+          async (tx) => (await insert(tx, fresh, await takeRevision(tx, fresh)))[0]!.ref,
+        );
+        for (const [column, value] of Object.entries(changes())) {
+          expect(
+            await refusal(write(fresh, (tx) => update(tx, fresh, ref, { [column]: value }))),
+            `${label}: ${column}`,
+          ).toEqual(refused);
+        }
+        expect(await headsOf(table, fresh), label).toEqual([{ revision: 1, state: 'active' }]);
       }
     });
 
