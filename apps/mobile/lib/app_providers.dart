@@ -14,6 +14,7 @@ import 'encounters/encounter_services.dart' show encounterRefreshers;
 import 'encounters/note_definitions.dart' show heldNoteTypes;
 import 'forms/definition_store.dart';
 import 'patients/patient_providers.dart' show patientRefreshers;
+import 'presets/presets_refresher.dart' show presetRefreshers;
 import 'security/key_vault.dart';
 import 'security/secure_store.dart';
 import 'sync/clock.dart';
@@ -137,14 +138,15 @@ DefinitionStore appDefinitionStore({Future<String> Function() databases = databa
 
 const appVersion = String.fromEnvironment('SINEOBEX_APP_VERSION', defaultValue: '0.2.0');
 
-/// What the sync controller makes for each team database it opens (its `refreshers`): the team
-/// index, the chart cache and the card hook ([patientRefreshers]), then the visits and notes, with
-/// the close sweep among their refreshers ([encounterRefreshers]). Each is made for the person the
-/// [session] unlocked: the patient services with the keys the controller opened the team with, the
-/// encounter services with the credential and name of the same profile, the definitions [sync]
-/// holds, and the engine [sync] just opened for the team, which brings a record that left the phone
-/// back to add to it. Copy link must work on a phone that never downloaded a chart with a card, so
-/// [idLinkBaseUrl] is the sign-in's `/v1/me` address.
+/// What the sync controller makes for each team database it opens (its `refreshers`): the team's
+/// presets ([presetRefreshers]), the team index, the chart cache and the card hook
+/// ([patientRefreshers]), then the visits and notes, with the close sweep among their refreshers
+/// ([encounterRefreshers]). Each is made for the person the [session] unlocked: the presets written
+/// only while [sync] holds the team's store open, the patient services with the keys the controller
+/// opened the team with, the encounter services with the credential and name of the same profile,
+/// the definitions [sync] holds, and the engine [sync] just opened for the team, which brings a
+/// record that left the phone back to add to it. Copy link must work on a phone that never
+/// downloaded a chart with a card, so [idLinkBaseUrl] is the sign-in's `/v1/me` address.
 RefresherFactory appRefreshers({
   required SessionController session,
   required SyncController Function() sync,
@@ -153,6 +155,9 @@ RefresherFactory appRefreshers({
   final controller = sync();
   final engine = controller.engine;
   return [
+    // First: the presets are a small answer that Team setup reads, and a slow index download
+    // shouldn't hold them up.
+    ...presetRefreshers(team, openStore: () => controller.store),
     ...patientRefreshers(team, idLinkBaseUrl: idLinkBaseUrl?.call()),
     ...encounterRefreshers(
       team,

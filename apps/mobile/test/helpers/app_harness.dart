@@ -15,6 +15,7 @@ import 'package:sineobex_field/forms/definition_store.dart';
 import 'package:sineobex_field/features/lock/lock_screens.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/problems.dart' show ProblemCodes;
+import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/security/key_vault.dart';
 import 'package:sineobex_field/security/secure_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -60,8 +61,10 @@ class AppHarness {
       now: () => wall,
       monotonic: () => boot.elapsed,
       // As the app wires it (app_providers.dart `appRefreshers`), with a clipboard the test reads:
-      // the patient services, then the encounter services for the person the session unlocked.
+      // the team's presets, the patient services, then the encounter services for the person the
+      // session unlocked.
       refreshers: (team) => [
+        ...presetRefreshers(team, openStore: () => sync.store),
         ...PatientServices(team, idLinkBaseUrl: server.idLinkBaseUrl, copy: _copy, wallNow: () => wall).refreshers,
         ...encounterRefreshers(
           team,
