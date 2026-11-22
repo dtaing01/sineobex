@@ -125,7 +125,8 @@ create table sineobex.note_types (
   current_version  integer not null check (current_version >= 1),
   platform_latest  integer check (platform_latest >= 1),   -- the newest platform version seen
   customized       boolean not null default false,
-  revision         bigint not null check (revision >= 0),  -- 0 for a head filled below, before any write
+  -- 0 only for a head filled below: a write stamps a head with its take, which is never 0.
+  revision         bigint not null check (revision >= 0),
   updated_by       uuid references sineobex.users (id),   -- null for the installer
   updated_at       timestamptz not null default now(),
   primary key (team_id, key)
