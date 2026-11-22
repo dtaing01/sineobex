@@ -60,6 +60,8 @@ export interface ItemLinesProps {
   quantity: { field: LineQuantity; label: string };
   /** A bundle's lines are each core or optional (PRD main 441). */
   core?: boolean;
+  /** Said of the whole list, under its legend and read with it, such as what Core means. */
+  hint?: string;
   /** How many lines the kind holds at most: the API refuses more, and the form offers no more. */
   max: number;
 }
@@ -89,6 +91,7 @@ function Lines({
   quantity,
   core,
   max,
+  hint,
 }: ItemLinesProps & { start: readonly ItemLine[] }) {
   const state = useFormState();
   const [rows, setRows] = useState<Row[]>(() => start.map(rowOf));
@@ -99,9 +102,17 @@ function Lines({
       id={groupId}
       className={`px-fieldset ${styles.group}`}
       tabIndex={-1}
-      aria-describedby={error ? `${groupId}-error` : undefined}
+      aria-describedby={
+        [hint ? `${groupId}-hint` : null, error ? `${groupId}-error` : null].filter(Boolean).join(' ') ||
+        undefined
+      }
     >
       <legend>{legend}</legend>
+      {hint && (
+        <p id={`${groupId}-hint`} className="sx-help">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={`${groupId}-error`} className="sx-help sx-help--error">
           {error}

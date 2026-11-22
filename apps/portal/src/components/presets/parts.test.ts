@@ -280,6 +280,14 @@ describe('item lines', () => {
     expect(html).not.toContain('<optgroup');
   });
 
+  it('reads its hint with the group, as the error is', () => {
+    const html = inForm(createElement(ItemLines, { ...bundle, hint: 'Demo: what Core means.' }));
+    expect(tagOf(html, 'f-lines')).toContain('aria-describedby="f-lines-hint"');
+    expect(html).toContain(
+      '<legend>Items</legend><p id="f-lines-hint" class="sx-help">Demo: what Core means.</p>',
+    );
+  });
+
   it('says so when the list holds none yet', () => {
     expect(inForm(createElement(ItemLines, { ...bundle, lines: [] }))).toContain(
       '<p class="sx-help">None yet.</p>',

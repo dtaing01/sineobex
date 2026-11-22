@@ -578,6 +578,13 @@ type ItemBody = {
   result: null | { type: 'choice'; options: string[] } | { type: 'number'; unit: string };
 };
 
+type BundleBody = {
+  name: string;
+  medical: boolean;
+  prompt: string;
+  lines: { itemId: string; qty: number; core: boolean }[];
+};
+
 type CategoryBody = { name: string; behaviour: 'supply' | 'medication' | 'lab'; sort: number };
 
 /** A kind's presets as the API lists them to a Program Admin, A to Z, archived ones included. */
@@ -614,6 +621,20 @@ async function changedMeanwhile<B>(kind: string, id: string, change: (body: B) =
   });
   expect(res.status).toBe(200);
   return ((await res.json()) as { version: number }).version;
+}
+
+/** Another admin's act on a preset: archive it at the version it is at, or restore it. */
+async function actedMeanwhile(kind: string, id: string, act: 'archive' | 'restore') {
+  const now = (await listed(kind)).find((p) => p.id === id)!;
+  const res = await apiCall(
+    await staffToken('admin@example.com'),
+    'POST',
+    `/v1/admin/presets/${kind}/${id}/${act}`,
+    act === 'archive'
+      ? { baseVersion: now.version, reason: 'Demo: another admin’s act' }
+      : { reason: 'Demo: another admin’s act' },
+  );
+  expect(res.status, `${act} ${now.name}`).toBe(200);
 }
 
 // As the API sorts names (routes/presets-admin.ts), and the pages after it.
@@ -1258,6 +1279,268 @@ test.describe('an item, /team/presets/items/[id]', () => {
     await expect(page).toHaveURL(/\/home\?denied=1$/);
     const after = await deniedOf('clinician@example.com');
     // The items were asked, and refused: neither the categories nor the history were.
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Bundles (8.1): A to Z, each with its tag, its lines and its prompt; Add a bundle
+// ------------------------------------------------------------------------------------------------
+
+test.describe('bundles, /team/presets/bundles', () => {
+  const PAGE = '/team/presets/bundles';
+
+  /** "Medical · 3 items, 1 optional · Asks before applying", as the list says what a bundle is. */
+  const summaryOf = (b: BundleBody) => {
+    const optional = b.lines.filter((l) => !l.core).length;
+    const n = b.lines.length;
+    return [
+      b.medical ? 'Medical' : 'Non-Medical',
+      `${n} ${n === 1 ? 'item' : 'items'}${optional > 0 ? `, ${optional} optional` : ''}`,
+      ...(b.prompt !== '' ? ['Asks before applying'] : []),
+    ].join(' · ');
+  };
+
+  test('@responsive a Program Admin opens Bundles from the hub and finds them A to Z, each with what it is, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    await page.getByRole('main').getByRole('link', { name: 'Bundles', exact: true }).click();
+    await expect(page).toHaveURL(/\/team\/presets\/bundles$/);
+    await expect(page).toHaveTitle('Bundles · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Bundles');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    const all = await listed<BundleBody>('bundle');
+    const active = all.filter((b) => b.state === 'active');
+    const removed = all.length - active.length;
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText([
+      'Your team’s bundles',
+      'Add a bundle',
+      ...(removed > 0 ? [`Removed (${removed})`] : []),
+    ]);
+    const list = main.getByRole('region', { name: 'Your team’s bundles' });
+    // A to Z, as the API sorts names, each opening its own page by its ID.
+    await expect(list.getByRole('link')).toHaveText(active.map((b) => b.name));
+    for (const b of active)
+      await expect(
+        list.getByRole('listitem').filter({ has: page.getByRole('link', { name: b.name, exact: true }) }),
+      ).toContainText(summaryOf(b.body));
+    const rainy = active.find((b) => b.name === 'Demo: Rainy night')!;
+    await expect(list.getByRole('link', { name: 'Demo: Rainy night' })).toHaveAttribute(
+      'href',
+      `${PAGE}/${rainy.id}`,
+    );
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    const add = page.getByRole('form', { name: 'Add a bundle' });
+    const tag = add.getByRole('group', { name: 'Medical or Non-Medical' });
+    await expect(tag).toHaveAccessibleDescription('A bundle that holds a medication must be Medical.');
+    await expect(tag.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(add.getByRole('group', { name: 'Items' })).toHaveAccessibleDescription(
+      'A core item is ticked when the bundle is used; an optional one is left for staff to tick.',
+    );
+    await expect(add.getByLabel('Ask before applying (optional)')).toHaveAccessibleDescription(
+      'Asked before the bundle is used, so a bundle never stands in for an assessment. Don’t put patient names here.',
+    );
+
+    await expectAccessible(page, PAGE);
+    await expectReflow(page, PAGE);
+    await expectNothingStored(page, PAGE);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('adding a bundle asks for a reason, then each field, says each line’s problem on its line and a medication’s rule beside the tag, keeps what was typed, and lists the new one', async ({
+    page,
+  }) => {
+    test.slow();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a bundle' });
+    const name = form.getByLabel('Name', { exact: true });
+    const reason = form.getByLabel('Reason');
+    const add = form.getByRole('button', { name: 'Add bundle' });
+    const alert = form.getByRole('alert');
+    const title = alert.locator('.px-alert__title');
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+
+    // Nothing typed: the reason is asked first, as the API reads the request before the body.
+    await add.click();
+    await expect(alert).toBeFocused();
+    await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+
+    // A reason, and nothing else: each field said beside it.
+    await reason.fill('Demo: what we give for a burn');
+    await add.click();
+    await expect(title).toHaveText('Some fields need changing. Check each one below.');
+    await expect(alert.getByRole('link')).toHaveText([
+      'Name: This is too short or too small.',
+      'Medical or Non-Medical: Choose Medical or Non-Medical.',
+      'Items: Give the bundle 1 to 40 items.',
+    ]);
+    await expectAccessible(page, 'Add a bundle, refused', { inPlace: true });
+    await expectReflow(page, 'Add a bundle, refused');
+    await alert.getByRole('link', { name: 'Medical or Non-Medical: Choose Medical or Non-Medical.' }).click();
+    await expect(form.getByRole('group', { name: 'Medical or Non-Medical' })).toBeFocused();
+
+    // A line with no item, and a quantity that isn't one: each said on its line.
+    await name.fill('Demo: Burn care');
+    await form.getByRole('radio', { name: 'Non-Medical' }).check();
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Quantity').fill('lots');
+    await add.click();
+    await expect(alert.getByRole('link')).toHaveText([
+      'Item on line 1: Choose one from the list.',
+      'Quantity on line 1: Enter a whole number from 1 to 99.',
+    ]);
+    await expect(line(1).getByLabel('Quantity')).toHaveValue('lots');
+    await expect(line(1).getByLabel('Quantity')).toHaveAttribute('aria-invalid', 'true');
+    await expectAccessible(page, 'Add a bundle, a line refused', { inPlace: true });
+    await expectReflow(page, 'Add a bundle, a line refused');
+
+    // A medication in a Non-Medical bundle: 8.1's sentence, beside the tag.
+    await line(1).getByLabel('Item').selectOption({ label: 'Acetaminophen' });
+    await line(1).getByLabel('Quantity').fill('2');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(2).getByLabel('Item').selectOption({ label: 'Gauze' });
+    await line(2).getByLabel('Core').uncheck();
+    await add.click();
+    await expect(title).toHaveText('This bundle holds a medication, so it must be Medical.');
+    await expect(alert.getByRole('link')).toHaveText([
+      'Medical or Non-Medical: This bundle holds a medication, so it must be Medical.',
+    ]);
+    await expect(form.getByRole('radio', { name: 'Non-Medical' })).toBeChecked();
+    await expect(line(2).getByLabel('Core')).not.toBeChecked();
+    await expectAccessible(page, 'Add a bundle, a medication not Medical', { inPlace: true });
+
+    // One item on two lines: said on the later line.
+    await form.getByRole('radio', { name: 'Medical', exact: true }).check();
+    await line(2).getByLabel('Item').selectOption({ label: 'Acetaminophen' });
+    await add.click();
+    await expect(alert.getByRole('link')).toHaveText(['Item on line 2: This item is on the list twice.']);
+
+    // Added, with its prompt, and listed.
+    await line(2).getByLabel('Item').selectOption({ label: 'Gauze' });
+    await form
+      .getByLabel('Ask before applying (optional)')
+      .fill('Demo: Ask how the burn happened before giving this bundle.');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Burn care. It’s on the phones after their next sync.',
+    );
+    const acetaminophen = await named<ItemBody>('item', 'Acetaminophen');
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    expect(await named<BundleBody>('bundle', 'Demo: Burn care')).toMatchObject({
+      version: 1,
+      body: {
+        name: 'Demo: Burn care',
+        medical: true,
+        prompt: 'Demo: Ask how the burn happened before giving this bundle.',
+        lines: [
+          { itemId: acetaminophen.id, qty: 2, core: true },
+          { itemId: gauze.id, qty: 1, core: false },
+        ],
+      },
+    });
+    await expect(
+      page
+        .getByRole('region', { name: 'Your team’s bundles' })
+        .getByRole('listitem')
+        .filter({ hasText: 'Demo: Burn care' }),
+    ).toContainText('Medical · 2 items, 1 optional · Asks before applying');
+    // The form is ready for the next one.
+    await expect(name).toHaveValue('');
+    await expect(form.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(form.getByRole('group', { name: 'Items' })).toContainText('None yet.');
+    await expect(form.getByLabel('Ask before applying (optional)')).toHaveValue('');
+    await expect(reason).toHaveValue('');
+
+    await expectNothingStored(page, 'Bundles after an add');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('Restore refuses a Non-Medical bundle whose item became a medication while it was removed, in 8.1’s words', async ({
+    page,
+  }) => {
+    const supplies = await named<CategoryBody>('order_category', 'Supplies');
+    const otc = await named<CategoryBody>('order_category', 'OTC');
+    const gel = await made('item', {
+      name: 'Demo: Warming gel',
+      categoryId: supplies.id,
+      unit: 'tube',
+      medical: false,
+      captureLot: false,
+      result: null,
+    });
+    const warm = await made('bundle', {
+      name: 'Demo: Warm hands',
+      medical: false,
+      prompt: '',
+      lines: [{ itemId: gel, qty: 1, core: true }],
+    });
+    await actedMeanwhile('bundle', warm, 'archive');
+    // No active bundle holds the gel now, so it may become a medication.
+    await changedMeanwhile<ItemBody>('item', gel, (b) => ({ ...b, categoryId: otc.id, medical: true }));
+
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    await removed.getByRole('button', { name: 'Restore Demo: Warm hands', exact: true }).click();
+    const restore = removed.getByRole('form', { name: 'Restore Demo: Warm hands' });
+    await restore.getByLabel('Reason').fill('Demo: winter again');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(restore.getByRole('alert')).toHaveText(
+      'This bundle now holds a medication, so it must be Medical. Add a Medical bundle instead.',
+    );
+    await expect(restore.getByLabel('Reason')).toHaveValue('Demo: winter again');
+    await expectAccessible(page, 'Restore a bundle, refused', { inPlace: true });
+    await expectReflow(page, 'Restore a bundle, refused');
+    expect((await listed('bundle')).find((b) => b.id === warm)).toMatchObject({ state: 'archived' });
+  });
+
+  test('a stale sign-in sends a bundle being added through /reauth and back to the page, adding nothing', async ({
+    page,
+  }) => {
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(PAGE);
+    const form = page.getByRole('form', { name: 'Add a bundle' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Never added bundle');
+    await form.getByRole('radio', { name: 'Non-Medical' }).check();
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await form
+      .getByRole('group', { name: 'Line 1', exact: true })
+      .getByLabel('Item')
+      .selectOption({ label: 'Gauze' });
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Add bundle' }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Fbundles$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Bundles');
+    expect((await listed('bundle')).some((b) => b.name === 'Demo: Never added bundle')).toBe(false);
+  });
+
+  test('staff without the permission are refused Bundles at a typed address, logged once', async ({
+    page,
+  }) => {
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(PAGE);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    const after = await deniedOf('clinician@example.com');
+    // The bundles were asked, and refused: the items never were.
     expect(after).toHaveLength(before + 1);
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
